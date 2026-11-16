@@ -173,3 +173,19 @@ func HexLines(t testing.TB, stdout []byte) [][]byte {
 	}
 	return out
 }
+
+// TryStdin runs dir/main under the interpreter python names, isolated and
+// with warnings as errors as Try does, with args after main and stdin as its
+// standard input: a line driver (test/packet-text) reads its cases there.
+func TryStdin(t testing.TB, python, dir, main string, args []string, stdin string) (stdout, stderr string, err error) {
+	t.Helper()
+	slowtest.Gate(t, "the pinned Python interpreter")
+	cmd := exec.Command(python, append([]string{"-W", "error", "-I", "-B", main}, args...)...)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(stdin)
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	err = cmd.Run()
+	return out.String(), errb.String(), err
+}

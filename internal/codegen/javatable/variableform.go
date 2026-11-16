@@ -3728,7 +3728,7 @@ public final class TableJson {
         }
 
         // integer reads one integer token into a long. A wide kind (storage
-        // past 32 bits) takes a string of those digits or a number; a narrower
+        // past 32 bits) takes a string of those digits; a narrower
         // kind takes a number. The token is digits and an optional minus — no
         // fraction, no exponent, not -0 — parsed exactly, never through a
         // double. A value past the declared range refuses (§16.2).
@@ -3741,6 +3741,12 @@ public final class TableJson {
                     return 0;
                 }
             } else {
+                if (wide) {
+                    skipValue();
+                    rep.refuse("kind_mismatch");
+                    rejected = true;
+                    return 0;
+                }
                 boolean[] integral = new boolean[1];
                 tok = scanNumber(integral);
                 if (bad || tok == null) {
@@ -6792,8 +6798,8 @@ func writeVariableGraphFieldStep(b *strings.Builder, st *ir.Struct, f *ir.Field,
 }
 
 // jsonWideInteger reports an integer or fixed-point kind whose storage is
-// wider than 32 bits. JSON writes it as a string of digits and reads a string
-// or a number (docs/SPEC-TABLES.md §16.2). A timestamp stays an RFC 3339 string.
+// wider than 32 bits. JSON reads and writes a string of digits
+// (docs/SPEC-TABLES.md §16.2). A timestamp stays an RFC 3339 string.
 func jsonWideInteger(f *ir.Field) bool {
 	if f == nil || f.Type.Timestamp {
 		return false

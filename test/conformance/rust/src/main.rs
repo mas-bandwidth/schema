@@ -1217,12 +1217,9 @@ fn no_text(f: &[String]) -> bool {
 // codec reads it, and it is read first, exactly as the generated readers read
 // it. A form 3 file is read and written by the root's generated
 // <root>_fixed_load / <root>_fixed_save over <Root>Row records; those records
-// carry no text form and are not the form 1 value the cook is fed, so the text
-// and cook surfaces answer ABSENT by name for such a row (the Java leg's
-// FixedCodec, 2f4aa1aeb, routes the same rows the same way).
+// are converted into the text and cook writers' value through the generated
+// live-extent conversions; their strict read and canonical save stay form 3.
 const TABLE_FIXED_FORM_BYTE: u8 = 3;
-const FIXED_NO_TEXT: &str = "fixed table: the fixed form carries no text form in this leg";
-const FIXED_NO_COOK: &str = "fixed table: the cook is fed a form 1 value, which a form 3 file does not give";
 // room the read is handed: records, and the plan's capacity declaration
 const FIXED_RECORDS: usize = 64;
 const FIXED_PLAN: usize = 1 << 14;
@@ -1310,10 +1307,221 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
     })
 }
 
+// Fixed records and the text/cook value share the generated conversions.
+// Every value entering this path comes from the one strict fixed read.
+macro_rules! with_fixed_value_root {
+    ($unit:expr, $root:expr, |$k:ident, $row:ident, $value:ident, $load:ident, $save:ident, $measure:ident, $to:ident, $from:ident, $cook:ident| $body:expr) => {{
+        match ($unit, $root) {
+            ("backenddemo", "LoginRequest") => {
+                use backenddemo as $k;
+                #[allow(unused_imports)]
+                use $k::{LoginRequestRow as $row, LoginRequest as $value, login_request_fixed_load as $load, login_request_fixed_save as $save, login_request_fixed_measure as $measure, login_request_to_json_checked as $to, login_request_from_json_bytes as $from, login_request_cook_write as $cook};
+                Some($body)
+            }
+            ("backenddemo", "MatchResult") => {
+                use backenddemo as $k;
+                #[allow(unused_imports)]
+                use $k::{MatchResultRow as $row, MatchResult as $value, match_result_fixed_load as $load, match_result_fixed_save as $save, match_result_fixed_measure as $measure, match_result_to_json_checked as $to, match_result_from_json_bytes as $from, match_result_cook_write as $cook};
+                Some($body)
+            }
+            ("backenddemo", "StorePurchase") => {
+                use backenddemo as $k;
+                #[allow(unused_imports)]
+                use $k::{StorePurchaseRow as $row, StorePurchase as $value, store_purchase_fixed_load as $load, store_purchase_fixed_save as $save, store_purchase_fixed_measure as $measure, store_purchase_to_json_checked as $to, store_purchase_from_json_bytes as $from, store_purchase_cook_write as $cook};
+                Some($body)
+            }
+            ("messagedemo", "ToolMessage") => {
+                use messagedemo as $k;
+                #[allow(unused_imports)]
+                use $k::{ToolMessageRow as $row, ToolMessage as $value, tool_message_fixed_load as $load, tool_message_fixed_save as $save, tool_message_fixed_measure as $measure, tool_message_to_json_checked as $to, tool_message_from_json_bytes as $from, tool_message_cook_write as $cook};
+                Some($body)
+            }
+            ("scalars", "SimState") => {
+                use scalars as $k;
+                #[allow(unused_imports)]
+                use $k::{SimStateRow as $row, SimState as $value, sim_state_fixed_load as $load, sim_state_fixed_save as $save, sim_state_fixed_measure as $measure, sim_state_to_json_checked as $to, sim_state_from_json_bytes as $from, sim_state_cook_write as $cook};
+                Some($body)
+            }
+            ("tblscalars2", "SimState") => {
+                use tblscalars2 as $k;
+                #[allow(unused_imports)]
+                use $k::{SimStateRow as $row, SimState as $value, sim_state_fixed_load as $load, sim_state_fixed_save as $save, sim_state_fixed_measure as $measure, sim_state_to_json_checked as $to, sim_state_from_json_bytes as $from, sim_state_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "ArchiveConfig") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{ArchiveConfigRow as $row, ArchiveConfig as $value, archive_config_fixed_load as $load, archive_config_fixed_save as $save, archive_config_fixed_measure as $measure, archive_config_to_json_checked as $to, archive_config_from_json_bytes as $from, archive_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "KeyedConfig") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{KeyedConfigRow as $row, KeyedConfig as $value, keyed_config_fixed_load as $load, keyed_config_fixed_save as $save, keyed_config_fixed_measure as $measure, keyed_config_to_json_checked as $to, keyed_config_from_json_bytes as $from, keyed_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "LoadoutConfig") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{LoadoutConfigRow as $row, LoadoutConfig as $value, loadout_config_fixed_load as $load, loadout_config_fixed_save as $save, loadout_config_fixed_measure as $measure, loadout_config_to_json_checked as $to, loadout_config_from_json_bytes as $from, loadout_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "PackConfig") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{PackConfigRow as $row, PackConfig as $value, pack_config_fixed_load as $load, pack_config_fixed_save as $save, pack_config_fixed_measure as $measure, pack_config_to_json_checked as $to, pack_config_from_json_bytes as $from, pack_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "ProfileConfig") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{ProfileConfigRow as $row, ProfileConfig as $value, profile_config_fixed_load as $load, profile_config_fixed_save as $save, profile_config_fixed_measure as $measure, profile_config_to_json_checked as $to, profile_config_from_json_bytes as $from, profile_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tabledemo", "RootConfig") => {
+                use tabledemo as $k;
+                #[allow(unused_imports)]
+                use $k::{RootConfigRow as $row, RootConfig as $value, root_config_fixed_load as $load, root_config_fixed_save as $save, root_config_fixed_measure as $measure, root_config_to_json_checked as $to, root_config_from_json_bytes as $from, root_config_cook_write as $cook};
+                Some($body)
+            }
+            ("tbla2", "Root") => {
+                use tbla2 as $k;
+                #[allow(unused_imports)]
+                use $k::{RootRow as $row, Root as $value, root_fixed_load as $load, root_fixed_save as $save, root_fixed_measure as $measure, root_to_json_checked as $to, root_from_json_bytes as $from, root_cook_write as $cook};
+                Some($body)
+            }
+            ("tblk1", "Root") => {
+                use tblk1 as $k;
+                #[allow(unused_imports)]
+                use $k::{RootRow as $row, Root as $value, root_fixed_load as $load, root_fixed_save as $save, root_fixed_measure as $measure, root_to_json_checked as $to, root_from_json_bytes as $from, root_cook_write as $cook};
+                Some($body)
+            }
+            ("tblk2", "Root") => {
+                use tblk2 as $k;
+                #[allow(unused_imports)]
+                use $k::{RootRow as $row, Root as $value, root_fixed_load as $load, root_fixed_save as $save, root_fixed_measure as $measure, root_to_json_checked as $to, root_from_json_bytes as $from, root_cook_write as $cook};
+                Some($body)
+            }
+            ("tblm1", "Msg") => {
+                use tblm1 as $k;
+                #[allow(unused_imports)]
+                use $k::{MsgRow as $row, Msg as $value, msg_fixed_load as $load, msg_fixed_save as $save, msg_fixed_measure as $measure, msg_to_json_checked as $to, msg_from_json_bytes as $from, msg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblm2", "Msg") => {
+                use tblm2 as $k;
+                #[allow(unused_imports)]
+                use $k::{MsgRow as $row, Msg as $value, msg_fixed_load as $load, msg_fixed_save as $save, msg_fixed_measure as $measure, msg_to_json_checked as $to, msg_from_json_bytes as $from, msg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblp1", "Chain") => {
+                use tblp1 as $k;
+                #[allow(unused_imports)]
+                use $k::{ChainRow as $row, Chain as $value, chain_fixed_load as $load, chain_fixed_save as $save, chain_fixed_measure as $measure, chain_to_json_checked as $to, chain_from_json_bytes as $from, chain_cook_write as $cook};
+                Some($body)
+            }
+            ("tblp3", "Chain") => {
+                use tblp3 as $k;
+                #[allow(unused_imports)]
+                use $k::{ChainRow as $row, Chain as $value, chain_fixed_load as $load, chain_fixed_save as $save, chain_fixed_measure as $measure, chain_to_json_checked as $to, chain_from_json_bytes as $from, chain_cook_write as $cook};
+                Some($body)
+            }
+            ("tblr1", "Cfg") => {
+                use tblr1 as $k;
+                #[allow(unused_imports)]
+                use $k::{CfgRow as $row, Cfg as $value, cfg_fixed_load as $load, cfg_fixed_save as $save, cfg_fixed_measure as $measure, cfg_to_json_checked as $to, cfg_from_json_bytes as $from, cfg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblr2", "Cfg") => {
+                use tblr2 as $k;
+                #[allow(unused_imports)]
+                use $k::{CfgRow as $row, Cfg as $value, cfg_fixed_load as $load, cfg_fixed_save as $save, cfg_fixed_measure as $measure, cfg_to_json_checked as $to, cfg_from_json_bytes as $from, cfg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblv1", "Cfg") => {
+                use tblv1 as $k;
+                #[allow(unused_imports)]
+                use $k::{CfgRow as $row, Cfg as $value, cfg_fixed_load as $load, cfg_fixed_save as $save, cfg_fixed_measure as $measure, cfg_to_json_checked as $to, cfg_from_json_bytes as $from, cfg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblv2", "Cfg") => {
+                use tblv2 as $k;
+                #[allow(unused_imports)]
+                use $k::{CfgRow as $row, Cfg as $value, cfg_fixed_load as $load, cfg_fixed_save as $save, cfg_fixed_measure as $measure, cfg_to_json_checked as $to, cfg_from_json_bytes as $from, cfg_cook_write as $cook};
+                Some($body)
+            }
+            ("vocabdemo", "Wide00") => {
+                use vocabdemo as $k;
+                #[allow(unused_imports)]
+                use $k::{Wide00Row as $row, Wide00 as $value, wide00_fixed_load as $load, wide00_fixed_save as $save, wide00_fixed_measure as $measure, wide00_to_json_checked as $to, wide00_from_json_bytes as $from, wide00_cook_write as $cook};
+                Some($body)
+            }
+            ("vocabdemo", "Wide09") => {
+                use vocabdemo as $k;
+                #[allow(unused_imports)]
+                use $k::{Wide09Row as $row, Wide09 as $value, wide09_fixed_load as $load, wide09_fixed_save as $save, wide09_fixed_measure as $measure, wide09_to_json_checked as $to, wide09_from_json_bytes as $from, wide09_cook_write as $cook};
+                Some($body)
+            }
+            ("vocab9demo", "Wide00") => {
+                use vocab9demo as $k;
+                #[allow(unused_imports)]
+                use $k::{Wide00Row as $row, Wide00 as $value, wide00_fixed_load as $load, wide00_fixed_save as $save, wide00_fixed_measure as $measure, wide00_to_json_checked as $to, wide00_from_json_bytes as $from, wide00_cook_write as $cook};
+                Some($body)
+            }
+            ("vocab9demo", "Wide19") => {
+                use vocab9demo as $k;
+                #[allow(unused_imports)]
+                use $k::{Wide19Row as $row, Wide19 as $value, wide19_fixed_load as $load, wide19_fixed_save as $save, wide19_fixed_measure as $measure, wide19_to_json_checked as $to, wide19_from_json_bytes as $from, wide19_cook_write as $cook};
+                Some($body)
+            }
+            _ => None,
+        }
+    }};
+}
+
+macro_rules! fixed_storage_value {
+    ($k:ident, $row:ident, $value:ident, $load:ident, $data:expr) => {{
+        let mut values = [$row::default(); 1];
+        let mut plan = vec![$k::TableFixedEntry::default(); FIXED_PLAN];
+        let mut remap = vec![0u16; FIXED_PLAN];
+        let mut report = $k::TableFixedReport::default();
+        let count = $load(&mut values, $data, &mut plan, &mut remap, &mut report);
+        if count == Some(1) && !report.refused && !report.damaged {
+            $value::try_from(&values[0]).ok()
+        } else {
+            None
+        }
+    }};
+}
+
+fn fixed_text_write(unit: &str, root: &str, data: &[u8]) -> Option<Option<String>> {
+    with_fixed_value_root!(unit, root, |k, Row, Value, load, _save, _measure, to_json, _from, _cook| {
+        fixed_storage_value!(k, Row, Value, load, data).and_then(|value| to_json(&value))
+    })
+}
+
+fn fixed_text_read(unit: &str, root: &str, text: &[u8]) -> Option<Option<Vec<u8>>> {
+    with_fixed_value_root!(unit, root, |k, Row, Value, _load, save, measure, _to, from_json, _cook| {
+        let mut report = k::TableReport::default();
+        from_json(text, &mut report).filter(|_| !report.refused && !report.damaged).and_then(|value| {
+            let row = Row::from(&value);
+            let mut buffer = vec![0u8; measure(1)];
+            save(&[row], &mut buffer).map(|size| { buffer.truncate(size); buffer })
+        })
+    })
+}
+
+fn fixed_value_cook(unit: &str, root: &str, data: &[u8]) -> Option<Result<(Vec<u8>, Vec<u8>), String>> {
+    with_fixed_value_root!(unit, root, |k, Row, Value, load, _save, _measure, _to, _from, cook| {
+        fixed_storage_value!(k, Row, Value, load, data)
+            .ok_or_else(|| String::from("fixed read refused"))
+            .and_then(|value| Ok((cook(&value, 1)?, cook(&value, 2)?)))
+    })
+}
+
 // fixed_answer is a report or framing row read through the fixed form: the
 // verdict line on a refusal; on a read, the canonical write-back as
-// `<case>.wire` and the value text ABSENT by name, because the fixed records
-// carry no text form.
+// `<case>.wire` and the text of the same loaded value.
 fn fixed_answer(out: &str, f: &[String], data: &[u8]) -> bool {
     let Some(r) = fixed_read(&f[2], &f[3], data) else {
         return false;
@@ -1326,7 +1534,9 @@ fn fixed_answer(out: &str, f: &[String], data: &[u8]) -> bool {
         Some(bytes) => spill(out, &format!("{}.wire", f[1]), bytes),
         None => fail(&format!("{}: the fixed save refused the value", f[1])),
     }
-    spill(out, &format!("{}.absent", f[1]), FIXED_NO_TEXT.as_bytes());
+    let text = fixed_text_write(&f[2], &f[3], data).flatten()
+        .unwrap_or_else(|| fail(&format!("{}: fixed value has no text", f[1])));
+    spill(out, &f[1], format!("{}{}", r.line(), text).as_bytes());
     true
 }
 
@@ -1520,11 +1730,14 @@ fn surface_json_read(manifest: &Manifest, out: &str) {
         if no_text(f) {
             continue;
         }
-        if instance_is_fixed(f) && fixed_read(&f[2], &f[3], &[]).is_some() {
-            spill(out, &format!("{}.absent", f[1]), FIXED_NO_TEXT.as_bytes());
-            continue;
-        }
         let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
+        if instance_is_fixed(f) {
+            if let Some(value) = fixed_text_read(&f[2], &f[3], &slurp(&path)) {
+                let bytes = value.unwrap_or_else(|| fail(&format!("{}: fixed text read refused", f[1])));
+                spill(out, &f[1], &bytes);
+                continue;
+            }
+        }
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, save, _to, from_json| {
             let text = match fs::read_to_string(&path) {
                 Ok(t) => t,
@@ -1549,9 +1762,12 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
             continue;
         }
         let data = slurp(&f[4]);
-        if is_fixed_form(&data) && fixed_read(&f[2], &f[3], &[]).is_some() {
-            spill(out, &format!("{}.json.absent", f[1]), FIXED_NO_TEXT.as_bytes());
-            continue;
+        if is_fixed_form(&data) {
+            if let Some(value) = fixed_text_write(&f[2], &f[3], &data) {
+                let text = value.unwrap_or_else(|| fail(&format!("{}: fixed text write refused", f[1])));
+                spill(out, &format!("{}.json", f[1]), text.as_bytes());
+                continue;
+            }
         }
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
@@ -1575,9 +1791,16 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     // that is measure and write at once, so one call answers for both.
     for f in manifest.of_kind("json-write-refusal") {
         let data = slurp(&f[4]);
-        if is_fixed_form(&data) && fixed_read(&f[2], &f[3], &[]).is_some() {
-            spill(out, &format!("{}.json.absent", f[1]), FIXED_NO_TEXT.as_bytes());
-            continue;
+        if is_fixed_form(&data) {
+            if let Some(value) = fixed_text_write(&f[2], &f[3], &data) {
+                let text = value.unwrap_or_else(|| fail(&format!("{}: fixed load refused", f[1])));
+                let answer = match damage_text(&f[5]) {
+                    Damage::Placed => text.into_bytes(),
+                    Damage::NotHeld => b"refused\n".to_vec(),
+                };
+                spill(out, &format!("{}.json", f[1]), &answer);
+                continue;
+            }
         }
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
@@ -1733,10 +1956,13 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
             fail(&format!("cook-write {} names no instance", f[1]));
         };
         let data = slurp(&inst[4]);
-        if is_fixed_form(&data) && fixed_read(&inst[2], &inst[3], &[]).is_some() {
-            spill(out, &format!("{}.absent", f[1]), FIXED_NO_COOK.as_bytes());
-            spill(out, &format!("{}-be.absent", f[1]), FIXED_NO_COOK.as_bytes());
-            continue;
+        if is_fixed_form(&data) {
+            if let Some(answer) = fixed_value_cook(&inst[2], &inst[3], &data) {
+                let (little, big) = answer.unwrap_or_else(|why| fail(&format!("{}: fixed cook refused: {why}", f[1])));
+                spill(out, &f[1], &little);
+                spill(out, &format!("{}-be", f[1]), &big);
+                continue;
+            }
         }
         let answer = with_cook_root!(inst[2].as_str(), inst[3].as_str(), |load, cook| {
             let mut report = Default::default();
@@ -2412,11 +2638,9 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
         let data = slurp(wire);
-        // the root's current-form instance is read by its own form: a form 3
-        // file reads into the fixed Row, which this leg's text writer does not
-        // take (as for `json-write-refusal`), so a row the text writer would
-        // accept answers ABSENT by name and one its rule refuses answers the
-        // refusal the Row's debug build makes
+        // This mutation adapter works on the fixed Row. Mutations its debug
+        // checks refuse answer refused; an unhandled accepted mutation stays
+        // absent rather than claiming that its text writer was exercised.
         if is_fixed_form(&data) && fixed_read(unit, root, &[]).is_some() {
             let answer: Option<&'static [u8]> = match (unit, root) {
                 ("tabledemo", "RootConfig") => {
@@ -2436,7 +2660,7 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
             };
             match answer {
                 Some(bytes) => spill(out, case, bytes),
-                None => spill(out, &format!("{case}.absent"), FIXED_NO_TEXT.as_bytes()),
+                None => spill(out, &format!("{case}.absent"), b"fixed value mutation has no text result"),
             }
             continue;
         }

@@ -189,7 +189,7 @@ test("Unicode scalar validation rejects overlong, surrogate and out-of-range UTF
 end)
 
 test("Consumer int64 values survive the codec and an edit exactly", function()
-  local text = '{"id":"x","consumers":[{"started":9223372036854775807,"ended":-9223372036854775808,"cost_micro_usd":9007199254740993}]}'
+  local text = '{"id":"x","consumers":[{"started":"9223372036854775807","ended":"-9223372036854775808","cost_micro_usd":"9007199254740993"}]}'
   local record = assert(cards.FromJSON(text))
   local before = assert(cards.ToJSON(record))
   for _, exact in ipairs({"9223372036854775807", "-9223372036854775808", "9007199254740993"}) do

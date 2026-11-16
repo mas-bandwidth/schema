@@ -12,7 +12,8 @@
 # strict over the package and its tests.
 #
 # Each leg is its own target, so make -j runs them side by side.
-test-python: python-serialize-test
+PYTHON_CI_SUPPORT_GROUPS += python-ci-serialize
+python-ci-serialize: python-serialize-test
 
 PYTHON_SERIALIZE_DIR := third_party/serialize.py
 PYTHON_SERIALIZE_PINS = PYTHON_FLOOR=$(PYTHON_FLOOR) PYTHON=$(PYTHON) MYPY=$(MYPY)
