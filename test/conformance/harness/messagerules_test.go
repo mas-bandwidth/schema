@@ -813,7 +813,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	}
 	// THE TOLERANT ROW: an unknown field beside both sets the vocabulary and
 	// counts one unknown
-	tolerant := forgeAnnouncement(terminated(versionField(0x8877665544332211), []byte{3, 8, 9, 0, 0, 0}, vocabularyField(vocab)), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
+	tolerant := forgeAnnouncement(terminated(versionField(0x8877665544332211), vocabularyField(vocab), []byte{3, 8, 9, 0, 0, 0}), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
 	if pinned := pinnedWire(t, "testdata/wire/tables/announce_unknown_field.bin", tolerant); string(pinned) != string(tolerant) {
 		t.Errorf("the tolerant wire differs from the pinned announce_unknown_field at byte %d", firstDifference(pinned, tolerant))
 	}
@@ -827,7 +827,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	// AND THE TOLERANCE STOPS AT THE FILE'S OWN RULE: the same unknown field
 	// twice is the same field id twice in one body, which refuses the
 	// announcement as it refuses any file (§6.5), and sets no vocabulary
-	twice := forgeAnnouncement(terminated(versionField(0x8877665544332211), []byte{3, 8, 9, 0, 0, 0}, []byte{3, 8, 9, 0, 0, 0}, vocabularyField(vocab)), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
+	twice := forgeAnnouncement(terminated(versionField(0x8877665544332211), vocabularyField(vocab), []byte{3, 8, 9, 0, 0, 0}, []byte{3, 8, 9, 0, 0, 0}), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
 	if tv, treport, terr := readAnnouncement(twice); !readRefused(terr, treport) || tv.Announced() {
 		t.Errorf("an unknown field twice: err=%v announced=%v report=%+v", terr, tv.Announced(), treport)
 	}

@@ -1169,8 +1169,15 @@ func (r *tableTextFormResolver) integer(v *tableTextFormNode, f *TableFieldInfo)
 		return r.fail(TableTextFormBound, v, v.start)
 	}
 	v.canon = raw.String()
-	if f.Kind >= 18 {
-		// the wide walk converts the token's digits exactly (§16.2)
+	if tableJSONWideIntegerKind(f.Kind) {
+		// Fixed-point JSON carries whole units; integer JSON carries integral digits.
+		if f.Kind >= 20 && f.Kind <= 29 {
+			r.jsonString(v.text)
+		} else {
+			r.jsonString([]byte(v.canon))
+		}
+	} else if f.Kind >= 18 {
+		// Preserve a narrow fixed-point value's decimal scale.
 		r.out = append(r.out, v.text...)
 	} else {
 		r.raw(v.canon)

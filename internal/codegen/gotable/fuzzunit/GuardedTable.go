@@ -161,7 +161,6 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 	PatrolReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -206,11 +205,6 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 		}
 		switch fieldID {
 		case 0x6580790b036f0c6f: // active
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.active")
 				return false
@@ -227,16 +221,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				}
 				value.Active = b != 0
 			}
-			if !(value.Active != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x2281498aa0200e40: // speed
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.speed")
 				return false
@@ -256,16 +241,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 					value.Speed = v
 				}
 			}
-			if !(math.Float32bits(value.Speed) != math.Float32bits(1.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x247f0e7f55aacfbd: // has_target
-			if order >= 2 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 2
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.has_target")
 				return false
@@ -282,16 +258,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				}
 				value.HasTarget = b != 0
 			}
-			if !(value.HasTarget != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb7bc9ac015a25050: // target_id
-			if order >= 3 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 3
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -306,10 +273,6 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 							return false
 						}
 						value.TargetID = int32(v)
-					}
-					if !(value.TargetID != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -330,16 +293,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				}
 				value.TargetID = int32(v)
 			}
-			if !(value.TargetID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb8c758d8bd1845d4: // wander
-			if order >= 4 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 4
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.wander")
 				return false
@@ -359,16 +313,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 					value.Wander = v
 				}
 			}
-			if !(math.Float32bits(value.Wander) != math.Float32bits(0.5)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x3bf8fbbad1587cdd: // note
-			if order >= 5 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 5
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.note")
 				return false
@@ -385,10 +330,6 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 			clear(value.Note[:])
 			copy(value.Note[:], sub.Buffer)
 			value.NoteLength = int32(len(sub.Buffer))
-			if !(value.NoteLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -566,7 +507,6 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 	PatrolReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -612,11 +552,6 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 		}
 		switch fieldID {
 		case 0x6580790b036f0c6f: // active
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.active")
 				return false
@@ -633,16 +568,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				}
 				value.Active = b != 0
 			}
-			if !(value.Active != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x2281498aa0200e40: // speed
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.speed")
 				return false
@@ -662,16 +588,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 					value.Speed = v
 				}
 			}
-			if !(math.Float32bits(value.Speed) != math.Float32bits(1.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x247f0e7f55aacfbd: // has_target
-			if order >= 2 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 2
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.has_target")
 				return false
@@ -688,16 +605,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				}
 				value.HasTarget = b != 0
 			}
-			if !(value.HasTarget != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb7bc9ac015a25050: // target_id
-			if order >= 3 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 3
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -712,10 +620,6 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 							return false
 						}
 						value.TargetID = int32(v)
-					}
-					if !(value.TargetID != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -736,16 +640,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				}
 				value.TargetID = int32(v)
 			}
-			if !(value.TargetID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb8c758d8bd1845d4: // wander
-			if order >= 4 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 4
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.wander")
 				return false
@@ -765,16 +660,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 					value.Wander = v
 				}
 			}
-			if !(math.Float32bits(value.Wander) != math.Float32bits(0.5)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x3bf8fbbad1587cdd: // note
-			if order >= 5 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 5
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.note")
 				return false
@@ -791,10 +677,6 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 			clear(value.Note[:])
 			copy(value.Note[:], sub.Buffer)
 			value.NoteLength = int32(len(sub.Buffer))
-			if !(value.NoteLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

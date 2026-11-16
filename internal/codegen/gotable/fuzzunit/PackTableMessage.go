@@ -143,9 +143,8 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 	GunnerSettingsReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -168,7 +167,7 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -220,7 +219,7 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 			}
 		case 0xa6bf719a4602b0bc:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -269,7 +268,7 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 			}
 		case 0x5bc44627b9848818:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -316,6 +315,10 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -521,9 +524,8 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 	ShipEntryReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -546,7 +548,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 		switch entry.ID {
 		case 0x2d21d7cd66bd5a5d:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -594,7 +596,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			}
 		case 0x7f69d4b5288ba9cf:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -646,7 +648,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			}
 		case 0x1f3757a2ce7b0ab1:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -698,7 +700,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			}
 		case 0x95d0cce09ca82b73:
 			{
-				if order >= 3 {
+				if exact && order >= 3 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -776,7 +778,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			}
 		case 0x40dbb648c0cd44aa:
 			{
-				if order >= 4 {
+				if exact && order >= 4 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -799,6 +801,10 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1001,9 +1007,8 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 	GlobalSettingsReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1026,7 +1031,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 		switch entry.ID {
 		case 0xa65f859b617deaf3:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1082,7 +1087,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 			}
 		case 0x467f35a74c6e4a70:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1124,7 +1129,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 			}
 		case 0x14ec921cc2549d60:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1172,7 +1177,7 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 			}
 		case 0x09ae5613b0051271:
 			{
-				if order >= 3 {
+				if exact && order >= 3 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1251,6 +1256,10 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1484,9 +1493,8 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 	PackConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1509,7 +1517,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 		switch entry.ID {
 		case 0xbb62c62c9808ea37:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1560,7 +1568,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			}
 		case 0x7fb43557b54149ce:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1590,7 +1598,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			}
 		case 0x294a5c4913e1ad44:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1642,7 +1650,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
-							if int(key) <= lastKey {
+							if exact && int(key) <= lastKey {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1672,7 +1680,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			}
 		case 0x9cda940a344e1571:
 			{
-				if order >= 3 {
+				if exact && order >= 3 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1724,7 +1732,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
-							if int(key) <= lastKey {
+							if exact && int(key) <= lastKey {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1780,7 +1788,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			}
 		case 0x77707fccd201c228:
 			{
-				if order >= 4 {
+				if exact && order >= 4 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1828,6 +1836,10 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

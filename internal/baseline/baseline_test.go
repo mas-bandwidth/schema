@@ -864,13 +864,10 @@ func TestVanishedMemberWithNoSuccessor(t *testing.T) {
 	}
 }
 
-func TestBaselineRefusesTToOptional(t *testing.T) {
+func TestBaselineAllowsOptionalEvolution(t *testing.T) {
 	t.Parallel()
-	got := diff(t, replace(t, "    boost   Buff", "    boost   ?Buff"), baseline.DefaultTokenPolicy)
-	if len(got) != 1 || !find(got, baseline.Refuse, "Config.boost", "newer writer stores a present field at its defaults") {
-		t.Errorf("T to ?T must refuse once with the field and cause, got:%s", summary(got))
-	}
 	for _, tc := range []struct{ name, edited string }{
+		{"plain to optional", replace(t, "    boost   Buff", "    boost   ?Buff")},
 		{"optional to plain", replace(t, "    gunner ?Buff", "    gunner Buff")},
 		{"new optional field", replace(t, "    hits    int32", "    hits    int32\n    added   ?Buff")},
 	} {
