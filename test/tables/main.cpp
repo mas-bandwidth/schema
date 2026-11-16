@@ -692,10 +692,8 @@ static void test_evolution_union_insert_new_data()
     CHECK( out2.effect.type == tblv1::EffectType::Ward && out2.effect.ward.charge == -2.0f );
 }
 
-// ---- hostile: a REPEATED field id whose second occurrence names an arm or a
-// ---- variant this build cannot name. "Reads as empty" (docs/SPEC-TABLES.md §4) is
-// ---- a value the reader must WRITE, not one the prefill happens to leave —
-// ---- an earlier occurrence of the same id may have decoded a real arm.
+// Repeated fields refuse even when the second value names an unknown arm or
+// variant. A separate single occurrence checks lawful unknown-value evolution.
 
 static void test_repeated_id_unnameable_variant()
 {
@@ -729,12 +727,24 @@ static void test_repeated_id_unnameable_variant()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
+    CHECK( !tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( report.damaged );
+
+    WireBuilder evolved;
+    evolved.field( grade->id, 30 );
+    evolved.leb( evolved.ref( 0xBEEFBEEFBEEFBEEFull ) );
+    evolved.field( effect->id, 15 );
+    evolved.leb( evolved.ref( 0xBEEFBEEFBEEFBEEFull ) );
+    evolved.u8( 13 );
+    { const int64_t at = evolved.open_len(); evolved.end(); evolved.close_len( at ); }
+    evolved.end();
+    const int64_t single = evolved.finish( wire );
     out.effect.type = tblv1::EffectType::Boost; // junk the prefill must erase
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    out.grade = tblv1::Grade::Gold;
+    CHECK( tblv1::CfgLoad( out, wire, single, &report ) );
     CHECK( !report.damaged );
     CHECK( report.unknown == 2 ); // one arm id, one variant id
-    // both vocabularies land on the SAME answer: the reader's empty value,
-    // never the arm or variant an earlier occurrence decoded
+    // Both unknown values replace the caller's previous storage with None.
     CHECK( out.effect.type == tblv1::EffectType::None );
     CHECK( out.grade == tblv1::Grade::None );
 }
@@ -1907,16 +1917,14 @@ static void test_pointer_evolution_old_reader_new_data()
     int64_t wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
     CHECK( wrote > 0 );
 
-    // P1 has `link` as a BY-VALUE nesting, so it meets an INDEX where it wants
-    // a body: a kind mismatch, and the strict read refuses the whole load
-    // (docs/SPEC-TABLES.md §4) rather than keep the rest of the root without
-    // it. It is never misread as damage: the framing is sound.
+    // The legacy fixed-class form-1 reader rejects this pointer graph during
+    // whole-file framing, before its by-value field decoder is reached.
     tblp1::Chain out;
     set_string( out.name, out.name_length, "junk" ); // the refusal must reset it
     tblp1::TableReport report;
     CHECK( !tblp1::ChainLoad( out, wire, wrote, &report ) );
-    CHECK( !report.damaged );
-    CHECK( report.refuse_reason == tblp1::kind_mismatch );
+    CHECK( report.damaged );
+    CHECK( report.refuse_reason == tblp1::wire_damaged );
     CHECK( out.name_length == 0 );
     CHECK( out.link.value == 0 );      // the declared default: nothing was decoded
     CHECK( out.link.tag_length == 0 );
@@ -2326,9 +2334,10 @@ static void test_optional_round_trip()
 // ---- T and ?T are ONE framing; *T is its OWN (docs/SPEC-TABLES.md §2.3,
 // ---- §3.1). P1 nests by value, P3 marks optional, and those two are wire
 // ---- identical in both directions. P2 POINTS, and under the flat node table a
-// ---- pointer field rides as a u32 index under kind 17 — so moving a field
-// ---- between the two shapes is an ordinary, REPORTED kind mismatch and never
-// ---- a silent reinterpretation. That is the whole reason kind 17 is spent.
+// ---- pointer field rides as an index under kind17, so moving between the
+// ---- shapes refuses rather than silently reinterpreting a value. The variable
+// ---- reader reports a kind mismatch; the legacy fixed-class entry can reject
+// ---- whole-file framing first, as the separate assertion below records.
 
 static void test_optional_three_way_evolution()
 {
@@ -2391,16 +2400,17 @@ static void test_optional_three_way_evolution()
     CHECK( !r3.damaged && r3.unknown == 0 );
     CHECK( from_value.link_present && from_value.link.value == 66 );
 
-    // *T -> ?T: the INDEX is a kind mismatch where a body is declared, which
-    // refuses the whole load — "a build without kind 17" is reported by the
-    // refusal, never by a partial value.
+    // This legacy fixed-class form-1 Load rejects the non-null pointer graph
+    // during whole-file framing, before a typed field mismatch is reached.
+    // The strict form-3 selector is covered separately by FixedLoad; this
+    // legacy entry does not establish its previous_form diagnostic.
     wrote = tblp2::ChainSave( builder, wire, sizeof( wire ) );
     tblp3::Chain from_pointer;
     from_pointer.link_present = true; // the refusal must reset it
     tblp3::TableReport r4;
     CHECK( !tblp3::ChainLoad( from_pointer, wire, wrote, &r4 ) );
-    CHECK( !r4.damaged );
-    CHECK( r4.refuse_reason == tblp3::kind_mismatch );
+    CHECK( r4.damaged );
+    CHECK( r4.refuse_reason == tblp3::wire_damaged );
     CHECK( !from_pointer.link_present && from_pointer.name_length == 0 );
 
     // ---- and where the three DIVERGE, which is at all-default. A by-value T
@@ -2873,9 +2883,8 @@ static void test_keyed_none_key_is_malformed()
     CHECK( report.damaged );
 }
 
-// ---- #261: a repeated enum-ARRAY id whose second occurrence carries an
-// ---- element no build names must RESET the slot — the prefill cannot stand
-// ---- in, because an earlier occurrence already wrote it.
+// A repeated enum-array field refuses. A separate single occurrence checks
+// that unknown elements replace the caller's previous stored variants.
 
 static void test_repeated_id_unnameable_enum_element()
 {
@@ -2908,11 +2917,26 @@ static void test_repeated_id_unnameable_enum_element()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( !tblv1::CfgLoad( out, wire, n, &report ) );
+    CHECK( report.damaged );
+
+    WireBuilder evolved;
+    evolved.field( grades->id, 14 );
+    const int64_t evolved_body = evolved.open_len();
+    evolved.u8( 30 );
+    evolved.leb( 2 );
+    evolved.leb( evolved.ref( 0xBEEFBEEFBEEFBEEFull ) );
+    evolved.leb( evolved.ref( 0xBEEFBEEFBEEFBEEEull ) );
+    evolved.close_len( evolved_body );
+    evolved.end();
+    const int64_t single = evolved.finish( wire );
+    out.grades_count = 2;
+    out.grades[0] = tblv1::Grade::Gold;
+    out.grades[1] = tblv1::Grade::Bronze;
+    CHECK( tblv1::CfgLoad( out, wire, single, &report ) );
     CHECK( !report.damaged );
     CHECK( report.unknown == 2 ); // two element ids this reader cannot name
-    // the LAST occurrence wins, and an element with no name lands on None —
-    // never on the variant the FIRST occurrence decoded into that slot
+    // An element with no name lands on None rather than preserving old storage.
     CHECK( out.grades_count == 2 );
     CHECK( out.grades[0] == tblv1::Grade::None );
     CHECK( out.grades[1] == tblv1::Grade::None );
@@ -4002,8 +4026,8 @@ static void test_json_hostile_overflow()
         { "{ \"heading\": -40000 }",                    "head-",  fresh.heading },
         { "{ \"port\": 70000 }",                        "port",   fresh.port },
         { "{ \"experience\": 5000000000 }",             "exp",    (int64_t) fresh.experience },
-        { "{ \"timestamp\": 99999999999999999999 }",    "time+",  fresh.timestamp },
-        { "{ \"timestamp\": -99999999999999999999 }",   "time-",  fresh.timestamp },
+        { "{ \"timestamp\": \"99999999999999999999\" }",  "time+",  fresh.timestamp },
+        { "{ \"timestamp\": \"-99999999999999999999\" }", "time-",  fresh.timestamp },
     };
     for ( const auto & row : rows )
     {
@@ -4029,15 +4053,24 @@ static void test_json_hostile_overflow()
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"epoch\": 18446744073709551615 }";
+        const char * text = "{ \"epoch\": \"18446744073709551615\" }";
         CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.epoch == 18446744073709551615ull );
+    }
+    // Wide integer fields require strings even when a bare token is exact.
+    for ( const char * text : { "{ \"epoch\": 18446744073709551615 }", "{ \"timestamp\": 1 }" } )
+    {
+        tabledemo::ProfileConfig value;
+        tabledemo::TableReport report;
+        CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch && !report.damaged );
+        CHECK( value.epoch == fresh.epoch && value.timestamp == fresh.timestamp );
     }
     // ... and past THAT it is out of range and refuses
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"epoch\": 99999999999999999999999 }";
+        const char * text = "{ \"epoch\": \"99999999999999999999999\" }";
         CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.epoch == fresh.epoch && report.refuse_reason == tabledemo::out_of_range );
     }
@@ -4058,12 +4091,12 @@ static void test_json_hostile_overflow()
         CHECK( report.refuse_reason == tabledemo::out_of_range );
     }
     // A NEGATIVE TOKEN IN AN UNSIGNED FIELD IS OUT OF RANGE whatever its
-    // spelling (§16.2): -1e30 is a magnitude past every width and a sign, and
+    // canonical spelling (§16.2): this magnitude is past every width, and
     // both halves are known before anything is cast.
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"experience\": -1e30 }";
+        const char * text = "{ \"experience\": -1000000000000000000000000000000 }";
         CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.experience == fresh.experience );
         CHECK( report.refuse_reason == tabledemo::out_of_range );
@@ -4619,13 +4652,14 @@ static void test_json_pinned_text()
             failures++;
         }
     }
-    // ... and UNPADDED base64 still reads, so a text from elsewhere lands
+    // Unpadded base64 is not a canonical spelling and refuses without landing.
     {
         tabledemo::ProfileConfig profile;
         tabledemo::TableReport report;
         const char * unpadded = "{ \"icon\": \"AQI\" }";
-        CHECK( tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
-        CHECK( profile.icon_length == 2 && profile.icon[0] == 1 && profile.icon[1] == 2 );
+        CHECK( !tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch );
+        CHECK( profile.icon_length == 0 );
         CHECK( !report.damaged );
     }
 }
@@ -4693,18 +4727,14 @@ static void test_json_number_grammar()
 
 static void test_json_integral_spellings()
 {
-    // JSON has one number type: 2.0 IS the integer 2 and 1e3 IS 1000. A text
-    // written by any library that round-trips numbers through a double spells
-    // integers this way — including this walker's own float writer — and
-    // §16.3 exists so a declaration can meet a text that already exists.
+    // Integers use canonical decimal digits (§16.2); mathematical equality
+    // does not make a fractional or exponent spelling a writer's integer.
     struct { const char * text; int64_t expect; } integral[] = {
-        { "{ \"experience\": 1e3 }",     1000 },
-        { "{ \"experience\": 2E0 }",     2 },
-        { "{ \"experience\": 2.0 }",     2 },
-        { "{ \"experience\": 2.00000 }", 2 },
-        { "{ \"experience\": 1.5e3 }",   1500 },
-        { "{ \"experience\": 4 }",       4 },
-        { "{ \"experience\": 1e0 }",     1 },
+        { "{ \"experience\": 1000 }", 1000 },
+        { "{ \"experience\": 2 }",    2 },
+        { "{ \"experience\": 1500 }", 1500 },
+        { "{ \"experience\": 4 }",    4 },
+        { "{ \"experience\": 1 }",    1 },
     };
     for ( const auto & row : integral )
     {
@@ -4719,8 +4749,16 @@ static void test_json_integral_spellings()
         }
     }
 
-    // a GENUINELY fractional value is still the wrong shape for an integer
+    // Integral fractions/exponents and negative zero also refuse by shape,
+    // alongside genuinely fractional values.
     static const char * fractional[] = {
+        "{ \"experience\": 1e3 }",
+        "{ \"experience\": 2E0 }",
+        "{ \"experience\": 2.0 }",
+        "{ \"experience\": 2.00000 }",
+        "{ \"experience\": 1.5e3 }",
+        "{ \"experience\": 1e0 }",
+        "{ \"experience\": -0 }",
         "{ \"experience\": 2.5 }",
         "{ \"experience\": 1e-3 }",
         "{ \"experience\": 0.1 }",
@@ -4738,13 +4776,12 @@ static void test_json_integral_spellings()
         }
     }
 
-    // an integral spelling still meets the width and the declared range, and
-    // past them it refuses as out_of_range
+    // Canonical integer spellings still meet the width and declared range.
     const tabledemo::ProfileConfig fresh;
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"badge\": 3e2 }"; // 300 into a uint8
+        const char * text = "{ \"badge\": 300 }";
         CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.badge == fresh.badge && report.refuse_reason == tabledemo::out_of_range );
     }
@@ -4752,7 +4789,7 @@ static void test_json_integral_spellings()
         // signed, negative, and past the width
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"tilt\": -2e3 }";
+        const char * text = "{ \"tilt\": -2000 }";
         CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.tilt == fresh.tilt && report.refuse_reason == tabledemo::out_of_range );
     }
@@ -4760,7 +4797,7 @@ static void test_json_integral_spellings()
         // an integral value past every integer width
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"epoch\": 1e30 }";
+        const char * text = "{ \"epoch\": \"1000000000000000000000000000000\" }";
         CHECK( !tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.epoch == fresh.epoch && report.refuse_reason == tabledemo::out_of_range );
     }
@@ -4797,11 +4834,11 @@ static void test_json_no_infinity_reaches_storage()
         }
     }
 
-    // -0 IS zero for an unsigned field, and is no refusal: it is in range
+    // Integer zero is canonical; floating-point negative zero remains valid.
     {
         tabledemo::ProfileConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"experience\": -0, \"precision\": -0 }";
+        const char * text = "{ \"experience\": 0, \"precision\": -0 }";
         CHECK( tabledemo::ProfileConfigFromJson( value, text, (int64_t) strlen( text ), &report ) );
         CHECK( value.experience == 0 );
     }
@@ -7641,8 +7678,31 @@ static void test_escape_and_payload_free_kinds()
         CHECK( out->body.origin.type == messagedemo::OriginType::Pid && out->body.origin.pid == 5 );
         CHECK( out->sequence == 41 );
     }
-    // (4) AS AN ELEMENT KIND: the array's own identity, so the same rule one
-    // level in — a kind mismatch that refuses the load, the array empty
+    // The real variable-form writer supplies the same clean values too.
+    {
+        messagedemo::ToolEnvelopeBuilder current;
+        current.GetRoot()->body.type = messagedemo::ToolBodyType::Origin;
+        current.GetRoot()->body.origin.type = messagedemo::OriginType::Pid;
+        current.GetRoot()->body.origin.pid = 5;
+        current.GetRoot()->sequence = 41;
+        uint8_t wire[256];
+        const int64_t clean = messagedemo::ToolEnvelopeSave( current, wire, sizeof( wire ) );
+        CHECK( clean > 0 );
+        const int64_t needed = messagedemo::ToolEnvelopeLoadMeasure( wire, clean );
+        CHECK( needed > 0 );
+        std::vector<uint8_t> region( (size_t) ( needed > 0 ? needed : 1 ) );
+        messagedemo::TableReport report;
+        const auto * out = messagedemo::ToolEnvelopeLoad( region.data(), (int64_t) region.size(), wire, clean, &report );
+        CHECK( out != NULL && !report.damaged && report.unknown == 0 );
+        if ( out != NULL )
+        {
+            CHECK( out->body.type == messagedemo::ToolBodyType::Origin );
+            CHECK( out->body.origin.type == messagedemo::OriginType::Pid && out->body.origin.pid == 5 );
+            CHECK( out->sequence == 41 );
+        }
+    }
+    // (4) AS AN ELEMENT KIND: kind31 is forbidden by the wire grammar, so
+    // framing refuses before the declared element kind is consulted.
     {
         uint8_t wire[256];
         WireBuilder b;
@@ -7658,7 +7718,7 @@ static void test_escape_and_payload_free_kinds()
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
         CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
-        CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
+        CHECK( report.refuse_reason == messagedemo::wire_damaged && report.unknown == 0 && report.damaged );
         CHECK( out.history_count == 0 );
     }
     // (5) KIND 32 AT A NAMED FIELD: the payload-free kind is the arm position's
@@ -7849,10 +7909,10 @@ static void test_pointer_arrays_index_out_of_range()
     }
     pin_table_golden( "parts_index_out_of_range", wire, n );
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, n );
-    CHECK( region_need > 0 );
-    std::vector<uint8_t> region( (size_t) region_need );
+    CHECK( region_need == -1 ); // graph framing is checked during measurement
+    std::vector<uint8_t> region( sizeof( streamdemo::Feed ) + 16 );
     streamdemo::TableReport report;
-    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, n, &report );
+    const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), (int64_t) region.size(), wire, n, &report );
     CHECK( loaded == NULL );
     CHECK( report.damaged );
 }
@@ -8917,8 +8977,7 @@ static void test_blob_json()
 
     // The variable-size reader counts, allocates, then decodes. Exercise both
     // passes with partial groups, padding and high-bit alphabet indices.
-    for ( const auto & row : { std::pair<const char *, std::string>( "//==", std::string( "\xff", 1 ) ),
-                              { "/w==", std::string( "\xff", 1 ) } } )
+    for ( const auto & row : { std::pair<const char *, std::string>( "/w==", std::string( "\xff", 1 ) ) } )
     {
         std::string input = std::string( "{\"thumb\":\"" ) + row.first + "\"}";
         blobdemo::CatalogBuilder b;
@@ -8929,6 +8988,16 @@ static void test_blob_json()
         blobdemo::TableBytesView bytes = blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb );
         CHECK( bytes.data != NULL && bytes.length == (int64_t) row.second.size() );
         CHECK( bytes.length == 0 || memcmp( bytes.data, row.second.data(), (size_t) bytes.length ) == 0 );
+    }
+    {
+        // Nonzero pad bits decode to the same byte but are not canonical base64.
+        const char * input = "{\"thumb\":\"//==\"}";
+        blobdemo::CatalogBuilder b;
+        blobdemo::TableReport r;
+        CHECK( !blobdemo::CatalogFromJson( b, input, (int64_t) strlen( input ), &r ) );
+        CHECK( r.refuse_reason == blobdemo::kind_mismatch && !r.damaged );
+        blobdemo::TableArenaCtx ctx = { &b.arena };
+        CHECK( blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb ).data == NULL );
     }
     // Invalid Base64 (including mid-string padding, lone symbols, and lone '=')
     // is a kind mismatch that refuses the read (#715).

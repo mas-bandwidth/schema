@@ -1299,7 +1299,7 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 	}
 	codec := codecOf(f)
 	switch codec {
-	case "keyed", "string_blob", "bytes_blob":
+	case "keyed":
 		codec = "unsupported"
 	}
 	elemCodec := ""
@@ -1502,7 +1502,7 @@ func pythonJSONIsFlags(f *ir.Field) bool {
 
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
 // element the keyed kind does not carry yet: bool, the integer and
-// fixed-point kinds, and tables by value.
+// fixed-point kinds, enums, and tables by value.
 func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1510,8 +1510,13 @@ func keyedElemCodec(f *ir.Field) string {
 	case ir.TInt, ir.TFixed:
 		return "int"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-			return "table"
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref.IsTable {
+				return "table"
+			}
+		case *ir.Enum:
+			return "enum"
 		}
 	}
 	return ""
