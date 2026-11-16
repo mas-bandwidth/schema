@@ -94,6 +94,7 @@ func TestPythonMapBlobSlots(t *testing.T) {
   direct *bytes
   p *Child
   q *Child
+  maybe ?map[int32]*bytes
  }
 `)
 	files, err := Generate(u)
@@ -104,6 +105,9 @@ func TestPythonMapBlobSlots(t *testing.T) {
 r=Root();r.blobs={3:None,2:b"",-1:bytes([0,255])};r.words={"b":None,"a":"","c":"hello"}
 wire=r.save();assert r.measure()==len(wire)
 v=Root.load(wire);assert v.blobs==r.blobs and v.words==r.words and v.save()==wire
+for optional in (None, {}, {1:b""}, {2:b"data",3:None}):
+ r=Root();r.maybe=optional;wire=r.save()
+ assert Root.load(wire).maybe==optional and r.measure()==len(wire)
 x=BlobRef(b"same")
 for mode in ("map-map","map-direct","map-child"):
  r=Root();r.blobs={1:x}
@@ -113,6 +117,10 @@ for mode in ("map-map","map-direct","map-child"):
  try:r.save()
  except InvalidValue as e:assert "blob_shared" in e.rule
  else:raise AssertionError("shared map BlobRef was accepted")
+r=Root();r.blobs={1:x};r.maybe={2:x}
+try:r.save()
+except InvalidValue as e:assert "blob_shared" in e.rule
+else:raise AssertionError("shared optional-map BlobRef was accepted")
 r=Root();r.blobs={1:BlobRef(b"same"),2:BlobRef(b"same")};r.save()
 r=Root();r.blobs={1:b"same",2:b"same"};r.save()
 r=Root();c=Child();c.blobs={1:x};r.p=c;r.q=c;r.save()
