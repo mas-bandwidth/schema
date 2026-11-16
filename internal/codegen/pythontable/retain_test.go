@@ -1014,6 +1014,21 @@ func TestPythonRetainManifestSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeTree(t, unitdir, files)
+	manifestBytes, err := os.ReadFile(filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stripped strings.Builder
+	for _, line := range strings.Split(string(manifestBytes), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 7 && fields[0] == "retain" {
+			stripped.WriteString(strings.Join(fields[:7], " ") + "\n")
+		}
+	}
+	manifest := filepath.Join(t.TempDir(), "retain.manifest")
+	if err := os.WriteFile(manifest, []byte(stripped.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
 	cases := map[string]string{
 		"retain_round_trip":   "retain_rt1_save.bin",
 		"retain_ids_short":    "retain_rt1_save_id_short.bin",
@@ -1025,7 +1040,7 @@ func TestPythonRetainManifestSave(t *testing.T) {
 	}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		outdir := t.TempDir()
-		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"), "retain-save", outdir)
+		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
 		if output, err := cmd.CombinedOutput(); err != nil {
