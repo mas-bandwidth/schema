@@ -103,7 +103,7 @@ public final class Main {
         // 1. JSON out of range on each one-sided bound (including uint64 | min = 100)
         //    REFUSES the whole load: no value, refused, not damaged (§4)
         String[] outOfRange = {
-            "{\"loOnly\":5}", "{\"hiOnly\":99}", "{\"u64Lo\":42}", "{\"u8Hi\":250}",
+            "{\"loOnly\":5}", "{\"hiOnly\":99}", "{\"u64Lo\":\"42\"}", "{\"u8Hi\":250}",
         };
         for (String text : outOfRange) {
             TableVariable.Report jrep = new TableVariable.Report();
@@ -115,7 +115,7 @@ public final class Main {
         // Verify uint64 near 2^64-1 is NOT refused when only min = 100 is declared
         TableVariable.Report jrep2 = new TableVariable.Report();
         ClampRowVariable.Value jv2 = ClampRowVariable.fromJson(
-            "{\"loOnly\":1000,\"hiOnly\":-1000,\"u64Lo\":18446744073709551615,\"u8Hi\":0}".getBytes(StandardCharsets.UTF_8),
+            "{\"loOnly\":1000,\"hiOnly\":-1000,\"u64Lo\":\"18446744073709551615\",\"u8Hi\":0}".getBytes(StandardCharsets.UTF_8),
             jrep2);
         check(jv2 != null && !jrep2.damaged && !jrep2.refused, "open ends refused: " + jrep2.reason);
         check(jv2.loOnly == 1000 && jv2.hiOnly == -1000 && jv2.u64Lo == -1L && jv2.u8Hi == 0, "open ends exact");
