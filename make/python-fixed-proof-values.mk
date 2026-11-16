@@ -1,4 +1,5 @@
 # Scalar fixed-form value rows against the live C++ reference.
+PYTHON_CI_SUPPORT_GROUPS += python-fixed-proof-values python-fixed-proof-values-negative-control
 .PHONY: python-fixed-proof-values python-fixed-proof-values-negative-control
 test-python: python-fixed-proof-values python-fixed-proof-values-negative-control
 

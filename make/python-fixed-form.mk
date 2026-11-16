@@ -1,4 +1,9 @@
 # Python form 3, its live C++ byte oracle and both artifact controls.
+PYTHON_CI_SUPPORT_GROUPS += python-fixed-form python-fixed-form-negative-control python-fixed-form-proof \
+    python-fixed-form-conformance python-fixed-form-conformance-negative-control \
+    python-fixed-writer-lineage python-fixed-writer-lineage-negative-control \
+    python-fixed-core-values python-fixed-core-values-negative-control \
+    python-fixed-refused-hash-negative-control python-fixed-deprecated-enum-negative-control
 .PHONY: python-fixed-form python-fixed-form-negative-control
 test-python: python-fixed-form python-fixed-form-negative-control
 python-fixed-form:
