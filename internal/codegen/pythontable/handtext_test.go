@@ -233,6 +233,7 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
         assert doc.value.items[0] is doc.value.items[1]
         assert doc.value.items[0].id == 6 and doc.value.items[2] is None
         assert doc.value.lookup == {"west": None, "east": 2} and doc.value.blob == b""
+        assert doc.edit([('lookup[0][1]', b'4')]).value.lookup == {"west": 4, "east": 2}
     if stem == "roadmap":
         assert doc.value.schema == 1 and doc.value.root == "schema/goal" and doc.value.count == 2
         assert [n.title for n in doc.value.nodes] == ["First", "Second"]
@@ -252,6 +253,7 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
         rendered = json.loads(v.to_json())
         assert rendered["state"] == "done" and rendered["keyed"] == {"unknown": 4, "done": 7}
         assert rendered["choice"] == {"ping": None} and rendered["time"] == "2026-10-15T12:34:05Z"
+        assert doc.edit([('choice.ping', b'null')]).write() == data
 print("positive", 4)
 for stem in ` + fmt.Sprintf("%#v", names) + `:
     data = Path(stem + ".sexp").read_bytes()
@@ -422,10 +424,17 @@ table Values {
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `from probe import Values
 from probe._schema.textform_scan import TextError
-v = Values.from_text_form(b'(:colors (:Red :Blue) :features ((:Fast) (:Fast :Safe)) :floats (1.0 -0.0) :present () :names ("alpha" null "beta") :marks (:Red :Blue))').value
+doc = Values.from_text_form(b'(:colors (:Red :Blue) :features ((:Fast) (:Fast :Safe)) :floats (1.0 -0.0) :present () :names ("alpha" null "beta") :marks (:Red :Blue))')
+v = doc.value
 assert v.colors == [1, 2] and v.features == [1, 3]
 assert v.floats[0] == 1.0 and v.present == [] and v.names == ['alpha', None, 'beta']
 assert v.marks == [1, 2]
+try:
+    doc.edit([('colors.Red', b':Red')])
+except TextError as e:
+    assert e.reason == 'text_edit_conflict'
+else:
+    raise AssertionError('sequence treated as a record')
 for text, reason in ((b'(:colors (:Missing))', 'text_unknown_variant'), (b'(:features ((:Fast :Fast)))', 'text_duplicate_key'), (b'(:floats (1.0))', 'text_bound'), (b'(:names ("123456789"))', 'text_bound')):
     try:
         Values.from_text_form(text)
@@ -757,6 +766,41 @@ else:
 		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
 		if err == nil || !strings.Contains(stderr, "HANDTEXT_CARRIER_CRC_CONTROL") {
 			t.Fatalf("CRC control: %v %s", err, stderr)
+		}
+	}
+}
+
+func TestPythonHandtextEditPathNegativeControl(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+type Child { value int32 }
+table Root { items [..3]Child }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "probe/_schema/textform.py"
+	source := string(files[path])
+	const anchor = `elif getattr(desc, "codec", "") in ("array", "pointer_array", "union_array"):`
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("edit path control anchor missing")
+	}
+	files[path] = []byte(strings.Replace(source, anchor, "elif False:", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root, Refused
+v = Root.from_text_form(b'(:items ((:value 1)))')
+try:
+    changed = v.edit([('items[0].value', b'2')])
+except Refused:
+    raise AssertionError('HANDTEXT_EDIT_PATH_CONTROL') from None
+assert changed.value.items[0].value == 2, 'HANDTEXT_EDIT_PATH_CONTROL'
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "HANDTEXT_EDIT_PATH_CONTROL") {
+			t.Fatalf("edit path control: %v %s", err, stderr)
 		}
 	}
 }

@@ -340,6 +340,56 @@ def _comments(source: bytes, root: Node, cls: type[Any], spans: tuple[tuple[int,
     return tuple(sorted(result, key=lambda comment: comment.start))
 
 
+def _locate(root: Node, cls: type[Any], parts: list[tuple[str, str]]) -> Node:
+    """Find an existing path using its declared container kind, never its spelling."""
+    node = root
+    desc: Any = cls.descriptor
+    pair_fields: tuple[FieldDesc, FieldDesc] | None = None
+    for name, index in parts:
+        if pair_fields is None:
+            while getattr(desc, "codec", "") == "optional":
+                desc = _inner(desc)
+            if getattr(desc, "codec", "") in ("table", "pointer"):
+                target = by_name(desc.target)
+                if target is None:
+                    raise TextError("text_edit_conflict", node.start)
+                desc = target.descriptor
+        if name:
+            field = None
+            if hasattr(desc, "fields"):
+                field = next((f for f in desc.fields if f.json_key == name), None)
+            elif getattr(desc, "codec", "") == "keyed" and name in desc.json_keys:
+                field = desc.elem
+            elif getattr(desc, "codec", "") == "union":
+                arm = next((a for a in new_union_by_name(desc.target).descriptor.arms if a.name == name), None)
+                field = None if arm is None else (arm.field if arm.field is not None else arm)
+            if field is None or node.kind != "list" or len(node.children) % 2:
+                raise TextError("text_edit_conflict", node.start)
+            pair = next(((key, val) for key, val in zip(node.children[::2], node.children[1::2])
+                         if key.kind in ("string", "keyword") and _name(key) == name), None)
+            if pair is None:
+                raise TextError("text_edit_conflict", node.start)
+            node, desc = pair[1], field
+        else:
+            if node.kind != "list" or int(index) >= len(node.children):
+                raise TextError("text_edit_conflict", node.start)
+            if pair_fields is not None:
+                if int(index) > 1:
+                    raise TextError("text_edit_conflict", node.start)
+                desc = pair_fields[int(index)]
+                pair_fields = None
+            elif getattr(desc, "codec", "") == "map":
+                pair_fields = _entry_fields(desc)
+            elif getattr(desc, "codec", "") in ("array", "pointer_array", "union_array"):
+                desc = _array_element(desc)
+            elif getattr(desc, "json_flags", False):
+                desc = None
+            else:
+                raise TextError("text_edit_conflict", node.start)
+            node = node.children[int(index)]
+    return node
+
+
 def load(cls: type[Any], data: bytes, limits: Limits = Limits()) -> tuple[Node, Any]:
     """Resolve one input transactionally through the table JSON walk."""
     root = parse(data, max_bytes=limits.bytes, max_tokens=limits.tokens,
@@ -389,17 +439,7 @@ class Document:
                 if not path or any(not isinstance(p, (str, int)) or isinstance(p, bool) or p == "" or (isinstance(p, int) and p < 0) for p in path):
                     raise TextError("text_edit_conflict", 0)
                 parts = [(p, "") if isinstance(p, str) else ("", str(p)) for p in path]
-            current = self.root
-            for name, index in parts:
-                if name:
-                    pair = next(((key, val) for key, val in _pairs(current) if _name(key) == name), None)
-                    if pair is None:
-                        raise TextError("text_edit_conflict", current.start)
-                    current = pair[1]
-                else:
-                    if current.kind != "list" or int(index) >= len(current.children):
-                        raise TextError("text_edit_conflict", current.start)
-                    current = current.children[int(index)]
+            current = _locate(self.root, self._cls, parts)
             if current.kind == "list":
                 raise TextError("text_edit_conflict", current.start)
             probe = parse(b"(" + replacement + b")")
