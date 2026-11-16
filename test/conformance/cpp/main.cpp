@@ -486,6 +486,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblg1", tblg1, Guarded ),
     VARCODEC( "tblw1", tblw1, Fleet ),
     VARCODEC( "tblw2", tblw2, Fleet ),
+    VARCODEC( "messagedemo", messagedemo, ToolEnvelope ),
     VARCODEC( "featurewitnesses", featurewitnesses, Root ),
     VARCODEC( "featurewitnesses", featurewitnesses, ArrayRoot ),
 };

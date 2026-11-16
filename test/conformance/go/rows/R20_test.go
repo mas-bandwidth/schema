@@ -199,6 +199,7 @@ func TestProbe(t *testing.T) {
 // field_deprecate: {a,b,c} -> {a, b deprecated, c}; the reader's b is 2.
 // ---------------------------------------------------------------------------
 
+// The historical entry-point name is retained; a declared deprecated slot is carried silently.
 func TestRowR20DroppedFieldUnknown(t *testing.T) {
 	t.Parallel() // each probe builds two generated modules in its own temp tree
 	r20FixedProbe(t, "field_deprecate", `package rowfixprobe
@@ -224,13 +225,9 @@ func TestProbe(t *testing.T) {
 	if back[0].A != 1 || back[0].C != 3 {
 		t.Fatalf("the writer's fields beside the deprecated slot did not land: %+v", back[0])
 	}
-	// RELAXED 2026-11-14 (maintainer: get main green): the ruling's
-	// assertion, the deprecated field's stored value lands (back[0].B == 2,
-	// as in the C++ R20), is not checked: Go's fixed reader still yields the
-	// declared default. re-enable: relax/deprecated-carried
-	//if back[0].B != 2 {
-	//	t.Fatalf("the deprecated field's stored value did not land: %+v", back[0])
-	//}
+	if back[0].B != 2 {
+		t.Fatalf("the deprecated field's stored value did not land: %+v", back[0])
+	}
 	if r.Unknown != 0 {
 		t.Fatalf("a deprecated field the reader still has moved unknown: %+v", r)
 	}
@@ -254,9 +251,8 @@ func TestProbe(t *testing.T) {
 // map_key_widen (same directory, INDEX.txt: "One key changes width"): the
 // Chunks map's int32 keys ride as 1-byte kind-2 values, 0xfd (-3) and 0x02
 // (2); both land exactly, counted once for the map.
-// The float half rides the same ladder (tableKindWidens: 10 -> 11); the title
-// says "integer or float" and one exact integer case with its counter proves
-// the clause on this surface.
+// The float rung is exercised separately below with its exact values and
+// one widened census per field.
 // ---------------------------------------------------------------------------
 
 func TestRowR20NarrowIntWidensExactly(t *testing.T) {
@@ -294,6 +290,31 @@ func TestRowR20NarrowIntWidensExactly(t *testing.T) {
 	if ch.Past != 8 {
 		t.Errorf("the scalar beside the widened map did not land: after=%d", ch.Past)
 	}
+}
+
+// Every finite float32 widens exactly, including signed zero and subnormals.
+func TestRowR20FloatWidensExactly(t *testing.T) {
+	t.Parallel()
+	r20FixedProbe(t, "float_widen", `package rowfixprobe
+import (
+ "math"
+ "testing"
+ old "rowfixprobe/old"
+ newer "rowfixprobe/new"
+)
+func TestProbe(t *testing.T) {
+ t.Parallel()
+ for _,bits:=range []uint32{0,0x80000000,1,0x007fffff,0x3fc00000,0x7f7fffff,0xff7fffff} {
+  v:=old.FloatWiden{Lead:0xAAAAAAAA,V:math.Float32frombits(bits),Trail:0xBBBBBBBB}
+  wire:=make([]byte,old.FloatWidenFixedMeasure(1))
+  if old.FloatWidenFixedSave([]old.FloatWiden{v},wire)!=int64(len(wire)){t.Fatal("old float save")}
+  var back [1]newer.FloatWiden;var r newer.TableReport
+  if n:=newer.FloatWidenFixedLoad(back[:],wire,make([]newer.TableFixedEntry,64),&r);n!=1{t.Fatalf("float %08x refused: n=%d %+v",bits,n,r)}
+  if math.Float64bits(back[0].V)!=math.Float64bits(float64(v.V))||back[0].Lead!=v.Lead||back[0].Trail!=v.Trail{t.Fatalf("float %08x did not widen exactly: %+v",bits,back[0])}
+  if r.Widened!=1||r.Unknown!=0||r.Refused(){t.Fatalf("float %08x census: %+v",bits,r)}
+ }
+}
+`)
 }
 
 // The same-width baseline: list_tables.bin is the file the mutant above was
@@ -525,6 +546,7 @@ func TestRowR20(t *testing.T) {
 	t.Run("added-field-default", TestRowR20AddedFieldDefault)
 	t.Run("dropped-field-unknown", TestRowR20DroppedFieldUnknown)
 	t.Run("narrow-int-widens", TestRowR20NarrowIntWidensExactly)
+	t.Run("float-widens", TestRowR20FloatWidensExactly)
 	t.Run("same-width-baseline", TestRowR20SameWidthBaseline)
 	t.Run("short-string-slack", TestRowR20ShortStringSlackZeros)
 	t.Run("vocabulary-identity", TestRowR20VocabularyIdentity)
