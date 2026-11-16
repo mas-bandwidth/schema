@@ -481,6 +481,11 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			if fv.Def.Type.Optional {
 				fv.Present = true
 			}
+			// Widening preserves the value exactly; it does not make a
+			// non-required stored default a conforming writer's spelling.
+			if fieldElided(r.m, fv, false, false) {
+				return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})
+			}
 			continue
 		}
 		substituted := substitutedCount(r.fail)
@@ -500,7 +505,7 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 		// never elides and a present `?T` rides, so neither is judged here; a
 		// POINTER's null and a UNION field's arm 0 are their own spellings and
 		// are refused in the pointer and arm reads. A field whose read
-		// substituted a value (an unknown variant or arm, a deprecated variant)
+		// substituted a value (an unknown variant, arm or node type, a deprecated variant)
 		// is lawful evolution and is not judged.
 		if fieldElided(r.m, fv, empty, substitutedCount(r.fail) != substituted) {
 			return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})

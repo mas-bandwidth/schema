@@ -546,3 +546,105 @@ func TestVariableReadPreservesFieldReordering(t *testing.T) {
 		}
 	}
 }
+
+// A non-null wire pointer to a type the reader cannot name substitutes null
+// (§3.1). That evolution must not turn its containing fixed array into a
+// falsely classified stored-default field. Actual all-null spellings refuse.
+func TestReadAllowsUnknownNodePointerArraySubstitution(t *testing.T) {
+	t.Parallel()
+	schema := func(name, required string) string {
+		return "package pointerevolution\ntable " + name + " {value int32}\ntable Root {tick uint8\nlinks [2]*" + name + required + "}\n"
+	}
+	older := covModel(t, schema("Node", ""))
+	newer := covModel(t, schema("Other", ""))
+	required := covModel(t, schema("Node", " | required"))
+	unknown, err := Encode(newer, covPlace(t, newer, "Root", `{"tick":1,"links":[{"value":1},null]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allNull, err := Encode(required, covPlace(t, required, "Root", `{"tick":1,"links":[null,null]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, region := range []bool{false, true} {
+		for _, retaining := range []bool{false, true} {
+			for _, tc := range []struct {
+				name string
+				data []byte
+				read bool
+			}{{"substituted unknown node", unknown, true}, {"stored all-null default", allNull, false}} {
+				value := older.New(older.Lookup("Root"))
+				var report tabletext.Report
+				rt := &Retain{Capacity: 4096, IdCapacity: 128}
+				var ok bool
+				switch {
+				case region && retaining:
+					ok, err = DecodeRegionRetain(older, value, tc.data, rt, &report)
+				case region:
+					ok, err = DecodeRegion(older, value, tc.data, &report)
+				case retaining:
+					ok, err = DecodeRetain(older, value, tc.data, rt, &report)
+				default:
+					ok, err = Decode(older, value, tc.data, &report)
+				}
+				if ok != tc.read || (err == nil) != tc.read || report.Refused == tc.read {
+					t.Errorf("%s region=%v retain=%v: ok=%v err=%v report=%+v", tc.name, region, retaining, ok, err, report)
+				}
+				if !tc.read || !ok {
+					continue
+				}
+				links, _ := value.FieldByKey("links")
+				if report.Unknown != 1 || links.Elems[0].Node != nil || links.Elems[1].Node != nil {
+					t.Errorf("unknown node did not substitute null: %+v", report)
+				}
+			}
+		}
+	}
+}
+
+// A legal widening preserves the value exactly, so a stored scalar at its
+// unchanged default is still noncanonical. Required fields remain exempt.
+func TestReadRefusesWidenedStoredDefaults(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ writer, reader string }{{"int8", "int32"}, {"uint8", "uint64"}, {"float32", "float64"}} {
+		for _, required := range []bool{false, true} {
+			tag := ""
+			if required {
+				tag = " | required"
+			}
+			writer := covModel(t, "package wideneddefault\ntable Root {f "+tc.writer+tag+"}\n")
+			reader := covModel(t, "package wideneddefault\ntable Root {f "+tc.reader+tag+"}\n")
+			canonical, err := Encode(writer, covPlace(t, writer, "Root", `{"f":1}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			zero := append([]byte(nil), canonical...)
+			width := ir.TableKindWidth(ir.TableWireScalarKind(writer.Lookup("Root").Fields[0]))
+			for i := 3; i < 3+width; i++ {
+				zero[i] = 0
+			}
+			for _, c := range []struct {
+				name string
+				wire []byte
+				read bool
+			}{{"nondefault", canonical, true}, {"zero", zero, required}} {
+				for _, retain := range []bool{false, true} {
+					var report tabletext.Report
+					value := reader.New(reader.Lookup("Root"))
+					var ok bool
+					if retain {
+						ok, err = DecodeRetain(reader, value, c.wire, &Retain{Capacity: 1024, IdCapacity: 64}, &report)
+					} else {
+						ok, err = Decode(reader, value, c.wire, &report)
+					}
+					if ok != c.read || (err == nil) != c.read || report.Refused == c.read {
+						t.Errorf("%s→%s %s required=%v retain=%v: ok=%v err=%v report=%+v", tc.writer, tc.reader, c.name, required, retain, ok, err, report)
+					}
+					if ok && report.Widened != 1 {
+						t.Errorf("widening count=%d, want 1", report.Widened)
+					}
+				}
+			}
+		}
+	}
+}

@@ -102,8 +102,8 @@ func reportReason(err error) string {
 // that read: once set, every walk stops and the read refuses.
 //
 // substituted counts the values the read put in place of what the wire named:
-// an enum variant or a union arm this reader cannot name (read as None) and a
-// deprecated variant (read as the default). Such a value is lawful evolution,
+// an enum variant or a union arm this reader cannot name (read as None), an
+// unknown node type (read as null), and a deprecated variant (read as default). Such a value is lawful evolution,
 // not a stored default, so a field whose read substituted one is not judged
 // against the writer's elision rule.
 type readFail struct {
