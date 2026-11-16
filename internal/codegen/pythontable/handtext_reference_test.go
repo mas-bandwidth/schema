@@ -58,9 +58,9 @@ func TestReference(t *testing.T) {
 		t.Fatalf("Go reference: %v\n%s", err, output)
 	}
 	var goHex string
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.HasPrefix(line, "ORACLE:") {
-			goHex = strings.TrimPrefix(line, "ORACLE:")
+	for line := range strings.SplitSeq(string(output), "\n") {
+		if value, ok := strings.CutPrefix(line, "ORACLE:"); ok {
+			goHex = value
 		}
 	}
 	if goHex == "" {
@@ -182,7 +182,7 @@ func TestOracle(t *testing.T) {
 				t.Fatalf("Go oracle: %v\n%s", err, output)
 			}
 			var expected []string
-			for _, line := range strings.Split(string(output), "\n") {
+			for line := range strings.SplitSeq(string(output), "\n") {
 				if strings.HasPrefix(line, "ORACLE:") {
 					expected = append(expected, line)
 				}
@@ -366,9 +366,9 @@ func TestOracle(t *testing.T) {
 		t.Fatalf("Go oracle: %v\n%s", err, out)
 	}
 	var expected string
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "ORACLE:") {
-			expected = strings.TrimPrefix(line, "ORACLE:")
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if value, ok := strings.CutPrefix(line, "ORACLE:"); ok {
+			expected = value
 		}
 	}
 	if expected == "" {
