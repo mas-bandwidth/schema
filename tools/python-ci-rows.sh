@@ -11,8 +11,29 @@ rows=$(mktemp)
 packages=$(mktemp)
 trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
 : > "$rows"
-supports=$(make -s python-ci-support-list)
-printf '%s\n' "$supports" | while IFS= read -r target; do
+support=$(make -s python-ci-support-list)
+printf '%s\n' "$support" | while IFS= read -r target; do
+  if [ "$target" = python-ci-compiler ]; then
+    # Group matching compiler tests into deterministic namespace shards.
+    # Keep the local/nightly aggregate, but bound every per-commit row.
+    listed=$(go test -tags schema_leg_python -list Python ./compiler)
+    names=$(printf '%s\n' "$listed" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
+    [ -n "$names" ] || { echo "no Python compiler tests discovered" >&2; exit 1; }
+    selected=$(printf '%s\n' "$names" | while IFS= read -r test; do
+      if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$support" | grep -qx python-ci-required-shape-0; then
+        for part in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+          printf '%s\n' "$support" | grep -qx "python-ci-required-shape-$part" || { echo "missing required shape shard $part" >&2; exit 1; }
+        done
+        continue
+      fi
+      printf '%s\n' "$test"
+    done)
+    printf '%s\n' "$selected" | paste -d+ - - - - - | sed 's/+*$//' | while IFS= read -r group; do
+      [ -n "$group" ] || continue
+      jq -cn --arg name "python compiler $group" --arg target "python-ci-compiler-shard-$group" '{name:$name,target:$target,package:"",test:""}' >> "$rows"
+    done
+    continue
+  fi
   jq -cn --arg name "$target" --arg target "$target" '{name:$name,target:$target,package:"",test:""}' >> "$rows"
 done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
@@ -38,7 +59,7 @@ while IFS= read -r package; do
       printf '%s\n' "$names" | grep -qx "$delegated" || { echo "missing $delegated" >&2; exit 1; }
     done
     for target in python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3; do
-      [ "$(printf '%s\n' "$supports" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
+      [ "$(printf '%s\n' "$support" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
     done
     names=$(printf '%s\n' "$names" | sed '/^TestPythonScalarWidenHistorical$/d; /^TestPythonContainerWidenHistorical$/d')
     skip=TestPythonVtFixedClassBuildVersionImports
