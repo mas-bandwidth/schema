@@ -5323,6 +5323,9 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         {
             in.report->refused = true;
             in.report->refuse_reason = kind_mismatch;
+            // As for an optional field, a non-null key supplies presence
+            // even when its value is refused back to the declared defaults.
+            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
         else
