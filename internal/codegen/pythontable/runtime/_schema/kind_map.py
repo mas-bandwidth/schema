@@ -150,14 +150,26 @@ class _Map:
                 previous_ordinal = ctx.ordinal
                 entry_path = parent + ((fd.ordinal, index),)
                 value_path = entry_path + ((value_field.ordinal, 0),)
-                has_child = value_field.codec == "table" and ctx.retain.has_body(ctx.node, value_path)
-                if not value_default(item) or has_child:
+                has_child = not ctx.preview and value_field.codec == "table" and ctx.retain.has_body(ctx.node, value_path)
+                default = value_default(item)
+                forced = default and has_child
+                if (not default or has_child) and (not forced or ctx.can_id(value_field.field_id)):
+                    start = entry_writer.count
+                    id_mark = len(ctx.ids)
+                    retained_mark = ctx.retain.id_used
+                    emitted_mark = ctx.emitted
                     ctx.ordinal = value_field.ordinal
                     ctx.steps = value_path if value_field.codec == "table" else entry_path
                     value_codec.write(entry_writer, value_field, item, ctx)
+                    if forced and ctx.emitted == emitted_mark:
+                        while len(ctx.ids) > id_mark:
+                            ctx.forget_id(ctx.ids.pop())
+                        ctx.retain.truncate_ids(retained_mark)
+                        entry_writer.truncate(start)
                 ctx.steps = parent
                 ctx.ordinal = previous_ordinal
-                ctx.lost += ctx.retain.write_tail(ctx.node, entry_path, ctx.known, ctx, entry_writer)
+                if not ctx.preview:
+                    ctx.lost += ctx.retain.write_tail(ctx.node, entry_path, ctx.known, ctx, entry_writer)
             elif not value_default(item):
                 value_codec.write(entry_writer, value_field, item, ctx)
             entry_writer.byte(0)

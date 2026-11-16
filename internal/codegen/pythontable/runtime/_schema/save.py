@@ -225,6 +225,8 @@ def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
     _write_form(counter)
     write_body(counter, value, ctx, True)
     reserved = frozenset(ctx.ids)
+    if len(reserved) > 4096:
+        raise InvalidValue("", "known values need more than 4096 wire IDs")
     ctx.ids.clear()
     ctx.refs.clear()
     ctx.reserved = reserved

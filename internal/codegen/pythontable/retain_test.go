@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1803,6 +1804,135 @@ func TestPythonRetainDriverNegativeControl(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(outdir, "retain_round_trip.absent")); !os.IsNotExist(err) {
 			t.Fatalf("retaining failure was misreported absent: %v", err)
+		}
+	}
+}
+
+// TestPythonRetainKnownOnlyIDOverflow checks edits after a legal retained load.
+func TestPythonRetainKnownOnlyIDOverflow(t *testing.T) {
+	slowtest.Gate(t, "both pinned Python interpreters")
+	var schema strings.Builder
+	schema.WriteString("package probe\nenum Many { ")
+	for i := 1; i <= 4096; i++ {
+		if i > 1 {
+			schema.WriteString(", ")
+		}
+		fmt.Fprintf(&schema, "V%d", i)
+	}
+	schema.WriteString(" }\ntable Root { values []Many }\n")
+	u := loadUnit(t, schema.String())
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+value = Root()
+value.values = list(range(1, 4096))
+wire = value.save()
+assert int.from_bytes(wire[-8:], 'little') == 4096
+keep = TableRetain(bytearray(1024), bytearray(24 * 4096))
+report = LoadReport()
+value = Root.load_retain(wire, keep, report)
+assert value.measure_retain(keep) == len(wire)
+assert value.save_retain(keep, report) == wire
+before = (report.unknown, report.widened, report.retained, report.retain_lost)
+value.values.append(4096)
+for operation in (lambda: value.measure_retain(keep), lambda: value.save_retain(keep, report)):
+    try: operation()
+    except ValueError as error: assert '4096' in str(error), error
+    else: raise AssertionError('4097 known ids accepted')
+    assert (report.unknown, report.widened, report.retained, report.retain_lost) == before
+value.values.pop()
+assert value.save_retain(keep, report) == wire
+with open('saved', 'wb') as f: f.write(wire)
+print('known-only-bound')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "known-only-bound" {
+			t.Fatalf("known-only limit: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read ") {
+			t.Fatalf("Go engine rejected boundary: %s", verdict)
+		}
+	}
+}
+
+// TestPythonRetainMapEntryIDBudget ensures preview reserves only known IDs.
+func TestPythonRetainMapEntryIDBudget(t *testing.T) {
+	slowtest.Gate(t, "both pinned Python interpreters")
+	var schema strings.Builder
+	schema.WriteString("package probe\nenum Many { ")
+	for i := 1; i <= 4093; i++ {
+		if i > 1 {
+			schema.WriteString(", ")
+		}
+		fmt.Fprintf(&schema, "V%d", i)
+	}
+	schema.WriteString(" }\ntable Child { n int32 }\ntable Root { mapping map[int32]Child\n values []Many }\n")
+	u := loadUnit(t, schema.String())
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	w.ref("mapping")
+	key := unionCat(w.refID(ir.MapKeyWireId), []byte{4}, unionI32(3))
+	valueRef := w.refID(ir.MapValueWireId)
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7))
+	child := unionCat(ghost, []byte{0})
+	value := unionCat(valueRef, []byte{13}, unionLeb(uint64(len(child))), child)
+	entry := unionCat(key, value, []byte{0})
+	mapping := w.array("mapping", 13, 1, unionCat(unionLeb(uint64(len(entry))), entry))
+	w.ref("values")
+	var variants []byte
+	for i := 1; i <= 4091; i++ {
+		variants = append(variants, w.ref(fmt.Sprintf("V%d", i))...)
+	}
+	values := w.array("values", 30, 4091, variants)
+	wire := w.file(mapping, values)
+	if verdict := unionEngineVerdict(t, u, wire); !strings.HasPrefix(verdict, "read 1 ") {
+		t.Fatalf("input: %s", verdict)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire', 'rb') as f: wire = f.read()
+assert int.from_bytes(wire[-8:], 'little') == 4096
+keep = TableRetain(bytearray(2048), bytearray(24 * 4096)); report = LoadReport()
+value = Root.load_retain(wire, keep, report)
+assert (report.unknown, report.retained, report.retain_lost) == (1, 1, 0)
+assert value.save_retain(keep, report) == wire
+value.values.append(4092)
+size = value.measure_retain(keep)
+first = value.save_retain(keep, report)
+assert len(first) == size and int.from_bytes(first[-8:], 'little') == 4095
+assert report.retain_lost == 1 and Root.load(first).values[-1] == 4092
+value.values.append(4093)
+size = value.measure_retain(keep)
+saved = value.save_retain(keep, report)
+assert len(saved) == size and int.from_bytes(saved[-8:], 'little') == 4096
+assert report.retain_lost == 2 and Root.load(saved).values[-1] == 4093
+with open('saved', 'wb') as f: f.write(saved)
+print('map-known-budget')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "map-known-budget" {
+			t.Fatalf("map budget: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read 0 ") {
+			t.Fatalf("output: %s", verdict)
 		}
 	}
 }
