@@ -3008,6 +3008,19 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	defer n.Release()
 	ids := &frame.ids
 	*ids = TableIds{Numbering: n}
+	if !measure {
+		probe := &frame.measure
+		*probe = TableWriter{Measuring: true, Ids: ids}
+		if !info.SaveBody(probe, root) {
+			return -1, TableRefuseInvalidValue
+		}
+		for i := 1; i < len(n.entries); i++ {
+			if tableNodeMeasure(probe, ids, &n.entries[i]) < 0 {
+				return -1, TableRefuseInvalidValue
+			}
+		}
+		ids.Truncate(0)
+	}
 	w := &frame.writer
 	*w = TableWriter{Buffer: buffer, Measuring: measure, Ids: ids}
 	w.Put8(1)
@@ -5346,6 +5359,19 @@ func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	defer n.Release()
 	ids := &frame.ids
 	*ids = TableRetainIds{Numbering: n, Retain: retain, Path: tableRetainPath{at: root, node: 1}}
+	if !measure {
+		probe := &frame.measure
+		*probe = TableRetainWriter{Measuring: true, Ids: ids}
+		if !info.SaveBodyRetain(probe, root) {
+			return -1
+		}
+		for i := 1; i < len(n.entries); i++ {
+			if tableNodeMeasureRetain(probe, ids, &n.entries[i]) < 0 {
+				return -1
+			}
+		}
+		ids.Truncate(0)
+	}
 	w := &frame.writer
 	*w = TableRetainWriter{Buffer: buffer, Measuring: measure, Ids: ids}
 	w.Put8(1)

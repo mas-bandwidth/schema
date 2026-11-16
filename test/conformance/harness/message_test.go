@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -809,6 +812,38 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 	}
 }
 
+// evolvedMessageVocabulary derives another build from actual checked source:
+// an additional empty fixed table moves the build version while leaving the
+// message vocabulary's entries unchanged. Synthetic unknown-field probes use
+// that sender provenance; claiming this reader's own build would require every
+// field to belong to the current record (§3.3(b)).
+func evolvedMessageVocabulary(t *testing.T, unit *ir.Unit) *tablewire.Vocabulary {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "FutureMessageBuild.schema")
+	if err := os.WriteFile(path, []byte("package "+unit.Package+"\nfixed table FutureMessageBuild {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{path}
+	for _, file := range unit.Files {
+		paths = append(paths, file.Path)
+	}
+	future, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ir.BuildVersion(future) == ir.BuildVersion(unit) {
+		t.Fatal("a new table must change the sender build")
+	}
+	if !reflect.DeepEqual(tablewire.MessageVocabulary(future), tablewire.MessageVocabulary(unit)) {
+		t.Fatal("the future build must preserve these probes' vocabulary slots")
+	}
+	var vocabulary tablewire.Vocabulary
+	if err := vocabulary.AnnounceRead(tablewire.Announce(future), &tabletext.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	return &vocabulary
+}
+
 // TestAReferenceAtAndAboveTheEntryCount: E is the entry count and a reference
 // is r bits, so E+1, E+2 and 2^r - 1 are spellable and damage; the entry count
 // itself is the last legal slot and must resolve. Red if a leg resolves past E, refuses
@@ -872,9 +907,18 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	if string(last) != string(built) {
 		t.Errorf("the last-slot wire differs from the pinned one at byte %d", firstDifference(last, built))
 	}
+	// At this reader's own build, an arm used as a field of another
+	// record is noncanonical. The same unknown-field boundary probe is legal
+	// evolution only when the announcement identifies another sender build.
+	same := model.New(login)
+	var sameReport tabletext.Report
+	if count, ok, err := tablewire.DecodeMessages(model, []*tabletext.Instance{same}, last, vocabulary, &sameReport); ok || err == nil || count != 0 || instU64(t, same, "player_id") != 0 {
+		t.Errorf("same-build undeclared field did not refuse the whole batch: count=%d ok=%v err=%v report=%+v", count, ok, err, sameReport)
+	}
+	future := evolvedMessageVocabulary(t, model.Unit)
 	out := model.New(login)
 	var report tabletext.Report
-	count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, last, vocabulary, &report)
+	count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, last, future, &report)
 	if derr != nil || !ok || report.Refused || report.Unknown != 1 || count != 1 {
 		t.Errorf("the entry count itself is the last legal slot and must resolve: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 	}

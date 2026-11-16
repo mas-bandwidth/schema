@@ -56,13 +56,8 @@ func FixedTableMeasureMessages(values []*FixedTable, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := FixedTableMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -92,9 +87,14 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
+<<<<<<< HEAD
 	order := -1
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+>>>>>>> 23ace52430306f3543b0ac50b740932e915bd9b0
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -116,7 +116,7 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -145,6 +145,10 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

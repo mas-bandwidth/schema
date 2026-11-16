@@ -217,7 +217,7 @@ func frameRows(t *testing.T) []frameRow {
 			edited:   frameEdit(t, "    chunk  Chunk\n", "    chunk  ?Chunk\n"),
 			instance: `{"chunk":{"seq":7}}`,
 			read:     "0,0",
-			baseline: "refuse",
+			baseline: "pass",
 			build:    "moves",
 		},
 		{
@@ -668,8 +668,8 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 	if cell := tableCell(t, optionalRow, 4); !strings.Contains(cell, "moves") {
 		t.Errorf("T -> ?T build cell = %q, want moves", cell)
 	}
-	if cell := tableCell(t, optionalRow, 3); !strings.Contains(cell, "refuses") {
-		t.Errorf("T -> ?T baseline cell = %q, want refuses", cell)
+	if cell := tableCell(t, optionalRow, 3); !strings.Contains(cell, "passes") {
+		t.Errorf("T -> ?T baseline cell = %q, want passes", cell)
 	}
 	refusesStart := strings.Index(text, "**REFUSES, naming `table.field` and the edit**")
 	passesStart := strings.Index(text, "**PASSES, in silence**")
@@ -682,11 +682,11 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 		passes = passes[:i]
 	}
 	passes = strings.Join(strings.Fields(passes), " ")
-	if !strings.Contains(refuses, "a field moved from `T` to `?T`") {
-		t.Error("§18.2 REFUSES must name T to ?T")
+	if strings.Contains(refuses, "a field moved from `T` to `?T`") {
+		t.Error("§18.2 REFUSES must not invent a T to ?T break")
 	}
-	if !strings.Contains(passes, "a field moved from `?T` to `T`") || strings.Contains(passes, "`T` and `?T`") {
-		t.Error("§18.2 PASSES must name only ?T to T")
+	if !strings.Contains(passes, "`T` and `?T`") {
+		t.Error("§18.2 PASSES must name both optional directions")
 	}
 	if strings.Contains(passes, "`T`, `?T` and `*T`") {
 		t.Error("§18.2 PASSES must not include *T: a pointer is a kind change")
