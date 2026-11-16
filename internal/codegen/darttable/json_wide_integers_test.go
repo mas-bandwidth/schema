@@ -3,8 +3,8 @@ package darttable
 // THE JSON FORM'S WIDE INTEGERS AND ITS INTEGER TOKEN (docs/SPEC-TABLES.md
 // §16.2, §16.14 W10; docs/rulings.json json-wide-integers-are-strings and
 // json-integer-token-only). An integer whose storage is wider than 32 bits is
-// written as a JSON string of decimal digits and reads as a string or a
-// number; every integer field, of every width, takes an integer token only.
+// read and written as a JSON string of decimal digits; every integer field
+// takes an integer token only.
 //
 // The rows are the vectors in testdata/wire/json-integers: every accept row
 // reads and writes the committed canonical text byte for byte, and every
@@ -39,7 +39,7 @@ table Integers
 
 // TestDartJsonWideIntegersAreStrings holds the json-integers vectors through
 // the generated Dart writer and reader: a wide integer is written as a STRING
-// of decimal digits, reads as a string or a number, and every integer field
+// of decimal digits, reads only a string, and every integer field
 // takes an integer token only — no fraction, no exponent, no negative zero.
 func TestDartJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
@@ -61,6 +61,11 @@ func TestDartJsonWideIntegersAreStrings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	numberTokens, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(append(data, '\n'), numberTokens...)
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
 		t.Fatal(err)
