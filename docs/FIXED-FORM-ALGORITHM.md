@@ -622,6 +622,45 @@ hash refuse without changing the lock. `--writer` and `--from` are paired and ca
 `--retire` or `--reason`. **The caller establishes the source's provenance**: matching a legacy hash is a
 necessary consistency check, not proof that the source is the historical writer.
 
+**EXPLICIT LAYOUT-ONLY IMPORT IN RENDERING 9.** A pre-digest writer may have
+recorded an empty digest even though its source carried constraints. The strict
+import above refuses that mismatch. A caller with trusted historical source can
+select the distinct, explicit compatibility operation:
+
+```
+schema lock --writer 'Config@0x<recorded-hash>' --from path/to/historical-unit --legacy-layout-only path/to/current-unit
+```
+
+The selected entry must have an empty digest. The checked source must match its
+root wire name, layout bytes, record-body size and raw layout-only key exactly.
+Its complete by-value closure becomes the writer snapshot. The `legacy-layout-only`
+marker is recorded on that lineage line and bound into the lineage roll-up;
+it is legal only in rendering 9, requires a complete writer snapshot, and cannot
+coexist with a nonempty digest. No old wire key, layout, body size, order,
+retirement or reason is changed. This is an explicit source-provenance assertion,
+not an inference from matching bytes or from the current reader.
+
+The public API is `compiler.ImportSchemaLockWriterWithOptions` with
+`compiler.SchemaLockWriterImportOptions{LegacyLayoutOnly: true}`; the lock
+implementation uses `ImportWriterWithOptions` and `WriterImportOptions`.
+The original import API and zero options retain strict digest equality.
+Validating an existing explicitly trusted import requires repeating the opt-in;
+a different captured constraint set under the same key is refused rather than
+overwritten. Repeating the same explicit import is idempotent. These rules do
+not distinguish files from multiple historical writers sharing one key: such
+files still need trusted per-file provenance or a separately chosen operator
+migration policy.
+
+**PRE-LINEAGE V6 SALVAGE.** The immediate predecessor of rendering 7 used
+layout-only file keys. Rendering 9 reconstructs that key only when the checked
+source still matches the v6 lock's complete declaration projection, including
+held-declaration hashes. It retains the raw layout-only entry with no writer
+snapshot and appends the current v2 entry; matching current source does not
+silently establish historical provenance. Import its source explicitly as above
+when a backend needs complete writer checks. If the source has changed, restore
+the exact historical source, migrate its lock first, then evolve the schema.
+A wider current declaration cannot supply the missing historical layout bytes.
+
 This boundary is irreducible. Optional anonymous `R` digest records omit the field they constrain, so two
 lawful histories can end in the same rendering-7 lock after removing a range from either of two same-kind
 fields. A lock alone cannot reconstruct which writer field had the bound. Count minima are absent from
@@ -789,13 +828,16 @@ JSON rendering are not incidental identity inputs.
 freezes the old stream. `TableFixedDefinitionsDigestForRecorded` selects the
 recorded scheme, and its result MUST equal the recorded digest. In particular,
 empty historical digest does not authorize discarding source constraints.
+The separately marked layout-only import above is the explicit provenance-based
+exception; it does not change this digest helper's contract.
 An unknown prospective version refuses. `TableFixedLayoutHashRecorded` hashes
 the two supplied byte runs without adding a prefix. The historical
 `TableFixedLayoutHash(layout, nil)` operation remains raw for compatibility;
 new own identities always supply their non-nil schema.
 
 Lock rendering 9 salvages renderings 6, 7 and 8, preserving every old wire key,
-layout, digest, record-body size, snapshot, retirement, reason and order. Relock
+layout, digest, record-body size, snapshot, retirement, reason and order. Existing
+lineage roll-ups are checked during migration, including renderings 7 and 8. Relock
 appends the current v2 entry once even when its layout equals the prior layout.
 Historical snapshot validation uses its recorded digest scheme, never today's
 default. No runtime header or record-body format changes. Missing historical
