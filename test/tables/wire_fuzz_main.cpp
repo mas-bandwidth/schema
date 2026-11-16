@@ -487,12 +487,12 @@ static const Codec codecs[] = {
 // the mutant generator. These bytes are the same corpus inputs the pipe reads.
 static int regression_vectors()
 {
-    struct Case { const char * unit; const char * root; const char * path; bool reads; };
+    struct Case { const char * unit; const char * root; const char * path; bool reads; const char * canonical; };
     static const Case cases[] = {
-        { "featurewitnesses", "ArrayRoot", "testdata/conformance/tables/wire/array_root_body_short.bin", false },
-        { "tabledemo", "KeyedConfig", "testdata/conformance/tables/wire/keyed_default.bin", true },
-        { "streamdemo", "Feed", "testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin", false },
-        { "graphdemo", "Scene", "testdata/conformance/tables/wire/graph_widened_default.bin", false },
+        { "featurewitnesses", "ArrayRoot", "testdata/conformance/tables/wire/array_root_body_short.bin", false, NULL },
+        { "tabledemo", "KeyedConfig", "testdata/conformance/tables/wire/keyed_default.bin", true, NULL },
+        { "streamdemo", "Feed", "testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin", false, NULL },
+        { "graphdemo", "Scene", "testdata/conformance/tables/wire/graph_widened_default.bin", true, "testdata/wire/tables/fuzz-vectors/graph_widened_default_canonical.bin" },
     };
     for ( const Case & test : cases )
     {
@@ -519,14 +519,43 @@ static int regression_vectors()
         reply.saved = -1;
         codec->run( wire, bytes, reply );
         const bool reads = reply.loaded && !reply.refused && !reply.malformed;
-        const bool saved = !reads || ( reply.saved == bytes && reply.bytes != NULL && memcmp( reply.bytes, wire, (size_t) bytes ) == 0 );
+        // A lawful historical writer can store a default that this reader's
+        // writer elides. Its rewrite is independently pinned, not the input.
+        uint8_t * expected = wire;
+        long expected_bytes = bytes;
+        bool expected_ok = true;
+        if ( test.canonical != NULL )
+        {
+            FILE * canonical = fopen( test.canonical, "rb" );
+            if ( canonical == NULL ) { free( reply.bytes ); free( wire ); return 1; }
+            fseek( canonical, 0, SEEK_END );
+            expected_bytes = ftell( canonical );
+            rewind( canonical );
+            expected = (uint8_t *) malloc( expected_bytes > 0 ? (size_t) expected_bytes : 1 );
+            expected_ok = expected_bytes >= 0 && expected != NULL && fread( expected, 1, (size_t) expected_bytes, canonical ) == (size_t) expected_bytes;
+            fclose( canonical );
+        }
+        const bool saved = !reads || ( expected_ok && reply.saved == expected_bytes && reply.bytes != NULL && memcmp( reply.bytes, expected, (size_t) expected_bytes ) == 0 );
+        bool value_ok = true;
+        if ( test.canonical != NULL )
+        {
+            const int64_t need = graphdemo::SceneLoadMeasure( wire, bytes, NULL, NULL );
+            uint8_t * region = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
+            graphdemo::TableReport report = {};
+            const graphdemo::Scene * scene = graphdemo::SceneLoad( region, need, wire, bytes, &report );
+            const graphdemo::ListNode * node = scene == NULL ? NULL : graphdemo::ListNodeAt( scene->head );
+            for ( int i = 0; i < 256 && node != NULL; ++i ) { node = graphdemo::ListNodeAt( node->next ); }
+            value_ok = node != NULL && node->value == 0 && report.widened == 1 && report.unknown == 0;
+            free( region );
+        }
+        if ( expected != wire ) { free( expected ); }
         free( reply.bytes ); free( wire );
-        if ( reads != test.reads || !saved )
+        if ( reads != test.reads || !saved || !value_ok )
         {
             fprintf( stderr, "wire-fuzz regression: %s.%s verdict or canonical write-back differs\n", test.unit, test.root ); return 1;
         }
     }
-    printf( "wire-fuzz regressions: four file verdicts and fixed-form write-back pass\n" );
+    printf( "wire-fuzz regressions: four file verdicts, fixed-form write-back and historical rewrite pass\n" );
     return 0;
 }
 
