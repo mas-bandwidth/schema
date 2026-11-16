@@ -565,4 +565,17 @@ public final class MixedEventVariable {
         in.p++;
         return v;
     }
+
+    /**
+     * carry a MixedEventFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(MixedEventFixed.Value fixed) {
+        Value v = new Value();
+        v.tag = fixed.type;
+        v.hit = MixedHitEventVariable.fromFixed(fixed.hit);
+        v.chat = MixedChatEventVariable.fromFixed(fixed.chat);
+        v.pickup = MixedPickupEventVariable.fromFixed(fixed.pickup);
+        return v;
+    }
 }
