@@ -70,15 +70,15 @@ print("ok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := "        if value < 0 or value > len(fd.variant_ids):\n"
+	before := "    if value < 0 or value > len(fd.variant_ids):\n"
 	if !strings.Contains(string(src), before) {
 		t.Fatal("enum negative control target missing")
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(string(src), before, "        if False:\n", 1)), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(string(src), before, "    if False:\n", 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
 	_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)
-	if err == nil || !strings.Contains(stderr, "accepted invalid enum") {
+	if err == nil || !strings.Contains(stderr, "IndexError") {
 		t.Fatalf("enum negative control did not fail: %v\n%s", err, stderr)
 	}
 }
