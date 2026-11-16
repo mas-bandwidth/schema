@@ -1786,12 +1786,13 @@
       "name": "js-discard",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md §4): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. The retained-hash-zero control runs its native positive then mistakes hash zero for None in a copied emitter, requiring the enum round trip to fail. A group of its own so the js and js-proof jobs keep their measured time.",
+      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md §4): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. The retained-hash-zero control runs its native positive then mistakes hash zero for None in a copied emitter, requiring the enum round trip to fail. The retained-depth control also runs the native boundary witness and lowers the copied retaining walk limit to 127. A group of its own so the js and js-proof jobs keep their measured time.",
       "targets": [
         "tables-js-discard-negative-control",
         "tables-js-batch-discard-negative-control",
         "tables-js-cycle-negative-control",
-        "tables-js-retain-hashzero-negative-control"
+        "tables-js-retain-hashzero-negative-control",
+        "tables-js-retain-depth-negative-control"
       ]
     },
     {
