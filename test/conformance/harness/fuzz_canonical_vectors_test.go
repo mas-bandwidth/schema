@@ -732,3 +732,32 @@ func TestListDamagedChildBoundary(t *testing.T) {
 		}
 	}
 }
+
+// TestUnknownArmTextPin retains the unknown arm's embedded NUL while removing
+// the ID that belonged only to the seed's original table-valued arm.
+func TestUnknownArmTextPin(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	v := framingVector{entries: []uint64{0x08b32e07b55c3ac0, 0xd8d4335628b35226, 0x3a506cb541761960}, body: b(1, 8, 4, 0, 8, 0, 2, 15, 3, 12, 7, 4, 12, 'C', 'h', 'd', 'r', 0, 0)}
+	wire, err := v.bytes(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin")
+	if os.Getenv("FRAMING_WRITE") == "1" {
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, wire) {
+		t.Fatal("unknown text arm differs from its builder")
+	}
+	if fault := framingTableFault(framingVector{}, wire); fault != "" {
+		t.Error(fault)
+	}
+}
