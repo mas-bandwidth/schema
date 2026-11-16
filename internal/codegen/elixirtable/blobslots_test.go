@@ -64,13 +64,13 @@ func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
 		{"clear_second", replace(shared, "alias", 0), 1, false},
 		{"clear_first", replace(shared, "thumb", 0), 1, false},
 		{"equal_distinct", read("blob_equal_bytes"), 0, false},
-		{"drop_table_owner", replace(replace(read("blob_small"), "thumb", 3), "head", 0), 1, false},
+		{"repeated_table_owner", replace(replace(read("blob_small"), "thumb", 3), "head", 2), 1, false},
 	}
 	var probe strings.Builder
 	probe.WriteString("alias Blobdemo.Table,as: T\nProcess.put(:failures,[])\ncheck=fn yes,msg->unless yes,do: Process.put(:failures,[msg|Process.get(:failures)]) end\n")
 	for _, c := range cases {
-		if c.name == "drop_table_owner" && !bytes.Equal(c.wire, read("fuzz-vectors/blob_table_owner_replaced")) {
-			t.Fatal("literal unreachable-owner vector changed")
+		if c.name == "repeated_table_owner" && !bytes.Equal(c.wire, read("fuzz-vectors/blob_table_owner_replaced")) {
+			t.Fatal("duplicate owner vector changed")
 		}
 		value := m.New(u.Tables["Catalog"])
 		var report tabletext.Report
