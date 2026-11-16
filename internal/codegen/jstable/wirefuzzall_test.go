@@ -165,7 +165,6 @@ func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
 func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
-	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -195,39 +194,50 @@ func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, retaining := range []byte{0, 1} {
-		var input bytes.Buffer
-		binary.Write(&input, binary.LittleEndian, uint32(1))
-		for _, name := range []string{"listdemo", "Album"} {
-			binary.Write(&input, binary.LittleEndian, uint16(len(name)))
-			input.WriteString(name)
-		}
-		input.WriteByte(1)
-		input.WriteByte(retaining)
-		binary.Write(&input, binary.LittleEndian, uint32(0))
-		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
-		input.Write(wire)
-		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
-		cmd.Dir = repo
-		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
-		cmd.Stdin = &input
-		var output, stderr bytes.Buffer
-		cmd.Stdout = &output
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("driver: %v\n%s", err, stderr.String())
-		}
-		data := output.Bytes()
-		if len(data) != 48 || data[0] != 1 {
-			t.Fatalf("retaining=%d protocol len%d %x", retaining, len(data), data)
-		}
-		reply := data[1:]
-		if reply[0] != 0 || reply[21] != 0 || reply[22] != 0 || int64(binary.LittleEndian.Uint64(reply[39:47])) != -1 {
-			t.Fatalf("retaining=%d count refusal became a wire report event: %x", retaining, reply)
-		}
-		for _, off := range []int{1, 5, 9, 13, 17, 31, 35} {
-			if binary.LittleEndian.Uint32(reply[off:off+4]) != 0 {
-				t.Fatalf("unexpected report event at%d", off)
+	// The malformed vector crosses a collection's byte extent and its count bound.
+	// Exercise a canonical empty Album through the same driver as a positive twin.
+	clean, err := tablewire.Encode(model, model.New(model.Lookup("Album")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		wire []byte
+		read bool
+	}{{wire, false}, {clean, true}} {
+		for _, retaining := range []byte{0, 1} {
+			var input bytes.Buffer
+			binary.Write(&input, binary.LittleEndian, uint32(1))
+			for _, name := range []string{"listdemo", "Album"} {
+				binary.Write(&input, binary.LittleEndian, uint16(len(name)))
+				input.WriteString(name)
+			}
+			input.WriteByte(1)
+			input.WriteByte(retaining)
+			binary.Write(&input, binary.LittleEndian, uint32(0))
+			binary.Write(&input, binary.LittleEndian, uint32(len(tc.wire)))
+			input.Write(tc.wire)
+			cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+			cmd.Dir = repo
+			cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
+			cmd.Stdin = &input
+			var output, stderr bytes.Buffer
+			cmd.Stdout = &output
+			cmd.Stderr = &stderr
+			if err := cmd.Run(); err != nil {
+				t.Fatalf("driver: %v\n%s", err, stderr.String())
+			}
+			data := output.Bytes()
+			if len(data) < 48 || data[0] != 1 {
+				t.Fatalf("retaining=%d protocol len%d %x", retaining, len(data), data)
+			}
+			reply := data[1:]
+			savedLen := int64(binary.LittleEndian.Uint64(reply[39:47]))
+			if tc.read {
+				if reply[0] != 1 || reply[21] != 0 || reply[22] != 0 || savedLen != int64(len(clean)) || !bytes.Equal(reply[47:], clean) {
+					t.Fatalf("retaining=%d canonical twin failed: %x", retaining, reply)
+				}
+			} else if reply[0] != 0 || (reply[21] == 0 && reply[22] == 0) || savedLen != -1 || len(reply) != 47 {
+				t.Fatalf("retaining=%d malformed collection did not refuse whole: %x", retaining, reply)
 			}
 		}
 	}
