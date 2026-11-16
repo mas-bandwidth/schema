@@ -194,6 +194,10 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 	case ir.TString, ir.TBytes:
 		size := t.Size
 		fmt.Fprintf(b, "%sif type(%s) ~= \"string\" or #%s > %d then return false end\n", indent, val, val, size)
+		if t.Kind == ir.TString {
+			fmt.Fprintf(b, "%sif not utf8valid(%s) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)\n", indent, val)
+			fmt.Fprintf(b, "%sif string.find(%s, \"\\0\", 1, true) then return false end -- interior null (SPEC §5.1 row 8)\n", indent, val)
+		}
 		length := "#" + val
 		emitBitsOrSkip(b, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the length")
 		call(fmt.Sprintf("stream:serializeBytes({ value = string.sub(%s, 1, %s) }, %s)", val, length, length),

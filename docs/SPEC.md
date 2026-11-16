@@ -2481,7 +2481,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–6, 10 and 11 every build; 7 raises; 8 not yet held
+  - packet `Write`: 1–6, 8, 10 and 11 every build; 7 raises
 
 - **Luau**
 
