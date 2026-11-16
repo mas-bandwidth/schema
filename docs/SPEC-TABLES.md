@@ -5771,6 +5771,20 @@ and a loader materializes one node and stores that index in all three
 slots. §2.1's own example — a large `*Palette` several parents share — is
 one node on the wire, in a builder and in a region alike (§6.3).
 
+**A leg without object identity loads a root plus a node directory.** A
+runtime that copies a value flat (into a message, a shared table or a log
+line) does not keep term sharing, so a node three slots hold would be copied
+three times, and a value this section requires to load would grow with its
+paths rather than its nodes. Such a leg returns a table that reaches a pointer
+to a table as the root beside a directory of the table nodes in index order,
+and every table-pointer field holds the index of the node it names (`2` and
+up, since no pointer names the root; null as the language's null). A field the
+root did not store reads its declared default. Its save numbers a node by that
+index, so two fields holding one index are one node. A `*string` or `*bytes`
+field holds its bytes, and the directory holds null at the node-table position
+that blob spent; a table that reaches no pointer to a table loads as a plain
+map. Elixir is the leg that does this today (USAGE.md, Per-language notes).
+
 **A data cycle is refused at SAVE FROM A BUILDER, and the refusal is
 free.** The numbering walk carries one entry per reachable node — that
 map IS identity; a node must know its index to be named twice — so
@@ -6205,12 +6219,14 @@ union at `None` (§22.2, §22.6). A reader therefore refuses the whole batch
   sender default this reader cannot know — one it meets under a different build
   version — is read as today: an absent field takes this reader's declared
   default, which is lawful version evolution.
-- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.** The
-  order a writer emits is the sender's declaration order (§22.2, §22.6), which
-  is the order the announcement gives each record's fields: the cook projection
-  renders a record's fields in declaration order (§20.2). A reader refuses a
-  body whose field references do not follow that order, and a field this reader
-  cannot name still has its place in that order.
+- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.**
+  Under the same announced shape and build version, the reader checks a body's
+  field references against the record's declaration order, because field order
+  is digested into the build version (§20.1). It refuses a body out of that
+  order and a field the record does not declare. The announcement stores each
+  field once even when several records share it, so its slot order is no one
+  record's order. Under a different build version, order is not judged and the
+  body reads, which is lawful version evolution.
 - **(c) A UNION FIELD WRITTEN WITH THE NONE REFERENCE.** Reference `0` is the
   union's empty arm, and a conforming writer elides an empty union (§22.2), so
   an explicit arm `0` is not the one encoding a conforming writer emits.
@@ -6617,10 +6633,9 @@ plain float's NaN or infinity.
 **THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
 batch that decodes to a good value but that no conforming writer of a lawful
 lineage version would produce is refused: fields out of the writer's order; a
-field stored at its declared default; a union written with arm reference `0`;
-and a message body that omits a field its own announcement declares. Absent
-fields, unknown fields from a newer writer and widened fields stay lawful and
-read as today (§4).
+field stored at its declared default; and a union written with arm reference
+`0`. Absent fields, unknown fields from a newer writer and widened fields stay
+lawful and read as today (§4).
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -8816,16 +8831,15 @@ diagnostic name, which is not normative and is never compared:
 - **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
   to a value but that no conforming writer of a lawful lineage version would
   produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
-  docs/rulings.json reads-refuse-non-canonical). The seven shapes, on the
+  docs/rulings.json reads-refuse-non-canonical). The six shapes, on the
   variable and message forms: fields out of the writer's order; a field stored
-  at its declared default (a default change is refused by the lineage check,
+  at its declared default (a default change and a field moved from `T` to `?T` are refused by the lineage check,
   docs/VERSIONING.md, so every lawful writer's default for a field the reader
   names is the reader's own, which is what makes the case decidable); an
   explicit null pointer; an id-table entry that is unused, or out of first-use
-  order; an empty node table, or one out of its place; a union written with arm
-  reference `0`; and a message body that omits a field its own announcement
-  declares. Absent fields, unknown fields from a newer writer and widened
-  fields stay lawful and read as today. The JSON form is not changed here: a
+  order; an empty node table, or one out of its place; and a union written with
+  arm reference `0`. Absent fields, unknown fields from a newer writer and
+  widened fields stay lawful and read as today. The JSON form is not changed here: a
   JSON read accepts any field order (§16.2), and this rule is the binary
   forms' alone.
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
@@ -9028,7 +9042,7 @@ the one the committed baseline (§18) exists to refuse:
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed, reordered and renamed under `was`; array bounds may move; a field may
-change between `T` and `?T` — all of it either invisible to the wire or
+change from `?T` to `T` — all of it either invisible to the wire or
 answered by the read: counted as evolution or refused by name. Moving a field
 to or from `*T` is a kind change and is refused `kind_mismatch` (§3.1).
 
@@ -9124,7 +9138,8 @@ only.
 | a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | refuses `kind_mismatch` | **refuses** | **moves** |
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, refuses `count_over_bound` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | refuses `kind_mismatch` | **refuses**, as any element kind changed | **moves** |
-| a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
+| a field moved from `T` to `?T` | silent — no byte moves for non-default content | **refuses** — the old plain reader refuses a present field stored at its default | **moves** — the presence companion is storage |
+| a field moved from `?T` to `T` | silent — no byte moves for non-default content | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | refuses `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
@@ -18176,12 +18191,11 @@ tightened total is a data edit exactly as a tightened range is. A list that
 declares none records no token, so every committed baseline regenerates
 byte-identically and the rendering version does not move.
 
-**Presence is RECORDED and judged on nothing.** An optional's presence
-companion is a fact in the file so a person reading a diff can see it, and a
-field moving between `T` and `?T` moves no byte (§3.1) and passes in silence.
-A field moved to or from `*T` is NOT this row: a pointer is kind 17, so that
-edit changes the `kind=` fact and is refused (§4.1). Recording a fact and
-judging it are two different things, and presence alone is only recorded.
+**Presence is RECORDED and judged one way.** A field moved from `T` to
+`?T` is refused: a newer optional writer can store a present field at its
+specified default, which an older plain reader refuses (§4). Moving from `?T`
+to `T` passes, because a plain writer elides its default. A field moved to or
+from `*T` is a kind change and is refused (§4.1).
 
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
@@ -18214,7 +18228,8 @@ therefore every `schema generate` — diffs the live closure against the
 committed file whenever one is there, and:
 
 - **REFUSES, naming `table.field` and the edit** — a specified default
-  changed, added or removed; a flags variant inserted, removed, reordered,
+  changed, added or removed; a field moved from `T` to `?T`, because an old
+  plain reader refuses the newer writer's present field at its default; a flags variant inserted, removed, reordered,
   or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
   bit remaps every stored file; nothing distinguishes the two, so the
   author says which); a field's wire kind or an array's ELEMENT kind
@@ -18270,9 +18285,8 @@ committed file whenever one is there, and:
   added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
-  reverse; a field moved
-  between `T` and `?T` (a field moved to or from `*T` is a kind change and is
-  refused above, because a pointer is kind 17).
+  reverse; a field moved from `?T` to `T` (a field moved to or from `*T` is a
+  kind change and is refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
 is refused: it records why a baseline MOVED, and a read has nothing for it to
@@ -18454,7 +18468,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
+optional field. The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain

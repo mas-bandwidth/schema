@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // The held graph vectors reach THE GRAPH (docs/SPEC-TABLES.md §6.5) through
@@ -104,5 +105,59 @@ func TestHeldGraphVectorsAnswerTheEngine(t *testing.T) {
 				t.Errorf("%s: engine accepted=%t want=%t (report=%+v)", tc.name, accepted, tc.accepted, report)
 			}
 		})
+	}
+}
+
+// TestKeyedGraphReachabilityControl checks the legal keyed-table spelling and
+// that its nested pointer is needed to reach the otherwise orphaned record.
+func TestKeyedGraphReachabilityControl(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	u, err := newUnits(m).get("graphdemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(filepath.Join(root, framingDir, "graph_reach_unknown_keyed_slot.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := frameWire(wire)
+	pointer := -1
+	keyedTable := false
+	for _, sp := range f.spots {
+		if sp.kind == spotKind && sp.role == roleKeyedElement && sp.value == 13 {
+			keyedTable = true
+		}
+		if sp.kind == spotIndex && sp.value == 2 && sp.width == 1 {
+			pointer = sp.off
+		}
+	}
+	if !keyedTable || pointer < 0 {
+		t.Fatal("fixture must contain a keyed table element with a pointer to node 2")
+	}
+	model := tabletext.NewModel(u)
+	decode := func(data []byte) bool {
+		inst := model.New(model.Lookup("Scene"))
+		var report tabletext.Report
+		ok, err := tablewire.Decode(model, inst, data, &report)
+		return err == nil && ok && !report.Refused
+	}
+	if !decode(wire) {
+		t.Fatal("the reachable unknown node must read")
+	}
+	wire[pointer] = 0
+	if decode(wire) {
+		t.Fatal("removing the only edge to the node must refuse the orphan")
 	}
 }
