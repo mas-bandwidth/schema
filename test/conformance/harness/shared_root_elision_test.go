@@ -14,9 +14,13 @@ import (
 
 // rootStoredDefaults checks scalar, string, empty array/keyed/map and empty
 // by-value table fields at the root. It is a byte walk, not a value read. It
-// does not yet judge all-default nonempty arrays or nested field defaults.
+// also judges fixed scalar arrays; nested bodies are checked separately.
 func rootStoredDefaults(st *ir.Struct, data []byte) map[string]bool {
-	f := frameWire(data)
+	return bodyStoredDefaults(st, data, frameWire(data), -1)
+}
+
+// bodyStoredDefaults applies the same byte checks to one known body scope.
+func bodyStoredDefaults(st *ir.Struct, data []byte, f *wireFrame, scope int) map[string]bool {
 	lebAt := func(off, end int) (uint64, int, bool) {
 		value, width := readLeb(data, off, end)
 		return value, off + width, width > 0
@@ -27,7 +31,14 @@ func rootStoredDefaults(st *ir.Struct, data []byte) map[string]bool {
 		fields[ir.TableFieldWireId(fd)] = fd
 	}
 	for i, sp := range f.spots {
-		if sp.kind != spotRef || len(sp.enclosing) != 0 || sp.value == 0 || i+1 >= len(f.spots) {
+		if sp.kind != spotRef || sp.value == 0 || i+1 >= len(f.spots) {
+			continue
+		}
+		key := -1
+		if len(sp.enclosing) > 0 {
+			key = sp.enclosing[len(sp.enclosing)-1]
+		}
+		if key != scope {
 			continue
 		}
 		id, ok := f.entryOf(sp.value)
@@ -35,7 +46,7 @@ func rootStoredDefaults(st *ir.Struct, data []byte) map[string]bool {
 			continue
 		}
 		fd := fields[id]
-		if fd == nil || fd.Required || fd.Deprecated || fd.Type.Optional || fd.Type.Pointer {
+		if fd == nil || fd.Required || fd.Deprecated || fd.Type.Optional || (fd.Type.Pointer && fd.Array == ir.ArrayNone) || (st.MapEntryOf != "" && (fd.Name == "key" || fd.Name == "value")) {
 			continue
 		}
 		k := f.spots[i+1]
@@ -43,31 +54,56 @@ func rootStoredDefaults(st *ir.Struct, data []byte) map[string]bool {
 			continue
 		}
 		off := k.off + 1
+		end := sp.limit
 		switch {
+		case fd.Type.Kind == ir.TBytes:
+			if k.value != ir.TableKindArray {
+				continue
+			}
+			n, after, ok := lebAt(off, end)
+			if !ok || n < 2 || n > uint64(end-after) || data[after] != ir.TableKindU8 {
+				continue
+			}
+			count, payload, ok := lebAt(after+1, after+int(n))
+			if ok && count == uint64(after+int(n)-payload) && bytes.Equal(data[payload:after+int(n)], fd.DefBytes) {
+				out[fd.Name] = true
+			}
 		case fd.Array != ir.ArrayNone || fd.IsMap():
 			if k.value != ir.TableKindArray && k.value != ir.TableKindKeyed {
 				continue
 			}
-			n, after, ok := lebAt(off, f.bodyEnd)
-			if !ok || n < 2 || n > uint64(f.bodyEnd-after) {
+			n, after, ok := lebAt(off, end)
+			if !ok || n < 2 || n > uint64(end-after) {
 				continue
 			}
-			count, _, ok := lebAt(after+1, after+int(n))
-			if ok && count == 0 && fd.ArrayMin == 0 {
+			count, payload, ok := lebAt(after+1, after+int(n))
+			if !ok {
+				continue
+			}
+			// A fixed positional table array always rides, even if every
+			// element is at its default. A keyed array is different.
+			if fd.Array == ir.ArrayFixed && fd.KeyEnum == "" && ir.TableWireElemKind(fd) == ir.TableKindTable {
+				continue
+			}
+			if count == 0 && fd.ArrayMin == 0 {
+				out[fd.Name] = true
+				continue
+			}
+			if fd.Array == ir.ArrayFixed && fd.KeyEnum == "" && int(data[after]) == ir.TableWireElemKind(fd) && count <= uint64(fd.ArrayBound) && fixedArrayAtDefault(fd, f, data, payload, after+int(n), count) {
 				out[fd.Name] = true
 			}
 		case k.value == ir.TableKindString && fd.Type.Kind == ir.TString:
-			n, after, ok := lebAt(off, f.bodyEnd)
-			if ok && n <= uint64(f.bodyEnd-after) && bytes.Equal(data[after:after+int(n)], fd.DefBytes) {
+			n, after, ok := lebAt(off, end)
+			if ok && n <= uint64(end-after) && bytes.Equal(data[after:after+int(n)], fd.DefBytes) {
 				out[fd.Name] = true
 			}
 		case k.value == ir.TableKindTable:
-			n, after, ok := lebAt(off, f.bodyEnd)
-			if ok && n == 1 && after < f.bodyEnd && data[after] == 0 {
+			n, after, ok := lebAt(off, end)
+			if ok && n == 1 && after < end && data[after] == 0 {
 				out[fd.Name] = true
 			}
 		case k.value == ir.TableKindEnum:
-			ref, _, ok := lebAt(off, f.bodyEnd)
+			ref, _, ok := lebAt(off, end)
 			if !ok {
 				continue
 			}
@@ -75,63 +111,100 @@ func rootStoredDefaults(st *ir.Struct, data []byte) map[string]bool {
 				if ref == 0 {
 					out[fd.Name] = true
 				}
-			} else if id, ok := f.entryOf(ref); ok && id == ir.TableWireId(fd.DefVariant) {
+			} else if id, ok := f.entryOf(ref); ok && id == defaultEnumWireID(fd) {
 				out[fd.Name] = true
-			}
-		case k.value == ir.TableKindF32:
-			if off+4 <= f.bodyEnd {
-				v := math.Float32frombits(uint32(data[off]) | uint32(data[off+1])<<8 | uint32(data[off+2])<<16 | uint32(data[off+3])<<24)
-				if v == float32(fd.DefFloat) {
-					out[fd.Name] = true
-				}
-			}
-		case k.value == ir.TableKindF64:
-			if off+8 <= f.bodyEnd {
-				var bits uint64
-				for j := 0; j < 8; j++ {
-					bits |= uint64(data[off+j]) << uint(8*j)
-				}
-				if math.Float64frombits(bits) == fd.DefFloat {
-					out[fd.Name] = true
-				}
 			}
 		default:
 			width := kindWidth(int(k.value))
-			if width == 0 || width > 16 || off+width > f.bodyEnd {
-				continue
-			}
-			switch fd.Type.Kind {
-			case ir.TBool, ir.TInt, ir.TBits, ir.TFixed, ir.TNamed:
-			default:
-				continue
-			}
-			if fd.Type.Kind == ir.TNamed {
-				if _, ok := fd.Type.Ref.(*ir.Flags); !ok {
-					continue
-				}
-			}
-			raw := make([]byte, width)
-			for j := 0; j < width; j++ {
-				raw[width-1-j] = data[off+j]
-			}
-			got := new(big.Int).SetBytes(raw)
-			want := new(big.Int)
-			if fd.Type.Kind == ir.TBool {
-				if fd.HasDefault && fd.DefBool {
-					want.SetInt64(1)
-				}
-			} else if fd.HasDefault && fd.DefInt != nil {
-				want.Set(fd.DefInt)
-			}
-			if want.Sign() < 0 {
-				want.Add(want, new(big.Int).Lsh(big.NewInt(1), uint(width*8)))
-			}
-			if got.Cmp(want) == 0 {
+			if width > 0 && off+width <= end && wireScalarDefault(fd, int(k.value), data[off:off+width]) {
 				out[fd.Name] = true
 			}
 		}
 	}
 	return out
+}
+
+// defaultEnumWireID honors a variant's wire-name alias.
+func defaultEnumWireID(fd *ir.Field) uint64 {
+	name := fd.DefVariant
+	if e, ok := fd.Type.Ref.(*ir.Enum); ok {
+		name = e.VariantWireNameOf(name)
+	}
+	return ir.TableWireId(name)
+}
+
+// wireScalarDefault compares one directly encoded scalar to its declaration.
+func wireScalarDefault(fd *ir.Field, kind int, data []byte) bool {
+	if kind == ir.TableKindF32 && len(data) == 4 {
+		v := math.Float32frombits(uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24)
+		return v == float32(fd.DefFloat)
+	}
+	if kind == ir.TableKindF64 && len(data) == 8 {
+		var bits uint64
+		for j := 0; j < 8; j++ {
+			bits |= uint64(data[j]) << uint(8*j)
+		}
+		return math.Float64frombits(bits) == fd.DefFloat
+	}
+	switch fd.Type.Kind {
+	case ir.TBool, ir.TInt, ir.TBits, ir.TFixed, ir.TNamed:
+	default:
+		return false
+	}
+	if fd.Type.Kind == ir.TNamed {
+		if _, ok := fd.Type.Ref.(*ir.Flags); !ok {
+			return false
+		}
+	}
+	if len(data) == 0 || len(data) > 16 {
+		return false
+	}
+	raw := make([]byte, len(data))
+	for j := range data {
+		raw[len(data)-1-j] = data[j]
+	}
+	got := new(big.Int).SetBytes(raw)
+	want := new(big.Int)
+	if fd.Type.Kind == ir.TBool {
+		if fd.HasDefault && fd.DefBool {
+			want.SetInt64(1)
+		}
+	} else if fd.HasDefault && fd.DefInt != nil {
+		want.Set(fd.DefInt)
+	}
+	if want.Sign() < 0 {
+		want.Add(want, new(big.Int).Lsh(big.NewInt(1), uint(len(data)*8)))
+	}
+	return got.Cmp(want) == 0
+}
+
+func fixedArrayAtDefault(fd *ir.Field, f *wireFrame, data []byte, off, end int, count uint64) bool {
+	kind := ir.TableWireElemKind(fd)
+	for range count {
+		switch kind {
+		case ir.TableKindPointer, ir.TableKindUnion, ir.TableKindEnum:
+			value, width := readLeb(data, off, end)
+			if width == 0 {
+				return false
+			}
+			off += width
+			if kind == ir.TableKindEnum && fd.HasDefault && fd.DefVariant != "" && fd.DefVariant != "None" {
+				id, ok := f.entryOf(value)
+				if !ok || id != defaultEnumWireID(fd) {
+					return false
+				}
+			} else if value != 0 {
+				return false
+			}
+		default:
+			width := kindWidth(kind)
+			if width == 0 || off+width > end || !wireScalarDefault(fd, kind, data[off:off+width]) {
+				return false
+			}
+			off += width
+		}
+	}
+	return off == end
 }
 
 // TestRootStoredDefaultsKnownCases checks an explicit scalar default and a
@@ -290,7 +363,7 @@ func TestSharedReadableRootElision(t *testing.T) {
 // comparisons and verifies a default-valued array element or map key rides.
 func TestRootStoredDefaultsScalarAndCollectionControls(t *testing.T) {
 	t.Parallel()
-	schema := []byte("package rootelision\ntable Root {\n n int32 = 7\n f float32 = 1.5\n title string(8) = \"abc\"\n values [..4]uint8\n entries map[int32]int32\n keep uint8 | required\n}\n")
+	schema := []byte("package rootelision\nenum Kind { New | was = \"Old\"\n Other }\ntable Node { x uint8 }\ntable Root {\n n int32 = 7\n choice Kind = New\n f float32 = 1.5\n title string(8) = \"abc\"\n values [..4]uint8\n nums [2]uint8\n ptrs [2]*Node\n nodes [2]Node\n blob bytes(4) = \"ab\"\n entries map[int32]int32\n keep uint8 | required\n}\n")
 	path := filepath.Join(t.TempDir(), "Root.schema")
 	if err := os.WriteFile(path, schema, 0o644); err != nil {
 		t.Fatal(err)
@@ -307,6 +380,8 @@ func TestRootStoredDefaultsScalarAndCollectionControls(t *testing.T) {
 	}{
 		{"int default", []string{"n"}, cat(b(1, 4), i32(7), b(0)), "n"},
 		{"int nondefault", []string{"n"}, cat(b(1, 4), i32(8), b(0)), ""},
+		{"aliased enum default", []string{"choice", "Old"}, b(1, 30, 2, 0), "choice"},
+		{"enum nondefault", []string{"choice", "Other"}, b(1, 30, 2, 0), ""},
 		{"float default", []string{"f"}, cat(b(1, 10), f32(1.5), b(0)), "f"},
 		{"float nondefault", []string{"f"}, cat(b(1, 10), f32(2.5), b(0)), ""},
 		{"text default", []string{"title"}, cat(b(1, 12, 3), []byte("abc"), b(0)), "title"},
@@ -315,6 +390,12 @@ func TestRootStoredDefaultsScalarAndCollectionControls(t *testing.T) {
 		{"default array element", []string{"values"}, b(1, 14, 3, 6, 1, 0, 0), ""},
 		{"default map key", []string{"entries", "key"}, b(1, 14, 10, 13, 1, 7, 2, 4, 0, 0, 0, 0, 0, 0), ""},
 		{"required default", []string{"keep"}, b(1, 6, 0, 0), ""},
+		{"fixed array default", []string{"nums"}, b(1, 14, 4, 6, 2, 0, 0, 0), "nums"},
+		{"fixed array nondefault", []string{"nums"}, b(1, 14, 4, 6, 2, 0, 1, 0), ""},
+		{"fixed pointer array default", []string{"ptrs"}, b(1, 14, 4, 17, 2, 0, 0, 0), "ptrs"},
+		{"fixed table array always rides", []string{"nodes"}, b(1, 14, 6, 13, 2, 1, 0, 1, 0, 0), ""},
+		{"bytes default", []string{"blob"}, b(1, 14, 4, 6, 2, 'a', 'b', 0), "blob"},
+		{"bytes nondefault", []string{"blob"}, b(1, 14, 4, 6, 2, 'a', 'c', 0), ""},
 	} {
 		v := framingVector{ids: tc.ids, body: tc.body}
 		wire, err := v.bytes(nil)
