@@ -3,6 +3,7 @@ package pythontable
 import (
     "strings"
     "fmt"
+    "maps"
     "os"
     "path/filepath"
     "strconv"
@@ -26,6 +27,13 @@ for s in samples:
         print(parse(s).kind)
     except TextError as e:
         print(e.reason)
+for kw in ({"max_bytes": 2}, {"max_tokens": 1}, {"max_nodes": 1}, {"max_allocation": 1}, {"max_depth": 1}):
+    try:
+        parse(b'(("abc"))', **kw)
+    except TextError as e:
+        assert e.reason == "text_limit"
+    else:
+        raise AssertionError(kw)
 `
     inputs := map[string][]byte{"main.py": []byte(src)}
     want := "list\nlist\nlist\ntext_syntax\ntext_syntax\ntext_encoding\ntext_syntax\ntext_syntax\n"
@@ -102,7 +110,18 @@ table Graph {
 
 func TestPythonHandtextCorpus(t *testing.T) {
     t.Parallel()
-    files, err := Generate(loadUnit(t, handtextSchema))
+    for _, fixed := range []bool{false, true} {
+        t.Run(fmt.Sprintf("fixed=%t", fixed), func(t *testing.T) {
+            t.Parallel()
+            testPythonHandtextCorpus(t, fixed)
+        })
+    }
+}
+
+func testPythonHandtextCorpus(t *testing.T, fixed bool) {
+    schema := handtextSchema
+    if fixed { schema = strings.Replace(schema, "table Document {", "fixed table Document {", 1) }
+    files, err := Generate(loadUnit(t, schema))
     if err != nil { t.Fatal(err) }
     dir := t.TempDir()
     writeTree(t, dir, files)
@@ -113,6 +132,10 @@ func TestPythonHandtextCorpus(t *testing.T) {
             b, err := os.ReadFile(filepath.Join(root, stem+"."+ext)); if err != nil { t.Fatal(err) }
             inputs[stem+"."+ext] = b
         }
+    }
+    for _, stem := range []string{"roadmap", "layout"} {
+        b, err := os.ReadFile(filepath.Join(root, stem+".edited.sexp")); if err != nil { t.Fatal(err) }
+        inputs[stem+".edited.sexp"] = b
     }
     paths, err := filepath.Glob(filepath.Join(root,"refusals", "*.sexp")); if err != nil { t.Fatal(err) }
     if len(paths) != 24 { t.Fatalf("expected 24 refusal vectors, got %d", len(paths)) }
@@ -128,6 +151,7 @@ func TestPythonHandtextCorpus(t *testing.T) {
     src := pyrun.ImportPrelude + `
 from probe import Document, Graph
 from pathlib import Path
+import struct
 from probe._schema.textform_scan import TextError
 for stem in ("roadmap", "layout", "kinds", "variable"):
     data = Path(stem + ".input.sexp").read_bytes()
@@ -135,6 +159,23 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
     assert doc.write() == Path(stem + ".rewrite.sexp").read_bytes(), stem
     if stem == "variable":
         assert doc.value.items[0] is doc.value.items[1]
+        assert doc.value.items[0].id == 6 and doc.value.items[2] is None
+        assert doc.value.lookup == {"west": None, "east": 2} and doc.value.blob == b""
+    if stem == "roadmap":
+        assert doc.value.schema == 1 and doc.value.root == "schema/goal" and doc.value.count == 2
+        assert [n.title for n in doc.value.nodes] == ["First", "Second"]
+        assert [c.path for c in doc.comments] == [(), (), (), ("title",), ("nodes",), ("nodes", 0), ("nodes", 1), ("count",), (), ()]
+        assert doc.edit([("nodes[0].title", b'"Changed"')]).write() == Path("roadmap.edited.sexp").read_bytes()
+    if stem == "layout":
+        assert doc.value.count == 2 and doc.value.title == "A B" and doc.value.enabled
+        assert doc.edit([("count", b"3")]).write() == Path("layout.edited.sexp").read_bytes()
+        assert doc.edit([("count", b"2")]).write() == data
+    if stem == "kinds":
+        v = doc.value
+        assert v.schema == 2 and v.pairs == [1, -2] and v.blob == b"\x00\xff"
+        assert v.signed_value == -(1 << 127) and v.unsigned_value == (1 << 128) - 1
+        assert v.fraction == 1 and struct.pack(">f", v.real) == bytes.fromhex("80000000")
+        assert v.flags == 3 and v.optional == [] and v.text == []
 print("positive", 4)
 for stem in ` + fmt.Sprintf("%#v", names) + `:
     data = Path(stem + ".sexp").read_bytes()
@@ -153,10 +194,39 @@ print("refusals", 24)
     for _, run := range []func(testing.TB,string,string,map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
         if got := string(run(t,dir,"main.py",inputs)); got != "positive 4\nrefusals 24\n" { t.Fatalf("corpus: %s", got) }
     }
+    if out, err := pyrun.Analyze(t, dir, "probe"); err != nil { t.Fatalf("mypy: %s", out) }
 }
 
 func quotePythonNames(names []string) []string {
     out := make([]string, len(names))
     for i, name := range names { out[i] = strconv.Quote(name) }
     return out
+}
+
+func TestPythonHandtextNegativeControl(t *testing.T) {
+    t.Parallel()
+    files, err := Generate(loadUnit(t, coreSchema))
+    if err != nil { t.Fatal(err) }
+    for _, control := range []struct{name, original, replacement, script string}{
+        {"rewrite", "return self.source\n", "return self.source.strip()\n", `doc = Counters.from_text_form(b" ; keep\n(:small 7)\n")
+assert doc.write() == b" ; keep\n(:small 7)\n", "HANDTEXT_REWRITE_CONTROL"`},
+        {"field", "field = fields.get(name)\n        if field is None:", "field = fields.get('sabotaged:' + name)\n        if field is None:", `doc = Counters.from_text_form(b"(:small 7)")
+assert doc.value.small == 7, "HANDTEXT_FIELD_CONTROL"`},
+    } {
+        copied := maps.Clone(files)
+        path := "core/_schema/textform.py"
+        source := string(copied[path])
+        if strings.Count(source, control.original) != 1 { t.Fatalf("%s anchor missing", control.name) }
+        copied[path] = []byte(strings.Replace(source, control.original, control.replacement, 1))
+        dir := t.TempDir()
+        writeTree(t, dir, copied)
+        probe := pyrun.ImportPrelude + "from core import Counters\n" + control.script + "\n"
+        inputs := map[string][]byte{"main.py": []byte(probe)}
+        for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+            _, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
+            if err == nil || (control.name == "rewrite" && !strings.Contains(stderr, "HANDTEXT_REWRITE_CONTROL")) || (control.name == "field" && !strings.Contains(stderr, "text_unknown_key")) {
+                t.Fatalf("%s control did not fail by name: %v %s", control.name, err, stderr)
+            }
+        }
+    }
 }

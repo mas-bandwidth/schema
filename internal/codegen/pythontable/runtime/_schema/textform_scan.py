@@ -42,6 +42,7 @@ class _Parser:
         self.tokens = 0
         self.nodes = 0
         self.allocation = 0
+        self.comments: list[tuple[int, int]] = []
         self.max_tokens = max_tokens if max_tokens > 0 else 8192
         self.max_nodes = max_nodes if max_nodes > 0 else 4096
         self.max_allocation = max_allocation if max_allocation > 0 else 65536
@@ -64,11 +65,13 @@ class _Parser:
                     raise TextError("text_syntax", self.pos)
                 self.pos += 2
             elif c == 59:
+                start = self.pos
                 self.pos += 1
                 while self.pos < len(d) and d[self.pos] not in (10, 13):
                     if d[self.pos] == 0:
                         raise TextError("text_syntax", self.pos)
                     self.pos += 1
+                self.comments.append((start, self.pos))
             else:
                 break
 
@@ -137,6 +140,15 @@ class _Parser:
 def parse(data: bytes, *, max_bytes: int = 0, max_tokens: int = 0,
           max_nodes: int = 0, max_allocation: int = 0, max_depth: int = 0) -> Node:
     """Parse one text, retaining byte spans; schema resolution is separate."""
+    return parse_with_comments(data, max_bytes=max_bytes, max_tokens=max_tokens,
+                               max_nodes=max_nodes, max_allocation=max_allocation,
+                               max_depth=max_depth)[0]
+
+
+def parse_with_comments(data: bytes, *, max_bytes: int = 0, max_tokens: int = 0,
+                        max_nodes: int = 0, max_allocation: int = 0,
+                        max_depth: int = 0) -> tuple[Node, tuple[tuple[int, int], ...]]:
+    """Parse a text and retain the byte span of each comment."""
     parser = _Parser(data, max_bytes, max_tokens, max_nodes, max_allocation, max_depth)
     parser.gap()
     root = parser.node(0)
@@ -145,4 +157,4 @@ def parse(data: bytes, *, max_bytes: int = 0, max_tokens: int = 0,
     parser.gap()
     if parser.pos != len(data):
         raise TextError("text_syntax", parser.pos)
-    return root
+    return root, tuple(parser.comments)

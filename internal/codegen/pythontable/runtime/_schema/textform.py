@@ -5,16 +5,17 @@ import base64
 import binascii
 import decimal
 import json
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, NoReturn
 
 from . import Refused
 from .descriptor import FieldDesc, by_name, new_union_by_name
 from .json_table import _array_element, _inner, from_json
 from .kind_map import _entry_fields
-from .textform_scan import Node, TextError, parse
+from .textform_scan import Node, TextError, parse, parse_with_comments
 
 
-def _fail(reason: str, node: Node) -> None:
+def _fail(reason: str, node: Node) -> NoReturn:
     raise TextError(reason, node.start)
 
 
@@ -33,6 +34,12 @@ def _pairs(node: Node) -> list[tuple[Node, Node]]:
     if len(node.children) % 2:
         _fail("text_syntax", node)
     return list(zip(node.children[::2], node.children[1::2]))
+
+
+def _variant(node: Node) -> str:
+    if node.kind not in ("string", "keyword"):
+        _fail("text_kind_mismatch", node)
+    return _name(node)
 
 
 def _integer(node: Node, field: FieldDesc) -> str:
@@ -118,8 +125,8 @@ def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
         if not pairs:
             return '{}'
         if len(pairs) > 1:
-            names = [_name(k) for k, _ in pairs]
-            _fail("text_duplicate_key" if len(set(names)) != len(names) else "text_kind_mismatch", node)
+            arm_names = [_name(k) for k, _ in pairs]
+            _fail("text_duplicate_key" if len(set(arm_names)) != len(arm_names) else "text_kind_mismatch", node)
         key, item = pairs[0]
         name = _name(key)
         union = new_union_by_name(field.target)
@@ -138,7 +145,7 @@ def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
             _fail("text_kind_mismatch", node)
         names: list[str] = []
         for item in node.children:
-            name = _name(item)
+            name = _variant(item)
             if name not in field.json_variants:
                 _fail("text_unknown_variant", item)
             if name in names:
@@ -146,7 +153,7 @@ def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
             names.append(name)
         return json.dumps(names)
     if codec == "enum":
-        name = _name(node)
+        name = _variant(node)
         if name != "None" and name not in field.json_variants:
             _fail("text_unknown_variant", node)
         return json.dumps(name)
@@ -227,9 +234,108 @@ def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
     return json.dumps(node.value) if field.kind in (23, 24, 28, 29) else node.value
 
 
-def load(cls: type[Any], data: bytes) -> tuple[Node, Any]:
+@dataclass(frozen=True)
+class Limits:
+    """Resource ceilings; nonpositive values select the standard defaults."""
+
+    bytes: int = 0
+    tokens: int = 0
+    nodes: int = 0
+    allocation: int = 0
+    depth: int = 0
+
+
+@dataclass(frozen=True)
+class Comment:
+    """A comment's original byte span and the field/element it attaches to."""
+
+    start: int
+    end: int
+    path: tuple[str | int, ...]
+
+
+def _comments(source: bytes, root: Node, cls: type[Any], spans: tuple[tuple[int, int], ...]) -> tuple[Comment, ...]:
+    result: list[Comment] = []
+
+    def walk(node: Node, owner: tuple[str | int, ...], descriptor: Any,
+             pending: list[tuple[int, int]]) -> None:
+        # Slots are semantic siblings: one record field or one array element.
+        slots: list[tuple[int, int, tuple[str | int, ...], Node, Any]] = []
+        if descriptor is not None and hasattr(descriptor, "fields"):
+            fields = {f.json_key: f for f in descriptor.fields}
+            for key, value in _pairs(node):
+                name = _name(key)
+                field = fields.get(name)
+                if field is not None:
+                    slots.append((key.start, value.end, owner + (name,), value, field))
+        elif descriptor is not None and getattr(descriptor, "codec", "") in ("array", "pointer_array", "union_array"):
+            field = descriptor
+            elem = _array_element(field)
+            for index, value in enumerate(node.children):
+                slots.append((value.start, value.end, owner + (index,), value, elem))
+        elif descriptor is not None and getattr(descriptor, "codec", "") == "map":
+            _, value_field = _entry_fields(descriptor)
+            for pair in node.children:
+                key, value = pair.children
+                map_key: str | int = key.value
+                if key.kind == "number":
+                    map_key = int(decimal.Decimal(key.value))
+                slots.append((pair.start, pair.end, owner + (map_key,), value, value_field))
+        elif descriptor is not None and getattr(descriptor, "codec", "") == "keyed":
+            for key, value in _pairs(node):
+                slots.append((key.start, value.end, owner + (_name(key),), value, descriptor.elem))
+        elif descriptor is not None and getattr(descriptor, "codec", "") == "union":
+            union = new_union_by_name(descriptor.target)
+            for key, value in _pairs(node):
+                arm = next(a for a in union.descriptor.arms if a.name == _name(key))
+                slots.append((key.start, value.end, owner + (arm.name,), value, arm.field))
+        elif descriptor is not None and getattr(descriptor, "json_flags", False):
+            for index, value in enumerate(node.children):
+                slots.append((value.start, value.end, owner + (index,), value, None))
+
+        nested: dict[int, list[tuple[int, int]]] = {}
+        for start, end in pending:
+            containing = next((i for i, slot in enumerate(slots) if slot[3].kind == "list" and slot[3].start < start < slot[3].end), None)
+            if containing is not None:
+                nested.setdefault(containing, []).append((start, end))
+                continue
+            inside = next((slot for slot in slots if slot[0] < start < slot[1]), None)
+            if inside is not None:
+                result.append(Comment(start, end, inside[2]))
+                continue
+            prev = next((slot for slot in reversed(slots) if slot[1] <= start), None)
+            after = next((slot for slot in slots if slot[0] > start), None)
+            if prev is not None and b"\n" not in source[prev[1]:start]:
+                path = prev[2]
+            else:
+                path = after[2] if after is not None else owner
+            result.append(Comment(start, end, path))
+        for index, items in nested.items():
+            _, _, path, value, field = slots[index]
+            while getattr(field, "codec", "") == "optional":
+                field = _inner(field)
+            codec = getattr(field, "codec", "")
+            if codec in ("table", "pointer"):
+                target = by_name(field.target)
+                child_desc = target.descriptor if target is not None else None
+            else:
+                child_desc = field
+            walk(value, path, child_desc, items)
+
+    inside = []
+    for start, end in spans:
+        if root.start < start < root.end:
+            inside.append((start, end))
+        else:
+            result.append(Comment(start, end, ()))
+    walk(root, (), cls.descriptor, inside)
+    return tuple(sorted(result, key=lambda comment: comment.start))
+
+
+def load(cls: type[Any], data: bytes, limits: Limits = Limits()) -> tuple[Node, Any]:
     """Resolve one input transactionally through the table JSON walk."""
-    root = parse(data)
+    root = parse(data, max_bytes=limits.bytes, max_tokens=limits.tokens,
+                 max_nodes=limits.nodes, max_allocation=limits.allocation, max_depth=limits.depth)
     text = _record(cls, root, False, {})
     try:
         return root, from_json(cls, text)
@@ -241,11 +347,16 @@ def load(cls: type[Any], data: bytes) -> tuple[Node, Any]:
 class Document:
     """An immutable source document and the value it resolved to."""
 
-    def __init__(self, cls: type[Any], source: bytes, root: Node, value: Any) -> None:
+    def __init__(self, cls: type[Any], source: bytes, root: Node, value: Any, limits: Limits) -> None:
         self._cls = cls
         self.source = source
         self.root = root
         self.value = value
+        self.limits = limits
+        _, spans = parse_with_comments(source, max_bytes=limits.bytes, max_tokens=limits.tokens,
+                                       max_nodes=limits.nodes, max_allocation=limits.allocation,
+                                       max_depth=limits.depth)
+        self.comments = _comments(source, root, cls, spans)
 
     def write(self) -> bytes:
         """Return the original bytes, including all trivia and line endings."""
@@ -280,20 +391,20 @@ class Document:
             if len(probe.children) != 1 or probe.children[0].kind == "list":
                 raise TextError("text_edit_conflict", current.start)
             candidate = self.source[:current.start] + replacement + self.source[current.end:]
-            _, value = load(self._cls, candidate)
+            _, value = load(self._cls, candidate, self.limits)
             if to_json(value) != original:
                 replacements.append((current.start, current.end, replacement))
         replacements.sort()
-        for previous, current in zip(replacements, replacements[1:]):
-            if previous[1] > current[0] or previous[0] == current[0]:
-                raise TextError("text_edit_conflict", current[0])
+        for previous, following in zip(replacements, replacements[1:]):
+            if previous[1] > following[0] or previous[0] == following[0]:
+                raise TextError("text_edit_conflict", following[0])
         result = self.source
         for start, end, replacement in reversed(replacements):
             result = result[:start] + replacement + result[end:]
-        return read(self._cls, result)
+        return read(self._cls, result, self.limits)
 
 
-def read(cls: type[Any], data: bytes) -> Document:
+def read(cls: type[Any], data: bytes, limits: Limits = Limits()) -> Document:
     """Read a document and its typed value, or raise a refusal."""
-    root, value = load(cls, data)
-    return Document(cls, data, root, value)
+    root, value = load(cls, data, limits)
+    return Document(cls, data, root, value, limits)
