@@ -153,11 +153,13 @@ class Ctx:
         "placeable",
         "variable",
         "nonfinite",
+        "missing",
     )
 
     def __init__(self, ids: list[int]) -> None:
         self.ids = ids
         self.unknown = 0
+        self.missing: list[str] = []
         # every known pointer slot: its owner, its field and its node index; a
         # map's pointer value is rewritten to the map, (its key, the field)
         self.pending: list[tuple[Any, Any, int]] = []
@@ -213,6 +215,8 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
                     raise walked from None
         raise
     _resolve(ctx)
+    if ctx.missing:
+        raise Refused("missing_required", ", ".join(ctx.missing))
     if report is not None:
         report.unknown = ctx.unknown
         report.widened = 0
@@ -293,8 +297,7 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
         value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
     missing = [field.name for field in descriptor_.fields if field.required and field.guard_holds(obj) and field.field_id not in seen]
-    if missing:
-        raise Refused("missing_required", ", ".join(missing))
+    ctx.missing.extend(missing)
     ctx.current = previous
 
 
