@@ -1,1 +1,1 @@
-{"group":"python-table-core","targets":["python-fixed-form-negative-control","python-fixed-form-conformance-negative-control","python-fixed-writer-lineage-negative-control"]}
+{"group":"python-table-core","targets":["python-fixed-form-negative-control","python-fixed-core-values-negative-control","python-fixed-form-conformance-negative-control","python-fixed-writer-lineage-negative-control"]}
