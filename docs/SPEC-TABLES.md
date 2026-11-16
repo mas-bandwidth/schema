@@ -16094,7 +16094,9 @@ every other token.
 A wide integer — `int64`, `uint64`, `int128`, `uint128`, and a fixed kind
 whose storage is wider than 32 bits — is written as a STRING of decimal
 digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. A fixed field's
-token is the value in whole units; the reader scales it by 2^F and places the
+string is decoded as JSON first, then its entire content must be one RFC 8259
+number with no surrounding whitespace; an invalid numeric spelling refuses
+`kind_mismatch`. Its token is the value in whole units; the reader scales it by 2^F and places the
 result only if it is an integer — `0.1` in Q16.16 is `kind_mismatch`,
 `0.0000152587890625` is raw `1` — and the writer prints the raw value back as
 the shortest decimal that is exactly the value, which is finite because a
