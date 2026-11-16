@@ -2,9 +2,17 @@ package pythontable
 
 import (
 	"bytes"
+	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -24,6 +32,10 @@ func TestPythonMessageCRC(t *testing.T) {
 	wire, err := tablewire.EncodeMessages(m, values)
 	if err != nil {
 		t.Fatal(err)
+	}
+	cppWire := messageCRCCpp(t, u)
+	if !bytes.Equal(wire, cppWire) {
+		t.Fatalf("C++ vs Go: %x vs %x", cppWire, wire)
 	}
 	files, err := Generate(u)
 	if err != nil {
@@ -80,4 +92,65 @@ print('ok')
 			}
 		}
 	}
+}
+
+func messageCRCCpp(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := cpptable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	d := t.TempDir()
+	writeTree(t, d, files)
+	header := ""
+	var sources []string
+	for name := range files {
+		if !strings.Contains(name, "/") && strings.HasSuffix(name, "Table.h") {
+			header = name
+		}
+		if !strings.Contains(name, "/") && strings.HasSuffix(name, "Table.cpp") {
+			sources = append(sources, filepath.Join(d, name))
+		}
+	}
+	if header == "" {
+		t.Fatal("missing header")
+	}
+	ser, err := filepath.Abs("../../../../serialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := fmt.Sprintf(`#include <cstdio>
+#include <cstdint>
+#include <vector>
+#include "%s"
+using namespace messagecrc;
+int main() {
+ Root v[3]{}; for (auto &x : v) RootReset(x);
+ v[0].value=0; v[1].value=7; v[2].value=-2;
+ TableReport report{}; auto n=RootMeasureMessages(v,3,&report);
+ if (n<=0) return 2; std::vector<uint8_t> b((size_t)n);
+ if (RootSaveMessages(v,3,b.data(),n,&report)!=n) return 3;
+ return std::fwrite(b.data(),1,b.size(),stdout)==b.size()?0:4;
+}
+`, header)
+	path := filepath.Join(d, "probe.cpp")
+	if err = os.WriteFile(path, []byte(code), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(d, "probe")
+	args := append([]string{"-std=c++17", "-O1", "-I" + d, "-I" + ser, path}, sources...)
+	args = append(args, "-o", bin)
+	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+		t.Fatalf("compile C++ CRC: %v\n%s", err, out)
+	}
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("run C++ CRC: %v", err)
+	}
+	return out
 }
