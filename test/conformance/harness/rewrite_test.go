@@ -91,49 +91,34 @@ func TestRewriteCanonicalBytesAreTheOraclesFixedPoint(t *testing.T) {
 	}
 }
 
-// A REWRITE ROW THAT CHANGES NOTHING TESTS NOTHING about canonicalization, so
-// the hand-built rows must be inputs that are NOT already canonical, while a
-// repeated field is refused under the strict-only read.
+// Hand-built out-of-order spellings are refused by the strict read (§3, §4),
+// so they have no rewrite row. The canonical Fleet still reads unchanged.
 func TestHandBuiltRewriteInputsAreNotCanonical(t *testing.T) {
 	m, _, u := corpus(t)
 	fleetWire, err := os.ReadFile("testdata/wire/tables/w1_fleet.bin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"rewrite_fields_reversed", "rewrite_ids_reversed"} {
-		var rw *RewriteCase
-		for i := range m.Rewrites {
-			if m.Rewrites[i].Name == name {
-				rw = &m.Rewrites[i]
+	canonical, err := rewriteOnce(u, "tblw1", "Fleet", fleetWire)
+	if err != nil || !bytes.Equal(canonical, fleetWire) {
+		t.Fatalf("canonical Fleet moved or refused: %v", err)
+	}
+	for _, name := range []string{"rewrite_fields_reversed", "rewrite_ids_reversed", "rewrite_field_twice"} {
+		for _, rw := range m.Rewrites {
+			if rw.Name == name {
+				t.Errorf("refused input %s still has a rewrite row", name)
 			}
 		}
-		if rw == nil {
-			t.Errorf("the manifest names no rewrite row %s", name)
-			continue
-		}
-		input, err := os.ReadFile(rw.Wire)
+		input, err := os.ReadFile("testdata/wire/tables/" + name + ".bin")
 		if err != nil {
 			t.Fatal(err)
 		}
-		canonical, err := os.ReadFile(rw.Canonical)
-		if err != nil {
-			t.Fatal(err)
+		if bytes.Equal(input, fleetWire) {
+			t.Errorf("%s: input is already canonical", name)
 		}
-		if bytes.Equal(input, canonical) {
-			t.Errorf("%s: the input is already canonical, so the row holds no writer to anything", name)
+		if _, err := rewriteOnce(u, "tblw1", "Fleet", input); err == nil {
+			t.Errorf("%s: non-canonical input read", name)
 		}
-		if !bytes.Equal(canonical, fleetWire) {
-			t.Errorf("%s: canonical bytes do not match w1_fleet.bin", name)
-		}
-	}
-	// Under strict-only (§3), a field written twice is refused on read rather
-	// than rewritten.
-	dupWire, err := os.ReadFile("testdata/wire/tables/rewrite_field_twice.bin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := rewriteOnce(u, "tblw1", "Fleet", dupWire); err == nil {
-		t.Errorf("rewrite_field_twice: expected strict read to refuse duplicate field id")
 	}
 }
 

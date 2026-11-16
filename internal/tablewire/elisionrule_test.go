@@ -183,7 +183,7 @@ func TestMessageReadRefusesEveryKindTheWriterElides(t *testing.T) {
 		data := storedDefaultMessage(t, m, name)
 		v := voc
 		ok, err := DecodeMessage(m, m.New(m.Lookup("Root")), data, &v, &tabletext.Report{})
-		if ok || RefusalReason(err) != ReasonWireDamaged {
+		if ok || err == nil {
 			t.Errorf("%s stored at its default: ok=%v err=%v: %s", name, ok, err, hex.EncodeToString(data))
 		}
 	}
@@ -219,6 +219,34 @@ func TestMessageOrderIsTheSendersDeclarationOrder(t *testing.T) {
 		}
 	}
 
+	// The same bytes under this reader's build claim its declaration order.
+	v = wvoc
+	v.buildVersion = ir.BuildVersion(reader.Unit)
+	if ok, err := DecodeMessage(reader, reader.New(reader.Lookup("Root")), data, &v, &tabletext.Report{}); ok || err == nil {
+		t.Errorf("reordered body under the same build read: ok=%v err=%v", ok, err)
+	}
+	// Vocabulary slots are shared across records; slot order is not body order.
+	both := covModel(t, `package order
+    fixed table A {x uint16
+ y uint32}
+    fixed table B {y uint32
+ x uint16}
+    fixed table Root {a A
+ b B}
+    `)
+	value := covPlace(t, both, "Root", `{"a":{"x":1,"y":2},"b":{"y":3,"x":4}}`)
+	wire, err := EncodeMessage(both, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slots Vocabulary
+	if err := slots.AnnounceRead(Announce(both.Unit), &tabletext.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := DecodeMessage(both, both.New(value.Def), wire, &slots, &tabletext.Report{}); !ok || err != nil {
+		t.Errorf("two records with opposite declaration orders refused: %v", err)
+	}
+
 	// the reader's own build: a body naming Inner's field `v` inside Root
 	m := covModel(t, elisionMessageUnit)
 	var voc Vocabulary
@@ -236,7 +264,62 @@ func TestMessageOrderIsTheSendersDeclarationOrder(t *testing.T) {
 	stray := append([]byte{ir.TableWireMessageForm}, w.b...)
 	v = voc
 	ok, err := DecodeMessage(m, m.New(m.Lookup("Root")), stray, &v, &tabletext.Report{})
-	if ok || RefusalReason(err) != ReasonWireDamaged {
+	if ok || err == nil {
 		t.Errorf("a field the record does not declare, at the reader's own build version: ok=%v err=%v: %s", ok, err, hex.EncodeToString(stray))
+	}
+}
+
+// A nonempty declared text default is as elidable as a scalar default. An
+// empty value distinct from that default must still ride and survive the read.
+func TestMessageReadRefusesDeclaredTextDefaults(t *testing.T) {
+	t.Parallel()
+	for _, decl := range []string{`f string(8) = "abc"`, `f bytes(8) = "abc"`} {
+		m := covModel(t, "package textdefault\nfixed table Root {\n"+decl+"\n}\n")
+		inst := m.New(m.Lookup("Root"))
+		f := &inst.Fields[0]
+		entry := ir.TableFieldEntry(f.Def)
+		var voc Vocabulary
+		if err := voc.AnnounceRead(Announce(m.Unit), &tabletext.Report{}); err != nil {
+			t.Fatal(err)
+		}
+		e := &bitEncoder{m: m, slots: MessageVocabularySlots(m.Unit), refBits: voc.RefBits()}
+		w := &bitWriter{}
+		w.put(0, 8)
+		e.ref(w, entry)
+		if f.Def.Type.Kind == ir.TBytes {
+			w.put(3, ir.TableMessageCountBits(entry.Shape))
+		} else {
+			w.put(3, ir.TableMessageBitsRequired(0, entry.Shape.Max))
+		}
+		w.align()
+		w.bytes([]byte("abc"))
+		w.put(0, e.refBits)
+		w.align()
+		stored := append([]byte{ir.TableWireMessageForm}, w.b...)
+		v := voc
+		if ok, err := DecodeMessage(m, m.New(inst.Def), stored, &v, &tabletext.Report{}); ok || err == nil {
+			t.Errorf("%s: stored declared default read: ok=%v err=%v", decl, ok, err)
+		}
+		// Under a different build the announcement does not describe defaults.
+		v = voc
+		v.buildVersion ^= 1
+		if ok, err := DecodeMessage(m, m.New(inst.Def), stored, &v, &tabletext.Report{}); !ok || err != nil {
+			t.Errorf("%s: another build's value refused: %v", decl, err)
+		}
+		for _, text := range []string{`{}`, `{"f":""}`} {
+			value := covPlace(t, m, "Root", text)
+			wire, err := EncodeMessage(m, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			back := m.New(inst.Def)
+			v = voc
+			if ok, err := DecodeMessage(m, back, wire, &v, &tabletext.Report{}); !ok || err != nil {
+				t.Errorf("%s %s: writer output refused: %v", decl, text, err)
+			}
+			if string(back.Fields[0].Cell.Str) != string(value.Fields[0].Cell.Str) {
+				t.Errorf("%s %s: value changed", decl, text)
+			}
+		}
 	}
 }

@@ -10,6 +10,7 @@
 package tablewire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -564,7 +565,7 @@ func messageElides(m *tabletext.Model, fv *tabletext.Field, empty bool) bool {
 	case f.KeyEnum != "":
 		return empty
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		return fv.Count == 0
+		return bytes.Equal(fv.Cell.Str, f.DefBytes)
 	case f.CountedOnWire():
 		return fv.Count == 0
 	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:

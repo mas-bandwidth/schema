@@ -35,6 +35,7 @@ func place(t *testing.T, m *tabletext.Model, table, text string) *tabletext.Inst
 	if !m.Read(inst, []byte(text), &r) || !r.Silent() {
 		t.Fatalf("%s: the text did not place cleanly: %+v", table, r)
 	}
+	assertEngineWrites(t, m, inst)
 	return inst
 }
 

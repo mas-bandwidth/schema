@@ -83,29 +83,56 @@ func readVerdict(t *testing.T, nc, one *tabletext.Model, ncVocab, oneVocab *tabl
 	t.Helper()
 	switch r.form {
 	case "variable":
-		inst := nc.New(nc.Lookup("Root"))
-		ok, err := tablewire.Decode(nc, inst, data, &tabletext.Report{})
-		if err != nil || !ok {
-			return "refused"
+		verdict := "read"
+		for _, retain := range []bool{false, true} {
+			inst := nc.New(nc.Lookup("Root"))
+			var ok bool
+			var err error
+			if retain {
+				ok, err = tablewire.DecodeRetain(nc, inst, data, &tablewire.Retain{Capacity: 1024, IdCapacity: 64}, &tabletext.Report{})
+			} else {
+				ok, err = tablewire.Decode(nc, inst, data, &tabletext.Report{})
+			}
+			got := "read"
+			if !ok || err != nil {
+				got = "refused"
+			}
+			if got != r.verdict {
+				t.Errorf("%s retain=%v: got %s, want %s", r.file, retain, got, r.verdict)
+			}
+			if !ok || err != nil {
+				verdict = "refused"
+			}
 		}
-		// the retaining decode is the same strict read with retention on
-		inst = nc.New(nc.Lookup("Root"))
-		ok, err = tablewire.DecodeRetain(nc, inst, data, &tablewire.Retain{Capacity: 1024, IdCapacity: 64}, &tabletext.Report{})
-		if err != nil || !ok {
-			return "refused"
-		}
-		return "read"
+		return verdict
 	case "message":
 		model, vocab, root := nc, ncVocab, "Message"
 		if strings.HasPrefix(r.file, "../message-one-encoding/") {
 			model, vocab, root = one, oneVocab, "One"
 		}
-		inst := model.New(model.Lookup(root))
-		ok, err := tablewire.DecodeMessage(model, inst, data, vocab, &tabletext.Report{})
-		if err != nil || !ok {
-			return "refused"
+		verdict := "read"
+		for _, batch := range []bool{false, true} {
+			inst := model.New(model.Lookup(root))
+			v := *vocab
+			var ok bool
+			var err error
+			if batch {
+				_, ok, err = tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, data, &v, &tabletext.Report{})
+			} else {
+				ok, err = tablewire.DecodeMessage(model, inst, data, &v, &tabletext.Report{})
+			}
+			got := "read"
+			if !ok || err != nil {
+				got = "refused"
+			}
+			if got != r.verdict {
+				t.Errorf("%s batch=%v: got %s, want %s", r.file, batch, got, r.verdict)
+			}
+			if !ok || err != nil {
+				verdict = "refused"
+			}
 		}
-		return "read"
+		return verdict
 	case "announcement":
 		var vocab tablewire.Vocabulary
 		if err := vocab.AnnounceRead(data, &tabletext.Report{}); err != nil {
