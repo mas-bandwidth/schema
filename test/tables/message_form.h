@@ -1367,9 +1367,9 @@ static void test_message_form_reference_bound()
         if ( past[i] == top ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }
     // the entry count itself names the message closure's last entry, a union
-    // arm (kind 13, a nested body) no field of LoginRequest carries: an
-    // ordinary unknown, its nested body empty (one terminator), then the
-    // root's terminator
+    // arm (kind13, a nested body) no field of LoginRequest carries. The slot
+    // is in range, but a same-build announcement cannot add that field to
+    // this record. A separate different-build gate control may skip it.
     const backenddemo::TableMessageEntry last_entry = backenddemo::TableVocabularyEntryAt( vocabulary, entries );
     CHECK( last_entry.kind == 13 );
     {
@@ -1384,7 +1384,15 @@ static void test_message_form_reference_bound()
         backenddemo::LoginRequestReset( out );
         int64_t count = 1;
         backenddemo::TableReport ok;
-        CHECK( backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, last, last_bytes, &ok ) );
+        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, last, last_bytes, &ok ) );
+        CHECK( ok.damaged && !ok.refused && ok.unknown == 0 && count == 0 );
+
+        // This plants only the foreign-build condition; it does not claim
+        // these bytes came from a reconstructed historical writer.
+        backenddemo::TableVocabulary foreign = vocabulary;
+        foreign.build_version ^= 1;
+        count = 1;
+        CHECK( backenddemo::LoginRequestLoadMessages( &out, &count, foreign, last, last_bytes, &ok ) );
         CHECK( !ok.damaged && !ok.refused );
         CHECK( ok.unknown == 1 && out.player_id == 5 && count == 1 );
         pin_table_golden( "message_reference_last_slot", last, last_bytes );

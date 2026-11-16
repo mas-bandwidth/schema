@@ -4658,7 +4658,7 @@ static void test_json_pinned_text()
         tabledemo::TableReport report;
         const char * unpadded = "{ \"icon\": \"AQI\" }";
         CHECK( !tabledemo::ProfileConfigFromJson( profile, unpadded, (int64_t) strlen( unpadded ), &report ) );
-        CHECK( report.refuse_reason == tabledemo::base64_not_canonical );
+        CHECK( report.refuse_reason == tabledemo::kind_mismatch );
         CHECK( profile.icon_length == 0 );
         CHECK( !report.damaged );
     }
@@ -8944,7 +8944,7 @@ static void test_blob_json()
         blobdemo::CatalogBuilder b;
         blobdemo::TableReport r;
         CHECK( !blobdemo::CatalogFromJson( b, input, (int64_t) strlen( input ), &r ) );
-        CHECK( r.refuse_reason == blobdemo::base64_not_canonical && !r.damaged );
+        CHECK( r.refuse_reason == blobdemo::kind_mismatch && !r.damaged );
         blobdemo::TableArenaCtx ctx = { &b.arena };
         CHECK( blobdemo::TableBytesAt( ctx, b.GetRoot()->thumb ).data == NULL );
     }
