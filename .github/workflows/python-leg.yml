@@ -82,7 +82,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: build the reference corpus at this source and C++ runtime pin
+      - name: build the reference corpus and generated Python units at this source
         run: |
           make serialize-siblings
           sh tools/python-ci-corpus.sh build
@@ -91,6 +91,7 @@ jobs:
           name: python-fixed-corpus-${{ github.sha }}
           path: build/python-ci-fixed-corpus.tar
           if-no-files-found: error
+          overwrite: true
 
   test:
     name: python (${{ matrix.name }})
@@ -131,7 +132,7 @@ jobs:
             if [ "$CORPUS" = true ]; then
               # The validated artifact supplies this prerequisite. Avoid
               # rebuilding the C++ writer separately in every support row.
-              make -j"$(getconf _NPROCESSORS_ONLN)" --old-file=build/fixedform-corpus/.stamp "$TARGET"
+              make -j"$(getconf _NPROCESSORS_ONLN)" --old-file=build/fixedform-corpus/.stamp --old-file=build/conformance-python "$TARGET"
             else
               make -j"$(getconf _NPROCESSORS_ONLN)" "$TARGET"
             fi

@@ -116,7 +116,7 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 		}
 	}
 	consumer := jobs["test"]
-	for _, want := range []string{"needs: [plan, fixed-corpus]", "sh tools/python-ci-corpus.sh restore", "if: matrix.corpus", "--old-file=build/fixedform-corpus/.stamp"} {
+	for _, want := range []string{"needs: [plan, fixed-corpus]", "sh tools/python-ci-corpus.sh restore", "if: matrix.corpus", "--old-file=build/fixedform-corpus/.stamp", "--old-file=build/conformance-python"} {
 		if !strings.Contains(consumer, want) {
 			t.Errorf("consumer lacks %q", want)
 		}
@@ -130,7 +130,7 @@ func TestPythonCICorpusProvenanceAndDamageControls(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "shell (offline corpus artifact and refusal controls)")
 	script := filepath.Join(repoRoot(t), "tools/python-ci-corpus.sh")
-	for _, name := range []string{"round trip", "wrong source", "wrong runtime pin", "wrong producer runtime", "dirty source", "missing archive", "damaged bytes"} {
+	for _, name := range []string{"round trip", "wrong source", "wrong runtime pin", "wrong producer runtime", "dirty source", "missing archive", "damaged bytes", "damaged generated units"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
@@ -153,7 +153,7 @@ else
   case "$1" in rev-parse) echo "${TEST_SOURCE_HEAD:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}" ;; status) printf %s "${TEST_SOURCE_DIRTY:-}" ;; esac
 fi
 `, 0o700)
-			write("bin/make", "#!/bin/sh\nmkdir -p build/fixedform-corpus\nprintf wire > build/fixedform-corpus/old_int_widen.bin\nprintf manifest > build/fixedform-corpus/manifest.txt\ntouch build/fixedform-corpus/.stamp\n", 0o700)
+			write("bin/make", "#!/bin/sh\nmkdir -p build/fixedform-corpus build/conformance-python\nprintf generated > build/conformance-python/unit.py\nprintf wire > build/fixedform-corpus/old_int_widen.bin\nprintf manifest > build/fixedform-corpus/manifest.txt\ntouch build/fixedform-corpus/.stamp\n", 0o700)
 			run := func(mode string, vars ...string) ([]byte, error) {
 				cmd := exec.Command("sh", script, mode)
 				cmd.Dir = root
@@ -181,8 +181,12 @@ fi
 					t.Fatal(err)
 				}
 				want = "Cannot open"
-			case "damaged bytes":
-				cmd := exec.Command("sh", "-ec", "mkdir unpack; tar -xf build/python-ci-fixed-corpus.tar -C unpack; printf damaged > unpack/fixedform-corpus/old_int_widen.bin; tar -cf build/python-ci-fixed-corpus.tar -C unpack .")
+			case "damaged bytes", "damaged generated units":
+				file := "fixedform-corpus/old_int_widen.bin"
+				if name == "damaged generated units" {
+					file = "conformance-python/unit.py"
+				}
+				cmd := exec.Command("sh", "-ec", "mkdir unpack; tar -xf build/python-ci-fixed-corpus.tar -C unpack; printf damaged > unpack/"+file+"; tar -cf build/python-ci-fixed-corpus.tar -C unpack .")
 				cmd.Dir = root
 				if out, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("damage fixture: %v\n%s", err, out)
