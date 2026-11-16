@@ -436,7 +436,6 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 // declared kind widens (§4); without it, at the declared width.
 func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened bool) {
 	g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
-	g.pf("%s    int32_t last_key_slot = 0;\n", ind)
 	g.pf("%s    for ( uint64_t i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref = 0;\n", ind)
 	g.pf("%[1]s        if ( !sub.getleb( key_ref ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
@@ -453,8 +452,8 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
 	g.pf("%[1]s            r.report->unknown++;\n%[1]s            %[2]s // a slot this reader cannot name\n", ind, g.retainLostInline())
 	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
-	g.pf("%[1]s        if ( int32_t( slot ) <= last_key_slot )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
-	g.pf("%s        last_key_slot = int32_t( slot );\n", ind)
+	// The writer's enum order is not on form 1; the strict wire walk
+	// already rejects a repeated key reference without guessing its order.
 	if kind == tkTable {
 		g.pf("%[1]s        if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	}
