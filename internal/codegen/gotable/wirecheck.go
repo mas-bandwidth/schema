@@ -226,6 +226,7 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 }
 
 // tableWireRecordCheck walks one node record whose type this reader does not
+<<<<<<< HEAD
 // name with the same wire-alone rules the body read applies to a record it
 // does name (docs/SPEC-TABLES.md §4, §6.5). A blob record is its bytes in every
 // reader's walk (§2.5, §3.1), its text held by the storage scan. nodes bounds
@@ -233,6 +234,18 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 func tableWireRecordCheck(id uint64, body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
  c:=tableWireCheck{ids:ids,nodes:nodes,mark:mark}
  if id==tableWireBytesID || id==tableWireStringID { return TableRefuseOk }
+=======
+// name, so no LoadBody reaches it, with the same wire-alone rules the body read
+// applies to a record it does name (docs/SPEC-TABLES.md §4, §6.5). nodes is the
+// table's record count, which bounds every pointer index; mark, when not nil,
+// names a record a pointer reaches so the graph walk starts there too.
+func tableWireRecordCheck(id uint64, body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
+ if id==tableWireBytesID || id==tableWireStringID { return TableRefuseOk }
+ var c tableWireCheck
+ c.ids=ids
+ c.nodes=nodes
+ c.mark=mark
+>>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
  end,ok:=c.body(body,false)
  if !ok || end!=int64(len(body.Buffer)) { return c.failed() }
  return c.reason

@@ -739,26 +739,84 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 
 // Numeric values are reconstructed at the announced storage width. Typed
 // readers then hold these lanes to the declared ranges, as the file read does.
-func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
+// The reconstruction is canonical: a signed kind is sign-extended to 128 bits,
+// an unsigned kind zero-extended, and a ranged offset carries into the high
+// lane. A timestamp (kind 36) is a signed sixty-four bit count. A value past
+// the 128-bit domain of an integer kind is reported so the reader refuses it
+// before it narrows.
+func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) (bool, bool) {
+	integer := s.Kind >= 2 && s.Kind <= 9 || s.Kind >= 18 && s.Kind <= 29 || s.Kind == 36
+	signed := integer && (s.Kind <= 5 || s.Kind == 18 || s.Kind >= 20 && s.Kind <= 24 || s.Kind == 36)
 	lo, ok := r.Get(min(s.Bits, 64))
 	if !ok || s.Packing == 2 && lo > uint64(s.QCount) {
-		return false
+		return false, false
 	}
 	hi := uint64(0)
 	if s.Bits > 64 {
 		hi, ok = r.Get(s.Bits - 64)
 		if !ok {
-			return false
+			return false, false
 		}
 	}
 	if s.Packing == 1 {
-		sum := lo + s.Base[0]
+		baseHi := s.Base[1]
+		if signed && s.Kind < 18 {
+			baseHi = uint64(int64(s.Base[0]) >> 63)
+		}
+		loSum := lo + s.Base[0]
 		carry := uint64(0)
-		if sum < lo {
+		if loSum < lo {
 			carry = 1
 		}
-		lo = sum
-		hi += s.Base[1] + carry
+		hiSum := hi + baseHi
+		carryHi := uint64(0)
+		if hiSum < hi {
+			carryHi = 1
+		}
+		hiSum += carry
+		if hiSum < carry {
+			carryHi = 1
+		}
+		if integer {
+			if signed {
+				if baseHi>>63 == 0 {
+					if carryHi != 0 || hiSum>>63 != 0 {
+						return true, true
+					}
+				} else {
+					mLo := ^s.Base[0] + 1
+					mHi := ^baseHi
+					if mLo == 0 {
+						mHi++
+					}
+					borrow := uint64(0)
+					if lo < mLo {
+						borrow = 1
+					}
+					dHi := hi - mHi - borrow
+					if !(hi < mHi || hi == mHi && borrow != 0) && dHi>>63 != 0 {
+						return true, true
+					}
+				}
+			} else if carryHi != 0 {
+				return true, true
+			}
+		}
+		lo = loSum
+		hi = hiSum
+	} else if signed {
+		if s.Bits < 64 {
+			if s.Bits > 0 {
+				shift := uint(64 - s.Bits)
+				lo = uint64(int64(lo<<shift) >> shift)
+			}
+			hi = uint64(int64(lo) >> 63)
+		} else if s.Bits == 64 {
+			hi = uint64(int64(lo) >> 63)
+		} else if s.Bits < 128 {
+			shift := uint(64 - (s.Bits - 64))
+			hi = uint64(int64(hi<<shift) >> shift)
+		}
 	}
 	if s.Packing == 2 {
 		index := uint32(lo)
@@ -768,7 +826,7 @@ func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 	}
 	binary.LittleEndian.PutUint64(out[:], lo)
 	binary.LittleEndian.PutUint64(out[8:], hi)
-	return true
+	return true, false
 }
 
 // A quantized float outside its range is a value the writer refuses
@@ -1023,7 +1081,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.entity_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1068,7 +1137,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -16383 || wide > 16383 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_x")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1113,7 +1193,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -16383 || wide > 16383 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_y")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1158,7 +1249,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -16383 || wide > 16383 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_z")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1203,7 +1305,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 511 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.yaw")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1248,7 +1361,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 511 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pitch")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1293,7 +1417,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2048 || wide > 2047 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_x")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1338,7 +1473,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2048 || wide > 2047 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_y")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1383,7 +1529,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2048 || wide > 2047 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_z")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1428,7 +1585,18 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 1000 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.health")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1516,8 +1684,13 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload11 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1556,8 +1729,13 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload12 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1600,8 +1778,13 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload13 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1704,7 +1887,18 @@ func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts [
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.stat_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1749,7 +1943,18 @@ func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts [
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -512 || wide > 511 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.delta")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1873,7 +2078,18 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.target_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1918,7 +2134,18 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.damage")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1963,7 +2190,18 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 7 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.hit_kind")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2008,8 +2246,13 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload19 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -2112,7 +2355,18 @@ func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 3 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.channel")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2157,7 +2411,18 @@ func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.speaker")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2262,7 +2527,18 @@ func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupE
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 1023 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.item_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2307,7 +2583,18 @@ func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupE
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.amount")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2723,7 +3010,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.sequence")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2768,7 +3066,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_sequence")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2813,7 +3122,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_bits")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2858,7 +3178,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.session_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2898,7 +3229,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.client_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2938,7 +3280,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.nonce")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2983,7 +3336,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -1000000000000 || wide > 1000000000000 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.world_time")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3028,7 +3392,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 281474976710655 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.frame_tick")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3073,7 +3448,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 16776960 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.server_time")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3356,7 +3742,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 						p := &base[i]
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := binary.LittleEndian.Uint64(raw[:8])
+							if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+								r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.loadout")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -3496,8 +3893,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload51 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3546,8 +3948,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload52 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3596,8 +4003,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload53 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3646,8 +4058,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload54 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3693,8 +4110,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload55 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3746,8 +4168,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload56 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3792,8 +4219,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload57 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3843,7 +4275,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 64000 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ping")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3888,7 +4331,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 16777215 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.crc_hint")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3933,8 +4387,13 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload60 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3977,7 +4436,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.extra")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -4022,7 +4492,18 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 15 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.idle_ticks")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}

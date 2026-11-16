@@ -419,6 +419,8 @@ func init() {
 		Name{Name: "tableRefuseError", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionSaveReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableNodeStorageReason", What: "typed file and authoring refusal reasons"},
+		Name{Name: "tableBlobStorageReason", What: "the blob node storage size and refusal reason"},
+		Name{Name: "tableNodeNoStorage", What: "the unstored node offset sentinel that preserves cycle ordinals"},
 		Name{Name: "tableRegionMeasureReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableRegionPackMeasureReason", What: "typed file and authoring refusal reasons"},
 		Name{Name: "tableWireNodeBytesReason", What: "typed file and authoring refusal reasons"},
