@@ -26,7 +26,7 @@ func TestCppVariableWriterEvolution(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			schema := func(fields string) string {
-				return "package compat\n enum Mode { One, Two }\n union Choice { number int32 }\n table Child { n int32 }\n table Root {\n" + fields + "\n}\n"
+				return "package compat\n enum Mode { One, Two }\n type Leaf { n int32 }\n union Choice { leaf Leaf }\n table Child { n int32 }\n table Root {\n" + fields + "\n}\n"
 			}
 			current := cppUnitFrom(t, schema(c.newFields))
 			write := func(uFields string, set string) []byte {
