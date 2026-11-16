@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func init() { nonGoCarriers["python"] = append(nonGoCarriers["python"], carryRequired) }
@@ -270,6 +271,70 @@ print("required-guards")
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
 		if err != nil || strings.TrimSpace(out) != "required-guards" {
+			t.Errorf("%s: %v %s %s", pin, err, out, stderr)
+		}
+	}
+}
+
+// Widening and growth reports coexist with required presence and remain
+// unchanged when a different old writer omitted the required field entirely.
+func TestPythonRequiredPublicArrayEvolution(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	old := unitFromSource(t, `package reqgrow
+table Root { x [2]uint8 }
+`)
+	newUnit := unitFromSource(t, `package reqgrow
+table Root { x [3]uint32 | required }
+`)
+	oldEmpty := unitFromSource(t, `package reqgrow
+table Root {}
+`)
+	encode := func(u *ir.Unit, text string) []byte {
+		t.Helper()
+		m := tabletext.NewModel(u)
+		v := m.New(m.Lookup("Root"))
+		var rep tabletext.Report
+		if !m.Read(v, []byte(text), &rep) || !rep.Silent() {
+			t.Fatalf("Go text: %+v", rep)
+		}
+		b, err := tablewire.EncodeVariable(m, v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	wire := encode(old, `{"x":[7,8]}`)
+	missing := encode(oldEmpty, `{}`)
+	files, err := New().Generate(newUnit, "python", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := pyrun.ImportPrelude + `from reqgrow import Root, Refused, LoadReport
+with open("wire","rb") as f: wire=f.read()
+with open("missing","rb") as f: missing=f.read()
+r=LoadReport(); v=Root.load(wire,report=r)
+assert v.x == [7,8,0] and r.widened > 0, (v.x,r.widened)
+r=LoadReport();r.unknown=99;r.widened=98
+try: Root.load(missing,report=r)
+except Refused as e: assert e.reason=="missing_required" and "x" in str(e)
+else: raise AssertionError("missing accepted")
+assert r.unknown==99 and r.widened==98
+print("required-growth")
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire, "missing": missing})
+		if err != nil || strings.TrimSpace(out) != "required-growth" {
 			t.Errorf("%s: %v %s %s", pin, err, out, stderr)
 		}
 	}
