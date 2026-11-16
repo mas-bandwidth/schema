@@ -140,7 +140,85 @@ func pythonCaseBudgetCheck(array, pointer, makefile, planner []byte) error {
 			return fmt.Errorf("monolithic %s must be delegated exactly once", name)
 		}
 	}
-	return nil
+	return pythonCaseBudgetRoots(makefile)
+}
+
+// A local aggregate and CI must reach the same complete proof leaves. The
+// common prerequisite guard schedules named roots, so test-python lists those
+// registered leaves directly rather than scheduling an aggregate a second time.
+func pythonCaseBudgetRoots(makefile []byte) error {
+	rules := map[string][]string{}
+	recipes := map[string]bool{}
+	var registered []string
+	current := ""
+	for line := range strings.SplitSeq(string(makefile), "\n") {
+		if values, ok := strings.CutPrefix(line, "PYTHON_CI_SUPPORT_GROUPS +="); ok {
+			registered = append(registered, strings.Fields(values)...)
+			continue
+		}
+		if strings.HasPrefix(line, "\t") {
+			if current != "" {
+				recipes[current] = true
+			}
+			continue
+		}
+		name, deps, ok := strings.Cut(line, ":")
+		if !ok || strings.HasPrefix(line, "#") {
+			continue
+		}
+		current = strings.TrimSpace(name)
+		if current == ".PHONY" || strings.HasPrefix(deps, "=") {
+			current = ""
+			continue
+		}
+		rules[current] = strings.Fields(deps)
+	}
+	leaves := map[string]bool{}
+	active := map[string]bool{}
+	var visit func(string) error
+	visit = func(name string) error {
+		if recipes[name] {
+			leaves[name] = true
+			return nil
+		}
+		if active[name] {
+			return fmt.Errorf("cycle in proof aggregate %s", name)
+		}
+		deps := rules[name]
+		if len(deps) == 0 {
+			return fmt.Errorf("proof aggregate %s has no descendants", name)
+		}
+		active[name] = true
+		for _, dep := range deps {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+		delete(active, name)
+		return nil
+	}
+	for _, name := range []string{"python-array-widening", "python-pointer-array-phases"} {
+		if err := visit(name); err != nil {
+			return err
+		}
+	}
+	check := func(label string, names []string) error {
+		if len(names) != len(leaves) {
+			return fmt.Errorf("%s must name all %d aggregate descendants, got %d", label, len(leaves), len(names))
+		}
+		seen := map[string]bool{}
+		for _, name := range names {
+			if !leaves[name] || seen[name] {
+				return fmt.Errorf("%s has unmatched or duplicate aggregate descendant %s", label, name)
+			}
+			seen[name] = true
+		}
+		return nil
+	}
+	if err := check("test-python", rules["test-python"]); err != nil {
+		return err
+	}
+	return check("CI registration", registered)
 }
 
 func TestPythonCaseBudgetCoverage(t *testing.T) {
@@ -169,6 +247,9 @@ func TestPythonCaseBudgetCoverage(t *testing.T) {
 		{"duplicate-case", []byte(strings.Replace(string(makefile), "(int64_to_int128|", "(int8_to_int16|int64_to_int128|", 1)), planner, "selected 2 times"},
 		{"phase-selector", []byte(strings.Replace(string(makefile), "SCHEMA_PYTHON_POINTER_ARRAY_PHASE=typing", "SCHEMA_PYTHON_POINTER_ARRAY_PHASE=deep", 1)), planner, "mismatched phase selector"},
 		{"missing-deep-pin", []byte(strings.Replace(string(makefile), "/floor$$'", "/missing$$'", 1)), planner, "selected 0 times"},
+		{"aggregate-entry", regexp.MustCompile(`(?m)^test-python:.*$`).ReplaceAll(makefile, []byte("test-python: python-array-widening python-pointer-array-phases")), planner, "aggregate descendants"},
+		{"missing-registration", []byte(strings.Replace(string(makefile), "PYTHON_CI_SUPPORT_GROUPS += python-array-widening-0 ", "PYTHON_CI_SUPPORT_GROUPS += ", 1)), planner, "CI registration"},
+		{"lost-descendant", []byte(strings.Replace(string(makefile), "python-pointer-arrays-deep: python-pointer-arrays-deep-current python-pointer-arrays-deep-floor", "python-pointer-arrays-deep: python-pointer-arrays-deep-current", 1)), planner, "aggregate descendants"},
 		{"monolith", makefile, []byte(strings.Replace(string(planner), "/^TestPythonArrayWidening$/d", "", 1)), "must be delegated"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
