@@ -130,14 +130,11 @@ class FieldDesc:
         elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
-<<<<<<< HEAD
+        keyed_list: bool = False,
         f32: bool = False,
         fmin: float = 0.0,
         fmax: float = 0.0,
         float_range: bool = False,
-=======
-        keyed_list: bool = False,
->>>>>>> 8c01bf907f242e1a2481c1dd4b2c08e9724519fc
     ) -> None:
         self.name = name
         self.field_id = field_id
