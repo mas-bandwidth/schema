@@ -231,10 +231,7 @@ Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
 landings with no gate; each site carries `RELAXED 2026-11-15 (get main
 green)` and its slug.
 
-<<<<<<< HEAD
-=======
 
->>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 ## Proof cells
 
 Each proof cell below is red at main 3b43e7075, computed from every conformance

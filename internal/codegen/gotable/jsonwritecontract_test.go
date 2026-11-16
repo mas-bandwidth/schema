@@ -191,8 +191,6 @@ func TestSmallRangeInFloat32(t *testing.T) {
 		}
 	}
 }
-<<<<<<< HEAD
-=======
 
 func TestContractOmitDefaults(t *testing.T) {
 	options := TableJSONOptions{OmitDefaults: true}
@@ -360,6 +358,5 @@ func TestMapKeyLength(t *testing.T) {
 		t.Fatalf("key length on N: SaveText = %q, %v, want the writer's text", text, err)
 	}
 }
->>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 `)
 }
