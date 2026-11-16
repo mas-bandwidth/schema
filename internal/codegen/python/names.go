@@ -20,6 +20,7 @@ var generatedMembers = wordSet(`read write load save descriptor fixed_load fixed
 
 // These methods are emitted on table classes, not packet classes.
 var generatedTableJSONMembers = wordSet(`from_json to_json`)
+var generatedTableWireTextMembers = wordSet(`load_text save_text`)
 
 // moduleNames are the names a generated module binds itself: the imports it
 // spells unqualified and the constants it writes beside the declarations. A
@@ -48,8 +49,8 @@ func CheckNames(u *ir.Unit) error {
 	return CheckNamesWithTextSurfaces(u, true, false)
 }
 
-// CheckNamesWithTextSurfaces reserves JSON table methods only when selected.
-func CheckNamesWithTextSurfaces(u *ir.Unit, json bool, _ bool) error {
+// CheckNamesWithTextSurfaces reserves only the selected table text methods.
+func CheckNamesWithTextSurfaces(u *ir.Unit, json, textform bool) error {
 	if err := checkPackage(u.Package); err != nil {
 		return err
 	}
@@ -83,8 +84,8 @@ func CheckNamesWithTextSurfaces(u *ir.Unit, json bool, _ bool) error {
 				return err
 			}
 			for _, field := range t.Fields {
-				if json && t.CarriesForm("json") && generatedTableJSONMembers[field.Name] {
-					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated JSON method; rename the field", f.Base, t.Name, field.Name)
+				if generatedTableWireTextMembers[field.Name] || (json && t.CarriesForm("json") && generatedTableJSONMembers[field.Name]) || (textform && json && t.CarriesForm("json") && field.Name == "from_text_form") {
+					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated table text method; rename the field", f.Base, t.Name, field.Name)
 				}
 			}
 		}

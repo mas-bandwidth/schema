@@ -17,6 +17,59 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
+func TestPythonHandtextCISelection(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "make and Go test listing (hand-text support rows)")
+	run := func(name string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(name, args...)
+		cmd.Dir = repoRoot(t)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s %v: %v\n%s", name, args, err, out)
+		}
+		return string(out)
+	}
+	patterns := strings.Fields(run("make", "-s", "python-handtext-ci-patterns"))
+	if len(patterns) != 4 {
+		t.Fatalf("got %d hand-text rows, want four", len(patterns))
+	}
+	var expressions []*regexp.Regexp
+	for _, pattern := range patterns {
+		expressions = append(expressions, regexp.MustCompile(pattern))
+	}
+	var names []string
+	for line := range strings.SplitSeq(run("go", "test", "-tags", "schema_leg_python", "-list", "^TestPythonHandtext", "./internal/codegen/pythontable/"), "\n") {
+		if strings.HasPrefix(line, "TestPythonHandtext") {
+			names = append(names, line)
+		}
+	}
+	if len(names) == 0 {
+		t.Fatal("hand-text test listing is empty")
+	}
+	missing := func(rows []*regexp.Regexp) int {
+		bad := 0
+		for _, name := range names {
+			count := 0
+			for _, row := range rows {
+				if row.MatchString(name) {
+					count++
+				}
+			}
+			if count != 1 {
+				bad++
+			}
+		}
+		return bad
+	}
+	if bad := missing(expressions); bad != 0 {
+		t.Fatalf("%d hand-text tests are missing or repeated in support rows", bad)
+	}
+	if missing(expressions[:3]) == 0 {
+		t.Fatal("removing the control row escaped the selection check")
+	}
+}
+
 func TestPythonCISupportCoversEveryPrerequisite(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "make (Python support prerequisite closure)")
