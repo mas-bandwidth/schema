@@ -80,6 +80,9 @@ print('ok')
 			t.Fatalf("onesided: %v\n%s\n%s", err, out, stderr)
 		}
 	}
+	if out, err := pyrun.Analyze(t, dir, "msgoneside"); err != nil {
+		t.Fatalf("strict mypy: %v\n%s", err, out)
+	}
 	for _, fault := range []struct{ old, replacement, expect string }{{`if type(value) is int and (value < field.lo or value > field.hi):`, `if False:`, `one_sided_read`}, {`_validate(value, getattr(value, "descriptor"), "", set())`, `pass`, `one_sided_write`}} {
 		broken := make(map[string][]byte, len(files))
 		found := false
