@@ -130,7 +130,7 @@ fn main() {
                 "None".to_string()
             },
             fixed_arm = if fixed {
-                format!("Some(fixed_ops!({k}, {s}_fixed_load, {s}_fixed_save, {table}Row))")
+                format!("Some(fixed_ops!({k}, {s}_fixed_load, {s}_fixed_save, {table}Row, {table}, {s}_to_json_checked))")
             } else {
                 "None".to_string()
             }

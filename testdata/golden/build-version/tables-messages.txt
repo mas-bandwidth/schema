@@ -1,4 +1,4 @@
-0x31f7022d425ba36a
+0xb956355654c3f76c
 schema-build-version 5
 protocol 3ccb5473a568b8ef
 byteorder little
@@ -32,6 +32,9 @@ record Script sizeof=76 alignof=4
 record Selection sizeof=16 alignof=4
     field ee5d97ad45ad251f kind=13 offset=0 size=8 type=Cursor
     field c2f00318f053500a kind=13 offset=8 size=8 type=Cursor
+record ToolEnvelope sizeof=1648 alignof=8
+    field aa38aca481f528a8 kind=8 offset=0 size=4
+    field cd4de79bc6c93295 kind=15 offset=8 size=1640 union=ToolBody
 record ToolMessage sizeof=5168 alignof=8
     field aa38aca481f528a8 kind=8 offset=0 size=4
     field cd4de79bc6c93295 kind=15 offset=8 size=1640 union=ToolBody

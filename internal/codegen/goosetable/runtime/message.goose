@@ -429,6 +429,13 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         report.damaged = true;
         return false;
     }
+    // An announcement is an ordinary form-1 file (§3.3): every referenced
+    // ID participates in the complete first-use walk, including unknown fields.
+    let check, non_finite = wire_check(data, 1, first, first, ids_n as! i64, true);
+    if check != 0 || non_finite {
+        report.damaged = true;
+        return false;
+    }
     // the body's extent: a body that ENDED EARLY is malformed (§3)
     var off: i64 = 1;
     loop {

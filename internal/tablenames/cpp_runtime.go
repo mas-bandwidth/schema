@@ -145,7 +145,7 @@ func cppRuntimeNames() []Name {
 			"TableRetainRecordWire", "TableRetainReservedId", "TableRetainReset", "TableRetainStepInto",
 			"TableRetainTailMeasure", "TableRetainTailSave", "TableRetainUnder", "TableRetainWrite32",
 			"TableRetainWrite64", "kTableRetainDepthMax", "kTableRetainKnown", "kTableRetainKnownIds",
-			"kTableRetainRecordHeader", "kTableRetainSlotBytes", "kTableRetainWalkDepthMax",
+			"kTableRetainNoId", "kTableRetainRecordHeader", "kTableRetainSlotBytes", "kTableRetainWalkDepthMax",
 		}},
 		{what: "the text field helpers: UTF-8 validity, clamping and the float rung (docs/SPEC-TABLES.md §4)", names: []string{
 			"TableAppendText", "TableUtf8Clamp",

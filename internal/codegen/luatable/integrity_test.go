@@ -49,7 +49,7 @@ func TestLuaIntegrityVariableForm(t *testing.T) {
 	model := tabletext.NewModel(u)
 	inst := model.New(model.Lookup("Ledger"))
 	var report tabletext.Report
-	if !model.Read(inst, []byte(`{"balance":1000,"label":"ok","count":7}`), &report) || !report.Silent() {
+	if !model.Read(inst, []byte(`{"balance":"1000","label":"ok","count":7}`), &report) || !report.Silent() {
 		t.Fatalf("the value did not place cleanly: %+v", report)
 	}
 	goFile, err := tablewire.Encode(model, inst)
@@ -131,7 +131,7 @@ func TestLuaIntegrityEngineOutputSingleTrailer(t *testing.T) {
 	model := tabletext.NewModel(u)
 	inst := model.New(model.Lookup("Ledger"))
 	var report tabletext.Report
-	if !model.Read(inst, []byte(`{"balance":1000,"label":"ok","count":7}`), &report) || !report.Silent() {
+	if !model.Read(inst, []byte(`{"balance":"1000","label":"ok","count":7}`), &report) || !report.Silent() {
 		t.Fatalf("the value did not place cleanly: %+v", report)
 	}
 	file, err := tablewire.Encode(model, inst)

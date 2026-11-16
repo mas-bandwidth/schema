@@ -910,3 +910,32 @@ func TestGraphRefusals(t *testing.T) {
 	}
 }
 `
+
+func TestGoTextFormWideIntegralSpellings(t *testing.T) {
+	t.Parallel()
+	runTextFormUnit(t, `package probe
+fixed table Wide {
+  i int64
+  signedwide int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+  unsignedwide uint128
+  fixed_value fixed(48,16) | min = -10, max = 10
+}
+`, map[string]string{"wide_test.go": `package probe
+import ("bytes"; "testing")
+func TestWideIntegralSpellings(t *testing.T) {
+  cases := []struct { text, i, signed, unsigned string }{
+    {"(:i 1e1 :signedwide 20.0 :unsignedwide 3e1 :fixed_value 1.5)", "10", "20", "30"},
+    {"(:i -9223372036854775808.0 :signedwide -170141183460469231731687303715884105728.0 :unsignedwide 340282366920938463463374607431768211455.0 :fixed_value -0.5)", "-9223372036854775808", "-170141183460469231731687303715884105728", "340282366920938463463374607431768211455"},
+  }
+  for _, c := range cases {
+    doc, v, err := WideLoadTextForm([]byte(c.text), TableTextFormDefaultLimits())
+    if err != nil { t.Errorf("load %s: %v", c.text, err); continue }
+    n := WideToJSONMeasure(v); if n < 0 {t.Fatal("measure")}; out := make([]byte,n)
+    if WideToJSON(v,out) != n {t.Fatal("write")}
+    for _, want := range []string{c.i,c.signed,c.unsigned} { if !bytes.Contains(out, []byte("\""+want+"\"")) {t.Errorf("missing %s in %s", want, out)} }
+    saved,err := WideSaveTextForm(doc); if err != nil || string(saved)!=c.text {t.Errorf("preserve text: %s %v",saved,err)}
+  }
+  if _,_,err:=WideLoadTextForm([]byte("(:i 1.5)"), TableTextFormDefaultLimits()); err == nil {t.Error("fractional integer was accepted")}
+}
+`})
+}

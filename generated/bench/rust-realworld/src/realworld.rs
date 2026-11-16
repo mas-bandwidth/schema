@@ -291,6 +291,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut (((f1 >> 43) | (f2 << 21)) as u32), 32)?;
     // word 3, 10 bits: f003_int[11..21]
     stream.serialize_bits(&mut ((f2 >> 11) as u32), 10)?;
+    debug_assert!(value.f004_cf32.is_finite() && value.f004_cf32 >= 0.0_f32 && value.f004_cf32 <= 2000.0_f32, "f004_cf32 out of range [0.0_f32, 2000.0_f32]");
     {
         let mut compressed_value = value.f004_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
@@ -384,6 +385,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut raw_value = value.f026_bits;
         stream.serialize_bits(&mut raw_value, 9)?;
     }
+    debug_assert!(value.f027_cf32.is_finite() && value.f027_cf32 >= -2.0_f32 && value.f027_cf32 <= 2.0_f32, "f027_cf32 out of range [-2.0_f32, 2.0_f32]");
     {
         let mut compressed_value = value.f027_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
@@ -496,6 +498,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut ((f4 >> 21) as u32), 32)?;
     // word 3, 19 bits: f059_f64[53..64], f060_bits[0..8]
     stream.serialize_bits(&mut (((f4 >> 53) | (f5 << 11)) as u32), 19)?;
+    debug_assert!(value.f061_cf32.is_finite() && value.f061_cf32 >= -90.0_f32 && value.f061_cf32 <= 90.0_f32, "f061_cf32 out of range [-90.0_f32, 90.0_f32]");
     {
         let mut compressed_value = value.f061_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
@@ -511,6 +514,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     stream.serialize_bits(&mut ((f1 >> 23) as u32), 32)?;
     // word 2, 18 bits: f063_i64[55..64], f064_uint[0..9]
     stream.serialize_bits(&mut (((f1 >> 55) | (f2 << 9)) as u32), 18)?;
+    debug_assert!(value.f065_cf32.is_finite() && value.f065_cf32 >= 0.0_f32 && value.f065_cf32 <= 30.0_f32, "f065_cf32 out of range [0.0_f32, 30.0_f32]");
     {
         let mut compressed_value = value.f065_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
@@ -520,10 +524,12 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut fixed_value = value.f066_ufixed;
         stream.serialize_fixed(&mut fixed_value, 2, 14, 0, 2)?;
     }
+    debug_assert!(value.f067_cf32.is_finite() && value.f067_cf32 >= -100.0_f32 && value.f067_cf32 <= 100.0_f32, "f067_cf32 out of range [-100.0_f32, 100.0_f32]");
     {
         let mut compressed_value = value.f067_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
     }
+    debug_assert!(value.f068_cf32.is_finite() && value.f068_cf32 >= 0.0_f32 && value.f068_cf32 <= 2000.0_f32, "f068_cf32 out of range [0.0_f32, 2000.0_f32]");
     {
         let mut compressed_value = value.f068_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
@@ -534,10 +540,12 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f1: u64 = u64::from(value.f070_uint as u32);
     // word 0, 13 bits: f069_bits[0..11], f070_uint[0..2]
     stream.serialize_bits(&mut ((f0 | (f1 << 11)) as u32), 13)?;
+    debug_assert!(value.f071_cf32.is_finite() && value.f071_cf32 >= 0.0_f32 && value.f071_cf32 <= 10.0_f32, "f071_cf32 out of range [0.0_f32, 10.0_f32]");
     {
         let mut compressed_value = value.f071_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
     }
+    debug_assert!(value.f072_cf32.is_finite() && value.f072_cf32 >= 0.0_f32 && value.f072_cf32 <= 100.0_f32, "f072_cf32 out of range [0.0_f32, 100.0_f32]");
     {
         let mut compressed_value = value.f072_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation

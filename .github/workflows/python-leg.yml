@@ -1,6 +1,6 @@
 name: python leg
 
-# THE PYTHON LEG (docs/PORT-PYTHON.md): `make test-python` on the pinned
+# THE PYTHON LEG (docs/PORT-PYTHON.md): the complete `make test-python` on the pinned
 # interpreters, on the fleet's Linux runners. The pins are CPython 3.11.18 (the floor),
 # CPython 3.15.2 (the newest stable release) and mypy 1.18.2, built and
 # installed into dist/ by `make dist-python`; .github/actions/python restores
@@ -12,8 +12,9 @@ name: python leg
 # hosted macOS runner the leg does not fit a push or pull request's two
 # minutes (internal/ci/nightly_test.go).
 #
-# A GITHUB-HOSTED RUNNER, so a fork's pull request may run it: the job runs
-# the repository's own code against pinned tools and holds no secret.
+# The fleet has a two-minute per-commit cap, so its jobs split the same make
+# prerequisites and enumerate every package test into its own row. Nightly
+# still runs the unsplit make target on macOS.
 
 on:
   push:
@@ -53,26 +54,50 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
-    name: make test-python (${{ matrix.os }})
+  plan:
     if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    outputs:
+      rows: ${{ steps.rows.outputs.rows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: rows
+        run: |
+          set -euo pipefail
+          rows=$(sh tools/python-ci-rows.sh)
+          echo "rows=$rows" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: python (${{ matrix.name }})
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: plan
     strategy:
       fail-fast: false
+      max-parallel: 8
       matrix:
-        include:
-          - { os: fleet, runner: [self-hosted, Linux, X64, fleet, schema] }
-    runs-on: ${{ matrix.runner }}
+        include: ${{ fromJSON(needs.plan.outputs.rows) }}
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version-file: go.mod
-          cache: false
       - uses: ./.github/actions/python
-      - name: make test-python
-        run: make -j"$(getconf _NPROCESSORS_ONLN)" test-python
+      - name: run the selected complete-leg slice
+        env:
+          TARGET: ${{ matrix.target }}
+          PACKAGE: ${{ matrix.package }}
+          TEST: ${{ matrix.test }}
+        run: |
+          set -euo pipefail
+          make serialize-siblings
+          if [ -n "$TARGET" ]; then
+            make -j"$(getconf _NPROCESSORS_ONLN)" "$TARGET"
+          else
+            SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run "^${TEST}$" "$PACKAGE"
+          fi

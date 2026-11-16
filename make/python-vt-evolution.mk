@@ -10,7 +10,8 @@
 # text check (skip_text_ill_formed). Each control row is its own file under
 # make/negative-controls.d/.
 .PHONY: python-vt-evolution-negative-control python-vt-evolution-defaults-negative-control python-vt-evolution-renames-negative-control python-vt-evolution-skip-negative-control
-test-python: python-vt-evolution-negative-control python-vt-evolution-defaults-negative-control python-vt-evolution-renames-negative-control python-vt-evolution-skip-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-evolution
+python-ci-vt-evolution: python-vt-evolution-negative-control python-vt-evolution-defaults-negative-control python-vt-evolution-renames-negative-control python-vt-evolution-skip-negative-control
 
 python-vt-evolution-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControl$$' ./internal/codegen/pythontable/
@@ -23,3 +24,8 @@ python-vt-evolution-renames-negative-control:
 
 python-vt-evolution-skip-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionNegativeControlSkipCheck$$' ./internal/codegen/pythontable/
+
+.PHONY: python-vt-evolution-public-renames-negative-control
+python-ci-vt-evolution: python-vt-evolution-public-renames-negative-control
+python-vt-evolution-public-renames-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonEvolutionRenameNegativeControls$$' ./compiler/
