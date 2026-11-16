@@ -70,13 +70,13 @@ while IFS= read -r package; do
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     names=$(printf '%s\n' "$names" | sed '/^TestPythonVtEvolution$/d')
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
-    for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical; do
+    for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical TestPythonMapShapeBench; do
       printf '%s\n' "$names" | grep -qx "$delegated" || { echo "missing $delegated" >&2; exit 1; }
     done
-    for target in python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3; do
+    for target in python-ci-map-bench-current python-ci-map-bench-floor python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3; do
       [ "$(printf '%s\n' "$support" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
     done
-    names=$(printf '%s\n' "$names" | sed '/^TestPythonScalarWidenHistorical$/d; /^TestPythonContainerWidenHistorical$/d')
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonScalarWidenHistorical$/d; /^TestPythonContainerWidenHistorical$/d; /^TestPythonMapShapeBench$/d')
     skip=TestPythonVtFixedClassBuildVersionImports
     units=$(awk '$1 == "unit" { print $2 }' testdata/conformance/tables/MANIFEST.txt)
     [ -n "$units" ] || { echo "missing table corpus units" >&2; exit 1; }
