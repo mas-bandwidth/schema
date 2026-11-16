@@ -3,7 +3,7 @@
 import os
 
 from _common import ROOT, absent, entries, root_class, write_bytes
-from _json_common import answer, raise_if_unsupported, read_wire, write_wire
+from _json_common import raise_if_unsupported, read_wire, write_wire
 
 
 def run(manifest, outdir):
@@ -22,8 +22,16 @@ def run(manifest, outdir):
             raise_if_unsupported(error)
             write_bytes(outdir, case, b"refused\n")
             continue
-        if "no-value" in row[5:]:
-            write_bytes(outdir, case + ".wire", write_wire(cls, value))
-            write_bytes(outdir, case, b"read\n")
+        # The shared roster's canonical writer is the original fixed Cfg.
+        # Convert through the public text APIs after the variable form-1 read.
+        text = value.to_json()
+        if unit == "tblr1":
+            fixed_cls = root_class(unit, root)
+            if fixed_cls is None:
+                absent(outdir, case, "fixed unit not generated for python")
+                continue
+            saved = fixed_cls.from_json(text).save()
         else:
-            answer(outdir, case, cls, value)
+            saved = write_wire(cls, value)
+        write_bytes(outdir, case + ".wire", saved)
+        write_bytes(outdir, case, b"read\n" if "no-value" in row[5:] else b"read\n" + text.encode("utf-8"))
