@@ -527,7 +527,7 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		inner = *shape.Inner
 	}
 	run := elementRunBits(entry.Kind, shape.Elem, inner)
-	if kept > bound {
+	if kept > bound || (f.Array == ir.ArrayCounted && n < uint64(f.ArrayMin)) {
 		d.refuse(ReasonCountOverBound)
 		return false
 	}

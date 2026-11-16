@@ -32,6 +32,9 @@ class _String:
         _encoded(fd, value, path)
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         length = r.varint()
         payload = bytes(r.take(length))
         if b"\x00" in payload:
@@ -45,9 +48,12 @@ class _String:
         return text
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        encoded = value.encode("utf-8")
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
+        self.write_element(w, fd, value, ctx)
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        encoded = value.encode("utf-8")
         w.varint(len(encoded))
         w.raw(encoded)
 
