@@ -423,6 +423,7 @@ _M.WriteArmAlign <- function(stream, value) {
   if (!stream.serializeBool(_h)) return false;
   if (value.Flag) {
     if (typeof value.S != "blob" || typeof value.SLength != "integer" || value.SLength < 0 || value.SLength > 4 || value.SLength > value.S.len()) return false;
+    if (!_validText(value.S, value.SLength)) return false;
     _h.value = value.SLength;
     if (!stream.serializeBits(_h, 3)) return false;
     if (!stream.serializeBytes(_usedBytes(value.S, value.SLength))) return false;
@@ -844,6 +845,7 @@ _M.WriteRegainAfterAlign <- function(stream, value) {
     if (!stream.serializeInt(_h, 0, 8191)) return false;
   }
   if (typeof value.S != "blob" || typeof value.SLength != "integer" || value.SLength < 0 || value.SLength > 4 || value.SLength > value.S.len()) return false;
+  if (!_validText(value.S, value.SLength)) return false;
   _h.value = value.SLength;
   if (!stream.serializeBits(_h, 3)) return false;
   if (!stream.serializeBytes(_usedBytes(value.S, value.SLength))) return false;

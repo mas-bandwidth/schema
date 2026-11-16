@@ -11,6 +11,7 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
 	"slices"
 	"unsafe"
@@ -173,7 +174,18 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 100 {
+						r.Report.Refuse(TableRefuseOutOfRange, "ArchiveConfig.count")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
