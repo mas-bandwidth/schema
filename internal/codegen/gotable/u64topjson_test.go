@@ -19,7 +19,7 @@ import ("errors";"testing")
 func TestTop(t *testing.T) {
 	var v Top
 	var r TableReport
-	if !TopFromJSON(&v, []byte("{\"u\":18446744073709551615,\"h\":9223372036854775809}"), &r) {
+	if !TopFromJSON(&v, []byte("{\"u\":\"18446744073709551615\",\"h\":\"9223372036854775809\"}"), &r) {
 		t.Fatalf("read refused: %+v", r)
 	}
 	if v.U != 18446744073709551615 || v.H != 9223372036854775809 || r.Refused() {
@@ -27,7 +27,7 @@ func TestTop(t *testing.T) {
 	}
 	// a value under the range refuses out_of_range (docs/SPEC-TABLES.md §4)
 	v, r = Top{}, TableReport{}
-	if TopFromJSON(&v, []byte("{\"u\":0,\"h\":5}"), &r) || !r.Refused() || !errors.Is(r.Err(), TableRefuseOutOfRange) {
+	if TopFromJSON(&v, []byte("{\"u\":\"0\",\"h\":\"5\"}"), &r) || !r.Refused() || !errors.Is(r.Err(), TableRefuseOutOfRange) {
 		t.Fatalf("plain under-min u64 read: report %+v, want out_of_range", r)
 	}
 }

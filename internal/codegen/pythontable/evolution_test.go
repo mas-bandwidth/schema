@@ -580,7 +580,7 @@ var vtWireCases = []vtWireCase{
 			vtLeb(vtRefUnknown), []byte{ir.TableKindString}, vtFramed(vtIllText)))
 	}),
 	vtBad("skip_float_non_finite", "Doc", "non_finite_float", func(ids []uint64) []byte {
-		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindF64, vtNaN64))
+		return vtFile([]uint64{ids[vtRefUnknown-1]}, vtField(1, ir.TableKindF64, vtNaN64))
 	}),
 	vtBad("skip_kind_no_reader_skips", "Doc", "wire_damaged", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindRetiredWstring, vtFramed(nil)))
@@ -593,7 +593,7 @@ var vtWireCases = []vtWireCase{
 		return vtFile(ids, vtNested(ir.TableBinaryMaxDepth+1))
 	}),
 	vtBad("skip_nested_at_bound", "Doc", "", func(ids []uint64) []byte {
-		return vtFile(ids, vtNested(ir.TableBinaryMaxDepth))
+		return vtFile([]uint64{ids[vtRefUnknown-1]}, vtNested(ir.TableBinaryMaxDepth))
 	}),
 	vtBad("skip_pointer_past_nodes", "Doc", "wire_damaged", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)))
@@ -603,46 +603,46 @@ var vtWireCases = []vtWireCase{
 	}),
 	vtBad("skip_record_ill_formed_text", "Doc", "wire_damaged", func(ids []uint64) []byte {
 		rec := vtRecord(vtRefType, vtBody(vtField(vtRefUnknown, ir.TableKindString, vtFramed(vtIllText))))
-		return vtFile(ids,
-			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))),
-			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)))
+		return vtFile(ids[:3],
+			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)),
+			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
 	}),
 	vtBad("skip_record_unreached", "Doc", "wire_damaged", func(ids []uint64) []byte {
-		rec := vtRecord(vtRefType, vtBody())
-		return vtFile(ids, vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
+		rec := vtRecord(2, vtBody())
+		return vtFile([]uint64{ids[vtRefNode-1], ids[vtRefType-1]}, vtField(1, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
 	}),
 	vtBad("skip_record_cycle", "Doc", "wire_damaged", func(ids []uint64) []byte {
 		rec := vtRecord(vtRefType, vtBody(vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2))))
-		return vtFile(ids,
-			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))),
-			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)))
+		return vtFile(ids[:3],
+			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)),
+			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
 	}),
 	vtBad("skip_pointer_to_unknown_record", "Doc", "", func(ids []uint64) []byte {
 		rec := vtRecord(vtRefType, vtBody(vtField(vtRefUnknown, ir.TableKindString, vtFramed([]byte("ok")))))
-		return vtFile(ids,
-			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))),
-			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)))
+		return vtFile(ids[:3],
+			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)),
+			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
 	}),
 	vtBad("known_pointer_to_unknown_record", "Doc", "", func(ids []uint64) []byte {
 		rec := vtRecord(vtRefType, vtBody())
-		return vtFile(ids,
-			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))),
-			vtField(vtRefNext, ir.TableKindPointer, vtLeb(2)))
+		return vtFile([]uint64{ids[vtRefNext-1], ids[vtRefNode-1], ids[vtRefType-1]},
+			vtField(1, ir.TableKindPointer, vtLeb(2)),
+			vtField(2, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
 	}),
 
 	// THE NEW READER'S OWN FIELDS: a known string, bytes or enum the engine
 	// refuses.
 	vtKnownBad("known_string_over_bound", "length_over_bound", func(ids []uint64) []byte {
-		return vtFile(ids, vtField(vtRefS, ir.TableKindString, vtFramed([]byte("123456789"))))
+		return vtFile([]uint64{ids[vtRefS-1]}, vtField(1, ir.TableKindString, vtFramed([]byte("123456789"))))
 	}),
 	vtKnownBad("known_text_ill_formed", "wire_damaged", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefS, ir.TableKindString, vtFramed(vtIllText)))
 	}),
 	vtKnownBad("known_bytes_element_not_u8", "kind_mismatch", func(ids []uint64) []byte {
-		return vtFile(ids, vtField(vtRefB, ir.TableKindArray, vtFramed([]byte{ir.TableKindU16, 0})))
+		return vtFile([]uint64{ids[vtRefB-1]}, vtField(1, ir.TableKindArray, vtFramed([]byte{ir.TableKindU16, 0})))
 	}),
 	vtKnownBad("known_bytes_over_bound", "length_over_bound", func(ids []uint64) []byte {
-		return vtFile(ids, vtField(vtRefB, ir.TableKindArray, vtFramed([]byte{ir.TableKindU8, 5, 1, 2, 3, 4, 5})))
+		return vtFile([]uint64{ids[vtRefB-1]}, vtField(1, ir.TableKindArray, vtFramed([]byte{ir.TableKindU8, 5, 1, 2, 3, 4, 5})))
 	}),
 	vtKnownBad("known_enum_past_ids", "wire_damaged", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefG, ir.TableKindEnum, vtLeb(uint64(len(ids)+1))))

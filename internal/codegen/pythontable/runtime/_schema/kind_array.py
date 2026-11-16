@@ -190,7 +190,7 @@ class _Array:
             )
         if fd.array_kind == 2 and (count < fd.array_min or (fd.bound and count > fd.bound)):
             raise Refused(
-                "wire_damaged",
+                "count_over_bound",
                 f"{fd.name} carries {count} elements outside [{fd.array_min}, {fd.bound}]",
             )
         remaining = length - sub.pos
