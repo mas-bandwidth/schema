@@ -91,6 +91,11 @@ class _PointerArray:
                 "count_over_bound",
                 f"{fd.name}: count {count} exceeds bound {fd.bound}",
             )
+        if fd.array_mode == "counted" and count < fd.min_count:
+            raise Refused(
+                "count_over_bound",
+                f"{fd.name}: count {count} is below minimum {fd.min_count}",
+            )
         # Every pointer index needs at least one byte, even a null index.
         # Reject impossible counts before allocating storage from untrusted input.
         if count > sub.end - sub.pos:
