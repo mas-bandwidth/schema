@@ -105,15 +105,9 @@ class _Map:
             landed = True
             if value_field.codec == "pointer":
                 for i in range(before, len(ctx.pending)):
-<<<<<<< HEAD
-                    owner, name, _, index, target_id = ctx.pending[i]
-                    if owner is entry and name == value_field.name:
-                        ctx.pending[i] = (out, key, True, index, target_id)
-=======
                     owner, slot, index = ctx.pending[i]
                     if owner is entry and slot.name == value_field.name:
                         ctx.pending[i] = (out, (key, slot), index)
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
             out[key] = getattr(entry, value_field.name)
         if sub.pos != sub.end:
             raise Refused(

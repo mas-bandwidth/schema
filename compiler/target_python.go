@@ -56,7 +56,6 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return python.Generate(u)
 }
 
-<<<<<<< HEAD
 // refuseNonPointerLists admits []*T pointer lists into the Python table leg
 // while preserving the named refusal for uncarried []T value lists (and []*blob).
 func refuseNonPointerLists(u *ir.Unit) error {
@@ -66,7 +65,24 @@ func refuseNonPointerLists(u *ir.Unit) error {
 		if st == nil {
 			st = u.Structs[name]
 		}
-=======
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.IsList() && (!f.Type.Pointer || f.Type.Blob()) {
+				fields = append(fields, name+"."+f.Name)
+			}
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	sort.Strings(fields)
+	carry, flags := carriers(listTargets)
+	return fmt.Errorf("unit declares an unbounded array in a table closure (%s): a []T is %s only today, and the python form is a named follow-on. Generate with %s, or declare the array at a bound, [..N]T, which is the same bytes (docs/SPEC-TABLES.md §2.9, §11, §15)",
+		englishList(fields), englishList(carry), englishList(flags))
+}
+
 // pythonRefusePacketUnionArrays is this target's one addition to the shared
 // chain. Python registers as a union-array carrier (carries_python_unions.go),
 // so refuseUnported's union-array step passes: an array of TABLE-SIDE unions
@@ -77,14 +93,10 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 	var fields []string
 	for name := range ir.TableClosure(u) {
 		st := ir.ClosureMember(u, name)
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 		if st == nil {
 			continue
 		}
 		for _, f := range st.Fields {
-<<<<<<< HEAD
-			if f.IsList() && (!f.Type.Pointer || f.Type.Blob()) {
-=======
 			if f.Array == ir.ArrayNone || f.Type.Kind != ir.TNamed {
 				continue
 			}
@@ -93,7 +105,6 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 				continue
 			}
 			if _, carried := u.TableUnions[ref.Name]; !carried {
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 				fields = append(fields, name+"."+f.Name)
 			}
 		}
@@ -102,10 +113,6 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 		return nil
 	}
 	sort.Strings(fields)
-<<<<<<< HEAD
-	carry, flags := carriers(listTargets)
-	return fmt.Errorf("unit declares an unbounded array in a table closure (%s): a []T is %s only today, and the python form is a named follow-on. Generate with %s, or declare the array at a bound, [..N]T, which is the same bytes (docs/SPEC-TABLES.md §2.9, §11, §15)",
-=======
 	// the shared refusal's wording and carrier list, less python itself,
 	// which carries only the table-side form
 	var others []string
@@ -116,14 +123,9 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 	}
 	carry, flags := carriers(others)
 	return fmt.Errorf("unit declares an array of unions in a table closure (%s) whose arms are all packet types — such an array is %s only today, and the python form is the packet layer's named follow-on (the python table frame carries arrays of table-side unions); generate with %s, or wrap the union in a table and declare an array of that (docs/SPEC-TABLES.md §2.6, §11)",
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 		englishList(fields), englishList(carry), englishList(flags))
 }
 
 func init() {
-<<<<<<< HEAD
-	registerBuiltin(pythonTarget{}, false, false, false, false)
-=======
 	registerBuiltin(pythonTarget{}, false, true, false, false)
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 }

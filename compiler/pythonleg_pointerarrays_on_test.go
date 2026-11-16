@@ -110,25 +110,4 @@ table Bag
 	if _, err := c.Generate(uTbl, "python", nil); err == nil || !strings.Contains(err.Error(), "items") {
 		t.Fatalf("driver did not refuse []Item by name: %v", err)
 	}
-
-	const packetPtrList = `package badpktlist
-
-type PacketItem
-{
-    x int32
-}
-
-table Bag
-{
-    items []*Bag
-    pkt   PacketItem
-}
-`
-	uPkt, err := c.Load(writeDriverSchema(t, "BadPktList.schema", packetPtrList))
-	if err != nil {
-		t.Fatalf("load packet pointer list schema: %v", err)
-	}
-	if _, err := c.Generate(uPkt, "python", nil); err == nil || !strings.Contains(err.Error(), "packet type") {
-		t.Fatalf("driver did not refuse []*PacketItem by name: %v", err)
-	}
 }

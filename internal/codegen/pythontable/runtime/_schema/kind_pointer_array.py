@@ -93,10 +93,10 @@ class _PointerArray:
             )
         alloc_len = fd.bound if fd.array_mode == "fixed" else count
         out: list[Any] = [None] * alloc_len
-        target_id: int = _target(fd).descriptor.type_id
         for slot in range(count):
             idx: int = sub.varint()
-            ctx.pending.append((out, slot, True, idx, target_id))
+            ctx.pending.append((out, (slot, fd), idx))
+            ctx.edges.append(idx)
         if sub.pos != sub.end:
             raise Refused(
                 "wire_damaged", "bytes left inside an array after its elements"

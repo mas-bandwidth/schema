@@ -1496,14 +1496,14 @@ expect_refused("count-over-bound", Root, over_wire, "count_over_bound", "bounded
 		},
 		{
 			name: "read-cycle", path: load,
-			target: `if m_state == 1:`, repl: "if m_state == 1:\n            continue\n        if False:",
+			target: `if mark[target] == 1:`, repl: "if mark[target] == 1:\n            continue\n        if False:",
 			probe: fmt.Sprintf(`expect_refused("read-cycle", Root, bytes.fromhex(%q), "wire_damaged", "a pointer to a node whose descent is still open: a cycle")
 expect_refused("read-cycle", Root, bytes.fromhex(%q), "wire_damaged", "a pointer to a node whose descent is still open: a cycle")
 `, hexOf("self_cycle_in_node_record"), hexOf("two_node_cycle_in_pointer_arrays")),
 		},
 		{
 			name: "wrong-type-target", path: load,
-			target: `if rec_type in ctx.declared_ids:`, repl: `if False:`,
+			target: `if descriptor.by_id(type_id) is not None:`, repl: `if False:`,
 			probe: fmt.Sprintf(`expect_refused("wrong-type-target", Root, bytes.fromhex(%q), "wire_damaged", "a pointer whose target is not the type its slot requires")
 `, hexOf("declared_wrong_target_type_in_pointer_array")),
 		},

@@ -435,15 +435,10 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
-<<<<<<< HEAD
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
-	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, NODE_WIRE_ID as _NODE_WIRE_ID, Reader as _LoadReader, _body_end, _decode_node_records, _open_file, _resolve, _skip, buffer_view, load_table\n")
-	b.WriteString("from ._schema.save import Ctx as _SaveCtx, Writer as _Writer, _collect as _collect_nodes, _validate as _validate_value, _write_form, _write_node_table, measure_table, save_table\n\n\n")
-=======
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
-	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, measure_table, save_table\n\n\n")
+	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _collect_root, _validate as _validate_value, _write_form, _write_node_table, measure_table, save_table\n\n\n")
 
 	if body := host.Body(); body != "" {
 		b.WriteString(body)
@@ -478,7 +473,6 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
 	unions := append([]*ir.Union(nil), plan.unions...)
 	sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 	for _, st := range tables {
 		for _, f := range st.Fields {
 			if f.KeyEnum != "" {
@@ -495,20 +489,6 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 	return b.String()
 }
 
-<<<<<<< HEAD
-// emitGraphEqRepr emits a generated class's __eq__ and __repr__. Both walk the
-// value graph on an explicit stack (runtime/_schema/graph.py): a pointer chain
-// longer than the interpreter's recursion limit, a shared node and a cycle a
-// caller built are each compared and spelled in time linear in the graph,
-// with no RecursionError (docs/PORT-PYTHON.md, THE VALUE MAPPING, Tables).
-func emitGraphEqRepr(b *strings.Builder, name string) {
-	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
-	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", name)
-	b.WriteString("            return False\n")
-	b.WriteString("        return _s_graph_eq(self, other)\n")
-	b.WriteString("\n    def __repr__(self) -> str:\n")
-	b.WriteString("        return _s_graph_repr(self)\n")
-=======
 // hostedAlias is the private spelling, in the table runtime, of a shared value
 // check the hosted packet codec calls by its packet-runtime name.
 func hostedAlias(name string) (string, bool) {
@@ -572,7 +552,20 @@ func orderUnions(unions []*ir.Union) []*ir.Union {
 		emit(un)
 	}
 	return out
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
+}
+
+// emitGraphEqRepr emits a generated class's __eq__ and __repr__. Both walk the
+// value graph on an explicit stack (runtime/_schema/graph.py): a pointer chain
+// longer than the interpreter's recursion limit, a shared node and a cycle a
+// caller built are each compared and spelled in time linear in the graph,
+// with no RecursionError (docs/PORT-PYTHON.md, THE VALUE MAPPING, Tables).
+func emitGraphEqRepr(b *strings.Builder, name string) {
+	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
+	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", name)
+	b.WriteString("            return False\n")
+	b.WriteString("        return _s_graph_eq(self, other)\n")
+	b.WriteString("\n    def __repr__(self) -> str:\n")
+	b.WriteString("        return _s_graph_repr(self)\n")
 }
 
 func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
@@ -603,7 +596,8 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	emitGraphEqRepr(b, name)
 	guards := structGuards(st)
 	variable := ir.VariableTables(u)[name]
-	straight := straightLineable(st)
+	fast := pointerArraysStraightLineable(st)
+	straight := scalarOnly(st) || fast
 	b.WriteString("\n    @classmethod\n")
 	if straight {
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
@@ -621,7 +615,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("\n    def measure(self) -> int:\n")
 	b.WriteString("        return measure_table(self)\n\n\n")
 	emitTableDescriptor(b, u, st, false)
-	if scalarOnly(st) {
+	if fast {
+		emitFastStraightLine(b, st, variable, guards)
+	} else if scalarOnly(st) {
 		emitStraightLine(b, st)
 	}
 	b.WriteString("\n")
@@ -638,6 +634,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	if !valueClass {
 		variable = ir.VariableTables(u)[name]
 	}
+	guards := structGuards(st)
 	fmt.Fprintf(b, "%s.descriptor = TableDesc(\n", name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
@@ -678,7 +675,6 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
-<<<<<<< HEAD
 		if mode := arrayMode(f); mode != "" {
 			fmt.Fprintf(b, "            array_mode=%s,\n", strconv.Quote(mode))
 		}
@@ -687,43 +683,21 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		if gterms := guards[f.Name]; len(gterms) > 0 {
 			fmt.Fprintf(b, "            guards=%s,\n", formatGuardTuple(gterms))
-=======
+		}
 		if codecOf(f) == "keyed" {
 			emitKeyedDesc(b, f)
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 		}
 		fmt.Fprintf(b, "        ),\n")
 	}
 	b.WriteString("    ),\n")
-<<<<<<< HEAD
-	if variable {
-		reachable := ir.PointerReachable(st)
-		if len(reachable) > 0 {
-			ids := make([]string, 0, len(reachable))
-			for _, targetSt := range reachable {
-				ids = append(ids, hex64(ir.TableWireId(targetSt.WireName())))
-			}
-			trailing := ""
-			if len(ids) == 1 {
-				trailing = ","
-			}
-			fmt.Fprintf(b, "    reachable_ids=(%s%s),\n", strings.Join(ids, ", "), trailing)
-		}
-	}
-	b.WriteString(")\n")
-	if straight {
-		emitStraightLine(b, st, variable, guards)
-=======
 	b.WriteString(")\n")
 	if valueClass {
 		fmt.Fprintf(b, "_register_value(%s)\n\n\n", name)
 	} else {
 		fmt.Fprintf(b, "register(%s)\n", name)
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 	}
 }
 
-<<<<<<< HEAD
 type guardTerm struct {
 	cond string
 	want bool
@@ -790,56 +764,40 @@ func arrayMode(f *ir.Field) string {
 	return ""
 }
 
-// straightLineable reports whether every field of st is carried by an active
-// codec so generated straight-line root save/load with bound locals can run.
-// A table holding a map keeps the descriptor walk, the shape its bench
-// measured (docs/PORT-PYTHON.md, Maps bench).
-func straightLineable(st *ir.Struct) bool {
+// pointerArraysStraightLineable reports whether the generated straight-line
+// root save with bound locals can carry a table whose fields include pointer
+// arrays or field guards: every field has a codec whose runtime write takes
+// the same (writer, descriptor, value, ctx) shape, and the kinds whose walks
+// are their own module (a map, a blob, a union, a keyed array) keep the
+// descriptor walk.
+func pointerArraysStraightLineable(st *ir.Struct) bool {
+	hasPointerArray := false
+	guarded := len(structGuards(st)) > 0
 	for _, f := range st.Fields {
-		if codecOf(f) == "unsupported" || f.IsMap() {
-=======
-// scalarOnly reports whether every field is a scalar the generated
-// straight-line shape can bind directly: a bool, an integer (a flags mask
-// included), a string, a bytes or an enum. A by-value table, a pointer, a
-// container or a union keeps the descriptor walk. The string, bytes and enum
-// kinds joined the set when the evolution kinds' shape bench measured the pair
-// faster (docs/PORT-PYTHON.md, THE TABLE FRAME, Bench).
-func scalarOnly(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
-			return false
-		}
 		switch codecOf(f) {
-		case "bool", "int", "string", "bytes", "enum":
-		default:
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
+		case "pointer_array":
+			hasPointerArray = true
+		case "unsupported", "map", "string_blob", "bytes_blob", "union", "union_array", "keyed":
 			return false
 		}
 	}
-	return true
+	return guarded || hasPointerArray
 }
 
-<<<<<<< HEAD
-// emitStraightLine emits the straight-line root save/load pair with field
-// descriptors and codec methods bound to locals (docs/PORT-PYTHON.md, THE
-// TABLE FRAME; D1), measured against the generic descriptor walk.
-func emitStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guards map[string][]guardTerm) {
-=======
-// emitStraightLine emits the straight-line shape for a table whose fields are
-// all scalars (scalarOnly; docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
-// walk is unrolled with each field descriptor bound to a local, against the
-// runtime's descriptor walk over the same wire. The bench keeps the faster.
-func emitStraightLine(b *strings.Builder, st *ir.Struct) {
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
+// emitFastStraightLine emits the pointer-array and guarded-table shape
+// (docs/PORT-PYTHON.md, THE TABLE FRAME): the root's fields are unrolled with
+// each field descriptor and codec method bound to a local, the guards are
+// inline conditions, and the walk numbers the reachable graph through the
+// runtime's one collector. The load returns the runtime's whole-file read, so
+// the shape is measured against the descriptor walk on the same bytes.
+func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guards map[string][]guardTerm) {
 	name := st.Name
 	fmt.Fprintf(b, "def _s_save_%s(value: %s) -> bytes:\n", name, name)
 	b.WriteString("    _validate_value(value, value.descriptor, \"\", set())\n")
 	b.WriteString("    ctx = _SaveCtx()\n")
 	b.WriteString("    ctx.indices[id(value)] = 1\n")
 	b.WriteString("    ctx.onstack.add(id(value))\n")
-	if variable {
-		b.WriteString("    _collect_nodes(value, ctx)\n")
-	}
+	b.WriteString("    _collect_root(value, ctx)\n")
 	b.WriteString("    sink = bytearray()\n")
 	b.WriteString("    writer = _Writer(sink)\n")
 	b.WriteString("    _write_form(writer)\n")
@@ -863,36 +821,74 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 			fmt.Fprintf(b, "%s    w%d(writer, f%d, current, ctx)\n", ind, i, i)
 		}
 	}
-	if variable {
-		b.WriteString("    if ctx.order:\n")
-		b.WriteString("        _write_node_table(writer, ctx)\n")
+	b.WriteString("    if ctx.order:\n")
+	b.WriteString("        _write_node_table(writer, ctx)\n")
+	b.WriteString("    writer.byte(0)\n")
+	b.WriteString("    for table_id in ctx.ids:\n")
+	b.WriteString("        writer.raw(table_id.to_bytes(8, \"little\"))\n")
+	b.WriteString("    writer.raw(len(ctx.ids).to_bytes(8, \"little\"))\n")
+	b.WriteString("    return bytes(sink)\n\n")
+	fmt.Fprintf(b, "def _s_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
+	b.WriteString("    return load_table(cls, data, report)\n\n\n")
+}
+
+// scalarOnly reports whether every field is a scalar the generated
+// straight-line shape can bind directly: a bool, an integer (a flags mask
+// included), a string, a bytes or an enum. A by-value table, a pointer, a
+// container or a union keeps the descriptor walk. The string, bytes and enum
+// kinds joined the set when the evolution kinds' shape bench measured the pair
+// faster (docs/PORT-PYTHON.md, THE TABLE FRAME, Bench).
+func scalarOnly(st *ir.Struct) bool {
+	if len(structGuards(st)) > 0 {
+		return false
+	}
+	for _, f := range st.Fields {
+		if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
+			return false
+		}
+		switch codecOf(f) {
+		case "bool", "int", "string", "bytes", "enum":
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// emitStraightLine emits the straight-line shape for a table whose fields are
+// all scalars (scalarOnly; docs/PORT-PYTHON.md, THE TABLE FRAME; D1): the field
+// walk is unrolled with each field descriptor bound to a local, against the
+// runtime's descriptor walk over the same wire. The bench keeps the faster.
+func emitStraightLine(b *strings.Builder, st *ir.Struct) {
+	name := st.Name
+	fmt.Fprintf(b, "def _s_save_%s(value: %s) -> bytes:\n", name, name)
+	b.WriteString("    _validate_value(value, value.descriptor, \"\", set())\n")
+	b.WriteString("    ctx = _SaveCtx()\n")
+	b.WriteString("    ctx.indices[id(value)] = 1\n")
+	b.WriteString("    ctx.onstack.add(id(value))\n")
+	b.WriteString("    sink = bytearray()\n")
+	b.WriteString("    writer = _Writer(sink)\n")
+	b.WriteString("    writer.byte(_FORM)\n")
+	b.WriteString("    fields = value.descriptor.fields\n")
+	b.WriteString("    current: object\n")
+	for i, f := range st.Fields {
+		fmt.Fprintf(b, "    current = value.%s\n", f.Name)
+		fmt.Fprintf(b, "    if not fields[%d].is_default(current):\n", i)
+		fmt.Fprintf(b, "        _s_kinds._REGISTRY[%q].write(writer, fields[%d], current, ctx)\n", codecOf(f), i)
 	}
 	b.WriteString("    writer.byte(0)\n")
 	b.WriteString("    for table_id in ctx.ids:\n")
 	b.WriteString("        writer.raw(table_id.to_bytes(8, \"little\"))\n")
 	b.WriteString("    writer.raw(len(ctx.ids).to_bytes(8, \"little\"))\n")
 	b.WriteString("    return bytes(sink)\n\n")
-
 	fmt.Fprintf(b, "def _s_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
 	b.WriteString("    view = buffer_view(data)\n")
-	b.WriteString("    ids, records, non_finite = _open_file(view)\n")
-	fmt.Fprintf(b, "    ctx = _LoadCtx(ids, %s)\n", pyBool(variable))
+	b.WriteString("    ids = _id_table(view)\n")
+	b.WriteString("    ctx = _LoadCtx(ids)\n")
 	b.WriteString("    obj = cls()\n")
 	b.WriteString("    ctx.root = obj\n")
-	b.WriteString("    ctx.current = obj\n")
-	if variable {
-		b.WriteString("    if records:\n")
-		b.WriteString("        _decode_node_records(cls.descriptor, records, ctx)\n")
-	}
 	b.WriteString("    reader = _LoadReader(view, 1, _body_end(view), ids)\n")
-	if len(st.Fields) > 0 {
-		b.WriteString("    fields = obj.descriptor.fields\n")
-		b.WriteString("    reg = _s_kinds._REGISTRY\n")
-		for i, f := range st.Fields {
-			fmt.Fprintf(b, "    f%d = fields[%d]\n", i, i)
-			fmt.Fprintf(b, "    r%d = reg[%q].read\n", i, codecOf(f))
-		}
-	}
+	b.WriteString("    fields = obj.descriptor.fields\n")
 	b.WriteString("    seen: set[int] = set()\n")
 	b.WriteString("    while True:\n")
 	b.WriteString("        reference = reader.varint()\n")
@@ -900,35 +896,18 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("            break\n")
 	b.WriteString("        field_id = reader.id_at(reference)\n")
 	b.WriteString("        kind = reader.byte()\n")
-<<<<<<< HEAD
-	b.WriteString("        if field_id == _NODE_WIRE_ID:\n")
-	b.WriteString("            reader.take(reader.varint())\n")
-	b.WriteString("            continue\n")
-=======
 	b.WriteString("        if field_id in seen:\n")
 	b.WriteString("            raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
 	b.WriteString("        seen.add(field_id)\n")
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 	for i, f := range st.Fields {
-		fidHex := hex64(ir.TableFieldWireId(f))
-		fkind := ir.TableWireFieldKind(f)
 		if i == 0 {
-			fmt.Fprintf(b, "        if field_id == %s:\n", fidHex)
+			fmt.Fprintf(b, "        if field_id == fields[%d].field_id:\n", i)
 		} else {
-			fmt.Fprintf(b, "        elif field_id == %s:\n", fidHex)
+			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
-<<<<<<< HEAD
-		b.WriteString("            if field_id in seen:\n")
-		b.WriteString("                raise Refused(\"wire_damaged\", \"a body carries one field twice\")\n")
-		b.WriteString("            seen.add(field_id)\n")
-		fmt.Fprintf(b, "            if kind != %d:\n", fkind)
-		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.%s rides under kind {kind}, not %d\")\n", f.Name, fkind)
-		fmt.Fprintf(b, "            obj.%s = r%d(reader, f%d, ctx)\n", f.Name, i, i)
-=======
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 	}
 	if len(st.Fields) > 0 {
 		b.WriteString("        else:\n")
@@ -939,8 +918,6 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
 	b.WriteString("    _resolve(ctx)\n")
-	b.WriteString("    if non_finite:\n")
-	b.WriteString("        raise Refused(\"non_finite_float\", non_finite)\n")
 	b.WriteString("    if report is not None:\n")
 	b.WriteString("        report.unknown = ctx.unknown\n")
 	b.WriteString("        report.widened = 0\n")
@@ -1020,28 +997,8 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 			fmt.Fprintf(b, "        self.%s = %s\n", v.Name, defaultExpr(un.Name, v.F))
 		}
 	}
-<<<<<<< HEAD
 	emitGraphEqRepr(b, un.Name)
 	b.WriteString("\n")
-=======
-	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
-	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", un.Name)
-	b.WriteString("            return False\n")
-	parts := []string{"self.type == other.type"}
-	for _, v := range un.Variants {
-		if v.F != nil {
-			parts = append(parts, fmt.Sprintf("self.%s == other.%s", v.Name, v.Name))
-		}
-	}
-	fmt.Fprintf(b, "        return bool(%s)\n", strings.Join(parts, " and "))
-	b.WriteString("\n    def __repr__(self) -> str:\n")
-	reprParts := []string{"type={self.type!r}"}
-	for _, v := range un.Variants {
-		if v.F != nil {
-			reprParts = append(reprParts, fmt.Sprintf("%s={self.%s!r}", v.Name, v.Name))
-		}
-	}
-	fmt.Fprintf(b, "        return f\"%s(%s)\"\n\n", un.Name, strings.Join(reprParts, ", "))
 	emitUnionDescriptor(b, un)
 	fmt.Fprintf(b, "register_union(%s)\n\n\n", un.Name)
 }
@@ -1050,7 +1007,6 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 // declaration order (docs/SPEC-TABLES.md §8.1). It is shared by the table-side
 // union class and the packet union the packet core hosts.
 func emitUnionDescriptor(b *strings.Builder, un *ir.Union) {
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 	fmt.Fprintf(b, "%s.descriptor = UnionDesc(\n", un.Name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(un.Name))
 	b.WriteString("    arms=(\n")
@@ -1239,8 +1195,6 @@ func keyedElemCodec(f *ir.Field) string {
 }
 
 func codecOf(f *ir.Field) string {
-<<<<<<< HEAD
-=======
 	if f.KeyEnum != "" && f.KeyEnumRef != nil && !f.Type.Pointer && !f.Type.Optional && !f.IsMap() && keyedElemCodec(f) != "" {
 		return "keyed"
 	}
@@ -1253,6 +1207,12 @@ func codecOf(f *ir.Field) string {
 		// header in place (§3), in a fixed, counted or unbounded array.
 		if _, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed && !f.Type.Pointer {
 			return "union_array"
+		}
+		if f.Type.Pointer {
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+				return "pointer_array"
+			}
+			return "unsupported"
 		}
 		element := elementCodecOf(f)
 		if element == "unsupported" {
@@ -1275,31 +1235,12 @@ func codecOf(f *ir.Field) string {
 		}
 		return "unsupported"
 	}
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 	if f.IsMap() {
 		if f.Type.Optional {
 			return "unsupported"
 		}
 		return "map"
 	}
-<<<<<<< HEAD
-	if f.KeyEnum != "" || f.Type.Optional {
-		return "unsupported"
-	}
-	if f.Type.Pointer {
-		if f.Type.Blob() {
-			return "unsupported"
-		}
-		if _, ok := f.Type.Ref.(*ir.Struct); ok {
-			if f.Array != ir.ArrayNone {
-				return "pointer_array"
-			}
-			return "pointer"
-		}
-		return "unsupported"
-	}
-	if f.Array != ir.ArrayNone {
-=======
 	if f.KeyEnum != "" || f.Type.Optional || f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
@@ -1336,7 +1277,6 @@ func codecOf(f *ir.Field) string {
 // stays unsupported until that card lands.
 func elementCodecOf(f *ir.Field) string {
 	if f.Type.Pointer {
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -1367,8 +1307,9 @@ func targetName(f *ir.Field) string {
 }
 
 func pythonType(st *ir.Struct, f *ir.Field) string {
-<<<<<<< HEAD
-=======
+	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
+		return "list[object]"
+	}
 	if f.Type.Pointer {
 		if f.Type.Blob() {
 			if f.Type.Kind == ir.TString {
@@ -1378,7 +1319,6 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 		}
 		return "object | None"
 	}
->>>>>>> 5043610a8358c251defbef6d002d940708010d41
 	if f.Type.Optional {
 		return "object | None"
 	}
@@ -1390,9 +1330,6 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 			return keyedClassName(st.Name, f)
 		}
 		return "list[object]"
-	}
-	if f.Type.Pointer {
-		return "object | None"
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1419,7 +1356,25 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
 func defaultExpr(owner string, f *ir.Field) string {
-	if f.Type.Optional {
+	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
+		count := int64(0)
+		switch f.Array {
+		case ir.ArrayFixed:
+			count = f.ArrayBound
+		case ir.ArrayCounted:
+			count = f.ArrayMin
+		}
+		if count <= 0 {
+			return "[]"
+		}
+		elem := elementDefault(owner, f)
+		values := make([]string, 0, count)
+		for i := int64(0); i < count; i++ {
+			values = append(values, elem)
+		}
+		return "[" + strings.Join(values, ", ") + "]"
+	}
+	if f.Type.Pointer || f.Type.Optional {
 		return "None"
 	}
 	if f.IsMap() {
@@ -1447,9 +1402,6 @@ func defaultExpr(owner string, f *ir.Field) string {
 			values = append(values, elem)
 		}
 		return "[" + strings.Join(values, ", ") + "]"
-	}
-	if f.Type.Pointer {
-		return "None"
 	}
 	return valueDefault(f)
 }
