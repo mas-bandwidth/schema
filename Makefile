@@ -6156,8 +6156,9 @@ tables-wire-fuzz-message-text-oracle-negative-control: build/conformance-harness
 
 MESSAGE_TEXT_LEG_NC := build/wire-fuzz-nc-message-text-leg
 .PHONY: tables-wire-fuzz-message-text-leg-negative-control
-tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
+tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(MESSAGE_TEXT_LEG_NC) && mkdir -p $(MESSAGE_TEXT_LEG_NC)
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message
 	@go run ./tools/sabotage -name message-emitter-text-accepts-ill-formed \
 		-out $(MESSAGE_TEXT_LEG_NC)/messageload.go.txt internal/codegen/cpptable/messageload.go
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(MESSAGE_TEXT_LEG_NC)/messageload.go.txt"}}\n' \
@@ -6165,7 +6166,7 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
 	./$(MESSAGE_TEXT_LEG_NC)/schema generate --lang cpp --out $(MESSAGE_TEXT_LEG_NC)/backend tables/backend
 	awk '/^#include "/ && !/BackendTable\.h/ { next } /^    (FIXED|NOFILE|VARIABLE|MESSAGE|RETAIN)\(/ && !/"backenddemo"/ { next } { print }' test/tables/wire_fuzz_main.cpp > $(MESSAGE_TEXT_LEG_NC)/main.cpp
-	$(CXX) $(TABLES_CXXFLAGS) -O1 -DSCHEMA_WIRE_FUZZ_CONTROL -I$(MESSAGE_TEXT_LEG_NC)/backend -Itest/tables -I$(SERIALIZE) \
+	$(CXX) $(TABLES_CXXFLAGS) -O1 -DNDEBUG -DSCHEMA_WIRE_FUZZ_CONTROL -I$(MESSAGE_TEXT_LEG_NC)/backend -Itest/tables -I$(SERIALIZE) \
 		$(MESSAGE_TEXT_LEG_NC)/main.cpp \
 		$(MESSAGE_TEXT_LEG_NC)/backend/BackendTable.cpp \
 		-o $(MESSAGE_TEXT_LEG_NC)/leg
@@ -6177,6 +6178,9 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	fi
 	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_LEG_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
+	@grep -q "read acceptance differs: the leg says true, the oracle says false" $(MESSAGE_TEXT_LEG_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the planted reader did not demonstrate incorrect acceptance"; \
 		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
 	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
