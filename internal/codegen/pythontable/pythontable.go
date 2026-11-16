@@ -998,7 +998,7 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
-		if !moduleNameOverwritten(plan) {
+		if !moduleNameOverwritten(plan) && !valueNameOverwritesModule(u, plan) {
 			fmt.Fprintf(&b, "from . import %s\n", plan.base)
 			names = append(names, plan.base)
 		}
@@ -1052,6 +1052,17 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	}
 	b.WriteString("]\n")
 	return b.String()
+}
+
+// valueNameOverwritesModule reports whether a constant, enum or flags export
+// from this module has the same public name as the module.
+func valueNameOverwritesModule(u *ir.Unit, plan *filePlan) bool {
+	for _, decl := range valueDecls(fileFor(u, plan.base)) {
+		if valueDeclName(decl) == plan.base {
+			return true
+		}
+	}
+	return false
 }
 
 // moduleNameOverwritten reports whether an exported class or union from a
