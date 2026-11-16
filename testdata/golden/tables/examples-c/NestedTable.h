@@ -591,6 +591,15 @@ static SCHEMA_UNUSED int tabledemo_table_skip_utf8( const uint8_t * p, uint64_t 
 static SCHEMA_UNUSED int tabledemo_table_skip_value( tabledemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
 static SCHEMA_UNUSED int64_t tabledemo_table_skip_body( tabledemo_table_reader_t r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int tabledemo_table_skip_array( tabledemo_table_reader_t * sub, int keyed, int64_t nodes, int depth );
+/* A successfully read payload must claim its whole frame. During the
+   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   semantic failures that stopped the walk earlier still take their own path. */
+static SCHEMA_UNUSED int tabledemo_table_skip_whole( tabledemo_table_reader_t sub, const tabledemo_table_reader_t * read )
+{
+    if ( read->offset == sub.size ) { return 1; }
+    if ( sub.next_ref != NULL ) { *sub.next_ref = UINT64_MAX; }
+    return 0;
+}
 static SCHEMA_UNUSED int tabledemo_table_skip_framed( tabledemo_table_reader_t sub, uint8_t kind, int64_t nodes, int depth )
 {
     switch ( kind )
@@ -608,13 +617,13 @@ static SCHEMA_UNUSED int tabledemo_table_skip_framed( tabledemo_table_reader_t s
         {
             tabledemo_table_reader_t rr = sub;
             if ( !tabledemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return tabledemo_table_skip_whole( sub, &rr );
         }
         default:
         {
             tabledemo_table_reader_t rr = sub;
             if ( !tabledemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return tabledemo_table_skip_whole( sub, &rr );
         }
     }
 }
@@ -822,9 +831,9 @@ static SCHEMA_UNUSED int tabledemo_table_wire_open( tabledemo_table_reader_t * r
         int64_t end;
         order.next_ref = &next_ref;
         end = tabledemo_table_skip_body( order, INT64_MAX - 1, 0, 1 );
-        /* Other damaged payloads still take the semantic reader's named
-           refusal; only identity order and a completely read trailer are
-           judged here. */
+        /* Payloads that stopped early still take the semantic reader's
+           refusal. Judge identity order, unused entries after a complete
+           walk, and unclaimed tails of successfully read frames here. */
         if ( next_ref == UINT64_MAX || (end == order.size && next_ref - 1 != r->id_count) ) {
             report->refused=1; report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
         }
@@ -5281,18 +5290,25 @@ v>>=7;
 }while(v);
 return tabledemo_table_retain_raw(s,b,n);
 }
+/* The node-table ID is forbidden inside a retained payload. Use it only
+   in this private representation to distinguish hash zero from the zero
+   reference (None or a body terminator), without increasing record size. */
 static SCHEMA_UNUSED int tabledemo_table_retain_id(tabledemo_table_retain_in_t * s,uint64_t id)
 {uint8_t b[8];
-tabledemo_table_retain_put64(b,id);
+tabledemo_table_retain_put64(b,id==0?UINT64_MAX:id);
+return tabledemo_table_retain_raw(s,b,8);
+}
+static SCHEMA_UNUSED int tabledemo_table_retain_none(tabledemo_table_retain_in_t * s)
+{uint8_t b[8]={0};
 return tabledemo_table_retain_raw(s,b,8);
 }
 static SCHEMA_UNUSED int tabledemo_table_retain_in_ref(tabledemo_table_retain_in_t * s,int zero)
 {uint64_t ref,id;
 if(!tabledemo_table_reader_leb(&s->input,&ref))return 0;
-if(!ref)return zero&&tabledemo_table_retain_id(s,0);
+if(!ref)return zero&&tabledemo_table_retain_none(s);
 if(ref>s->input.id_count)return 0;
 id=tabledemo_table_reader_id_at(&s->input,ref);
-return id&&!tabledemo_table_retain_reserved(id)&&tabledemo_table_retain_id(s,id);
+return !tabledemo_table_retain_reserved(id)&&tabledemo_table_retain_id(s,id);
 }
 static SCHEMA_UNUSED int tabledemo_table_retain_in_payload(tabledemo_table_retain_in_t *,uint8_t,int32_t);
 static SCHEMA_UNUSED int tabledemo_table_retain_in_content(tabledemo_table_retain_in_t *,uint8_t,int64_t,int32_t);
@@ -5318,7 +5334,7 @@ static SCHEMA_UNUSED int tabledemo_table_retain_in_content(tabledemo_table_retai
  int64_t mark=r->offset;
  uint8_t k;
  if(!tabledemo_table_reader_leb(r,&ref))return 0;
- if(!ref){if(!tabledemo_table_retain_id(s,0))return 0;
+ if(!ref){if(!tabledemo_table_retain_none(s))return 0;
  break;
  }r->offset=mark;
  if(!tabledemo_table_retain_in_ref(s,0)||r->offset>=end)return 0;
@@ -5477,6 +5493,7 @@ if(s->size-s->at<8)return 0;
 id=tabledemo_table_retain_u64(s->input+s->at);
 s->at+=8;
 if(!id)return tabledemo_table_retain_out_leb(s,0);
+if(id==UINT64_MAX)id=0;
 ref=tabledemo_table_retain_ref(s->ids,id,1,&s->overflow);
 return !s->ids->lost&&!s->overflow&&tabledemo_table_retain_out_leb(s,ref);
 }

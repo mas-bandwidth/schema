@@ -10615,8 +10615,7 @@ nothing to walk.
 references means reading the field's inner structure, which the plain read did
 not do: the plain read skipped the whole field by its outer framing and was
 right to. So the walk can meet damage the read never looked at: a reference
-above the id table's entry count, a reference at an id-table entry of ZERO,
-which names no id at all, a reference at one of the three RESERVED ids (§3.1,
+above the id table's entry count, a reference at one of the three RESERVED ids (§3.1,
 §3.3), which would be re-emitted into a nested body where it is malformed, a
 non-canonical length, an inner body whose terminator falls short, and a nested
 `L` that runs past its parent. **Every one of those is
@@ -10628,6 +10627,14 @@ with retention on as with it off: retention can lose a field to its capacity
 or to an excluded class, and it can never change what a read refuses or
 accepts, which is the property that lets a caller switch it on without
 re-reading its own error handling.
+
+An id-table entry whose HASH VALUE is `0` is an ordinary id (§3, §19),
+including inside a retained field. A nonzero reference to that entry resolves
+and re-interns the hash `0` just like any other permitted hash. It is distinct
+from REFERENCE `0`, which names no id and spells a body terminator or an
+enum/union `None` where the grammar admits it. The reader-private retained
+representation must preserve that distinction; hash `0` is neither damage
+nor a reason to drop a retained record.
 
 **THE PATH NAMES THE BODY, and it is the REGION's own address.**
 
@@ -20517,8 +20524,11 @@ index but is not the default still rides. Every align pad bit and the final
 flush's pad bits are zero. A value outside its domain refuses the whole batch
 `invalid_value` (§22.2), and the bit stream never keeps a value's low bits: a
 `flags` mask is the one payload written at a width narrower than its storage
-on purpose, its bits past the writer's own variant count dropped by width, the
-row §3.3 moves for this form. **THE INTEGRITY TRAILER IS PER BATCH** when the
+on purpose, but a held bit past the writer's own variant count is outside the
+message domain: the write refuses it rather than drop it (§3.3). The check
+follows the language's write contract (SPEC.md §5.1); the narrower width does
+not authorize masking a caller's value (docs/rulings.json,
+`message-flags-width-is-caller-error`, Glenn, 2026-11-16). **THE INTEGRITY TRAILER IS PER BATCH** when the
 root declares `integrity` (§2.14): the little-endian CRC-32C of every byte of
 the batch, form byte through the final pad, appended after it. **THE ANNOUNCEMENT IS A
 COMPILE-TIME CONSTANT** (§3.3): a form-`1` file whose body is the build version

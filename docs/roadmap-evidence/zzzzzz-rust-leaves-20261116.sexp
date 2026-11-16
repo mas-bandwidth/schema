@@ -1,0 +1,19 @@
+;; Exact Linux proof of the three remaining Rust variable-table leaves.
+(:id "vt/text-form/rust" :state :done
+ :evidence ("internal/codegen/rusttable/textdifferential_test.go: TestTextDifferentialRust and TestTextDifferentialRustNegativeControl; make tables-rust-json-differential tables-rust-json-differential-negative-control"
+            "test/conformance/rust/src/main.rs: full unrelaxed Rust harness; json-read 108/108, json-write 110/110, json-hostile 155/155, no pending cases; conformance-negative-control-rust-walk and tables-rust-json-hostile-negative-control"
+            "test/rust-hostile/src/main.rs: fixed_ops canonical text digest; make schema-rust-runs-hostile-corpus-negative-control, real release and debug each 192/192 with zero findings or skips")
+ :tested-revision "2fdb3b6d088ec27341f9f209829da420e95987a1"
+ :note "Linux Intel under normal nova-reserve, Go parallelism2 and pinned Rust1.98.1. Every shared JSON row answers without relaxation. Random float text differential: 200 instances at each of two seeds for variable and fixed-shaped legacy value APIs, both oracle directions plus engine text readback; the six-digit float plant is detected. Actual form3 roots use the checked Row-to-value bridge in the shared matrix and hostile runner. The hostile zero/UTF8 omission control has exactly eleven named mismatches; the full walk and fixed-root field-drop controls are detected. This JSON leaf does not claim the separate hand-editable text-form roadmap tasks.")
+(:id "vt/fixed-class/rust" :state :done
+ :evidence ("internal/codegen/rusttable/fixedclass_test.go: TestFixedClassOnTableWireRust; make tables-rust-variable-fixed-class"
+            "internal/codegen/rusttable/fixedroottext_test.go: TestRustFixedRootTextAndCook; internal/codegen/rusttable/fixed_root_form3_test.go: TestRustFixedRootSavesFormThree and its negative control"
+            "test/conformance/rust/src/main.rs: full Rust harness, wire 116/116, report 123/123, JSON 108/108 and 110/110, cook-write 142/142; fixed-roots-verdict permits no absent recipe; fixed-root field-drop control detects root_full")
+ :tested-revision "2fdb3b6d088ec27341f9f209829da420e95987a1"
+ :note "Exact integrated Linux source covers fixed declarations, default/rename evolution, legacy typed form1 APIs and actual form3 root selectors independently. All 21 shared surfaces pass with no pending per-case absences, including feature witnesses and named refusals. The ToolEnvelope nested-union report row now runs instead of being absent, and its production boundary refusal has native plain/retaining and omission controls. Fixed hostile wire-valid is verified by both canonical bytes and decoded text digest in both Rust profiles.")
+(:id "vt/cook-write/rust" :state :done
+ :evidence ("internal/codegen/rusttable/cookwrite_rust_test.go: TestCookWriteRust, all71 manifest rows/142 endian images against Go Cook and committed C++ goldens; make tables-rust-cook-write tables-rust-cook-write-negative-control"
+            "internal/codegen/rusttable/cookwrite_test.go: TestCookWriteCarriesTheExtent; internal/codegen/rusttable/blockbuild_test.go: TestBlockBuildAndCookWriteRust and actual C++ block-open oracle"
+            "test/conformance/rust/src/main.rs: surface_cook_write 142/142, both shared-blob recipe images included with explicit slot identity; full Rust matrix and absence-marker mutation")
+ :tested-revision "2fdb3b6d088ec27341f9f209829da420e95987a1"
+ :note "Linux Intel native probe and actual driver agree with both Go and C++ bytes in both orders, including fixed values, all71 committed recipes, shared table/blob identity, zero dead storage, raw fixed-point and high128-bit witnesses. Native physical-slot sabotage witnesses remain active; planted nonfinite cook output is detected by the named FINITE assertion. That control measured13.70s and is restored to its own pull-request row without increasing timeout or dropping coverage. No cook row remains absent.")
