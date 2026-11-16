@@ -4,6 +4,7 @@
 # Every row runs the full roster, enumerated mutations and the same caller's
 # seed and random count. Separate rows retain complete coverage while allowing
 # the CI planner to schedule the two pins, modes and arms independently.
+PYTHON_WIRE_FUZZ_DIR ?= build/python-wirefuzz
 PYTHON_WIRE_FUZZ_ROWS := $(foreach pin,current floor,$(foreach mode,normal dev,$(foreach arm,plain mixed retain,python-wirefuzz-$(pin)-$(mode)-$(arm))))
 .PHONY: $(PYTHON_WIRE_FUZZ_ROWS)
 python-wirefuzz-ci-list:
@@ -14,10 +15,10 @@ define python_wirefuzz_row
 python-wirefuzz-$(1)-$(2)-$(3): build/conformance-harness build/conformance-python python-toolchain-check
 	@set -eu; \
 	if find build/conformance-python -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
-	mkdir -p build/python-wirefuzz; log=build/python-wirefuzz/$(1)-$(2)-$(3).log; \
+	mkdir -p $(PYTHON_WIRE_FUZZ_DIR); log=$(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3).log; \
 	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(3)),--mixed-builder,$(if $(filter retain,$(3)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(PYTHON),$(PYTHON_FLOOR)) $(if $(filter dev,$(2)),-X dev,) -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python' \
-	  --seed $(SEED) --n $(N) --failed build/python-wirefuzz/$(1)-$(2)-$(3).bin
+	  --seed $(SEED) --n $(N) --failed $(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3).bin
 endef
 $(foreach pin,current floor,$(foreach mode,normal dev,$(foreach arm,plain mixed retain,$(eval $(call python_wirefuzz_row,$(pin),$(mode),$(arm))))))
 
