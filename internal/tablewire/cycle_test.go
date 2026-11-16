@@ -140,33 +140,20 @@ func cyclePatch(t *testing.T, wire []byte, from, to byte) {
 }
 
 // cycleGuardOff clears the one `on = true` byte on the wire, so the guarded
-// slot rides under a FALSE guard; the engine confirms the slot is still
-// stored.
-func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
+// slot rides under a FALSE guard. The forged wire is non-canonical now (`on`
+// at its default rides, docs/rulings.json reads-refuse-non-canonical), so the
+// read refuses it; the cycle through the stored slot is still detected, since
+// the pointer graph runs before any value is decoded.
+func cycleGuardOff(t *testing.T, wire []byte) {
 	t.Helper()
 	for i := 0; i+2 < len(wire); i++ {
 		if wire[i+1] != byte(ir.TableKindBool) || wire[i+2] != 1 {
 			continue
 		}
-		try := append([]byte(nil), wire...)
-		try[i+2] = 0
-		root := m.New(m.Lookup("Node"))
-		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil || report.Refused {
-			continue
-		}
-		left, _ := root.FieldByKey("left")
-		if left.Cell.Node == nil {
-			continue
-		}
-		on, _ := left.Cell.Node.FieldByKey("on")
-		side, _ := left.Cell.Node.FieldByKey("side")
-		if !on.Cell.B && side.Cell.Node != nil {
-			copy(wire, try)
-			return
-		}
+		wire[i+2] = 0
+		return
 	}
-	t.Fatal("no byte turns the guard off with the guarded slot kept")
+	t.Fatal("no `on = true` byte to turn off")
 }
 
 // cycleRead loads one wire on the value and region reads and
@@ -221,11 +208,13 @@ func TestCyclicWireIsDamage(t *testing.T) {
 	cycleRead(t, m, "unreached", unreached, false)
 
 	// root(1) -> A(2), A.side -> L(3) under a guard the wire turns false: the
-	// load still STORES the slot, so the slot is an edge
+	// load still STORES the slot, so the slot is an edge. The forged wire is
+	// refused for the non-canonical `on` at its default; the cycle through the
+	// stored slot is refused by the pointer graph below.
 	guarded := []cycleLink{{0, "left", 1}, {1, "side", 2}}
 	off := cycleEncode(t, m, 3, []int{1}, guarded)
-	cycleGuardOff(t, m, off)
-	cycleRead(t, m, "false guard twin", off, true)
+	cycleGuardOff(t, off)
+	cycleRead(t, m, "false guard twin", off, false)
 	cyclePatch(t, off, 3, 2)
 	cycleRead(t, m, "false guard", off, false)
 }
