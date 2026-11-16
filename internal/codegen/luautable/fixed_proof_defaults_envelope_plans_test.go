@@ -676,11 +676,10 @@ func TestLuauFixedProofGroupD(t *testing.T) {
 // TestLuauFixedProofGroupDNegativeControl breaks each row two ways and requires
 // the gates TestLuauFixedProofGroupD holds green to go red. The FILE: both a
 // corrupted form byte and a flipped first body byte on the last record of the
-// reference's file — the C++ verifier refuses both, and Luau's load either
-// refuses or lands a value the row's want lines and re-save byte gate reject.
-// The WRITER: schema_fixed.luau's save patched to flip the last byte of each
-// record body — Luau's file is no longer the reference's and the C++ verifier
-// refuses it.
+// reference's file — C++ rejects the corrupt form; the equality oracle detects
+// the body change, and Luau's load either refuses or lands a value the row's
+// want lines and re-save byte gate reject. The WRITER flips the last byte of
+// each record body, which the reference equality check must detect.
 func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
