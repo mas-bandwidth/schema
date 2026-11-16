@@ -2,6 +2,7 @@ package pythontable_test
 
 import (
 	"bytes"
+	"maps"
 	"strings"
 	"testing"
 
@@ -32,9 +33,7 @@ var pythonFixedValueSetups = map[string]string{
 }
 
 func init() {
-	for id, setup := range pythonFixedValueSetups {
-		pythonFixedSetups[id] = setup
-	}
+	maps.Copy(pythonFixedSetups, pythonFixedValueSetups)
 	for _, id := range []string{"scalar-bounds", "ordinals", "normalization"} {
 		pythonFixedSetups[id] = ""
 	}
