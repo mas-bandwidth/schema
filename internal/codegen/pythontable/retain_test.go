@@ -49,6 +49,13 @@ other=Node.load_retain(data,short,second)
 assert (second.retained,second.retain_lost)==(9,2)
 size=other.measure_retain(short); dropped=other.save_retain(short,second)
 assert len(dropped)==size and second.retain_lost==11
+bytes_short=TableRetain(bytearray(keep.used-1),bytearray(24*8192)); third=LoadReport()
+short_value=Node.load_retain(data,bytes_short,third)
+assert (third.retained,third.retain_lost)==(8,3)
+short_size=short_value.measure_retain(bytes_short)
+short_out=short_value.save_retain(bytes_short,third)
+assert len(short_out)==short_size and third.retain_lost==3
+Node.load(short_out)
 print('retain-roundtrip')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
