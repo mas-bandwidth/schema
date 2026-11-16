@@ -10,6 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // THE CLOSED ARRAY ELEMENT KINDS (docs/SPEC-TABLES.md §3, §4). An array body
@@ -29,8 +30,7 @@ var sqElementKindVectors = []struct {
 	{"array_elem_reserved_count_0", false},
 	{"array_elem_zero_count_0", false},
 	// Valid element kinds do not make a malformed body readable, and a
-	// mismatch with a declared field is still a strict-load refusal.
-	{"array_elem_kind_mismatch", false},
+	// mismatch with a declared field is checked against that unit below.
 	{"array_elem_terminator_early", false},
 	{"array_elem_L_past_body", false},
 	// READ CONTROLS: element kind 17 is on the array list, at count 0 and at
@@ -124,5 +124,79 @@ func TestSquirrelArrayElementKindsClosed(t *testing.T) {
 	}
 	if seen != len(sqElementKindVectors) {
 		t.Errorf("the probe answered %d loads, want %d", seen, len(sqElementKindVectors))
+	}
+}
+
+// A structurally valid array with a different element kind is judged against
+// the field the receiving schema declares, not against an unrelated unit.
+func TestSquirrelArrayElementKindMatchesDeclaration(t *testing.T) {
+	t.Parallel()
+	sqrun.Require(t)
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "framing", "array_elem_kind_mismatch.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, schema, root, want string }{
+		{"declared_enum", "", "Cfg", "kind_mismatch"},
+		{"matching_i32", "package probe\ntable Cfg { grades [..4]int32 }\n", "Cfg", "ok"},
+		{"widen_i64", "package probe\ntable Cfg { grades [..4]int64 }\n", "Cfg", "ok"},
+		{"unknown_field", "package probe\ntable Cfg { other int32 }\n", "Cfg", "ok"},
+	}
+	dir := t.TempDir()
+	var script strings.Builder
+	script.WriteString(`local inputs = dofile("inputs.nut", true);` + "\n")
+	for _, c := range cases {
+		var u *ir.Unit
+		if c.schema == "" {
+			u = loadUnit(t, root, []string{"test/tables/R1.schema"})
+		} else {
+			u = unitFromSchema(t, c.schema)
+		}
+		files, err := squirrel.Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tables, err := squirreltable.Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, c.name)
+		if err := os.MkdirAll(out, 0755); err != nil {
+			t.Fatal(err)
+		}
+		for n, b := range files {
+			writeFile(t, filepath.Join(out, n), b)
+		}
+		for n, b := range tables {
+			writeFile(t, filepath.Join(out, n), b)
+		}
+		fmt.Fprintf(&script, `{
+ local schema = dofile(%q, true); local T = schema.require(%q); local R = schema.require("schema_table_refusal");
+ local report = {}; local v = R.ReadStrict(T, %q, inputs.wire, report);
+ local result = v == null ? report.reason : "ok";
+ print(%q + " " + result + "\n");
+}`+"\n", c.name+"/schema_module.nut", squirreltable.ModuleName(u), c.root, c.name)
+	}
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script.String()))
+	out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wire})
+	got := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			t.Fatalf("bad result %q", line)
+		}
+		got[fields[0]] = fields[1]
+	}
+	for _, c := range cases {
+		if got[c.name] != c.want {
+			t.Errorf("%s = %q, want %q", c.name, got[c.name], c.want)
+		}
+	}
+	if len(got) != len(cases) {
+		t.Fatalf("got %d results, want %d", len(got), len(cases))
 	}
 }
