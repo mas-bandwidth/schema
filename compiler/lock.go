@@ -69,3 +69,15 @@ func UpdateSchemaLock(u *ir.Unit, paths []string) (path string, rewrote bool, er
 func ImportSchemaLockWriter(u *ir.Unit, paths []string, target string, writer *ir.Unit) (path string, rewrote bool, err error) {
 	return lockfile.ImportWriter(u, paths, target, writer)
 }
+
+// SchemaLockWriterImportOptions opts into the documented trusted historical
+// layout-only import. Default options preserve strict digest validation.
+type SchemaLockWriterImportOptions struct {
+	LegacyLayoutOnly bool
+}
+
+// ImportSchemaLockWriterWithOptions supplies explicit source provenance for a
+// historical layout-only key whose empty digest never bound writer constraints.
+func ImportSchemaLockWriterWithOptions(u *ir.Unit, paths []string, target string, writer *ir.Unit, options SchemaLockWriterImportOptions) (path string, rewrote bool, err error) {
+	return lockfile.ImportWriterWithOptions(u, paths, target, writer, lockfile.WriterImportOptions{LegacyLayoutOnly: options.LegacyLayoutOnly})
+}
