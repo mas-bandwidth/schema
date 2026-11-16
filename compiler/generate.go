@@ -11,7 +11,7 @@ import (
 )
 
 // Options carries the per-target settings a generate request names, keyed by
-// the CLI flag that sets them. The built-in targets read none today; the
+// the CLI flag that sets them. Built-in targets read their documented keys; the
 // door stays open for registered generators. A generator ignores keys it
 // does not know, and an absent or empty value means that target's default;
 // a value it knows but cannot honor is an error, never a silent fallback.
@@ -20,7 +20,10 @@ type Options map[string]string
 // A Generator emits one target language's source for a checked unit. The
 // nine built-in backends reach the driver through this interface and through no
 // other path, so a generator written outside this module is a first-class one:
-// register it on a [Compiler] and `--lang <name>` selects it.
+// register it on a [Compiler] and `--lang <name>` selects it. A generator may
+// optionally implement ValidateOptions(*ir.Unit, Options) error for a preflight
+// check before shared construct refusals; existing implementations need no new
+// method.
 type Generator interface {
 	// Names are the --lang spellings that select this generator; the first is
 	// canonical and is the one [Compiler.Targets] reports. The built-in C#

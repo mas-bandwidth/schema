@@ -40,7 +40,7 @@ func TestPythonSurfaceBehavior(t *testing.T) {
 			}
 			probe := pythonSurfaceProbe(fixed)
 			if selection == "wire" || selection == "fixed" {
-				probe = "" + probe + "\nassert Root.block is None and not hasattr(Root, 'block_row'), 'block descriptor leaked'\n"
+				probe = probe + "\nassert Root.block is None and not hasattr(Root, 'block_row'), 'block descriptor leaked'\n"
 			}
 			dir := t.TempDir()
 			pythonWriterTree(t, dir, files)
@@ -59,7 +59,10 @@ func TestPythonSurfaceBehavior(t *testing.T) {
 			}
 			// Leaking a batch API into wire-only output must be observable at runtime.
 			mutated := maps.Clone(files)
-			const path = "surfaceprobe/Core.py"
+			const path = "surfaceprobe/Probe.py"
+			if _, ok := files[path]; !ok {
+				t.Fatal("control module is absent")
+			}
 			mutated[path] = append(append([]byte{}, files[path]...), []byte("\nRoot.fixed_save = lambda rows: b''\n")...)
 			bad := t.TempDir()
 			pythonWriterTree(t, bad, mutated)
