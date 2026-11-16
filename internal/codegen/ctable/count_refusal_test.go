@@ -366,6 +366,20 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
         CHECK(holder_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused, "count with damaged tail refuses");
     }
 `, cBytes(trailing))
+	// The maximum representable count is not a cap refusal. With only one
+	// entry in its frame it is independently truncated, so both readers must
+	// classify it as wire damage rather than count-over-cap.
+	root, atCap := cCountWire(t, u, "map", 1<<31-1, false)
+	var capReport tabletext.Report
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), atCap, &capReport); ok || !capReport.Refused || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged {
+		t.Fatalf("at-cap short body: ok=%v err=%v report=%+v", ok, err, capReport)
+	}
+	fmt.Fprintf(&body, `
+    {
+        static const uint8_t wire[] = { %s }; TableReport report;
+        CHECK(leaf_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED, "at-cap truncated body is damage");
+    }
+`, cBytes(atCap))
 	// The short collection is malformed, not a storage-cap refusal.
 	root, short := cCountWire(t, u, "map", 1, true)
 	var rep tabletext.Report
