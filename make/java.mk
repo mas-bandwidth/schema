@@ -2597,3 +2597,23 @@ packet-end-java-negative-control: packet-end-java
 	@echo 'packet end Java negative control: a removed end check accepts a trailing byte'
 
 test-java: packet-end-java packet-end-java-negative-control
+
+# Declaration-free transport IDs: run the legal and noncanonical vectors
+# through both public load paths, then plant a bypass of the order check.
+.PHONY: tables-java-transport-id tables-java-transport-id-negative-control
+tables-java-transport-id:
+	@mkdir -p build/java-transport-id
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDFirstUse$$' ./internal/codegen/javatable/ \
+		> build/java-transport-id/positive.log 2>&1 || { cat build/java-transport-id/positive.log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaTransportIDFirstUse ' build/java-transport-id/positive.log || { cat build/java-transport-id/positive.log; exit 1; }
+	@echo 'Java transport IDs: legal and noncanonical vectors matched the Go oracle'
+
+tables-java-transport-id-negative-control: tables-java-transport-id
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDNegativeControl$$' ./internal/codegen/javatable/ \
+		> build/java-transport-id/control.log 2>&1 || { cat build/java-transport-id/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaTransportIDNegativeControl ' build/java-transport-id/control.log || { cat build/java-transport-id/control.log; exit 1; }
+	@echo 'Java transport IDs: bypassing the check makes each malformed identity vector read'
+
+test-java: tables-java-transport-id tables-java-transport-id-negative-control
