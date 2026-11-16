@@ -338,6 +338,12 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
         assert doc.edit([('lookup[0][1]', b'4')]).value.lookup == {"west": 4, "east": 2}
         swapped = doc.edit([('lookup[0][0]', b'"east"'), ('lookup[1][0]', b'"west"')])
         assert swapped.value.lookup == {"east": None, "west": 2}
+        try:
+            doc.edit([('lookup[' + '9' * 5000 + ']', b'null')])
+        except TextError as e:
+            assert e.reason == 'text_edit_conflict'
+        else:
+            raise AssertionError('oversized edit index')
     if stem == "roadmap":
         assert doc.value.schema == 1 and doc.value.root == "schema/goal" and doc.value.count == 2
         assert [n.title for n in doc.value.nodes] == ["First", "Second"]

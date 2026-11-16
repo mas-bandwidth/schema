@@ -371,12 +371,16 @@ def _locate(root: Node, cls: type[Any], parts: list[tuple[str, str]]) -> Node:
                 raise TextError("text_edit_conflict", node.start)
             node, desc = pair[1], field
         else:
-            if node.kind != "list" or int(index) >= len(node.children):
+            try:
+                position = int(index)
+            except ValueError:
+                raise TextError("text_edit_conflict", node.start) from None
+            if node.kind != "list" or position >= len(node.children):
                 raise TextError("text_edit_conflict", node.start)
             if pair_fields is not None:
-                if int(index) > 1:
+                if position > 1:
                     raise TextError("text_edit_conflict", node.start)
-                desc = pair_fields[int(index)]
+                desc = pair_fields[position]
                 pair_fields = None
             elif getattr(desc, "codec", "") == "map":
                 pair_fields = _entry_fields(desc)
@@ -386,7 +390,7 @@ def _locate(root: Node, cls: type[Any], parts: list[tuple[str, str]]) -> Node:
                 desc = None
             else:
                 raise TextError("text_edit_conflict", node.start)
-            node = node.children[int(index)]
+            node = node.children[position]
     return node
 
 
@@ -439,7 +443,10 @@ class Document:
             else:
                 if not path or any(not isinstance(p, (str, int)) or isinstance(p, bool) or p == "" or (isinstance(p, int) and p < 0) for p in path):
                     raise TextError("text_edit_conflict", 0)
-                parts = [(p, "") if isinstance(p, str) else ("", str(p)) for p in path]
+                try:
+                    parts = [(p, "") if isinstance(p, str) else ("", str(p)) for p in path]
+                except ValueError:
+                    raise TextError("text_edit_conflict", 0) from None
             current = _locate(self.root, self._cls, parts)
             if current.kind == "list":
                 raise TextError("text_edit_conflict", current.start)
