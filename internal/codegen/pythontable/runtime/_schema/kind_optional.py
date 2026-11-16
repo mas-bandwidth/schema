@@ -105,8 +105,8 @@ def _read_array(r: Any, fd: FieldDesc, ctx: Any) -> Any:
     if elem_kind != elem.kind:
         raise Refused("kind_mismatch", f"{fd.name} rides element kind {elem_kind}, not {elem.kind}")
     count = sub.varint()
-    if count > fd.bound:
-        raise Refused("count_over_bound", f"{count} elements is past the bound {fd.bound}")
+    if count > fd.bound or (fd.array_kind == 2 and count < fd.array_min):
+        raise Refused("count_over_bound", f"{count} elements is outside [{fd.array_min}, {fd.bound}]")
     values: list[Any] = []
     for _ in range(count):
         values.append(_read_element(sub, elem, ctx))
