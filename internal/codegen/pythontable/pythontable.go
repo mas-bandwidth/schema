@@ -556,7 +556,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 		if !closure[st.Name] {
 			continue
 		}
-		emitTableDescriptor(&b, u, st, true)
+		emitTableDescriptor(&b, u, st, true, surfaces)
 		if surfaces.Block {
 			emitValueBlockRow(&b, u, st)
 		}
@@ -589,6 +589,10 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 		emitTable(&b, u, st, surfaces)
 		if surfaceCarries(surfaces, st, "block") {
 			emitBlockDescriptors(&b, u, st, blocks)
+		} else if surfaces.Block {
+			// A table excluded as a block root may still be a by-value child
+			// of an included root. Keep its row layout for that enclosing block.
+			emitBlockDescriptors(&b, u, st, nil)
 		} else {
 			fmt.Fprintf(&b, "%s.block = None\n\n", st.Name)
 		}
@@ -777,7 +781,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 	if surfaces.TextForm && surfaceCarries(surfaces, st, "json") {
 		b.WriteString("    @classmethod\n    def from_text_form(cls, text: bytes, *, max_bytes: int = 0, max_tokens: int = 0, max_nodes: int = 0, max_allocation: int = 0, max_depth: int = 0) -> _s_TextDocument:\n        return _s_read_text_form(cls, text, _s_TextLimits(max_bytes, max_tokens, max_nodes, max_allocation, max_depth))\n\n\n")
 	}
-	emitTableDescriptor(b, u, st, false)
+	emitTableDescriptor(b, u, st, false, surfaces)
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
@@ -873,7 +877,7 @@ func pythonJSONKey(key string) string {
 // hosted from the packet core: it registers by name, because a packet type by
 // value never rides the node table's type ids, and its class is the packet
 // core's.
-func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool) {
+func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool, surfaces Surfaces) {
 	name := st.Name
 	variable := false
 	if !valueClass {
@@ -887,10 +891,8 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    json_array=%s,\n", pyBool(st.JsonArray))
 	if !valueClass {
 		var forms []string
-		for _, form := range []string{"wire", "json", "block", "cook"} {
-			if st.CarriesForm(form) {
-				forms = append(forms, strconv.Quote(form))
-			}
+		for _, form := range surfaceForms(surfaces, st) {
+			forms = append(forms, strconv.Quote(form))
 		}
 		if len(forms) == 1 {
 			forms[0] += ","
@@ -1514,6 +1516,7 @@ func packageInit(u *ir.Unit, plans []*filePlan, surfaces Surfaces) string {
 	if surfaces.Fixed {
 		names = append(names, "FixedLoadReport")
 	}
+
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
