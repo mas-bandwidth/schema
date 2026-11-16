@@ -12284,8 +12284,9 @@ inline bool PaddedFrameCookBody( uint8_t * at, const PaddedFrame & value, TableB
 {
     table_cook_put( at + 0, (uint64_t) value.marker, 1, order );
     table_cook_put( at + 8, (uint64_t) value.stamp, 8, order );
-    // all 64 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 64; i++ )
+    // 64 slots of storage, value.rows_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.rows_count; i++ )
     {
         if ( !PaddedRowCookBody( at + 16 + i * 64, value.rows[i], order ) ) { return false; }
     }
