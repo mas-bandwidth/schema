@@ -25,6 +25,8 @@ table-base64-python-negative-control: python-toolchain-check build/table-base64/
 	@rm -rf build/table-base64/python-control
 	@cp -R build/table-base64/python build/table-base64/python-control
 	@sed -i 's/if base64.b64encode(raw).decode("ascii") != value:/if False:/' build/table-base64/python-control/base64test/_schema/json_table.py
-	@if build/table-base64/harness $(PYTHON) -I -B test/table-base64/python/driver.py build/table-base64/python-control > build/table-base64/python-control.log 2>&1; then cat build/table-base64/python-control.log; echo 'base64 control unexpectedly passed'; exit 1; fi
-	@grep -q 'padding-//==' build/table-base64/python-control.log || { cat build/table-base64/python-control.log; exit 1; }
+	@for python in "$(PYTHON)" "$(PYTHON_FLOOR)"; do \
+	  if build/table-base64/harness "$$python" -I -B test/table-base64/python/driver.py build/table-base64/python-control > build/table-base64/python-control.log 2>&1; then cat build/table-base64/python-control.log; echo 'base64 control unexpectedly passed'; exit 1; fi; \
+	  grep -q 'padding-//==' build/table-base64/python-control.log || { cat build/table-base64/python-control.log; exit 1; }; \
+	done
 	@echo 'base64 noncanonical control failed by name'
