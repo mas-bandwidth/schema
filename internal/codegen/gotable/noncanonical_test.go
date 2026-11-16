@@ -62,7 +62,9 @@ func TestGoReadsRefuseNonCanonical(t *testing.T) {
 			continue
 		}
 		canonical := ""
-		if cols[0] == "variable-fields-out-of-order.bin" {
+		if cols[1] == "variable" && (cols[2] == "field-at-default" || cols[2] == "explicit-null-pointer" || cols[2] == "union-arm-zero") {
+			canonical = filepath.Join(vectors, "canonical", cols[0])
+		} else if cols[0] == "variable-fields-out-of-order.bin" {
 			canonical = filepath.Join(vectors, "variable-canonical.bin")
 		}
 		u.rows = append(u.rows, fmt.Sprintf("{name: %q, path: %q, form: %q, canonicalPath: %q, read: %v, resave: %v, wireAlone: %v},", cols[0], path, cols[1], canonical, cols[3] == "read", cols[3] == "read", nonCanonicalWireAlone[cols[2]]))

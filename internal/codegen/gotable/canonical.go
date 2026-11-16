@@ -55,11 +55,12 @@ func enumVariantDefault(f *ir.Field, expr string, elide bool, sink, onBad string
 	return ""
 }
 
-// keyedSlotOpen holds a known keyed slot to ascending variant order and, for
-// an element that is not a table, opens its sink (§3.2): the writer writes
-// slots by ordinal and elides one at its default.
+// keyedSlotOpen opens a known non-table keyed slot's default sink (§3.2).
+// A file cannot establish the writer's enum order; duplicate keys and
+// first-use ids are checked independently. Slot elision is unconditional,
+// including under a Required field, unlike whole-field elision.
 func keyedSlotOpen(table bool, ind, stop string) string {
-	open := fmt.Sprintf("%sif int(slot) <= lastSlot { %s }; lastSlot = int(slot)\n", ind, stop)
+	open := ""
 	if !table {
 		open += ind + "slotDefault := true\n"
 	}
@@ -142,22 +143,9 @@ func quantizedMessageFloat(f *ir.Field) bool {
 	return f.Type.Kind == ir.TFloat32 && f.HasFloatRange
 }
 
-// emitElidedRefusal refuses a field read whose value is the one its writer
-// elides (docs/SPEC-TABLES.md §3, §4), for every field shape whose stored value
-// says so exactly: the writer's own ride test (emitFieldRides) on the value
-// read. The shapes whose stored value cannot say it — an enum (an unknown or a
-// deprecated variant lands None or the default), a pointer (a record of a type
-// this reader cannot name lands null), a union (an unknown arm lands None), a
-// nested table, a keyed array, a list, a map, unbounded text and an array of
-// enums, unions or pointers — are refused where their emitter reads the wire
-// (g.elides, g.sink).
-func (g *tableGen) emitElidedRefusal(f *ir.Field, expr, ind string) {
-	g.emitElidedRefusalWhen(f, expr, ind, "")
-}
-
-// emitElidedRefusalWhen is emitElidedRefusal under a condition the read
-// decides at run time, the message form's same build version; "" for none,
-// which is the variable form. A message read holds no quantized float to it.
+// emitElidedRefusalWhen checks a message field under the same announced
+// shape and build, where the writer's elision facts are known. Variable files
+// carry no such declaration and never call this helper.
 func (g *tableGen) emitElidedRefusalWhen(f *ir.Field, expr, ind, when string) {
 	switch {
 	case f.Required || f.Type.Optional, f.IsList(), f.IsMap(), f.KeyEnum != "", f.Type.TextUnbounded():

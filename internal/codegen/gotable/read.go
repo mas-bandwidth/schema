@@ -92,16 +92,15 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.retainOrdinal = ordinal
 		kind := ir.TableWireFieldKind(f)
 		g.pf("\t\tcase 0x%016x: // %s\n", ir.TableFieldWireId(f), f.Name)
-		// a field at the default its writer elides is refused (canonical.go)
-		elides := !f.Type.Optional && !f.Required
+		// Form 1 does not carry the writer's Required/optional declaration.
+		// Lawful removal of either marker may leave an explicit default.
 		g.pf("\t\t\tif kind != %d {\n", kind)
 		if wireWidenable(kind) {
 			// Widening lives in the mismatch arm so a matching kind reads a
 			// constant width (docs/SPEC-TABLES.md §4).
 			g.pf("\t\t\t\tif tableKindWidens(kind, %d) {\n", kind)
-			g.elides = elides
+			g.elides = false
 			g.emitReadScalar(f, "value."+member(f), "r", "kind", "\t\t\t\t\t", damaged+"; return false")
-			g.emitElidedRefusal(f, "value."+member(f), "\t\t\t\t\t")
 			if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
 				g.pf("\t\t\t\t\tr.Report.Widened++\n")
 			}
@@ -118,10 +117,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// load (docs/SPEC-TABLES.md §4); kinds 31 and 32 take the same rule.
 		g.pf("\t\t\t\t%s\n", refuse("TableRefuseKindMismatch", g.floatOwner(f), "return false"))
 		g.pf("\t\t\t}\n")
-		g.elides = elides
+		g.elides = false
 		g.emitReadField(f, "\t\t\t")
 		g.elides = false
-		g.emitElidedRefusal(f, "value."+member(f), "\t\t\t")
 		if f.Type.Optional {
 			g.pf("\t\t\tvalue.%sPresent = true\n", member(f))
 		}
@@ -288,7 +286,7 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		if elide { // a keyed array with no slot riding elides (canonical.go)
 			g.pf("%sif count == 0 { %s }\n", i, stop)
 		}
-		g.pf("%svar keySeen [64]byte\n%svar keySeenHigh map[uint64]struct{}\n%slastSlot := 0\n", i, i, i)
+		g.pf("%svar keySeen [64]byte\n%svar keySeenHigh map[uint64]struct{}\n", i, i)
 		g.pf("%sfor range count {\n", i)
 		j := i + "\t"
 		g.pf("%skeyRef, ok := sub.Leb(); if !ok { %s }\n", j, stop)
