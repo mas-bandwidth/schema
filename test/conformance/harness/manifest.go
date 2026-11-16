@@ -252,8 +252,11 @@ type AnnounceGrown struct {
 // connection's announcement was refused as damage (docs/SPEC-TABLES.md §3.3).
 const AnnouncementMalformed = "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)"
 
-// GrowIdTable returns the form 1 file with its id table padded to n entries,
-// each added id one the table does not already carry and below the three
+// GrowIdTable grows a form 1 announcement to n ids. Each new id is used by
+// an unknown uint8 field before the root terminator, so the boundary positive
+// retains first-use order and has no unused trailer entries. It preserves
+// the original fields and ids. Each added id is absent from the original
+// table and below the three
 // reserved ids at the top of the range (splitmix64 of a counter, so the bytes
 // are a pure function of the file and n). With repeat, the last entry is set
 // to the first, which makes the table name one id twice.
@@ -269,7 +272,12 @@ func GrowIdTable(file []byte, n int, repeat bool) ([]byte, error) {
 	for i := range k {
 		have[binary.LittleEndian.Uint64(file[len(file)-8-8*(k-i):])] = true
 	}
-	out := bytes.Clone(file[:len(file)-8])
+	entriesAt := len(file) - 8*(k+1)
+	if entriesAt < 2 || file[entriesAt-1] != 0 {
+		return nil, fmt.Errorf("the announcement root has no final terminator")
+	}
+	body := bytes.Clone(file[:entriesAt-1])
+	ids := bytes.Clone(file[entriesAt : len(file)-8])
 	for x := uint64(1); k < n; x++ {
 		z := x * 0x9E3779B97F4A7C15
 		z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
@@ -279,13 +287,16 @@ func GrowIdTable(file []byte, n int, repeat bool) ([]byte, error) {
 			continue
 		}
 		have[z] = true
-		out = binary.LittleEndian.AppendUint64(out, z)
+		ids = binary.LittleEndian.AppendUint64(ids, z)
 		k++
+		body = binary.AppendUvarint(body, uint64(k))
+		body = append(body, 6, 1) // kind uint8, nondefault value
 	}
 	if repeat {
-		first := len(out) - 8*n
-		copy(out[len(out)-8:], out[first:first+8])
+		copy(ids[len(ids)-8:], ids[:8])
 	}
+	out := append(body, 0)
+	out = append(out, ids...)
 	return binary.LittleEndian.AppendUint64(out, uint64(n)), nil
 }
 

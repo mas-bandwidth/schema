@@ -1,6 +1,7 @@
 package jstable
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -14,12 +15,10 @@ import (
 
 // TestJsReadsRefuseNonCanonicalBoundaries holds the JavaScript variable read to
 // the neighbouring clauses of docs/SPEC-TABLES.md §3, §3.1, §3.2 and §4: an
-// explicit null on a non-required pointer is refused while a required one and
-// an array element stay lawful; an all-default fixed array elides while one of
-// tables keeps its elements; keyed slots rise by ordinal and a named slot at
-// its default elides; and the id table is first use, 1..N, with no hole and no
-// later permutation. A canonical boundary wire reads and re-saves byte for
-// byte; every other wire refuses the whole load.
+// explicit null and all-default arrays read as values a historical required
+// writer could have emitted, then re-save canonically; keyed slots may follow
+// a historical enum order but a slot at its default is refused; duplicate and
+// unused IDs refuse, and first-use order is 1..N with no hole or permutation.
 func TestJsReadsRefuseNonCanonicalBoundaries(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -49,6 +48,8 @@ table ReqRoot {
     p *Leaf | required
     u Pick | required
 }
+
+table RequiredKeyed { keyed [Slot]int32 | required }
 
 table VarContainers {
     fixed_ints [2]int32
@@ -91,16 +92,17 @@ table Hole {
 	}
 
 	type row struct {
-		Name string `json:"name"`
-		Root string `json:"root"`
-		Read bool   `json:"read"`
+		Name      string `json:"name"`
+		Root      string `json:"root"`
+		Read      bool   `json:"read"`
+		Canonical string `json:"canonical"`
 	}
 	var rows []row
 	files := map[string][]byte{}
 	add := func(name, root string, read bool, wire []byte) {
 		t.Helper()
 		files[name] = wire
-		rows = append(rows, row{Name: name, Root: root, Read: read})
+		rows = append(rows, row{Name: name, Root: root, Read: read, Canonical: hex.EncodeToString(wire)})
 	}
 
 	// A canonical array holds a null element; position is identity there.
@@ -113,9 +115,8 @@ table Hole {
 	// A fixed array of tables keeps its elements by position, all-default too.
 	add("fixed-tables.bin", "FixedSubs", true, canonicalDefault("FixedSubs"))
 
-	// A non-required pointer written null, beside a node table a real pointer
-	// still reaches: refused where the field is read, not deferred to resolve.
-	add("explicit-null.bin", "PtrRoot", false, nonCanonicalWire(
+	// A historical required pointer may write null beside a reachable node.
+	add("explicit-null.bin", "PtrRoot", true, nonCanonicalWire(
 		[]byte{
 			0x01, byte(ir.TableKindPointer), 0x02,
 			0x02, byte(ir.TableKindPointer), 0x00,
@@ -131,8 +132,8 @@ table Hole {
 		ir.TableWireId("v"),
 	))
 
-	// A fixed array of scalars stored at all-default elides as a field.
-	add("fixed-default.bin", "VarContainers", false, nonCanonicalWire(
+	// A historical required fixed array may write all-default elements.
+	add("fixed-default.bin", "VarContainers", true, nonCanonicalWire(
 		[]byte{
 			0x01, byte(ir.TableKindArray), 0x0a,
 			byte(ir.TableKindI32), 0x02,
@@ -142,8 +143,8 @@ table Hole {
 		ir.TableWireId("fixed_ints"),
 	))
 
-	// Keyed slots arrive B before A: not ascending by variant ordinal.
-	add("keyed-order.bin", "VarContainers", false, nonCanonicalWire(
+	// A historical writer whose enum declared B before A writes this order.
+	add("keyed-order.bin", "VarContainers", true, nonCanonicalWire(
 		[]byte{
 			0x01, byte(ir.TableKindKeyed), 0x0e,
 			byte(ir.TableKindI32), 0x02,
@@ -165,6 +166,11 @@ table Hole {
 		ir.TableWireId("keyed"),
 		ir.TableWireId("A"),
 	))
+
+	// Slot-default elision is independent of the field's Required flag.
+	add("required-keyed-default.bin", "RequiredKeyed", false, nonCanonicalWire(
+		[]byte{1, byte(ir.TableKindKeyed), 8, byte(ir.TableKindI32), 1, 2, 4, 0, 0, 0, 0},
+		ir.TableWireId("keyed"), ir.TableWireId("A")))
 
 	// An id-table entry no reference names, in the middle: first use is 1, 3, 4.
 	add("id-hole.bin", "Hole", false, nonCanonicalWire(
@@ -190,6 +196,28 @@ table Hole {
 		ir.TableWireId("c"),
 		ir.TableWireId("b"),
 	))
+
+	// Field references and table identities remain unique even though field
+	// ordering is relative to the writer's declaration.
+	add("duplicate-field.bin", "Hole", false, nonCanonicalWire(
+		[]byte{1, byte(ir.TableKindI32), 1, 0, 0, 0, 1, byte(ir.TableKindI32), 2, 0, 0, 0}, ir.TableWireId("a")))
+	add("unused-id.bin", "Hole", false, nonCanonicalWire(
+		[]byte{1, byte(ir.TableKindI32), 1, 0, 0, 0}, ir.TableWireId("a"), ir.TableWireId("unused")))
+	add("duplicate-id.bin", "Hole", false, nonCanonicalWire(
+		[]byte{1, byte(ir.TableKindI32), 1, 0, 0, 0, 2, byte(ir.TableKindI32), 2, 0, 0, 0}, ir.TableWireId("a"), ir.TableWireId("a")))
+
+	// These spellings may have come from a Required/optional writer. The
+	// current writer elides the values, so their canonical resave differs.
+	for i := range rows {
+		switch rows[i].Name {
+		case "explicit-null.bin":
+			rows[i].Canonical = hex.EncodeToString(canonical("PtrRoot", `{"a":{"v":7}}`))
+		case "keyed-order.bin":
+			rows[i].Canonical = hex.EncodeToString(canonical("VarContainers", `{"keyed":{"A":3,"B":4}}`))
+		case "fixed-default.bin":
+			rows[i].Canonical = hex.EncodeToString(canonicalDefault("VarContainers"))
+		}
+	}
 
 	tree := generatedTree(u)
 	module := moduleExporting(t, tree, "export function PtrRootLoad(")
@@ -228,7 +256,7 @@ for (const row of rows) {
     if (row.read) {
       if (value === null || report.err() !== null) { fail(row.name + " read"); continue; }
       const saved = save(value);
-      if (!bytesEq(saved, wire)) { fail(row.name + " save"); }
+      if (!bytesEq(saved, new Uint8Array(Buffer.from(row.canonical, "hex")))) { fail(row.name + " save"); }
       if (kept === null || retainReport.err() !== null) { fail(row.name + " retain"); }
     } else if (value !== null || report.err() === null || kept !== null || retainReport.err() === null) {
       fail(row.name + " refused");
