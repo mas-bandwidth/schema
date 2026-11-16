@@ -1304,6 +1304,7 @@ function _M.WriteProbeSample(stream: any, v: any): boolean
   if type(v.Active) ~= "boolean" then return false end
   BOOL.value = v.Active
   if not stream:serializeBool(BOOL) then return false end -- SPEC §4.3
+  if v.Orientation ~= v.Orientation or v.Orientation < -180.0 or v.Orientation > 180.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end -- the step index (SPEC §4.3)
   if type(v.RawDelta) ~= "number" or v.RawDelta % 1 ~= 0 or v.RawDelta < -2147483648 or v.RawDelta > 2147483647 then return false end
   BITS.value = v.RawDelta % 4294967296
@@ -1563,6 +1564,7 @@ function _M.WriteTestData(stream: any, v: any): boolean
     if not stream:serializeBits(BITS, 8) then return false end -- the offset from min (SPEC §4.3)
   end
   if not stream:serializeFloat({ value = v.FloatValue }) then return false end
+  if v.CompressedFloatValue ~= v.CompressedFloatValue or v.CompressedFloatValue < 0.0 or v.CompressedFloatValue > 10.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
   if type(v.Int8Value) ~= "number" or v.Int8Value % 1 ~= 0 or v.Int8Value < -128 or v.Int8Value > 127 then return false end
@@ -1608,7 +1610,9 @@ _M.CompressedProbeMaxBytes = 8
 -- WriteCompressedProbe writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteCompressedProbe(stream: any, v: any): boolean
+  if v.Boundary ~= v.Boundary or v.Boundary < 0.0 or v.Boundary > 10.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Boundary }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  if v.Offset ~= v.Offset or v.Offset < -5.0 or v.Offset > 5.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Offset }, -5.0, 5.0, 0.001) then return false end -- the step index (SPEC §4.3)
   return true
 end
