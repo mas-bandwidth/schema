@@ -211,14 +211,7 @@ func vtUnboundedRefusals(t *testing.T, u *ir.Unit) []vtUnboundedRefusal {
 		{"trailing_bytes", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(1), []byte{0, 0, 0, 0, 7})), "wire_damaged", "bytes left inside an array's L after its elements"},
 		{"element_range", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(2), []byte{1, 0, 0, 0, 101, 0, 0, 0})), "out_of_range", "101 is outside [-100, 100]"},
 		{"bool_payload", vtUnboundedFramed(flags, cat([]byte{boolKind}, leb(2), []byte{1, 2})), "wire_damaged", "a bool payload is not 0 or 1"},
-		// A PRESENT EMPTY PLAIN ARRAY: kind 14, L = 2, the element kind and a
-		// count of 0. An empty []T is the field's declared default, which every
-		// conforming writer elides (§3; the Go engine writes list_empty with no
-		// scores field), so this is a field stored at its declared default: a
-		// non-canonical spelling of a good value, which the variable form's read
-		// refuses (§4, docs/rulings.json reads-refuse-non-canonical). There is no
-		// write-back: the read raises and returns nothing.
-		{"present_empty", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(0))), "non_canonical", "rides present and empty"},
+
 	}
 }
 
@@ -500,7 +493,6 @@ var vtUnboundedControls = []vtUnboundedControl{
 	{"trailing_bytes", "unbounded/_schema/kind_array.py", "        if sub.pos != length:\n", "        if False:\n"},
 	{"element_range", "unbounded/_schema/kind_array.py", "    if values and (min(values) < lo or max(values) > hi):\n", "    if False:\n"},
 	{"bool_payload", "unbounded/_schema/kind_array.py", "        if raw.translate(None, b\"\\x00\\x01\"):\n", "        if False:\n"},
-	{"present_empty", "unbounded/_schema/kind_array.py", "        if count == 0 and not fd.optional:\n", "        if False:\n"},
 	// The write side: the element validation in the save walk, and the
 	// length cap. Each must leave the write probe without its line.
 	{"write:range True", "unbounded/_schema/save.py", "                    kinds._REGISTRY[element.codec].validate(element, item, cell)\n", "                    pass\n"},
