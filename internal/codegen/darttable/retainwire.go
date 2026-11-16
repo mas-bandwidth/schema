@@ -604,6 +604,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.refuse('wire_damaged'); retain.reset(); return %s(); }\n", n)
+	g.pf("\tif (verdict == 0 && r.wireIdOrderBad()) { r.report.refuse('wire_damaged'); retain.reset(); return %s(); }\n", n)
 	g.pf("\ttry {\n")
 	g.pf("\t\tr.scanNodeTable();\n")
 	g.pf("\t\tr.pos = 1;\n")
