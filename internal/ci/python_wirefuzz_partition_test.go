@@ -28,7 +28,9 @@ func TestPythonCIWireFuzzPartitionCoverage(t *testing.T) {
 	for _, pin := range []string{"current", "floor"} {
 		for _, mode := range []string{"normal", "dev"} {
 			for _, arm := range []string{"plain", "mixed", "retain"} {
-				want["python-wirefuzz-"+pin+"-"+mode+"-"+arm] = 0
+				for _, shard := range []string{"0", "1"} {
+					want["python-wirefuzz-"+pin+"-"+mode+"-"+arm+"-shard-"+shard] = 0
+				}
 			}
 		}
 	}

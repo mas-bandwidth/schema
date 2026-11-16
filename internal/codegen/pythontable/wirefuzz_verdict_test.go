@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -110,15 +109,26 @@ func TestPythonWireFuzzCIPartition(t *testing.T) {
 }
 
 func wireFuzzPartitionIssue(rows, support []string) string {
-	if len(rows) != 12 {
-		return fmt.Sprintf("wire-fuzz partition has %d rows, want 12", len(rows))
+	count := func(values []string, want string) int {
+		n := 0
+		for _, value := range values {
+			if value == want {
+				n++
+			}
+		}
+		return n
+	}
+	if len(rows) != 24 {
+		return fmt.Sprintf("wire-fuzz partition has %d rows, want 24", len(rows))
 	}
 	for _, pin := range []string{"current", "floor"} {
 		for _, mode := range []string{"normal", "dev"} {
 			for _, arm := range []string{"plain", "mixed", "retain"} {
-				row := "python-wirefuzz-" + pin + "-" + mode + "-" + arm
-				if !slices.Contains(rows, row) || !slices.Contains(support, row) {
-					return "missing wire-fuzz support row " + row
+				for _, shard := range []string{"0", "1"} {
+					row := "python-wirefuzz-" + pin + "-" + mode + "-" + arm + "-shard-" + shard
+					if count(rows, row) != 1 || count(support, row) != 1 {
+						return "missing or duplicate wire-fuzz support row " + row
+					}
 				}
 			}
 		}
@@ -140,7 +150,7 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	anchor := "foreach arm,plain mixed retain,"
-	if strings.Count(string(src), anchor) != 2 {
+	if strings.Count(string(src), anchor) != 3 {
 		t.Fatal("wire-fuzz partition control anchor changed")
 	}
 	planted := strings.ReplaceAll(string(src), anchor, "foreach arm,plain mixed,")
@@ -159,7 +169,7 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 		}
 		return strings.Fields(string(out))
 	}
-	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != "wire-fuzz partition has 8 rows, want 12" {
+	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != "wire-fuzz partition has 16 rows, want 24" {
 		t.Fatalf("partition fault escaped: %q", issue)
 	}
 }
