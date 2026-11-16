@@ -603,11 +603,10 @@ func messageStructuralSpellings(unit *ir.Unit, root *ir.Struct, announcement, ba
 	defer func() {
 		if err != nil {
 			shapes = nil
-            if unsupported, ok := errors.AsType[*sharedMessageUnsupported](err); ok {
-                unsupported.PrefixShapes = maps.Clone(completed)
-            } else {
-                err = &sharedMessageDamage{Cause: err, PrefixShapes: maps.Clone(completed)}
-            }
+			if unsupported, ok := errors.AsType[*sharedMessageUnsupported](err); ok {
+				unsupported.PrefixShapes = maps.Clone(completed)
+			} else {
+				err = &sharedMessageDamage{Cause: err, PrefixShapes: maps.Clone(completed)}
 			}
 		}
 	}()

@@ -328,9 +328,23 @@ func TestSharedFixturesCanonical(t *testing.T) {
 		if e != nil {
 			if _, ok := errors.AsType[*sharedMessageUnsupported](e); ok {
 				t.Errorf("%s unsupported message: %v", p[0], e)
-			} else if _, ok := errors.AsType[*sharedMessageDamage](e); ok {
-				counts["damaged-message-unclassified"]++
-				t.Logf("message damage %s: %v", p[0], e)
+			} else if damage, ok := errors.AsType[*sharedMessageDamage](e); ok {
+				// These two named damage witnesses have independently pinned
+				// complete prefixes; the remainder is not frameable.
+				switch p[0] {
+				case "message_bytes_truncated":
+					if len(damage.PrefixShapes) != 1 || !damage.PrefixShapes["same-build-unknown-field"] {
+						t.Errorf("%s: certified prefix=%v", p[0], damage.PrefixShapes)
+					}
+				case "message_bytes_truncated_isolated":
+					if len(damage.PrefixShapes) != 0 {
+						t.Errorf("%s: certified prefix=%v", p[0], damage.PrefixShapes)
+					}
+				default:
+					t.Errorf("%s: unclassified message damage: %v", p[0], e)
+				}
+				counts["damaged-message-boundary"]++
+				t.Logf("message damage %s: prefix=%v; %v", p[0], damage.PrefixShapes, e)
 			} else {
 				t.Errorf("%s: %v", p[0], e)
 			}
