@@ -657,34 +657,29 @@ func (w *tableCookWriter) header(data, nodes, align int64) {
 	w.put(32, uint64(nodes)*16, 8)
 	w.put(40, uint64(align), 8)
 }
-func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
+
+// A branch guard controls numbering; inline storage still writes its value.
+func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, reached bool) bool {
 	for i := range t.Fields {
 		f := &t.Fields[i]
-		rides := live && tableJSONGuardHolds(p, t, f.Guard)
-		if f.Optional {
-			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
-		}
+		rides := reached && tableJSONGuardHolds(p, t, f.Guard)
 		if !w.field(p, f, at, rides) {
 			return false
 		}
 	}
 	return true
 }
-func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
-	if !live {
-		return true
-	}
+func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, reached bool) bool {
 	p := unsafe.Add(base, f.Offset)
 	dest := at + int64(f.CookOffset)
 	if f.Optional {
-		v := uint64(0)
-		if *(*bool)(unsafe.Add(base, f.PresentOffset)) {
-			v = 1
+		if !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
+			return w.empty(base, f)
 		}
-		w.put(at+int64(f.CookPresentOffset), v, 1)
+		w.put(at+int64(f.CookPresentOffset), 1, 1)
 	}
 	if f.List || f.Map {
-		return w.container(p, f, dest, live)
+		return w.container(p, f, dest, reached)
 	}
 	count := int32(1)
 	used := int32(1)
@@ -705,21 +700,18 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	}
 	if f.IsArray {
 		count = f.ArrayBound
-		if !f.Counted {
-			used = count
+		if f.Counted {
+			count = used
 		}
 	}
 	for i := int32(0); i < count; i++ {
-		if !w.value(unsafe.Add(p, int64(i)*int64(f.ElemSize)), f, dest+int64(i)*int64(f.CookElemSize), live && i < used) {
+		if !w.value(unsafe.Add(p, int64(i)*int64(f.ElemSize)), f, dest+int64(i)*int64(f.CookElemSize), reached) {
 			return false
 		}
 	}
 	return true
 }
-func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
-	if !live {
-		return true
-	}
+func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, reached bool) bool {
 	if f.Pointer {
 		return w.reference((*int64)(p), at)
 	}
@@ -733,10 +725,10 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		if tag == 0 || u.Arms[tag].Void {
 			return true
 		}
-		return w.field(p, &u.Arms[tag].Field, at, live)
+		return w.field(p, &u.Arms[tag].Field, at, reached)
 	}
 	if f.Table != nil {
-		return w.record(p, f.Table(), at, live)
+		return w.record(p, f.Table(), at, reached)
 	}
 	width := f.CookElemSize
 	if width == 16 {
@@ -794,7 +786,8 @@ func (w *tableCookWriter) reference(slot *int64, at int64) bool { return *slot =
 func (w *tableCookWriter) container(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
 	return false
 }
-func TableEntityCookMeasure(value *TableEntity) int64 { return 144 }
+func (w *tableCookWriter) empty(base unsafe.Pointer, f *TableFieldInfo) bool { return true }
+func TableEntityCookMeasure(value *TableEntity) int64                        { return 144 }
 func TableEntityCookMeasureReason(value *TableEntity) (int64, error) {
 	return TableEntityCookMeasure(value), nil
 }
