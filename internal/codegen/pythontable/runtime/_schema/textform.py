@@ -110,7 +110,7 @@ def _record(cls: Any, node: Node, pointer: bool, labels: dict[str, str]) -> str:
 def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
     codec = field.codec
     if node.kind == "null":
-        if codec in ("optional", "pointer", "string_blob", "bytes_blob"):
+        if codec in ("optional", "text_optional", "pointer", "string_blob", "bytes_blob"):
             return "null"
         _fail("text_kind_mismatch", node)
     if codec == "optional":
@@ -200,17 +200,21 @@ def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
         if (field.array_kind == 1 and count != field.bound) or (field.array_kind != 3 and count > field.bound) or (field.array_kind == 2 and count < field.array_min):
             _fail("text_bound", node)
         element = _array_element(field)
-        if field.json_text_list:
+        if field.json_text_list and element.codec == "table":
             cls = by_name(element.target)
             if cls is None:
                 _fail("text_kind_mismatch", node)
             element = cls.descriptor.fields[0]
+        total = getattr(field, "text_total", 0)
+        if total and element.codec in ("string", "text_optional"):
+            if sum(len(child.value.encode("utf-8")) for child in node.children if child.kind == "string") > total:
+                _fail("text_bound", node)
         return '[' + ','.join(_value(element, child, labels) for child in node.children) + ']'
     if codec == "bool":
         if node.kind not in ("true", "false"):
             _fail("text_kind_mismatch", node)
         return node.value
-    if codec in ("string", "string_blob", "bytes", "bytes_blob") or field.kind == 36:
+    if codec in ("string", "text_optional", "string_blob", "bytes", "bytes_blob") or field.kind == 36:
         if node.kind != "string":
             _fail("text_kind_mismatch", node)
         if codec in ("bytes", "bytes_blob"):
@@ -223,7 +227,7 @@ def _value(field: FieldDesc, node: Node, labels: dict[str, str]) -> str:
             size = len(decoded)
         else:
             size = len(node.value.encode("utf-8"))
-        if codec in ("string", "bytes") and not getattr(field, "unbounded", False) and size > field.size:
+        if codec in ("string", "text_optional", "bytes") and field.size > 0 and not getattr(field, "unbounded", False) and size > field.size:
             _fail("text_bound", node)
         return json.dumps(node.value)
     if codec == "int" and field.kind not in range(20, 30):
