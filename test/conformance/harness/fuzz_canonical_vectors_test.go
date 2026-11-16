@@ -198,3 +198,91 @@ func TestGraphChainPastCapPinned(t *testing.T) {
 		t.Error("129-node graph JSON write unexpectedly succeeded")
 	}
 }
+
+// TestRetainingFuzzCanonicalPins preserves the original mutations while
+// numbering their ID tables by first use. The unknown IDs still name the
+// same fields/enum or union arm as in the original fuzz discoveries.
+func TestRetainingFuzzCanonicalPins(t *testing.T) {
+	root := conformanceRoot(t)
+	cases := []struct{ name, seed string }{
+		{"retain_declared_default", "graph_tree"},
+		{"retain_byte_blob_reachability", "blob_small"},
+		{"retain_enum_list_unknown", "list_mixed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seed, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/"+tc.seed+".bin"))
+			if err != nil { t.Fatal(err) }
+			wire := bytes.Clone(seed)
+			f := frameWire(wire)
+			if len(f.entries) == 0 || len(f.entries) >= 128 {
+				t.Fatal("unexpected seed ID table")
+			}
+			if tc.name == "retain_enum_list_unknown" {
+				found := false
+				for _, sp := range f.spots {
+					if sp.kind == spotVariant {
+						if sp.width != 1 || sp.value != 2 {
+							t.Fatal("unexpected first enum variant")
+						}
+						wire[sp.off] = byte(len(f.entries))
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatal("seed has no enum variant")
+				}
+			} else {
+				if len(wire) < 2 || wire[1] != 1 {
+					t.Fatal("unexpected root field")
+				}
+				wire[1] = byte(len(f.entries))
+			}
+			wire, err = firstUseOrder(wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fault := framingTableFault(framingVector{}, wire); fault != "" {
+				t.Fatal(fault)
+			}
+			path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/"+tc.name+".bin")
+			if os.Getenv("FRAMING_WRITE") == "1" {
+				if err := os.WriteFile(path, wire, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, wire) {
+				t.Error("retention vector differs from canonical generator")
+			}
+		})
+	}
+	t.Run("retain_union_arm_frame", func(t *testing.T) {
+		// Feed.id = 7, followed by an unknown union field carrying an unknown
+		// uint32 arm (0x12345678). The same unknown ID names field and arm.
+		v := framingVector{entries: []uint64{0x08b72e07b55c3ac0, 0x56d7ab194448a4f3}, body: b(1, 8, 7, 0, 0, 0, 2, 15, 2, 8, 4, 0x78, 0x56, 0x34, 0x12, 0)}
+		wire, err := v.bytes(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin")
+		if os.Getenv("FRAMING_WRITE") == "1" {
+			if err := os.WriteFile(path, wire, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, wire) {
+			t.Error("union retention vector differs from canonical generator")
+		}
+	})
+}
