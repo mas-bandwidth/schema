@@ -1392,9 +1392,10 @@ static void test_message_form_reference_bound()
         backenddemo::TableVocabulary foreign = vocabulary;
         foreign.build_version ^= 1;
         count = 1;
-        CHECK( backenddemo::LoginRequestLoadMessages( &out, &count, foreign, last, last_bytes, &ok ) );
-        CHECK( !ok.damaged && !ok.refused );
-        CHECK( ok.unknown == 1 && out.player_id == 5 && count == 1 );
+        backenddemo::TableReport foreign_report;
+        CHECK( backenddemo::LoginRequestLoadMessages( &out, &count, foreign, last, last_bytes, &foreign_report ) );
+        CHECK( !foreign_report.damaged && !foreign_report.refused );
+        CHECK( foreign_report.unknown == 1 && out.player_id == 5 && count == 1 );
         pin_table_golden( "message_reference_last_slot", last, last_bytes );
     }
 }
