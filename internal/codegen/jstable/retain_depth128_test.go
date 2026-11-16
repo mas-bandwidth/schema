@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestJsRetainKeepsDepth128 holds JavaScript's resolving walk to §4's one
@@ -52,13 +55,25 @@ func TestJsRetainKeepsDepth128(t *testing.T) {
 		out := append([]byte{tables128[0]}, body...)
 		return append(out, tail...)
 	}
-	// 128 keyed bodies nested by value; the innermost body's one slot is an i32
+	// A keyed element may be scalar or a table, but never another keyed
+	// body directly. Sixty-four keyed bodies linked through 63 table elements,
+	// under one outer table, total exactly 128 structural levels.
 	keyed := []byte{4, 1, 1, 4, 7, 0, 0, 0}
-	for i := 1; i < 128; i++ {
-		keyed = framed([]byte{16, 1, 1}, keyed)
+	for range 63 {
+		entry := append(framed([]byte{1, 16}, keyed), 0)
+		keyed = framed([]byte{13, 1, 1}, entry)
 	}
-	files["depth_keyed_scalar_128.bin"] = file(append(framed([]byte{1, 16}, keyed), 0))
+	body128 := append(framed([]byte{1, 16}, keyed), 0)
+	body128 = append(framed([]byte{1, 13}, body128), 0)
+	files["depth_keyed_scalar_128.bin"] = file(body128)
 	vectors = append(vectors, vector{Name: "depth_keyed_scalar_128", Read: true})
+	body129 := append(framed([]byte{1, 13}, body128), 0)
+	files["depth_keyed_scalar_129.bin"] = file(body129)
+	vectors = append(vectors, vector{Name: "depth_keyed_scalar_129", Read: false})
+	// Kind 16 is not a legal direct keyed element, even under the bound.
+	illegal := framed([]byte{16, 1, 1}, []byte{4, 1, 1, 4, 7, 0, 0, 0})
+	files["keyed_direct_keyed.bin"] = file(append(framed([]byte{1, 16}, illegal), 0))
+	vectors = append(vectors, vector{Name: "keyed_direct_keyed", Read: false})
 	// 127 tables, then a union whose arm is a union whose arm is an i32
 	body := append(framed([]byte{1, 15, 1, 15}, []byte{1, 4, 4, 7, 0, 0, 0}), 0)
 	for range 127 {
@@ -66,6 +81,15 @@ func TestJsRetainKeepsDepth128(t *testing.T) {
 	}
 	files["depth_tables_union_union_128.bin"] = file(body)
 	vectors = append(vectors, vector{Name: "depth_tables_union_union_128", Read: true})
+	// Verify each constructed control independently against the Go reader.
+	model := tabletext.NewModel(u)
+	for _, v := range vectors {
+		var report tabletext.Report
+		ok, err := tablewire.Decode(model, model.New(model.Lookup("Scene")), files[v.Name+".bin"], &report)
+		if ok != v.Read || (ok && err != nil) || (!ok && !tablewire.ReadRefusal(err)) {
+			t.Fatalf("%s: Go verdict=%v err=%v report=%+v", v.Name, ok, err, report)
+		}
+	}
 	rows, err := json.Marshal(vectors)
 	if err != nil {
 		t.Fatal(err)

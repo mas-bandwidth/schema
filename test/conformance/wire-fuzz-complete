@@ -1,0 +1,20 @@
+#!/bin/sh
+# Preserve the differential's verdict and require its complete default roster.
+set -u
+log=$1
+shift
+mkdir -p "$(dirname "$log")"
+status=0
+"$@" > "$log" 2>&1 || status=$?
+cat "$log"
+[ "$status" -eq 0 ] || exit "$status"
+if grep -qE '[0-9]+ seeds absent' "$log"; then
+    echo 'wire-fuzz roster incomplete: a required codec is absent' >&2
+    exit 1
+fi
+if ! grep -qE '(^|[^0-9])0 divergences' "$log" ||
+   ! grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' "$log" ||
+   ! grep -qE '[1-9][0-9]* mutants' "$log"; then
+    echo 'wire-fuzz coverage summary missing or empty' >&2
+    exit 1
+fi

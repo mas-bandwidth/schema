@@ -199,7 +199,7 @@ def required_phases(lang):
     elif lang == "cpp":
         required.add("readiness-contracts")
         required |= {"packet-" + name for name in
-                     ("schema_test", "schema_test_guard", "schema_test_wide",
+                     ("schema_test", "schema_test_guard",
                       "schema_test_random", "schema_test_ludicrous")}
     elif lang == "c":
         required |= {"packet-" + name for name in
@@ -467,28 +467,6 @@ def run_native(runner, lang):
             runner.native_passes.update(pass_events(text))
 
 
-def go_packet_makefile(runner):
-    # Preserve the existing packet-wide-go recipe/dependencies, changing its
-    # one outer suite cap only. This override is private to this make process.
-    original = (runner.root / "make/go.mk").read_text()
-    match = re.search(r"^packet-wide-go:[^\n]*\n((?:\t[^\n]*\n)+)", original, re.MULTILINE)
-    before = "go test -count=1 ."
-    after = "go test -timeout=0 -count=1 -v ."
-    if not match or match[1].count(before) != 1:
-        runner.missing("packet-features", "the reviewed packet-wide-go outer test invocation changed")
-        return None
-    recipe = match[1].replace(before, after)
-    text = "include Makefile\npacket-wide-go:\n" + recipe
-    makefile = runner.out / "Makefile.go-packet-uncapped"
-    makefile.write_text(text)
-    runner.out.joinpath("Makefile.go-packet-uncapped.json").write_text(json.dumps({
-        "source_sha256": hashlib.sha256(original.encode()).hexdigest(),
-        "execution_sha256": hashlib.sha256(text.encode()).hexdigest(),
-        "replacement": {before: after},
-    }, indent=2) + "\n")
-    return makefile
-
-
 def packet_result(text, random=False, compilation=False):
     if compilation:
         return [] if re.search(r"^Generated: .+", text, re.MULTILINE) else [
@@ -503,15 +481,13 @@ def run_packets(runner, lang):
         run_moo_packets(runner)
         return
     if lang == "cpp":
-        binaries = ("schema_test", "schema_test_guard", "schema_test_wide",
+        binaries = ("schema_test", "schema_test_guard",
                     "schema_test_random", "schema_test_ludicrous")
         runner.make("packet-build", " ".join("build/" + name for name in binaries))
         for name in binaries:
             runner.run("packet-" + name, ["./build/" + name],
                        validate=lambda text, n=name: packet_result(text, random=n == "schema_test_random"))
-        runner.make("packet-features", "packet-defaults-cpp wide-no-align-negative-control "
-                    "wide-surrogate-negative-control wide-terminator-negative-control "
-                    "wide-utf8-read-negative-control")
+        runner.make("packet-features", "packet-defaults-cpp")
         return
     if lang == "c":
         runner.make("packet-build", "build/schema_test_c build/schema_test_c_asan "
@@ -560,13 +536,12 @@ def run_packets(runner, lang):
                            validate=lambda text, i=index:
                                packet_result(text, compilation=lang == "dart" and i == 1))
     targets = " ".join("packet-" + feature + "-" + lang + tail
-                       for feature in ("defaults", "utf8", "wide")
+                       for feature in ("defaults", "utf8")
                        for tail in ("", "-negative-control"))
     if lang in ("go", "java", "dart", "elixir", "goose"):
         targets += " packet-finite-" + lang + " packet-finite-" + lang + "-negative-control"
-    makefile = go_packet_makefile(runner) if lang == "go" else None
-    if lang != "go" or makefile is not None:
-        runner.make("packet-features", targets, makefile=makefile)
+    # wstring and its packet-wide corpus/targets were retired; text is UTF-8.
+    runner.make("packet-features", targets)
 
 
 # MOO's packet programs: the CLI has no io, so internal/codegen/moo's probes
@@ -589,7 +564,7 @@ def run_moo_packets(runner):
                     "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/moo"],
                    validate=lambda text, t=tests: native_result(text, list(t), "moo"))
     runner.make("packet-features", " ".join("packet-" + feature + "-moo" + tail
-                                            for feature in ("defaults", "utf8", "wide", "finite")
+                                            for feature in ("defaults", "utf8", "finite")
                                             for tail in ("", "-negative-control")))
 
 

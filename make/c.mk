@@ -1622,8 +1622,8 @@ build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_
 # UBSan stay on; only the leak report is off.
 .PHONY: tables-c-wire-fuzz
 tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
-	ASAN_OPTIONS=detect_leaks=0 ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-plain.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
+	ASAN_OPTIONS=detect_leaks=0 sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-plain-asan.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
 
 
@@ -1805,8 +1805,8 @@ tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-a
 	sh test/slowgate/proof tables-c-retain \
 		'TestCTableRetainFile TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName' \
 		./compiler -run '^TestCTableRetain' -count=1
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-retain.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-retain-asan.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
 tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
@@ -2352,3 +2352,18 @@ packet-write-text-c-negative-control: packet-write-text-c
 	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
 
 test-c: packet-write-text-c packet-write-text-c-negative-control
+
+# Hash-zero IDs are ordinary retained identities, distinct from wire None.
+.PHONY: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
+tables-c-retain-hashzero:
+	@mkdir -p build/c-retain-hashzero
+	@SCHEMA_SLOW=1 go test -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZero$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/positive.log 2>&1 || { cat build/c-retain-hashzero/positive.log; exit 1; }
+	@grep -q -- '--- PASS: TestCRetainNestedHashZero ' build/c-retain-hashzero/positive.log || { cat build/c-retain-hashzero/positive.log; exit 1; }
+	@echo 'C retention: hash-zero identities and None round-trip'
+
+tables-c-retain-hashzero-negative-control: tables-c-retain-hashzero
+	@SCHEMA_SLOW=1 go test -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZeroNegativeControl$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/control.log 2>&1 || { cat build/c-retain-hashzero/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestCRetainNestedHashZeroNegativeControl ' build/c-retain-hashzero/control.log || { cat build/c-retain-hashzero/control.log; exit 1; }
+	@echo 'C retention: removing the hash-zero escape breaks each zero-ID vector'
+
+test-c tables-c: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
