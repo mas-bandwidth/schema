@@ -11,7 +11,7 @@ import (
 // tolerant entry points and report fields, not diagnostic string values.
 var strictOnlyElixirRetired = []string{
 	"Tolerant", "tolerant", "kind_mismatch:", ":kind_mismatch =>",
-	"report.kind_mismatch", "Map.put(report, :kind_mismatch,",
+	"report.kind_mismatch", "Map.put(report, :kind_mismatch,", `Name: "kind_mismatch"`,
 	"clamped", "duplicate:", ":duplicate", "malformed:",
 }
 
