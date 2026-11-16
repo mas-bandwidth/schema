@@ -2,6 +2,7 @@ package pythontable_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"maps"
 	"strings"
 	"testing"
@@ -112,7 +113,7 @@ func TestPythonFixedProofValuesReadRules(t *testing.T) {
 			[]struct {
 				offset int
 				value  []byte
-			}{{0, []byte{2}}, {1, []byte{2}}},
+			}{{0, []byte{2}}, {0, []byte{0x5a}}, {0, []byte{0x7f}}, {0, []byte{0x80}}, {0, []byte{0xff}}, {1, []byte{2}}, {1, []byte{0x5a}}, {1, []byte{0x7f}}, {1, []byte{0x80}}, {1, []byte{0xff}}},
 			[]string{"if value > 1:"}},
 	}
 	for _, tc := range cases {
@@ -217,5 +218,65 @@ else:
 				}
 			}
 		})
+	}
+}
+
+// TestPythonFixedProofValuesFloatBounds checks compressed float range and
+// non-finite wire values, including a control that removes both validations.
+func TestPythonFixedProofValuesFloatBounds(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "pinned Python and the C++ fixed oracle")
+	var row fixedproof.RowCase
+	for _, tc := range fixedproof.Cases() {
+		if tc.ID == "compressed-floats" {
+			row = tc
+			break
+		}
+	}
+	if row.ID == "" {
+		t.Fatal("compressed-floats proof row is missing")
+	}
+	u := fixedproof.ParseCheckUnit(t, row.Schema)
+	cpp, _ := fixedproof.CppOracle(t, row, u)
+	files, err := pythontable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "probe/_schema/fixedform.py"
+	const finite = "if raw & exponent == exponent:"
+	const bounded = "if spec.get(\"ranged\", False) and not spec[\"lo\"] <= value <= spec[\"hi\"]:"
+	src := string(files[path])
+	if strings.Count(src, finite) != 1 || strings.Count(src, bounded) != 1 {
+		t.Fatal("float control anchors changed")
+	}
+	src = strings.Replace(src, finite, "if False:", 1)
+	src = strings.Replace(src, bounded, "if False:", 1)
+	altered := make(map[string][]byte, len(files))
+	for k, v := range files {
+		altered[k] = bytes.Clone(v)
+	}
+	altered[path] = []byte(src)
+	probe := `from probe import T, Refused
+try:
+    with open("wire", "rb") as f:
+        T.fixed_load(f.read(), 3)
+except Refused:
+    print("refused")
+except Exception as err:
+    print("crash " + type(err).__name__)
+else:
+    print("accepted")
+`
+	for _, bits := range []uint32{0x40000000, 0x7f800000, 0x7fc00000} {
+		wire := bytes.Clone(cpp)
+		binary.LittleEndian.PutUint32(wire[len(wire)-int(row.Body):], bits)
+		out, _ := pythonFixedRun(t, files, probe, map[string][]byte{"wire": wire})
+		if strings.TrimSpace(out) != "refused" {
+			t.Errorf("float bits %08x: wanted refusal, got %q", bits, out)
+		}
+		control, _ := pythonFixedRun(t, altered, probe, map[string][]byte{"wire": wire})
+		if strings.TrimSpace(control) == "refused" {
+			t.Errorf("float bits %08x: control still refuses", bits)
+		}
 	}
 }
