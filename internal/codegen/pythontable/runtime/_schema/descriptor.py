@@ -54,6 +54,7 @@ class FieldDesc:
         "bound",
         "size",
         "key_enum",
+        "keyed_list",
         "array_kind",
         "array_min",
         "elem_kind",
@@ -86,6 +87,7 @@ class FieldDesc:
     bound: int
     size: int
     key_enum: str
+    keyed_list: bool
     array_kind: int
     array_min: int
     elem_kind: int
@@ -128,10 +130,14 @@ class FieldDesc:
         elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
+<<<<<<< HEAD
         f32: bool = False,
         fmin: float = 0.0,
         fmax: float = 0.0,
         float_range: bool = False,
+=======
+        keyed_list: bool = False,
+>>>>>>> 8c01bf907f242e1a2481c1dd4b2c08e9724519fc
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -149,6 +155,7 @@ class FieldDesc:
         self.bound = bound
         self.size = size
         self.key_enum = key_enum
+        self.keyed_list = keyed_list
         self.array_kind = array_kind
         self.array_min = array_min
         self.elem_kind = elem_kind
@@ -230,7 +237,8 @@ class FieldDesc:
             # (kind_keyed.py): the same test, slot by slot, so a table that
             # holds one elides as its body does.
             elem = self.elem
-            return elem is not None and all(elem.is_default(slot) for slot in value._values)
+            slots = value if self.keyed_list else value._values
+            return elem is not None and all(elem.is_default(slot) for slot in slots)
         return bool(value == self.default)
 
 

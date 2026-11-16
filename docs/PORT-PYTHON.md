@@ -611,7 +611,8 @@ the core stands against the P4 row; the rules of this page are unchanged.
     carried ([the packet arrays](port-python/packet-arrays.md)); an array of
     an uncarried element is refused by its element's kind
 
-  - a keyed `[E]T` array and a list `[]T`: refused
+  - a keyed `[E]T` array: carried as the positional `[E.Max]T` packet wire; its value remains a plain list when the packet is held by value in a table, whose slots use the table wire's keyed encoding
+  - a list `[]T`: refused
 
   - `const`: carried ([the packet layout](port-python/packet-layout.md))
 
