@@ -240,6 +240,7 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
         assert doc.edit([("nodes[0].title", b'"Changed"')]).write() == Path("roadmap.edited.sexp").read_bytes()
     if stem == "layout":
         assert doc.value.count == 2 and doc.value.title == "A B" and doc.value.enabled
+        assert [c.path for c in doc.comments] == [(), ("title",), ()]
         assert doc.edit([("count", b"3")]).write() == Path("layout.edited.sexp").read_bytes()
         assert doc.edit([("count", b"2")]).write() == data
     if stem == "kinds":
@@ -607,6 +608,40 @@ else:
 		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
 		if err == nil || !strings.Contains(stderr, "HANDTEXT_CARRIER_CANONICAL_CONTROL") {
 			t.Fatalf("wire carrier control: %v %s", err, stderr)
+		}
+	}
+}
+
+func TestPythonHandtextWireCarrierCRC(t *testing.T) {
+	t.Parallel()
+	unit := loadUnit(t, `package crcprobe
+table Root | integrity = "crc32c" { n int32 }
+`)
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `import base64
+from crcprobe import Root, Refused, LoadReport
+v = Root(); v.n = 7
+text = v.save_text()
+assert Root.load_text(text).n == 7
+wire = base64.b64decode(text)
+tampered = base64.b64encode(wire[:-1] + bytes([wire[-1] ^ 1])).decode('ascii')
+report = LoadReport(); report.unknown = 77
+try:
+    Root.load_text(tampered, report)
+except Refused as e:
+    assert e.reason == 'integrity_mismatch' and report.unknown == 77
+else:
+    raise AssertionError('tampered CRC accepted')
+print('ok')
+`
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); got != "ok\n" {
+			t.Fatalf("CRC carrier: %s", got)
 		}
 	}
 }
