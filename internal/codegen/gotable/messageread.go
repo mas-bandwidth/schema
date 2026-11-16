@@ -226,6 +226,9 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	} else if f.KeyEnum == "" && (enumRef(f) != nil || isUnionRef(f.Type)) {
 		sink = fixedArraySink(f, elide)
 	}
+	if elide && f.KeyEnum == "" && f.Array == ir.ArrayCounted && f.BornCount() > 0 && !quantizedMessageFloat(f) {
+		sink = "allDefault"
+	}
 	if f.KeyEnum == "" {
 		g.pf("if %s.Element.Kind==6&&!r.Bits.Align(){%s};", entry, bad)
 	}
@@ -259,7 +262,11 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		g.pf("}\n")
 		if sink != "" {
-			g.pf("if exact&&%s{%s}\n", sink, bad)
+			when := "exact"
+			if f.Array == ir.ArrayCounted {
+				when += fmt.Sprintf("&&!widened&&n==%d", f.BornCount())
+			}
+			g.pf("if %s&&%s{%s}\n", when, sink, bad)
 		}
 		if counted {
 			g.pf("%s=int32(n)\n", companion)

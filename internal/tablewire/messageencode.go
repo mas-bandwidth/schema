@@ -195,6 +195,22 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		if messageElides(e.m, fv, false) {
 			return nil
 		}
+		if !f.Required && int64(fv.Count) == f.BornCount() {
+			allBirth := true
+			for i := range fv.Count {
+				defaulted, err := bitCellAtDefault(e, f, &fv.Elems[i])
+				if err != nil {
+					return err
+				}
+				if !defaulted {
+					allBirth = false
+					break
+				}
+			}
+			if allBirth {
+				return nil
+			}
+		}
 		e.ref(w, entry)
 		return encodeBitArray(e, w, fv, entry, fv.Count)
 
@@ -512,18 +528,12 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 		if none {
 			return fmt.Errorf("field %s: a None key names no slot (docs/SPEC-TABLES.md §3.2)", f.Name)
 		}
-		elem := &bitWriter{}
-		if int(shape.Elem) == ir.TableKindTable {
-			sub := *e
-			if err := encodeBitBody(&sub, elem, subInstanceOf(e.m, f, cell)); err != nil {
-				return err
-			}
-			e.missing = sub.missing
-			if elem.bits() <= e.refBits {
-				continue // an all-default slot elides
-			}
-		} else if cellIsDefaultIn(e.m, f, cell) {
-			continue // a default slot elides
+		defaulted, err := bitCellAtDefault(e, f, cell)
+		if err != nil {
+			return err
+		}
+		if defaulted {
+			continue
 		}
 		present = append(present, presentSlot{slot: slot, keyID: keyID})
 	}
@@ -539,6 +549,20 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 		}
 	}
 	return nil
+}
+
+// bitCellAtDefault uses the same element default test for counted and keyed arrays.
+func bitCellAtDefault(e *bitEncoder, f *ir.Field, cell *tabletext.Cell) (bool, error) {
+	if ir.TableWireElemKind(f) != ir.TableKindTable {
+		return cellIsDefaultIn(e.m, f, cell), nil
+	}
+	probe := &bitWriter{}
+	sub := *e
+	if err := encodeBitBody(&sub, probe, subInstanceOf(e.m, f, cell)); err != nil {
+		return false, err
+	}
+	e.missing = sub.missing
+	return probe.bits() <= e.refBits, nil
 }
 
 // subInstanceOf is a nested table or type's instance, materialized at its

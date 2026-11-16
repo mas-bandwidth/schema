@@ -157,8 +157,8 @@ func TestGeneratedMessageRepeatNegativeControl(t *testing.T) {
 		file, from, to, run string
 		order, unordered    string
 	}{
-		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\tif slices.Contains(seen, entry.ID) {", "\t\tif false && slices.Contains(seen, entry.ID) {", "^TestGeneratedMessageRefusesRepeatedFieldId$", "if order >= ", "if false && order >= "},
-		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if slices.Contains(seenKey, id) {", "if false && slices.Contains(seenKey, id) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$", "if int(key) <= lastKey {", "if false && int(key) <= lastKey {"},
+		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\tif slices.Contains(seen, entry.ID) {", "\t\tif false && slices.Contains(seen, entry.ID) {", "^TestGeneratedMessageRefusesRepeatedFieldId$", "if exact && order >= ", "if exact && false && order >= "},
+		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if slices.Contains(seenKey, id) {", "if false && slices.Contains(seenKey, id) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$", "if exact && int(key) <= lastKey {", "if exact && false && int(key) <= lastKey {"},
 	} {
 		out, failed := runSabotagedChained(t, "../../../..", "./internal/codegen/gotable/fuzzunit", c.run,
 			slowtest.Sabotage{File: c.file, From: c.from, To: c.to, All: true},
