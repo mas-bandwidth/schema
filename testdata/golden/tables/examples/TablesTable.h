@@ -13154,6 +13154,7 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
     if ( value.perks != 0 )
     {
         bits += kTableMessageRefBitsHere;
+        schema_assert( ( uint64_t( value.perks ) >> 3 ) == 0 ); // message flags domain, debug only (§5.1)
         bits += 3;
     }
     {
@@ -13245,6 +13246,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
     if ( value.perks != 0 )
     {
         w.put( 23, kTableMessageRefBitsHere );
+        schema_assert( ( uint64_t( value.perks ) >> 3 ) == 0 ); // message flags domain, debug only (§5.1)
         w.put( (uint64_t) ( value.perks ), 3 );
     }
     {
