@@ -12,7 +12,7 @@ element in place, a `None` element as the single zero reference.
 
 from typing import Any, Iterator
 
-from . import InvalidValue, Refused
+from . import BlobRef, InvalidValue, Refused
 from . import descriptor, kind_blob, kinds
 # load and save import this module for its registration; binding them as
 # modules (not their names) resolves at call time, so the hot paths pay
@@ -205,6 +205,11 @@ def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any, blobs: list[int]) -> 
     if f.codec in ("string_blob", "bytes_blob"):
         if value is None:
             return
+        if isinstance(value, BlobRef):
+            identity = id(value)
+            if identity in ctx.blob_refs:
+                raise InvalidValue(f.name, "blob_shared")
+            ctx.blob_refs.add(identity)
         body = kind_blob._encode(f, value, f.name)
         blobs.append(len(ctx.order) + 2)
         ctx.order.append(kind_blob._BlobNode(f.codec == "string_blob", body))
@@ -315,6 +320,11 @@ def _collection_union(value: Any, ctx: Any, blobs: list[int], path: Any) -> Iter
 def _collection_arm(f: FieldDesc, value: Any, ctx: Any, blobs: list[int], path: Any) -> Iterator[tuple[Any, Any, bool, list[int]]]:
     if f.codec in ("string_blob", "bytes_blob"):
         if value is not None:
+            if isinstance(value, BlobRef):
+                identity = id(value)
+                if identity in ctx.blob_refs:
+                    raise InvalidValue(_save._render(path), "blob_shared")
+                ctx.blob_refs.add(identity)
             body = kind_blob._encode(f, value, _save._render(path))
             blobs.append(len(ctx.order) + 2)
             ctx.order.append(kind_blob._BlobNode(f.codec == "string_blob", body))
