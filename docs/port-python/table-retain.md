@@ -24,10 +24,11 @@ reference, eight bytes per framed payload, eight bytes per path step, and 68
 bytes for its fixed header and at most two index nodes. The two caller
 capacities bound all retained storage. Output framing writes directly to the
 final bytearray; the returned `bytes` conversion is the same output allocation
-shape as the plain writer. A 128-byte versus 128-KiB retained-field probe holds
-measure-time peak growth below 32 KiB and save-time peak, after the two final
-output representations, below 64 KiB on both pins. It does not measure the
-ordinary decoder's value and node storage.
+shape as the plain writer. A warmed 128-byte versus 128-KiB retained-field probe measured measure-time
+peaks of 3,228/3,228 bytes on CPython 3.15.2 and 3,228/3,536 bytes on 3.11.18.
+For the 131,109-byte result, save peaks were 278,778 and 278,945 bytes,
+respectively, including the bytearray and returned bytes. It does not measure
+the ordinary decoder's value and node storage.
 
 On the RT1/RT2 fixture (one load plus one save, Linux, five samples of 100
 round trips), the best plain/retaining times were 177,768/1,040,063 ns on

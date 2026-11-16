@@ -1096,6 +1096,7 @@ def probe(n):
     keep=TableRetain(bytearray(n+1024),bytearray(24*16)); report=LoadReport()
     value=Root.load_retain(wire,keep,report)
     assert (report.retained,report.retain_lost)==(1,0)
+    value.measure_retain(keep)  # exclude one-time imports and caches
     tracemalloc.start()
     count=value.measure_retain(keep)
     _, measure_peak=tracemalloc.get_traced_memory(); tracemalloc.stop()
@@ -1107,15 +1108,16 @@ def probe(n):
 small=probe(128); large=probe(131072)
 assert large[0]-small[0] < 32768, (small,large)
 assert large[1]-2*large[2] < 65536, large
-print('allocation-shape')
+print('allocation-shape', *small, *large)
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
-		if err != nil || strings.TrimSpace(out) != "allocation-shape" {
+		if err != nil || !strings.HasPrefix(strings.TrimSpace(out), "allocation-shape ") {
 			t.Fatalf("allocation shape: %v\n%s\n%s", err, out, stderr)
 		}
+		t.Logf("%s: %s", pin, strings.TrimSpace(out))
 	}
 }
 
