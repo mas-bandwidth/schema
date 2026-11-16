@@ -157,7 +157,7 @@ func TestWide(t *testing.T) {
 
 func TestGoWideJSONShapes(t *testing.T) {
 	t.Parallel()
-	runGeneratedTables(t, `package probe
+	runGenerated(t, `package probe
 enum Color { Red, Blue }
 union Choice { wide int64 }
 table Root {
