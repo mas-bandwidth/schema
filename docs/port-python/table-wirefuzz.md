@@ -14,3 +14,10 @@ runs, in microseconds per read, was:
 | 1024 | 155.958 | 25.505 | 168.501 | 27.734 |
 
 Both shapes included the range check and result list. The bulk form was kept.
+
+The verdict pipe dispatches ordinary variable and declared fixed file roots,
+message batches, and retaining reads and writes through their generated public
+APIs. The retaining negative control replaces retaining write-back with ordinary
+save on a pinned retained-record vector; the shared Go oracle must report a
+value mismatch, on both pinned interpreters. This focused control does not by
+itself establish the full roster or seeded release runs.
