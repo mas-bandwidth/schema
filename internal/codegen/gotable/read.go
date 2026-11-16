@@ -25,10 +25,6 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("func %sLoadBody(r *TableReader, value *%s) bool {\n", n, g.storageName(n))
 	g.pf("\t%sReset(value)\n", n)
 	g.pf("\tvar seen [64]byte\n\tvar seenHigh map[uint64]struct{}\n")
-	// fields arrive in declaration order (canonical.go, docs/SPEC-TABLES.md §3)
-	if len(st.Fields) > 0 {
-		g.pf("\torder := -1\n")
-	}
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0)\n")
 	}
@@ -96,7 +92,6 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.retainOrdinal = ordinal
 		kind := ir.TableWireFieldKind(f)
 		g.pf("\t\tcase 0x%016x: // %s\n", ir.TableFieldWireId(f), f.Name)
-		g.pf("\t\t\tif order >= %d { %s; return false }; order = %d\n", ordinal, damaged, ordinal)
 		// a field at the default its writer elides is refused (canonical.go)
 		elides := !f.Type.Optional && !f.Required
 		g.pf("\t\t\tif kind != %d {\n", kind)
