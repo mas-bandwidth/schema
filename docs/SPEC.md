@@ -2505,7 +2505,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 and 10 every build
+  - packet `Write`: 1–8, 10 and 11 every build
 
 - **Goose**
 
