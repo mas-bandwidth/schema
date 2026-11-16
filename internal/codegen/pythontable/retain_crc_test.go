@@ -111,6 +111,19 @@ bad=bytearray(wire); bad[-1]^=1; unchanged=LoadReport(); unchanged.unknown=99
 try: Root.load_retain(bad,keep,unchanged)
 except Refused as err: assert err.reason=='integrity_mismatch' and unchanged.unknown==99
 else: raise AssertionError('retaining CRC accepted corruption')
+import tracemalloc
+from probe._schema.integrity import crc32c
+def leb(n):
+    out=bytearray()
+    while n>=128: out.append((n&127)|128); n >>= 7
+    out.append(n); return bytes(out)
+large=bytes([1,1,4,7,0,0,0,2,31])+leb(131072)+bytes([91])*131072+bytes([0])+Root.descriptor.field('n').field_id.to_bytes(8,'little')+(0x123456789abcdef0).to_bytes(8,'little')+(2).to_bytes(8,'little')
+large+=crc32c(large).to_bytes(4,'little')
+large_keep=TableRetain(bytearray(132096),bytearray(24*8)); large_report=LoadReport()
+large_value=Root.load_retain(large,large_keep,large_report)
+tracemalloc.start(); large_save=large_value.save_retain(large_keep,large_report)
+_,peak=tracemalloc.get_traced_memory(); tracemalloc.stop()
+assert large_save==large and peak-2*len(large_save)<65536, (peak,len(large_save))
 print('retain-crc')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {

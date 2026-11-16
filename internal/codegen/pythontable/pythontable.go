@@ -470,7 +470,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		b.WriteString("from ._schema.retain import TableRetain\n")
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
-	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
+	b.WriteString("from ._schema.integrity import crc32c as _s_crc32c, open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
@@ -686,7 +686,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        if report is None:\n            raise InvalidValue(\"report\", \"save_retain requires a report\")\n")
 		b.WriteString("        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n        report.retain_lost += lost\n")
 		if st.Integrity == "crc32c" {
-			b.WriteString("        return _s_seal_crc(bytes(output))\n\n\n")
+			b.WriteString("        output.extend(_s_crc32c(memoryview(output)).to_bytes(4, \"little\"))\n        return bytes(output)\n\n\n")
 		} else {
 			b.WriteString("        return bytes(output)\n\n\n")
 		}
