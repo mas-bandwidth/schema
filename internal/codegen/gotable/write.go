@@ -313,10 +313,10 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 		g.pf("%sif %s.Count<0 {return false}\n", ind, expr)
 		return
 	}
+	if f.Array == ir.ArrayCounted {
+		g.pf("%sif %sCount < %d || %sCount > %d { return false }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
+	}
 	if f.Type.Pointer {
-		if f.Array == ir.ArrayCounted {
-			g.pf("%sif %sCount<0 || %sCount>%d { return false }\n", ind, expr, expr, f.ArrayBound)
-		}
 		return
 	}
 	switch {
@@ -325,8 +325,6 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 		// the blob record's own, which the text rule below reads
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
-	case f.Array == ir.ArrayCounted:
-		g.pf("%sif %sCount < 0 || %sCount > %d { return false }\n", ind, expr, expr, f.ArrayBound)
 	}
 }
 

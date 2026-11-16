@@ -561,8 +561,23 @@ func tableJSONWriteFloat(out *tableJSONOut, value float64, single bool) bool {
 // tableJSONWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
 func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+
 	if f.Pointer {
 		return tableJSONWritePointer(out, (*int64)(storage), f, depth)
+	}
+	// Integer bounds use their exact signed or unsigned storage domain.
+	if f.HasRange && f.Kind >= 2 && f.Kind <= 9 {
+		if f.Kind <= 5 {
+			value := tableJSONGetSigned(storage, f.ElemSize)
+			if value < f.RangeIntMin || value > f.RangeIntMax {
+				return false
+			}
+		} else {
+			value := tableJSONGetRaw(storage, f.ElemSize)
+			if value < f.RangeUintMin || value > f.RangeUintMax {
+				return false
+			}
+		}
 	}
 	if f.Kind >= 18 && f.Kind <= 29 {
 		if tableJSONWideIntegerKind(f.Kind) {
@@ -2242,6 +2257,9 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		// a fixed array's tail keeps the defaults the prefill left there,
 		// exactly as a short wire count does
 		tableJSONSetCount(base, f, placed)
+		if !tableJSONCountInContract(base, f) {
+			in.report.Refuse(TableRefuseOutOfRange, "")
+		}
 		return true
 	}
 	return tableJSONReadScalar(in, storage, f, depth)

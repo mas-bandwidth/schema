@@ -1003,13 +1003,8 @@ func TableEntityMeasureMessages(values []*TableEntity, report *TableReport) int6
 	return 2 + w.Bits/8
 }
 func TableEntitySaveMessages(values []*TableEntity, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := TableEntityMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1903,13 +1898,8 @@ func TableStatMeasureMessages(values []*TableStat, report *TableReport) int64 {
 	return 2 + w.Bits/8
 }
 func TableStatSaveMessages(values []*TableStat, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := TableStatMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -2204,12 +2194,12 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 			return false
 		}
 		if value.EntitiesCount > 0 {
 			w.Put(31, TableMessageRefBitsHere)
-			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+			if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 				return false
 			}
 			w.Put(uint64(value.EntitiesCount)-1, 3)
@@ -2495,13 +2485,8 @@ func TableMixedMeasureMessages(values []*TableMixed, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func TableMixedSaveMessages(values []*TableMixed, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := TableMixedMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -3124,6 +3109,10 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					if n < 1 {
+						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
+						return false
+					}
 					if n > 8 {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
 						return false
