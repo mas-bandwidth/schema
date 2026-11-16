@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 import "testing"
@@ -9,6 +7,7 @@ func init() {
 }
 
 func TestPythonCarriesTextLists(t *testing.T) {
+	t.Parallel()
 	for _, construct := range []string{carryTextList, carryTextListTotal, carryUnboundedText} {
 		if !carries("python", construct) {
 			t.Errorf("Python does not carry %s", construct)
