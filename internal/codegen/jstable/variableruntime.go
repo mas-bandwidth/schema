@@ -692,16 +692,6 @@ function TableVariableFirstUseOk(table, st) {
   return next - 1 === table.length;
 }
 
-// The value a non-optional, non-required field holds when the writer elides it.
-// A map key has no declared default: the entry's identity is the key, zero included.
-function TableVariableStoredDefault(fd, x) {
-  if (fd.opt || fd.req || fd.keep) { return false; }
-  if (fd.s === "float") { return TableVariableSameFloat(fd.f32, x, fd.def); }
-  if (fd.s === "bytes") { return TableVariableSameBytes(x, fd.def); }
-  if (fd.s === "str" || fd.s === "bool" || fd.s === "int" || fd.s === "flags" || fd.s === "enum") { return x === fd.def; }
-  return false;
-}
-
 function TableVariableLoad(c, bytes, report, retain) {
   // a caller that passed no report still gets the refusal: the read keeps one
   if (report === undefined || report === null) { report = new TableVariableReport(); }
@@ -2559,7 +2549,7 @@ function TableVariableFromJson(c, text, report) {
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
   if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
-  if (inp.bad || !ok || report.damaged) { report.damaged = true; return null; }
+  if (inp.bad || report.damaged || (!ok && TableVariableStrictMark(report) === strictBefore)) { report.damaged = true; return null; }
   // the one read refuses the whole text, as the wire load does (§4, §16.2)
   if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
   report.damaged = carried;

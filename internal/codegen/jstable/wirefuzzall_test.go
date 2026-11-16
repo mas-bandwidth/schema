@@ -560,11 +560,33 @@ func TestWireFuzzCountCapNamesTheRefusalJavaScript(t *testing.T) {
 	}
 }
 
-// Mutant 4898 of graph_tree at seed 24845619678: the record-type pass writes
-// the last id-table slot into one node record. That slot is a field id, so
-// the record is unknown. Its body still holds the pointer that reaches a
+// An adaptation of graph_tree mutant 4898 assigns a foreign ID to one
+// record type while preserving first-use order. The record is unknown. Its body still holds the pointer that reaches a
 // placed child. The oracle accepts with one unknown. The leg must accept too,
 // and the saved bytes must be the oracle's canonical encoding.
+// replaceWireFuzzID preserves the seed's first-use references while changing
+// the identity at an already-used slot to a foreign name.
+func replaceWireFuzzID(t *testing.T, seed []byte, ref int, name string) []byte {
+	t.Helper()
+	if len(seed) < 8 {
+		t.Fatal("short ID table")
+	}
+	count := binary.LittleEndian.Uint64(seed[len(seed)-8:])
+	if count > uint64((len(seed)-8)/8) || ref < 1 || uint64(ref) > count {
+		t.Fatal("invalid ID table")
+	}
+	start := len(seed) - 8 - int(count)*8
+	id := ir.TableWireId(name)
+	for i := 0; i < int(count); i++ {
+		if binary.LittleEndian.Uint64(seed[start+i*8:]) == id {
+			t.Fatal("foreign ID already present")
+		}
+	}
+	wire := bytes.Clone(seed)
+	binary.LittleEndian.PutUint64(wire[start+(ref-1)*8:], id)
+	return wire
+}
+
 func TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -581,8 +603,27 @@ func TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript(t *testing.T) {
 	if len(seed) < 28 || seed[27] != 0x07 {
 		t.Fatalf("graph_tree record-type byte moved: len %d", len(seed))
 	}
-	mutant := bytes.Clone(seed)
-	mutant[27] = 0x0f
+	// The seed uses the same type in two records. Give only the first an
+	// unknown type, insert the original type at its next use, and renumber
+	// every later reference so the table remains in first-use order.
+	mutant := replaceWireFuzzID(t, seed, 7, "wirefuzz_unknown_node_type")
+	if len(seed) != 232 || seed[43] != 7 || binary.LittleEndian.Uint64(seed[len(seed)-8:]) != 15 {
+		t.Fatal("graph_tree type/ID table changed")
+	}
+	mutant[43] = 10
+	for _, at := range []int{52, 54, 60, 63, 67, 69, 77, 79, 88, 90, 96} {
+		if mutant[at] < 10 || mutant[at] > 15 {
+			t.Fatalf("graph_tree ref at %d changed", at)
+		}
+		mutant[at]++
+	}
+	const idStart = 104
+	oldType := binary.LittleEndian.Uint64(seed[idStart+6*8:])
+	ids := append([]byte{}, mutant[idStart:idStart+9*8]...)
+	ids = binary.LittleEndian.AppendUint64(ids, oldType)
+	ids = append(ids, mutant[idStart+9*8:len(mutant)-8]...)
+	mutant = append(mutant[:idStart], ids...)
+	mutant = binary.LittleEndian.AppendUint64(mutant, 16)
 	model := tabletext.NewModel(u)
 	root := model.Lookup("Scene")
 	if root == nil {
@@ -754,8 +795,8 @@ func TestWireFuzzRecordBodyTailNamesTheRefusalJavaScript(t *testing.T) {
 	}
 }
 
-// Mutant 50426 of stream_chain at seed 24845619678: Feed's frame field
-// reference is the last id-table slot, an id this root does not declare.
+// An adaptation of stream_chain mutant 50426 gives Feed's frame field a
+// foreign ID while preserving first-use order.
 // The payload is still the union, and its arm names a node. The oracle
 // accepts with one unknown. The leg must accept too, and the saved bytes
 // must be the oracle's canonical encoding. A node-record body whose
@@ -776,8 +817,7 @@ func TestWireFuzzUnknownUnionNamesItsEdgesJavaScript(t *testing.T) {
 	if len(seed) < 8 || seed[7] != 0x02 {
 		t.Fatalf("stream_chain field reference moved: len %d", len(seed))
 	}
-	mutant := bytes.Clone(seed)
-	mutant[7] = 0x07
+	mutant := replaceWireFuzzID(t, seed, 2, "wirefuzz_unknown_union_field")
 	model := tabletext.NewModel(u)
 	root := model.Lookup("Feed")
 	if root == nil {
@@ -846,8 +886,8 @@ func TestWireFuzzUnknownUnionNamesItsEdgesJavaScript(t *testing.T) {
 	}
 }
 
-// Mutant 50473 of stream_chain at seed 24845619678: Feed's frame arm
-// reference is the last id-table slot, an arm this union does not declare.
+// An adaptation of stream_chain mutant 50473 gives Feed's frame arm a
+// foreign ID while preserving first-use order.
 // The payload is still the table arm, and it names a node. The oracle
 // accepts with one unknown. The leg must accept too, and the saved bytes
 // must be the oracle's canonical encoding.
@@ -867,8 +907,7 @@ func TestWireFuzzUnknownArmNamesItsEdgesJavaScript(t *testing.T) {
 	if len(seed) < 10 || seed[9] != 0x03 {
 		t.Fatalf("stream_chain arm reference moved: len %d", len(seed))
 	}
-	mutant := bytes.Clone(seed)
-	mutant[9] = 0x07
+	mutant := replaceWireFuzzID(t, seed, 3, "wirefuzz_unknown_union_arm")
 	model := tabletext.NewModel(u)
 	root := model.Lookup("Feed")
 	if root == nil {
@@ -1418,8 +1457,8 @@ func driveWireFuzzMessage(t *testing.T, node, repo, dir, unit, root string, wire
 
 // loginWithTwoUnknowns is a batch of one LoginRequest body carrying its two
 // known scalars, player_id and client_build, between two entries the backend
-// vocabulary announces and LoginRequest does not declare (match_id and
-// quantity), spelled against the unit's own announcement. Every value is a
+// vocabulary announces and the older LoginRequest does not declare (match_id
+// and quantity), spelled against the real newer writer's announcement. Every value is a
 // scalar, so no field aligns and the body is the bits it lists.
 func loginWithTwoUnknowns(t *testing.T, u *ir.Unit) []byte {
 	t.Helper()
@@ -1472,11 +1511,54 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	if root == nil {
 		t.Fatal("LoginRequest is not a root of backenddemo")
 	}
-	mutant := loginWithTwoUnknowns(t, u)
+	// Recreate the real newer writer: the two fields already exist elsewhere
+	// in the unit's vocabulary, but now also belong to LoginRequest.
+	source, err := os.ReadFile(filepath.Join(repo, "tables/backend/Backend.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const before = "fixed table LoginRequest\n{\n    player_id     uint64 = 0"
+	const after = "fixed table LoginRequest\n{\n    match_id uint64 = 0\n    player_id     uint64 = 0"
+	if strings.Count(string(source), before) != 1 {
+		t.Fatal("LoginRequest writer anchor moved")
+	}
+	text := strings.Replace(string(source), before, after, 1)
+	const beforeBuild = "    client_build  uint32 = 0"
+	text = strings.Replace(text, beforeBuild, "    quantity uint8 = 1 | min = 1, max = 99\n"+beforeBuild, 1)
+	if text == string(source) || !strings.Contains(text, "    quantity uint8 = 1 | min = 1, max = 99\n"+beforeBuild) {
+		t.Fatal("writer schema anchors moved")
+	}
+	writer := loadSchemaString(t, "Backend.schema", text)
+	if ir.BuildVersion(writer) == ir.BuildVersion(u) {
+		t.Fatal("writer and reader builds must differ")
+	}
+	if len(tablewire.MessageVocabulary(writer)) != len(tablewire.MessageVocabulary(u)) {
+		t.Fatal("writer vocabulary size changed")
+	}
+	mutant := loginWithTwoUnknowns(t, writer)
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(writer), &announced); err != nil {
 		t.Fatal(err)
+	}
+	// The writer itself must accept and reproduce this body byte-for-byte.
+	wm := tabletext.NewModel(writer)
+	wi := wm.New(wm.Lookup("LoginRequest"))
+	var wr tabletext.Report
+	if n, ok, err := tablewire.DecodeMessages(wm, []*tabletext.Instance{wi}, mutant, &vocabulary, &wr); n != 1 || !ok || err != nil {
+		t.Fatalf("writer body: n=%d ok=%v err=%v", n, ok, err)
+	}
+	writerSaved, err := tablewire.EncodeMessages(wm, []*tabletext.Instance{wi})
+	if err != nil || !bytes.Equal(writerSaved, mutant) {
+		t.Fatalf("writer canonical save: %x want %x: %v", writerSaved, mutant, err)
+	}
+	var own tablewire.Vocabulary
+	if err := own.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
+		t.Fatal(err)
+	}
+	var forged tabletext.Report
+	if n, ok, err := tablewire.DecodeMessages(model, []*tabletext.Instance{model.New(root)}, mutant, &own, &forged); n != 0 || ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("same-build forged fields: n=%d ok=%v err=%v", n, ok, err)
 	}
 	inst := model.New(root)
 	var rep tabletext.Report
@@ -1496,13 +1578,46 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	annReplaced := 0
 	for name, data := range generatedTree(u) {
+		// The driver receives the genuine writer announcement while its
+		// reader retains its own generated build and schema.
+		old := "export const TableMessageAnnouncement = new Uint8Array([" + jsByteLiterals(tablewire.Announce(u)) + "]);"
+		if strings.Contains(string(data), old) {
+			annReplaced++
+			data = []byte(strings.Replace(string(data), old, "export const TableMessageAnnouncement = new Uint8Array(["+jsByteLiterals(tablewire.Announce(writer))+"]);", 1))
+		}
 		if strings.Contains(name, "/") || !strings.HasSuffix(name, ".js") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(sub, name), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if annReplaced != 1 {
+		t.Fatalf("announcement replacements: %d", annReplaced)
+	}
+	// The unmodified driver announcement still claims the reader's own build:
+	// the forged unknown fields must refuse, while its canonical saved body reads.
+	ownDir := t.TempDir()
+	ownSub := filepath.Join(ownDir, "backend")
+	if err := os.MkdirAll(ownSub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range generatedTree(u) {
+		if !strings.Contains(name, "/") && strings.HasSuffix(name, ".js") {
+			if err := os.WriteFile(filepath.Join(ownSub, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	forgedReply := driveWireFuzzMessage(t, node, repo, ownDir, "backenddemo", "LoginRequest", mutant)
+	if len(forgedReply) < 48 || forgedReply[0] != 1 || forgedReply[1] != 0 || (forgedReply[22] == 0 && forgedReply[23] == 0) || int64(binary.LittleEndian.Uint64(forgedReply[40:48])) != -1 {
+		t.Fatalf("driver accepted same-build unknown fields: %x", forgedReply)
+	}
+	cleanReply := driveWireFuzzMessage(t, node, repo, ownDir, "backenddemo", "LoginRequest", encoded)
+	if len(cleanReply) < 48 || cleanReply[0] != 1 || cleanReply[1] != 1 || cleanReply[22] != 0 || cleanReply[23] != 0 || !bytes.Equal(cleanReply[48:], encoded) {
+		t.Fatalf("driver rejected own canonical message: %x", cleanReply)
 	}
 	out := driveWireFuzzMessage(t, node, repo, dir, "backenddemo", "LoginRequest", mutant)
 	if len(out) < 48 || out[0] != 1 {

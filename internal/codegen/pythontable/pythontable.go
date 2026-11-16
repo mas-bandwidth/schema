@@ -47,6 +47,10 @@ var runtimeFS embed.FS
 // own fields use a packet kind the packet wire does not carry yet is refused
 // by name, naming the kind and the packet card, never the whole unit silently.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return generatePythonTables(u, nil)
+}
+
+func generatePythonTables(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -88,6 +92,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[path.Join(u.Package, rel)] = data
 	}
+	fixedData, err := emitPythonFixedData(u, lineage)
+	if err != nil {
+		return nil, err
+	}
+	out[path.Join(u.Package, "_fixed.py")] = []byte(fixedData)
 	return out, nil
 }
 
@@ -486,6 +495,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
+	b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
 	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
@@ -646,7 +656,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        pass\n")
 	} else {
 		for _, f := range st.Fields {
-			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f))
+			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExprForClass(st.Name, f, st.FixedDeclared))
 		}
 	}
 	emitGraphEqRepr(b, name)
@@ -654,31 +664,47 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	variable := ir.VariableTables(u)[name]
 	fast := pointerArraysStraightLineable(st)
 	straight := scalarOnly(st) || fast
+	if fixedRootAdmitted(u, st) {
+		b.WriteString("\n    fixed_plan_max: ClassVar[int] = 0\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load(cls, data: bytes | bytearray | memoryview, capacity: int = 4096, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[Self]:\n        return _s_fixed_load(cls, data, capacity, report, plan_capacity)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_save(cls, values: list[Self]) -> bytes:\n        return _s_fixed_save(cls, values)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_measure(cls, count: int) -> int:\n        return _s_fixed_measure(cls, count)\n")
+	}
 	b.WriteString("\n    @classmethod\n")
-	if straight {
-		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
+	if st.FixedDeclared {
+		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n        return _s_fixed_load(cls, data, 1, report)[0]\n")
 	} else {
-		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
-	}
-	if st.Integrity == "crc32c" {
-		b.WriteString("        data = _s_open_crc(data)\n")
-	}
-	if straight {
-		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
-	} else {
-		b.WriteString("        return load_table(cls, data, report)\n")
+		if straight {
+			fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
+		} else {
+			b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
+		}
+		if st.Integrity == "crc32c" {
+			b.WriteString("        data = _s_open_crc(data)\n")
+		}
+		if straight {
+			fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
+		} else {
+			b.WriteString("        return load_table(cls, data, report)\n")
+		}
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
-	call := "save_table(self)"
-	if straight {
-		call = fmt.Sprintf("_s_save_%s(self)", name)
+	if st.FixedDeclared {
+		b.WriteString("        return _s_fixed_save(type(self), [self])\n")
+	} else {
+		call := "save_table(self)"
+		if straight {
+			call = fmt.Sprintf("_s_save_%s(self)", name)
+		}
+		if st.Integrity == "crc32c" {
+			call = "_s_seal_crc(" + call + ")"
+		}
+		fmt.Fprintf(b, "        return %s\n", call)
 	}
-	if st.Integrity == "crc32c" {
-		call = "_s_seal_crc(" + call + ")"
-	}
-	fmt.Fprintf(b, "        return %s\n", call)
 	b.WriteString("\n    def measure(self) -> int:\n")
-	if st.Integrity == "crc32c" {
+	if st.FixedDeclared {
+		b.WriteString("        return _s_fixed_measure(type(self), 1)\n\n\n")
+	} else if st.Integrity == "crc32c" {
 		b.WriteString("        return measure_table(self) + 4\n\n\n")
 	} else {
 		b.WriteString("        return measure_table(self)\n\n\n")
@@ -743,6 +769,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            map_entry=%s,\n", strconv.Quote(mapEntry))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
+		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
@@ -917,7 +944,7 @@ func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guar
 				ind = "        "
 			}
 			fmt.Fprintf(b, "%scurrent = value.%s\n", ind, f.Name)
-			fmt.Fprintf(b, "%sif not f%d.is_default(current):\n", ind, i)
+			fmt.Fprintf(b, "%sif f%d.required or not f%d.is_default(current):\n", ind, i, i)
 			fmt.Fprintf(b, "%s    w%d(writer, f%d, current, ctx)\n", ind, i, i)
 		}
 	}
@@ -1067,7 +1094,7 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    current: object\n")
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "    current = value.%s\n", f.Name)
-		fmt.Fprintf(b, "    if not fields[%d].is_default(current):\n", i)
+		fmt.Fprintf(b, "    if fields[%d].required or not fields[%d].is_default(current):\n", i, i)
 		fmt.Fprintf(b, "        _s_kinds._REGISTRY[%q].write(writer, fields[%d], current, ctx)\n", codecOf(f), i)
 	}
 	b.WriteString("    writer.byte(0)\n")
@@ -1112,7 +1139,10 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	}
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
+	b.WriteString("    missing = [f.name for f in fields if f.required and f.field_id not in seen]\n")
 	b.WriteString("    _resolve(ctx)\n")
+	b.WriteString("    if missing:\n")
+	b.WriteString("        raise Refused(\"missing_required\", \", \".join(missing))\n")
 	b.WriteString("    if report is not None:\n")
 	b.WriteString("        report.unknown = ctx.unknown\n")
 	b.WriteString("        report.widened = 0\n")
@@ -1296,7 +1326,8 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import BlobRef, InvalidValue, LoadReport, Refused\n")
-	names := []string{"BUILD_VERSION", "BlobRef", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	b.WriteString("from ._schema.fixedform import FixedLoadReport\n")
+	names := []string{"BUILD_VERSION", "BlobRef", "FixedLoadReport", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
@@ -1344,6 +1375,7 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(values, ", "))
 		}
 	}
+	b.WriteString("from . import _fixed as _s_fixed\n")
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
 	fmt.Fprintf(&b, "BUILD_VERSION: Final = 0x%016x\n\n", ir.BuildVersion(u))
 	sort.Strings(names)
@@ -1792,6 +1824,10 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
 func defaultExpr(owner string, f *ir.Field) string {
+	return defaultExprForClass(owner, f, false)
+}
+
+func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
 		count := int64(0)
 		switch f.Array {
@@ -1810,6 +1846,7 @@ func defaultExpr(owner string, f *ir.Field) string {
 		}
 		return "[" + strings.Join(values, ", ") + "]"
 	}
+
 	if f.Type.Pointer || f.Type.Optional {
 		return "None"
 	}
@@ -1820,9 +1857,12 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A union array is born at its declared minimum, with independent
-		// None-valued elements; fixed arrays are born at their full bound.
+		// Fixed arrays and counted union arrays are born at their declared
+		// count, with each nested value constructed independently.
 		count := int64(0)
+		if fixed {
+			count = f.BornCount()
+		}
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
 		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {

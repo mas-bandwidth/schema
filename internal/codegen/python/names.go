@@ -16,7 +16,7 @@ const HelperPrefix = "_s_"
 // generatedMembers are the names the generated classes define beside their
 // fields (docs/PORT-PYTHON.md, ERRORS and THE VALUE MAPPING). A field spelled
 // like one would replace the member, so it is refused.
-var generatedMembers = wordSet(`read write load save descriptor`)
+var generatedMembers = wordSet(`read write load save descriptor fixed_load fixed_save fixed_measure fixed_plan_max`)
 
 // moduleNames are the names a generated module binds itself: the imports it
 // spells unqualified and the constants it writes beside the declarations. A

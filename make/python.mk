@@ -19,7 +19,7 @@ test-python: python-ci-support
 	$(MAKE) --no-print-directory python-ci-compiler
 
 .PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
-PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
+PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-compiler-coverage
 python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
 .PHONY: python-ci-support-list
 python-ci-support-list:
@@ -28,7 +28,13 @@ python-ci-core: python-toolchain-check python-toolchain-negative-control python-
 python-ci-packages:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 python-ci-compiler:
-	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
+	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -skip '^TestPythonRequiredPublicShapes$$' -count=1
+python-ci-compiler-coverage:
+	sh test/slowgate/proof python-ci-compiler-coverage 'TestPythonCompilerCIShardCoverage' ./internal/ci -run '^TestPythonCompilerCIShardCoverage$$' -count=1
+# Planner-selected compiler shards retain run-proof, including the four
+# named gates of the aggregate. New matching tests are discovered by Go.
+python-ci-compiler-shard-%:
+	sh tools/python-ci-compiler-shard.sh '$*'
 update-goldens-python: ;
 
 # python-packet-core-negative-control: the packet core's own control. It edits
