@@ -1039,3 +1039,54 @@ func TestPythonRetainManifestSave(t *testing.T) {
 		}
 	}
 }
+
+func TestPythonRetainOutputAllocationShape(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+table Root { child Child }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `import tracemalloc
+from probe import Root, TableRetain, LoadReport
+def leb(n):
+    b=bytearray()
+    while n>=128: b.append((n&127)|128); n >>= 7
+    b.append(n); return bytes(b)
+def input_file(n):
+    field=Root.descriptor.field('child').field_id
+    ghost=0x123456789abcdef0
+    payload=bytes([91])*n
+    body=bytes([2,31])+leb(n)+payload+bytes([0])
+    return bytes([1,1,13])+leb(len(body))+body+bytes([0])+field.to_bytes(8,'little')+ghost.to_bytes(8,'little')+(2).to_bytes(8,'little')
+def probe(n):
+    wire=input_file(n)
+    keep=TableRetain(bytearray(n+1024),bytearray(24*16)); report=LoadReport()
+    value=Root.load_retain(wire,keep,report)
+    assert (report.retained,report.retain_lost)==(1,0)
+    tracemalloc.start()
+    count=value.measure_retain(keep)
+    _, measure_peak=tracemalloc.get_traced_memory(); tracemalloc.stop()
+    tracemalloc.start()
+    saved=value.save_retain(keep,report)
+    _, save_peak=tracemalloc.get_traced_memory(); tracemalloc.stop()
+    assert count==len(saved) and saved==wire
+    return measure_peak,save_peak,count
+small=probe(128); large=probe(131072)
+assert large[0]-small[0] < 32768, (small,large)
+assert large[1]-2*large[2] < 65536, large
+print('allocation-shape')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "allocation-shape" {
+			t.Fatalf("allocation shape: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
