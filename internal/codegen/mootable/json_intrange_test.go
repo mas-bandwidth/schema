@@ -41,22 +41,22 @@ table Small
 type intRangeCase struct{ name, root, text string }
 
 var intRangeCases = []intRangeCase{
-	{"big_x_at_max", "Big", `{"x":9007199254740992}`},
-	{"big_x_past_max", "Big", `{"x":9007199254740993}`},
-	{"big_x_at_min", "Big", `{"x":0}`},
-	{"big_x_past_min", "Big", `{"x":-1}`},
-	{"big_w_at_max", "Big", `{"w":9007199254740992}`},
-	{"big_w_past_max", "Big", `{"w":9007199254740993}`},
-	{"big_w_at_min", "Big", `{"w":-9007199254740992}`},
-	{"big_w_past_min", "Big", `{"w":-9007199254740993}`},
-	{"small_x_at_max", "Small", `{"x":7}`},
-	{"small_x_past_max", "Small", `{"x":8}`},
-	{"small_x_at_min", "Small", `{"x":0}`},
-	{"small_x_past_min", "Small", `{"x":-1}`},
-	{"small_w_at_max", "Small", `{"w":7}`},
-	{"small_w_past_max", "Small", `{"w":8}`},
-	{"small_w_at_min", "Small", `{"w":-7}`},
-	{"small_w_past_min", "Small", `{"w":-8}`},
+	{"big_x_at_max", "Big", `{"x":"9007199254740992"}`},
+	{"big_x_past_max", "Big", `{"x":"9007199254740993"}`},
+	{"big_x_at_min", "Big", `{"x":"0"}`},
+	{"big_x_past_min", "Big", `{"x":"-1"}`},
+	{"big_w_at_max", "Big", `{"w":"9007199254740992"}`},
+	{"big_w_past_max", "Big", `{"w":"9007199254740993"}`},
+	{"big_w_at_min", "Big", `{"w":"-9007199254740992"}`},
+	{"big_w_past_min", "Big", `{"w":"-9007199254740993"}`},
+	{"small_x_at_max", "Small", `{"x":"7"}`},
+	{"small_x_past_max", "Small", `{"x":"8"}`},
+	{"small_x_at_min", "Small", `{"x":"0"}`},
+	{"small_x_past_min", "Small", `{"x":"-1"}`},
+	{"small_w_at_max", "Small", `{"w":"7"}`},
+	{"small_w_past_max", "Small", `{"w":"8"}`},
+	{"small_w_at_min", "Small", `{"w":"-7"}`},
+	{"small_w_past_min", "Small", `{"w":"-8"}`},
 }
 
 // intRangeAnswer is the engine's answer for one case: the verdict, and for a
