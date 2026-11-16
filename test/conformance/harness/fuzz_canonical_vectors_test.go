@@ -761,3 +761,57 @@ func TestUnknownArmTextPin(t *testing.T) {
 		t.Error(fault)
 	}
 }
+
+// TestMapDepthRootKindPin gives the first table-valued field the scalar
+// field's ID, then omits the old scalar occurrence. This isolates the intended
+// kind mismatch without a duplicate field or unused/out-of-order ID entries.
+func TestMapDepthRootKindPin(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/map_depth.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := frameWire(wire)
+	if len(f.entries) == 0 || len(f.entries) >= 128 || len(wire) < 2 || wire[1] != 1 {
+		t.Fatal("unexpected map seed")
+	}
+	target := uint64(len(f.entries))
+	found := false
+	for _, field := range f.fields {
+		if len(field.enclosing) != 0 {
+			continue
+		}
+		ref, _ := readLeb(wire, field.start, f.bodyEnd)
+		if ref == target {
+			wire = append(bytes.Clone(wire[:field.start]), wire[field.end:]...)
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("missing original scalar field")
+	}
+	wire[1] = byte(target)
+	wire, err = firstUseOrder(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/map_depth_root_kind.bin")
+	if os.Getenv("FRAMING_WRITE") == "1" {
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, wire) {
+		t.Fatal("root kind mismatch differs from its builder")
+	}
+	if fault := framingTableFault(framingVector{}, wire); fault != "" {
+		t.Error(fault)
+	}
+}
