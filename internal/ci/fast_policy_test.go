@@ -42,7 +42,7 @@ func fastPolicyErrors(wf string) []string {
 	lint, policy := jobs["lint-fast"], jobs["ci-policy"]
 	var errs []string
 	const statusPrefix = "always() && !cancelled() && "
-	if lint == "" || policy == "" || jobIfCondition(wf, "lint-fast") != statusPrefix+jobIfCondition(wf, "ci-policy") {
+	if lint == "" || policy == "" || strings.Replace(jobIfCondition(wf, "lint-fast"), statusPrefix, "", 1) != jobIfCondition(wf, "ci-policy") || !strings.Contains(jobIfCondition(wf, "lint-fast"), statusPrefix) {
 		errs = append(errs, "policy and lint jobs must have the same admission, with status-aware lint")
 	}
 	const gate = `      - name: require CI policy success

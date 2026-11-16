@@ -471,7 +471,7 @@ jobs:
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
     needs: ci-policy
-    if: always() && !cancelled() && startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: startsWith(github.head_ref, 'sprint/') == false && always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
     # and modernize's first compile
