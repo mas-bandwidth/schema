@@ -29,7 +29,7 @@ python-vt-unbounded-driver-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/compiler/carries_python_unbounded.go":"%s/build/python-vt-unbounded-driver-nc/carries.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/python-vt-unbounded-driver-nc/overlay.json
-	@if go test -tags schema_leg_python -overlay build/python-vt-unbounded-driver-nc/overlay.json \
+	@if SCHEMA_SLOW=1 go test -tags schema_leg_python -overlay build/python-vt-unbounded-driver-nc/overlay.json \
 			-count=1 ./compiler -run '^TestPythonTableDriverCarriesUnboundedArrays$$' \
 			> build/python-vt-unbounded-driver-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: TestPythonTableDriverCarriesUnboundedArrays stayed green under the sabotage"; \

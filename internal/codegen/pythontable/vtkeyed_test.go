@@ -41,7 +41,7 @@ var pyKeyedConstructs = []pyKeyedConstruct{
     money [Slot]ufixed(8, 8) | min = 0, max = 200
     n     int32
 }
-`, "K", `{"ints":{"head":-5,"feet":7},"flags":{"body":true},"wide":{"head":18446744073709551615,"body":1},"small":{"feet":-128},"money":{"body":3.25},"n":3}`},
+`, "K", `{"ints":{"head":-5,"feet":7},"flags":{"body":true},"wide":{"head":"18446744073709551615","body":"1"},"small":{"feet":-128},"money":{"body":3.25},"n":3}`},
 	// every slot present, the last variant included
 	{"scalars_full", "package probe\n" + pyKeyedEnum + `table K
 {
