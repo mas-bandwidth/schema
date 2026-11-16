@@ -828,9 +828,9 @@ static SCHEMA_UNUSED int bench_table_wire_open( bench_table_reader_t * r, const 
         int64_t end;
         order.next_ref = &next_ref;
         end = bench_table_skip_body( order, INT64_MAX - 1, 0, 1 );
-        /* Other damaged payloads still take the semantic reader's named
-           refusal; only identity order and a completely read trailer are
-           judged here. */
+        /* Payloads that stopped early still take the semantic reader's
+           refusal. Judge identity order, unused entries after a complete
+           walk, and unclaimed tails of successfully read frames here. */
         if ( next_ref == UINT64_MAX || (end == order.size && next_ref - 1 != r->id_count) ) {
             report->refused=1; report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
         }
