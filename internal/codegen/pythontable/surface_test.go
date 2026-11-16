@@ -78,3 +78,60 @@ table Beta | forms = "wire" { value int32 }
 		t.Fatalf("declared forms = %v", got)
 	}
 }
+
+func TestPythonRetainSurfaceSelection(t *testing.T) {
+	u := loadUnit(t, `package surfaces
+ table Root { value int32 }
+ fixed table Fixed { value int32 }
+`)
+	wire, err := ParseSurfaces("wire")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := GenerateSurface(u, wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, init := string(plain["surfaces/Core.py"]), string(plain["surfaces/__init__.py"])
+	for _, text := range []string{"def load_retain(", "def save_retain(", "def measure_retain(", "TableRetain"} {
+		if strings.Contains(code, text) || strings.Contains(init, text) {
+			t.Fatalf("wire-only emitted %s", text)
+		}
+	}
+	for _, name := range []string{"surfaces/_schema/retain.py", "surfaces/_schema/retain_known.py"} {
+		if _, ok := plain[name]; ok {
+			t.Fatalf("wire-only emitted %s", name)
+		}
+	}
+	selected, err := ParseSurfaces("wire,retain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err := GenerateSurface(u, selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, init = string(retained["surfaces/Core.py"]), string(retained["surfaces/__init__.py"])
+	for _, text := range []string{"def load_retain(", "def save_retain(", "def measure_retain(", "def load_retain_messages(", "def save_retain_messages("} {
+		if !strings.Contains(code, text) {
+			t.Fatalf("retain selection omitted %s", text)
+		}
+	}
+	if !strings.Contains(init, "TableRetain") {
+		t.Fatal("retain selection omitted export")
+	}
+	for _, name := range []string{"surfaces/_schema/retain.py", "surfaces/_schema/retain_known.py"} {
+		if _, ok := retained[name]; !ok {
+			t.Fatalf("retain selection omitted %s", name)
+		}
+	}
+	for _, schema := range []string{"package names\ntable Root { load_retain int32 }\n", "package names\ntable TableRetain { n int32 }\n"} {
+		named := loadUnit(t, schema)
+		if _, err := GenerateSurface(named, wire); err != nil {
+			t.Fatalf("wire-only name refused: %v", err)
+		}
+		if _, err := GenerateSurface(named, selected); err == nil {
+			t.Fatalf("retain collision accepted: %s", schema)
+		}
+	}
+}

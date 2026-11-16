@@ -68,18 +68,20 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := python.CheckNames(u); err != nil {
+	if err := python.CheckNamesWithTextSurfaces(u, surfaces.JSON, surfaces.TextForm); err != nil {
 		return nil, err
 	}
-	if u.Tables["TableRetain"] != nil || u.Structs["TableRetain"] != nil || u.Unions["TableRetain"] != nil || u.TableUnions["TableRetain"] != nil || u.Enums["TableRetain"] != nil || u.Flags["TableRetain"] != nil || u.Consts["TableRetain"] != nil {
+	if surfaces.Retain && (u.Tables["TableRetain"] != nil || u.Structs["TableRetain"] != nil || u.Unions["TableRetain"] != nil || u.TableUnions["TableRetain"] != nil || u.Enums["TableRetain"] != nil || u.Flags["TableRetain"] != nil || u.Consts["TableRetain"] != nil) {
 		return nil, fmt.Errorf("python: TableRetain is the table retention runtime name; rename the declaration")
 	}
-	for _, file := range u.Files {
-		for _, table := range file.Tables {
-			for _, field := range table.Fields {
-				switch field.Name {
-				case "load_retain", "measure_retain", "save_retain", "load_retain_messages", "save_retain_messages":
-					return nil, fmt.Errorf("python: %s.%s is a generated retention method; rename the field", table.Name, field.Name)
+	if surfaces.Retain {
+		for _, file := range u.Files {
+			for _, table := range file.Tables {
+				for _, field := range table.Fields {
+					switch field.Name {
+					case "load_retain", "measure_retain", "save_retain", "load_retain_messages", "save_retain_messages":
+						return nil, fmt.Errorf("python: %s.%s is a generated retention method; rename the field", table.Name, field.Name)
+					}
 				}
 			}
 		}
@@ -103,6 +105,12 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 		return nil, err
 	}
 	for rel, data := range runtime {
+		if !unitHasJSON(u, surfaces) && (rel == "_schema/json_scan.py" || rel == "_schema/json_table.py") {
+			continue
+		}
+		if !surfaces.Retain && rel == "_schema/retain.py" {
+			continue
+		}
 		if !surfaces.Fixed && rel == "_schema/fixedform.py" {
 			continue
 		}
@@ -110,7 +118,7 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 	}
 	// The nameable set is fixed by the schema, not the retained input. It is
 	// the same set used to size the generated C++ ID table.
-	if len(ir.VariableTables(u)) != 0 {
+	if surfaces.Retain && len(ir.VariableTables(u)) != 0 {
 		var retainIDs strings.Builder
 		retainIDs.WriteString("\"\"\"Compile-time table IDs used by the retaining writer.\"\"\"\n\nKNOWN = (\n")
 		for _, id := range ir.TableWireIds(u) {
@@ -539,13 +547,15 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 	if len(imports.Serialize) > 0 {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
-	if len(ir.VariableTables(u)) != 0 {
+	if surfaces.Retain && len(ir.VariableTables(u)) != 0 {
 		b.WriteString("from ._schema.retain import TableRetain\n")
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.integrity import crc32c as _s_crc32c, open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
-	b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
-	b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
+	if unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
+		b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
+	}
 	if surfaces.Fixed {
 		b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
 	}
@@ -777,44 +787,46 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 	} else {
 		b.WriteString("        return measure_table(self)\n")
 	}
-	if ir.VariableTables(u)[st.Name] {
-		b.WriteString("\n    @classmethod\n")
-		b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: TableRetain, report: LoadReport | None = None) -> Self:\n")
-		if st.Integrity == "crc32c" {
-			b.WriteString("        data = _s_open_crc(data)\n")
-		}
-		b.WriteString("        return load_table(cls, data, report, retain)\n")
-		b.WriteString("\n    def measure_retain(self, retain: TableRetain) -> int:\n")
-		b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
-		if st.Integrity == "crc32c" {
-			b.WriteString("        return _encode_retain(self, retain, Writer(None))[0] + 4\n")
+	if surfaces.Retain {
+		if ir.VariableTables(u)[st.Name] {
+			b.WriteString("\n    @classmethod\n")
+			b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: TableRetain, report: LoadReport | None = None) -> Self:\n")
+			if st.Integrity == "crc32c" {
+				b.WriteString("        data = _s_open_crc(data)\n")
+			}
+			b.WriteString("        return load_table(cls, data, report, retain)\n")
+			b.WriteString("\n    def measure_retain(self, retain: TableRetain) -> int:\n")
+			b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
+			if st.Integrity == "crc32c" {
+				b.WriteString("        return _encode_retain(self, retain, Writer(None))[0] + 4\n")
+			} else {
+				b.WriteString("        return _encode_retain(self, retain, Writer(None))[0]\n")
+			}
+			b.WriteString("\n    def save_retain(self, retain: TableRetain, report: LoadReport) -> bytes:\n")
+			b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
+			b.WriteString("        if report is None:\n            raise InvalidValue(\"report\", \"save_retain requires a report\")\n")
+			b.WriteString("        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n        report.retain_lost += lost\n")
+			if st.Integrity == "crc32c" {
+				b.WriteString("        output.extend(_s_crc32c(memoryview(output)).to_bytes(4, \"little\"))\n        return bytes(output)\n\n\n")
+			} else {
+				b.WriteString("        return bytes(output)\n\n\n")
+			}
 		} else {
-			b.WriteString("        return _encode_retain(self, retain, Writer(None))[0]\n")
+			b.WriteString("\n    @classmethod\n")
+			b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: object, report: LoadReport | None = None) -> Self:\n")
+			b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain is unavailable for a fixed-class root\")\n")
+			b.WriteString("\n    def measure_retain(self, retain: object) -> int:\n")
+			b.WriteString("        raise InvalidValue(\"measure_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
+			b.WriteString("\n    def save_retain(self, retain: object, report: LoadReport) -> bytes:\n")
+			b.WriteString("        raise InvalidValue(\"save_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
+			b.WriteString("\n    @classmethod\n")
+			b.WriteString("    def load_retain_messages(cls, *args: object, **kwargs: object) -> None:\n")
+			b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain_messages is unavailable for a fixed-class root\")\n")
+			b.WriteString("\n    def save_retain_messages(self, *args: object, **kwargs: object) -> None:\n")
+			b.WriteString("        raise InvalidValue(\"save_retain_messages\", \"a fixed-class root cannot retain unknown messages\")\n\n\n")
 		}
-		b.WriteString("\n    def save_retain(self, retain: TableRetain, report: LoadReport) -> bytes:\n")
-		b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
-		b.WriteString("        if report is None:\n            raise InvalidValue(\"report\", \"save_retain requires a report\")\n")
-		b.WriteString("        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n        report.retain_lost += lost\n")
-		if st.Integrity == "crc32c" {
-			b.WriteString("        output.extend(_s_crc32c(memoryview(output)).to_bytes(4, \"little\"))\n        return bytes(output)\n\n\n")
-		} else {
-			b.WriteString("        return bytes(output)\n\n\n")
-		}
-	} else {
-		b.WriteString("\n    @classmethod\n")
-		b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: object, report: LoadReport | None = None) -> Self:\n")
-		b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain is unavailable for a fixed-class root\")\n")
-		b.WriteString("\n    def measure_retain(self, retain: object) -> int:\n")
-		b.WriteString("        raise InvalidValue(\"measure_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
-		b.WriteString("\n    def save_retain(self, retain: object, report: LoadReport) -> bytes:\n")
-		b.WriteString("        raise InvalidValue(\"save_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
-		b.WriteString("\n    @classmethod\n")
-		b.WriteString("    def load_retain_messages(cls, *args: object, **kwargs: object) -> None:\n")
-		b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain_messages is unavailable for a fixed-class root\")\n")
-		b.WriteString("\n    def save_retain_messages(self, *args: object, **kwargs: object) -> None:\n")
-		b.WriteString("        raise InvalidValue(\"save_retain_messages\", \"a fixed-class root cannot retain unknown messages\")\n\n\n")
 	}
-	if st.CarriesForm("json") {
+	if surfaceCarries(surfaces, st, "json") {
 		b.WriteString("\n    @classmethod\n")
 		b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
 		if scalarOnly(st) {
@@ -834,7 +846,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
 		emitStraightLine(b, st)
-		if st.CarriesForm("json") {
+		if surfaceCarries(surfaces, st, "json") {
 			emitStraightLineJSON(b, st)
 		}
 	}
@@ -1564,7 +1576,7 @@ func packageInit(u *ir.Unit, plans []*filePlan, surfaces Surfaces) string {
 		b.WriteString("from ._schema.fixedform import FixedLoadReport\n")
 	}
 	names := []string{"BUILD_VERSION", "BlobRef", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
-	if len(ir.VariableTables(u)) != 0 {
+	if surfaces.Retain && len(ir.VariableTables(u)) != 0 {
 		b.WriteString("from ._schema.retain import TableRetain\n")
 		names = append(names, "TableRetain")
 	}
