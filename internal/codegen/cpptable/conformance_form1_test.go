@@ -45,6 +45,7 @@ var cppFramingStrictRows = []string{
 	"array_L1_inert",
 	"array_elements_past_count",
 	"frame_repeat_last_wins",
+	"frame_unreferenced_entry",
 	"frame_unknown_id_length",
 	"frame_unknown_id_reference",
 	"keyed_slots_past_count",

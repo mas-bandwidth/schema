@@ -405,6 +405,9 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
+	// A file has no writer build or declaration. Fields resolve by ID;
+	// reader declaration order cannot judge a lawful older writer's order.
+	// The wire check already enforces observable first-use ID order (§3).
 	for {
 		if r.err() != nil {
 			return false
@@ -474,6 +477,7 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			if fv.Def.Type.Optional {
 				fv.Present = true
 			}
+
 			continue
 		}
 		if !r.field(fv) {
@@ -484,6 +488,9 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			// (docs/SPEC-TABLES.md §2.3)
 			fv.Present = true
 		}
+		// A file carries neither the writer's Required/optional declaration nor
+		// its build. Removing either marker is lawful (§2.3, §4), so the
+		// reader's current elision rule cannot reject a value that rode.
 	}
 }
 
@@ -500,6 +507,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		if !ok {
 			return r.damage("a node index that is truncated or not canonical")
 		}
+
 		return r.resolveCell(&fv.Cell, f, index)
 	case f.KeyEnum != "":
 		return r.keyed(fv)
@@ -580,6 +588,7 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 	if v < 0 {
 		cell.U = 0
 		r.report.Unknown++
+		substitute(r.fail)
 		if r.rt != nil {
 			// AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS
 			// (docs/SPEC-TABLES.md §6.6)
@@ -591,6 +600,7 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 		// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an
 		// element as the ELEMENT's default; it is never unknown
 		// (docs/SPEC-TABLES.md §2.15).
+		substitute(r.fail)
 		if element {
 			*cell = tabletext.Cell{}
 		} else {
@@ -1006,6 +1016,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	cell.Tab = nil
 	cell.Arm = nil
 	if ref == 0 {
+
 		return true // empty: the id is the whole payload, not even a kind byte
 	}
 	armID, named := r.id(ref)
@@ -1030,6 +1041,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		// an arm this reader cannot name: the value reads EMPTY and the body is
 		// skipped by its length (§4)
 		r.report.Unknown++
+		substitute(r.fail)
 		if r.rt != nil {
 			// AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS (docs/SPEC-TABLES.md
 			// §6.6)
