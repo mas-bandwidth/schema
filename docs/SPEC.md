@@ -2433,7 +2433,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8 and 10):
 
   - `SaveMessages`: 1–3 and 8 debug; 4–7 every build
 
-  - packet `Write`: 1–5, 7 and 8 debug; 6 unrepresentable; 10 not yet held
+  - packet `Write`: 1–5, 7, 8 and 10 debug; 6 unrepresentable
 
 - **Java**
 

@@ -739,6 +739,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%s    stream.serialize_bool(&mut bool_value)?;\n%s}\n", ind, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			g.writeCompressedFloatRangeAssert(name, f, ind)
 			// a temp so the wire quantization cannot write back into the input
 			g.pf("%s{\n%s    let mut compressed_value = %s;\n", ind, ind, name)
 			g.pf("%s    stream.serialize_compressed_float_precomputed(&mut compressed_value, %s)?;%s\n%s}\n",
@@ -790,6 +791,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%swrite_%s(stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}
+}
+
+func (g *gen) writeCompressedFloatRangeAssert(name string, f *ir.Field, ind string) {
+	lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
+	g.writeAssert(ind, fmt.Sprintf("%s.is_finite() && %s >= %s && %s <= %s", name, name, lo, name, hi), fmt.Sprintf("%s out of range [%s, %s]", assertLabel(name), lo, hi))
 }
 
 // compressedFloatArgs renders the constant arguments of the runtime's
