@@ -383,10 +383,12 @@ table R
 
 // pyKeyedUnknownTable builds a keyed field of tables (element kind 13) whose
 // one slot names a key this reader cannot name and carries the table payload
-// that body builds. The payload's own ids are used before the field's.
+// that body builds. The outer field and slot key precede the payload's ids.
 func pyKeyedUnknownTable(body func(b *pyKeyedBuild) []byte) func(f uint64, k []uint64) []byte {
 	return func(f uint64, k []uint64) []byte {
 		b := &pyKeyedBuild{}
+		b.ref(f)
+		b.ref(ir.TableWireId("gone"))
 		payload := body(b)
 		b.keyedField(f, 16, 13, 1, []pyKeyedSlot{{key: ir.TableWireId("gone"), payload: payload}}, nil)
 		return b.file()
