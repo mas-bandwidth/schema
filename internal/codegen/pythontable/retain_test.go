@@ -187,6 +187,11 @@ func TestPythonRetainCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	inputs := map[string][]byte{"wire": wire}
+	expected, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt1_save.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs["expected"] = expected
 	for _, name := range []string{"retain_excluded_0", "retain_excluded_1", "retain_excluded_2", "retain_excluded_3", "retain_excluded_4", "retain_excluded_5", "retain_rt3"} {
 		data, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", name+".bin"))
 		if err != nil {
@@ -204,6 +209,16 @@ keep=TableRetain(bytearray(65536),[None]*8192)
 retained,lost=capture_file(Node,memoryview(data),keep)
 assert (retained,lost)==(9,2), (retained,lost)
 assert len(list(keep.records()))==9
+def grouped(retain):
+    result={}
+    for node,path,identity,kind,payload in retain.records():
+        result.setdefault((node,path),[]).append((identity,kind,bytes(payload)))
+    return result
+with open('expected','rb') as f: saved=f.read()
+Node.load(saved)
+again=TableRetain(bytearray(65536),[None]*8192)
+assert capture_file(Node,memoryview(saved),again)==(9,0)
+assert grouped(again)==grouped(keep)
 small=TableRetain(bytearray(), [])
 assert capture_file(Node,memoryview(data),small)==(0,11)
 for name in ('retain_excluded_0','retain_excluded_1','retain_excluded_2','retain_excluded_3','retain_excluded_4','retain_excluded_5','retain_rt3'):
