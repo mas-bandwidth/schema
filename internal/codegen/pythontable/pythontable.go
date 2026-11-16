@@ -575,10 +575,10 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 		if surfaceCarries(surfaces, st, "block") {
 			emitBlockDescriptors(&b, u, st, blocks)
 		} else if surfaces.Block {
-            // A table excluded as a block root may still be a by-value child
-            // of an included root. Keep its row layout for that enclosing block.
-            emitBlockDescriptors(&b, u, st, nil)
-        } else {
+			// A table excluded as a block root may still be a by-value child
+			// of an included root. Keep its row layout for that enclosing block.
+			emitBlockDescriptors(&b, u, st, nil)
+		} else {
 			fmt.Fprintf(&b, "%s.block = None\n\n", st.Name)
 		}
 	}
@@ -775,8 +775,8 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	if !valueClass {
 		var forms []string
 		for _, form := range surfaceForms(surfaces, st) {
-            forms = append(forms, strconv.Quote(form))
-        }
+			forms = append(forms, strconv.Quote(form))
+		}
 		if len(forms) == 1 {
 			forms[0] += ","
 		}
@@ -1365,6 +1365,7 @@ func packageInit(u *ir.Unit, plans []*filePlan, surfaces Surfaces) string {
 	if surfaces.Fixed {
 		names = append(names, "FixedLoadReport")
 	}
+
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
