@@ -82,12 +82,14 @@ class _Parser:
         if start >= len(d):
             raise TextError("text_unterminated", start)
         self.tokens += 1
-        self.nodes += 1
-        if self.tokens > self.max_tokens or self.nodes > self.max_nodes:
+        if self.tokens > self.max_tokens:
             raise TextError("text_limit", start)
         c = d[start]
         if c == 40:
             if depth >= self.max_depth:
+                raise TextError("text_limit", start)
+            self.nodes += 1
+            if self.nodes > self.max_nodes:
                 raise TextError("text_limit", start)
             self.pos += 1
             children: list[Node] = []
@@ -96,6 +98,9 @@ class _Parser:
                 if self.pos == len(d):
                     raise TextError("text_unterminated", self.pos)
                 if d[self.pos] == 41:
+                    self.tokens += 1
+                    if self.tokens > self.max_tokens:
+                        raise TextError("text_limit", self.pos)
                     self.pos += 1
                     return Node("list", start, self.pos, "", tuple(children))
                 children.append(self.node(depth + 1))

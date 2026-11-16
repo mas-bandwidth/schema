@@ -36,6 +36,13 @@ for kw in ({"max_bytes": 2}, {"max_tokens": 1}, {"max_nodes": 1}, {"max_allocati
         assert e.reason == "text_limit"
     else:
         raise AssertionError(kw)
+assert parse(b'(:x 1)', max_tokens=4, max_nodes=1).kind == 'list'
+try:
+    parse(b'(:x 1)', max_tokens=3)
+except TextError as e:
+    assert e.reason == 'text_limit'
+else:
+    raise AssertionError('closing delimiter token')
 `
 	inputs := map[string][]byte{"main.py": []byte(src)}
 	want := "list\nlist\nlist\ntext_syntax\ntext_syntax\ntext_encoding\ntext_syntax\ntext_syntax\n"
