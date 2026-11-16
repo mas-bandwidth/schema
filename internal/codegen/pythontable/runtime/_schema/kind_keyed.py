@@ -171,7 +171,7 @@ class _Keyed:
             sw.varint(len(element))
             sw.raw(element)
             present += 1
-        if present == 0:
+        if present == 0 and not fd.required:
             _rollback(ctx, mark)  # no present slot: the field is not written
             return
         inner = bytearray()
@@ -225,7 +225,7 @@ def _write_retain(w: Any, fd: FieldDesc, elem: FieldDesc, values: list[Any], ctx
             _write_scalar(w, elem, current)
         w.finish_frame(element_frame)
         present += 1
-    if not present:
+    if not present and not fd.required:
         _rollback(ctx, ids_start)
         w.truncate(start)
         return

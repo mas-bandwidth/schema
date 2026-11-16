@@ -261,7 +261,7 @@ def _write_retain_body(writer: Writer, value: Any, ctx: _RetainCtx, root: bool) 
         if codec == "keyed" and field.elem is not None and field.elem.codec == "table":
             slots = current if field.keyed_list else current._values
             has_child = any(ctx.retain.has_body(ctx.node, parent_steps + ((field.ordinal, index),)) for index in range(len(slots)))
-        default = field.is_default(current)
+        default = not field.required and field.is_default(current)
         if ctx.preview:
             has_child = False
         if default and not has_child:
@@ -655,7 +655,7 @@ def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
         if not field.guard_holds(value):
             continue
         current = getattr(value, field.name)
-        if field.is_default(current):
+        if not field.required and field.is_default(current):
             continue
         kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
     if root and ctx.order:

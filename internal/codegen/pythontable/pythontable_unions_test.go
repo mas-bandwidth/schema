@@ -736,7 +736,7 @@ var unionControls = []struct {
 	{"count-extent-cap", "load.py", "    if count > _COUNT_CAP:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "    if False:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "case count-over-extent-cap "},
 	{"counted-elision", "descriptor.py", "                return len(value) == 0\n", "                return len(value) <= 1 and all(element.type == 0 for element in value)\n", "case counted-one-none "},
 	{"fixed-elision", "descriptor.py", "            return all(element.type == 0 for element in value)\n", "            return bool(value == self.default)\n", "union_elide_inactive True"},
-	{"table-elision", "descriptor.py", "            return all(field.is_default(getattr(value, field.name)) for field in fields)\n", "            return bool(value == new_by_name(self.target))\n", "union_elide_inactive True"},
+	{"table-elision", "descriptor.py", "            return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)\n", "            return bool(value == new_by_name(self.target))\n", "union_elide_inactive True"},
 	{"write-arm-path", "kind_union.py", "f\"{path}.{arm.name}\"", "path", "union_write_type "},
 	{"write-minimum", "kind_union.py", "        if count < f.array_min or count > f.bound:", "        if count > f.bound:", "union_write_minimum "},
 	{"write-tag-check", "kind_union.py", "    if type(tag) is not int or tag < 0 or tag > len(un.descriptor.arms):", "    if type(tag) is not int or tag < 0:", "union_write_tag "},
