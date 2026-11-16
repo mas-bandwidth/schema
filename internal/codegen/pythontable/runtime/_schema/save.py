@@ -8,7 +8,7 @@ sink, so the two agree byte for byte by construction.
 
 from typing import Any, Iterator
 
-from . import InvalidValue
+from . import BlobRef, InvalidValue
 from . import descriptor, kinds
 from . import kind_array, kind_blob, kind_map, kind_optional, kind_union, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
@@ -48,7 +48,7 @@ class Writer:
 
 
 class Ctx:
-    __slots__ = ("ids", "refs", "indices", "node_blobs", "blob_slots", "blob_next", "order", "onstack", "current")
+    __slots__ = ("ids", "refs", "indices", "node_blobs", "blob_slots", "blob_next", "order", "onstack", "current", "blob_refs")
 
     def __init__(self) -> None:
         self.ids: list[int] = []
@@ -64,6 +64,7 @@ class Ctx:
         self.order: list[Any] = []
         self.onstack: set[int] = set()
         self.current: Any = None
+        self.blob_refs: set[int] = set()
 
     def idref(self, value: int) -> int:
         reference = self.refs.get(value)
@@ -369,6 +370,11 @@ def _collect_edges(
         elif codec == "string_blob" or codec == "bytes_blob":
             if current is None:
                 continue
+            if isinstance(current, BlobRef):
+                identity = id(current)
+                if identity in ctx.blob_refs:
+                    raise InvalidValue(_path(desc.name, field.name), "blob_shared")
+                ctx.blob_refs.add(identity)
             body = kind_blob._encode(field, current, _path(desc.name, field.name))
             index = len(ctx.order) + 2
             ctx.order.append(kind_blob._BlobNode(field.codec == "string_blob", body))
