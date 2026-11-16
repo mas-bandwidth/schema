@@ -274,6 +274,26 @@ assert small.capture(1,((0,0),),7,4,memoryview(bytes([1,2,3,4])),[])
 before=small.used
 assert not small.capture(1,((1,0),),8,4,memoryview(bytes([1,2,3,4])),[])
 assert small.used==before and [r[0] for r in small.records_at(1,((0,0),))]==[7]
+from probe._schema.save import Ctx
+one,two=object(),object()
+remap=TableRetain(bytearray(1024),[])
+for node,identity in ((1,11),(2,22),(3,33)):
+    assert remap.capture(node,(),identity,4,memoryview(bytes([1,2,3,4])),[])
+ctx=Ctx(); ctx.indices[id(one)]=3; ctx.indices[id(two)]=2
+remap.begin_save(ctx,[one,two])
+assert [r[0] for r in remap.records_at(1,())]==[11]
+assert [r[0] for r in remap.records_at(2,())]==[33]
+assert [r[0] for r in remap.records_at(3,())]==[22]
+ctx=Ctx(); ctx.indices[id(one)]=2
+remap.begin_save(ctx,[one,two])
+assert [r[0] for r in remap.records_at(2,())]==[22]
+assert [r[0] for r in remap.records_at(0,())]==[33]
+remap.begin_save(Ctx(),[one,two])
+assert [r[0] for r in remap.records_at(0,())]==[22,33]
+ctx=Ctx(); ctx.indices[id(one)]=3; ctx.indices[id(two)]=2
+remap.begin_save(ctx,[one,two])
+assert [r[0] for r in remap.records_at(3,())]==[22]
+assert [r[0] for r in remap.records_at(2,())]==[33]
 print('path-index')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -382,6 +402,39 @@ if keep.unplaced()!=0: raise SystemExit('retain_placement_control')
 		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
 		if err == nil || !strings.Contains(stderr, "retain_placement_control") {
 			t.Fatalf("placement sabotage not detected by name: %v\n%s", err, stderr)
+		}
+	}
+}
+
+func TestPythonRetainNodeRemapNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "probe/_schema/retain.py"
+	const anchor = "                        mapped = ctx.indices.get(id(obj), 0) if obj is not None else 0\n"
+	if strings.Count(string(files[path]), anchor) != 1 {
+		t.Fatal("node remap control anchor changed")
+	}
+	files[path] = []byte(strings.Replace(string(files[path]), anchor, "                        mapped = original\n", 1))
+	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
+from probe._schema.save import Ctx
+one,two=object(),object()
+keep=TableRetain(bytearray(1024),[])
+for node,identity in ((2,22),(3,33)):
+    assert keep.capture(node,(),identity,4,memoryview(bytes([1,2,3,4])),[])
+ctx=Ctx(); ctx.indices[id(one)]=3; ctx.indices[id(two)]=2
+keep.begin_save(ctx,[one,two])
+if [r[0] for r in keep.records_at(2,())] != [33]: raise SystemExit('retain_node_remap_control')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err == nil || !strings.Contains(stderr, "retain_node_remap_control") {
+			t.Fatalf("node remap sabotage not detected by name: %v\n%s", err, stderr)
 		}
 	}
 }

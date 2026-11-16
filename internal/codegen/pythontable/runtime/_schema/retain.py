@@ -295,19 +295,19 @@ class TableRetain:
 
     @staticmethod
     def _key_end(data: memoryview, record: int) -> int:
-        return record + 17 + 8 * TableRetain._word(data, record + 13)
+        return record + 21 + 8 * TableRetain._word(data, record + 17)
 
     @staticmethod
     def _bit(data: memoryview, record: int, bit: int) -> int:
-        at = record + 9 + bit // 8
+        at = record + 13 + bit // 8
         if at >= TableRetain._key_end(data, record):
             return 0
         return (int(data[at]) >> (bit % 8)) & 1
 
     @staticmethod
     def _first_difference(data: memoryview, left: int, right: int) -> int | None:
-        a = left + 9
-        b = right + 9
+        a = left + 13
+        b = right + 13
         a_end = TableRetain._key_end(data, left)
         b_end = TableRetain._key_end(data, right)
         if a_end - a != b_end - b:
@@ -348,7 +348,8 @@ class TableRetain:
             sink.u32(0)  # record bytes following this word
             sink.byte(1)  # record, followed by next record at the same path
             sink.u32(0)
-            sink.u32(node)
+            sink.u32(node)  # original directory index
+            sink.u32(node)  # node index on the current save walk
             sink.u32(len(steps))
             for ordinal, index in steps:
                 if ordinal < 0 or index < 0:
@@ -445,9 +446,9 @@ class TableRetain:
         leaf = pointer - 1
         pointer = self._word(data, leaf + 5)
         record = pointer - 1
-        if self._word(data, record + 9) != node or self._word(data, record + 13) != len(steps):
+        if self._word(data, record + 13) != node or self._word(data, record + 17) != len(steps):
             return
-        cursor = record + 17
+        cursor = record + 21
         for ordinal, index in steps:
             if self._word(data, cursor) != ordinal or self._word(data, cursor + 4) != index:
                 return
@@ -465,18 +466,91 @@ class TableRetain:
             yield identity, kind, data[cursor:end], record
             pointer = self._word(data, record + 5)
 
-    def begin_save(self) -> None:
-        """Clear per-save placement marks and the caller-owned id list."""
+    def begin_save(self, ctx: Any = None, directory: Any = None) -> None:
+        """Clear placement marks; optionally map old node anchors to this walk.
+
+        The normal load's directory is retained by reference, and the normal
+        save's existing node-index map is reused. Rebuilding the path trie
+        consumes only its existing nodes in the caller's bytearray.
+        """
         self.id_used = 0
         data = memoryview(self.storage)
         at = 0
+        free = 0
+        if ctx is not None and directory is None:
+            raise ValueError("node remapping needs the loaded directory")
         while at < self.used:
             length = self._word(data, at)
             end = at + 4 + length
             if end > self.used or length < 1:
                 raise ValueError("corrupt retained record")
-            data[at + 4] = int(data[at + 4]) & 0x7F
+            tag = int(data[at + 4]) & 0x7F
+            data[at + 4] = tag
+            if ctx is not None:
+                if tag in (2, 3):
+                    data[at + 4] = 2
+                    self._set_word(data, at + 5, free)
+                    free = at + 1
+                elif tag == 1:
+                    self._set_word(data, at + 5, 0)
+                    original = self._word(data, at + 9)
+                    mapped = 1
+                    if original > 1:
+                        index = original - 2
+                        obj = directory[index] if index < len(directory) else None
+                        mapped = ctx.indices.get(id(obj), 0) if obj is not None else 0
+                    self._set_word(data, at + 13, mapped)
+                else:
+                    raise ValueError("corrupt retained index entry")
             at = end
+        if ctx is not None:
+            self.root = 0
+            at = 0
+            while at < self.used:
+                end = at + 4 + self._word(data, at)
+                if int(data[at + 4]) == 1:
+                    leaf = self._leaf(data, at)
+                    difference = None if leaf < 0 else self._first_difference(data, at, self._word(data, leaf + 5) - 1)
+                    if leaf >= 0 and difference is None:
+                        last = self._word(data, leaf + 9) - 1
+                        self._set_word(data, last + 5, at + 1)
+                        self._set_word(data, leaf + 9, at + 1)
+                    else:
+                        if not free:
+                            raise ValueError("retained index has too few nodes")
+                        new_leaf = free - 1
+                        free = self._word(data, new_leaf + 5)
+                        data[new_leaf + 4] = 2
+                        self._set_word(data, new_leaf + 5, at + 1)
+                        self._set_word(data, new_leaf + 9, at + 1)
+                        self._set_word(data, new_leaf + 13, 0)
+                        if leaf < 0:
+                            self.root = new_leaf + 1
+                        else:
+                            if not free or difference is None:
+                                raise ValueError("retained index has too few branches")
+                            branch = free - 1
+                            free = self._word(data, branch + 5)
+                            data[branch + 4] = 3
+                            self._set_word(data, branch + 5, difference)
+                            pointer = self.root
+                            parent = -1
+                            parent_side = 0
+                            while pointer:
+                                current = pointer - 1
+                                if int(data[current + 4]) != 3 or self._word(data, current + 5) >= difference:
+                                    break
+                                parent = current
+                                parent_side = self._bit(data, at, self._word(data, current + 5))
+                                pointer = self._word(data, current + 9 + parent_side * 4)
+                            side = self._bit(data, at, difference)
+                            self._set_word(data, branch + 9 + side * 4, new_leaf + 1)
+                            self._set_word(data, branch + 9 + (1 - side) * 4, pointer)
+                            if parent < 0:
+                                self.root = branch + 1
+                            else:
+                                self._set_word(data, parent + 9 + parent_side * 4, branch + 1)
+                at = end
 
     def write_tail(self, node: int, steps: tuple[tuple[int, int], ...], known: frozenset[int], ctx: Any, writer: Any) -> int:
         """Write this body's records, returning the number lost to id capacity."""
@@ -517,11 +591,11 @@ class TableRetain:
                     raise ValueError("corrupt retained index entry")
                 at = end
                 continue
-            if tag != 1 or length < 26:
+            if tag != 1 or length < 30:
                 raise ValueError("corrupt retained record")
             node = self._word(data, at + 9)
-            depth = self._word(data, at + 13)
-            cursor = at + 17
+            depth = self._word(data, at + 17)
+            cursor = at + 21
             steps = []
             for _ in range(depth):
                 ordinal = self._word(data, cursor)
