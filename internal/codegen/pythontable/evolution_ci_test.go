@@ -1,8 +1,10 @@
 package pythontable
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -127,6 +129,45 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	}
 	if strings.Count(string(planner), "/^TestPythonVtEvolution$/d") != 1 {
 		t.Fatal("complete Evolution parent must be delegated exactly once")
+	}
+	cmd := exec.Command("sh", filepath.Join(root, "tools/python-ci-rows.sh"))
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("actual CI plan: %v\n%s", err, out)
+	}
+	var rows []struct{ Target, Package, Test string }
+	if err := json.Unmarshal(out, &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 || len(rows) > 256 {
+		t.Fatalf("actual CI matrix has %d rows", len(rows))
+	}
+	targets := map[string]int{}
+	parent, coverage := 0, 0
+	for _, row := range rows {
+		targets[row.Target]++
+		if row.Package != "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" || row.Target != "" {
+			continue
+		}
+		re, err := regexp.Compile("^" + row.Test + "$")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if re.MatchString("TestPythonVtEvolution") {
+			parent++
+		}
+		if re.MatchString("TestPythonVtEvolutionCICoverage") {
+			coverage++
+		}
+	}
+	for _, target := range registered {
+		if targets[target] != 1 {
+			t.Fatalf("actual support target %s occurs %d times", target, targets[target])
+		}
+	}
+	if parent != 0 || coverage != 1 {
+		t.Fatalf("actual automatic selection parent=%d, coverage=%d", parent, coverage)
 	}
 	t.Logf("all %d existing Evolution subtest groups selected exactly once", len(names))
 }
