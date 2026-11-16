@@ -870,9 +870,12 @@ local integer = function(r, v, d) {
   local dom = domain(d);
   if (svCmp(value, dom[0]) < 0 || svCmp(value, dom[1]) > 0) return rfail(r, BOUND, v, v.start);
   v.canon = svDecimal(value);
-  // the wide walk converts the token's digits exactly (§16.2)
-  if (d.kind >= 18) raw(r, v.text);
-  else raw(r, v.canon);
+  // The document keeps a numeric token; the JSON walk takes wide integers
+  // and fixed-point values as strings (§16.2), preserving their exact digits.
+  local token = d.kind >= 18 ? v.text : v.canon;
+  if (d.kind == 5 || d.kind == 9 || d.kind == 18 || d.kind == 19 ||
+      d.kind == 23 || d.kind == 24 || d.kind == 28 || d.kind == 29) jsonString(r, token);
+  else raw(r, token);
   return true;
 };
 
