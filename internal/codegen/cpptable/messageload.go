@@ -69,6 +69,9 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 		g.pf("                break;\n            }\n")
 	}
 	g.pf("            default:\n")
+	// At our own announced build a foreign record's vocabulary entry cannot
+	// be a field of this record. Another build may have added it (§3.3).
+	g.pf("                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }\n")
 	g.pf("                report->unknown++;\n")
 	g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )\n                {\n                    report->damaged = true;\n                    return false;\n                }\n")
 	g.pf("                break;\n")
