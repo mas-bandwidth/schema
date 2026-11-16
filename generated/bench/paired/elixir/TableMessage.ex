@@ -607,7 +607,7 @@ defmodule Bench.TableMessage do
                       # triple exactly as the packet wire derives them (SPEC.md
                       # §4.3): the count clamps to [1, 2^32 - 256]
                       values = if values < 1.0, do: 1.0, else: values
-                      values = if values > 4294967040.0, do: 4294967040.0, else: values
+                      values = if values > 4_294_967_040.0, do: 4_294_967_040.0, else: values
                       count = ceil(values)
 
                       {:ok,
