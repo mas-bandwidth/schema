@@ -149,6 +149,23 @@ func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
 		}
 	}
 	t.Logf("unions round-tripped: %d across %d units, %d union-wire cases", len(keys), len(units), wires)
+
+	// Plant the missing top-level end check in the actual tape used by the
+	// corpus and require the trailing-data assertion to catch it.
+	const endCheck = "serializeEnd() { return this.reading && this.at === this.tape.length; }"
+	if !strings.Contains(unionProbeHarness, endCheck) {
+		t.Fatal("packet end-check control anchor missing")
+	}
+	broken := strings.Replace(unionProbeHarness, endCheck, "serializeEnd() { return true; }", 1)
+	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd.Dir = dir
+	out, err = cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "trailing packet data refused") {
+		t.Fatalf("packet end-check control did not catch trailing data: %v\n%s", err, out)
+	}
 }
 
 type unionCorpusUnit struct {
@@ -705,6 +722,7 @@ class Tape {
     return true;
   }
   serializeAlign() { return true; }
+  serializeEnd() { return this.reading && this.at === this.tape.length; }
   serializeBytes(buf) {
     if (this.reading) {
       if (this.at >= this.tape.length) { return false; }
@@ -741,6 +759,8 @@ export function roundTripPacket(Cls, Tag, write, read, arms) {
     assert.ok(read(tape(r), dst), "read " + arm);
     assert.equal(r.at, w.tape.length, "read consumed what write wrote: " + arm);
     assert.deepStrictEqual(dst, src, "arm " + arm);
+    const extra = new Tape([...w.tape, 0]);
+    assert.equal(read(tape(extra), new Cls()), false, "trailing packet data refused: " + arm);
   }
 }
 

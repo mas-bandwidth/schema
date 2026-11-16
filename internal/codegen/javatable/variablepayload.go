@@ -127,8 +127,17 @@ func writeVariableRetainedPayload(b *strings.Builder, u *ir.Unit, owner string, 
 
 // variableFloatPut is a float's write on the variable form: its RAW bits, -0
 // and the subnormals exact, through the writer's finite test, so a NaN or an
-// infinity refuses the save (docs/SPEC-TABLES.md §3.3).
+// infinity refuses the save (docs/SPEC-TABLES.md §3.3). A ranged float goes
+// through the writer's range test too, so one off its range refuses the save
+// in every build, whatever shape holds it (docs/SPEC.md §5.1 row 10).
 func variableFloatPut(f *ir.Field, w, expr string) string {
+	if f.HasFloatRange {
+		put := ".putF64In("
+		if f.Type.Kind == ir.TFloat32 {
+			put = ".putF32In("
+		}
+		return w + put + expr + ", " + fixedDoubleLit(f.FMin) + ", " + fixedDoubleLit(f.FMax) + ");"
+	}
 	if f.Type.Kind == ir.TFloat32 {
 		return w + ".putF32(" + expr + ");"
 	}

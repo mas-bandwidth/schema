@@ -21,6 +21,19 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+<<<<<<< HEAD
+=======
+func pyBlockRunBoth(t *testing.T, dir, main string, inputs map[string][]byte) string {
+	t.Helper()
+	current := string(pyrun.Run(t, dir, main, inputs))
+	floor := string(pyrun.RunFloor(t, dir, main, inputs))
+	if current != floor {
+		t.Fatalf("the Python pins disagree: current=%q floor=%q", current, floor)
+	}
+	return current
+}
+
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 func TestPythonBlockRead(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -57,11 +70,15 @@ handle = B.BlockOpen(blockdemo, root, data, version)
 import sys
 sys.stdout.write(B.Dump(handle))
 `, root)
+<<<<<<< HEAD
 			current := string(pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image}))
 			floor := string(pyrun.RunFloor(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image}))
 			if current != floor {
 				t.Fatalf("the two pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", current, floor)
 			}
+=======
+			current := pyBlockRunBoth(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 			if current != string(want) {
 				t.Errorf("%s: the reflective read differs from Go's dump:\n--- python ---\n%s\n--- go ---\n%s", row.name, current, want)
 			}
@@ -100,7 +117,11 @@ data = open("block", "rb").read()
 handle = B.BlockOpen(blockdemo, "RenderFrame", data, blockdemo.BUILD_VERSION)
 print("native-order-ok", len(B.Dump(handle)) > 0)
 `
+<<<<<<< HEAD
 	out := string(pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image}))
+=======
+	out := pyBlockRunBoth(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	if out != "native-order-ok True\n" {
 		t.Fatalf("native-order probe: %q", out)
 	}
@@ -149,7 +170,11 @@ else:
     raise SystemExit("accepted a block whose byte order word disagrees")
 print("opposite-order-ok")
 `, ir.BuildVersion(u))
+<<<<<<< HEAD
 	out := string(pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image}))
+=======
+	out := pyBlockRunBoth(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	if out != "opposite-order-ok\n" {
 		t.Fatalf("opposite-order probe: %q", out)
 	}
@@ -211,7 +236,11 @@ expect("truncated", base[:-1])
 expect("unaligned_base", base, 1)
 print("block-refusals-ok")
 `, ir.BuildVersion(u))
+<<<<<<< HEAD
 	out := string(pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image}))
+=======
+	out := pyBlockRunBoth(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	if !strings.Contains(out, "block-refusals-ok\n") {
 		t.Fatalf("damaged-block probe: %q", out)
 	}
@@ -301,12 +330,23 @@ expect("bad_layout", patch(base, cameras.offset + 8, 4, cameras.bound + 1))
 expect("unaligned_base", base, 1)
 print("block-refusals-ok")
 `, ir.BuildVersion(u))
+<<<<<<< HEAD
 				_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
 				if err == nil {
 					t.Fatalf("NEGATIVE CONTROL FAILED: %s left the block refusal battery green", tc.name)
 				}
 				if !strings.Contains(stderr, "accepted a damaged block") && !strings.Contains(stderr, "want ") {
 					t.Fatalf("NEGATIVE CONTROL FAILED: %s went red, but not on the refusal:\n%s", tc.name, stderr)
+=======
+				for _, pin := range []func(testing.TB) string{pyrun.Interpreter, pyrun.Floor} {
+					_, stderr, err := pyrun.Try(t, pin(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
+					if err == nil {
+						t.Fatalf("NEGATIVE CONTROL FAILED: %s left the block refusal battery green", tc.name)
+					}
+					if !strings.Contains(stderr, "accepted a damaged block") && !strings.Contains(stderr, "want ") {
+						t.Fatalf("NEGATIVE CONTROL FAILED: %s went red, but not on the refusal:\n%s", tc.name, stderr)
+					}
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 				}
 				return
 			}
@@ -318,8 +358,13 @@ from blockdemo._schema import block as B
 handle = B.BlockOpen(blockdemo, %q, open("block", "rb").read(), 0x%016x)
 sys.stdout.write(B.Dump(handle))
 `, root, ir.BuildVersion(u))
+<<<<<<< HEAD
 			got := pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
 			if string(got) == string(want) {
+=======
+			got := pyBlockRunBoth(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
+			if got == string(want) {
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 				t.Fatalf("NEGATIVE CONTROL FAILED: %s left the block dump identical to Go", tc.name)
 			}
 		})

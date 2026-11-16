@@ -10,10 +10,7 @@
 
 package bench
 
-import (
-	"slices"
-	"unsafe"
-)
+import "unsafe"
 
 func FixedTableSaveMessageBody(w *TableMessageWriter, value *FixedTable) bool {
 	{
@@ -59,13 +56,8 @@ func FixedTableMeasureMessages(values []*FixedTable, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := FixedTableMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -89,9 +81,14 @@ func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
+	var starts [3]uint64
+	return tableMessageBodyFixedTable(r, value, starts[:], 0)
+}
+func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -106,14 +103,18 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
 			{
+				if exact && order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -123,14 +124,25 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 						return false
 					}
 				}
-				if !BenchMixedLoadMessageBody(r, &value.Value) {
-					return false
+				{
+					start := r.Bits.Offset
+					if !tableMessageBodyBenchMixed(r, &value.Value, starts, depth+1) {
+						return false
+					}
+					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

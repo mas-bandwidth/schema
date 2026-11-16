@@ -17,4 +17,6 @@ set -e
 # and overrides with JAVA=java
 JAVA=${JAVA:-dist/jdk-21.0.12.1/Contents/Home/bin/java}
 
-exec "$JAVA" -cp build/conformance-java Driver "$@"
+# THE WRITE-REFUSAL SURFACES answer from their debug build: the generated
+# writer's contract checks are assertions, so the driver runs with -ea.
+exec "$JAVA" -ea -cp build/conformance-java Driver "$@"

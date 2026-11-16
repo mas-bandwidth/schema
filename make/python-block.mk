@@ -11,7 +11,14 @@
 test-python: python-block-read-negative-control python-block-build-negative-control
 
 python-block-read-negative-control:
+<<<<<<< HEAD
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonBlockReadNegativeControls ./internal/codegen/pythontable/
 
 python-block-build-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonBlockBuilderNegativeControls ./internal/codegen/pythontable/
+=======
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run TestPythonBlockReadNegativeControls ./internal/codegen/pythontable/
+
+python-block-build-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run TestPythonBlockBuilderNegativeControls ./internal/codegen/pythontable/
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f

@@ -39,7 +39,11 @@ layout of its own.
 - **The corpus.** `TestPythonBlockRead` reads both committed images
   (`block_render`, `block_padded`) value for value against Go's dump under
   both pins; its refusal battery and the builder's byte comparison to the
+<<<<<<< HEAD
   generated Go builder live beside it, each with a negative control
+=======
+  generated Go and live C++ builders live beside it, each with a negative control
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
   (`TestPythonBlockReadNegativeControls`, `TestPythonBlockBuilderNegativeControls`).
 - **The surfaces.** The conformance driver answers `block`, `block-foreign`,
   `block-dump` and `forgery` from the same runtime.

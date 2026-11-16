@@ -1,0 +1,22 @@
+#!/bin/sh
+# THE FEATURE-WITNESS VERDICT (make/rust-feature-witnesses.mk) over one Rust
+# leg run: its results file and its log, in <dir>. It fails, naming them, when
+# any case of the featurewitnesses unit (the feature_* instances on every
+# surface, the text-total json-hostile rows, the text_total_and_count report
+# row) is answered absent, and when the wire or report surface is not
+# `pass N/N` with no case counted absent.
+#
+# usage: feature-witnesses-verdict <dir>
+set -e
+dir=$1
+if grep -Eo '"(feature_[a-z_]+|text[-_]total[-_a-z]*)(\.json|-be)?": "absent"' "$dir/results.json"; then
+	echo "feature witnesses: the Rust leg answers the cases above absent"
+	exit 1
+fi
+for surface in wire report; do
+	if ! grep -E "^ *$surface +pass ([0-9]+)/\\1 *\$" "$dir/log"; then
+		grep -E "^ *$surface " "$dir/log" || true
+		echo "feature witnesses: $surface is not pass N/N with no case absent"
+		exit 1
+	fi
+done

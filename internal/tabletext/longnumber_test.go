@@ -53,7 +53,7 @@ func TestTextLongNumberTokenLands(t *testing.T) {
 		}
 	}
 	inst := m.New(st)
-	text := []byte(`{"f":1.` + zeros + `,"i":1,"w":0,"g":1.` + zeros + `}`)
+	text := []byte(`{"f":1.` + zeros + `,"i":1,"w":"0","g":1.` + zeros + `}`)
 	var r tabletext.Report
 	if !m.Read(inst, text, &r) || !r.Silent() {
 		t.Fatalf("a valid long number token was refused: %+v", r)

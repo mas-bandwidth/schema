@@ -140,10 +140,9 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 	}
 }
 
-// AN INTEGER MAP KEY IS READ BY §16.2's INTEGER RULE AND BY NOTHING ELSE
-// (docs/SPEC-TABLES.md §2.8), so "2.0" and "1e3" are the integers 2 and 1000 in
-// a key exactly as in a field, at every integer key kind. A value outside the
-// key kind's range refuses the whole read (§6.5), and a key is never clamped.
+// An integer map key takes the integer-token spelling (§16.2): digits and an
+// optional minus, with no fraction, exponent or negative zero. Out-of-range
+// keys refuse the whole read (§6.5); keys are never clamped.
 func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 	m := mapsModel(t)
 	for _, tc := range []struct {
@@ -151,10 +150,10 @@ func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 		keys                 []uint64
 		outside              []string
 	}{
-		{"WideRow", "entries", `"2.0":{"count":1},"1e3":{"count":2}`,
-			[]uint64{2, 1000}, []string{"99999999999"}},
-		{"EdgeRow", "ids", `"2.0":{"count":1},"1e19":{"count":2},"18446744073709551615":{"count":3}`,
-			[]uint64{2, 10000000000000000000, 18446744073709551615}, []string{"-1", "1e30"}},
+		{"WideRow", "entries", `"2":{"count":1},"1000":{"count":2}`,
+			[]uint64{2, 1000}, []string{"99999999999", "2.0", "1e3", "-0"}},
+		{"EdgeRow", "ids", `"2":{"count":1},"10000000000000000000":{"count":2},"18446744073709551615":{"count":3}`,
+			[]uint64{2, 10000000000000000000, 18446744073709551615}, []string{"-1", "18446744073709551616", "2.0", "1e19", "-0"}},
 	} {
 		t.Run(tc.root, func(t *testing.T) {
 			inst := m.New(m.Lookup(tc.root))
@@ -216,16 +215,13 @@ func TestWhitespaceIsNeverPartOfAMapKey(t *testing.T) {
 	}
 }
 
-// AN INTEGER KEY SPELLED WITH A DECIMAL POINT IS PARSED AS AN INTEGER, never
-// through a double (docs/SPEC-TABLES.md §16.2). A double carries 53 bits of
-// mantissa, so it cannot tell 9007199254740993 from its neighbor, and a key
-// read through one lands on the neighbor's identity: two keys the text spells
-// separately become one, and the read refuses a repeat the text never wrote.
-func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
+// Distinct integer keys above 2^53 must remain distinct; parsing through a
+// double would merge the adjacent values (§16.2).
+func TestIntegerMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	text := `{"ids":{"9007199254740992":{"count":1},"9007199254740993.0":{"count":2}}}`
+	text := `{"ids":{"9007199254740992":{"count":1},"9007199254740993":{"count":2}}}`
 	if !strictReadJSON(m, inst, []byte(text), &r) {
 		t.Fatalf("two keys 2^53 apart are two keys: %+v", r)
 	}
@@ -244,17 +240,12 @@ func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 	}
 }
 
-// THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (docs/SPEC-TABLES.md §16.2):
-// `2` and `2.0` are the integer 2 wherever an integer is read, and that holds at
-// the top of the uint64 domain as well as at the bottom. Read through a double,
-// 18446744073709551615.0 rounds UP to 2^64 and falls outside the kind, where
-// the digits alone are exactly the key the kind holds. The two spellings are
-// one key written twice, and a repeated key refuses (§6.5).
-func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
+// UINT64_MAX is a valid integer key and two identical keys refuse (§16.2).
+func TestIntegerMapKeyAtTheTopOfTheDomain(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	if !strictReadJSON(m, inst, []byte(`{"ids":{"18446744073709551615.0":{"count":2}}}`), &r) {
+	if !strictReadJSON(m, inst, []byte(`{"ids":{"18446744073709551615":{"count":2}}}`), &r) {
 		t.Fatalf("the decimal spelling of UINT64_MAX is a key the kind holds: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
@@ -269,9 +260,9 @@ func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	}
 	inst = m.New(m.Lookup("EdgeRow"))
 	r = tabletext.Report{}
-	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615.0":{"count":2}}}`
+	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615":{"count":2}}}`
 	if strictReadJSON(m, inst, []byte(text), &r) || !r.Refused {
-		t.Errorf("the two spellings are one key repeated, which refuses: %+v", r)
+		t.Errorf("the key is repeated, which refuses: %+v", r)
 	}
 }
 
