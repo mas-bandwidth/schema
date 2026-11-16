@@ -9,13 +9,14 @@
 # core's control is; the probe runs beside the Go reference writer, which
 # needs serialize.go (deps-go).
 .PHONY: python-packet-text-negative-control packet-utf8-python packet-utf8-python-negative-control
-test-python: deps-go packet-utf8-python python-packet-text-negative-control packet-utf8-python-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-packet-text
+python-ci-packet-text: deps-go packet-utf8-python python-packet-text-negative-control packet-utf8-python-negative-control
 python-packet-text-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketTextNegativeControl ./internal/codegen/python/
 
 # packet-utf8-python: the shared packet-text sweep (test/packet-text/README.md)
 # against the C++ oracle: the 33 corpus rows and every bit flip of every
-# accepted row, through test/packet-text/python/main.py on the current pin.
+# accepted row, through test/packet-text/python/main.py on both pins.
 # The C++ oracle compiles against the pinned serialize.h beside the checkout,
 # so serialize-siblings stages it where no sibling is present; the order-only
 # line holds the oracle build behind it under make -j.
@@ -28,6 +29,7 @@ build/packet-text/python/.stamp: build/schema-python test/packet-text/Narrow.sch
 
 packet-utf8-python: python-toolchain-check serialize-siblings build/packet-text/python/.stamp build/packet-text/cpp/driver build/packet-text/harness
 	./build/packet-text/harness $(PYTHON) -W error -I -B test/packet-text/python/main.py $(CURDIR)/build/packet-text/python/generated
+	./build/packet-text/harness $(PYTHON_FLOOR) -W error -I -B test/packet-text/python/main.py $(CURDIR)/build/packet-text/python/generated
 
 # The sweep's control: the strict UTF-8 decode in a copy of the generated
 # runtime is replaced by Latin-1, and the mutation-only sweep must fail its
@@ -38,9 +40,11 @@ packet-utf8-python-negative-control: packet-utf8-python
 	sed -i.orig 's/payload.decode("utf-8")/payload.decode("latin-1")/' build/packet-text/python-negative/generated/packettext/_schema/serialize/_core.py
 	@if cmp -s build/packet-text/python-negative/generated/packettext/_schema/serialize/_core.py build/packet-text/python-negative/generated/packettext/_schema/serialize/_core.py.orig; then \
 		echo 'NEGATIVE CONTROL FAILED: the UTF-8 decode was not found to plant over'; exit 1; fi
-	@if ./build/packet-text/harness -mutations-only $(PYTHON) -W error -I -B test/packet-text/python/main.py $(CURDIR)/build/packet-text/python-negative/generated \
-		> build/packet-text/python-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: Python UTF-8 removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/python-negative/log || \
-		{ cat build/packet-text/python-negative/log; exit 1; }
-	@echo 'packet UTF-8 Python negative control: removed read validation fails bit-flip agreement'
+	@set -e; for python in "$(PYTHON)" "$(PYTHON_FLOOR)"; do \
+		if ./build/packet-text/harness -mutations-only "$$python" -W error -I -B test/packet-text/python/main.py $(CURDIR)/build/packet-text/python-negative/generated \
+			> build/packet-text/python-negative/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: Python UTF-8 removal passed under $$python"; exit 1; fi; \
+		grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/python-negative/log || \
+			{ cat build/packet-text/python-negative/log; exit 1; }; \
+	done
+	@echo 'packet UTF-8 Python negative control: removed read validation fails bit-flip agreement on both pins'

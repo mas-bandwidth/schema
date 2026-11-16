@@ -9,7 +9,8 @@
 # construct must go red). It needs the pins, so test-python depends on it; its
 # control row is make/negative-controls.d/python-table-wide-negative-control.json.
 .PHONY: python-table-wide-negative-control
-test-python: python-table-wide-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-wide
+python-ci-vt-wide: python-table-wide-negative-control
 
 python-table-wide-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtWideNegativeControl' ./internal/codegen/pythontable/ -count=1

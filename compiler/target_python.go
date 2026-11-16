@@ -1,13 +1,7 @@
-//go:build schema_leg_python
-
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
-// Scaffolded by `schema new-leg python`; docs/PORT-PYTHON.md is the port's
-// design. The schema_leg_python tag keeps this target out of the builtins
-// until the packet surface has claims in compiler/*_test.go;
-// `go build -tags schema_leg_python` is `schema generate --lang python`. The
-// tag is dropped when the port joins the builtins (P4, the packet wire).
+// The packet wire is available through the ordinary built-in registry.
 package compiler
 
 import (
@@ -108,5 +102,5 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 }
 
 func init() {
-	registerBuiltin(pythonTarget{}, false, true, false, false)
+	registerBuiltin(pythonTarget{}, true, true, false, false)
 }
