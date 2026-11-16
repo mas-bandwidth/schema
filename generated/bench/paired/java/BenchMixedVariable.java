@@ -1499,17 +1499,26 @@ public final class BenchMixedVariable {
         if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_aimX));
             w.put8(10);
-            w.putF32(v.aimX);
+            w.putF32In(
+                    v.aimX,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_aimY));
             w.put8(10);
-            w.putF32(v.aimY);
+            w.putF32In(
+                    v.aimY,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_aimZ));
             w.put8(10);
-            w.putF32(v.aimZ);
+            w.putF32In(
+                    v.aimZ,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_recoil));
@@ -1560,6 +1569,83 @@ public final class BenchMixedVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert (v.sequence & 0xffffffffL) <= 0xffffL : "BenchMixed.sequence";
+        assert v.ackSequence >= 0 && v.ackSequence <= 65535 : "BenchMixed.ack_sequence";
+        assert Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0 : "BenchMixed.nonce";
+        assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L : "BenchMixed.world_time";
+        assert Long.compareUnsigned(v.frameTick, 0xffffffffffffL) <= 0 : "BenchMixed.frame_tick";
+        assert java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("16776960")) <= 0 : "BenchMixed.server_time";
+        assert v.entities.size() >= 1 && v.entities.size() <= 8 : "BenchMixed.entities";
+        for (int i = 0, n = v.entities.size(); i < n; i++) {
+            MixedEntityVariable.Value e = v.entities.get(i);
+            assert MixedEntityVariable.checkWrite(e, walk);
+        }
+        assert v.stats.size() <= 80 : "BenchMixed.stats";
+        for (int i = 0, n = v.stats.size(); i < n; i++) {
+            MixedStatVariable.Value e = v.stats.get(i);
+            assert MixedStatVariable.checkWrite(e, walk);
+        }
+        assert MixedEventVariable.checkWrite(v.gameEvent, walk);
+        for (int i = 0, n = Math.min(v.loadout.size(), 4); i < n; i++) {
+            int e = v.loadout.get(i);
+            assert (e & 0xffffffffL) <= 0xffL : "BenchMixed.loadout";
+        }
+        assert TableVariable.textWritable(v.playerName, 15) : "BenchMixed.player_name";
+        assert v.payload == null || v.payload.length <= 16 : "BenchMixed.payload";
+        assert TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("-1267650600228229401496703205376")) >= 0 && TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("1267650600228229401496703205376")) <= 0 : "BenchMixed.flux";
+        assert java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("64000")) <= 0 : "BenchMixed.ping";
+        assert (v.crcHint & 0xffffffffL) <= 0xffffffL : "BenchMixed.crc_hint";
+        assert v.extra >= 0 && v.extra <= 255 : "BenchMixed.extra";
+        assert v.idleTicks >= 0 && v.idleTicks <= 15 : "BenchMixed.idle_ticks";
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -1569,6 +1655,7 @@ public final class BenchMixedVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -1604,7 +1691,7 @@ public final class BenchMixedVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);

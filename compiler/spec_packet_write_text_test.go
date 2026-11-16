@@ -51,8 +51,11 @@ func TestSpecPacketWriteChecksText(t *testing.T) {
 		}
 	}
 	write := section(spec, "### 5.1 ", "## 6. ")
-	if !strings.Contains(write, "packet `Write` (rows 1–8 and 10)") {
-		t.Error("§5.1 packet column does not cover rows 1–8 and 10")
+	if !strings.Contains(write, "packet `Write` (rows 1–8, 10 and 11)") {
+		t.Error("§5.1 packet column does not cover rows 1–8, 10 and 11")
+	}
+	if strings.Contains(write, "packet `Write` (rows 1–8 and 10)") {
+		t.Error("§5.1 packet column retains the old header")
 	}
 	field := section(algorithm, "### 2.4 ", "### 2.5 ")
 	if !strings.Contains(field, "`string`: check the used bytes for both 0x00 and well-formed UTF-8") {

@@ -296,6 +296,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 			b.WriteString("        report.unknown++;return 0;}\n")
 		}
 	}
+	writeVariableUnionCheckWrite(&b, un)
 	if unitCarriesForm(u, "json") && fixed.unions[un.Name] {
 		writeFixedUnionToVariable(&b, u, un)
 	}

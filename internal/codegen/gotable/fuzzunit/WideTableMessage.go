@@ -11,8 +11,8 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -123,13 +123,8 @@ func WideBlobMeasureMessages(values []*WideBlob, report *TableReport) int64 {
 	return 2 + w.Bits/8
 }
 func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := WideBlobMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -153,12 +148,14 @@ func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport
 	return 2 + w.Bits/8
 }
 func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
+	var starts [1]uint64
+	return tableMessageBodyWideBlob(r, value, starts[:], 0)
+}
+func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	WideBlobReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -173,15 +170,14 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -229,7 +225,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -272,7 +268,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			}
 		case 0xe3b1ca6a3b48dddc:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -307,7 +303,18 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 						p := &base[i]
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := binary.LittleEndian.Uint64(raw[:8])
+							if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65535 {
+								r.Report.Refuse(TableRefuseOutOfRange, "WideBlob.samples")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -333,6 +340,10 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

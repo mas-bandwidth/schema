@@ -200,19 +200,13 @@ func rangedBitsForeignKind(u *ir.Unit, root string) string {
 func rangedBitsGoldenPins(t *testing.T) (picked []packetPin, skipped map[string]string) {
 	t.Helper()
 	root := repoRoot(t)
-	units := map[string]*ir.Unit{}
-	load := func(paths []string) *ir.Unit {
-		key := strings.Join(paths, "|")
-		if u, ok := units[key]; ok {
-			return u
-		}
+	load := func(t *testing.T, paths []string) *ir.Unit {
+		t.Helper()
 		abs := make([]string, len(paths))
 		for i, p := range paths {
 			abs[i] = filepath.Join(root, filepath.FromSlash(p))
 		}
-		u := loadPythonUnit(t, abs...)
-		units[key] = u
-		return u
+		return loadPythonUnit(t, abs...)
 	}
 	skipped = map[string]string{}
 	for _, pin := range packetPins() {
@@ -220,7 +214,7 @@ func rangedBitsGoldenPins(t *testing.T) (picked []packetPin, skipped map[string]
 			skipped[pin.name] = pin.note
 			continue
 		}
-		u := load(pin.paths)
+		u := load(t, pin.paths)
 		if rootBlocker(u, pin.root) == "bits" {
 			t.Errorf("%s is still skipped for bits, which the codec now carries (docs/PORT-PYTHON.md, THE PACKET CORE CUT)", pin.name)
 			continue
@@ -268,25 +262,19 @@ func TestPythonPacketRangedBits(t *testing.T) {
 		t.Logf("skip %s: %s", name, skipped[name])
 	}
 
-	units := map[string]*ir.Unit{}
-	load := func(paths []string) *ir.Unit {
-		key := strings.Join(paths, "|")
-		if u, ok := units[key]; ok {
-			return u
-		}
+	load := func(t *testing.T, paths []string) *ir.Unit {
+		t.Helper()
 		abs := make([]string, len(paths))
 		for i, p := range paths {
 			abs[i] = filepath.Join(root, filepath.FromSlash(p))
 		}
-		u := loadPythonUnit(t, abs...)
-		units[key] = u
-		return u
+		return loadPythonUnit(t, abs...)
 	}
 
 	for _, pin := range pins {
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()
-			u := load(pin.paths)
+			u := load(t, pin.paths)
 			pruned := rootClosure(u, pin.root)
 			files, err := Generate(pruned)
 			if err != nil {
@@ -294,7 +282,7 @@ func TestPythonPacketRangedBits(t *testing.T) {
 			}
 			base := pruned.DeclFile[pin.root]
 			probe := rangedBitsProbe(pruned, pin.root, base, rangedBitsFields(pruned, pin.root))
-			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
+			pinBytes, err := os.ReadFile(pinFile(root, pin.name))
 			if err != nil {
 				t.Fatal(err)
 			}

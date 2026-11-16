@@ -97,7 +97,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -142,21 +141,12 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 		}
 		switch fieldID {
 		case 0xa354fd1ff0c467c5: // root
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.root")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -173,11 +163,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				return false
 			}
 		case 0xb1e5e28e4479a274: // count
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -192,10 +177,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 							return false
 						}
 						value.Count = int32(v)
-					}
-					if !(value.Count != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -215,10 +196,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 					return false
 				}
 				value.Count = int32(v)
-			}
-			if !(value.Count != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -393,7 +370,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 	ArchiveConfigReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -439,21 +415,12 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 		}
 		switch fieldID {
 		case 0xa354fd1ff0c467c5: // root
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.root")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -471,11 +438,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				return false
 			}
 		case 0xb1e5e28e4479a274: // count
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -490,10 +452,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 							return false
 						}
 						value.Count = int32(v)
-					}
-					if !(value.Count != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -513,10 +471,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 					return false
 				}
 				value.Count = int32(v)
-			}
-			if !(value.Count != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -777,7 +731,7 @@ var ArchiveConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // count
 }
 
-var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 332)
+var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 352)
 
 var ArchiveConfigFixedKnown = []TableFixedKnownLayout{
 	{
@@ -1094,7 +1048,7 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 // ArchiveConfigTableFields is ArchiveConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ArchiveConfigTableFields = []TableFieldInfo{
 	{Name: "root", JSON: "root", TypeName: "RootConfig", DeclaredTypeName: "RootConfig", ID: 0xa354fd1ff0c467c5, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Root)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Root)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1480, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -1106,7 +1060,7 @@ var ArchiveConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: RootConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "count", JSON: "count", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xb1e5e28e4479a274, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Count)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Count)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1480, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

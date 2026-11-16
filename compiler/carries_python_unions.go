@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // A table-side union has no key in compiler/carries.go's §2 construct

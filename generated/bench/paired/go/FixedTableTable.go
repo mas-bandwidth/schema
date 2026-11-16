@@ -83,7 +83,6 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 	FixedTableReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -128,21 +127,12 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 		}
 		switch fieldID {
 		case 0x7ce4fd9430e80cea: // value
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "FixedTable.value")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -451,7 +441,7 @@ var FixedTableFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), 0, 0, 0, 0, 0, 0}, // idle_ticks
 }
 
-var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
+var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 313)
 
 var FixedTableFixedKnown = []TableFixedKnownLayout{
 	{
@@ -768,7 +758,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 // FixedTableTableFields is FixedTable's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var FixedTableTableFields = []TableFieldInfo{
 	{Name: "value", JSON: "value", TypeName: "BenchMixed", DeclaredTypeName: "BenchMixed", ID: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FixedTable{}.Value)), ElemSize: uint32(unsafe.Sizeof(FixedTable{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FixedTable{}.Value)), ElemSize: uint32(unsafe.Sizeof(FixedTable{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1376, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

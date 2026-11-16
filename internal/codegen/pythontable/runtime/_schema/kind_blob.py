@@ -13,7 +13,7 @@ names one blob record from two slots is refused by name (`blob_shared`); a
 
 from typing import Any
 
-from . import InvalidValue
+from . import BlobRef, InvalidValue
 from . import kinds
 from .descriptor import FieldDesc
 
@@ -53,6 +53,8 @@ def _encode(fd: FieldDesc, value: Any, path: str) -> bytes:
     bytearray or a B-view memoryview; any other memoryview is refused rather
     than reinterpreted.
     """
+    if isinstance(value, BlobRef):
+        value = value.value
     if fd.codec == "string_blob":
         if type(value) is not str:
             raise InvalidValue(path, "not a str")
@@ -88,6 +90,11 @@ class _Blob:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         # The save numbered each slot visit in write order (save.py, _collect):
         # the next number is this slot's own record.
+        if value is None:
+            w.varint(ctx.idref(fd.field_id))
+            w.byte(fd.kind)
+            w.varint(0)
+            return
         if ctx.blob_next >= len(ctx.blob_slots):
             raise InvalidValue(fd.name, "the byte buffer slot has no node index")
         index = ctx.blob_slots[ctx.blob_next]

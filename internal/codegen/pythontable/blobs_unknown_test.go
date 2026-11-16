@@ -183,7 +183,7 @@ func TestPythonVtBlobsUnknownCountNegativeControl(t *testing.T) {
 	const file = "probe/_schema/load.py"
 	for _, control := range []struct{ name, from, to, row string }{
 		{"not-placeable", "                out.add(_BYTES_WIRE_TYPE_ID)\n", "                pass\n", "skipped_bytes_beside_bytes:"},
-		{"undeclared-refused", "            if descriptor.by_id(ctx.types[index - 2]) is not None:\n                raise Refused(\"wire_damaged\", \"a byte buffer slot names a table record\")\n", "            raise Refused(\"wire_damaged\", \"a byte buffer slot names a table record\")\n", "bytes_slot_names_undeclared_table:"},
+		{"undeclared-refused", "                if descriptor.by_id(ctx.types[index - 2]) is not None:\n                    raise Refused(\"wire_damaged\", \"a byte buffer slot names a table record\")\n", "                raise Refused(\"wire_damaged\", \"a byte buffer slot names a table record\")\n", "bytes_slot_names_undeclared_table:"},
 	} {
 		t.Run(control.name, func(t *testing.T) {
 			t.Parallel()

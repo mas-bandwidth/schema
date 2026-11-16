@@ -82,6 +82,12 @@ func (r *Retain) fits(cost int) bool {
 	return true
 }
 
+// retainedNoID marks reference-zero None/terminators inside the reader-private
+// resolved payload. This hash is reserved by the wire and cannot name an inner
+// reference (§3), so it cannot collide with any permitted ID, including hash 0.
+// It is never emitted as an ID: the replay translates it back to reference 0.
+const retainedNoID = ir.TableNodeWireId
+
 // retainedField is ONE unknown field kept whole, with every reference replaced
 // by the sixty-four-bit id it names. It is READER-PRIVATE (§6.6): no form
 // byte, no version, no declared byte order, nothing writes one to disk, and
@@ -163,10 +169,9 @@ type resolver struct {
 
 // id resolves one reference against the FILE's id table and answers the
 // sixty-four-bit id it names. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
-// STATED (§6.6): a reference above the entry count, a reference at an entry of
-// ZERO, which names no id at all, and a reference at one of the three RESERVED
-// ids, which would be re-emitted into a nested body where it is malformed, all
-// DROP THE RECORD.
+// STATED (§6.6): a reference above the entry count or at one of the three
+// RESERVED ids would be malformed in a nested body. Hash 0 is an ordinary ID;
+// reference 0 is handled separately at the positions that admit None/terminators.
 func (rs *resolver) id(ref uint64) uint64 {
 	if ref == 0 || ref > uint64(len(rs.ids)) {
 		rs.bad = true
@@ -174,7 +179,7 @@ func (rs *resolver) id(ref uint64) uint64 {
 	}
 	id := rs.ids[ref-1]
 	switch id {
-	case 0, ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId:
+	case ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId:
 		rs.bad = true
 		return 0
 	}
@@ -265,7 +270,7 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 		if ref == 0 {
 			// A VARIANT REFERENCE OF ZERO IS THE ENUM'S None (§3), and it names
 			// no id: it is a value, not a reference, and it rides back as one
-			rs.u64(0)
+			rs.u64(retainedNoID)
 			return
 		}
 		rs.u64(rs.id(ref))
@@ -278,7 +283,7 @@ func (rs *resolver) walkPayload(c *cursor, kind uint8, depth int) {
 		if ref == 0 {
 			// AN ARM ID OF ZERO is the union holding nothing: it is the arm's
 			// own None and never a reference (§3)
-			rs.u64(0)
+			rs.u64(retainedNoID)
 			return
 		}
 		rs.u64(rs.id(ref))
@@ -423,10 +428,9 @@ func (rs *resolver) walkBody(c *cursor, depth int) {
 			return
 		}
 		if ref == 0 {
-			// THE TERMINATOR IS A REFERENCE, and a reference in the resolved
-			// form is a fixed eight-byte id: the zero that ends a body rides
-			// at the width every other one does.
-			rs.u64(0)
+			// Keep the terminator distinct from a field whose resolved hash is 0.
+			// The private sentinel has the same fixed width as every ID.
+			rs.u64(retainedNoID)
 			return
 		}
 		if !c.has(1) {
@@ -593,7 +597,7 @@ func (em *emitter) payload(w *buf, c *cursor, kind uint8) {
 	switch kind {
 	case ir.TableKindEnum:
 		id := em.resolved(c)
-		if id == 0 {
+		if id == retainedNoID {
 			// THE ENUM'S None (§3): a value, not a reference, and it takes no
 			// entry in either store
 			w.leb(0)
@@ -602,7 +606,7 @@ func (em *emitter) payload(w *buf, c *cursor, kind uint8) {
 		em.ref(w, id)
 	case ir.TableKindUnion:
 		arm := em.resolved(c)
-		if arm == 0 {
+		if arm == retainedNoID {
 			w.leb(0)
 			return
 		}
@@ -696,7 +700,7 @@ func (em *emitter) body(w *buf, c *cursor) {
 		if em.bad {
 			return
 		}
-		if id == 0 {
+		if id == retainedNoID {
 			w.u8(0) // the body ENDS AT ITS OWN ZERO REFERENCE
 			return
 		}

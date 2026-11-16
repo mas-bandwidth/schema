@@ -422,6 +422,10 @@ func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 // generateForms is the whole output, and the optional form each file belongs
 // to (0 for the core).
 func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
+	return generateFormsMode(u, lineage, s, true)
+}
+
+func generateFormsMode(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, prune bool) (map[string][]byte, map[string]Form, error) {
 	// the Go escape (SPEC.md §4.6): a table named with a Go word is emitted
 	// under its escaped spelling; a unit without one is returned as it is
 	if esc := goEscapeTables(u); esc != u {
@@ -660,7 +664,17 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		}
 		maps.Copy(out, view)
 	}
-	return out, forms, goname.RespellFiles(out) // every identifier in Go's initialisms
+	if err := goname.RespellFiles(out); err != nil { // every identifier in Go's initialisms
+		return nil, nil, err
+	}
+	if prune {
+		pruned, err := pruneUnreferencedDeclarations(out, schemaAPIEntries(u, out))
+		if err != nil {
+			return nil, nil, err
+		}
+		return pruned, forms, nil
+	}
+	return out, forms, nil
 }
 
 // emitForm assembles one optional form's buffer into its own file, when the
@@ -1060,7 +1074,7 @@ type TableFieldInfo struct {
 	Counted  bool   // a <Name>Count/<Name>Length int32 companion exists
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
+	ArrayMin, ArrayBound int32 // counted minimum; capacity / string max length; 0 otherwise
 	Offset        uint32 // unsafe.Offsetof the storage member
 	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
@@ -1427,9 +1441,15 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 // RuntimeShared, §8.4's default, cuts the shared declarations and aliases them
 // to SharedRuntimeImport.
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
-	out, err := GenerateLineageSurface(u, lineage, s)
-	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
+	if err := refuseUndeclaredSurface(u, s); err != nil {
+		return nil, err
+	}
+	out, _, err := generateFormsMode(u, lineage, s, false)
+	if err != nil {
 		return out, err
+	}
+	if rt == RuntimeStandalone || len(out) == 0 {
+		return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 	}
 	sr, err := loadSharedRuntime()
 	if err != nil {
@@ -1470,7 +1490,7 @@ func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 		}
 		out[other] = formatted
 	}
-	return out, nil
+	return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 }
 
 // SharedRuntimeFiles is the shared package's source, keyed by file name.
@@ -1717,7 +1737,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}
-		files, err := GenerateLineage(u, nil)
+		files, _, err := generateFormsMode(u, nil, DefaultSurfaces(), false)
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}

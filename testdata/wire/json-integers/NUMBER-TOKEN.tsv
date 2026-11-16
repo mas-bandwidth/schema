@@ -6,8 +6,11 @@
 # form only; a bare number token there refuses kind_mismatch. Each row writes
 # one wide field of Integers (or, for `numbers`, every wide field) as a bare
 # number token, with every other field canonical. Each row has a string twin, a
-# read vector in MANIFEST.tsv that holds the same values as strings and reads
-# to them. Narrow integers (32 bits and under) stay JSON numbers everywhere.
+# vector in MANIFEST.tsv that holds the same values as strings: the canonical
+# text for a lawful value, which reads to it, and for an unlawful one — a
+# fraction, an exponent, negative zero, a value past a bound — the same digits
+# in a string, which that vector refuses for the digits rather than the token.
+# Narrow integers (32 bits and under) stay JSON numbers everywhere.
 #
 # This is a separate manifest from MANIFEST.tsv because the readers are being
 # moved to it one leg at a time: a leg's test reads these rows once that leg
@@ -25,3 +28,10 @@ wide128-number	Integers	wide128-number.refused.json	refused	the ranged int128 as
 ranged-number	Integers	ranged-number.refused.json	refused	the ranged int64 as a bare number above 2^53; string twin canonical.read.json
 frac-number	Integers	frac-number.refused.json	refused	the 64-bit fixed-point field as a bare number; string twin canonical.read.json
 numbers	Integers	numbers.refused.json	refused	every wide field as a bare number; string twin strings.read.json
+wide-fraction	Integers	wide-fraction.refused.json	refused	a fraction in an int64 field, as a bare number; string twin wide-string-fraction.refused.json
+wide-exponent	Integers	wide-exponent.refused.json	refused	an exponent in an int64 field, as a bare number; string twin wide-string-exponent.refused.json
+wide-neg-zero	Integers	wide-neg-zero.refused.json	refused	negative zero in an int64 field, as a bare number; string twin wide-string-neg-zero.refused.json
+ranged-one-past	Integers	ranged-one-past.refused.json	refused	one past the ranged int64's max, above 2^53, as a bare number; string twin ranged-one-past-string.refused.json
+ranged-below-min	Integers	ranged-below-min.refused.json	refused	one below the ranged int64's min, as a bare number; string twin ranged-below-min-string.refused.json
+uwide-one-past	Integers	uwide-one-past.refused.json	refused	one past the uint64's own maximum, as a bare number; string twin uwide-one-past-string.refused.json
+wide128-one-past	Integers	wide128-one-past.refused.json	refused	one past the int128's own maximum, as a bare number; string twin wide128-one-past-string.refused.json
