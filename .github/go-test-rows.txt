@@ -159,4 +159,7 @@ split ./compiler ^(TestUnboundedTextRefusedOffGo|TestStringArraysRefusedOffGo)$
 split ./compiler ^Test.*(RuntimeName|ModuleScopeName|ModuleKeys)
 split ./compiler ^TestFixed(Depth|Record)
 split ./compiler ^Test.*(Carries|Carriers|IsShipped)
+# The Rust refusal probe builds a native driver; keep its cold build out of
+# the otherwise small harness row.
+split ./test/conformance/harness ^TestRustDriverAnswersWriteRefusal$
 split ./internal/goldens ^TestGeneratedTextNamesNoMachine$
