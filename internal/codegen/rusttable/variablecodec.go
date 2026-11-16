@@ -1998,6 +1998,10 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
 	fmt.Fprintf(b, "    let mut retain = retain;\n")
+	fmt.Fprintf(b, "    if table_ids_all_used(&wire[1..end], ids) == Some(false) {\n")
+	fmt.Fprintf(b, "        report.damaged = true;\n")
+	fmt.Fprintf(b, "        if let Some(store) = retain { store.bytes.clear(); store.ids.clear(); store.nodes.clear(); }\n")
+	fmt.Fprintf(b, "        return None;\n    }\n")
 	if !st.FixedDeclared {
 		measure := fnName + "_load_measure"
 		if st.Integrity == "crc32c" {
@@ -2242,6 +2246,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        *slot = id;\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
+	fmt.Fprintf(b, "    if table_ids_all_used(&wire[1..end], ids) == Some(false) { return -1; }\n")
 	fmt.Fprintf(b, "    let round = |n: i64| (n + %d - 1) & -%d;\n", align, align)
 	g.emitNestedMeasureHelper(b, st)
 	fmt.Fprintf(b, "    let mut blob_total: i64 = 0;\n")
