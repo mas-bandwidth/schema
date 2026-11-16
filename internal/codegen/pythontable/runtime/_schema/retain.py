@@ -825,15 +825,16 @@ def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: li
         if target_class is not None:
             body(data, target_class.descriptor, node, steps)
 
-    def array(raw: memoryview, field: Any, node: int, steps: tuple[tuple[int, int], ...]) -> None:
-        data = framed(raw)
+    def array(raw: memoryview, field: Any, node: int, steps: tuple[tuple[int, int], ...], ordinal: int | None = None, content: bool = False) -> None:
+        data = raw if content else framed(raw)
+        ordinal = field.ordinal if ordinal is None else ordinal
         r = Reader(data, 0, len(data), ids)
         kind = r.byte()
         count = r.varint()
         if field.codec == "map":
             target = field.map_entry or field.target
             for index in range(count):
-                nested(r.take(r.varint()), target, node, steps + ((field.ordinal, index),))
+                nested(r.take(r.varint()), target, node, steps + ((ordinal, index),))
             return
         if field.codec == "keyed":
             element = field.elem
@@ -844,7 +845,7 @@ def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: li
                     counts[1] += 1
                     continue
                 if element is not None and element.codec == "table":
-                    nested(content, element.target, node, steps + ((field.ordinal, field.keys.index(key)),))
+                    nested(content, element.target, node, steps + ((ordinal, field.keys.index(key)),))
                 elif element is not None and element.codec == "enum":
                     item = Reader(content, 0, len(content), ids)
                     ref = item.varint()
@@ -854,7 +855,7 @@ def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: li
         element = field.elem if field.codec == "optional" else field.element
         for index in range(count):
             if element is not None and element.codec == "table":
-                nested(r.take(r.varint()), element.target, node, steps + ((field.ordinal, index),))
+                nested(r.take(r.varint()), element.target, node, steps + ((ordinal, index),))
             elif element is not None and element.codec == "enum":
                 ref = r.varint()
                 if ref and r.id_at(ref) not in element.variant_ids:
@@ -881,6 +882,9 @@ def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: li
             nested(payload, arm.field.target, node, child_steps)
         elif arm.field.codec == "union" and arm_kind == 15:
             union(Reader(payload, 0, len(payload), ids), arm.field.target, ordinal, node, child_steps)
+        elif arm.field.codec in ("array", "map", "keyed") and arm_kind in (14, 16):
+            array_ordinal = ordinal if arm.field.codec == "array" else arm.field.ordinal
+            array(payload, arm.field, node, child_steps, array_ordinal, True)
         elif arm.field.codec == "enum" and arm_kind == 30:
             enum_reader = Reader(payload, 0, len(payload), ids)
             enum_ref = enum_reader.varint()

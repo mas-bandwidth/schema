@@ -1523,3 +1523,51 @@ print('retain-widen')
 		}
 	}
 }
+
+func TestPythonRetainUnionEnumArrayArm(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+enum Grade { Low, High }
+union Pick { list [2]Grade }
+table Root { pick Pick }
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	field := w.ref("pick")
+	arm := w.ref("list")
+	low := w.ref("Low")
+	future := w.ref("Future")
+	array := unionCat([]byte{30, 2}, low, future)
+	wire := w.file(unionCat(field, []byte{15}, arm, []byte{14}, unionLeb(uint64(len(array))), array))
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert (report.unknown,report.retained,report.retain_lost)==(1,0,1)
+saved=value.save_retain(keep,report)
+assert report.retain_lost==1
+Root.load(saved)
+with open('saved','wb') as f: f.write(saved)
+print('union-enum-array-arm')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "union-enum-array-arm" {
+			t.Fatalf("union enum array arm: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read 0 ") {
+			t.Fatalf("Go engine rejected union enum arm: %s", verdict)
+		}
+	}
+}
