@@ -12,12 +12,17 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+func generateHandtext(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateSurface(u, Surfaces{Wire: true, Fixed: true, JSON: true, TextForm: true})
+}
 
 // TestPythonHandtextSyntax exercises the grammar independently of the value walk.
 func TestPythonHandtextSyntax(t *testing.T) {
 	t.Parallel()
-	files, err := Generate(loadUnit(t, coreSchema))
+	files, err := generateHandtext(loadUnit(t, coreSchema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +69,7 @@ else:
 
 func TestPythonHandtextResolution(t *testing.T) {
 	t.Parallel()
-	files, err := Generate(loadUnit(t, coreSchema))
+	files, err := generateHandtext(loadUnit(t, coreSchema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,8 +124,68 @@ func TestPythonHandtextReservedName(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"from_text_form", "load_text", "save_text"} {
 		unit := loadUnit(t, "package probe\ntable Root { "+name+" int32 }\n")
-		if _, err := Generate(unit); err == nil || !strings.Contains(err.Error(), name) {
+		if _, err := generateHandtext(unit); err == nil || !strings.Contains(err.Error(), name) {
 			t.Fatalf("generated method collision %s was not refused: %v", name, err)
+		}
+	}
+}
+
+func TestPythonHandtextSurfaceSelection(t *testing.T) {
+	t.Parallel()
+	unit := loadUnit(t, "package probe\ntable Root { value int32 }\n")
+	for _, tc := range []struct {
+		name     string
+		surfaces Surfaces
+		want     bool
+	}{
+		{"default", DefaultSurfaces(), false},
+		{"wire", Surfaces{Wire: true}, false},
+		{"json", Surfaces{Wire: true, JSON: true}, false},
+		{"textform", Surfaces{Wire: true, JSON: true, TextForm: true}, true},
+	} {
+		files, err := GenerateSurface(unit, tc.surfaces)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		src := string(files["probe/Core.py"])
+		if strings.Contains(src, "def from_text_form(") != tc.want {
+			t.Fatalf("%s: incorrect textform selection", tc.name)
+		}
+		if !strings.Contains(src, "def load_text(") || !strings.Contains(src, "def save_text(") {
+			t.Fatalf("%s: missing wire text carrier", tc.name)
+		}
+	}
+	field := loadUnit(t, "package probe\ntable Root { from_text_form int32 }\n")
+	if _, err := GenerateSurface(field, Surfaces{Wire: true}); err != nil {
+		t.Fatalf("unselected name refused: %v", err)
+	}
+	if _, err := generateHandtext(field); err == nil || !strings.Contains(err.Error(), "from_text_form") {
+		t.Fatalf("selected name not refused: %v", err)
+	}
+}
+
+func TestPythonHandtextSurfaceNegativeControl(t *testing.T) {
+	t.Parallel()
+	files, err := generateHandtext(loadUnit(t, "package probe\ntable Root { value int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "probe/Core.py"
+	source := string(files[path])
+	const method = "def from_text_form("
+	if strings.Count(source, method) != 1 {
+		t.Fatal("surface control anchor missing")
+	}
+	files[path] = []byte(strings.Replace(source, method, "def broken_text_form(", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root
+assert hasattr(Root, 'from_text_form'), 'HANDTEXT_SURFACE_CONTROL'
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "HANDTEXT_SURFACE_CONTROL") {
+			t.Fatalf("surface control: %v %s", err, stderr)
 		}
 	}
 }
@@ -182,7 +247,7 @@ func testPythonHandtextCorpus(t *testing.T, fixed bool) {
 	if fixed {
 		schema = strings.Replace(schema, "table Document {", "fixed table Document {", 1)
 	}
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +362,7 @@ func quotePythonNames(names []string) []string {
 
 func TestPythonHandtextNegativeControl(t *testing.T) {
 	t.Parallel()
-	files, err := Generate(loadUnit(t, coreSchema))
+	files, err := generateHandtext(loadUnit(t, coreSchema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +404,7 @@ table Tags {
  byname map[string]int32
  extra [..4]?string(8) | total = 3
 }`
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +457,7 @@ func TestPythonHandtextDottedKey(t *testing.T) {
 fixed table Dot {
  value int32 | json = "a.b"
 }`)
-	files, err := Generate(unit)
+	files, err := generateHandtext(unit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +489,7 @@ table Values {
  names []?string(8) | total = 12
  marks ?[2]Color
 }`
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +530,7 @@ func TestPythonHandtextKindsNegativeControl(t *testing.T) {
 flags Feature { Fast, Safe }
 table Values { features []Feature }
 `
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +569,7 @@ table Root | json = "array" {
 table Outer {
  inner Root
 }`
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,7 +602,7 @@ func TestPythonHandtextArrayRootNegativeControl(t *testing.T) {
 	unit := loadUnit(t, `package probe
 table Root | json = "array" { values []int32 }
 `)
-	files, err := Generate(unit)
+	files, err := generateHandtext(unit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +632,7 @@ assert value.values == [3], 'HANDTEXT_ARRAY_ROOT_CONTROL'
 
 func TestPythonHandtextWireCarrier(t *testing.T) {
 	t.Parallel()
-	files, err := Generate(loadUnit(t, coreSchema))
+	files, err := generateHandtext(loadUnit(t, coreSchema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -601,7 +666,7 @@ print('ok')
 
 func TestPythonHandtextWireCarrierNegativeControl(t *testing.T) {
 	t.Parallel()
-	files, err := Generate(loadUnit(t, coreSchema))
+	files, err := generateHandtext(loadUnit(t, coreSchema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +701,7 @@ func TestPythonHandtextWireCarrierCRC(t *testing.T) {
 	unit := loadUnit(t, `package crcprobe
 table Root | integrity = "crc32c" { n int32 }
 `)
-	files, err := Generate(unit)
+	files, err := generateHandtext(unit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +740,7 @@ union Reach {
 table Root {
  reach Reach
 }`
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,7 +775,7 @@ func TestPythonHandtextUnionBlobsNegativeControl(t *testing.T) {
 union Reach { blob *bytes }
 table Root { reach Reach }
 `
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -745,7 +810,7 @@ func TestPythonHandtextWireCarrierCRCNegativeControl(t *testing.T) {
 	unit := loadUnit(t, `package crcprobe
 table Root | integrity = "crc32c" { n int32 }
 `)
-	files, err := Generate(unit)
+	files, err := generateHandtext(unit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -784,7 +849,7 @@ func TestPythonHandtextEditPathNegativeControl(t *testing.T) {
 type Child { value int32 }
 table Root { items [..3]Child }
 `
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -818,7 +883,7 @@ func TestPythonHandtextCombinedEditNegativeControl(t *testing.T) {
 	const schema = `package probe
 table Root { values map[string]int32 }
 `
-	files, err := Generate(loadUnit(t, schema))
+	files, err := generateHandtext(loadUnit(t, schema))
 	if err != nil {
 		t.Fatal(err)
 	}

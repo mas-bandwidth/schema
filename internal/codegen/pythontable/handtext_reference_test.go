@@ -113,7 +113,7 @@ int main() {
 		t.Fatalf("C++ %q disagrees with Go hex %s", cppJSON, goHex)
 	}
 
-	pyFiles, err := Generate(unit)
+	pyFiles, err := generateHandtext(unit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestOracle(t *testing.T) {
 			if len(expected) != 4 {
 				t.Fatalf("Go oracle returned %d rows: %s", len(expected), output)
 			}
-			pyFiles, err := Generate(unit)
+			pyFiles, err := generateHandtext(unit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -293,7 +293,7 @@ int main(int argc, char **argv) {
 				}
 				expected = append(expected, fmt.Sprintf("ORACLE:%s:%x", stem, out))
 			}
-			pyFiles, err := Generate(unit)
+			pyFiles, err := generateHandtext(unit)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -427,7 +427,7 @@ int main(int argc, char **argv) {
 	if got := fmt.Sprintf("%x", cppOut); got != expected {
 		t.Fatal("C++ unbounded value differs from Go")
 	}
-	pyFiles, err := Generate(unit)
+	pyFiles, err := generateHandtext(unit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +504,7 @@ int main() {
 	if !bytes.Equal(wire, cpp) {
 		t.Fatalf("fixed Go and C++ wires differ: %x vs %x", wire, cpp)
 	}
-	files, err := Generate(unit)
+	files, err := generateHandtext(unit)
 	if err != nil {
 		t.Fatal(err)
 	}

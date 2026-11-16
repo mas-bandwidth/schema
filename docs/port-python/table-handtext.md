@@ -1,7 +1,8 @@
 # Python hand-editable table text
 
-The hand-editable text form is selected explicitly with
-`Table.from_text_form(data)`. It accepts UTF-8 bytes and either returns a
+Generate the hand-editable form with `--surface textform`; it is emitted for
+tables that carry the JSON form. Select it with `Table.from_text_form(data)`.
+It accepts UTF-8 bytes and either returns a
 `Document` or raises `Refused`; the exception's `reason` and zero-based
 `offset` identify the refusal. The document's `value` is the typed table, and
 `document.write()` returns the original bytes, including comments, line

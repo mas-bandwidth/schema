@@ -83,8 +83,8 @@ func ValidateAvailableSurfaces(s Surfaces) error {
 		name    string
 		enabled bool
 	}{
-		{"json", s.JSON}, {"cook", s.Cook}, {"view", s.View},
-		{"message", s.Message}, {"retain", s.Retain}, {"textform", s.TextForm},
+		{"cook", s.Cook}, {"view", s.View},
+		{"message", s.Message}, {"retain", s.Retain},
 	} {
 		if item.enabled {
 			return fmt.Errorf("python does not yet carry the explicitly requested %s surface (docs/SPEC-TABLES.md §8.8)", item.name)
