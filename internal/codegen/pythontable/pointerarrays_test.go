@@ -225,7 +225,7 @@ func buildChainWire(t *testing.T, u *ir.Unit, m *tabletext.Model, n int) []byte 
 	}
 	var records []byte
 	records = appendUleb(records, uint64(n))
-	for k := 0; k < n; k++ {
+	for k := range n {
 		var body []byte
 		body = append(body, 4, byte(ir.TableWireFieldKind(label)))
 		var v [4]byte
