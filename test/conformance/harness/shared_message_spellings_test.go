@@ -588,8 +588,7 @@ func messageStructuralSpellings(unit *ir.Unit, root *ir.Struct, announcement, ba
 	defer func() {
 		if err != nil {
 			shapes = nil
-			var unsupported *sharedMessageUnsupported
-			if !errors.As(err, &unsupported) {
+			if _, ok := errors.AsType[*sharedMessageUnsupported](err); !ok {
 				err = &sharedMessageDamage{err}
 			}
 		}

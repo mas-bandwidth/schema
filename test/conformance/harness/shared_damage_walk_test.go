@@ -262,7 +262,7 @@ func (s *fixtureWalker) collection(off, end int, keyed bool) bool {
 		s.damage(a, "count exceeds available element bytes")
 		return false
 	}
-	for i := uint64(0); i < n; i++ {
+	for range n {
 		if keyed {
 			ref, b, ok := s.leb(a, end, spotKey)
 			if !ok {
@@ -298,7 +298,7 @@ func (s *fixtureWalker) nodes(off, end int) {
 		s.damage(a, "node count exceeds available record headers")
 		return
 	}
-	for i := uint64(0); i < n; i++ {
+	for range n {
 		ref, b, ok := s.leb(a, end, spotRecordType)
 		if !ok {
 			return

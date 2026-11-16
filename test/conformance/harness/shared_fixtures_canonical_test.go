@@ -131,9 +131,8 @@ func TestSharedFixturesCanonical(t *testing.T) {
 		counts["variable"]++
 		fault, walkErr := damageAwareIDTableFault(data)
 		var damage *fixtureDamage
-		var unsupported *fixtureUnsupported
 		if walkErr != nil {
-			if errors.As(walkErr, &unsupported) {
+			if _, ok := errors.AsType[*fixtureUnsupported](walkErr); ok {
 				t.Errorf("%s: %v", x.name, walkErr)
 				return
 			}
@@ -259,7 +258,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(index), "\n") {
+	for line := range strings.SplitSeq(string(index), "\n") {
 		p := strings.Fields(line)
 		if len(p) == 0 || strings.HasPrefix(p[0], "#") {
 			continue
@@ -306,12 +305,10 @@ func TestSharedFixturesCanonical(t *testing.T) {
 			continue
 		}
 		shapes, e := messageStructuralSpellings(u, st, announce, data)
-		var damage *sharedMessageDamage
-		var unsupported *sharedMessageUnsupported
 		if e != nil {
-			if errors.As(e, &unsupported) {
+			if _, ok := errors.AsType[*sharedMessageUnsupported](e); ok {
 				t.Errorf("%s unsupported message: %v", p[0], e)
-			} else if errors.As(e, &damage) {
+			} else if _, ok := errors.AsType[*sharedMessageDamage](e); ok {
 				counts["damaged-message-unclassified"]++
 				t.Logf("message damage %s: %v", p[0], e)
 			} else {

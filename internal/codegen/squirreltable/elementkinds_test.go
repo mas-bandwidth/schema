@@ -192,7 +192,7 @@ func TestSquirrelArrayElementKindMatchesDeclaration(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script.String()))
 	out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wire})
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			t.Fatalf("bad result %q", line)

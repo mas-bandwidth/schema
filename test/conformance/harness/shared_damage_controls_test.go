@@ -89,8 +89,7 @@ func TestDamageAwareBoundaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, err := damageAwareFileSpellings(u, u.Tables["Root"], wire)
-			var damage *fixtureDamage
-			if !errors.As(err, &damage) {
+			if _, ok := errors.AsType[*fixtureDamage](err); !ok {
 				t.Fatalf("got %v, want typed framing damage", err)
 			}
 			if got["explicit-null-pointer"] != tc.want {
@@ -103,8 +102,7 @@ func TestDamageAwareBoundaries(t *testing.T) {
 	}
 	// Parser coverage refusal must remain distinguishable from expected damage.
 	_, err := damageAwareFrame([]byte{3})
-	var unsupported *fixtureUnsupported
-	if !errors.As(err, &unsupported) {
+	if _, ok := errors.AsType[*fixtureUnsupported](err); !ok {
 		t.Fatalf("unsupported form: %v", err)
 	}
 }
