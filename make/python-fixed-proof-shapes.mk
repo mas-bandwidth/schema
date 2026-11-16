@@ -1,4 +1,5 @@
 # Fixed-form shape proofs against the live C++ reference.
+PYTHON_CI_SUPPORT_GROUPS += python-fixed-proof-shapes python-fixed-proof-shapes-negative-control
 .PHONY: python-fixed-proof-shapes python-fixed-proof-shapes-negative-control
 test-python: python-fixed-proof-shapes python-fixed-proof-shapes-negative-control
 python-fixed-proof-shapes:
