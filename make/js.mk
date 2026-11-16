@@ -1718,6 +1718,18 @@ test-js: tables-js-usage-negative-control
 test-js: tables-js-release-negative-control
 test-js: conformance-negative-control-js-absent
 
+# Retained nested references distinguish legal hash zero from None and body
+# terminators. The control compiles a copied emitter that confuses an enum's
+# hash zero with None, and requires the real native round-trip test to catch it.
+.PHONY: tables-js-retain-hashzero tables-js-retain-hashzero-negative-control
+tables-js-retain-hashzero:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJavaScriptRetainNestedHashZero$$'
+
+tables-js-retain-hashzero-negative-control: tables-js-retain-hashzero
+	$(call js_jstable_control,js-retain-hashzero-none,internal/codegen/jstable/retain.go,^TestJavaScriptRetainNestedHashZero$$,./internal/codegen/jstable/,FAIL: save 0-0.bin)
+
+test-js: tables-js-retain-hashzero-negative-control
+
 # ---- DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) ----
 #
 # The gate: TestDamageDiscardsTheWholeLoadJavaScript loads a fixed and a
