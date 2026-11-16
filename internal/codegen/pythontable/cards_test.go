@@ -278,6 +278,15 @@ func TestPythonCardsFacade(t *testing.T) {
 
 const cardsFacadeProbe = `import facade
 from cards import BlobRef
+header = "RESULT: x sha=0123456789ab tier: pro\n"
+for line in ("KIND: ab\rcd\n", "KIND: ab\r\r\n", "NOTE: ab\rcd\n", "DEADLINE: finish within " + "9" * 5000 + " minutes.\n"):
+    try: facade.parse(header + line)
+    except facade.CardError as e: assert e.reason == "malformed", "header refusal class"
+    else: raise AssertionError("invalid header accepted")
+valid = facade.parse("RESULT: x sha=0123456789ab tier: pro\r\nKIND: task\r\nbody\r\n")
+assert valid.root.kind == "task" and valid.root.body == "body\r\n", "CRLF preservation"
+assert facade.parse(header + "DEADLINE: finish within " + "0" * 5000 + " minutes.\n").root.deadline_minutes == 0, "long zero deadline"
+assert facade.parse(header + "ordinary prose\nNOTE: ab\rcd\n").root.body == "ordinary prose\nNOTE: ab\rcd\n", "opaque body"
 brief="RESULT: x sha=0123456789ab tier: pro\nPATHS: a, b\nbody\u2028PATHS: still prose"
 r=facade.parse(brief)
 assert r.root.body=="body\u2028PATHS: still prose", "facade body"
@@ -327,18 +336,27 @@ func TestPythonCardsFacadeNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	anchor := "root.body = text[body_at:] or None"
-	if strings.Count(string(source), anchor) != 1 {
-		t.Fatal("body control anchor absent or ambiguous")
+	controls := []struct{ name, anchor, replacement, failure string }{
+		{"body", "root.body = text[body_at:] or None", "root.body = None", "CRLF preservation"},
+		{"header cr", "if \"\\r\" in val or \"\\n\" in val:", "if False:", "invalid header accepted"},
+		{"line ending", "if line.endswith(\"\\r\"):\n        line = line[:-1]", "line = line.rstrip(\"\\r\")", "invalid header accepted"},
+		{"deadline", "if len(digits) > 6 or (len(digits) == 6 and digits > \"100000\"):", "if False:", "ValueError"},
 	}
-	mutant := strings.Replace(string(source), anchor, "root.body = None", 1)
-	dir := t.TempDir()
-	writeTree(t, dir, files)
-	inputs := map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + cardsFacadeProbe), "facade.py": []byte(mutant), "future.wire": future}
-	for _, py := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
-		_, stderr, err := pyrun.Try(t, py, dir, "main.py", inputs)
-		if err == nil || !strings.Contains(stderr, "facade body") {
-			t.Errorf("body control did not fail by name: %v\n%s", err, stderr)
-		}
+	for _, control := range controls {
+		t.Run(control.name, func(t *testing.T) {
+			if strings.Count(string(source), control.anchor) != 1 {
+				t.Fatal("control anchor absent or ambiguous")
+			}
+			mutant := strings.Replace(string(source), control.anchor, control.replacement, 1)
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			inputs := map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + cardsFacadeProbe), "facade.py": []byte(mutant), "future.wire": future}
+			for _, py := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+				_, stderr, err := pyrun.Try(t, py, dir, "main.py", inputs)
+				if err == nil || !strings.Contains(stderr, control.failure) {
+					t.Errorf("%s control did not fail by name: %v\n%s", control.name, err, stderr)
+				}
+			}
+		})
 	}
 }
