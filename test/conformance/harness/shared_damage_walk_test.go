@@ -128,6 +128,10 @@ func (s *fixtureWalker) body(off, end int, root bool) {
 			s.frame.spots = s.frame.spots[:mark]
 			return
 		}
+		if root && id == ir.TableNodeWireId && k != ir.TableKindString {
+			s.damage(off, "node-table ID under a foreign kind")
+			return
+		}
 		off, ok = s.payload(k, a, end, root && id == ir.TableNodeWireId)
 		if !ok {
 			return

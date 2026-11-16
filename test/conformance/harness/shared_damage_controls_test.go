@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -130,5 +131,19 @@ func TestDamageAwareIDTableControls(t *testing.T) {
 				t.Fatalf("fault %q want=%v", fault, tc.want)
 			}
 		})
+	}
+}
+
+func TestDamageAwareReservedNodeKind(t *testing.T) {
+	t.Parallel()
+	u := damageControlUnit(t)
+	wire, err := (framingVector{entries: []uint64{ir.TableNodeWireId}, body: b(1, 8, 1, 0, 0, 0, 0)}).scriptBytes(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shapes, err := damageAwareFileSpellings(u, u.Tables["Root"], wire)
+	damage, ok := errors.AsType[*fixtureDamage](err)
+	if !ok || len(shapes) != 0 || len(damage.Issues) != 1 || !strings.Contains(damage.Issues[0], "node-table ID under a foreign kind") {
+		t.Fatalf("shapes=%v damage=%v", shapes, err)
 	}
 }

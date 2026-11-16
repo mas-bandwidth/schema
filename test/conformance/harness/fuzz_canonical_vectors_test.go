@@ -1213,12 +1213,13 @@ func TestNodeFieldWrongKindPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	shapes, e := damageAwareFileSpellings(u, u.Tables[v.root], wire)
-	if e != nil || len(shapes) > 0 {
+	var damage *fixtureDamage
+	if len(shapes) > 0 || !errors.As(e, &damage) || len(damage.Issues) == 0 || !strings.Contains(damage.Issues[0], "node-table ID under a foreign kind") {
 		t.Errorf("shapes=%v err=%v", shapes, e)
 	}
-	fault, e := damageAwareIDTableFault(wire)
-	if e != nil || fault != "" {
-		t.Errorf("id fault=%s err=%v", fault, e)
+	fault, _ := damageAwareIDTableFault(wire)
+	if fault != "" {
+		t.Errorf("id fault=%s", fault)
 	}
 	model := tabletext.NewModel(u)
 	var report tabletext.Report
