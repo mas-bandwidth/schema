@@ -163,10 +163,7 @@ func fixedSemanticField(f *ir.Field) map[string]any {
 			spec["kind"] = 13
 			spec["shape"] = "table"
 			spec["target"] = r.Name
-			fields := make([]any, 0, len(r.Fields))
-			for _, c := range r.Fields {
-				fields = append(fields, fixedSemanticField(c))
-			}
+			fields := fixedSemanticFields(r)
 			spec["children"] = fields
 		case *ir.Union:
 			spec["kind"] = 15
@@ -217,12 +214,24 @@ func fixedSemanticField(f *ir.Field) map[string]any {
 	return spec
 }
 
-func fixedSemanticRoot(st *ir.Struct) map[string]any {
+func fixedSemanticFields(st *ir.Struct) []any {
 	fields := make([]any, 0, len(st.Fields))
 	for _, f := range st.Fields {
-		fields = append(fields, fixedSemanticField(f))
+		spec := fixedSemanticField(f)
+		if !st.IsTable && f.KeyEnum != "" {
+			inner := spec
+			if f.Type.Optional {
+				inner = fixedChildren(spec)[0].(map[string]any)
+			}
+			inner["positional"] = true
+		}
+		fields = append(fields, spec)
 	}
-	return map[string]any{"name": st.Name, "target": st.Name, "id": ir.TableWireId(st.WireName()), "kind": 13, "shape": "table", "size": ir.TableFixedTypeBytes(st), "children": fields}
+	return fields
+}
+
+func fixedSemanticRoot(st *ir.Struct) map[string]any {
+	return map[string]any{"name": st.Name, "target": st.Name, "id": ir.TableWireId(st.WireName()), "kind": 13, "shape": "table", "size": ir.TableFixedTypeBytes(st), "children": fixedSemanticFields(st)}
 }
 
 type fixedLayoutNode struct {

@@ -73,7 +73,7 @@ def _default(spec: _Spec, current: Any = None) -> Any:
     if shape in ("array", "keyed"):
         n = spec.get("minimum", 0) if spec.get("counted", False) else spec["bound"]
         values = [_default(spec["children"][0]) for _ in range(n)]
-        if shape == "keyed":
+        if shape == "keyed" and not spec.get("positional", False):
             current._values = values
             return current
         return values
@@ -99,7 +99,7 @@ def _encode(spec: _Spec, value: Any, out: bytearray, at: int, path: str, check: 
             cursor += field["size"]
         return
     if shape in ("array", "keyed"):
-        if shape == "keyed":
+        if shape == "keyed" and not spec.get("positional", False):
             try:
                 values = value._values
             except AttributeError:
@@ -313,7 +313,7 @@ def _decode(spec: _Spec, data: bytes | bytearray | memoryview, at: int, current:
             at += 4
         elem = spec["children"][0]
         values = [_decode(elem, data, at + index * elem["size"]) for index in range(n)]
-        if shape == "keyed":
+        if shape == "keyed" and not spec.get("positional", False):
             current._values = values
             return current
         return values
