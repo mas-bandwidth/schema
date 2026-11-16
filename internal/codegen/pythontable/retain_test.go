@@ -2,6 +2,7 @@ package pythontable
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -985,5 +986,56 @@ if r.retained != 9 or value.save_retain(keep,r) != expected: raise SystemExit('`
 				}
 			}
 		})
+	}
+}
+
+func TestPythonRetainManifestSave(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and the retain manifest")
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated := t.TempDir()
+	unitdir := filepath.Join(generated, "tblrt1")
+	if err := os.MkdirAll(unitdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTree(t, unitdir, files)
+	cases := map[string]string{
+		"retain_round_trip":   "retain_rt1_save.bin",
+		"retain_ids_short":    "retain_rt1_save_id_short.bin",
+		"retain_node_index":   "retain_excluded_2_save.bin",
+		"retain_enum_variant": "retain_excluded_3_save.bin",
+		"retain_union_arm":    "retain_excluded_4_save.bin",
+		"retain_keyed_slot":   "retain_excluded_5_save.bin",
+		"retain_node_record":  "retain_rt3_save.bin",
+	}
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		outdir := t.TempDir()
+		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"), "retain-save", outdir)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("retain-save driver: %v\n%s", err, output)
+		}
+		for name, pinFile := range cases {
+			got, err := os.ReadFile(filepath.Join(outdir, name))
+			if err != nil {
+				absent, _ := os.ReadFile(filepath.Join(outdir, name+".absent"))
+				t.Fatalf("%s absent: %v %s", name, err, absent)
+			}
+			want, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", pinFile))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(want) {
+				t.Fatalf("%s differs from C++ pinned save: got %x want %x", name, got, want)
+			}
+		}
 	}
 }
