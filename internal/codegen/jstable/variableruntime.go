@@ -692,16 +692,6 @@ function TableVariableFirstUseOk(table, st) {
   return next - 1 === table.length;
 }
 
-// The value a non-optional, non-required field holds when the writer elides it.
-// A map key has no declared default: the entry's identity is the key, zero included.
-function TableVariableStoredDefault(fd, x) {
-  if (fd.opt || fd.req || fd.keep) { return false; }
-  if (fd.s === "float") { return TableVariableSameFloat(fd.f32, x, fd.def); }
-  if (fd.s === "bytes") { return TableVariableSameBytes(x, fd.def); }
-  if (fd.s === "str" || fd.s === "bool" || fd.s === "int" || fd.s === "flags" || fd.s === "enum") { return x === fd.def; }
-  return false;
-}
-
 function TableVariableLoad(c, bytes, report, retain) {
   // a caller that passed no report still gets the refusal: the read keeps one
   if (report === undefined || report === null) { report = new TableVariableReport(); }
@@ -989,11 +979,10 @@ function TableVariableCyclic(count, from, to) {
   return false;
 }
 
-// ONE BODY (§3, §4): fields in the writer's declaration order, a field stored
-// at the default the writer elides refused, a field this table cannot name
-// skipped by its kind and counted unknown (and retained when the caller opted
-// in, §6.6), a kind that widens decoded at its own width and counted widened,
-// any other kind a kind mismatch skipped whole. Damage stops the body.
+// ONE BODY (§3, §4): fields arrive in the writer's order, which the reader
+// cannot infer. Unknown fields are skipped by kind and counted; a kind that
+// widens is decoded at its own width, and any other mismatch is skipped.
+// Damage stops the body.
 
 // AN UNPLACED RECORD STILL NAMES ITS EDGES (internal/tablewire/wirecheck.go
 // graph): the value is not built, and the unknown was counted once, but every
@@ -1238,7 +1227,6 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
   // wirecheck.go body). The id table holds each id once, so the reference
   // stands for the id. A body is a handful of fields, so a scan beats a Set.
   let rode = null;
-  let lastOrd = -1;
   let sawNode = false;
   for (;;) {
     if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
@@ -1297,13 +1285,10 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       }
       continue;
     }
-    if (fd.o < lastOrd) { report.damaged = true; return false; }
-    lastOrd = fd.o;
     if (kind !== fd.k) {
       if (TableVariableWidens(kind, fd.k)) {
         const x = TableVariableScalar(r, fd, kind, report);
         if (x === undefined) { return false; }
-        if (TableVariableStoredDefault(fd, x)) { report.damaged = true; return false; }
         v[fd.n] = x;
         if (fd.req) { seen.add(fd); }
         // a map entry's KEY widening is the map's one count (mapField)
@@ -1426,14 +1411,12 @@ function TableVariableEnumRead(e, r, table, report, retain, st) {
 }
 
 function TableVariableReadField(fd, r, table, v, report, st, retain, path, atField) {
-  // A field the writer elides is refused only at the field. An array element
-  // and an arm payload ride even at the default, because position is identity.
+  // A variable wire cannot reveal whether the writer elided this field.
   if (atField === undefined) { atField = true; }
   switch (fd.s) {
     case "bool": case "int": case "flags": case "float": {
       const x = TableVariableScalar(r, fd, fd.k, report);
       if (x === undefined) { return false; }
-      if (atField && TableVariableStoredDefault(fd, x)) { report.damaged = true; return false; }
       v[fd.n] = x;
       return true;
     }
@@ -1445,7 +1428,6 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
       const dec = TableVariableUtf8Decode(bytes);
       // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its default
       if (!dec.ok) { report.damaged = true; v[fd.n] = fd.def; return true; }
-      if (atField && (fd.bound < 0 || bytes.length <= fd.bound) && TableVariableStoredDefault(fd, dec.s)) { report.damaged = true; return false; }
       if (fd.bound >= 0 && bytes.length > fd.bound) {
         // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3)
         report.oor++;
@@ -1458,29 +1440,21 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
       return true;
     }
     case "enum": {
-      const unknownBefore = report.unknown;
       const x = TableVariableEnumRead(fd, r, table, report, retain, st);
       if (x === undefined) { return false; }
-      if (atField && TableVariableStoredDefault(fd, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; return false; }
       v[fd.n] = x;
       return true;
     }
     case "ptr": case "sblob": case "bblob": {
-      // a pointer's payload is a NUMBER: bounds-checked at resolution, never
-      // followed (§3.1). Index 0 is null. A non-required field holding null
-      // elides, so an explicit null there is a spelling no writer emits; a
-      // required field writes null, and an array element and an arm payload
-      // keep it because position is identity.
+      // A pointer payload is an index, bounds-checked at resolution; 0 is null.
       const index = r.leb();
       if (r.bad) { report.damaged = true; return false; }
-      if (atField && index === 0 && !fd.req) { report.damaged = true; return false; }
       st.pending.push([v, fd.n, index, fd]);
       return true;
     }
     case "tab": {
       const L = r.leb();
       if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
-      if (atField && !fd.opt && !fd.req && L <= 1) { report.damaged = true; return false; }
       const sub = new TableVariableReader(r.b, r.at, r.at + L);
       const inst = fd.c.make();
       v[fd.n] = inst;
@@ -1504,9 +1478,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
     case "keyed":
       return TableVariableReadKeyed(fd, r, table, v, report, st, retain, path);
     case "union": {
-      if (st !== null) { st.unionAtField = !fd.opt && !fd.req; }
       const x = TableVariableUnionRead(fd.u, r, table, report, st, retain, path, fd.o);
-      if (st !== null) { st.unionAtField = false; }
       if (x === undefined) { return false; }
       v[fd.n] = x;
       return true;
@@ -1547,8 +1519,7 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // body cannot cover keeps the decoded prefix. Bytes left inside L after the
 // elements are damage.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path, atField) {
-  // An arm's array payload is written even when the count is 0 (§2.6). A
-  // field's empty counted array is not: the writer elides it.
+  // The writer may have made an empty array required or optional (§2.3).
   if (atField === undefined) { atField = true; }
   const L = end - r.at;
   if (L >= 2) {
@@ -1570,7 +1541,6 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; return false; }
       report.widened++;
     }
-    if (atField && !fd.opt && !fd.req && !fd.fixed && fd.s === "arr" && count === 0) { report.damaged = true; return false; }
     let keep = count;
     if (fd.list) {
       if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; return false; }
@@ -1593,33 +1563,14 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
         out.push(sub.u8());
       }
       const packed = new Uint8Array(out);
-      if (atField && TableVariableStoredDefault(fd, packed)) { report.damaged = true; return false; }
       v[fd.n] = packed;
     } else if (fd.fixed) {
       if (!Array.isArray(v[fd.n]) || v[fd.n].length !== fd.bound) {
         v[fd.n] = Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e));
       }
       const out = v[fd.n];
-      const pendingBefore = fd.e.s === "ptr" ? st.pending.length : 0;
       for (let i = 0; i < keep; i++) {
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { filled = false; break; }
-      }
-      // A fixed array of tables keeps its elements by position, but any other
-      // fixed array stored at all-default elides as a field (§3): refuse it.
-      // A pointer element is still null here until resolution, so its index is
-      // the default test; every other element already holds its value.
-      if (filled && atField && !fd.opt && !fd.req && fd.e.s !== "tab") {
-        let allDef = true;
-        if (fd.e.s === "ptr") {
-          for (let i = pendingBefore; i < st.pending.length; i++) {
-            if (st.pending[i][2] !== 0) { allDef = false; break; }
-          }
-        } else {
-          for (let i = 0; i < fd.bound; i++) {
-            if (!TableVariableElemIsDefault(fd.e, out[i])) { allDef = false; break; }
-          }
-        }
-        if (allDef) { report.damaged = true; return false; }
       }
     } else {
       const out = [];
@@ -2598,15 +2549,16 @@ function TableVariableFromJson(c, text, report) {
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
   if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
-  if (inp.bad || !ok || report.damaged) { report.damaged = true; return null; }
+  if (inp.bad || report.damaged || (!ok && TableVariableStrictMark(report) === strictBefore)) { report.damaged = true; return null; }
   // the one read refuses the whole text, as the wire load does (§4, §16.2)
   if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
   report.damaged = carried;
   return v;
 }
 
-// a wide integer declares "N" and reads as a string OR a number; every other
-// JSON shape is exact (§16.2, tabletext read.go shapeMatches)
+// Shape N routes both strings and numbers to the scalar reader. The reader
+// accepts a wide value only from a string and counts a number as kind mismatch
+// (§16.2); every other JSON shape is exact.
 function TableVariableShapeMatches(want, got) {
   if (want === got) { return true; }
   return want === "N" && (got === "s" || got === "n");
@@ -2692,10 +2644,9 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
 }
 
 // a base64 body six bits at a time (read.go readBase64): the JSON string is
-// decoded first, then standard-alphabet symbols take zero to two trailing '='
-// of the right count. A symbol after padding, a byte outside the alphabet, a
-// length that does not decode or more than two pads is the wrong shape (one
-// kind mismatch); past the bound the excess is oor.
+// decoded first. JSON bytes require padded standard base64 with zero pad bits.
+// A body that cannot decode is damaged; a decodable noncanonical spelling is
+// refused separately. Past the bound the excess is out of range.
 function TableVariableBase64Read(inp, bound, report) {
   const s = inp.str();
   if (s === null) { return null; }
@@ -2715,7 +2666,11 @@ function TableVariableBase64Read(inp, bound, report) {
       bad = true;
     }
   }
-  if (bad) { report.mismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
+  if (bad) { report.reason = "base64_damaged: " + inp.field; inp.bad = true; return null; }
+  let canonical = symbols % 4 === 0;
+  if (pad === 1) { canonical = (TableVariableBase64.indexOf(s[s.length - 2]) & 3) === 0; }
+  if (pad === 2) { canonical = (TableVariableBase64.indexOf(s[s.length - 3]) & 15) === 0; }
+  if (!canonical) { report.reason = "base64_not_canonical: " + inp.field; inp.bad = true; return null; }
   const out = [];
   let acc = 0, held = 0, oor = false;
   for (let i = 0; i < s.length; i++) {
@@ -3051,8 +3006,8 @@ function TableVariableTextWide(d, tok, holder, key, report) {
 
 // an integer field takes an INTEGER TOKEN only — digits with an optional
 // minus, no fraction, no exponent, not -0 (§16.2, docs/rulings.json
-// json-integer-token-only). A wide integer (int64, uint64) also takes the
-// string form, holding the same digits. The value never passes through a
+// json-integer-token-only). A wide integer takes the string form only,
+// holding the same digits. The value never passes through a
 // double, and the declared range and the storage domain are tested on the exact
 // value, refusing out_of_range rather than clamping (§4, read.go placeInteger).
 function TableVariableTextIntegerToken(d, tok, holder, key, report) {
@@ -3076,6 +3031,7 @@ function TableVariableTextInt(d, inp, holder, key, report) {
   }
   const n = inp.number();
   if (n === null) { inp.bad = true; return false; }
+  if (d.kw > 4) { report.mismatch++; return true; }
   if (d.k >= 18 && d.k <= 29) { return TableVariableTextWide(d, n.tok, holder, key, report); }
   if (!n.integral || !TableVariableIntegerToken(n.tok)) { report.mismatch++; return false; }
   return TableVariableTextIntegerToken(d, n.tok, holder, key, report);

@@ -30,8 +30,10 @@ func TestMainNightliesGateInputsAgree(t *testing.T) {
 	wantVectors := []string{
 		"base64-padding-none", "base64-padding-one", "base64-padding-two", "base64-sixteen",
 		"num-exponent-forms", "num-float-max", "num-float32-min-subnormal",
-		"num-int64-extremes", "num-int64-past-extremes", "num-negative-zero-floats",
-		"num-uint64-max", "num-uint64-two-to-63", "str-raw-non-ascii", "str-writer-escapes",
+		// the 64-bit extremes are their string twins: the bare-number vectors
+		// moved to JSON-HOSTILE-NUMBER-TOKEN.txt (docs/SPEC-TABLES.md §16.2)
+		"num-int64-extremes-string", "num-int64-past-extremes-string", "num-negative-zero-floats",
+		"num-uint64-max-string", "num-uint64-two-to-63-string", "str-raw-non-ascii", "str-writer-escapes",
 	}
 	byName := make(map[string]hostilecorpus.Case, len(cases))
 	for _, c := range cases {

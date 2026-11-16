@@ -689,6 +689,10 @@ public final class Driver {
         Object fromJson(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("fromJson", byte[].class, reportType).invoke(null, data, report); }
         byte[] save(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("save", valueType).invoke(null, value); }
         byte[] toJson(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("toJson", valueType).invoke(null, value); }
+        // fromFixed carries a fixed-form value into this value (the emitter's
+        // <Root>Variable.fromFixed, docs/SPEC-TABLES.md §16, §3.4): the text
+        // form's reader of a fixed root's value.
+        Object fromFixed(Object fixed) throws ReflectiveOperationException { return codec.getMethod("fromFixed", fixed.getClass()).invoke(null, fixed); }
         int count(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getInt(report); } catch (NoSuchFieldException e) { return 0; } }
         boolean flag(Object report, String field) throws ReflectiveOperationException { try { return reportType.getField(field).getBoolean(report); } catch (NoSuchFieldException e) { return false; } }
         // the name of the refusal the read reported
@@ -750,128 +754,134 @@ public final class Driver {
             return codec.save(value);
         }
         Object values = fixed.newValues();
-        convertValue(value, java.lang.reflect.Array.get(values, 0));
+        VariableCarry.carry(value, java.lang.reflect.Array.get(values, 0));
         return fixed.save(values, 1);
     }
 
-    private static java.lang.reflect.Field fieldOrNull(Class<?> type, String name) {
-        try { return type.getField(name); }
-        catch (NoSuchFieldException none) { return null; }
-    }
+    // THE VARIABLE CARRY: FixedCarry the other way. It carries a
+    // variable-form value into the fixed-form value of the same table:
+    // scalars by name (a union's `tag` is the fixed form's `type`), text and
+    // bytes into the fixed buffer beside its length, a list into the
+    // preallocated array beside its count, and a nested value recursively
+    // into the preallocated nested value. The <name>Length and <name>Count
+    // companions are derived, never copied. It is self-contained so a test
+    // compiles this same class beside a generated unit (TestJavaFixedRootTextForm).
+    static final class VariableCarry {
+        private VariableCarry() {}
 
-    private static void setDerivedCount(Object to, String base, int count) throws ReflectiveOperationException {
-        java.lang.reflect.Field length = fieldOrNull(to.getClass(), base + "Length");
-        if (length != null) { length.setInt(to, count); return; }
-        java.lang.reflect.Field counted = fieldOrNull(to.getClass(), base + "Count");
-        if (counted != null) { counted.setInt(to, count); }
-    }
-
-    private static Object convertedScalar(Class<?> target, Object value) {
-        if (value instanceof Number number) {
-            if (target == byte.class) return number.byteValue();
-            if (target == short.class) return number.shortValue();
-            if (target == int.class) return number.intValue();
-            if (target == long.class) return number.longValue();
-            if (target == float.class) return number.floatValue();
-            if (target == double.class) return number.doubleValue();
-            if (target == char.class) return (char) number.intValue();
-        }
-        return value;
-    }
-
-    // convertValue carries a variable-form value into the fixed-form value
-    // of the same table: scalars by name (a union's `tag` is the fixed
-    // form's `type`), text and bytes into the fixed buffer beside its
-    // length, a list into the preallocated array beside its count, and a
-    // nested value recursively into the preallocated nested value. The
-    // <name>Length and <name>Count companions are derived, never copied.
-    private static void convertValue(Object from, Object to) throws ReflectiveOperationException {
-        for (java.lang.reflect.Field target : to.getClass().getFields()) {
-            String name = target.getName();
-            if ((name.endsWith("Length") && fieldOrNull(to.getClass(), name.substring(0, name.length() - 6)) != null)
-                    || (name.endsWith("Count") && fieldOrNull(to.getClass(), name.substring(0, name.length() - 5)) != null)) {
-                continue;
-            }
-            java.lang.reflect.Field source = fieldOrNull(from.getClass(), name);
-            if (source == null && name.equals("type")) {
-                source = fieldOrNull(from.getClass(), "tag");
-            }
-            if (source == null) {
-                throw new NoSuchFieldException(from.getClass().getName() + " has no field for " + to.getClass().getName() + "." + name);
-            }
-            Object value = source.get(from);
-            Class<?> targetType = target.getType();
-            if (value == null) {
-                continue;
-            }
-            if (targetType.isPrimitive()) {
-                target.set(to, convertedScalar(targetType, value));
-                continue;
-            }
-            if (targetType.isArray()) {
-                Object fixedArray = target.get(to);
-                Class<?> element = targetType.getComponentType();
-                if (value instanceof String text) {
-                    if (element == byte.class) {
-                        byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                        System.arraycopy(bytes, 0, fixedArray, 0, Math.min(bytes.length, java.lang.reflect.Array.getLength(fixedArray)));
-                        setDerivedCount(to, name, bytes.length);
-                    } else if (element == char.class) {
-                        char[] chars = text.toCharArray();
-                        System.arraycopy(chars, 0, fixedArray, 0, Math.min(chars.length, java.lang.reflect.Array.getLength(fixedArray)));
-                        setDerivedCount(to, name, chars.length);
-                    } else {
-                        throw new NoSuchFieldException("text field " + name + " has no fixed buffer");
-                    }
+        static void carry(Object from, Object to) throws ReflectiveOperationException {
+            for (java.lang.reflect.Field target : to.getClass().getFields()) {
+                String name = target.getName();
+                if ((name.endsWith("Length") && field(to.getClass(), name.substring(0, name.length() - 6)) != null)
+                        || (name.endsWith("Count") && field(to.getClass(), name.substring(0, name.length() - 5)) != null)) {
                     continue;
                 }
-                if (value instanceof byte[] bytes && element == byte.class) {
-                    System.arraycopy(bytes, 0, fixedArray, 0, Math.min(bytes.length, java.lang.reflect.Array.getLength(fixedArray)));
-                    setDerivedCount(to, name, bytes.length);
+                java.lang.reflect.Field source = field(from.getClass(), name);
+                if (source == null && name.equals("type")) {
+                    source = field(from.getClass(), "tag");
+                }
+                if (source == null) {
+                    throw new NoSuchFieldException(from.getClass().getName() + " has no field for " + to.getClass().getName() + "." + name);
+                }
+                Object value = source.get(from);
+                Class<?> targetType = target.getType();
+                if (value == null) {
                     continue;
                 }
-                if (value instanceof char[] chars && element == char.class) {
-                    System.arraycopy(chars, 0, fixedArray, 0, Math.min(chars.length, java.lang.reflect.Array.getLength(fixedArray)));
-                    setDerivedCount(to, name, chars.length);
+                if (targetType.isPrimitive()) {
+                    target.set(to, scalar(targetType, value));
                     continue;
                 }
-                java.util.List<?> items;
-                if (value instanceof java.util.List<?> list) {
-                    items = list;
-                } else if (value.getClass().isArray()) {
-                    int n = java.lang.reflect.Array.getLength(value);
-                    java.util.List<Object> listed = new java.util.ArrayList<>();
-                    for (int i = 0; i < n; i++) {
-                        listed.add(java.lang.reflect.Array.get(value, i));
-                    }
-                    items = listed;
-                } else {
-                    throw new NoSuchFieldException("array field " + name + " holds " + value.getClass().getName());
-                }
-                int count = Math.min(items.size(), java.lang.reflect.Array.getLength(fixedArray));
-                for (int i = 0; i < count; i++) {
-                    Object item = items.get(i);
-                    if (item == null) {
+                if (targetType.isArray()) {
+                    Object fixedArray = target.get(to);
+                    Class<?> element = targetType.getComponentType();
+                    if (value instanceof String text) {
+                        if (element == byte.class) {
+                            byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                            System.arraycopy(bytes, 0, fixedArray, 0, Math.min(bytes.length, java.lang.reflect.Array.getLength(fixedArray)));
+                            derivedCount(to, name, bytes.length);
+                        } else if (element == char.class) {
+                            char[] chars = text.toCharArray();
+                            System.arraycopy(chars, 0, fixedArray, 0, Math.min(chars.length, java.lang.reflect.Array.getLength(fixedArray)));
+                            derivedCount(to, name, chars.length);
+                        } else {
+                            throw new NoSuchFieldException("text field " + name + " has no fixed buffer");
+                        }
                         continue;
                     }
-                    if (element.isPrimitive()) {
-                        java.lang.reflect.Array.set(fixedArray, i, convertedScalar(element, item));
-                    } else if (element.isInstance(item)) {
-                        java.lang.reflect.Array.set(fixedArray, i, item);
-                    } else {
-                        convertValue(item, java.lang.reflect.Array.get(fixedArray, i));
+                    if (value instanceof byte[] bytes && element == byte.class) {
+                        System.arraycopy(bytes, 0, fixedArray, 0, Math.min(bytes.length, java.lang.reflect.Array.getLength(fixedArray)));
+                        derivedCount(to, name, bytes.length);
+                        continue;
                     }
+                    if (value instanceof char[] chars && element == char.class) {
+                        System.arraycopy(chars, 0, fixedArray, 0, Math.min(chars.length, java.lang.reflect.Array.getLength(fixedArray)));
+                        derivedCount(to, name, chars.length);
+                        continue;
+                    }
+                    java.util.List<?> items;
+                    if (value instanceof java.util.List<?> list) {
+                        items = list;
+                    } else if (value.getClass().isArray()) {
+                        int n = java.lang.reflect.Array.getLength(value);
+                        java.util.List<Object> listed = new java.util.ArrayList<>();
+                        for (int i = 0; i < n; i++) {
+                            listed.add(java.lang.reflect.Array.get(value, i));
+                        }
+                        items = listed;
+                    } else {
+                        throw new NoSuchFieldException("array field " + name + " holds " + value.getClass().getName());
+                    }
+                    int count = Math.min(items.size(), java.lang.reflect.Array.getLength(fixedArray));
+                    for (int i = 0; i < count; i++) {
+                        Object item = items.get(i);
+                        if (item == null) {
+                            continue;
+                        }
+                        if (element.isPrimitive()) {
+                            java.lang.reflect.Array.set(fixedArray, i, scalar(element, item));
+                        } else if (element.isInstance(item)) {
+                            java.lang.reflect.Array.set(fixedArray, i, item);
+                        } else {
+                            carry(item, java.lang.reflect.Array.get(fixedArray, i));
+                        }
+                    }
+                    derivedCount(to, name, items.size());
+                    continue;
                 }
-                setDerivedCount(to, name, items.size());
-                continue;
+                if (targetType.isInstance(value)) {
+                    target.set(to, value);
+                    continue;
+                }
+                carry(value, target.get(to));
             }
-            if (targetType.isInstance(value)) {
-                target.set(to, value);
-                continue;
-            }
-            convertValue(value, target.get(to));
         }
-    }
+
+        private static java.lang.reflect.Field field(Class<?> type, String name) {
+            try { return type.getField(name); }
+            catch (NoSuchFieldException none) { return null; }
+        }
+
+        private static void derivedCount(Object to, String base, int count) throws ReflectiveOperationException {
+            java.lang.reflect.Field length = field(to.getClass(), base + "Length");
+            if (length != null) { length.setInt(to, count); return; }
+            java.lang.reflect.Field counted = field(to.getClass(), base + "Count");
+            if (counted != null) { counted.setInt(to, count); }
+        }
+
+        private static Object scalar(Class<?> target, Object value) {
+            if (value instanceof Number number) {
+                if (target == byte.class) return number.byteValue();
+                if (target == short.class) return number.shortValue();
+                if (target == int.class) return number.intValue();
+                if (target == long.class) return number.longValue();
+                if (target == float.class) return number.floatValue();
+                if (target == double.class) return number.doubleValue();
+                if (target == char.class) return (char) number.intValue();
+            }
+            return value;
+        }
+    } // VariableCarry
 
     private static FixedCodec fixedCodec(String unit, String root) throws ReflectiveOperationException {
         try { return new FixedCodec(variableUnitPackage(unit), root); }
@@ -1150,7 +1160,23 @@ public final class Driver {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
             try {
-                if (fixedCodec(f[2], f[3]) != null) { spillAbsentReason(out, f[1], FIXED_NO_TEXT); continue; }
+                FixedCodec fixed = fixedCodec(f[2], f[3]);
+                if (fixed != null) {
+                    // A fixed root's JSON is read by the variable form's text
+                    // reader and carried into the fixed form's value, whose save
+                    // is the write-back wire the surface compares (§16.7).
+                    VariableCodec codec = variableCodec(f[2], f[3]);
+                    if (codec == null) { spillAbsent(out, f[1]); continue; }
+                    Object report = codec.report();
+                    Object value = codec.fromJson(Files.readAllBytes(Paths.get("testdata/conformance/tables/json", f[1] + ".json")), report);
+                    if (value == null || codec.flag(report, "damaged") || codec.flag(report, "refused")) return failInt(f[1] + ": fromJson refused the text");
+                    Object values = fixed.newValues();
+                    VariableCarry.carry(value, java.lang.reflect.Array.get(values, 0));
+                    byte[] saved = fixed.save(values, 1);
+                    if (saved == null) return failInt(f[1] + ": save refused the value");
+                    spill(out, f[1], saved);
+                    continue;
+                }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
@@ -1168,7 +1194,23 @@ public final class Driver {
         for (String[] f : kind("instance")) {
             if (noText(f)) continue;
             try {
-                if (fixedCodec(f[2], f[3]) != null) { spillAbsentReason(out, f[1] + ".json", FIXED_NO_TEXT); continue; }
+                FixedCodec fixed = fixedCodec(f[2], f[3]);
+                if (fixed != null) {
+                    // A fixed root's value is the one its form 3 read gives,
+                    // carried into the variable form's value and written by the
+                    // variable form's text writer (§16.7).
+                    VariableCodec codec = variableCodec(f[2], f[3]);
+                    if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
+                    Object report = fixed.report();
+                    Object values = fixed.newValues();
+                    int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
+                    if (read < 0 || fixed.flag(report, "refused") || fixed.flag(report, "damaged")) return failInt(f[1] + ": load refused " + f[4]);
+                    Object value = codec.fromFixed(java.lang.reflect.Array.get(values, 0));
+                    byte[] text = codec.toJson(value);
+                    if (text == null) return failInt(f[1] + ": toJson refused the value");
+                    spill(out, f[1] + ".json", text);
+                    continue;
+                }
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
                 Object report = codec.report();
@@ -1185,18 +1227,443 @@ public final class Driver {
         // write are the same call.
         for (String[] f : kind("json-write-refusal")) {
             try {
-                if (fixedCodec(f[2], f[3]) != null) { spillAbsentReason(out, f[1] + ".json", FIXED_NO_TEXT); continue; }
+                FixedCodec fixed = fixedCodec(f[2], f[3]);
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
-                Object report = codec.report();
-                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
-                if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                Object value;
+                if (fixed != null) {
+                    Object report = fixed.report();
+                    Object values = fixed.newValues();
+                    int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
+                    if (read < 0 || fixed.flag(report, "refused") || fixed.flag(report, "damaged")) return failInt(f[1] + ": load refused " + f[4]);
+                    value = codec.fromFixed(java.lang.reflect.Array.get(values, 0));
+                } else {
+                    Object report = codec.report();
+                    value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                    if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
+                }
                 if (!damageText(value, f[5])) return failInt(f[1] + ": damage " + f[5] + " names no text field");
                 byte[] text = codec.toJson(value);
                 spill(out, f[1] + ".json", text == null ? "refused\n".getBytes(java.nio.charset.StandardCharsets.UTF_8) : text);
             } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": JSON writer failed: " + failure); }
         }
         return 0;
+    }
+
+    // ---- THE WRITE-REFUSAL SURFACES (docs/SPEC.md §5.1)
+    //
+    // Each row loads one instance, sets ONE field to the value the row names,
+    // and writes it through the form's writer: the variable form's save, the
+    // fixed form's save, the message form's SaveMessages against the
+    // connection's vocabulary, or the text writer. The answer is what that
+    // writer did: `refused` when an AssertionError under `-ea` (or the
+    // writer's own null/-1 answer) refused it, `wrote` when the lawful twin
+    // or the text writer's zero-byte spelling completed, and `unrepresentable`
+    // when the value cannot be held in this leg's storage at all.
+
+    private static final java.util.regex.Pattern writeRefusalSegment =
+            java.util.regex.Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)(?:\\[([0-9]+)\\])?$");
+
+    private static final class WriteRefusalSegment {
+        final String name;
+        final int index;
+        final boolean indexed;
+        WriteRefusalSegment(String name, int index, boolean indexed) {
+            this.name = name;
+            this.index = index;
+            this.indexed = indexed;
+        }
+        static WriteRefusalSegment parse(String text) {
+            java.util.regex.Matcher m = writeRefusalSegment.matcher(text);
+            if (!m.matches()) {
+                throw new IllegalArgumentException(text + " is not a field path segment");
+            }
+            if (m.group(2) == null) {
+                return new WriteRefusalSegment(m.group(1), 0, false);
+            }
+            return new WriteRefusalSegment(m.group(1), Integer.parseInt(m.group(2)), true);
+        }
+    }
+
+    private static int surfaceWriteRefusal(String out, String surface) throws IOException {
+        for (String[] f : kind(surface)) {
+            String name = f[1];
+            String unit = f[2];
+            String root = f[3];
+            String wirePath = f[4];
+            String path = f[5];
+            String kind = f[6];
+            String text = f[7];
+            String actualUnit = unit;
+            String[] conn = null;
+            if (surface.equals("write-refusal-message")) {
+                conn = connectionNamed(unit);
+                if (conn == null) {
+                    return failInt(name + ": connection " + unit + " names no unit");
+                }
+                actualUnit = conn[2];
+            }
+            try {
+                FixedCodec fixed = fixedCodec(actualUnit, root);
+                VariableCodec variable = variableCodec(actualUnit, root);
+                if (fixed == null && variable == null) {
+                    spillAbsent(out, name);
+                    continue;
+                }
+                Object fixedValue = null;
+                Object value;
+                if (fixed != null) {
+                    Object values = fixed.newValues();
+                    Object report = fixed.report();
+                    int read = fixed.load(values, Files.readAllBytes(Paths.get(wirePath)), report);
+                    if (!fixedReadSucceeded(fixed, report, read)) {
+                        return failInt(name + ": load refused " + wirePath);
+                    }
+                    fixedValue = java.lang.reflect.Array.get(values, 0);
+                    value = fixedValue;
+                } else {
+                    Object report = variable.report();
+                    value = variable.load(Files.readAllBytes(Paths.get(wirePath)), report);
+                    if (value == null || variable.flag(report, "refused")) {
+                        return failInt(name + ": load refused " + wirePath);
+                    }
+                }
+                mutateWriteRefusal(value, path, kind, text);
+                String answer = "wrote";
+                try {
+                    switch (surface) {
+                        case "write-refusal":
+                            // THE ROOT'S OWN FORM'S WRITER: a declared fixed
+                            // root is written by the fixed form, a variable
+                            // root by its variable save.
+                            if (fixed != null) {
+                                if (fixed.save(writeRefusalValues(fixed, fixedValue), 1) == null) {
+                                    answer = "refused";
+                                }
+                            } else if (variable.save(value) == null) {
+                                answer = "refused";
+                            }
+                            break;
+                        case "write-refusal-fixed":
+                            if (fixed == null) {
+                                spillAbsent(out, name);
+                                continue;
+                            }
+                            if (fixed.save(writeRefusalValues(fixed, fixedValue), 1) == null) {
+                                answer = "refused";
+                            }
+                            break;
+                        case "write-refusal-message": {
+                            MessageCodec mc = messageCodec(actualUnit, root);
+                            if (mc == null || fixedValue == null) {
+                                spillAbsent(out, name);
+                                continue;
+                            }
+                            Object vocab = mc.vocab();
+                            Object report = mc.report();
+                            if (!mc.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), report)
+                                    || mc.flag(report, "damaged") || mc.flag(report, "refused")) {
+                                return failInt(name + ": announceRead refused " + conn[4]);
+                            }
+                            Object values = mc.newValues(1);
+                            java.lang.reflect.Array.set(values, 0, fixedValue);
+                            int size = mc.measure(values, 1, report);
+                            if (size < 1 || mc.flag(report, "refused")) {
+                                answer = "refused";
+                            } else {
+                                byte[] buf = new byte[size];
+                                if (mc.save(values, 1, buf, report) != size || mc.flag(report, "refused")) {
+                                    answer = "refused";
+                                }
+                            }
+                            break;
+                        }
+                        case "write-refusal-json": {
+                            if (variable == null) {
+                                spillAbsent(out, name);
+                                continue;
+                            }
+                            Object textValue = value;
+                            if (fixed != null) {
+                                textValue = variable.fromFixed(fixedValue);
+                            }
+                            if (variable.toJson(textValue) == null) {
+                                answer = "refused";
+                            }
+                            break;
+                        }
+                        default:
+                            return failInt(name + ": unknown write-refusal surface " + surface);
+                    }
+                } catch (AssertionError refused) {
+                    answer = "refused";
+                } catch (java.lang.reflect.InvocationTargetException invoked) {
+                    if (writeRefusalAssertion(invoked)) {
+                        answer = "refused";
+                    } else {
+                        throw invoked;
+                    }
+                }
+                spill(out, name, answer + "\n");
+            } catch (ReflectiveOperationException failure) {
+                return failInt(name + ": write-refusal codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
+    private static boolean writeRefusalAssertion(Throwable thrown) {
+        Throwable cause = thrown;
+        while (cause instanceof java.lang.reflect.InvocationTargetException invoked
+                && invoked.getCause() != null) {
+            cause = invoked.getCause();
+        }
+        return cause instanceof AssertionError;
+    }
+
+    private static Object writeRefusalValues(FixedCodec codec, Object value)
+            throws ReflectiveOperationException {
+        Object values = codec.newValues();
+        java.lang.reflect.Array.set(values, 0, value);
+        return values;
+    }
+
+    private static void mutateWriteRefusal(Object value, String path, String kind, String text)
+            throws ReflectiveOperationException {
+        String[] segments = path.split("\\.");
+        Object current = value;
+        for (int i = 0; i < segments.length - 1; i++) {
+            WriteRefusalSegment segment = WriteRefusalSegment.parse(segments[i]);
+            java.lang.reflect.Field field = writeRefusalField(current.getClass(), segment.name);
+            Object next = field.get(current);
+            if (segment.indexed) {
+                next = writeRefusalElement(next, segment.index);
+            }
+            current = next;
+        }
+        WriteRefusalSegment last = WriteRefusalSegment.parse(segments[segments.length - 1]);
+        java.lang.reflect.Field field = writeRefusalField(current.getClass(), last.name);
+        Object fieldValue = field.get(current);
+        if (last.indexed) {
+            fieldValue = writeRefusalElement(fieldValue, last.index);
+        }
+        switch (kind) {
+            case "count":
+                writeRefusalCount(current, fieldValue, last.name, Integer.parseInt(text));
+                return;
+            case "length":
+                writeRefusalLength(current, field, fieldValue, last.name, Integer.parseInt(text));
+                return;
+            case "bytes":
+                writeRefusalBytes(current, field, fieldValue, last.name, text);
+                return;
+            case "units":
+                writeRefusalUnits(current, field, fieldValue, last.name, text);
+                return;
+            case "int":
+                writeRefusalInt(field, current, fieldValue, text);
+                return;
+            case "ordinal":
+                writeRefusalOrdinal(field, current, fieldValue, text);
+                return;
+            case "tag": {
+                String tagName = writeRefusalFieldOrNull(fieldValue.getClass(), "type") != null ? "type" : "tag";
+                java.lang.reflect.Field tag = writeRefusalField(fieldValue.getClass(), tagName);
+                writeRefusalOrdinal(tag, fieldValue, tag.get(fieldValue), text);
+                return;
+            }
+            case "float":
+                writeRefusalFloat(field, current, text);
+                return;
+            default:
+                throw new IllegalArgumentException(last.name + ": unknown kind " + kind);
+        }
+    }
+
+    private static void writeRefusalCount(Object owner, Object fieldValue, String name, int count)
+            throws ReflectiveOperationException {
+        java.lang.reflect.Field companion = writeRefusalFieldOrNull(owner.getClass(), name + "Count");
+        if (companion != null) {
+            companion.setInt(owner, count);
+            return;
+        }
+        if (fieldValue instanceof java.util.List<?> list) {
+            writeRefusalResize(list, count);
+            return;
+        }
+        throw new NoSuchFieldException(name + " carries no count");
+    }
+
+    private static void writeRefusalResize(java.util.List<?> list, int count) {
+        @SuppressWarnings("unchecked")
+        java.util.List<Object> raw = (java.util.List<Object>) list;
+        while (raw.size() > count) {
+            raw.remove(raw.size() - 1);
+        }
+        while (raw.size() < count) {
+            raw.add(raw.isEmpty() ? null : raw.get(0));
+        }
+    }
+
+    private static void writeRefusalLength(
+            Object owner, java.lang.reflect.Field field, Object fieldValue, String name, int length)
+            throws ReflectiveOperationException {
+        if (fieldValue instanceof byte[] bytes) {
+            java.util.Arrays.fill(bytes, (byte) 'a');
+            writeRefusalCompanion(owner, name, "Length", length);
+            return;
+        }
+        if (fieldValue instanceof char[] chars) {
+            java.util.Arrays.fill(chars, 'a');
+            writeRefusalCompanion(owner, name, "Length", length);
+            return;
+        }
+        if (fieldValue instanceof String) {
+            field.set(owner, "a".repeat(length));
+            return;
+        }
+        throw new NoSuchFieldException(name + " carries no text buffer");
+    }
+
+    private static void writeRefusalBytes(
+            Object owner, java.lang.reflect.Field field, Object fieldValue, String name, String text)
+            throws ReflectiveOperationException {
+        byte[] bytes = java.util.HexFormat.of().parseHex(text);
+        if (fieldValue instanceof byte[] target) {
+            System.arraycopy(bytes, 0, target, 0, Math.min(bytes.length, target.length));
+            writeRefusalCompanion(owner, name, "Length", bytes.length);
+            return;
+        }
+        if (fieldValue instanceof String) {
+            field.set(owner, new String(bytes, StandardCharsets.UTF_8));
+            return;
+        }
+        throw new NoSuchFieldException(name + " carries no byte buffer");
+    }
+
+    private static void writeRefusalUnits(
+            Object owner, java.lang.reflect.Field field, Object fieldValue, String name, String text)
+            throws ReflectiveOperationException {
+        byte[] bytes = java.util.HexFormat.of().parseHex(text);
+        if (bytes.length % 2 != 0) {
+            throw new IllegalArgumentException(name + ": units are four hex digits each");
+        }
+        char[] units = new char[bytes.length / 2];
+        for (int i = 0; i < units.length; i++) {
+            units[i] = (char) (((bytes[2 * i] & 0xff) << 8) | (bytes[2 * i + 1] & 0xff));
+        }
+        if (fieldValue instanceof char[] target) {
+            System.arraycopy(units, 0, target, 0, Math.min(units.length, target.length));
+            writeRefusalCompanion(owner, name, "Length", units.length);
+            return;
+        }
+        if (fieldValue instanceof String) {
+            field.set(owner, new String(units));
+            return;
+        }
+        throw new NoSuchFieldException(name + " carries no wide text");
+    }
+
+    private static void writeRefusalCompanion(Object owner, String name, String suffix, int value)
+            throws ReflectiveOperationException {
+        java.lang.reflect.Field companion = writeRefusalFieldOrNull(owner.getClass(), name + suffix);
+        if (companion != null) {
+            companion.setInt(owner, value);
+        }
+    }
+
+    private static void writeRefusalInt(
+            java.lang.reflect.Field field, Object owner, Object fieldValue, String text)
+            throws ReflectiveOperationException {
+        long n = Long.parseLong(text);
+        Class<?> type = field.getType();
+        if (type == int.class) {
+            field.setInt(owner, (int) n);
+        } else if (type == long.class) {
+            field.setLong(owner, n);
+        } else if (type == short.class) {
+            field.setShort(owner, (short) n);
+        } else if (type == byte.class) {
+            field.setByte(owner, (byte) n);
+        } else {
+            throw new NoSuchFieldException(field.getName() + " is not an integer");
+        }
+    }
+
+    private static void writeRefusalOrdinal(
+            java.lang.reflect.Field field, Object owner, Object fieldValue, String text)
+            throws ReflectiveOperationException {
+        writeRefusalInt(field, owner, fieldValue, text);
+    }
+
+    private static void writeRefusalFloat(
+            java.lang.reflect.Field field, Object owner, String text) throws ReflectiveOperationException {
+        double value;
+        switch (text) {
+            case "nan": value = Double.NaN; break;
+            case "inf": value = Double.POSITIVE_INFINITY; break;
+            case "-inf": value = Double.NEGATIVE_INFINITY; break;
+            default: value = Double.parseDouble(text); break;
+        }
+        Class<?> type = field.getType();
+        if (type == float.class) {
+            field.setFloat(owner, (float) value);
+        } else if (type == double.class) {
+            field.setDouble(owner, value);
+        } else {
+            throw new NoSuchFieldException(field.getName() + " is not a float");
+        }
+    }
+
+    private static Object writeRefusalElement(Object value, int index) {
+        if (value != null && value.getClass().isArray()) {
+            return java.lang.reflect.Array.get(value, index);
+        }
+        if (value instanceof java.util.List<?> list) {
+            return list.get(index);
+        }
+        throw new IllegalArgumentException(value + " carries no element " + index);
+    }
+
+    private static java.lang.reflect.Field writeRefusalField(Class<?> type, String name)
+            throws NoSuchFieldException {
+        java.lang.reflect.Field field = writeRefusalFieldOrNull(type, name);
+        if (field == null) {
+            throw new NoSuchFieldException(type.getName() + " has no field " + name);
+        }
+        return field;
+    }
+
+    private static java.lang.reflect.Field writeRefusalFieldOrNull(Class<?> type, String name) {
+        String camel = writeRefusalName(name);
+        for (java.lang.reflect.Field field : type.getFields()) {
+            if (field.getName().equals(camel)) {
+                return field;
+            }
+        }
+        String folded = writeRefusalFold(name);
+        for (java.lang.reflect.Field field : type.getFields()) {
+            if (writeRefusalFold(field.getName()).equals(folded)) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private static String writeRefusalName(String name) {
+        String[] parts = name.split("_");
+        StringBuilder out = new StringBuilder(parts[0]);
+        for (int i = 1; i < parts.length; i++) {
+            if (parts[i].isEmpty()) {
+                continue;
+            }
+            out.append(Character.toUpperCase(parts[i].charAt(0))).append(parts[i].substring(1));
+        }
+        return out.toString();
+    }
+
+    private static String writeRefusalFold(String name) {
+        return name.replace("_", "").toLowerCase(java.util.Locale.ROOT);
     }
 
     // damageText puts into a root's top-level text field what no read delivers
@@ -1725,7 +2192,8 @@ public final class Driver {
             System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
                     + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
+                    + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
             return 0;
         }
         if (args.length < 3) {
@@ -1753,6 +2221,10 @@ public final class Driver {
             case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
+            case "write-refusal": return surfaceWriteRefusal(out, surface);
+            case "write-refusal-fixed": return surfaceWriteRefusal(out, surface);
+            case "write-refusal-message": return surfaceWriteRefusal(out, surface);
+            case "write-refusal-json": return surfaceWriteRefusal(out, surface);
             default: return 2;
         }
     }

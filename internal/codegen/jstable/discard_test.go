@@ -374,10 +374,10 @@ func TestCyclicWireIsDamageJavaScript(t *testing.T) {
 	}
 	over := make([]byte, 0, len(base)+3)
 	over = append(over, base[:7]...)
-	over = append(over, 3, 17, 1, 3, 17, 0)
+	over = append(over, 2, 17, 1, 2, 17, 0)
 	over = append(over, base[10:]...)
 	for i := 13; i+2 < len(over); i++ {
-		if over[i] == 3 && over[i+1] == 17 && over[i+2] == 2 {
+		if over[i] == 2 && over[i+1] == 17 && over[i+2] == 2 {
 			over[i+2] = 0
 			break
 		}

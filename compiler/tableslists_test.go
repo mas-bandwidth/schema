@@ -34,6 +34,12 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
+			if target == "python" {
+				if err != nil {
+					t.Fatalf("python refused its supported list shapes: %v", err)
+				}
+				return
+			}
 			if slices.Contains(listTargets, target) {
 				if err != nil {
 					t.Fatalf("--lang %s refused an unbounded array: %v", target, err)
@@ -59,35 +65,10 @@ func TestListCarriers(t *testing.T) {
 		// the tagged leg (compiler/target_squirrel_lists.go) is a carrier too
 		want = append(want, "squirrel")
 	}
-	want = withPythonListLeg(withMooLeg(withGooseLeg(want)))
-	if !slices.Equal(pythonListLegOrdered(gooseLegOrdered(listTargets)), want) {
+	want = withMooLeg(withGooseLeg(want))
+	if !slices.Equal(gooseLegOrdered(listTargets), want) {
 		t.Fatalf("listTargets = %v, want %v", listTargets, want)
 	}
-}
-
-// The list gates name the Python leg only where the target is built in
-// (`-tags schema_leg_python`): compiler/carries_python_unbounded.go registers
-// it as a list carrier, from an init that runs before the targets' own files.
-func pythonListLegBuilt() bool {
-	return slices.Contains(listTargets, "python")
-}
-
-// withPythonListLeg is a sorted carrier list with python in it when the leg is
-// built.
-func withPythonListLeg(carriers []string) []string {
-	if !pythonListLegBuilt() {
-		return carriers
-	}
-	return slices.Sorted(slices.Values(append(slices.Clone(carriers), "python")))
-}
-
-// pythonListLegOrdered is the registry as the gate compares it: sorted when the
-// python leg is built (its init registers first), as given otherwise.
-func pythonListLegOrdered(registered []string) []string {
-	if !pythonListLegBuilt() {
-		return registered
-	}
-	return slices.Sorted(slices.Values(registered))
 }
 
 // TestNoTargetRefusesAListFreeUnit: the refusal is the CONSTRUCT's and not a

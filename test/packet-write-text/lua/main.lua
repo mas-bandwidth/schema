@@ -1,0 +1,76 @@
+-- The Lua packet Write's text contract (SPEC §5.1 row 8).
+-- Read the shared case list and require a false return, never an exception,
+-- for every refused value. Lawful values are written and read back byte-exact.
+local generated = assert(arg[1], "usage: lua main.lua <generated dir> <fixture dir>")
+local fixtures = assert(arg[2], "usage: lua main.lua <generated dir> <fixture dir>")
+package.path = generated .. "/?.lua;" .. package.path
+
+local serialize = require("serialize")
+local TextPacket = require("Text")
+local failures = 0
+local count = 0
+
+local function fail(name, detail)
+  io.stderr:write("FAILED: " .. name .. ": " .. detail .. "\n")
+  failures = failures + 1
+end
+
+local function bytes(text)
+  if text == "-" then return "" end
+  local out = {}
+  for hex in text:gmatch("%x%x") do out[#out + 1] = string.char(tonumber(hex, 16)) end
+  return table.concat(out)
+end
+
+local file = assert(io.open(fixtures .. "/cases.txt", "r"))
+for line in file:lines() do
+  local fields = {}
+  local trimmed = line:match("^%s*(.-)%s*$")
+  if trimmed ~= "" and not trimmed:match("^#") then
+    for field in trimmed:gmatch("[^|]+") do fields[#fields + 1] = field:match("^%s*(.-)%s*$") end
+  end
+  if #fields >= 3 then
+    count = count + 1
+    local name, valueText, verdict = fields[1], fields[2], fields[3]
+    local value = bytes(valueText)
+    local stream = serialize.WriteStream.new(32)
+    local packet = TextPacket.NewTextPacket()
+    packet.Text = value
+    local ok, result = pcall(TextPacket.WriteTextPacket, stream, packet)
+    if verdict == "refused" then
+      if not ok then
+        fail(name, "writer raised instead of returning false: " .. tostring(result))
+      elseif result ~= false then
+        fail(name, "writer returned " .. tostring(result) .. ", want false")
+      end
+    elseif verdict == "written" then
+      if not ok then
+        fail(name, "writer raised for a lawful value: " .. tostring(result))
+      elseif result ~= true then
+        fail(name, "writer returned " .. tostring(result) .. ", want true")
+      else
+        stream:flush()
+        local wire = stream:data()
+        local readStream = serialize.ReadStream.new(wire)
+        local decoded = TextPacket.NewTextPacket()
+        local readOK, readResult = pcall(TextPacket.ReadTextPacket, readStream, decoded)
+        if not readOK then
+          fail(name, "reader raised: " .. tostring(readResult))
+        elseif readResult ~= true then
+          fail(name, "reader refused: " .. tostring(readStream:error()))
+        elseif decoded.Text ~= value then
+          fail(name, "read back " .. string.format("%q", decoded.Text) .. ", want " .. string.format("%q", value))
+        end
+      end
+    else
+      fail(name, "unknown verdict " .. tostring(verdict))
+    end
+  end
+end
+file:close()
+
+if failures ~= 0 then
+  io.stderr:write(string.format("packet-write-text Lua: %d of %d cases FAILED\n", failures, count))
+  os.exit(1)
+end
+print(string.format("OK: packet-write-text Lua, %d cases", count))

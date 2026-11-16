@@ -13,7 +13,8 @@
 # range), and TestPythonVtTimestampNegativeControl must go red naming that
 # check's case. It needs the pins, so it depends on python-toolchain-check.
 .PHONY: python-vt-timestamp python-vt-timestamp-negative-control
-test-python: python-vt-timestamp python-vt-timestamp-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-timestamp
+python-ci-vt-timestamp: python-vt-timestamp python-vt-timestamp-negative-control
 python-vt-timestamp:
 	sh test/slowgate/proof python-vt-timestamp-compiler 'TestPythonCarriesTimestamp' -tags schema_leg_python ./compiler -run '^TestPythonCarriesTimestamp$$' -count=1
 python-vt-timestamp-negative-control: python-toolchain-check

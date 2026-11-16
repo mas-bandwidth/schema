@@ -277,6 +277,7 @@ func (m *Model) reset(fv *Field) {
 		}
 		return
 	case f.Array != ir.ArrayNone:
+		fv.Count = int(f.BornCount())
 		fv.Elems = make([]Cell, f.ArrayBound)
 		for i := range fv.Elems {
 			fv.Elems[i] = m.elementZero(f)
