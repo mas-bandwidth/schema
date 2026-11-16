@@ -23,3 +23,12 @@ separate explicit `--legacy-layout-only` trust decision.
 Two historical writers that shared a legacy key and file bytes remain
 indistinguishable even when both source declarations are known. These fixtures
 do not claim otherwise.
+
+The three `wide/*.bin` files were captured with the actual pre-v2 compiler's
+`tablewire.EncodeFixed` at948ec717c6, not produced by switching the new compiler
+back to legacy mode. All82 bytes carry key0xcd3d85d3dddbe9d3. `good.bin` is the
+small writer's exact2^80 upper bound. `forged-small.bin` changes its body to
+2^80+1. `lawful-colliding-large.bin` is a genuine old writer with upper bound
+2^81 legally emitting2^80+1; it is byte-identical to the forged smaller-writer
+file. A reader cannot accept that lawful larger-writer file while refusing the
+identical smaller-writer forgery from the bytes alone.
