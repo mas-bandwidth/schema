@@ -1,0 +1,103 @@
+package pythontable
+
+import (
+	"encoding/hex"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+)
+
+func TestPythonCookInactiveGuardStorage(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	u := loadUnit(t, `package guardstorage
+ table Node { value int32 }
+ table Other { value int32 }
+ table Root {
+  active bool
+  if active {
+   items [..1]int32
+   text string(3)
+   next *Node
+   hidden *bytes
+  }
+  live *Other
+  live_text *string
+ }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	model := tabletext.NewModel(u)
+	root := model.New(model.Lookup("Root"))
+	for i := range root.Fields {
+		field := &root.Fields[i]
+		switch field.Def.Name {
+		case "items":
+			field.Count = 1
+			field.Elems[0].I = 7
+			field.Elems[0].U = 7
+		case "text":
+			field.Cell.Str = []byte("ok")
+			field.Count = 2
+		}
+	}
+	var expected []string
+	for _, big := range []bool{false, true} {
+		data, err := tablecook.Cook(model, root, tablecook.Options{Big: big})
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected = append(expected, hex.EncodeToString(data))
+	}
+	probe := pyrun.ImportPrelude + `from guardstorage import BlobRef, Node, Other, Root, InvalidValue
+from guardstorage._schema import cook
+for field, value in (("items", [1, 2]), ("text", "long")):
+    r = Root(); setattr(r, field, value)
+    for op in (cook.cook_measure, cook.cook):
+        try: op(r)
+        except InvalidValue: pass
+        else: raise AssertionError("inactive-" + field + "-" + op.__name__)
+other = Other(); shared = BlobRef("text")
+for field, value, live, live_value in (("next", other, "live", other), ("hidden", shared, "live_text", shared)):
+    r = Root(); setattr(r, field, value); setattr(r, live, live_value)
+    for op in (cook.cook_measure, cook.cook):
+        try: op(r)
+        except InvalidValue: pass
+        else: raise AssertionError("inactive-kind-" + field)
+r = Root(); r.items = [7]; r.text = "ok"
+cook.check_cook(Root, cook.cook(r))
+for order in (1, 2): print(cook.cook(r, order).hex())
+`
+	for name, run := range cookPins() {
+		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); strings.TrimSpace(got) != strings.Join(expected, "\n") {
+			t.Errorf("%s: %s", name, got)
+		}
+	}
+	t.Run("inactive-storage-negative-control", func(t *testing.T) {
+		t.Parallel()
+		planted := cloneFiles(files)
+		const path = "guardstorage/_schema/cookwrite.py"
+		const anchor = `for _ in _validate_fields(value, one_field, ""):`
+		body := string(planted[path])
+		if !strings.Contains(body, anchor) {
+			t.Fatal("inactive storage control anchor missing")
+		}
+		planted[path] = []byte(strings.Replace(body, anchor, "for _ in ():", 1))
+		dir := t.TempDir()
+		writeTree(t, dir, planted)
+		for _, pin := range []func(testing.TB) string{pyrun.Interpreter, pyrun.Floor} {
+			_, stderr, err := pyrun.Try(t, pin(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+			if err == nil || !strings.Contains(stderr, "inactive-items-cook_measure") {
+				t.Errorf("storage control missed fault: %v %s", err, stderr)
+			}
+		}
+	})
+}
