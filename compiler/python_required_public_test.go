@@ -72,12 +72,12 @@ func TestPythonRequiredPublicShapes(t *testing.T) {
 	if setting := os.Getenv("SCHEMA_PYTHON_REQUIRED_SHARD"); setting != "" {
 		var err error
 		shard, err = strconv.Atoi(setting)
-		if err != nil || shard < 0 || shard >= 8 {
+		if err != nil || shard < 0 || shard >= 16 {
 			t.Fatalf("invalid required shape shard %q", setting)
 		}
 	}
 	for index, c := range cases {
-		if shard >= 0 && index%8 != shard {
+		if shard >= 0 && index%16 != shard {
 			continue
 		}
 		t.Run(c.name, func(t *testing.T) {
