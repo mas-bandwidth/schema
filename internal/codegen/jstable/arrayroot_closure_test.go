@@ -45,7 +45,11 @@ for(const c of cases){
  // Historical columns name conditions, not a tolerant-read permission (§6.5).
  const refused=c.malformed||c.mismatch>0||c.clamped>0;
  check((v===null)===refused, "read verdict "+c.text);
- if(!refused)check(!r.damaged&&r.err()===null&&r.unknown===0,"accepted report "+c.text);
+ if(refused){
+  check(r.err()!==null,"missing refusal report "+c.text);
+  const kind=c.malformed?m.TableRefuseReason.WireDamaged:c.clamped>0?m.TableRefuseReason.OutOfRange:m.TableRefuseReason.KindMismatch;
+  check(r.err()===kind,"refusal class "+c.text+" "+r.err());
+ }else check(!r.damaged&&r.err()===null&&r.unknown===0,"accepted report "+c.text);
  if(c.reason)check(r.reason===c.reason,"reason "+c.text);
  if(v!==null){
   const text=m[c.root+"ToJson"](v),obj=JSON.parse(text);
@@ -98,7 +102,13 @@ for(const c of cases){
  // Wrong shape or repetition refuses the whole read (§16.2, §6.5).
  const refused=!!c.malformed||c.mismatch>0||c.duplicate>0;
  check((v===null)===refused,"read verdict "+c.name);
- if(!refused)check(!r.damaged&&r.err()===null&&r.unknown===0,"accepted report "+c.name);
+ if(refused){
+  check(r.err()!==null,"missing refusal report "+c.name);
+  // Syntax damage wins over a shape fault; duplicate+wrong-kind rows require
+  // a diagnostic without pinning a priority between their semantic faults.
+  if(c.malformed)check(r.err()===m.TableRefuseReason.WireDamaged,"syntax refusal "+c.name);
+  else if(!c.duplicate)check(r.err()===m.TableRefuseReason.KindMismatch,"shape refusal "+c.name);
+ }else check(!r.damaged&&r.err()===null&&r.unknown===0,"accepted report "+c.name);
  if(c.expected){
   // Keep every declared-default/presence twin live even when input refuses.
   const er=new m.TableVariableReport(),expected=m.MapsFromJson(c.expected,er);
