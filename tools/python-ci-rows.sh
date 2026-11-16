@@ -40,6 +40,11 @@ go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen
 while IFS= read -r package; do
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
   names=$(printf '%s\n' "$tests" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
+  # Complete array-widening cases and pointer-array proof phases have their
+  # own support rows; keeping either parent here would rerun the monolith.
+  case "$package" in */internal/codegen/pythontable)
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonArrayWidening$/d; /^TestPythonVtPointerArrays$/d') ;;
+  esac
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
