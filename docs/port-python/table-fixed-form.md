@@ -38,7 +38,8 @@ Historical declaration facts must come from the writer, rather than the
 reader's widened bounds. `GenerateLineage` accepts an explicit `Writer`
 snapshot and verifies its layout and hash before baking its bounds checks.
 An entry whose hash names historical definition facts but has no such snapshot
-is currently refused as `layout_unsupported`. The existing lock format does
+currently holds generation with a diagnostic naming the table, layout and
+missing writer snapshot. The existing lock format does
 not retain complete historical snapshots; that limitation still holds full
 backward-reading acceptance. No roadmap completion is implied by the core
 byte-oracle gate.

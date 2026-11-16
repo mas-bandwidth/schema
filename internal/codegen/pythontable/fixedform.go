@@ -314,10 +314,7 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 				// Historical definition facts are not reconstructible from
 				// anonymous digest records. Never validate them against this
 				// reader's wider declaration as if that were the writer's.
-				entry["refusal"] = "layout_unsupported"
-				entry["missing_writer_metadata"] = true
-				known = append(known, entry)
-				continue
+				return "", fmt.Errorf("python: fixed table %s: historical layout 0x%016x needs its writer declaration snapshot; the lock lineage does not retain enough historical definition facts", st.Name, e.Wire)
 			}
 			plan, reason := compilePythonFixedPlan(node, spec, e.Wire == hash)
 			entry["refusal"] = reason

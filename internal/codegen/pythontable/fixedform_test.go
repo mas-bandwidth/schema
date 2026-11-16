@@ -390,15 +390,8 @@ print('writer-snapshot-bounds')
 	// this availability limitation visible; never use wider reader bounds as
 	// if they proved the writer's narrower contract.
 	entry.Writer = nil
-	files, err = pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {entry}})
-	if err != nil {
-		t.Fatal(err)
+	_, err = pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {entry}})
+	if err == nil || !strings.Contains(err.Error(), "needs its writer declaration snapshot") {
+		t.Fatalf("missing historical writer facts did not hold generation: %v", err)
 	}
-	pythonFixedRun(t, files, `from probe import T, Refused
-with open('wire','rb') as f: wire=f.read()
-try: T.fixed_load(wire)
-except Refused as err: assert err.reason=='layout_unsupported'
-else: raise AssertionError('missing historical facts accepted')
-print('missing-writer-metadata-hold')
-`, map[string][]byte{"wire": wire})
 }
