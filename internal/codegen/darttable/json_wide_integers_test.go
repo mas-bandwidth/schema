@@ -65,6 +65,19 @@ func TestDartJsonWideIntegersAreStrings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	numberNames := map[string]bool{}
+	for _, line := range strings.Split(string(numberTokens), "\n") {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			fields := strings.Split(line, "\t")
+			if len(fields) != 5 {
+				t.Fatalf("NUMBER-TOKEN.tsv: malformed row %q", line)
+			}
+			numberNames[fields[0]] = true
+		}
+	}
+	if len(numberNames) != 13 {
+		t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", len(numberNames))
+	}
 	data = append(append(data, '\n'), numberTokens...)
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
@@ -113,6 +126,11 @@ func TestDartJsonWideIntegersAreStrings(t *testing.T) {
 }
 `, jsonFile, name, name)
 		case "refused":
+			if numberNames[name] {
+				fmt.Fprintf(&body, `{ final r = w.TableTextReport(); w.integersFromJson(File(%q).readAsStringSync(), r); check(r.refused && r.reason.startsWith('kind_mismatch'), '%s must refuse kind_mismatch: ' + r.reason); }
+`, jsonFile, name)
+				break
+			}
 			fmt.Fprintf(&body, `{
  final r = w.TableTextReport();
  w.integersFromJson(File(%q).readAsStringSync(), r);
