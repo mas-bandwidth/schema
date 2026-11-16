@@ -14,8 +14,8 @@ import (
 )
 
 // TestJsReadsRefuseNonCanonical is the JavaScript read of the non-canonical
-// spellings (docs/SPEC-TABLES.md §3, §3.1, §3.3, §4). Each canonical file
-// reads and saves back to the same bytes. Every other file is refused. A
+// spellings (docs/SPEC-TABLES.md §3, §3.1, §3.3, §4). Each readable file
+// saves as the current writer’s canonical bytes; other files are refused. A
 // manifest row the probe does not reach fails the test. LoadMeasure answers
 // the framing measure. The message load is the batch read.
 //
@@ -41,12 +41,13 @@ func TestJsReadsRefuseNonCanonical(t *testing.T) {
 	}
 
 	type row struct {
-		Name    string `json:"name"`
-		Form    string `json:"form"`
-		Read    bool   `json:"read"`
-		Measure int64  `json:"measure"`
-		File    string `json:"file"`
-		Unit    string `json:"unit"`
+		Name     string `json:"name"`
+		Form     string `json:"form"`
+		Read     bool   `json:"read"`
+		Measure  int64  `json:"measure"`
+		File     string `json:"file"`
+		Expected string `json:"expected"`
+		Unit     string `json:"unit"`
 	}
 	var rows []row
 	seen := map[string]bool{}
@@ -96,7 +97,8 @@ func TestJsReadsRefuseNonCanonical(t *testing.T) {
 	}
 
 	files := map[string][]byte{}
-	for _, r := range rows {
+	for i := range rows {
+		r := &rows[i]
 		wire, err := os.ReadFile(filepath.Join(dir, r.Name))
 		if err != nil {
 			t.Fatal(err)
@@ -105,6 +107,26 @@ func TestJsReadsRefuseNonCanonical(t *testing.T) {
 			t.Fatalf("probe basename collision %s", r.File)
 		}
 		files[r.File] = wire
+		r.Expected = r.File
+		// Valid historical spellings re-save using the current writer's
+		// canonical order and elision, not necessarily the input bytes.
+		canonical := ""
+		if r.Form == "variable" && r.Read {
+			switch r.Name {
+			case "variable-fields-out-of-order.bin":
+				canonical = "variable-canonical.bin"
+			case "variable-field-at-default.bin", "variable-explicit-null-pointer.bin", "variable-union-arm-zero.bin":
+				canonical = filepath.Join("canonical", r.Name)
+			}
+		}
+		if canonical != "" {
+			want, err := os.ReadFile(filepath.Join(dir, canonical))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.Expected = "canonical-" + r.File
+			files[r.Expected] = want
+		}
 	}
 	oneAnn, err := os.ReadFile(filepath.Join(repo, "testdata", "wire", "message-one-encoding", "announcement.bin"))
 	if err != nil {
@@ -169,8 +191,10 @@ for (const row of rows) {
     if (measure !== row.measure) { fail(row.name + " measure " + measure + " " + row.measure); }
     if (row.read) {
       if (loaded === null || retained === null) { fail(row.name + " read"); continue; }
+      const expected = new Uint8Array(readFileSync(row.expected));
       const saved = v.RootSave(loaded);
-      if (!bytesEq(saved, wire)) { fail(row.name + " save"); }
+      if (!bytesEq(saved, expected)) { fail(row.name + " save"); }
+      if (!bytesEq(v.RootSaveRetain(retained, retain, retainReport), expected)) { fail(row.name + " retain save"); }
       if (retain.used !== 0 || retain.count !== 0) { fail(row.name + " retain empty"); }
     } else if (loaded !== null || retained !== null || retain.used !== 0 || retain.count !== 0) {
       fail(row.name + " refused");
