@@ -34,15 +34,22 @@ its probe red by name. The shared proof runner is in
 `internal/codegen/pythontable/fixed_proof_suite_test.go`; row files supply
 constructors and assertions without creating another interpreter harness.
 
-Historical declaration facts must come from the writer, rather than the
-reader's widened bounds. `GenerateLineage` accepts an explicit `Writer`
-snapshot and verifies its layout and hash before baking its bounds checks.
-An entry whose hash names historical definition facts but has no such snapshot
-currently holds generation with a diagnostic naming the table, layout and
-missing writer snapshot. The existing lock format does
-not retain complete historical snapshots; that limitation still holds full
-backward-reading acceptance. No roadmap completion is implied by the core
-byte-oracle gate.
+Historical declaration facts come from the writer, rather than the reader's
+widened bounds. Version-8 locks capture complete writer snapshots, and the
+compiler's public generation route passes them to `GenerateLineage`. The
+backend verifies each snapshot's layout and hash before baking its bounds
+checks. The production lock test performs a lock, lawful bound widening,
+second lock and generation, then reads clean older data and refuses four
+forgeries outside the older writer's int32 and int128 bounds under both pins.
+Its negative control widens a check in the generated writer metadata and must
+make the same refusal assertion fail by name.
+
+Legacy entries without enough writer facts hold generation with a diagnostic
+naming the table, layout and missing snapshot. A checked historical source
+can be attached through the lock command's `--writer` and `--from` import.
+This recovers a declaration; it does not alter the definition-hash algorithm
+or resolve histories that the older algorithm assigned the same hash. Full
+historical acceptance remains subject to that shared hash contract.
 
 A missing field inside an active union arm, present optional or live counted
 array element is prefilled from its own declared default image under the
@@ -67,3 +74,9 @@ Linux, in microseconds per one-record file:
 These measure the complete checked file operation, including allocation,
 envelope handling and the bounds pass. They are observations for this small
 fixture, rather than throughput guarantees for other record shapes.
+
+`make python-fixed-form-conformance` answers every `write-refusal-fixed`
+recipe through the complete generated conformance unit under both pins. It
+requires both refused inputs and lawful boundaries to match the manifest; a
+missing generated root fails. Its negative control corrupts the real driver's
+refusal answer and requires the manifest assertion to fail by name.
