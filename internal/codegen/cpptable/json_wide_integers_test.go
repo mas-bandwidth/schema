@@ -3,7 +3,7 @@ package cpptable
 // The JSON form's two integer rules (docs/SPEC-TABLES.md §16.2, §16.14 W10;
 // docs/rulings.json json-wide-integers-are-strings and json-integer-token-only)
 // as the C++ leg holds them. An integer whose storage is wider than 32 bits is
-// written as a string of decimal digits and reads as a string or a number; a
+// written and read as a string of decimal digits; a
 // kind of 32 bits and under stays a number. Every integer field takes an
 // integer token only — no fraction, no exponent, no -0 — and its range is
 // tested on the exact value. The rows are the vectors under
@@ -51,16 +51,34 @@ table Integers
     frac    fixed(48, 16) | min = -10, max = 10
     counts  map[uint64]int32
 }
+
+enum Slot { Alpha, Beta }
+union Arm { wide int64 }
+table Sites {
+    plain int64
+    array [..3]int64
+    opt ?uint64
+    arm Arm
+    vals map[uint64]uint64
+    keyed [Slot]int64
+    u128 uint128
+    b33 bits(33)
+    b64 bits(64)
+    f128 fixed(64, 64) | min = -10, max = 10
+    narrow int32
+    fixed32 fixed(16, 16) | min = -10, max = 10
+}
 `
 )
 
 type cppJsonIntegersRow struct {
 	name, file, verdict string
+	numberToken         bool
 }
 
-func cppJsonIntegersRows(t *testing.T) []cppJsonIntegersRow {
+func cppJsonIntegersRows(t *testing.T, manifest string, numberToken bool) []cppJsonIntegersRow {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(cppJsonIntegersDir, "MANIFEST.tsv"))
+	data, err := os.ReadFile(filepath.Join(cppJsonIntegersDir, manifest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +95,7 @@ func cppJsonIntegersRows(t *testing.T) []cppJsonIntegersRow {
 		if fields[3] != "read" && fields[3] != "refused" {
 			t.Fatalf("%s/MANIFEST.tsv:%d: verdict %q, want read or refused", cppJsonIntegersDir, i+1, fields[3])
 		}
-		rows = append(rows, cppJsonIntegersRow{fields[0], fields[2], fields[3]})
+		rows = append(rows, cppJsonIntegersRow{fields[0], fields[2], fields[3], numberToken})
 	}
 	if len(rows) == 0 {
 		t.Fatal("MANIFEST.tsv names no rows")
@@ -93,7 +111,7 @@ const cppJsonIntegersProbe = `#include <cstdio>
 #include "%s"
 using namespace jsonintegers;
 
-struct Row { const uint8_t * text; int64_t bytes; };
+struct Row { const uint8_t * text; int64_t bytes; bool number_token; };
 
 %s
 
@@ -102,6 +120,49 @@ static const Row kRows[] = {
 };
 
 static const int kCases = (int) ( sizeof( kRows ) / sizeof( kRows[ 0 ] ) );
+
+struct SiteCase { const char *name; const char *text; bool read; };
+static const SiteCase kSites[] = {
+    { "plain number", "{\"plain\":5}", 0 },
+    { "plain string", "{\"plain\":\"5\"}", 1 },
+    { "array number", "{\"array\":[\"1\",2]}", 0 },
+    { "array string", "{\"array\":[\"1\",\"2\"]}", 1 },
+    { "optional number", "{\"opt\":7}", 0 },
+    { "optional string", "{\"opt\":\"7\"}", 1 },
+    { "union number", "{\"arm\":{\"wide\":9}}", 0 },
+    { "union string", "{\"arm\":{\"wide\":\"9\"}}", 1 },
+    { "map value number", "{\"vals\":{\"18446744073709551615\":5}}", 0 },
+    { "map value string", "{\"vals\":{\"18446744073709551615\":\"5\"}}", 1 },
+    { "keyed number", "{\"keyed\":{\"Alpha\":5}}", 0 },
+    { "keyed string", "{\"keyed\":{\"Alpha\":\"5\"}}", 1 },
+    { "uint128 number", "{\"u128\":340282366920938463463374607431768211455}", 0 },
+    { "uint128 string", "{\"u128\":\"340282366920938463463374607431768211455\"}", 1 },
+    { "bits33 number", "{\"b33\":8589934591}", 0 },
+    { "bits33 string", "{\"b33\":\"8589934591\"}", 1 },
+    { "bits64 number", "{\"b64\":18446744073709551615}", 0 },
+    { "bits64 string", "{\"b64\":\"18446744073709551615\"}", 1 },
+    { "fixed128 number", "{\"f128\":0.5}", 0 },
+    { "fixed128 string", "{\"f128\":\"0.5\"}", 1 },
+    { "int32 number", "{\"narrow\":-7}", 1 },
+    { "fixed32 exponent", "{\"fixed32\":15e-1}", 1 },
+};
+
+static int check_sites()
+{
+    int failures = 0;
+    for ( const auto & c : kSites )
+    {
+        SitesBuilder builder;
+        TableReport report;
+        const bool ok = SitesFromJson( builder, c.text, (int64_t) std::strlen( c.text ), &report );
+        if ( c.read ? ( !ok || report.refused ) : ( ok || !report.refused || report.refuse_reason != kind_mismatch ) )
+        {
+            std::fprintf( stderr, "FAIL site %%s: ok=%%d refused=%%d reason=%%d\n", c.name, (int) ok, (int) report.refused, (int) report.refuse_reason );
+            failures++;
+        }
+    }
+    return failures;
+}
 
 int main( void )
 {
@@ -117,7 +178,7 @@ int main( void )
         std::snprintf( path, sizeof( path ), "%%s/row-%%d", dir, i );
         FILE * f = std::fopen( path, "wb" );
         if ( f == NULL ) { std::fprintf( stderr, "case %%d: open failed\n", i ); return 1; }
-        const char status = ok ? '1' : '0';
+        const char status = ok ? '1' : ( kRows[ i ].number_token && report.refuse_reason != kind_mismatch ? '2' : '0' );
         bool wrote = std::fwrite( &status, 1, 1, f ) == 1;
         if ( ok )
         {
@@ -141,6 +202,7 @@ int main( void )
         }
         if ( std::fclose( f ) != 0 || !wrote ) { std::fprintf( stderr, "case %%d: write failed\n", i ); return 1; }
     }
+    if ( check_sites() ) { return 1; }
     std::printf( "ok %%d\n", kCases );
     return 0;
 }
@@ -162,7 +224,8 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 		}
 		t.Skipf("%s: %v", cxx, err)
 	}
-	rows := cppJsonIntegersRows(t)
+	rows := cppJsonIntegersRows(t, "MANIFEST.tsv", false)
+	rows = append(rows, cppJsonIntegersRows(t, "NUMBER-TOKEN.tsv", true)...)
 	canonical, err := os.ReadFile(filepath.Join(cppJsonIntegersDir, "canonical.read.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -213,7 +276,7 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 			t.Fatal(err)
 		}
 		defs = append(defs, fmt.Sprintf("static const uint8_t text%d[] = { %s };", i, cppBytes(body)))
-		entries = append(entries, fmt.Sprintf("\t{ text%d, (int64_t) sizeof( text%d ) }", i, i))
+		entries = append(entries, fmt.Sprintf("\t{ text%d, (int64_t) sizeof( text%d ), %t }", i, i, row.numberToken))
 	}
 	probe := filepath.Join(src, "probe.cpp")
 	probeSrc := fmt.Sprintf(cppJsonIntegersProbe, header, strings.Join(defs, "\n"), strings.Join(entries, ",\n"))
@@ -249,6 +312,10 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 		}
 		if len(raw) == 0 {
 			t.Fatalf("%s: the probe wrote no verdict", row.name)
+		}
+		if raw[0] == '2' {
+			t.Errorf("%s: number token refused with a reason other than kind_mismatch", row.name)
+			continue
 		}
 		read := raw[0] == '1'
 		if row.verdict == "read" && !read {

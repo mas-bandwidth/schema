@@ -2605,8 +2605,9 @@ function TableVariableFromJson(c, text, report) {
   return v;
 }
 
-// a wide integer declares "N" and reads as a string OR a number; every other
-// JSON shape is exact (§16.2, tabletext read.go shapeMatches)
+// Shape N routes both strings and numbers to the scalar reader. The reader
+// accepts a wide value only from a string and counts a number as kind mismatch
+// (§16.2); every other JSON shape is exact.
 function TableVariableShapeMatches(want, got) {
   if (want === got) { return true; }
   return want === "N" && (got === "s" || got === "n");
@@ -3051,8 +3052,8 @@ function TableVariableTextWide(d, tok, holder, key, report) {
 
 // an integer field takes an INTEGER TOKEN only — digits with an optional
 // minus, no fraction, no exponent, not -0 (§16.2, docs/rulings.json
-// json-integer-token-only). A wide integer (int64, uint64) also takes the
-// string form, holding the same digits. The value never passes through a
+// json-integer-token-only). A wide integer takes the string form only,
+// holding the same digits. The value never passes through a
 // double, and the declared range and the storage domain are tested on the exact
 // value, refusing out_of_range rather than clamping (§4, read.go placeInteger).
 function TableVariableTextIntegerToken(d, tok, holder, key, report) {
@@ -3076,6 +3077,7 @@ function TableVariableTextInt(d, inp, holder, key, report) {
   }
   const n = inp.number();
   if (n === null) { inp.bad = true; return false; }
+  if (d.kw > 4) { report.mismatch++; return true; }
   if (d.k >= 18 && d.k <= 29) { return TableVariableTextWide(d, n.tok, holder, key, report); }
   if (!n.integral || !TableVariableIntegerToken(n.tok)) { report.mismatch++; return false; }
   return TableVariableTextIntegerToken(d, n.tok, holder, key, report);

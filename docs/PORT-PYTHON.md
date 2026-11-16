@@ -272,11 +272,13 @@ per unit, named for the unit's package:
 
 | file | what it is |
 |---|---|
-| `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
+| `compiler/target_python.go` | the built-in target; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
 | `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
+| `internal/codegen/pythontable/runtime/_schema/block.py` | the block form's read side: Open, its refusals, and the descriptor-only row dump |
+| `internal/codegen/pythontable/runtime/_schema/blockbuild.py` | the block form's builder: Begin, BlockMaxBytes and BlockBytes |
 | `internal/codegen/pythontable` | the table surface's emitter and codec, from the table layers (P5) |
 | `internal/tablenames/python.go` | the table runtime's claimed names, from the table layers (P5) |
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
@@ -403,6 +405,42 @@ generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
 together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
+
+## THE BLOCK FORM
+
+A fixed table has a third projection beside its wire and its cook: the block
+form (docs/SPEC-TABLES.md §19). Nothing declares it. The generated class
+carries its `block` and `block_row` descriptors as constant data built once at
+import from the compiler's own `ir.Blocks` layout; the runtime derives no
+layout of its own.
+
+- **Read.** `block.BlockOpen(T, name, data, build_version=None, base_offset=0)`
+  returns a handle or raises `Refused`. It checks the three-word prologue
+  (magic, byte order, build version), then every out-of-line array's pitch,
+  count, offset and extent, then the used extent against the bytes passed, and
+  last the base's alignment. A Python `bytes` object has no address, so
+  `base_offset` is the caller's offset into the buffer the bytes view; a
+  non-zero, non-multiple-of-64 offset is `unaligned_base`. `block.Dump(handle)`
+  is the canonical row dump (testdata/conformance/tables/FORMAT.md), read
+  through the descriptors alone.
+- **Build.** `blockbuild.Begin(T, root, counts=None)` writes the prologue and
+  each array's sixteen-byte `(offset_of, count, stride)` triple, refuses a
+  count outside `[0, maximum]` with `InvalidValue` naming the array, and
+  touches no row. `BlockMaxBytes` is the storage size over the maxima and
+  `BlockBytes` is the used extent. The bytes are a `bytearray`, so a caller
+  may fill rows in place; the base offset is supplied at Open, not stamped by
+  Begin.
+- **The shape is fixed.** The block form has one code shape, the descriptor
+  walk: D1's two shapes are the packet and scalar-table hot paths, and the
+  block read is a pointer walk over generated layout data with no alternative
+  to measure.
+- **The corpus.** `TestPythonBlockRead` reads both committed images
+  (`block_render`, `block_padded`) value for value against Go's dump under
+  both pins; its refusal battery and the builder's byte comparison to the
+  generated Go and live C++ builders live beside it, each with a negative control
+  (`TestPythonBlockReadNegativeControls`, `TestPythonBlockBuilderNegativeControls`).
+- **The surfaces.** The conformance driver answers `block`, `block-foreign`,
+  `block-dump` and `forgery` from the same runtime.
 
 ## IDENTIFIERS
 
@@ -552,7 +590,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - types by value: carried
 
-  - unions: carried
+  - unions: carried ([the packet unions](port-python/packet-unions.md))
 
   - `if`/`else` branches: carried
 
@@ -565,9 +603,9 @@ the core stands against the P4 row; the rules of this page are unchanged.
   - `bits`: carried
     ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
-  - `string`: refused
+  - `string`: carried ([the packet text kinds](port-python/packet-text.md))
 
-  - `bytes`: refused
+  - `bytes`: carried ([the packet text kinds](port-python/packet-text.md))
 
   - fixed `[N]T` and counted `[A..B]T` arrays of a carried element kind:
     carried ([the packet arrays](port-python/packet-arrays.md)); an array of
@@ -575,11 +613,11 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - a keyed `[E]T` array and a list `[]T`: refused
 
-  - `const`: refused
+  - `const`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `reserved`: refused
+  - `reserved`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `align`: refused
+  - `align`: carried ([the packet layout](port-python/packet-layout.md))
 
   - raw `uint128` and ranged `int128`: carried
     ([the packet int128](port-python/packet-int128.md))
@@ -593,12 +631,15 @@ the core stands against the P4 row; the rules of this page are unchanged.
   attribute; a union arm may not be named `type`, `read`, `write`, `load`,
   `save` or `descriptor`, the members the generated class defines, or export
   `None_`, `Max` or `NAMES` on `<Union>Type`.
-- **The golden harness reads single-root pins.** A C++-pinned packet golden
-  that is one value with one root type is read and written back; the
-  multi-root concatenations (`clauses`, `joins`, `degenerate`) and the table
-  wire's pins are listed as skipped with the reason. Every packet root whose
-  kinds are all carried is read from its pin and must write back byte for
-  byte; a root blocked by an uncarried kind names that kind.
+- **The golden harness covers the packet corpus pins.** `TestPythonPacketClose`
+  inventories and reads and writes back the single-root and default pins and the multi-root
+  `clauses`, `joins`, and `degenerate` pins under both pinned interpreters.
+  The framed concatenations are checked slice by slice, and `degenerate` is
+  checked through one shared bit stream. The table-wire pin belongs to the
+  table gates. `python-packet-analyzer` checks the complete example,
+  ludicrous, benchmark and defaults generated packages and their runtimes
+  with strict mypy. Each gate has a planted-fault control.
+
 
 ## THE PACKET CORE BENCH
 

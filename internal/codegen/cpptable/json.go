@@ -1056,8 +1056,8 @@ inline bool TableJsonKindFixed( uint8_t kind ) { return kind >= 20 && kind <= 29
 inline bool TableJsonKindInteger( uint8_t kind ) { return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19; }
 
 // A kind whose storage is WIDER THAN 32 BITS is written as a JSON STRING of
-// decimal digits and reads as a string or a number (docs/SPEC-TABLES.md §16.2,
-// docs/rulings.json json-wide-integers-are-strings): int64, uint64, int128,
+// decimal digits and reads as a string only (docs/SPEC-TABLES.md §16.2,
+// docs/rulings.json json-wide-integers-refuse-number-token): int64, uint64, int128,
 // uint128, and a fixed or ufixed kind of 64 or 128 bits. A kind of 32 bits and
 // under stays a JSON number.
 inline bool TableJsonKindWideText( const TableFieldInfo * f )
@@ -1298,19 +1298,20 @@ inline char TableJsonElementShape( const TableFieldInfo * f )
     return 'n';
 }
 
-// A WIDE KIND'S STRING FORM IS ITS NUMBER FORM, QUOTED (docs/SPEC-TABLES.md
-// §16.2): the field accepts either a JSON string of digits or a number token,
-// while every other kind keeps the one shape its row names.
+// A wide integer or fixed field takes only a string (§16.2); all other
+// fields keep their declared shape. Map keys remain JSON strings.
 inline bool TableJsonFieldShapeFits( const TableFieldInfo * f, char got )
 {
-    if ( got == TableJsonShape( f ) ) { return true; }
-    return got == 's' && !f->is_array && TableJsonKindWideText( f );
+    const char want = TableJsonShape( f );
+    if ( want == 'n' && TableJsonKindWideText( f ) ) { return got == 's'; }
+    return got == want;
 }
 
 inline bool TableJsonElementShapeFits( const TableFieldInfo * f, char got )
 {
-    if ( got == TableJsonElementShape( f ) ) { return true; }
-    return got == 's' && TableJsonKindWideText( f );
+    const char want = TableJsonElementShape( f );
+    if ( want == 'n' && TableJsonKindWideText( f ) ) { return got == 's'; }
+    return got == want;
 }
 
 // A guarded group rides only when its guard reads true — the wire's own
@@ -4312,10 +4313,15 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     const char * token = NULL;
     int32_t length = 0;
     bool integral = false;
-    if ( TableJsonKindWideText( f ) && TableJsonPeek( in ) == '"' )
+    if ( TableJsonKindWideText( f ) )
     {
-        // A WIDE KIND READS ITS STRING FORM (docs/SPEC-TABLES.md §16.2): the
-        // same digits the writer writes, and it keeps accepting a number token.
+        // Wide numeric fields take only the writer's string form (§16.2).
+        if ( TableJsonPeek( in ) != '"' )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = kind_mismatch;
+            return TableJsonSkipValue( in, depth + 1 );
+        }
         if ( !TableJsonScanWideString( in, &token, &length ) )
         {
             if ( in.bad ) { return false; }

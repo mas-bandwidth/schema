@@ -213,25 +213,25 @@ func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 
 		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, ""},
 
-		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
+		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, ""},
 
-		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
+		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, ""},
 
 		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, ""},
 
 		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, ""},
 
-		{"array of an uncarried kind", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
+		{"array of an uncarried kind", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TString, Unbounded: true}}}}, "uses string"},
 
 		{"keyed array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, KeyEnum: "Slot", Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses keyed array"},
 
 		{"list", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses list"},
 
-		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}, "uses const"},
+		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}, ""},
 
-		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}, "uses reserved"},
+		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}, ""},
 
-		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}, "uses align"},
+		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}, ""},
 	}
 	for _, c := range kinds {
 		u := emptyUnit("game", "Game")

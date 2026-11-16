@@ -294,7 +294,7 @@ func TestPythonPacketRangedBits(t *testing.T) {
 			}
 			base := pruned.DeclFile[pin.root]
 			probe := rangedBitsProbe(pruned, pin.root, base, rangedBitsFields(pruned, pin.root))
-			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
+			pinBytes, err := os.ReadFile(pinFile(root, pin.name))
 			if err != nil {
 				t.Fatal(err)
 			}

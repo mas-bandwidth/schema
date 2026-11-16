@@ -1384,6 +1384,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
 		"promotion-tag.yml:tag",
+		"python-leg.yml:plan",
 		"python-leg.yml:test",
 		"release.yml:release",
 		"roadmap.yml:page",

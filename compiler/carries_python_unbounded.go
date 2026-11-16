@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // THE UNBOUNDED ARRAY carries no key in compiler/carries.go's carryConstructs.

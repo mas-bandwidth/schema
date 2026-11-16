@@ -5,6 +5,7 @@
 # The unbounded array's negative controls: each read refusal of the array
 # codec, the write's element validation and its length cap are removed one at
 # a time from a COPY of the generated runtime, and the gate case that watches
+<<<<<<< HEAD
 # each must go red by name. The driver's control removes the list-carrier
 # registration from a COPY of the compiler file through `go test -overlay`, so
 # the driver-level gate sees the construct refused again. Both need the pins or
@@ -12,6 +13,13 @@
 # make/negative-controls.d schedules the runtime one in the python-table-core
 # group.
 test-python: python-vt-unbounded-negative-control python-vt-unbounded-driver-negative-control
+=======
+# each must go red by name. It needs the pins, so test-python runs it beside
+# the table tests, and make/negative-controls.d schedules it in the
+# python-table-core group.
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-unbounded
+python-ci-vt-unbounded: python-vt-unbounded-negative-control
+>>>>>>> 68a273746bfd60abec07397761d8af0184fcd1f0
 
 .PHONY: python-vt-unbounded-negative-control
 python-vt-unbounded-negative-control:

@@ -1,8 +1,4 @@
-//go:build schema_leg_python
-
-// The Python skeleton through the compiler's driver (docs/PORT-PYTHON.md,
-// THE CARD MAP: P3), in a build with the schema_leg_python tag:
-// `go test -tags schema_leg_python ./compiler -run Python` (make test-python).
+// The Python target through the ordinary compiler driver (docs/PORT-PYTHON.md).
 package compiler
 
 import (
@@ -28,15 +24,13 @@ func writeSchemas(t *testing.T, files map[string]string) []string {
 	return paths
 }
 
-// TestPythonTargetIsRegistered: the tagged build carries the python target,
-// registered from its own init, with its carries set exactly the constructs
-// its layers' own files register (each beside a test file that appends the
-// same key to nonGoCarriers["python"]). The timestamp kind (§2.11) is one of
-// them, registered in compiler/carries_python_timestamp.go.
+// TestPythonTargetIsRegistered: the compiler carries the Python target,
+// with each layer's registered constructs held to its own test file.
+// Timestamp is one of those constructs (docs/SPEC-TABLES.md §2.11).
 func TestPythonTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "python") {
-		t.Fatalf("the schema_leg_python build lists no python target: %v", New().Targets())
+		t.Fatalf("the compiler lists no python target: %v", New().Targets())
 	}
 	got, ok := Carried("python")
 	if !ok {
@@ -93,12 +87,23 @@ func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 	if _, ok := files["game/Game.py"]; !ok {
 		t.Fatal("generate --lang python emitted no game/Game.py")
 	}
-	u, err = c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\ntype Probe\n{\n    name string(16)\n}\n"}))
+	u, err = c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\nenum Team { Red, Blue }\n\ntype Probe\n{\n    score [Team]uint8\n}\n"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = c.Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "uses string, which the Python target does not carry yet") {
-		t.Fatalf("got %v, want the string field refused by name", err)
+	if err == nil || !strings.Contains(err.Error(), "uses keyed array, which the Python target does not carry yet") {
+		t.Fatalf("got %v, want the keyed array field refused by name", err)
+	}
+}
+
+func TestPythonTableTargetIsAdvertised(t *testing.T) {
+	t.Parallel()
+	if !slices.Contains(tableTargets, "python") {
+		t.Error("the Python table backend is absent from the table carrier registry")
+	}
+	err := refuseTables(unitFromSource(t, tableSrc), "probe")
+	if err == nil || !strings.Contains(err.Error(), "--lang python") {
+		t.Errorf("table refusal does not name the Python carrier: %v", err)
 	}
 }
