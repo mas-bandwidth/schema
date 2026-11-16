@@ -400,7 +400,7 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
 }
 
 // _jsonWideIntField reads one int field whose storage is wider than 32 bits
-// (§16.2): it accepts the string form and the number form, and either one
+// (§16.2): it accepts only the string form, whose contents
 // must be an integer token — digits with an optional minus, no fraction, no
 // exponent, no negative zero. The value never passes through a double, and its
 // range is tested on the exact value.
@@ -408,10 +408,6 @@ int _jsonWideIntField(dynamic val, TableTextReport r, int? lo, int? hi, bool uns
   String? token;
   if (val is String) {
     token = val;
-  } else if (val is int) {
-    token = val.toString();
-  } else if (val is _JNum) {
-    token = val.token;
   }
   if (token == null || !_jsonIntegerToken(token)) {
     r.refuse('kind_mismatch');

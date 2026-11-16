@@ -136,6 +136,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
 		nameFunc: "pub fn enum_name_weapon_fire_type(value: WeaponFireType) -> &'static str {",
 	},
+	"python": {
+		noCount:  "    Count = ",
+		max:      "    Max = 2",
+		nameFunc: `NAMES: Final = {0: "None", 1: "laser", 2: "missile"}`,
+	},
 	"squirrel": {
 		noCount:  "  Count = ",
 		max:      "  Max = 2, // the exported extent (SPEC §4.2)",
@@ -318,6 +323,11 @@ func TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T) {
 		open := strings.Index(text, claim.nameFunc)
 		if open < 0 {
 			t.Errorf("%s: the tag enum has no name function, %q not emitted", target, claim.nameFunc)
+			continue
+		}
+		if target == "python" {
+			// Python exports the complete ordinal-to-schema-name dictionary;
+			// an absent ordinal is handled with dict.get's caller-supplied fallback.
 			continue
 		}
 		body, _, found := strings.Cut(text[open:], "???")

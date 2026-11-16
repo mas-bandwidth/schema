@@ -2111,16 +2111,16 @@ local function elementShape(e: any): string
 	elseif s == "bool" then
 		return "b"
 	elseif s == "int" and e.kw > 4 then
-		-- A WIDE INTEGER READS AS A STRING OR A NUMBER (§16.2)
+		-- A WIDE INTEGER READS AS A STRING (§16.2)
 		return "N"
 	end
 	return "n"
 end
 
--- shapeMatches: 'N' is a wide integer, which takes a string or a number; every
+-- shapeMatches: 'N' is a wide integer, which takes a string; every
 -- other shape is exact (tabletext's shapeMatches)
 local function shapeMatches(want: string, got: string): boolean
-	return want == got or (want == "N" and (got == "s" or got == "n"))
+	return want == got or (want == "N" and got == "s")
 end
 
 -- shape: the JSON shape a field's declaration takes (tabletext's Shape)
@@ -2724,8 +2724,12 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 		holder[key] = false
 		return true
 	end
+	if s == "int" and fd.kw > 4 and valueShape(r) ~= "s" then
+		r.report.kindChanged += 1
+		return skipValue(r, depth)
+	end
 	if s == "int" and fd.kw > 4 and valueShape(r) == "s" then
-		-- A WIDE INTEGER READS AS A STRING OR A NUMBER (§16.2): the string holds
+		-- A WIDE INTEGER READS AS A STRING (§16.2): the string holds
 		-- the same digits the number does
 		local text, _, ok = scanString(r, -1)
 		if not ok then

@@ -35,8 +35,8 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     uint8_t fixed_buf[256];
     int64_t fn;
     TableReport report, re, r2, r3, r4;
-    const char * text = "{\"a\":-5,\"b\":20,\"c\":-100}";
-    const char * at = "{\"a\":0,\"b\":9,\"c\":-3}";
+    const char * text = "{\"a\":\"-5\",\"b\":20,\"c\":-100}";
+    const char * at = "{\"a\":\"0\",\"b\":9,\"c\":-3}";
     const char * high = "{\"c\":200}";
     const char * low = "{\"b\":-1}";
 
