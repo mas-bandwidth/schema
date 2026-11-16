@@ -1,8 +1,11 @@
 package ctable
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"os"
@@ -166,3 +169,82 @@ int main(void)
  return 0;
 }
 `
+
+// §22.6 explicitly elides compressed floats BEFORE quantization. These are
+// lawful writer values even though their decoded grid values equal defaults.
+func TestCMessageQuantizedDefaultProjection(t *testing.T) {
+	const schema = `package probe
+ fixed table Node { sample float32 | min = 0, max = 1, resolution = 0.1 }
+ fixed table Root {
+ direct float32 | min = 0, max = 1, resolution = 0.1
+ child Node
+ samples [2]float32 | min = 0, max = 1, resolution = 0.1
+ }
+ `
+	const source = `#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do{if(!(x)){fprintf(stderr,"line %d: %s\n",__LINE__,#x);return 1;}}while(0)
+int main(void){
+ TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};
+ CHECK(announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report));
+ Root value;root_reset(&value);value.direct=0.001f;value.child.sample=0.001f;value.samples[0]=0.001f;
+ uint8_t wire[128];int64_t n=root_save_messages(&value,1,wire,sizeof(wire),&report),count=1;
+ CHECK(n>3 && root_load_messages(&value,&count,&v,wire,n,&report));
+ CHECK(count==1 && !report.refused && value.direct==0 && value.child.sample==0 && value.samples[0]==0);
+ return 0;
+}`
+	runCGenerated(t, schema, source)
+	runCGenerated(t, schema, source, "-DNDEBUG", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-sanitize-recover=all")
+}
+
+// A sender may claim our build yet carry another complete shape. The raw
+// entry proof, including a nested child's shape, must prevent projection of
+// that sender's lawful value from becoming a false declared-default refusal.
+func TestCMessageDefaultChangedShape(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		t.Run(fmt.Sprint("nested-", nested), func(t *testing.T) {
+			own := `package probe
+ fixed table Root { number uint32 = 7 }
+ `
+			sender := `package probe
+ fixed table Root { number uint32 = 8 | min = 7, max = 8 }
+ `
+			expr := "value.number"
+			if nested {
+				own = "package probe\nfixed table Node { number uint32 = 7 }\nfixed table Root { child Node }\n"
+				sender = "package probe\nfixed table Node { number uint32 = 8 | min = 7, max = 8 }\nfixed table Root { child Node }\n"
+				expr = "value.child.number"
+			}
+			// This sender tuple is another local record's shape for the same
+			// field id: an any-local-match boolean would be insufficient.
+			own += "\nfixed table Other { number uint32 = 8 | min = 7, max = 8 }\n"
+			u, s := unitFrom(t, own), unitFrom(t, sender)
+			ann := tablewire.Announce(s)
+			var from, to [8]byte
+			binary.LittleEndian.PutUint64(from[:], ir.BuildVersion(s))
+			binary.LittleEndian.PutUint64(to[:], ir.BuildVersion(u))
+			if bytes.Count(ann, from[:]) != 1 {
+				t.Fatal("announcement build version is not unique")
+			}
+			ann = bytes.Replace(ann, from[:], to[:], 1)
+			m := tabletext.NewModel(s)
+			inst := m.New(m.Lookup("Root"))
+			field := &inst.Fields[0]
+			if nested {
+				field = &field.Cell.Tab.Fields[0]
+			}
+			field.Cell.U = 7
+			wire, err := tablewire.EncodeMessage(m, inst)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := fmt.Sprintf(`#include "ProbeTable.h"
+#include <stdio.h>
+static const uint8_t ann[]={%s},wire[]={%s};
+int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};Root value;int64_t count=1;
+ if(!announce_read(&v,ann,sizeof(ann),&report)||!root_load_messages(&value,&count,&v,wire,sizeof(wire),&report)||count!=1||report.refused||%s!=7){fprintf(stderr,"changed shape refused\n");return 1;}return 0;}`, cMessageBytes(ann), cMessageBytes(wire), expr)
+			runCGenerated(t, own, source)
+			runCGenerated(t, own, source, "-DNDEBUG", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-sanitize-recover=all")
+		})
+	}
+}
