@@ -53,6 +53,12 @@ env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz ${WFR_FLAGS:-} $retain \
 status=$?
 secs=$(( $(date +%s) - start ))
 
+# Python's release row must not hide an absent generated corpus entry.
+if [ "$leg" = python ] && grep -qE '[0-9]+ seeds absent' "$log"; then
+    emit 'RED: incomplete Python wire-fuzz roster'
+    exit 0
+fi
+
 if [ $status -eq 0 ] && grep -qE '(^|[^0-9])0 divergences' "$log" && grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' "$log"; then
 	mutants=$(sed -nE 's/.* = ([0-9]+) mutants.*/\1/p' "$log" | tail -1)
 	if [ -n "$owed" ]; then
