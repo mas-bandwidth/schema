@@ -647,6 +647,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
 		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codecOf(f)))
+		if f.Type.Optional {
+			fmt.Fprintf(b, "            inner=%s,\n", strconv.Quote(innerCodecOf(f)))
+		}
 		fmt.Fprintf(b, "            ordinal=%d,\n", ordinal)
 		fmt.Fprintf(b, "            lo=%s,\n", lo)
 		fmt.Fprintf(b, "            hi=%s,\n", hi)
@@ -675,6 +678,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
 		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+<<<<<<< HEAD
 		if mode := arrayMode(f); mode != "" {
 			fmt.Fprintf(b, "            array_mode=%s,\n", strconv.Quote(mode))
 		}
@@ -683,6 +687,10 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		if gterms := guards[f.Name]; len(gterms) > 0 {
 			fmt.Fprintf(b, "            guards=%s,\n", formatGuardTuple(gterms))
+=======
+		if innerCodecOf(f) == "array" {
+			emitOptionalArrayElem(b, f)
+>>>>>>> 10023e91eef1ca26edb15be0f44d0244d7a035cc
 		}
 		if codecOf(f) == "keyed" {
 			emitKeyedDesc(b, f)
@@ -1241,7 +1249,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "map"
 	}
-	if f.KeyEnum != "" || f.Type.Optional || f.Array != ir.ArrayNone {
+	if f.KeyEnum != "" {
+		return "unsupported"
+	}
+	if f.Type.Optional {
+		return "optional"
+	}
+	if f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -1291,6 +1305,68 @@ func elementCodecOf(f *ir.Field) string {
 		}
 	}
 	return "unsupported"
+}
+
+// innerCodecOf is the codec an optional wraps: ?T rides T's own framing, so
+// the optional kind owns presence and delegates the bytes to it.
+//
+// An optional ARRAY, ?[N]T or ?[..N]T, wraps the "array" framing (kind 14),
+// which the optional kind writes itself (runtime/_schema/kind_optional.py):
+// presence decides whether the field rides, and a present array always rides,
+// a counted one at count zero and a fixed one whole (docs/SPEC-TABLES.md
+// §2.3). Its elements delegate to their own codecs; an element kind this cut
+// does not carry keeps the array "unsupported", refused by name.
+func innerCodecOf(f *ir.Field) string {
+	if !f.Type.Optional {
+		return ""
+	}
+	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
+		switch optionalElemCodecOf(f) {
+		case "bool", "int", "table":
+			return "array"
+		}
+		return "unsupported"
+	}
+	single := *f
+	single.Type.Optional = false
+	return codecOf(&single)
+}
+
+// optionalElemCodecOf is the codec of one element of an optional array: the
+// field's own type with neither the presence bit nor the array shape.
+func optionalElemCodecOf(f *ir.Field) string {
+	elem := *f
+	elem.Type.Optional = false
+	elem.Array = ir.ArrayNone
+	elem.ArrayBound = 0
+	elem.ArrayMin = 0
+	return codecOf(&elem)
+}
+
+// emitOptionalArrayElem writes the elem entry of an optional array's
+// descriptor: the element's own codec, wire kind, range, target and zero
+// value, so the optional kind delegates each element. The outer emit writes
+// array_kind and array_min (the array shape's own numbers) for every field.
+func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
+	lo, hi := intRange(f)
+	codec := optionalElemCodecOf(f)
+	def := "None"
+	switch codec {
+	case "bool":
+		def = "False"
+	case "int":
+		def = "0"
+	}
+	fmt.Fprintf(b, "            elem=FieldDesc(\n")
+	fmt.Fprintf(b, "                name=%s,\n", strconv.Quote(f.Name))
+	fmt.Fprintf(b, "                field_id=0,\n")
+	fmt.Fprintf(b, "                kind=%d,\n", ir.TableWireElemKind(f))
+	fmt.Fprintf(b, "                codec=%s,\n", strconv.Quote(codec))
+	fmt.Fprintf(b, "                lo=%s,\n", lo)
+	fmt.Fprintf(b, "                hi=%s,\n", hi)
+	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                default=%s,\n", def)
+	fmt.Fprintf(b, "            ),\n")
 }
 
 func targetName(f *ir.Field) string {

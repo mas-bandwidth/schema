@@ -11,6 +11,7 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
 	"slices"
 	"unsafe"
@@ -267,7 +268,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -128 || wide > 127 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -312,7 +324,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -128 || wide > 126 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -357,7 +380,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -127 || wide > 127 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -402,7 +436,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -127 || wide > 126 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -447,7 +492,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32768 || wide > 32767 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -492,7 +548,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32768 || wide > 32766 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -537,7 +604,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32767 || wide > 32767 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -582,7 +660,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32767 || wide > 32766 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -627,7 +716,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483648 || wide > 2147483647 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -672,7 +772,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483648 || wide > 2147483646 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -717,7 +828,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483647 || wide > 2147483647 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -762,7 +884,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483647 || wide > 2147483646 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -807,7 +940,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < (-9223372036854775807-1) || wide > 9223372036854775807 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -852,7 +996,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < (-9223372036854775807-1) || wide > 9223372036854775806 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -897,7 +1052,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -9223372036854775807 || wide > 9223372036854775807 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -942,7 +1108,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -9223372036854775807 || wide > 9223372036854775806 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1006,7 +1183,18 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 						p := &base[i]
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32768 || wide > 32767 {
+								r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.edges")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1337,7 +1525,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1382,7 +1581,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 254 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1427,7 +1637,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1472,7 +1693,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 254 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1517,7 +1749,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1562,7 +1805,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65534 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1607,7 +1861,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1652,7 +1917,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 65534 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1697,7 +1973,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1742,7 +2029,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967294 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1787,7 +2085,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1832,7 +2141,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 4294967294 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1877,7 +2197,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1922,7 +2253,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551614 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1967,7 +2309,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2012,7 +2365,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 18446744073709551614 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2076,7 +2440,18 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 						p := &base[i]
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := binary.LittleEndian.Uint64(raw[:8])
+							if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+								r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.counts")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -2308,7 +2683,18 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b8")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2353,7 +2739,18 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b16")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2398,7 +2795,18 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b32")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2443,7 +2851,18 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b64")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2483,7 +2902,18 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b12")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2528,7 +2958,18 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 281474976710655 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b48")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}

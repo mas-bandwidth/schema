@@ -10,7 +10,7 @@ from typing import Any, Iterator
 
 from . import InvalidValue
 from . import descriptor, kinds
-from . import kind_array, kind_blob, kind_map, kind_unsupported
+from . import kind_array, kind_blob, kind_map, kind_optional, kind_unsupported
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -155,7 +155,22 @@ def _validate_fields(
             continue
         current = getattr(value, field.name)
         where = _path(path, field.name)
-        if field.codec == "pointer":
+        if field.codec == "optional":
+            if current is None:
+                continue
+            if field.inner == "array":
+                kind_optional._validate_array(field, current, where)
+                if field.elem is not None and field.elem.codec == "table":
+                    for index, item in enumerate(current):
+                        _validate(item, item.descriptor, f"{where}[{index}]", seen)
+            elif field.inner == "table":
+                target = descriptor.by_name(field.target)
+                if target is None or not isinstance(current, target):
+                    raise InvalidValue(where, f"not a {field.target}")
+                _validate(current, current.descriptor, where, seen)
+            else:
+                kinds._REGISTRY[field.inner].validate(field, current, where)
+        elif field.codec == "pointer":
             if current is None:
                 continue
             target = descriptor.by_name(field.target)
@@ -314,8 +329,22 @@ def _collect_edges(
         if not field.guard_holds(value):
             continue
         current = getattr(value, field.name)
+<<<<<<< HEAD
         codec = field.codec
         if codec == "string_blob" or codec == "bytes_blob":
+=======
+        if field.codec == "optional":
+            if current is None:
+                continue
+            if field.inner == "table":
+                _collect(current, ctx, blobs)
+            elif field.inner == "array" and field.elem is not None and field.elem.codec == "table":
+                # A present array's elements own their edges, in slot order;
+                # an absent one owns none (docs/SPEC-TABLES.md §2.3).
+                for item in current:
+                    _collect(item, ctx, blobs)
+        elif field.codec == "string_blob" or field.codec == "bytes_blob":
+>>>>>>> 10023e91eef1ca26edb15be0f44d0244d7a035cc
             if current is None:
                 continue
             body = kind_blob._encode(field, current, _path(desc.name, field.name))

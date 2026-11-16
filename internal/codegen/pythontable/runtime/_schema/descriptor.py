@@ -26,6 +26,7 @@ class FieldDesc:
         "field_id",
         "kind",
         "codec",
+        "inner",
         "ordinal",
         "lo",
         "hi",
@@ -56,6 +57,7 @@ class FieldDesc:
     field_id: int
     kind: int
     codec: str
+    inner: str
     ordinal: int
     lo: int
     hi: int
@@ -104,6 +106,7 @@ class FieldDesc:
         variant_ids: tuple[int, ...] = (),
         deprecated: tuple[int, ...] = (),
         default: Any = None,
+        inner: str = "",
         elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
@@ -115,6 +118,7 @@ class FieldDesc:
         self.field_id = field_id
         self.kind = kind
         self.codec = codec
+        self.inner = inner
         self.ordinal = ordinal
         self.lo = lo
         self.hi = hi

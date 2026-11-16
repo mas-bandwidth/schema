@@ -213,8 +213,18 @@ func frameRows(t *testing.T) []frameRow {
 		},
 		{
 			name:     "a field moved to ?T",
-			row:      "a field moved between `T` and `?T`",
+			row:      "a field moved from `T` to `?T`",
 			edited:   frameEdit(t, "    chunk  Chunk\n", "    chunk  ?Chunk\n"),
+			instance: `{"chunk":{"seq":7}}`,
+			read:     "0,0",
+			baseline: "refuse",
+			build:    "moves",
+		},
+		{
+			name:     "an optional field made plain",
+			row:      "a field moved from `?T` to `T`",
+			base:     frameEdit(t, "    chunk  Chunk\n", "    chunk  ?Chunk\n"),
+			edited:   framesSrc,
 			instance: `{"chunk":{"seq":7}}`,
 			read:     "0,0",
 			baseline: "pass",
@@ -651,24 +661,35 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 		t.Errorf("the T -> *T row's build version cell is %q, want moves", cell)
 	}
 
-	// §18.2's PASSES list restates the same rows: T and ?T are one framing,
-	// and *T is NOT — it is the kind change the REFUSES list names. The check
-	// is scoped to that paragraph, because §20.4's MOVES list correctly names
-	// all three.
-	passes := text
-	if i := strings.Index(passes, "**PASSES, in silence**"); i >= 0 {
-		passes = passes[i:]
-	} else {
-		t.Fatal("§18.2 no longer carries a PASSES list")
+	optionalRow := tableRow(t, text, "a field moved from `T` to `?T`")
+	if cell := tableCell(t, optionalRow, 2); !strings.Contains(cell, "silent") {
+		t.Errorf("T -> ?T read cell = %q, want silent", cell)
 	}
+	if cell := tableCell(t, optionalRow, 4); !strings.Contains(cell, "moves") {
+		t.Errorf("T -> ?T build cell = %q, want moves", cell)
+	}
+	if cell := tableCell(t, optionalRow, 3); !strings.Contains(cell, "refuses") {
+		t.Errorf("T -> ?T baseline cell = %q, want refuses", cell)
+	}
+	refusesStart := strings.Index(text, "**REFUSES, naming `table.field` and the edit**")
+	passesStart := strings.Index(text, "**PASSES, in silence**")
+	if refusesStart < 0 || passesStart < refusesStart {
+		t.Fatal("§18.2 refusal or pass list missing")
+	}
+	refuses := strings.Join(strings.Fields(text[refusesStart:passesStart]), " ")
+	passes := text[passesStart:]
 	if i := strings.Index(passes, "**The BLOCK FORM"); i >= 0 {
 		passes = passes[:i]
 	}
-	if !strings.Contains(passes, "`T` and `?T`") {
-		t.Error("§18.2's PASSES list no longer states that `T` and `?T` are one framing")
+	passes = strings.Join(strings.Fields(passes), " ")
+	if !strings.Contains(refuses, "a field moved from `T` to `?T`") {
+		t.Error("§18.2 REFUSES must name T to ?T")
+	}
+	if !strings.Contains(passes, "a field moved from `?T` to `T`") || strings.Contains(passes, "`T` and `?T`") {
+		t.Error("§18.2 PASSES must name only ?T to T")
 	}
 	if strings.Contains(passes, "`T`, `?T` and `*T`") {
-		t.Error("§18.2's PASSES list still names `*T` beside `T` and `?T`; the pointer is a kind change and belongs to REFUSES")
+		t.Error("§18.2 PASSES must not include *T: a pointer is a kind change")
 	}
 }
 
