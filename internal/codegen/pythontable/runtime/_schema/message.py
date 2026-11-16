@@ -220,7 +220,7 @@ class MessageVocabulary:
 def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview, *, max_bytes: int = 65536, max_entries: int = 4096) -> None:
     """Resolve the first announcement once; any refusal is terminal."""
     from .descriptor import TableDesc
-    from .load import Ctx, _body_end, _check_node_table, _id_table, _read_node_table, _resolve, _skip, buffer_view
+    from .load import Ctx, _body_end, _check_id_order, _check_node_table, _id_table, _read_node_table, _resolve, _skip, buffer_view
 
     if vocab.announced or vocab.refused:
         raise Refused("second_announcement")
@@ -231,6 +231,7 @@ def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview
     if view[0] != 1:
         raise Refused("message_form_as_file" if view[0] == 2 else "newer_form")
     ids = _id_table(view)
+    _check_id_order(view, ids, announcement=True)
     reader = Reader(view, 1, _body_end(view), ids)
     ctx = Ctx(ids)
     ctx.nonfinite = []

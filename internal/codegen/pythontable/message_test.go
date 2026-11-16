@@ -580,6 +580,14 @@ def announce(raw,extra=False):
  return b'\x01'+body+b'\0'+b''.join(x.to_bytes(8,'little') for x in ids)+len(ids).to_bytes(8,'little')
 good=entry(17,4,b'\x01\x04\x07')
 v=MessageVocabulary();announce_read(v,announce(good,True));assert v.unknown==1 and v.build_version==123
+canonical=announce(good)
+unused=canonical[:-8]+(987).to_bytes(8,'little')+(3).to_bytes(8,'little')
+reordered=bytearray(canonical);reordered[1],reordered[11]=2,1
+reordered[-24:-16],reordered[-16:-8]=canonical[-16:-8],canonical[-24:-16]
+for bad in (unused,reordered):
+ try:announce_read(MessageVocabulary(),bad)
+ except Refused as e:assert e.reason=='wire_damaged'
+ else:raise AssertionError('message_announcement_id_order')
 def graph_announcement(point):
  payload=b'\x06'+leb(len(good))+good
  body=b'\x01\x09'+(123).to_bytes(8,'little')+b'\x02\x0e'+leb(len(payload))+payload
