@@ -996,8 +996,12 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
 	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, plan := range plans {
-		fmt.Fprintf(&b, "from . import %s\n", plan.base)
-		names = append(names, plan.base)
+		// A class or union in this module already occupies the public name.
+		// Its import below loads the module and preserves the public value.
+		if !moduleNameOverwritten(plan) {
+			fmt.Fprintf(&b, "from . import %s\n", plan.base)
+			names = append(names, plan.base)
+		}
 		classes := make([]string, 0, len(plan.tables)+len(plan.packets))
 		for _, st := range append(append([]*ir.Struct(nil), plan.tables...), plan.packets...) {
 			classes = append(classes, st.Name)
@@ -1048,6 +1052,27 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	}
 	b.WriteString("]\n")
 	return b.String()
+}
+
+// moduleNameOverwritten reports whether an exported class or union from a
+// module has the same public spelling as the module itself.
+func moduleNameOverwritten(plan *filePlan) bool {
+	for _, st := range append(append([]*ir.Struct(nil), plan.tables...), plan.packets...) {
+		if st.Name == plan.base {
+			return true
+		}
+		for _, f := range st.Fields {
+			if f.KeyEnum != "" && keyedClassName(st.Name, f) == plan.base {
+				return true
+			}
+		}
+	}
+	for _, un := range append(append([]*ir.Union(nil), plan.unions...), plan.packetUnions...) {
+		if un.Name == plan.base || un.Name+"Type" == plan.base {
+			return true
+		}
+	}
+	return false
 }
 
 // emitKeyedDesc emits an enum-keyed array's element descriptor and its key

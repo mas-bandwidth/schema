@@ -1,7 +1,7 @@
 // The JSON form's integers (docs/SPEC-TABLES.md §16.2, docs/rulings.json
 // json-wide-integers-are-strings and json-integer-token-only): an integer
 // wider than 32 bits is written as a STRING of decimal digits and reads as a
-// string or a number; every integer field takes an integer token only — no
+// string only; every integer field takes an integer token only — no
 // fraction, no exponent, no negative zero — and its range is tested on the
 // exact value, never through a double. The vectors under
 // testdata/wire/json-integers/ are the corpus.
@@ -29,6 +29,24 @@ table Integers
     counts  map[uint64]int32
 }
 
+
+enum Slot { Alpha, Beta }
+union Arm { wide int64 }
+table Sites {
+    plain int64
+    array [..3]int64
+    opt ?uint64
+    arm Arm
+    vals map[uint64]uint64
+    keyed [Slot]int64
+    u128 uint128
+    b33 bits(33)
+    b64 bits(64)
+    f128 fixed(64, 64) | min = -10, max = 10
+    narrow int32
+    fixed32 fixed(16, 16) | min = -10, max = 10
+}
+
 table FixedWide
 {
     tiny fixed(2, 62) | min = -1, max = 1
@@ -37,10 +55,11 @@ table FixedWide
 `
 
 type cJsonWideRow struct {
-	name      string
-	text      []byte
-	read      bool
-	canonical []byte
+	name        string
+	text        []byte
+	read        bool
+	canonical   []byte
+	numberToken bool
 }
 
 // TestCJsonWideIntegersAreStrings holds every row of the json-integers
@@ -92,6 +111,35 @@ func TestCJsonWideIntegersAreStrings(t *testing.T) {
 	if len(rows) == 0 {
 		t.Fatal("the manifest names no rows")
 	}
+	tokens, err := os.Open(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tokens.Close()
+	scanner = bufio.NewScanner(tokens)
+	count := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		cols := strings.Split(line, "\t")
+		if len(cols) != 5 || cols[3] != "refused" {
+			t.Fatalf("NUMBER-TOKEN.tsv: invalid row %q", line)
+		}
+		text, err := os.ReadFile(filepath.Join(dir, cols[2]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, cJsonWideRow{name: cols[0], text: text, numberToken: true})
+		count++
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if count == 0 {
+		t.Fatal("NUMBER-TOKEN.tsv names no rows")
+	}
 
 	var probe strings.Builder
 	probe.WriteString(`#include <stdint.h>
@@ -105,6 +153,7 @@ typedef struct Row {
     const char * text;
     int read;
     const char * canonical;
+    int number_token;
 } Row;
 
 static const Row rows[] = {
@@ -115,7 +164,12 @@ static const Row rows[] = {
 			read = 1
 		}
 		probe.WriteString("    { " + cStringLiteral(row.name) + ", " + cStringLiteral(string(row.text)) + ", " +
-			strconv.Itoa(read) + ", " + cStringLiteral(string(row.canonical)) + " },\n")
+			strconv.Itoa(read) + ", " + cStringLiteral(string(row.canonical)) + ", " + strconv.Itoa(func() int {
+			if row.numberToken {
+				return 1
+			}
+			return 0
+		}()) + " },\n")
 	}
 	probe.WriteString(`};
 
@@ -141,6 +195,54 @@ static int check_fields( const Integers * v )
 }
 
 static int check_fixed_wide( void );
+
+typedef struct SiteCase { const char * name; const char * text; int read; } SiteCase;
+static const SiteCase site_cases[] = {
+    { "plain number", "{\"plain\":5}", 0 },
+    { "plain string", "{\"plain\":\"5\"}", 1 },
+    { "array number", "{\"array\":[\"1\",2]}", 0 },
+    { "array string", "{\"array\":[\"1\",\"2\"]}", 1 },
+    { "optional number", "{\"opt\":7}", 0 },
+    { "optional string", "{\"opt\":\"7\"}", 1 },
+    { "union number", "{\"arm\":{\"wide\":9}}", 0 },
+    { "union string", "{\"arm\":{\"wide\":\"9\"}}", 1 },
+    { "map value number", "{\"vals\":{\"18446744073709551615\":5}}", 0 },
+    { "map value string", "{\"vals\":{\"18446744073709551615\":\"5\"}}", 1 },
+    { "keyed number", "{\"keyed\":{\"Alpha\":5}}", 0 },
+    { "keyed string", "{\"keyed\":{\"Alpha\":\"5\"}}", 1 },
+    { "uint128 number", "{\"u128\":340282366920938463463374607431768211455}", 0 },
+    { "uint128 string", "{\"u128\":\"340282366920938463463374607431768211455\"}", 1 },
+    { "bits33 number", "{\"b33\":8589934591}", 0 },
+    { "bits33 string", "{\"b33\":\"8589934591\"}", 1 },
+    { "bits64 number", "{\"b64\":18446744073709551615}", 0 },
+    { "bits64 string", "{\"b64\":\"18446744073709551615\"}", 1 },
+    { "fixed128 number", "{\"f128\":0.5}", 0 },
+    { "fixed128 string", "{\"f128\":\"0.5\"}", 1 },
+    { "int32 number", "{\"narrow\":-7}", 1 },
+    { "fixed32 exponent", "{\"fixed32\":15e-1}", 1 },
+};
+static int check_sites( void )
+{
+    size_t i;
+    int failures = 0;
+    for ( i = 0; i < sizeof( site_cases ) / sizeof( site_cases[0] ); i++ )
+    {
+        const SiteCase * c = &site_cases[i];
+        SitesBuilder b;
+        TableReport r;
+        int ok;
+        memset( &r, 0, sizeof( r ) );
+        if ( !sites_builder_init( &b ) ) { return 1; }
+        ok = sites_from_json( &b, c->text, (int64_t) strlen( c->text ), &r );
+        if ( c->read ? ( !ok || r.refused ) : ( ok || !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_KIND_MISMATCH ) )
+        {
+            fprintf( stderr, "FAIL site %s: ok=%d refused=%d reason=%d\n", c->name, ok, r.refused, (int) r.refuse_reason );
+            failures++;
+        }
+        sites_builder_shutdown( &b );
+    }
+    return failures;
+}
 
 int main( void )
 {
@@ -184,9 +286,15 @@ int main( void )
             fprintf( stderr, "FAIL %s: accepted a refused row\n", row->name );
             failures++;
         }
+        if ( row->number_token && ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_KIND_MISMATCH ) )
+        {
+            fprintf( stderr, "FAIL %s: number token refusal is not kind_mismatch\n", row->name );
+            failures++;
+        }
         integers_builder_shutdown( &b );
     }
     failures += check_fixed_wide();
+    failures += check_sites();
     return failures == 0 ? 0 : 1;
 }
 
@@ -286,6 +394,19 @@ static inline serialize_int128_t serialize_int128_make( uint64_t hi, uint64_t lo
 }
 
 static inline int serialize_int128_equal( serialize_int128_t a, serialize_int128_t b )
+{
+    return a.lo == b.lo && a.hi == b.hi;
+}
+
+static inline serialize_uint128_t serialize_uint128_make( uint64_t hi, uint64_t lo )
+{
+    serialize_uint128_t value;
+    value.lo = lo;
+    value.hi = hi;
+    return value;
+}
+
+static inline int serialize_uint128_equal( serialize_uint128_t a, serialize_uint128_t b )
 {
     return a.lo == b.lo && a.hi == b.hi;
 }

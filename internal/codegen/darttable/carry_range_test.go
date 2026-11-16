@@ -53,8 +53,8 @@ func TestDartOneSidedRangeNative(t *testing.T) {
 		if len(cols) != 4 {
 			t.Fatal(line)
 		}
-		input := fmt.Sprintf(`{"%s":%s}`, cols[0], cols[1])
-		expected := fmt.Sprintf(`{"%s":%s}`, cols[0], cols[2])
+		input := fmt.Sprintf(`{"%s":%q}`, cols[0], cols[1])
+		expected := fmt.Sprintf(`{"%s":%q}`, cols[0], cols[2])
 		v, rv := model.New(u.Tables["Ranges"]), rawModel.New(rawU.Tables["Ranges"])
 		var r tabletext.Report
 		if !model.Read(v, []byte(expected), &r) || !r.Silent() {
@@ -64,11 +64,11 @@ func TestDartOneSidedRangeNative(t *testing.T) {
 		if !rawModel.Read(rv, []byte(input), &r) || !r.Silent() {
 			t.Fatalf("input: %+v", r)
 		}
-		want, err := tablewire.Encode(model, v)
+		want, err := tablewire.EncodeVariable(model, v)
 		if err != nil {
 			t.Fatal(err)
 		}
-		wire, err := tablewire.Encode(rawModel, rv)
+		wire, err := tablewire.EncodeVariable(rawModel, rv)
 		if err != nil {
 			t.Fatal(err)
 		}

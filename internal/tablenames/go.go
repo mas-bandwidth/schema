@@ -5,6 +5,10 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableFixedAllZero", What: "fixed-record dead-byte validation"},
+		Name{Name: "tableFixedChildrenNamed", What: "fixed-record lawful lineage validation"},
+		Name{Name: "tableFixedDeadSpan", What: "fixed-record dead-byte validation"},
+		Name{Name: "tableFixedSlack", What: "fixed-record inactive union span validation"},
 		Name{Name: "tableJSONUnknownRepeat", What: "repeated decoded unknown JSON key refusal"},
 		Name{Name: "tableRetainArmLevels", What: "retained union nesting validation"},
 		Name{Name: "tableRetainFrameLevels", What: "retained framing nesting validation"},
