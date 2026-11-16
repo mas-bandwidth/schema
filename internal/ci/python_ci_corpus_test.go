@@ -169,14 +169,23 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 			t.Errorf("corpus producer lacks %q", want)
 		}
 	}
-	consumer := jobs["test"]
-	for _, want := range []string{"needs: [plan, fixed-corpus]", "sh tools/python-ci-corpus.sh restore", "if: matrix.corpus", "--old-file=build/fixedform-corpus/.stamp", "--old-file=build/conformance-python"} {
-		if !strings.Contains(consumer, want) {
-			t.Errorf("consumer lacks %q", want)
+	required := []string{"needs: [plan, fixed-corpus]", "make serialize-siblings", "python-fixed-corpus-${{ github.sha }}", "sh tools/python-ci-corpus.sh restore", "if: matrix.corpus", "CORPUS: ${{ matrix.corpus }}", "--old-file=build/fixedform-corpus/.stamp", "--old-file=build/conformance-python"}
+	valid := func(consumer string) bool {
+		for _, want := range required {
+			if !strings.Contains(consumer, want) {
+				return false
+			}
 		}
+		return strings.Index(consumer, "sh tools/python-ci-corpus.sh restore") < strings.Index(consumer, "run the selected complete-leg slice")
 	}
-	if strings.Index(consumer, "sh tools/python-ci-corpus.sh restore") > strings.Index(consumer, "run the selected complete-leg slice") {
-		t.Fatal("reference corpus is restored after the tests")
+	for _, name := range []string{"test", "test-second"} {
+		consumer := jobs[name]
+		if !valid(consumer) {
+			t.Errorf("%s lacks the producer dependency, staging or ordered corpus restore", name)
+		}
+		if valid(strings.Replace(consumer, "needs: [plan, fixed-corpus]", "needs: plan", 1)) || valid(strings.Replace(consumer, "sh tools/python-ci-corpus.sh restore", "true", 1)) {
+			t.Errorf("%s corpus omission control escaped the guard", name)
+		}
 	}
 }
 
