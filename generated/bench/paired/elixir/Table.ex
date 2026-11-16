@@ -1393,7 +1393,7 @@ defmodule Bench.Table do
 
   def carried?(table), do: table not in @uncarried
 
-  @cook_build_version 0x8CD93F14586298E7
+  @cook_build_version 0xBA2DAD78EBDBFFF0
   @cook_magic 0x4B4F4F434D484353
 
   # A declared fixed root's file is form 3 (docs/SPEC-TABLES.md §3, §3.4).

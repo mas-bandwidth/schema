@@ -1,12 +1,12 @@
-0x48aec51017c9424c
-schema-build-version 5
+0xbf7128181c3025bc
+schema-build-version 6
 protocol afe89c387292473c
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record PaddedFrame sizeof=4136 alignof=8
     field eddcb72b15486e77 kind=6 offset=0 size=1
     field ee7ba9ad45c64144 kind=9 offset=8 size=8
-    field a3a7061ff10a8138 kind=13 offset=16 size=4100 type=PaddedRow elem=64 array=bounded bound=64
+    field a3a7061ff10a8138 kind=13 offset=16 size=4100 type=PaddedRow elem=64 array=bounded bound=64 countmin=0
     field c573b39bc29148ca kind=14 offset=4116 size=16 bound=12
 block PaddedFrame sizeof=72 alignof=8
     slot eddcb72b15486e77 offset=24 size=1
@@ -56,15 +56,15 @@ record RenderExplosion sizeof=80 alignof=8
     field fa23d9ef19afc32c kind=30 offset=73 size=1 enum=Team
 record RenderFrame sizeof=7879320 alignof=8
     field bb62c62c9808ea37 kind=9 offset=0 size=8
-    field 0f9222d2ba7aa2a7 kind=13 offset=8 size=76 type=RenderCamera elem=72 array=bounded bound=1
-    field 294a5c4913e1ad44 kind=13 offset=88 size=360452 type=RenderShip elem=88 array=bounded bound=4096
-    field 84f8260bc283608c kind=13 offset=360544 size=65540 type=RenderTurret elem=64 array=bounded bound=1024
-    field 1c3027194b1ba4d0 kind=13 offset=426088 size=294916 type=RenderMissile elem=72 array=bounded bound=4096
-    field 43125398a9903d27 kind=13 offset=721008 size=294916 type=RenderDynamicProp elem=72 array=bounded bound=4096
-    field c1f8d7edff7fcfd2 kind=13 offset=1015928 size=1600004 type=RenderStaticProp elem=80 array=bounded bound=20000
-    field 33408e39f5f480ff kind=13 offset=2615936 size=655364 type=RenderCosmeticProp elem=80 array=bounded bound=8192
-    field d982b77b3e92d16d kind=13 offset=3271304 size=2048004 type=RenderLaser elem=64 array=bounded bound=32000
-    field 876a8c1a85806a69 kind=13 offset=5319312 size=2560004 type=RenderExplosion elem=80 array=bounded bound=32000
+    field 0f9222d2ba7aa2a7 kind=13 offset=8 size=76 type=RenderCamera elem=72 array=bounded bound=1 countmin=0
+    field 294a5c4913e1ad44 kind=13 offset=88 size=360452 type=RenderShip elem=88 array=bounded bound=4096 countmin=0
+    field 84f8260bc283608c kind=13 offset=360544 size=65540 type=RenderTurret elem=64 array=bounded bound=1024 countmin=0
+    field 1c3027194b1ba4d0 kind=13 offset=426088 size=294916 type=RenderMissile elem=72 array=bounded bound=4096 countmin=0
+    field 43125398a9903d27 kind=13 offset=721008 size=294916 type=RenderDynamicProp elem=72 array=bounded bound=4096 countmin=0
+    field c1f8d7edff7fcfd2 kind=13 offset=1015928 size=1600004 type=RenderStaticProp elem=80 array=bounded bound=20000 countmin=0
+    field 33408e39f5f480ff kind=13 offset=2615936 size=655364 type=RenderCosmeticProp elem=80 array=bounded bound=8192 countmin=0
+    field d982b77b3e92d16d kind=13 offset=3271304 size=2048004 type=RenderLaser elem=64 array=bounded bound=32000 countmin=0
+    field 876a8c1a85806a69 kind=13 offset=5319312 size=2560004 type=RenderExplosion elem=80 array=bounded bound=32000 countmin=0
 block RenderFrame sizeof=176 alignof=8
     slot bb62c62c9808ea37 offset=24 size=8
     slot 0f9222d2ba7aa2a7 offset=32 size=16 out_of_line stride=72

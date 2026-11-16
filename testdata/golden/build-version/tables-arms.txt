@@ -1,5 +1,5 @@
-0xedec19b88cfda09a
-schema-build-version 5
+0x7b02dc001c8b6f3f
+schema-build-version 6
 protocol 2e08b132138189b9
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -10,7 +10,7 @@ record Gate sizeof=24 alignof=8
     field 891da1f305deb858 kind=15 offset=0 size=16 union=Reach
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Hand sizeof=56 alignof=8
-    field c5b2a72c0845a253 kind=15 offset=0 size=52 union=Carry elem=24 array=bounded bound=2
+    field c5b2a72c0845a253 kind=15 offset=0 size=52 union=Carry elem=24 array=bounded bound=2 countmin=0
     field bf82010f6f71eae9 kind=4 offset=52 size=4
 record Holder sizeof=40 alignof=8
     field afcd9a3b099f8ef0 kind=15 offset=0 size=24 union=Carry
@@ -31,7 +31,7 @@ record Ring sizeof=24 alignof=8
     field 3e7884bf4f412c6f kind=14 offset=0 size=16 union=Slot elem=16 elemkind=15 array=unbounded
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Tray sizeof=72 alignof=8
-    field c5b2a72c0845a253 kind=15 offset=0 size=68 union=Slots elem=32 array=bounded bound=2
+    field c5b2a72c0845a253 kind=15 offset=0 size=68 union=Slots elem=32 array=bounded bound=2 countmin=0
     field bf82010f6f71eae9 kind=4 offset=68 size=4
 record Twig sizeof=24 alignof=8
     field 2d4c068f5f889287 kind=15 offset=0 size=24 union=Inner
@@ -52,5 +52,5 @@ union Slot
     arm 1 node kind=17 offset=8 size=8 type=Node
     arm 2 plain kind=4 offset=8 size=4
 union Slots
-    arm 1 many kind=17 offset=8 size=24 type=Node elem=8 array=bounded bound=2
+    arm 1 many kind=17 offset=8 size=24 type=Node elem=8 array=bounded bound=2 countmin=0
     arm 2 plain kind=4 offset=8 size=4

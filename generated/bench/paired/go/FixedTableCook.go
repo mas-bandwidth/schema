@@ -429,7 +429,7 @@ func FixedTableAt(slot *int64) *FixedTableRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FixedTableCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
-const tableCookBuildVersion uint64 = 0x8cd93f14586298e7
+const tableCookBuildVersion uint64 = 0xba2dad78ebdbfff0
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8

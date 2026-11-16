@@ -164,7 +164,7 @@ namespace Benchtable
         // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION
         // is what everything cooked or blocked is keyed by. A table edit moves
         // this and never the protocol id; a type edit moves both.
-        public const ulong BuildVersion = 0x9859b8059782ac26UL;
+        public const ulong BuildVersion = 0x3e3d2b65756719d6UL;
 
         // The block's magic (docs/SPEC-TABLES.md §19.1), read BYTEWISE: it is the one
         // field read without assuming the order the rest of the block is in.

@@ -2443,14 +2443,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x9a,
-    0xa0,
-    0xfd,
-    0x8c,
-    0xb8,
-    0x19,
-    0xec,
-    0xed,
+    0x3f,
+    0x6f,
+    0x8b,
+    0x1c,
+    0x00,
+    0xdc,
+    0x02,
+    0x7b,
     0x02,
     0x0e,
     0x16,
@@ -9678,7 +9678,7 @@ namespace armdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xedec19b88cfda09aull;
+static const uint64_t BuildVersion = 0x7b02dc001c8b6f3full;
 
 } // namespace armdemo
 

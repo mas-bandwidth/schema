@@ -115,7 +115,7 @@ namespace Bench
         // There are TWO ids in the design and they are not interchangeable: the
         // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
         // what everything cooked or blocked is keyed by.
-        public const ulong BuildVersion = 0x8cd93f14586298e7UL;
+        public const ulong BuildVersion = 0xba2dad78ebdbfff0UL;
 
         // The cook's MAGIC (docs/SPEC-TABLES.md §7.1), read BYTEWISE before anything
         // else: it is what establishes the byte order every other header word is

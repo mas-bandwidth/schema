@@ -1,5 +1,5 @@
-0xcb8eeae4f19f277f
-schema-build-version 5
+0x210f4f7c70e9078d
+schema-build-version 6
 protocol 63cf59843d9eb62f
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -10,7 +10,7 @@ record Army sizeof=24 alignof=8
     field 7848019b0c02a926 kind=14 offset=0 size=16 type=Squad elem=24 elemkind=13 array=unbounded
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Bounded sizeof=40 alignof=4
-    field 3e7884bf4f412c6f kind=13 offset=0 size=36 type=Unit elem=4 array=bounded bound=8
+    field 3e7884bf4f412c6f kind=13 offset=0 size=36 type=Unit elem=4 array=bounded bound=8 countmin=0
     field 56d7ab194448a4f3 kind=4 offset=36 size=4
 block Bounded sizeof=48 alignof=8
     slot 3e7884bf4f412c6f offset=24 size=16 out_of_line stride=4
@@ -19,7 +19,7 @@ record Bytes sizeof=24 alignof=8
     field 855b556730a34a05 kind=14 offset=0 size=16 elem=1 elemkind=6 array=unbounded
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Deck sizeof=80 alignof=8
-    field 81b46a69304ee2c9 kind=13 offset=0 size=76 type=Row elem=24 array=bounded bound=3
+    field 81b46a69304ee2c9 kind=13 offset=0 size=76 type=Row elem=24 array=bounded bound=3 countmin=0
     field bf82010f6f71eae9 kind=4 offset=76 size=4
 record Floats sizeof=24 alignof=8
     field 21277bcf1a4d67fb kind=14 offset=0 size=16 elem=4 elemkind=10 array=unbounded

@@ -1,5 +1,5 @@
-0xeea05d355656bd16
-schema-build-version 5
+0xd7bc5b5eb8be6acc
+schema-build-version 6
 protocol b5d73ebb1b2a682d
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -16,13 +16,13 @@ record FiringGroup sizeof=8 alignof=4
     field 8ece059ad360b651 kind=8 offset=0 size=4
     field dc2cbe6953343d48 kind=10 offset=4 size=4
 record GunnerSettings sizeof=304 alignof=4
-    field 260b8ca6b0c3db7f kind=13 offset=0 size=260 type=FiringGroup elem=8 array=bounded bound=32
-    field 3c99105aa087f6bc kind=13 offset=260 size=36 type=FiringGroup elem=8 array=bounded bound=4
+    field 260b8ca6b0c3db7f kind=13 offset=0 size=260 type=FiringGroup elem=8 array=bounded bound=32 countmin=0
+    field 3c99105aa087f6bc kind=13 offset=260 size=36 type=FiringGroup elem=8 array=bounded bound=4 countmin=0
     field ad9b64728ea52486 kind=10 offset=296 size=4
     field bd9be53180256e02 kind=8 offset=300 size=4
 record PartFrame sizeof=11280 alignof=8
     field bb62c62c9808ea37 kind=9 offset=0 size=8
-    field 0c519da7a1f958c5 kind=13 offset=8 size=11268 type=PartRow elem=352 array=bounded bound=32
+    field 0c519da7a1f958c5 kind=13 offset=8 size=11268 type=PartRow elem=352 array=bounded bound=32 countmin=0
 block PartFrame sizeof=48 alignof=8
     slot bb62c62c9808ea37 offset=24 size=8
     slot 0c519da7a1f958c5 offset=32 size=16 out_of_line stride=352

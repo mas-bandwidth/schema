@@ -13,7 +13,7 @@ local _B = {}
 -- the projection, prologue included, and each out-of-line array's row.
 _B.TableEntityBlock = table.freeze({
 	name = "TableEntity",
-	buildVersion = 0x9859b8059782ac26i,
+	buildVersion = 4484788518692264406i,
 	size = 88,
 	align = 8,
 	fields = {
@@ -38,7 +38,7 @@ _B.TableEntityBlock = table.freeze({
 -- the projection, prologue included, and each out-of-line array's row.
 _B.TableStatBlock = table.freeze({
 	name = "TableStat",
-	buildVersion = 0x9859b8059782ac26i,
+	buildVersion = 4484788518692264406i,
 	size = 32,
 	align = 8,
 	fields = {

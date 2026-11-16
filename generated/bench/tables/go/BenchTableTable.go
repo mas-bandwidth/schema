@@ -188,7 +188,7 @@ type TableMixed struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so an endpoint's build is knowable.
-const BuildVersion uint64 = 0x9859b8059782ac26
+const BuildVersion uint64 = 0x3e3d2b65756719d6
 
 // TableReport is the table-wire read report (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
 // A read RETURNS the whole value or REFUSES the whole load: Err is nil on a read

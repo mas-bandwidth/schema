@@ -1601,7 +1601,7 @@ export function TableMessageSetRefBits(n) {
   return prev;
 }
 export const TableMessageEntriesHere = 70;
-export const TableMessageAnnouncement = new Uint8Array([0x01,0x01,0x09,0xe7,0x98,0x62,0x58,0x14,0x3f,0xd9,0x8c,0x02,0x0e,0xcf,0x06,0x06,0xcc,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,0xae,0x9b,0x08,0x01,0x20,0x00,0x05,0x0b,0x59,0x0a,0x65,0xb5,0xd7,0xb7,0x09,0x00,0x7e,0x96,0x95,0xd0,0xe2,0x98,0x7b,0x6d,0x08,0x00,0xd8,0xc0,0x0d,0xd6,0x71,0x4c,0xa9,0x73,0x09,0x01,0x40,0x00,0x85,0xfc,0x54,0xbe,0x51,0x6b,0xee,0x3e,0x05,0x01,0x29,0xff,0xbf,0xa8,0xca,0x9a,0x3a,0x12,0x01,0x6d,0x7b,0x5f,0x03,0xbc,0x7b,0x09,0x01,0x30,0x00,0xc6,0x69,0xbe,0xf9,0x75,0x04,0x46,0x3c,0x16,0x01,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x2a,0x82,0xb3,0x7b,0xb0,0x0f,0x5d,0x93,0x0e,0x01,0x08,0x0d,0x4c,0x99,0xb1,0x45,0xad,0x9c,0x63,0xee,0x0e,0x00,0x50,0x0d,0x90,0x57,0xaa,0x21,0x53,0xdc,0x35,0x2e,0x0f,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0e,0x04,0x04,0x06,0x00,0x6e,0xe8,0xf8,0x2c,0x54,0x2f,0xa6,0x13,0x0c,0x0f,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0x10,0x06,0x00,0xc9,0x96,0x42,0xe2,0xe5,0x7b,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x16,0x95,0x42,0xe2,0xe5,0x7a,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x63,0x93,0x42,0xe2,0xe5,0x79,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x57,0xe4,0xe2,0xf7,0xff,0x31,0xef,0x9c,0x0a,0x00,0x04,0x6c,0x1f,0x34,0xc9,0xf9,0xb3,0x5a,0x0b,0x16,0xaf,0x1f,0x46,0x80,0x85,0x34,0xa3,0x13,0x00,0x42,0x26,0xaf,0x08,0x79,0xdd,0x1b,0xd6,0x12,0x01,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf0,0xff,0xff,0xff,0xa9,0x07,0x33,0xc5,0x0d,0xe0,0x30,0xbf,0x1a,0x01,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x51,0xd8,0xcc,0x27,0x65,0x0d,0x56,0x08,0x01,0x18,0x00,0x72,0x86,0xfd,0x6c,0x17,0x92,0x82,0xc0,0x01,0x69,0xcb,0x79,0xa9,0x12,0xee,0x29,0xfd,0x04,0x01,0x08,0x00,0xfe,0xbc,0x8c,0xaa,0xc0,0x1a,0x10,0x78,0x04,0x01,0x04,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0d,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x04,0x01,0x02,0x00,0x22,0xd0,0xeb,0x96,0x4d,0xac,0xf1,0xfb,0x07,0x01,0x0c,0x00,0x12,0x67,0xe3,0x78,0x66,0xfd,0xfc,0x23,0x07,0x01,0x0c,0x00,0x0e,0x31,0x67,0x76,0x35,0x37,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xc1,0x32,0x67,0x76,0x35,0x38,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xa8,0x2d,0x67,0x76,0x35,0x35,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xe8,0x16,0x8e,0x79,0x19,0x8e,0x4d,0xb5,0x07,0x01,0x09,0x00,0xb1,0xc1,0x0c,0xa9,0x65,0xf6,0xa9,0x53,0x07,0x01,0x09,0x00,0x67,0xee,0x60,0xeb,0xb6,0xe6,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xb4,0xec,0x60,0xeb,0xb6,0xe5,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcd,0xf1,0x60,0xeb,0xb6,0xe8,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x04,0x01,0x0a,0x00,0x01,0x6e,0x2c,0x5f,0x20,0x10,0xb6,0xa0,0x1e,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x09,0x01,0x08,0x00,0xa7,0x3d,0x24,0xd1,0xc1,0x4f,0xa4,0x11,0x01,0xca,0x31,0x90,0x9b,0xd1,0xcf,0x74,0x76,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x07,0x01,0x0c,0x00,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x04,0x01,0x0c,0x00,0x25,0xb9,0x59,0xb0,0x65,0xc3,0xfb,0x01,0x04,0x01,0x03,0x00,0x2d,0xa5,0x9a,0x8c,0x90,0x67,0x61,0x12,0x01,0x56,0xbd,0x4f,0x86,0x6d,0xd0,0x7f,0x9e,0x07,0x01,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x08,0x00,0x65,0xbf,0x6d,0x86,0xf0,0x75,0xab,0x80,0x06,0x01,0x08,0x00,0xc1,0xa0,0x13,0xec,0x75,0x66,0x07,0x52,0x04,0x01,0x0a,0xff,0x07,0x0c,0xcf,0x66,0x27,0xe1,0xee,0x90,0xa7,0x00,0x76,0x84,0xda,0x35,0xa8,0xef,0xbf,0x9f,0x00,0x95,0x8a,0x92,0x83,0x17,0xbb,0x8b,0x18,0x00,0xf1,0x72,0xf2,0xc2,0xb9,0x67,0x36,0x2c,0x00,0xf6,0x55,0xd7,0x00,0x1b,0xb4,0xa8,0x0c,0x00,0x4e,0x1a,0xb2,0xfa,0x19,0xc8,0x5f,0x98,0x00,0x55,0x6a,0x08,0xc3,0x47,0x04,0x9d,0x22,0x00,0x9d,0x8f,0x22,0xa7,0x49,0x7b,0x1c,0x01,0x00,0x5f,0xe1,0x23,0x11,0x6e,0x56,0xf7,0x89,0x00,0x69,0x44,0x3b,0x8b,0x31,0x25,0x7f,0x8d,0x00,0x16,0x78,0x5b,0x28,0xcc,0x0d,0xcd,0xd9,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0x17,0x92,0x12,0x41,0xc3,0x3b,0xe5,0x35,0x00,0x31,0x88,0xde,0xb0,0x2f,0x28,0xc8,0x2c,0x00,0x34,0xb3,0x8c,0xbc,0x21,0xda,0xba,0x20,0x00,0xaa,0x80,0x06,0x30,0x19,0x28,0x73,0x33,0x0d,0x8b,0x34,0x5b,0x0b,0x91,0x8d,0xa3,0xf2,0x0d,0x65,0xb7,0xec,0x86,0x1c,0xa4,0xa3,0x9f,0x0d,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,]);
+export const TableMessageAnnouncement = new Uint8Array([0x01,0x01,0x09,0xf0,0xff,0xdb,0xeb,0x78,0xad,0x2d,0xba,0x02,0x0e,0xcf,0x06,0x06,0xcc,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,0xae,0x9b,0x08,0x01,0x20,0x00,0x05,0x0b,0x59,0x0a,0x65,0xb5,0xd7,0xb7,0x09,0x00,0x7e,0x96,0x95,0xd0,0xe2,0x98,0x7b,0x6d,0x08,0x00,0xd8,0xc0,0x0d,0xd6,0x71,0x4c,0xa9,0x73,0x09,0x01,0x40,0x00,0x85,0xfc,0x54,0xbe,0x51,0x6b,0xee,0x3e,0x05,0x01,0x29,0xff,0xbf,0xa8,0xca,0x9a,0x3a,0x12,0x01,0x6d,0x7b,0x5f,0x03,0xbc,0x7b,0x09,0x01,0x30,0x00,0xc6,0x69,0xbe,0xf9,0x75,0x04,0x46,0x3c,0x16,0x01,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x2a,0x82,0xb3,0x7b,0xb0,0x0f,0x5d,0x93,0x0e,0x01,0x08,0x0d,0x4c,0x99,0xb1,0x45,0xad,0x9c,0x63,0xee,0x0e,0x00,0x50,0x0d,0x90,0x57,0xaa,0x21,0x53,0xdc,0x35,0x2e,0x0f,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0e,0x04,0x04,0x06,0x00,0x6e,0xe8,0xf8,0x2c,0x54,0x2f,0xa6,0x13,0x0c,0x0f,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0x10,0x06,0x00,0xc9,0x96,0x42,0xe2,0xe5,0x7b,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x16,0x95,0x42,0xe2,0xe5,0x7a,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x63,0x93,0x42,0xe2,0xe5,0x79,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x57,0xe4,0xe2,0xf7,0xff,0x31,0xef,0x9c,0x0a,0x00,0x04,0x6c,0x1f,0x34,0xc9,0xf9,0xb3,0x5a,0x0b,0x16,0xaf,0x1f,0x46,0x80,0x85,0x34,0xa3,0x13,0x00,0x42,0x26,0xaf,0x08,0x79,0xdd,0x1b,0xd6,0x12,0x01,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf0,0xff,0xff,0xff,0xa9,0x07,0x33,0xc5,0x0d,0xe0,0x30,0xbf,0x1a,0x01,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x51,0xd8,0xcc,0x27,0x65,0x0d,0x56,0x08,0x01,0x18,0x00,0x72,0x86,0xfd,0x6c,0x17,0x92,0x82,0xc0,0x01,0x69,0xcb,0x79,0xa9,0x12,0xee,0x29,0xfd,0x04,0x01,0x08,0x00,0xfe,0xbc,0x8c,0xaa,0xc0,0x1a,0x10,0x78,0x04,0x01,0x04,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0d,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x04,0x01,0x02,0x00,0x22,0xd0,0xeb,0x96,0x4d,0xac,0xf1,0xfb,0x07,0x01,0x0c,0x00,0x12,0x67,0xe3,0x78,0x66,0xfd,0xfc,0x23,0x07,0x01,0x0c,0x00,0x0e,0x31,0x67,0x76,0x35,0x37,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xc1,0x32,0x67,0x76,0x35,0x38,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xa8,0x2d,0x67,0x76,0x35,0x35,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xe8,0x16,0x8e,0x79,0x19,0x8e,0x4d,0xb5,0x07,0x01,0x09,0x00,0xb1,0xc1,0x0c,0xa9,0x65,0xf6,0xa9,0x53,0x07,0x01,0x09,0x00,0x67,0xee,0x60,0xeb,0xb6,0xe6,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xb4,0xec,0x60,0xeb,0xb6,0xe5,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcd,0xf1,0x60,0xeb,0xb6,0xe8,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x04,0x01,0x0a,0x00,0x01,0x6e,0x2c,0x5f,0x20,0x10,0xb6,0xa0,0x1e,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x09,0x01,0x08,0x00,0xa7,0x3d,0x24,0xd1,0xc1,0x4f,0xa4,0x11,0x01,0xca,0x31,0x90,0x9b,0xd1,0xcf,0x74,0x76,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x07,0x01,0x0c,0x00,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x04,0x01,0x0c,0x00,0x25,0xb9,0x59,0xb0,0x65,0xc3,0xfb,0x01,0x04,0x01,0x03,0x00,0x2d,0xa5,0x9a,0x8c,0x90,0x67,0x61,0x12,0x01,0x56,0xbd,0x4f,0x86,0x6d,0xd0,0x7f,0x9e,0x07,0x01,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x08,0x00,0x65,0xbf,0x6d,0x86,0xf0,0x75,0xab,0x80,0x06,0x01,0x08,0x00,0xc1,0xa0,0x13,0xec,0x75,0x66,0x07,0x52,0x04,0x01,0x0a,0xff,0x07,0x0c,0xcf,0x66,0x27,0xe1,0xee,0x90,0xa7,0x00,0x76,0x84,0xda,0x35,0xa8,0xef,0xbf,0x9f,0x00,0x95,0x8a,0x92,0x83,0x17,0xbb,0x8b,0x18,0x00,0xf1,0x72,0xf2,0xc2,0xb9,0x67,0x36,0x2c,0x00,0xf6,0x55,0xd7,0x00,0x1b,0xb4,0xa8,0x0c,0x00,0x4e,0x1a,0xb2,0xfa,0x19,0xc8,0x5f,0x98,0x00,0x55,0x6a,0x08,0xc3,0x47,0x04,0x9d,0x22,0x00,0x9d,0x8f,0x22,0xa7,0x49,0x7b,0x1c,0x01,0x00,0x5f,0xe1,0x23,0x11,0x6e,0x56,0xf7,0x89,0x00,0x69,0x44,0x3b,0x8b,0x31,0x25,0x7f,0x8d,0x00,0x16,0x78,0x5b,0x28,0xcc,0x0d,0xcd,0xd9,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0x17,0x92,0x12,0x41,0xc3,0x3b,0xe5,0x35,0x00,0x31,0x88,0xde,0xb0,0x2f,0x28,0xc8,0x2c,0x00,0x34,0xb3,0x8c,0xbc,0x21,0xda,0xba,0x20,0x00,0xaa,0x80,0x06,0x30,0x19,0x28,0x73,0x33,0x0d,0x8b,0x34,0x5b,0x0b,0x91,0x8d,0xa3,0xf2,0x0d,0x65,0xb7,0xec,0x86,0x1c,0xa4,0xa3,0x9f,0x0d,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,]);
 
 export const TableMessageOpenOk = 0;
 export const TableMessageOpenRefused = 1;
@@ -3308,7 +3308,7 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Damaged = true; return false; }
     if (ref === 0n) {
-      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
       return true;
     }
     const entry = tableMessageEntry(r.Vocabulary, ref);
@@ -3317,7 +3317,7 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
     any = true;
     switch (entry.Id) {
       case 0x23fcfd6678e36712n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
         lastOrdinal = 0;
         if (entry.Shape.Kind !== 7 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3325,11 +3325,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x > 4095n) { x = 4095n; r.Report.Oor++; }
           value.entityId = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.entityId === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.entityId === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xcb4b37357667310en: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
         lastOrdinal = 1;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3337,11 +3337,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x < -16383) { x = -16383; r.Report.Oor++; } else if (x > 16383) { x = 16383; r.Report.Oor++; }
           value.posX = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.posX === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.posX === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xcb4b3835766732c1n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 2) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 2) { r.Report.Damaged = true; return false; }
         lastOrdinal = 2;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3349,11 +3349,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x < -16383) { x = -16383; r.Report.Oor++; } else if (x > 16383) { x = 16383; r.Report.Oor++; }
           value.posY = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.posY === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.posY === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xcb4b353576672da8n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 3) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 3) { r.Report.Damaged = true; return false; }
         lastOrdinal = 3;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3361,11 +3361,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x < -16383) { x = -16383; r.Report.Oor++; } else if (x > 16383) { x = 16383; r.Report.Oor++; }
           value.posZ = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.posZ === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.posZ === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xb54d8e19798e16e8n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 4) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 4) { r.Report.Damaged = true; return false; }
         lastOrdinal = 4;
         if (entry.Shape.Kind !== 7 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3373,11 +3373,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x > 511n) { x = 511n; r.Report.Oor++; }
           value.yaw = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.yaw === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.yaw === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x53a9f665a90cc1b1n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 5) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 5) { r.Report.Damaged = true; return false; }
         lastOrdinal = 5;
         if (entry.Shape.Kind !== 7 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3385,11 +3385,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x > 511n) { x = 511n; r.Report.Oor++; }
           value.pitch = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.pitch === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.pitch === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x6cede6b6eb60ee67n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 6) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 6) { r.Report.Damaged = true; return false; }
         lastOrdinal = 6;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3397,11 +3397,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x < -2048) { x = -2048; r.Report.Oor++; } else if (x > 2047) { x = 2047; r.Report.Oor++; }
           value.velX = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.velX === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.velX === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x6cede5b6eb60ecb4n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 7) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 7) { r.Report.Damaged = true; return false; }
         lastOrdinal = 7;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3409,11 +3409,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x < -2048) { x = -2048; r.Report.Oor++; } else if (x > 2047) { x = 2047; r.Report.Oor++; }
           value.velY = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.velY === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.velY === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x6cede8b6eb60f1cdn: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 8) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 8) { r.Report.Damaged = true; return false; }
         lastOrdinal = 8;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3421,11 +3421,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x < -2048) { x = -2048; r.Report.Oor++; } else if (x > 2047) { x = 2047; r.Report.Oor++; }
           value.velZ = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.velZ === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.velZ === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x7f69d4b5288ba9cfn: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 9) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 9) { r.Report.Damaged = true; return false; }
         lastOrdinal = 9;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3433,11 +3433,11 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 1000) { x = 1000; r.Report.Oor++; }
           value.health = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.health === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.health === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xa0b610205f2c6e01n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 10) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 10) { r.Report.Damaged = true; return false; }
         lastOrdinal = 10;
         if (entry.Shape.Kind !== 30 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         const unknownBefore = r.Report.Unknown;
@@ -3466,37 +3466,37 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
             }
           }
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.weapon === 0) && r.Report.Unknown === unknownBefore) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.weapon === 0) && r.Report.Unknown === unknownBefore) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x7f6308be8ab37fc0n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 11) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 11) { r.Report.Damaged = true; return false; }
         lastOrdinal = 11;
         if (entry.Shape.Kind !== 9 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
           x = BigInt.asUintN(0, x);
           value.damage = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.damage === 0n)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.damage === 0n)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x11a44fc1d1243da7n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 12) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 12) { r.Report.Damaged = true; return false; }
         lastOrdinal = 12;
         if (entry.Shape.Kind !== 1 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Damaged = true; return false; } value.moving = v !== 0n; }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.moving === false)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.moving === false)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x7674cfd19b9031can: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 13) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 13) { r.Report.Damaged = true; return false; }
         lastOrdinal = 13;
         if (entry.Shape.Kind !== 1 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Damaged = true; return false; } value.firing = v !== 0n; }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.firing === false)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.firing === false)) { r.Report.Damaged = true; return false; }
         break;
       }
-      default: { if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
+      default: { if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
     }
   }
 }
@@ -3539,7 +3539,7 @@ export function MixedStatLoadMessageBody(r, value, elideEmpty) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Damaged = true; return false; }
     if (ref === 0n) {
-      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
       return true;
     }
     const entry = tableMessageEntry(r.Vocabulary, ref);
@@ -3548,7 +3548,7 @@ export function MixedStatLoadMessageBody(r, value, elideEmpty) {
     any = true;
     switch (entry.Id) {
       case 0x80ab75f0866dbf65n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
         lastOrdinal = 0;
         if (entry.Shape.Kind !== 6 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3556,11 +3556,11 @@ export function MixedStatLoadMessageBody(r, value, elideEmpty) {
           if (x > 255n) { x = 255n; r.Report.Oor++; }
           value.statId = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.statId === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.statId === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x52076675ec13a0c1n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
         lastOrdinal = 1;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3568,10 +3568,10 @@ export function MixedStatLoadMessageBody(r, value, elideEmpty) {
           if (x < -512) { x = -512; r.Report.Oor++; } else if (x > 511) { x = 511; r.Report.Oor++; }
           value.delta = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.delta === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.delta === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
-      default: { if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
+      default: { if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
     }
   }
 }
@@ -3624,7 +3624,7 @@ export function MixedHitEventLoadMessageBody(r, value, elideEmpty) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Damaged = true; return false; }
     if (ref === 0n) {
-      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
       return true;
     }
     const entry = tableMessageEntry(r.Vocabulary, ref);
@@ -3633,7 +3633,7 @@ export function MixedHitEventLoadMessageBody(r, value, elideEmpty) {
     any = true;
     switch (entry.Id) {
       case 0xb7bc9ac015a25050n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
         lastOrdinal = 0;
         if (entry.Shape.Kind !== 7 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3641,11 +3641,11 @@ export function MixedHitEventLoadMessageBody(r, value, elideEmpty) {
           if (x > 4095n) { x = 4095n; r.Report.Oor++; }
           value.targetId = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.targetId === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.targetId === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x7f6308be8ab37fc0n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
         lastOrdinal = 1;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3653,11 +3653,11 @@ export function MixedHitEventLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 4095) { x = 4095; r.Report.Oor++; }
           value.damage = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.damage === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.damage === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x01fbc365b059b925n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 2) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 2) { r.Report.Damaged = true; return false; }
         lastOrdinal = 2;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3665,18 +3665,18 @@ export function MixedHitEventLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 7) { x = 7; r.Report.Oor++; }
           value.hitKind = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.hitKind === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.hitKind === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x126167908c9aa52dn: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 3) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 3) { r.Report.Damaged = true; return false; }
         lastOrdinal = 3;
         if (entry.Shape.Kind !== 1 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Damaged = true; return false; } value.crit = v !== 0n; }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.crit === false)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.crit === false)) { r.Report.Damaged = true; return false; }
         break;
       }
-      default: { if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
+      default: { if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
     }
   }
 }
@@ -3719,7 +3719,7 @@ export function MixedChatEventLoadMessageBody(r, value, elideEmpty) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Damaged = true; return false; }
     if (ref === 0n) {
-      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
       return true;
     }
     const entry = tableMessageEntry(r.Vocabulary, ref);
@@ -3728,7 +3728,7 @@ export function MixedChatEventLoadMessageBody(r, value, elideEmpty) {
     any = true;
     switch (entry.Id) {
       case 0xa5013e9ad5caeda4n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
         lastOrdinal = 0;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3736,11 +3736,11 @@ export function MixedChatEventLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 3) { x = 3; r.Report.Oor++; }
           value.channel = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.channel === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.channel === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xfbf1ac4d96ebd022n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
         lastOrdinal = 1;
         if (entry.Shape.Kind !== 7 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3748,10 +3748,10 @@ export function MixedChatEventLoadMessageBody(r, value, elideEmpty) {
           if (x > 4095n) { x = 4095n; r.Report.Oor++; }
           value.speaker = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.speaker === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.speaker === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
-      default: { if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
+      default: { if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
     }
   }
 }
@@ -3794,7 +3794,7 @@ export function MixedPickupEventLoadMessageBody(r, value, elideEmpty) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Damaged = true; return false; }
     if (ref === 0n) {
-      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
       return true;
     }
     const entry = tableMessageEntry(r.Vocabulary, ref);
@@ -3803,7 +3803,7 @@ export function MixedPickupEventLoadMessageBody(r, value, elideEmpty) {
     any = true;
     switch (entry.Id) {
       case 0x9e7fd06d864fbd56n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
         lastOrdinal = 0;
         if (entry.Shape.Kind !== 7 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3811,11 +3811,11 @@ export function MixedPickupEventLoadMessageBody(r, value, elideEmpty) {
           if (x > 1023n) { x = 1023n; r.Report.Oor++; }
           value.itemId = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.itemId === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.itemId === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x8113fe7ea2b16969n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
         lastOrdinal = 1;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -3823,10 +3823,10 @@ export function MixedPickupEventLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 255) { x = 255; r.Report.Oor++; }
           value.amount = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.amount === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.amount === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
-      default: { if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
+      default: { if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
     }
   }
 }
@@ -4071,7 +4071,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Damaged = true; return false; }
     if (ref === 0n) {
-      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
       return true;
     }
     const entry = tableMessageEntry(r.Vocabulary, ref);
@@ -4080,7 +4080,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
     any = true;
     switch (entry.Id) {
       case 0xaa38aca481f528a8n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
         lastOrdinal = 0;
         if (entry.Shape.Kind !== 7 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4088,11 +4088,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x > 65535n) { x = 65535n; r.Report.Oor++; }
           value.sequence = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.sequence === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.sequence === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x0dbe005c56697c3en: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 1) { r.Report.Damaged = true; return false; }
         lastOrdinal = 1;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4100,11 +4100,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 65535) { x = 65535; r.Report.Oor++; }
           value.ackSequence = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.ackSequence === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.ackSequence === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x9bae0da8b829ee03n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 2) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 2) { r.Report.Damaged = true; return false; }
         lastOrdinal = 2;
         if (entry.Shape.Kind !== 8 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4112,33 +4112,33 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x > 4294967295n) { x = 4294967295n; r.Report.Oor++; }
           value.ackBits = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.ackBits === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.ackBits === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xb7d7b5650a590b05n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 3) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 3) { r.Report.Damaged = true; return false; }
         lastOrdinal = 3;
         if (entry.Shape.Kind !== 9 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
           x = BigInt.asUintN(64, x);
           value.sessionId = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.sessionId === 0n)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.sessionId === 0n)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x6d7b98e2d095967en: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 4) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 4) { r.Report.Damaged = true; return false; }
         lastOrdinal = 4;
         if (entry.Shape.Kind !== 8 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
           x = BigInt.asUintN(32, x);
           value.clientId = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.clientId === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.clientId === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x73a94c71d60dc0d8n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 5) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 5) { r.Report.Damaged = true; return false; }
         lastOrdinal = 5;
         if (entry.Shape.Kind !== 9 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4146,11 +4146,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < 0n) { x = 0n; r.Report.Oor++; } else if (x > 18446744073709551615n) { x = 18446744073709551615n; r.Report.Oor++; }
           value.nonce = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.nonce === 0n)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.nonce === 0n)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x3eee6b51be54fc85n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 6) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 6) { r.Report.Damaged = true; return false; }
         lastOrdinal = 6;
         if (entry.Shape.Kind !== 5 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4158,11 +4158,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < -1000000000000n) { x = -1000000000000n; r.Report.Oor++; } else if (x > 1000000000000n) { x = 1000000000000n; r.Report.Oor++; }
           value.worldTime = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.worldTime === 0n)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.worldTime === 0n)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x7bbc035f7b6d0112n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 7) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 7) { r.Report.Damaged = true; return false; }
         lastOrdinal = 7;
         if (entry.Shape.Kind !== 9 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4170,11 +4170,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x > 281474976710655n) { x = 281474976710655n; r.Report.Oor++; }
           value.frameTick = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.frameTick === 0n)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.frameTick === 0n)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x3c460475f9be69c6n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 8) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 8) { r.Report.Damaged = true; return false; }
         lastOrdinal = 8;
         if (entry.Shape.Kind !== 22 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4182,17 +4182,17 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 16776960) { x = 16776960; r.Report.Oor++; }
           value.serverTime = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.serverTime === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.serverTime === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x935d0fb07bb3822an: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 9) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 9) { r.Report.Damaged = true; return false; }
         lastOrdinal = 9;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
           let keep = Number(n);
-          if (n === 0n && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+          if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
           if (keep > 8) { keep = 8; r.Report.Oor++; }
           for (let i = 0n; i < n; i++) {
             const p = i < BigInt(keep) ? value.entities[Number(i)] : null;
@@ -4212,13 +4212,13 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         break;
       }
       case 0xee639cad45b1994cn: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 10) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 10) { r.Report.Damaged = true; return false; }
         lastOrdinal = 10;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
           let keep = Number(n);
-          if (n === 0n && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+          if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
           if (keep > 80) { keep = 80; r.Report.Oor++; }
           for (let i = 0n; i < n; i++) {
             const p = i < BigInt(keep) ? value.stats[Number(i)] : null;
@@ -4238,7 +4238,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         break;
       }
       case 0x2e35dc5321aa5790n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 11) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 11) { r.Report.Damaged = true; return false; }
         lastOrdinal = 11;
         if (entry.Shape.Kind !== 15 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Damaged = true; return false; }
@@ -4272,13 +4272,13 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         break;
       }
       case 0x5759ce7586bbb5a3n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 12) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 12) { r.Report.Damaged = true; return false; }
         lastOrdinal = 12;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 6) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
           let keep = Number(n);
-          if (n === 0n && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+          if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
           if (keep > 4) { keep = 4; r.Report.Oor++; }
           for (let i = 0n; i < n; i++) {
             const p = i < BigInt(keep) ? value.loadout[Number(i)] : null;
@@ -4300,7 +4300,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         break;
       }
       case 0x13a62f542cf8e86en: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 13) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 13) { r.Report.Damaged = true; return false; }
         lastOrdinal = 13;
         if (entry.Shape.Kind !== 12 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }
@@ -4314,11 +4314,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           for (let i = 0; i < kept; i++) { value.playerName[i] = r.Bits.Buffer[start + i]; }
           value.playerNameLength = kept;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.playerNameLength === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.playerNameLength === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xcfb8a9d063b5e9e5n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 14) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 14) { r.Report.Damaged = true; return false; }
         lastOrdinal = 14;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 6) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }
@@ -4330,11 +4330,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           for (let i = 0; i < kept; i++) { value.payload[i] = r.Bits.Buffer[start + i]; }
           value.payloadLength = kept;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.payloadLength === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.payloadLength === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xdbaf7be5e24296c9n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 15) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 15) { r.Report.Damaged = true; return false; }
         lastOrdinal = 15;
         if (entry.Shape.Kind !== 10 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } const b = Number(v[0] & 0xffffffffn);
@@ -4343,11 +4343,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < -1) { x = -1; r.Report.Oor++; } else if (x > 1) { x = 1; r.Report.Oor++; }
           value.aimX = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (Object.is(value.aimX, 0))) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (Object.is(value.aimX, 0))) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xdbaf7ae5e2429516n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 16) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 16) { r.Report.Damaged = true; return false; }
         lastOrdinal = 16;
         if (entry.Shape.Kind !== 10 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } const b = Number(v[0] & 0xffffffffn);
@@ -4356,11 +4356,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < -1) { x = -1; r.Report.Oor++; } else if (x > 1) { x = 1; r.Report.Oor++; }
           value.aimY = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (Object.is(value.aimY, 0))) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (Object.is(value.aimY, 0))) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xdbaf79e5e2429363n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 17) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 17) { r.Report.Damaged = true; return false; }
         lastOrdinal = 17;
         if (entry.Shape.Kind !== 10 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } const b = Number(v[0] & 0xffffffffn);
@@ -4369,11 +4369,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < -1) { x = -1; r.Report.Oor++; } else if (x > 1) { x = 1; r.Report.Oor++; }
           value.aimZ = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (Object.is(value.aimZ, 0))) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (Object.is(value.aimZ, 0))) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x9cef31fff7e2e457n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 18) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 18) { r.Report.Damaged = true; return false; }
         lastOrdinal = 18;
         if (entry.Shape.Kind !== 10 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } const b = Number(v[0] & 0xffffffffn);
@@ -4381,11 +4381,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           let x = TableMessageFloat32FromBits(b);
           value.recoil = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (Object.is(value.recoil, 0))) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (Object.is(value.recoil, 0))) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x5ab3f9c9341f6c04n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 19) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 19) { r.Report.Damaged = true; return false; }
         lastOrdinal = 19;
         if (entry.Shape.Kind !== 11 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
@@ -4393,11 +4393,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           let x = TableMessageFloat64FromBits(v[0]);
           value.drift = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (Object.is(value.drift, 0))) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (Object.is(value.drift, 0))) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xa3348580461faf16n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 20) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 20) { r.Report.Damaged = true; return false; }
         lastOrdinal = 20;
         if (entry.Shape.Kind !== 19 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4405,11 +4405,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           x = BigInt.asUintN(128, x);
           value.wideKey = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.wideKey === 0n)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.wideKey === 0n)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xd61bdd7908af2642n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 21) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 21) { r.Report.Damaged = true; return false; }
         lastOrdinal = 21;
         if (entry.Shape.Kind !== 18 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4418,11 +4418,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < -1267650600228229401496703205376n) { x = -1267650600228229401496703205376n; r.Report.Oor++; } else if (x > 1267650600228229401496703205376n) { x = 1267650600228229401496703205376n; r.Report.Oor++; }
           value.flux = x;
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.flux === 0n)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.flux === 0n)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xbf30e00dc53307a9n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 22) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 22) { r.Report.Damaged = true; return false; }
         lastOrdinal = 22;
         if (entry.Shape.Kind !== 26 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4430,11 +4430,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 64000) { x = 64000; r.Report.Oor++; }
           value.ping = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.ping === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.ping === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x560d6527ccd8515fn: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 23) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 23) { r.Report.Damaged = true; return false; }
         lastOrdinal = 23;
         if (entry.Shape.Kind !== 8 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4442,19 +4442,19 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x > 16777215n) { x = 16777215n; r.Report.Oor++; }
           value.crcHint = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.crcHint === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.crcHint === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xc08292176cfd8672n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 24) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 24) { r.Report.Damaged = true; return false; }
         lastOrdinal = 24;
         if (entry.Shape.Kind !== 1 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Damaged = true; return false; } value.hasExtra = v !== 0n; }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.hasExtra === true)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.hasExtra === true)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0xfd29ee12a979cb69n: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 25) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 25) { r.Report.Damaged = true; return false; }
         lastOrdinal = 25;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4462,11 +4462,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 255) { x = 255; r.Report.Oor++; }
           value.extra = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.extra === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.extra === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
       case 0x78101ac0aa8cbcfen: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 26) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 26) { r.Report.Damaged = true; return false; }
         lastOrdinal = 26;
         if (entry.Shape.Kind !== 4 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
@@ -4474,10 +4474,10 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (x < 0) { x = 0; r.Report.Oor++; } else if (x > 15) { x = 15; r.Report.Oor++; }
           value.idleTicks = Number(x);
         }
-        if (r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n && (value.idleTicks === 0)) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.idleTicks === 0)) { r.Report.Damaged = true; return false; }
         break;
       }
-      default: { if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
+      default: { if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
     }
   }
 }
@@ -4513,7 +4513,7 @@ export function FixedTableLoadMessageBody(r, value, elideEmpty) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Damaged = true; return false; }
     if (ref === 0n) {
-      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0x8cd93f14586298e7n) { r.Report.Damaged = true; return false; }
+      if (elideEmpty && !any && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
       return true;
     }
     const entry = tableMessageEntry(r.Vocabulary, ref);
@@ -4522,13 +4522,13 @@ export function FixedTableLoadMessageBody(r, value, elideEmpty) {
     any = true;
     switch (entry.Id) {
       case 0x7ce4fd9430e80cean: {
-        if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
+        if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && lastOrdinal >= 0) { r.Report.Damaged = true; return false; }
         lastOrdinal = 0;
         if (entry.Shape.Kind !== 13 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         if (!BenchMixedLoadMessageBody(r, value.value, true)) { return false; }
         break;
       }
-      default: { if (r.Vocabulary.BuildVersion === 0x41d3559378bfa852n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
+      default: { if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }
     }
   }
 }

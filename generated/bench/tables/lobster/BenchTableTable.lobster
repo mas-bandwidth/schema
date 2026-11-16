@@ -333,7 +333,7 @@ let TableEventDescriptor = schema_rt.union_of(schema_rt.UnionDescriptor {
 let TableEntityBlock = schema_rt.register_block(schema_rt.BlockLayout {
     table: "TableEntity",
     max_bytes: 128,
-    build_version: 0x9859b8059782ac26,
+    build_version: 4484788518692264406,
     projection: schema_rt.BlockRecord {
                 name: "TableEntity",
                 size: 88,
@@ -365,7 +365,7 @@ let TableEntityBlock = schema_rt.register_block(schema_rt.BlockLayout {
 let TableStatBlock = schema_rt.register_block(schema_rt.BlockLayout {
     table: "TableStat",
     max_bytes: 64,
-    build_version: 0x9859b8059782ac26,
+    build_version: 4484788518692264406,
     projection: schema_rt.BlockRecord {
                 name: "TableStat",
                 size: 32,
@@ -389,7 +389,7 @@ let TableEntityCookTable = schema_rt.cook_table(schema_rt.CookTable {
     record: 64,
     region_align: 8,
     extent: false,
-    build: 0x9859b8059782ac26,
+    build: 4484788518692264406,
     fields: [
         schema_rt.CookField { off: 0, size: 4 },
         schema_rt.CookField { off: 4, size: 4 },
@@ -411,17 +411,17 @@ let TableEntityCookTable = schema_rt.cook_table(schema_rt.CookTable {
 // TableEntityCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
 def TableEntityCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0x9859b8059782ac26)
+    return schema_rt.cook_measure(rec·, 4484788518692264406)
 
 // TableEntityCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
 def TableEntityCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0x9859b8059782ac26, big·)
+    return schema_rt.cook_write(rec·, 4484788518692264406, big·)
 
 // TableEntityReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
 def TableEntityReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0x9859b8059782ac26, TableEntityDescriptor, TableEntityCookTable)
+    return schema_rt.cook_read(data·, 4484788518692264406, TableEntityDescriptor, TableEntityCookTable)
 
 // TableEntityOpen matches the cooked header for TableEntity (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
@@ -435,7 +435,7 @@ def TableEntityOpen(data·:string) -> bool:
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
 def TableEntityOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0x9859b8059782ac26, 8, 64, lead·, nobuf·)
+    return schema_rt.cook_open_reason(data·, 4484788518692264406, 8, 64, lead·, nobuf·)
 
 // TableStatCookTable — TableStat's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -447,7 +447,7 @@ let TableStatCookTable = schema_rt.cook_table(schema_rt.CookTable {
     record: 8,
     region_align: 8,
     extent: false,
-    build: 0x9859b8059782ac26,
+    build: 4484788518692264406,
     fields: [
         schema_rt.CookField { off: 0, size: 4 },
         schema_rt.CookField { off: 4, size: 4 }
@@ -457,17 +457,17 @@ let TableStatCookTable = schema_rt.cook_table(schema_rt.CookTable {
 // TableStatCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
 def TableStatCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0x9859b8059782ac26)
+    return schema_rt.cook_measure(rec·, 4484788518692264406)
 
 // TableStatCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
 def TableStatCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0x9859b8059782ac26, big·)
+    return schema_rt.cook_write(rec·, 4484788518692264406, big·)
 
 // TableStatReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
 def TableStatReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0x9859b8059782ac26, TableStatDescriptor, TableStatCookTable)
+    return schema_rt.cook_read(data·, 4484788518692264406, TableStatDescriptor, TableStatCookTable)
 
 // TableStatOpen matches the cooked header for TableStat (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
@@ -481,7 +481,7 @@ def TableStatOpen(data·:string) -> bool:
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
 def TableStatOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0x9859b8059782ac26, 4, 8, lead·, nobuf·)
+    return schema_rt.cook_open_reason(data·, 4484788518692264406, 4, 8, lead·, nobuf·)
 
 // TableMixedCookTable — TableMixed's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -493,7 +493,7 @@ let TableMixedCookTable = schema_rt.cook_table(schema_rt.CookTable {
     record: 1352,
     region_align: 8,
     extent: false,
-    build: 0x9859b8059782ac26,
+    build: 4484788518692264406,
     fields: [
         schema_rt.CookField { off: 0, size: 2 },
         schema_rt.CookField { off: 4, size: 4 },
@@ -529,17 +529,17 @@ let TableMixedCookTable = schema_rt.cook_table(schema_rt.CookTable {
 // TableMixedCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
 def TableMixedCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0x9859b8059782ac26)
+    return schema_rt.cook_measure(rec·, 4484788518692264406)
 
 // TableMixedCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
 def TableMixedCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0x9859b8059782ac26, big·)
+    return schema_rt.cook_write(rec·, 4484788518692264406, big·)
 
 // TableMixedReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
 def TableMixedReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0x9859b8059782ac26, TableMixedDescriptor, TableMixedCookTable)
+    return schema_rt.cook_read(data·, 4484788518692264406, TableMixedDescriptor, TableMixedCookTable)
 
 // TableMixedOpen matches the cooked header for TableMixed (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
@@ -553,7 +553,7 @@ def TableMixedOpen(data·:string) -> bool:
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
 def TableMixedOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0x9859b8059782ac26, 8, 1352, lead·, nobuf·)
+    return schema_rt.cook_open_reason(data·, 4484788518692264406, 8, 1352, lead·, nobuf·)
 
 // TableHitEventCookTable — TableHitEvent's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -565,7 +565,7 @@ let TableHitEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     record: 16,
     region_align: 8,
     extent: false,
-    build: 0x9859b8059782ac26,
+    build: 4484788518692264406,
     fields: [
         schema_rt.CookField { off: 0, size: 4 },
         schema_rt.CookField { off: 4, size: 4 },
@@ -577,17 +577,17 @@ let TableHitEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
 // TableHitEventCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
 def TableHitEventCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0x9859b8059782ac26)
+    return schema_rt.cook_measure(rec·, 4484788518692264406)
 
 // TableHitEventCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
 def TableHitEventCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0x9859b8059782ac26, big·)
+    return schema_rt.cook_write(rec·, 4484788518692264406, big·)
 
 // TableHitEventReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
 def TableHitEventReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0x9859b8059782ac26, TableHitEventDescriptor, TableHitEventCookTable)
+    return schema_rt.cook_read(data·, 4484788518692264406, TableHitEventDescriptor, TableHitEventCookTable)
 
 // TableHitEventOpen matches the cooked header for TableHitEvent (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
@@ -601,7 +601,7 @@ def TableHitEventOpen(data·:string) -> bool:
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
 def TableHitEventOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0x9859b8059782ac26, 4, 16, lead·, nobuf·)
+    return schema_rt.cook_open_reason(data·, 4484788518692264406, 4, 16, lead·, nobuf·)
 
 // TableChatEventCookTable — TableChatEvent's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -613,7 +613,7 @@ let TableChatEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     record: 8,
     region_align: 8,
     extent: false,
-    build: 0x9859b8059782ac26,
+    build: 4484788518692264406,
     fields: [
         schema_rt.CookField { off: 0, size: 4 },
         schema_rt.CookField { off: 4, size: 4 }
@@ -623,17 +623,17 @@ let TableChatEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
 // TableChatEventCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
 def TableChatEventCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0x9859b8059782ac26)
+    return schema_rt.cook_measure(rec·, 4484788518692264406)
 
 // TableChatEventCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
 def TableChatEventCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0x9859b8059782ac26, big·)
+    return schema_rt.cook_write(rec·, 4484788518692264406, big·)
 
 // TableChatEventReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
 def TableChatEventReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0x9859b8059782ac26, TableChatEventDescriptor, TableChatEventCookTable)
+    return schema_rt.cook_read(data·, 4484788518692264406, TableChatEventDescriptor, TableChatEventCookTable)
 
 // TableChatEventOpen matches the cooked header for TableChatEvent (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
@@ -647,7 +647,7 @@ def TableChatEventOpen(data·:string) -> bool:
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
 def TableChatEventOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0x9859b8059782ac26, 4, 8, lead·, nobuf·)
+    return schema_rt.cook_open_reason(data·, 4484788518692264406, 4, 8, lead·, nobuf·)
 
 // TablePickupEventCookTable — TablePickupEvent's cooked storage as data (docs/SPEC-TABLES.md §7.2):
 // each field's pieces and where a reference points, the same numbers
@@ -659,7 +659,7 @@ let TablePickupEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     record: 8,
     region_align: 8,
     extent: false,
-    build: 0x9859b8059782ac26,
+    build: 4484788518692264406,
     fields: [
         schema_rt.CookField { off: 0, size: 4 },
         schema_rt.CookField { off: 4, size: 4 }
@@ -669,17 +669,17 @@ let TablePickupEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
 // TablePickupEventCookMeasure is the whole file's length: the header, the region and
 // the directory, in int64 (docs/SPEC-TABLES.md §7.6).
 def TablePickupEventCookMeasure(rec·:schema_rt.Record) -> int:
-    return schema_rt.cook_measure(rec·, 0x9859b8059782ac26)
+    return schema_rt.cook_measure(rec·, 4484788518692264406)
 
 // TablePickupEventCook writes the cook of one loaded record in the order the caller
 // names, byte for byte with the tool's writer (docs/SPEC-TABLES.md §7.6).
 def TablePickupEventCook(rec·:schema_rt.Record, big·:bool) -> string:
-    return schema_rt.cook_write(rec·, 0x9859b8059782ac26, big·)
+    return schema_rt.cook_write(rec·, 4484788518692264406, big·)
 
 // TablePickupEventReadCook reads a cooked file back into the record model, which the
 // wire's save then writes: the proof no fact was lost (§7.5, Uncook).
 def TablePickupEventReadCook(data·:string) -> schema_rt.Record?:
-    return schema_rt.cook_read(data·, 0x9859b8059782ac26, TablePickupEventDescriptor, TablePickupEventCookTable)
+    return schema_rt.cook_read(data·, 4484788518692264406, TablePickupEventDescriptor, TablePickupEventCookTable)
 
 // TablePickupEventOpen matches the cooked header for TablePickupEvent (docs/SPEC-TABLES.md §7.1):
 // the magic and the order it establishes, the build version, the reserved
@@ -693,7 +693,7 @@ def TablePickupEventOpen(data·:string) -> bool:
 // data is exactly the extent the caller claims; lead is how far past an
 // aligned base the buffer sits, and nobuf is a NULL buffer.
 def TablePickupEventOpenReason(data·:string, lead·:int, nobuf·:bool) -> string:
-    return schema_rt.cook_open_reason(data·, 0x9859b8059782ac26, 4, 8, lead·, nobuf·)
+    return schema_rt.cook_open_reason(data·, 4484788518692264406, 4, 8, lead·, nobuf·)
 
 // TableEventCookUnion — union TableEvent's cooked overlay (docs/SPEC-TABLES.md §7.2):
 // the tag at zero, the set arm at the arms' shared offset; the rest zero.
@@ -712,7 +712,7 @@ let TableEventCookUnion = schema_rt.cook_union_of(schema_rt.CookUnion {
 
 // BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20):
 // the one digest a block carries, a sender announces and the cook names.
-let BuildVersion = 0x9859b8059782ac26
+let BuildVersion = 4484788518692264406
 
 schema_rt.set_unit("benchtable", 0x4c9383ebe3cde248)
 schema_rt.view_table(TableEntityDescriptor, "BenchTable.schema", "", []::string)
@@ -5045,7 +5045,7 @@ schema_rt.register_fixed_record_codec(TableMixedFixedRecordCodec { name: "TableM
 schema_rt.json_flags("TableEntity", "damage", ["Bleeding", "Burning", "Stunned", "Slowed", "Poisoned", "Shielded", "Airborne", "Downed"]::string)
 // BenchTableMessageUnit — the unit's announcement and build version, the message
 // form's compile-time constants (docs/SPEC-TABLES.md §3.3)
-let _BenchTableMessageUnit = schema_rt.message_unit("\x01\x01\x09\x26\xac\x82\x97\x05\xb8Y\x98\x02\x0e\xbf\x06\x06\xbc\x06\xa4\xed\xca\xd5\x9a\x3e\x01\xa5\x04\x01\x02\x00\x22\xd0\xeb\x96M\xac\xf1\xfb\x07\x01\x0c\x00\x12g\xe3xf\xfd\xfc\x23\x07\x01\x0c\x00\x0e1gv57K\xcb\x04\x01\x0f\xfd\xff\x01\xc12gv58K\xcb\x04\x01\x0f\xfd\xff\x01\xa8-gv55K\xcb\x04\x01\x0f\xfd\xff\x01\xe8\x16\x8ey\x19\x8eM\xb5\x07\x01\x09\x00\xb1\xc1\x0c\xa9e\xf6\xa9S\x07\x01\x09\x00g\xee\x60\xeb\xb6\xe6\xedl\x04\x01\x0c\xff\x1f\xb4\xec\x60\xeb\xb6\xe5\xedl\x04\x01\x0c\xff\x1f\xcd\xf1\x60\xeb\xb6\xe8\xedl\x04\x01\x0c\xff\x1f\xcf\xa9\x8b\x28\xb5\xd4i\x7f\x04\x01\x0a\x00\x01n\x2c_ \x10\xb6\xa0\x1e\xc0\x7f\xb3\x8a\xbe\x08c\x7f\x09\x01\x08\x00\xa7\x3d\x24\xd1\xc1O\xa4\x11\x01\xca1\x90\x9b\xd1\xcftv\x01PP\xa2\x15\xc0\x9a\xbc\xb7\x07\x01\x0c\x00\xc0\x7f\xb3\x8a\xbe\x08c\x7f\x04\x01\x0c\x00\x25\xb9Y\xb0e\xc3\xfb\x01\x04\x01\x03\x00-\xa5\x9a\x8c\x90ga\x12\x01\xfd\x15\xa1\x1a\xd9pZj\x07\x00\xa8\x28\xf5\x81\xa4\xac8\xaa\x07\x01\x10\x00\x3e\x7ciV\x5c\x00\xbe\x0d\x04\x01\x10\x00\x03\xee\x29\xb8\xa8\x0d\xae\x9b\x08\x01 \x00\x05\x0bY\x0ae\xb5\xd7\xb7\x09\x00\x7e\x96\x95\xd0\xe2\x98\x7bm\x08\x00\xd8\xc0\x0d\xd6qL\xa9s\x09\x01\x3f\x01\x85\xfcT\xbeQk\xee\x3e\x05\x01\x29\xff\xbf\xa8\xca\x9a\x3a\x12\x01m\x7b_\x03\xbc\x7b\x09\x010\x00\xc6i\xbe\xf9u\x04F\x3c\x0a\x02\x00\x00\x00\x00\x00\xff\x7fG\x0a\xd7\x23\x3c\x2a\x82\xb3\x7b\xb0\x0f\x5d\x93\x0e\x01\x08\x0dL\x99\xb1E\xad\x9cc\xee\x0e\x00P\x0d\x90W\xaa\x21S\xdc5.\x0f\xa3\xb5\xbb\x86u\xceYW\x0e\x04\x04\x06\x00n\xe8\xf8\x2cT\x2f\xa6\x13\x0c\x0f\xe5\xe9\xb5c\xd0\xa9\xb8\xcf\x0e\x00\x10\x06\x00\xc9\x96B\xe2\xe5\x7b\xaf\xdb\x0a\x02\x00\x00\x80\xbf\x00\x00\x80\x3f\x0a\xd7\x23\x3c\x16\x95B\xe2\xe5z\xaf\xdb\x0a\x02\x00\x00\x80\xbf\x00\x00\x80\x3f\x0a\xd7\x23\x3cc\x93B\xe2\xe5y\xaf\xdb\x0a\x02\x00\x00\x80\xbf\x00\x00\x80\x3f\x0a\xd7\x23\x3cW\xe4\xe2\xf7\xff1\xef\x9c\x0a\x00\x04l\x1f4\xc9\xf9\xb3Z\x0b\x16\xaf\x1fF\x80\x854\xa3\x09\x00B\x26\xaf\x08y\xdd\x1b\xd6\x05\x01\x3d\xff\xff\x9f\xf6\xf4\xac\xdb\xe0\x1b\xa9\x073\xc5\x0d\xe00\xbf\x0a\x02\x00\x00\x00\x00\x00\x00zC\x0a\xd7\x23\x3c_Q\xd8\xcc\x27e\x0dV\x08\x01\x18\x00r\x86\xfdl\x17\x92\x82\xc0\x01i\xcby\xa9\x12\xee\x29\xfd\x04\x01\x08\x00\xfe\xbc\x8c\xaa\xc0\x1a\x10x\x04\x01\x04\x00V\xbdO\x86m\xd0\x7f\x9e\x07\x01\x0a\x00ii\xb1\xa2\x7e\xfe\x13\x81\x04\x01\x08\x00e\xbfm\x86\xf0u\xab\x80\x06\x01\x08\x00\xc1\xa0\x13\xecuf\x07R\x04\x01\x0a\xff\x07\x0c\xcff\x27\xe1\xee\x90\xa7\x00v\x84\xda5\xa8\xef\xbf\x9f\x00\x95\x8a\x92\x83\x17\xbb\x8b\x18\x00\xf1r\xf2\xc2\xb9g6\x2c\x00\xf6U\xd7\x00\x1b\xb4\xa8\x0c\x00N\x1a\xb2\xfa\x19\xc8_\x98\x00Uj\x08\xc3G\x04\x9d\x22\x00\x9d\x8f\x22\xa7I\x7b\x1c\x01\x00_\xe1\x23\x11nV\xf7\x89\x00iD\x3b\x8b1\x25\x7f\x8d\x00\x16x\x5b\x28\xcc\x0d\xcd\xd9\x00vR\xff\xa8\xae\x16\xdc\x04\x00\x17\x92\x12A\xc3\x3b\xe55\x001\x88\xde\xb0\x2f\x28\xc8\x2c\x004\xb3\x8c\xbc\x21\xda\xba \x00\xaa\x80\x060\x19\x28s3\x0d\x8b4\x5b\x0b\x91\x8d\xa3\xf2\x0de\xb7\xec\x86\x1c\xa4\xa3\x9f\x0d\x00\xfe\xff\xff\xff\xff\xff\xff\xff\xfd\xff\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x00\x00\x00", 0x9859b8059782ac26)
+let _BenchTableMessageUnit = schema_rt.message_unit("\x01\x01\x09\xd6\x19gue\x2b\x3d\x3e\x02\x0e\xbf\x06\x06\xbc\x06\xa4\xed\xca\xd5\x9a\x3e\x01\xa5\x04\x01\x02\x00\x22\xd0\xeb\x96M\xac\xf1\xfb\x07\x01\x0c\x00\x12g\xe3xf\xfd\xfc\x23\x07\x01\x0c\x00\x0e1gv57K\xcb\x04\x01\x0f\xfd\xff\x01\xc12gv58K\xcb\x04\x01\x0f\xfd\xff\x01\xa8-gv55K\xcb\x04\x01\x0f\xfd\xff\x01\xe8\x16\x8ey\x19\x8eM\xb5\x07\x01\x09\x00\xb1\xc1\x0c\xa9e\xf6\xa9S\x07\x01\x09\x00g\xee\x60\xeb\xb6\xe6\xedl\x04\x01\x0c\xff\x1f\xb4\xec\x60\xeb\xb6\xe5\xedl\x04\x01\x0c\xff\x1f\xcd\xf1\x60\xeb\xb6\xe8\xedl\x04\x01\x0c\xff\x1f\xcf\xa9\x8b\x28\xb5\xd4i\x7f\x04\x01\x0a\x00\x01n\x2c_ \x10\xb6\xa0\x1e\xc0\x7f\xb3\x8a\xbe\x08c\x7f\x09\x01\x08\x00\xa7\x3d\x24\xd1\xc1O\xa4\x11\x01\xca1\x90\x9b\xd1\xcftv\x01PP\xa2\x15\xc0\x9a\xbc\xb7\x07\x01\x0c\x00\xc0\x7f\xb3\x8a\xbe\x08c\x7f\x04\x01\x0c\x00\x25\xb9Y\xb0e\xc3\xfb\x01\x04\x01\x03\x00-\xa5\x9a\x8c\x90ga\x12\x01\xfd\x15\xa1\x1a\xd9pZj\x07\x00\xa8\x28\xf5\x81\xa4\xac8\xaa\x07\x01\x10\x00\x3e\x7ciV\x5c\x00\xbe\x0d\x04\x01\x10\x00\x03\xee\x29\xb8\xa8\x0d\xae\x9b\x08\x01 \x00\x05\x0bY\x0ae\xb5\xd7\xb7\x09\x00\x7e\x96\x95\xd0\xe2\x98\x7bm\x08\x00\xd8\xc0\x0d\xd6qL\xa9s\x09\x01\x3f\x01\x85\xfcT\xbeQk\xee\x3e\x05\x01\x29\xff\xbf\xa8\xca\x9a\x3a\x12\x01m\x7b_\x03\xbc\x7b\x09\x010\x00\xc6i\xbe\xf9u\x04F\x3c\x0a\x02\x00\x00\x00\x00\x00\xff\x7fG\x0a\xd7\x23\x3c\x2a\x82\xb3\x7b\xb0\x0f\x5d\x93\x0e\x01\x08\x0dL\x99\xb1E\xad\x9cc\xee\x0e\x00P\x0d\x90W\xaa\x21S\xdc5.\x0f\xa3\xb5\xbb\x86u\xceYW\x0e\x04\x04\x06\x00n\xe8\xf8\x2cT\x2f\xa6\x13\x0c\x0f\xe5\xe9\xb5c\xd0\xa9\xb8\xcf\x0e\x00\x10\x06\x00\xc9\x96B\xe2\xe5\x7b\xaf\xdb\x0a\x02\x00\x00\x80\xbf\x00\x00\x80\x3f\x0a\xd7\x23\x3c\x16\x95B\xe2\xe5z\xaf\xdb\x0a\x02\x00\x00\x80\xbf\x00\x00\x80\x3f\x0a\xd7\x23\x3cc\x93B\xe2\xe5y\xaf\xdb\x0a\x02\x00\x00\x80\xbf\x00\x00\x80\x3f\x0a\xd7\x23\x3cW\xe4\xe2\xf7\xff1\xef\x9c\x0a\x00\x04l\x1f4\xc9\xf9\xb3Z\x0b\x16\xaf\x1fF\x80\x854\xa3\x09\x00B\x26\xaf\x08y\xdd\x1b\xd6\x05\x01\x3d\xff\xff\x9f\xf6\xf4\xac\xdb\xe0\x1b\xa9\x073\xc5\x0d\xe00\xbf\x0a\x02\x00\x00\x00\x00\x00\x00zC\x0a\xd7\x23\x3c_Q\xd8\xcc\x27e\x0dV\x08\x01\x18\x00r\x86\xfdl\x17\x92\x82\xc0\x01i\xcby\xa9\x12\xee\x29\xfd\x04\x01\x08\x00\xfe\xbc\x8c\xaa\xc0\x1a\x10x\x04\x01\x04\x00V\xbdO\x86m\xd0\x7f\x9e\x07\x01\x0a\x00ii\xb1\xa2\x7e\xfe\x13\x81\x04\x01\x08\x00e\xbfm\x86\xf0u\xab\x80\x06\x01\x08\x00\xc1\xa0\x13\xecuf\x07R\x04\x01\x0a\xff\x07\x0c\xcff\x27\xe1\xee\x90\xa7\x00v\x84\xda5\xa8\xef\xbf\x9f\x00\x95\x8a\x92\x83\x17\xbb\x8b\x18\x00\xf1r\xf2\xc2\xb9g6\x2c\x00\xf6U\xd7\x00\x1b\xb4\xa8\x0c\x00N\x1a\xb2\xfa\x19\xc8_\x98\x00Uj\x08\xc3G\x04\x9d\x22\x00\x9d\x8f\x22\xa7I\x7b\x1c\x01\x00_\xe1\x23\x11nV\xf7\x89\x00iD\x3b\x8b1\x25\x7f\x8d\x00\x16x\x5b\x28\xcc\x0d\xcd\xd9\x00vR\xff\xa8\xae\x16\xdc\x04\x00\x17\x92\x12A\xc3\x3b\xe55\x001\x88\xde\xb0\x2f\x28\xc8\x2c\x004\xb3\x8c\xbc\x21\xda\xba \x00\xaa\x80\x060\x19\x28s3\x0d\x8b4\x5b\x0b\x91\x8d\xa3\xf2\x0de\xb7\xec\x86\x1c\xa4\xa3\x9f\x0d\x00\xfe\xff\xff\xff\xff\xff\xff\xff\xfd\xff\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x00\x00\x00", 4484788518692264406)
 let _TableEntityMessageSlots = schema_rt.message_slots("TableEntity", [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]::int)
 let _TableEntityMessageRoot = schema_rt.message_root("TableEntity")
 let _TableStatMessageSlots = schema_rt.message_slots("TableStat", [51, 52]::int)
