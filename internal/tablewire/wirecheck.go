@@ -50,6 +50,24 @@ type wireCheck struct {
 	// or a node record, one more inside each table, array, keyed or map body
 	// (ir.TableBinaryMaxDepth)
 	depth int
+	// firstUse is the order the walk first used each id over the whole wire,
+	// and seen the ids already placed in it (§3): the table must be that order
+	// exactly, an unused entry and an out-of-first-use-order entry being a
+	// spelling no conforming writer produces (docs/rulings.json
+	// reads-refuse-non-canonical).
+	firstUse []uint64
+	seen     map[uint64]bool
+}
+
+// use records one id the walk resolved, in first-use order.
+func (c *wireCheck) use(id uint64) {
+	if c.seen == nil {
+		c.seen = map[uint64]bool{}
+	}
+	if !c.seen[id] {
+		c.seen[id] = true
+		c.firstUse = append(c.firstUse, id)
+	}
 }
 
 // fixedWidthKind reports the kinds whose payload is exactly their width.
@@ -106,7 +124,26 @@ func checkFile(body []byte, ids []uint64) (fail, nonFinite error) {
 	if err := checkBody(c, body); err != nil {
 		return err, nil
 	}
+	if !c.firstUseMatches(ids) {
+		return &Refusal{Reason: ReasonWireDamaged, Detail: "the id table is not in first-use order"}, nil
+	}
 	return nil, c.nonFinite
+}
+
+// firstUseMatches holds the id table to the first-use order the walk found:
+// the entries are exactly that order, so an entry no reference names (a table
+// longer than the order) and one out of its place (an entry the walk met at
+// another position) both refuse (§3, docs/rulings.json reads-refuse-non-canonical).
+func (c *wireCheck) firstUseMatches(ids []uint64) bool {
+	if len(c.firstUse) != len(ids) {
+		return false
+	}
+	for i := range ids {
+		if c.firstUse[i] != ids[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // checkAnnouncement is checkFile over an announcement's root body (§3.3).
@@ -114,6 +151,9 @@ func checkAnnouncement(body []byte, ids []uint64) error {
 	c := &wireCheck{ids: ids, announcement: true}
 	if err := checkBody(c, body); err != nil {
 		return err
+	}
+	if !c.firstUseMatches(ids) {
+		return &Refusal{Reason: ReasonWireDamaged, Detail: "the announcement id table is not in first-use order"}
 	}
 	return c.nonFinite
 }
@@ -137,7 +177,15 @@ func checkBody(c *wireCheck, body []byte) error {
 			c.damage("the node table cannot be read whole")
 			return c.fail
 		}
+		if len(records) == 0 {
+			// A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL
+			// (§3.1): a field carrying a count of 0 is a spelling no conforming
+			// writer produces, refused rather than read.
+			c.damage("an empty node table")
+			return c.fail
+		}
 		for _, rec := range records {
+			c.use(rec.TypeId)
 			c.edges = nil
 			switch rec.TypeId {
 			case ir.BytesWireTypeId, ir.StringWireTypeId:
@@ -236,6 +284,7 @@ func (c *wireCheck) graph(children [][]uint64, blobs []bool) bool {
 func (c *wireCheck) body(buf []byte, root bool, table func([]byte) bool) bool {
 	off := 0
 	var seen map[uint64]bool
+	nodeTableSeen := false
 	for {
 		ref, next, ok := readLeb(buf, off)
 		if !ok {
@@ -248,10 +297,16 @@ func (c *wireCheck) body(buf []byte, root bool, table func([]byte) bool) bool {
 			}
 			return true
 		}
+		// A NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field after it
+		// is a node table out of its place, refused rather than read.
+		if nodeTableSeen {
+			return c.damage("the node table is not the root body's last field")
+		}
 		if ref > uint64(len(c.ids)) {
 			return c.damage("a field reference past the id table")
 		}
 		id := c.ids[ref-1]
+		c.use(id)
 		if seen == nil {
 			seen = map[uint64]bool{}
 		}
@@ -284,6 +339,7 @@ func (c *wireCheck) body(buf []byte, root bool, table func([]byte) bool) bool {
 			if !table(buf[after:off]) {
 				return false
 			}
+			nodeTableSeen = true
 			continue
 		}
 		if off, ok = c.payload(buf, off, kind); !ok {
@@ -316,6 +372,9 @@ func (c *wireCheck) payload(buf []byte, off int, kind int) (int, bool) {
 		}
 		if ref > uint64(len(c.ids)) {
 			return off, c.damage("a variant reference past the id table")
+		}
+		if ref != 0 {
+			c.use(c.ids[ref-1])
 		}
 		return next, true
 	case kind == ir.TableKindUnion:
@@ -459,6 +518,7 @@ func (c *wireCheck) keyed(b []byte) bool {
 		if key == 0 || key > uint64(len(c.ids)) {
 			return c.damage("a keyed slot whose key reference names no id")
 		}
+		c.use(c.ids[key-1])
 		if seen == nil {
 			seen = map[uint64]bool{}
 		}
@@ -494,6 +554,7 @@ func (c *wireCheck) union(buf []byte, off int) (int, bool) {
 	if ref > uint64(len(c.ids)) {
 		return off, c.damage("an arm reference past the id table")
 	}
+	c.use(c.ids[ref-1])
 	if next >= len(buf) {
 		return off, c.damage("an arm header cut short")
 	}
