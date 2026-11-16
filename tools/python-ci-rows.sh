@@ -50,6 +50,10 @@ while IFS= read -r package; do
   case "$package" in */internal/codegen/pythontable)
     names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonFixedProofSuite$/d') ;;
   esac
+  # Positive fixed-evolution families are delegated to bounded support rows.
+  case "$package" in */internal/codegen/pythontable)
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofEvolution$/d; /^TestPythonFixedProofEvolutionValues$/d; /^TestPythonFixedProofEvolutionStrict$/d; /^TestPythonFixedProofEvolutionNumeric$/d; /^TestPythonFixedProofEvolutionWideningCorpus$/d; /^TestPythonFixedProofEvolutionWriterBounds$/d; /^TestPythonFixedProofEvolutionHostile$/d; /^TestPythonFixedProofEvolutionHostileEnvelope$/d; /^TestPythonFixedProofEvolutionHostileShapes$/d; /^TestPythonFixedProofEvolutionHostileSweep$/d; /^TestPythonFixedProofEvolutionRetirementControl$/d') ;;
+  esac
   # Complete array-widening cases and pointer-array proof phases have their
   # own support rows; keeping either parent here would rerun the monolith.
   case "$package" in */internal/codegen/pythontable)
