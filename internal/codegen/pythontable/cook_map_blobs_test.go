@@ -59,7 +59,7 @@ for shared in (False, True):
 		if err := decodeCookWire(m, root, wire, &report); err != nil || report.Refused {
 			t.Fatalf("%s: wire refused: %v %s", name, err, report.Reason)
 		}
-		for shared := 0; shared < 2; shared++ {
+		for shared := range 2 {
 			if shared == 1 {
 				for i := range root.Fields {
 					entries := root.Fields[i].Entries
