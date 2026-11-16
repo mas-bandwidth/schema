@@ -146,8 +146,7 @@ table Root { values []int32 }`)
 	t.Logf("Go kind 32 refusal: err=%v report=%+v", voidErr, voidReport)
 	var report tabletext.Report
 	_, err := tablewire.DecodeVariable(m, m.New(u.Tables["Root"]), wire, &report)
-	var count *tablewire.CountRefusal
-	if !errors.As(err, &count) {
+	if _, ok := errors.AsType[*tablewire.CountRefusal](err); !ok {
 		t.Fatalf("Go count oracle: %v report=%+v", err, report)
 	}
 	files, err := Generate(u)
