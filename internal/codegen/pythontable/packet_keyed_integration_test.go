@@ -34,6 +34,9 @@ print('ok')
 		if err != nil || strings.TrimSpace(out) != "ok" {
 			t.Fatalf("mixed keyed import: %v\n%s\n%s", err, out, stderr)
 		}
+		if output, err := pyrun.Analyze(t, dir, u.Package); err != nil {
+			t.Fatalf("mixed keyed strict mypy: %v\n%s", err, output)
+		}
 	}
 }
 
