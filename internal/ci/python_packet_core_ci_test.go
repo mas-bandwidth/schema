@@ -42,7 +42,7 @@ func TestPythonPacketCoreCIPlan(t *testing.T) {
 			}
 		}
 	}
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		target := "python-ci-packet-core-" + strconv.Itoa(i)
 		if targets[target] != 1 {
 			t.Errorf("%s appears %d times", target, targets[target])
