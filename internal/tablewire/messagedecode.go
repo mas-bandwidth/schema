@@ -321,6 +321,11 @@ func (d *bitDecoder) bodyEntry(ref uint64, seen map[uint64]bool) (ir.TableVocabu
 
 // body decodes one table body: fields until the ZERO REFERENCE that ends it.
 func (d *bitDecoder) body(inst *tabletext.Instance) bool {
+	// Scanners also enter the body walk. Substitutions need shared state
+	// there too, so an admitted deprecated value does not look stored-default.
+	if d.fail == nil {
+		d.fail = &readFail{}
+	}
 	index := map[uint64]int{}
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i

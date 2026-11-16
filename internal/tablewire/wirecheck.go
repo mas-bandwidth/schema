@@ -152,6 +152,9 @@ func checkAnnouncement(body []byte, ids []uint64) error {
 	if err := checkBody(c, body); err != nil {
 		return err
 	}
+	if !c.firstUseMatches(ids) {
+		return &Refusal{Reason: ReasonWireDamaged, Detail: "the announcement id table is not in first-use order"}
+	}
 	return c.nonFinite
 }
 

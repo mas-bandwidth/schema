@@ -409,10 +409,9 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
-	// lastKnown is the declaration index of the last field this body carried:
-	// a body writes its fields in declaration order (§3, §22.2), so a field at
-	// or before one already read is out of the writer's order and refused.
-	lastKnown := -1
+	// A file has no writer build or declaration. Fields resolve by ID;
+	// reader declaration order cannot judge a lawful older writer's order.
+	// The wire check already enforces observable first-use ID order (§3).
 	for {
 		if r.err() != nil {
 			return false
@@ -463,10 +462,6 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			}
 			continue
 		}
-		if i <= lastKnown {
-			return r.refuse(&Refusal{Reason: ReasonWireDamaged, Detail: "fields out of the writer's declaration order"})
-		}
-		lastKnown = i
 		fv := &inst.Fields[i]
 		seen[i] = true
 		if int(kind) != wireKind(fv.Def) {

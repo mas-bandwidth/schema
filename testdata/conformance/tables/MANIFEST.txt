@@ -1389,12 +1389,11 @@ rewrite union_unknown_arm tblr1 Cfg testdata/wire/tables/framing/union_unknown_a
 rewrite node_clean graphdemo ListNode testdata/wire/tables/framing/node_clean.bin
 rewrite node_diamond_chain graphdemo Scene testdata/wire/tables/framing/node_diamond_chain.bin
 rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin
-# THE HAND-BUILT NON-CANONICAL SPELLINGS (docs/SPEC-TABLES.md §22): each is a
-# legal wire no conforming writer produces, so the leg that reads it must write
-# the canonical bytes back. Fields out of declaration order with the id table
-# no longer in first-use order; and the id table reversed and every reference
-# renumbered. A repeated field (rewrite_field_twice.bin) is refused under the
-# strict-only read (§3).
+# THE HAND-BUILT ORDER WITNESSES (docs/SPEC-TABLES.md §22): the ID-reversed
+# and repeated-field inputs refuse; the field-reordered input below is lawful.
+# A field order may come from another lawful declaration. The ID table
+# remains first-use ordered; the current writer emits its own field order.
+rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
 
 # THE WRITE-ALGORITHM EDGES (docs/SPEC-TABLES.md §22): one value per degree of
 # freedom a writer has, each a trap for one wrong implementation of it. Map keys

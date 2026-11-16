@@ -212,7 +212,9 @@ func TestRetainingFuzzCanonicalPins(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			seed, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/"+tc.seed+".bin"))
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			wire := bytes.Clone(seed)
 			f := frameWire(wire)
 			if len(f.entries) == 0 || len(f.entries) >= 128 {

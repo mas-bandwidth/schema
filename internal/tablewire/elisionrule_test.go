@@ -354,6 +354,10 @@ func TestMessageReadAllowsSubstitutedDefaults(t *testing.T) {
 		if tc.sameBuild {
 			vocabulary.buildVersion = ir.BuildVersion(reader.Unit)
 		}
+		spots := MessageSpots(reader, reader.Lookup("Root"), wire, &vocabulary)
+		if len(spots) == 0 || spots[len(spots)-1].Value != 0 {
+			t.Errorf("%s: admitted message scan lost its body terminator: %+v", tc.name, spots)
+		}
 		for _, batch := range []bool{false, true} {
 			v := vocabulary
 			value := reader.New(reader.Lookup("Root"))
@@ -491,6 +495,53 @@ fixed table Root {
 			landed, _ := back.FieldByKey("tick")
 			if landed.Cell.U != 0 {
 				t.Errorf("refused union None field delivered an earlier value: %d", landed.Cell.U)
+			}
+		}
+	}
+}
+
+// A variable file identifies fields but carries no writer build or record
+// declaration. Reordering the reader's declaration is lawful evolution (§4).
+func TestVariableReadPreservesFieldReordering(t *testing.T) {
+	t.Parallel()
+	writer := covModel(t, "package fileorder\ntable Root {a uint8\nb uint8}\n")
+	reader := covModel(t, "package fileorder\ntable Root {b uint8\na uint8}\n")
+	data, err := Encode(writer, covPlace(t, writer, "Root", `{"a":1,"b":2}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, region := range []bool{false, true} {
+		for _, retaining := range []bool{false, true} {
+			value := reader.New(reader.Lookup("Root"))
+			var report tabletext.Report
+			rt := &Retain{Capacity: 1024, IdCapacity: 64}
+			var ok bool
+			switch {
+			case region && retaining:
+				ok, err = DecodeRegionRetain(reader, value, data, rt, &report)
+			case region:
+				ok, err = DecodeRegion(reader, value, data, &report)
+			case retaining:
+				ok, err = DecodeRetain(reader, value, data, rt, &report)
+			default:
+				ok, err = Decode(reader, value, data, &report)
+			}
+			if !ok || err != nil || !report.Silent() {
+				t.Errorf("region=%v retain=%v reordered reader refused: %v %+v", region, retaining, err, report)
+				continue
+			}
+			a, _ := value.FieldByKey("a")
+			b, _ := value.FieldByKey("b")
+			if a.Cell.U != 1 || b.Cell.U != 2 {
+				t.Errorf("reordered reader changed values: a=%d b=%d", a.Cell.U, b.Cell.U)
+			}
+			saved, err := Encode(reader, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			back := writer.New(writer.Lookup("Root"))
+			if ok, err := Decode(writer, back, saved, &tabletext.Report{}); !ok || err != nil {
+				t.Errorf("reordered writer output refused by older reader: %v", err)
 			}
 		}
 	}

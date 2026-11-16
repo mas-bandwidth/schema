@@ -91,8 +91,9 @@ func TestRewriteCanonicalBytesAreTheOraclesFixedPoint(t *testing.T) {
 	}
 }
 
-// Hand-built out-of-order spellings are refused by the strict read (§3, §4),
-// so they have no rewrite row. The canonical Fleet still reads unchanged.
+// A field order can come from a lawful older declaration (§3, §4), and reads
+// when its ID table follows first use. A non-first-use table and a repeated
+// field remain refusals. The current writer emits its own canonical order.
 func TestHandBuiltRewriteInputsAreNotCanonical(t *testing.T) {
 	m, _, u := corpus(t)
 	fleetWire, err := os.ReadFile("testdata/wire/tables/w1_fleet.bin")
@@ -103,7 +104,27 @@ func TestHandBuiltRewriteInputsAreNotCanonical(t *testing.T) {
 	if err != nil || !bytes.Equal(canonical, fleetWire) {
 		t.Fatalf("canonical Fleet moved or refused: %v", err)
 	}
-	for _, name := range []string{"rewrite_fields_reversed", "rewrite_ids_reversed", "rewrite_field_twice"} {
+	fields, err := os.ReadFile("testdata/wire/tables/rewrite_fields_reversed.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(fields, fleetWire) {
+		t.Fatal("field-order witness must differ from the current writer")
+	}
+	rewritten, err := rewriteOnce(u, "tblw1", "Fleet", fields)
+	if err != nil || !bytes.Equal(rewritten, fleetWire) {
+		t.Fatalf("lawful field reordering did not retain Fleet: %v", err)
+	}
+	found := false
+	for _, rw := range m.Rewrites {
+		if rw.Name == "rewrite_fields_reversed" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("lawful reordered input must have a rewrite row")
+	}
+	for _, name := range []string{"rewrite_ids_reversed", "rewrite_field_twice"} {
 		for _, rw := range m.Rewrites {
 			if rw.Name == name {
 				t.Errorf("refused input %s still has a rewrite row", name)

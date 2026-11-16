@@ -5230,15 +5230,16 @@ twenty unnameable entries counts nothing at all if no body references them.
   refuses a longer element or key `length_over_bound` (§2.8). An element or key `L` past its
   body is `wire_damaged`, a count past what its bytes can hold is
   `wire_damaged`, and neither allocates from the claim.
-- **Field ORDER within a body is part of the WRITE contract, and a reader
-  enforces it.** This implementation writes fields in declaration order, and a
-  reader refuses a body whose fields arrive in any other order: every field is
-  found by its id, but a body out of declaration order is a spelling no
-  conforming writer of a lawful lineage produces, so the read refuses it (§4)
-  rather than decoding it. A body carrying an id more than once is damage
-  (§4): no writer emits it. **First-use order in the id table follows from the
-  write order**, so a writer that reorders fields writes a different table, and
-  a reader refuses that table too (§3, §4).
+- **Field ORDER within a body is part of the WRITE contract.** Each writer
+  emits its own declaration order (§22.2). A variable-form reader finds fields
+  by id: a file carries no writer build or declaration, so the reader cannot
+  judge that writer's field order against its own declaration. Reordering fields
+  remains lawful evolution (§4). **First-use order in the id table is observable
+  and is checked**: its entries must match the references' first uses in the
+  actual body, whatever that body's field order (§3, §4). A body carrying an id
+  more than once is damage (§4): no writer emits it. The message form separately
+  knows the writer's record order under the same announced shape and build
+  version, and enforces it there (§3.3(b)).
 - **Writers elide what readers default**: a field holding its default, an
   empty string or array, an all-default FIXED array, an empty union and an
   all-default nested table are not written at all (fixed arrays of tables
@@ -8831,9 +8832,10 @@ diagnostic name, which is not normative and is never compared:
 - **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
   to a value but that no conforming writer of a lawful lineage version would
   produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
-  docs/rulings.json reads-refuse-non-canonical). The six shapes, on the
-  variable and message forms: fields out of the writer's order; a field stored
-  at its declared default (a default change and a field moved from `T` to `?T` are refused by the lineage check,
+  docs/rulings.json reads-refuse-non-canonical). The six shapes, where the wire
+  supplies the facts needed to judge them: fields out of the writer's order
+  on the message form under the same announced shape and build version (§3.3(b));
+  a field stored at its declared default (a default change and a field moved from `T` to `?T` are refused by the lineage check,
   docs/VERSIONING.md, so every lawful writer's default for a field the reader
   names is the reader's own, which is what makes the case decidable); an
   explicit null pointer; an id-table entry that is unused, or out of first-use
@@ -20301,8 +20303,10 @@ an array element's, a map entry's, a union arm's table, and a node record's.
 Declaration order is the order the fields appear in the WRITING build's
 declaration, a field inside an `if` group at the place the group declares it.
 It is the order the reference has always written in (§3, "Field ORDER"), and
-the C++ writer writes in it too. A reader refuses any other order (§3); a
-writer writes this one.
+the C++ writer writes in it too. A file reader checks observable first-use
+ID order rather than comparing the writer's fields with its own declaration
+(§3). The message reader enforces declaration order only under the same
+announced shape and build version (§3.3(b)).
 
 **EACH FIELD IS WRITTEN OR ELIDED BY ONE TABLE, AND THE TABLE IS COMPLETE.** A
 written field is its header (the id reference, then the kind byte, §3) and its
@@ -20585,10 +20589,12 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 rewrite row: a blob named from two slots (`blob_shared`, §2.5) is refused at
 save by every writer, so its instances answer the named refusal on `wire` and
 it has no canonical bytes (and under the strict read it is refused on read as
-well). **The hand-built non-canonical spellings of this section — fields out
-of declaration order, an id table out of first-use order — are not rewrite
-rows either**: a read now refuses them (§4), not rewrites them, so they answer
-the refusal on `wire` and have no canonical bytes. **Form `3`'s bytes are not a harness surface**: they are held per leg
+well). **An id table out of first-use order and a repeated field are not rewrite
+rows either**: a read refuses them (§4), so they answer the refusal on `wire`
+and have no canonical bytes. **A reversed field sequence with a first-use
+ordered id table can come from a lawful older declaration** (§3, §4). It reads
+and is a rewrite row; the current writer emits its own declaration order.
+**Form `3`'s bytes are not a harness surface**: they are held per leg
 against the C++ reference's byte oracle, `make tables-fixedform-corpus`
 (test/tables/fixedform_dump.cpp, with the values each file holds in its
 manifest), by each leg's `tables-<lang>-fixedform` gate and the conformance
