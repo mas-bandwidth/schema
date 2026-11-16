@@ -478,7 +478,9 @@ func tableJSONFinite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0
 // length, a counted array's count. Bounded by the declared extent on the way
 // out, so a storage invariant a caller broke cannot walk off the end. A
 // container with no declared bound has no extent to clamp to: UnboundedContainer
-// is no limit (docs/SPEC-TABLES.md §8.1).
+// is no limit (docs/SPEC-TABLES.md §8.1). The writer refuses a count outside
+// the contract before it calls this (tableJSONCountInContract); the clamp here
+// keeps the extent it slices safe on every path.
 func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 	if !f.Counted {
 		return f.ArrayBound
@@ -489,6 +491,19 @@ func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 		count = f.ArrayBound
 	}
 	return count
+}
+
+// tableJSONCountInContract reports whether a counted field's companion is one
+// the declaration admits: at or above its declared minimum (never negative), and
+// past its bound only for a container with no declared bound. The binary writers
+// refuse these values (docs/SPEC.md §5.1 rows 3 and 4), so the text writer does
+// too rather than write a truncated count or a clamped length.
+func tableJSONCountInContract(base unsafe.Pointer, f *TableFieldInfo) bool {
+	if !f.Counted {
+		return true
+	}
+	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
+	return count >= f.ArrayMin && (f.UnboundedContainer || count <= f.ArrayBound)
 }
 
 func tableJSONSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
@@ -1051,9 +1066,18 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		}
 		return true
 	case 10:
-		return tableJSONWriteFloat(out, float64(*(*float32)(storage)), true)
+		// a float32's range is compared in float32, as the binary writers compare it
+		value := *(*float32)(storage)
+		if f.HasRange && (value < float32(f.RangeMin) || value > float32(f.RangeMax)) {
+			return false
+		}
+		return tableJSONWriteFloat(out, float64(value), true)
 	case 11:
-		return tableJSONWriteFloat(out, *(*float64)(storage), false)
+		value := *(*float64)(storage)
+		if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
+			return false
+		}
+		return tableJSONWriteFloat(out, value, false)
 	case 2, 3, 4:
 		tableJSONWriteSigned(out, tableJSONGetSigned(storage, f.ElemSize))
 		return true
@@ -1077,6 +1101,9 @@ func tableJSONWriteField(out *tableJSONOut, base unsafe.Pointer, f *TableFieldIn
 	storage := unsafe.Add(base, uintptr(f.Offset))
  if f.Map {return tableJSONWriteMap(out,storage,f,depth)}
  if f.List {return tableJSONWriteList(out,storage,f,depth)}
+	if !tableJSONCountInContract(base, f) {
+		return false
+	}
 	if f.Kind == 12 {
 		tableJSONWriteString(out, tableJSONBytes(storage, tableJSONCount(base, f)))
 		return true
@@ -1227,6 +1254,12 @@ func tableJSONAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 	if f.Optional {
 		// absent is the default; a present optional's key is its presence
 		return tableJSONGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0
+	}
+	// a count outside the write contract is never at its default: it is written
+	// and refused there, rather than clamped here and elided (docs/SPEC.md §5.1
+	// rows 3 and 4)
+	if !tableJSONCountInContract(base, f) {
+		return false
 	}
 	storage, defaults := unsafe.Add(base, uintptr(f.Offset)), unsafe.Add(def, uintptr(f.Offset))
 	if f.Map || f.List {
