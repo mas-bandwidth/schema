@@ -35,7 +35,7 @@ printf '%s\n' "$support" | while IFS= read -r target; do
     continue
   fi
   corpus=false
-  case "$target" in python-fixed-*) corpus=true ;; esac
+  case "$target" in python-fixed-*|python-wirefuzz-*) corpus=true ;; esac
   jq -cn --arg name "$target" --arg target "$target" --argjson corpus "$corpus" '{name:$name,target:$target,package:"",test:"",corpus:$corpus}' >> "$rows"
 done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
@@ -55,6 +55,11 @@ while IFS= read -r package; do
   case "$package" in */internal/codegen/pythontable)
     names=$(printf '%s\n' "$names" | sed '/^TestPythonArrayWidening$/d; /^TestPythonVtPointerArrays$/d') ;;
   esac
+  # The full wire-fuzz omnibus is covered by the 24 explicit support rows.
+  # Keep the focused pipe and fault controls in the automatically discovered shards.
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonWireFuzzVerdictPipe$/d')
+  fi
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
