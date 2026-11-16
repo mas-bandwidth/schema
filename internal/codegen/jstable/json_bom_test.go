@@ -151,9 +151,6 @@ for (const row of rows) {
 	}
 	for i, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if c.name == "reuse-events" {
-				t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
-			}
 			var got result
 			if err := json.Unmarshal([]byte(lines[i]), &got); err != nil {
 				t.Fatal(err)
