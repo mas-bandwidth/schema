@@ -1322,6 +1322,9 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 	}
 	// a fixed array's tail keeps the defaults the reset left there, exactly as
 	// a short wire count does
+	if f.Array == ir.ArrayCounted && int64(placed) < f.ArrayMin {
+		return in.fail("count_over_bound: " + f.Name)
+	}
 	fv.Count = placed
 	return true
 }
@@ -2350,6 +2353,17 @@ func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
 func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) bool {
 	if (kind == ir.TableKindI128 || kind == ir.TableKindU128) && !integerToken(token) {
 		return in.fail("kind_mismatch: " + f.Name)
+	}
+	if kind != ir.TableKindI128 && kind != ir.TableKindU128 {
+		// A wide fixed value is a JSON string, but its decoded content is
+		// still one complete RFC 8259 number, with no surrounding spaces.
+		check := reader{text: []byte(token)}
+		if len(token) == 0 || token[0] == ' ' || token[0] == '\t' || token[0] == '\n' || token[0] == '\r' {
+			return in.fail("kind_mismatch: " + f.Name)
+		}
+		if _, ok := check.walkNumber(); !ok || check.pos != len(token) {
+			return in.fail("kind_mismatch: " + f.Name)
+		}
 	}
 	raw, exact, saturated := ParseWide(token, kind, f.Type.FracBits)
 	if !exact {

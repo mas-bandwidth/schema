@@ -274,7 +274,8 @@ func (w *bitBody) done() []byte {
 // nonCanonicalKindRows is the per-kind probe's rows. For each kind: the
 // spelling at the default is refused, and the nearest values on each side of
 // it read, at the engine writer's bytes, which the engine reader reads too. The
-// file form refuses with no gate; the message form refuses only under its own
+// variable whole-field defaults can come from lawful presence evolution;
+// slot elision and framing remain independent. The message form refuses under its own
 // shape and build version, and the same bytes from another build read. The
 // assembled refused rows are held against the engine's spelling of their
 // nearest canonical neighbour, so the assembly is the engine's framing.
@@ -306,6 +307,10 @@ func nonCanonicalKindRows(t *testing.T) (rows []string, announcement []byte) {
 		}
 	}
 
+	evolution := func(name string, wire []byte) {
+		all = append(all, nonCanonicalKindRow{name: name, form: "variable", wire: wire, read: true})
+	}
+
 	// THE FILE FORM: [N] arrays of pointers, enums and unions, and every keyed
 	// element kind, at their engine spellings either side of the default
 	canonical("variable", "Root", `{}`, `{"mode":6}`, `{"mode":8}`,
@@ -322,16 +327,16 @@ func nonCanonicalKindRows(t *testing.T) (rows []string, announcement []byte) {
 	enumKind := ir.TableWireScalarKind(hues)
 	same(u.encode("Root", `{"hues":["Red","None"]}`), (&formOne{}).array(hues, enumKind, 2, func(w *formOne) []byte { return append(leb(nil, w.ref(variant(hues, false, "Red"))), 0) }).done(), "hues")
 	nulls := func(*formOne) []byte { return []byte{0, 0} }
-	refused("variable", "an [N] array of pointers every element of which is null", (&formOne{}).array(links, ir.TableKindPointer, 2, nulls).done())
-	refused("variable", "an [N] array of enums every element of which is None", (&formOne{}).array(hues, enumKind, 2, nulls).done())
-	refused("variable", "an [N] array of unions every element of which is None", (&formOne{}).array(picks, ir.TableWireScalarKind(picks), 2, nulls).done())
+	evolution("an [N] array of pointers every element of which is null", (&formOne{}).array(links, ir.TableKindPointer, 2, nulls).done())
+	evolution("an [N] array of enums every element of which is None", (&formOne{}).array(hues, enumKind, 2, nulls).done())
+	evolution("an [N] array of unions every element of which is None", (&formOne{}).array(picks, ir.TableWireScalarKind(picks), 2, nulls).done())
 	same(u.encode("Root", `{"counts":{"North":1}}`), (&formOne{}).keyed(counts, slot("North", 1)).done(), "counts")
 	refused("variable", "a keyed integer slot at its default", (&formOne{}).keyed(counts, slot("North", 0)).done())
 	refused("variable", "a keyed signed slot at its default", (&formOne{}).keyed(temps, slot("South", 0)).done())
 	refused("variable", "a keyed float slot at its default", (&formOne{}).keyed(ratios, slot("North", 0, 0, 0, 0)).done())
 	refused("variable", "a keyed table slot that is its terminator alone", (&formOne{}).keyed(leaves, slot("North", 0)).done())
 	refused("variable", "a keyed enum slot at None", (&formOne{}).keyed(tones, slot("North", 0)).done())
-	refused("variable", "keyed slots out of ascending variant order", (&formOne{}).keyed(counts, slot("South", 1), slot("North", 1)).done())
+	evolution("keyed slots out of ascending variant order", (&formOne{}).keyed(counts, slot("South", 1), slot("North", 1)).done())
 	refused("variable", "a keyed slot written twice", (&formOne{}).keyed(counts, slot("North", 1), slot("North", 2)).done())
 
 	// what a newer build writes lands the default without riding as it
@@ -370,12 +375,12 @@ func nonCanonicalKindRows(t *testing.T) (rows []string, announcement []byte) {
 	refused("message", "a keyed integer slot at its default", u.bits().keys(mcounts, 1).name(north).put(0, 8).done())
 	refused("message", "a keyed table slot that is its terminator alone", u.bits().keys(mleaves, 1).name(north).none().done())
 	refused("message", "a keyed enum slot at None", u.bits().keys(mtones, 1).name(north).none().done())
-	// slot order is the variant ordinal, which is for life, and a union field
-	// at None elides in every build: no build writes either, so each is refused
-	// under any announcement
+	// Slot order is judged only under the same announced build: a different
+	// build may reorder the enum. A union field at None elides in every
+	// admitted message build, so its negative stays independent.
 	for _, other := range []bool{false, true} {
 		all = append(all, nonCanonicalKindRow{name: fmt.Sprintf("keyed slots out of ascending variant order (another build %v)", other), form: "message",
-			wire: u.bits().keys(mcounts, 2).name(south).put(1, 8).name(north).put(1, 8).done(), other: other},
+			wire: u.bits().keys(mcounts, 2).name(south).put(1, 8).name(north).put(1, 8).done(), other: other, read: other},
 			nonCanonicalKindRow{name: fmt.Sprintf("a union at None (another build %v)", other), form: "message", wire: u.bits().field(pick).none().done(), other: other})
 	}
 
