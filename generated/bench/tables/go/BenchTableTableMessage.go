@@ -2273,7 +2273,20 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 		if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 			return false
 		}
-		if value.EntitiesCount > 0 {
+		allBirth := value.EntitiesCount == 1
+		if allBirth {
+			for i := 0; i < 1; i++ {
+				probe := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
+				if !TableEntitySaveMessageBody(&probe, &value.Entities[i]) {
+					return false
+				}
+				if probe.Bits > TableMessageRefBitsHere {
+					allBirth = false
+					break
+				}
+			}
+		}
+		if !allBirth {
 			w.Put(31, TableMessageRefBitsHere)
 			if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 				return false
@@ -3186,6 +3199,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					allDefault := true
 					if n < 1 {
 						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
 						return false
@@ -3196,15 +3210,21 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyTableEntity(r, &(*p), starts, depth+1) {
-							return false
+						{
+							start := r.Bits.Offset
+							if !tableMessageBodyTableEntity(r, &(*p), starts, depth+1) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								allDefault = false
+							}
 						}
 					}
+					if exact && !widened && n == 1 && entry.Shape == tableMessageEntries[30].Shape && entry.Element == tableMessageEntries[30].Element && allDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					value.EntitiesCount = int32(n)
-				}
-				if exact && !(value.EntitiesCount > 0) {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
 				}
 				if widened {
 					r.Report.Widened++

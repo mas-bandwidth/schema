@@ -2432,7 +2432,7 @@
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")
   (:id "go/R20" :type :task :title
-   "§21.2's landing rules: an added field lands its declared default; a deprecated field is dropped and counted once under unknown per plan; a narrower integer or float is widened exactly and widened counts; a shorter array or string lands with the reader's slack as template zeros; an older enum's ordinals are the reader's, the list being a prefix"
+   "§21.2's landing rules: an added field lands its declared default; a deprecated field remains carried without an unknown event; a narrower integer or float is widened exactly and widened counts; a shorter array or string lands with the reader's slack as template zeros; an older enum's ordinals are the reader's, the list being a prefix"
    :state :unknown :evidence nil :audit-item "R20" :reported-state "implemented-asserted" :reported-source
    "https://github.com/mas-bandwidth/schema/issues/898#issuecomment-5650042470" :note
    "Historical report at b7ab66a8; current completion has not been reconciled.")

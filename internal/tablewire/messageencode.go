@@ -195,6 +195,22 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		if messageElides(e.m, fv, false) {
 			return nil
 		}
+		if !f.Required && int64(fv.Count) == f.BornCount() {
+			allBirth := true
+			for i := range fv.Count {
+				defaulted, err := bitCellAtDefault(e, f, &fv.Elems[i])
+				if err != nil {
+					return err
+				}
+				if !defaulted {
+					allBirth = false
+					break
+				}
+			}
+			if messageElides(e.m, fv, allBirth) {
+				return nil
+			}
+		}
 		e.ref(w, entry)
 		return encodeBitArray(e, w, fv, entry, fv.Count)
 
@@ -512,18 +528,12 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 		if none {
 			return fmt.Errorf("field %s: a None key names no slot (docs/SPEC-TABLES.md §3.2)", f.Name)
 		}
-		elem := &bitWriter{}
-		if int(shape.Elem) == ir.TableKindTable {
-			sub := *e
-			if err := encodeBitBody(&sub, elem, subInstanceOf(e.m, f, cell)); err != nil {
-				return err
-			}
-			e.missing = sub.missing
-			if elem.bits() <= e.refBits {
-				continue // an all-default slot elides
-			}
-		} else if cellIsDefaultIn(e.m, f, cell) {
-			continue // a default slot elides
+		defaulted, err := bitCellAtDefault(e, f, cell)
+		if err != nil {
+			return err
+		}
+		if defaulted {
+			continue
 		}
 		present = append(present, presentSlot{slot: slot, keyID: keyID})
 	}
@@ -539,6 +549,20 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 		}
 	}
 	return nil
+}
+
+// bitCellAtDefault uses the same element default test for counted and keyed arrays.
+func bitCellAtDefault(e *bitEncoder, f *ir.Field, cell *tabletext.Cell) (bool, error) {
+	if ir.TableWireElemKind(f) != ir.TableKindTable {
+		return cellIsDefaultIn(e.m, f, cell), nil
+	}
+	probe := &bitWriter{}
+	sub := *e
+	if err := encodeBitBody(&sub, probe, subInstanceOf(e.m, f, cell)); err != nil {
+		return false, err
+	}
+	e.missing = sub.missing
+	return probe.bits() <= e.refBits, nil
 }
 
 // subInstanceOf is a nested table or type's instance, materialized at its
@@ -557,7 +581,8 @@ func subInstanceOf(m *tabletext.Model, f *ir.Field, cell *tabletext.Cell) *table
 // stored at it (messagedecode.go). A present `?T` rides whatever it holds; its
 // caller judges that first. A nested table and an enum-keyed array elide by
 // what their body holds, which the caller passes as `empty`: a nested body
-// that is its terminator alone, or a keyed array with no slot.
+// that is its terminator alone, a keyed array with no slot, or the live
+// birth slots of a positive-minimum counted array all at their defaults.
 func messageElides(m *tabletext.Model, fv *tabletext.Field, empty bool) bool {
 	f := fv.Def
 	kind := ir.TableWireScalarKind(f)
@@ -567,7 +592,7 @@ func messageElides(m *tabletext.Model, fv *tabletext.Field, empty bool) bool {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return bytes.Equal(fv.Cell.Str, f.DefBytes)
 	case f.CountedOnWire():
-		return fv.Count == 0
+		return fv.Count == 0 || (f.BornCount() > 0 && int64(fv.Count) == f.BornCount() && empty)
 	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:
 		return false // position is identity: a fixed array of tables always rides
 	case f.Array == ir.ArrayFixed:
