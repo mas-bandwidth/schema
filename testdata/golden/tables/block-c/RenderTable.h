@@ -3147,6 +3147,17 @@ static SCHEMA_UNUSED void blockdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE
 enum { BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=7, BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=72, BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES=768, BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
 static const uint8_t BLOCKDEMO_K_TABLE_ANNOUNCE[BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xa7,0xdd,0xa3,0x09,0xa2,0x89,0x6e,0xc0,0x02,0x0e,0xd8,0x05,0x06,0xd5,0x05,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[]={0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,};
+static const int32_t BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[]={0,10,20,32,45,55,64,73,83,93,106,118,128,137,146,156,166,176,186,195,205,215,225,234,243,253,263,272,282,292,301,311,323,336,349,362,375,389,402,416,430,439,448,458,467,476,485,494,503,512,524,534,543,552,561,571,581,590,599,608,617,626,635,644,653,662,671,680,689,698,707,716,725,};
+static SCHEMA_UNUSED uint16_t blockdemo_table_message_own_slot(const uint8_t * raw,int64_t length)
+{
+ int32_t i;
+ for(i=0;i<BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE;i++) {
+  int32_t start=BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[i],n=BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[i+1]-start;
+  if(length==n && !memcmp(raw,BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES+start,(size_t)n))return (uint16_t)(i+1);
+ }
+ return 0;
+}
 
 typedef struct blockdemo_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; } blockdemo_table_bit_writer_t;
 typedef struct blockdemo_table_bit_reader_t { const uint8_t * buffer; int64_t bits,offset; } blockdemo_table_bit_reader_t;
@@ -3320,6 +3331,7 @@ typedef struct blockdemo_table_message_entry_t {
  float qmin,qdelta;uint32_t qcount;float elem_qmin,elem_qdelta;uint32_t elem_qcount;
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
+ uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
 } blockdemo_table_message_entry_t;
 typedef struct blockdemo_table_message_shape_facts_t {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -3503,11 +3515,13 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
   entry->max=at;
   count++;
  }
- /* Resolve the accepted spans into the caller's final 96-byte entries. */
+ /* Resolve accepted spans, retaining their exact own-entry proof. */
  at=0;
  {int64_t i;
- for(i=0;i<count;i++)if(!blockdemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
- }
+ for(i=0;i<count;i++){int64_t began=at;
+  if(!blockdemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
+  v->entries[i].own_slot=blockdemo_table_message_own_slot(words+began,at-began);
+ }}
  v->count=count;
  v->ref_bits=blockdemo_table_bits_required(0,count);
  v->announced=1;
@@ -4624,54 +4638,44 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==13;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->position)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x9f61700f084ab92e): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==15;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4695,8 +4699,10 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x336d3dc7fffd0c9b): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==16;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4720,8 +4726,10 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x6a0c6a156952b9c2): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==17;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4745,8 +4753,10 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0xdcb27c18fed9e15c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==10 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==18;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5466,54 +5476,44 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==13;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->position)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==50;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5534,8 +5534,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0x0bdab42c07f19812): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==25;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5559,8 +5561,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0x6a0c6a156952b9c2): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==17;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5584,8 +5588,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0xcfd587cb3100cd73): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==10 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==51;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5615,8 +5621,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0x5de0015285763c46): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==6 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==26;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5640,8 +5648,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0x1f7d2e86a2e77268): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==52;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5670,8 +5680,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5702,8 +5714,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0x1554fa45a1220171): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==1 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==53;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5722,8 +5736,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  break;
  }
  case UINT64_C(0x4d5be97ba1b9cb81): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==1 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==54;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6388,31 +6404,27 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==20;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6433,8 +6445,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x0bdab42c07f19812): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==25;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6458,8 +6472,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x0bee7b3cb4046c93): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==29;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6483,8 +6499,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x88a11a6aed541f54): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==56;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6508,8 +6526,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x6a0c6a156952b9c2): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==17;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6533,8 +6553,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x5de0015285763c46): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==6 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==26;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6558,8 +6580,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -6590,8 +6614,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  break;
  }
  case UINT64_C(0x1554fa45a1220171): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==1 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==53;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7146,54 +7172,44 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==13;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->position)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==20;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7214,8 +7230,10 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  break;
  }
  case UINT64_C(0x0bdab42c07f19812): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==25;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7239,8 +7257,10 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  break;
  }
  case UINT64_C(0x5de0015285763c46): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==6 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==26;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7264,8 +7284,10 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  break;
  }
  case UINT64_C(0x151b2a0e2c07b4bc): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==45;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7292,8 +7314,10 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7864,54 +7888,44 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==13;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->position)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==20;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7932,8 +7946,10 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  break;
  }
  case UINT64_C(0x0bdab42c07f19812): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==25;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7957,8 +7973,10 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  break;
  }
  case UINT64_C(0x5de0015285763c46): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==6 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==26;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -7982,8 +8000,10 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  break;
  }
  case UINT64_C(0xe5626f155e4c5dad): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==23;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -8012,8 +8032,10 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -8616,54 +8638,44 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==13;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->position)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x6aacb9fbb71a1d91): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==19;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -8693,8 +8705,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==20;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -8715,8 +8729,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  break;
  }
  case UINT64_C(0xd23da7ab574b95c3): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==55;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -8740,8 +8756,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  break;
  }
  case UINT64_C(0xe5626f155e4c5dad): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==23;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -8770,8 +8788,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -9402,54 +9422,44 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==13;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->position)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x6aacb9fbb71a1d91): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==19;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -9479,8 +9489,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==20;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -9501,8 +9513,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  break;
  }
  case UINT64_C(0xb66e4449e56b2e26): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==21;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -9526,8 +9540,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  break;
  }
  case UINT64_C(0x4d7bf73bcbddc228): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==6 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==22;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -9551,8 +9567,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  break;
  }
  case UINT64_C(0xe5626f155e4c5dad): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==23;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -9581,8 +9599,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10114,54 +10134,44 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xee5d97ad45ad251f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==41;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->start))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->start)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0x6917a5bab91540f2): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==42;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->finish))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->finish)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xaf63e94c860202a3): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==27;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10191,8 +10201,10 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  break;
  }
  case UINT64_C(0xcd29c05f390294ec): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==43;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10216,8 +10228,10 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  break;
  }
  case UINT64_C(0x96b593c242133841): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==44;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10244,8 +10258,10 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10837,54 +10853,44 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x4cbf3a26fca1d74a): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==13;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_vector3_load_message_body(r,&value->position))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_vector3_save_message_body(&probe,&value->position)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xb51afb05cd34709f): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==14;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t first_ref=0;
+ if(same_shape && !blockdemo_table_bit_get(&original,&first_ref,r->vocabulary->ref_bits))goto damaged;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!blockdemo_render_quaternion_load_message_body(r,&value->rotation))return 0;
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- blockdemo_table_bit_writer_t probe=*w;
- probe.buffer=NULL;
- probe.capacity=INT64_MAX;
- probe.bits=0;
- probe.check_default=1;
- if(!blockdemo_render_quaternion_save_message_body(&probe,&value->rotation)) return 0;
- if(!(probe.bits>BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
- }
+ if(same_shape && first_ref==0)goto damaged;
  break;
  }
  case UINT64_C(0xaf63e94c860202a3): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==27;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10914,8 +10920,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  break;
  }
  case UINT64_C(0xfd7f3fa0b16ed778): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==28;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10939,8 +10947,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  break;
  }
  case UINT64_C(0x0bee7b3cb4046c93): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==29;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10964,8 +10974,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  break;
  }
  case UINT64_C(0xdc89eb9cd3393be5): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==30;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -10992,8 +11004,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  break;
  }
  case UINT64_C(0xfa23d9ef19afc32c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==30 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==24;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12319,8 +12333,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xbb62c62c9808ea37): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==31;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12341,8 +12357,15 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
  break;
  }
  case UINT64_C(0x0f9222d2ba7aa2a7): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==32;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12362,18 +12385,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->cameras_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
- if(!(value->cameras_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0x294a5c4913e1ad44): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==33;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12393,18 +12417,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->ships_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
- if(!(value->ships_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0x84f8260bc283608c): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==34;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12424,18 +12449,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->turrets_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
- if(!(value->turrets_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0x1c3027194b1ba4d0): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==35;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12455,18 +12481,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->missiles_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
- if(!(value->missiles_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0x43125398a9903d27): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==36;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12486,18 +12513,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->dynamic_props_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
- if(!(value->dynamic_props_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0xc1f8d7edff7fcfd2): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==37;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12517,18 +12545,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->static_props_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
- if(!(value->static_props_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0x33408e39f5f480ff): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==38;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12548,18 +12577,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->cosmetic_props_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
- if(!(value->cosmetic_props_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0xd982b77b3e92d16d): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==39;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12579,18 +12609,19 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->lasers_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
- if(!(value->lasers_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0x876a8c1a85806a69): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==40;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
+ blockdemo_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!blockdemo_table_bit_get(&original,&original_count,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -12610,13 +12641,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->explosions_count=(int32_t)kept;
  }
- if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
- blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
- blockdemo_table_bit_writer_t * w=&default_writer;
- (void)w;
- schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
- if(!(value->explosions_count>0))goto damaged;
- }
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  default:r->report->unknown++;
@@ -13003,8 +13028,10 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xaf63f54c86021707): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==46;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -13034,8 +13061,10 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  break;
  }
  case UINT64_C(0xaf63f44c86021554): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==47;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -13065,8 +13094,10 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  break;
  }
  case UINT64_C(0xaf63f74c86021a6d): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==48;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -13549,8 +13580,10 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xaf63f54c86021707): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==46;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -13580,8 +13613,10 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  break;
  }
  case UINT64_C(0xaf63f44c86021554): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==47;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -13611,8 +13646,10 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  break;
  }
  case UINT64_C(0xaf63f74c86021a6d): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==48;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -13642,8 +13679,10 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  break;
  }
  case UINT64_C(0xaf63ea4c86020456): {
- int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==49;
  int32_t unknown_before=r->report->unknown;
+ (void)same_shape;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
