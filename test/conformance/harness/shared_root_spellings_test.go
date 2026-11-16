@@ -9,21 +9,19 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// rootStructuralSpellings examines the root body's field order, known
+// rootStructuralSpellings examines known
 // non-required null pointers and zero union arms, and node-table placement.
 // Unknown and required fields can lawfully carry null or an empty union.
 // It does not judge stored defaults or nested bodies.
 func rootStructuralSpellings(st *ir.Struct, data []byte) map[string]bool {
 	f := frameWire(data)
 	out := map[string]bool{}
-	places := map[uint64]int{}
 	declared := map[uint64]*ir.Field{}
-	for i, field := range st.Fields {
+	for _, field := range st.Fields {
 		id := ir.TableFieldWireId(field)
-		places[id] = i
 		declared[id] = field
 	}
-	last, nodePos, fields := -1, -1, 0
+	nodePos, fields := -1, 0
 	for i, sp := range f.spots {
 		if sp.kind == spotNodeCount && sp.value == 0 {
 			out["empty-node-table"] = true
@@ -37,11 +35,6 @@ func rootStructuralSpellings(st *ir.Struct, data []byte) map[string]bool {
 		}
 		if id == ir.TableNodeWireId {
 			nodePos = fields
-		} else if at, ok := places[id]; ok {
-			if at < last {
-				out["fields-out-of-order"] = true
-			}
-			last = at
 		}
 		fields++
 		if i+2 >= len(f.spots) {
@@ -154,8 +147,6 @@ func TestSharedReadableRootStructuralSpellings(t *testing.T) {
 		shapes := rootStructuralSpellings(st, data)
 		want := ""
 		switch filepath.Base(x.path) {
-		case "rewrite_fields_reversed.bin":
-			want = "fields-out-of-order"
 		case "union_arm_zero_in_field.bin":
 			want = "union-arm-zero"
 		}
@@ -224,7 +215,7 @@ func TestRootStructuralScannerKnownCases(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, shape string }{
-		{"variable-canonical.bin", ""}, {"variable-fields-out-of-order.bin", "fields-out-of-order"},
+		{"variable-canonical.bin", ""}, {"variable-fields-out-of-order.bin", ""},
 		{"variable-explicit-null-pointer.bin", "explicit-null-pointer"}, {"variable-empty-node-table.bin", "empty-node-table"},
 		{"variable-node-table-out-of-place.bin", "node-table-out-of-place"}, {"variable-union-arm-zero.bin", "union-arm-zero"},
 	} {
@@ -271,5 +262,32 @@ func TestRootStructuralRequiredAndUnknownControls(t *testing.T) {
 	got := rootStructuralSpellings(u.Tables["Ordinary"], wire)
 	if len(got) != 2 || !got["explicit-null-pointer"] || !got["union-arm-zero"] {
 		t.Errorf("known nonrequired controls: got %v", got)
+	}
+}
+
+// TestVariableFieldOrderAcrossDeclarations checks the same legal file against
+// two declarations that name the same fields in opposite orders.
+func TestVariableFieldOrderAcrossDeclarations(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, tc := range []struct{ name, schema string }{{"writer", "package old\ntable Root { a uint8\n b uint8 }\n"}, {"reader", "package newer\ntable Root { b uint8\n a uint8 }\n"}} {
+		p := filepath.Join(dir, tc.name+".schema")
+		if err := os.WriteFile(p, []byte(tc.schema), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		u, err := compiler.New().Load([]string{p})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire, err := (framingVector{ids: []string{"a", "b"}, body: b(1, 6, 1, 2, 6, 2, 0)}).bytes(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fault := framingTableFault(framingVector{}, wire); fault != "" {
+			t.Fatal(fault)
+		}
+		if shapes := rootStructuralSpellings(u.Tables["Root"], wire); len(shapes) > 0 {
+			t.Errorf("%s: legitimate reordering flagged %v", tc.name, shapes)
+		}
 	}
 }

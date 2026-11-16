@@ -114,14 +114,12 @@ func nestedScopes(u *ir.Unit, root *ir.Struct, f *wireFrame) map[int]nestedScope
 	return scopes
 }
 
-// nestedStructuralSpellings reports field-order, null-pointer and arm-zero
+// nestedStructuralSpellings reports null-pointer and arm-zero
 // spellings inside known nested bodies. Required, deprecated, optional and
 // unknown fields are not condemned. Map entry key/value slots always ride.
 func nestedStructuralSpellings(u *ir.Unit, root *ir.Struct, data []byte) map[string]bool {
 	f := frameWire(data)
 	scopes := nestedScopes(u, root, f)
-	last := map[int]int{}
-	seen := map[int]bool{}
 	out := map[string]bool{}
 	for i, sp := range f.spots {
 		if sp.kind != spotRef || len(sp.enclosing) == 0 || sp.value == 0 || i+2 >= len(f.spots) {
@@ -140,18 +138,6 @@ func nestedStructuralSpellings(u *ir.Unit, root *ir.Struct, data []byte) map[str
 		if fd == nil {
 			continue
 		}
-		at := -1
-		for j, x := range st.Fields {
-			if x == fd {
-				at = j
-				break
-			}
-		}
-		if seen[key] && at < last[key] {
-			out["fields-out-of-order"] = true
-		}
-		last[key] = at
-		seen[key] = true
 		if fd.Required || fd.Deprecated || fd.Type.Optional || (st.MapEntryOf != "" && (fd.Name == "key" || fd.Name == "value")) {
 			continue
 		}
@@ -192,7 +178,7 @@ func TestNestedStructuralSpellingsControls(t *testing.T) {
 		{"array element null", []string{"list", "p"}, b(1, 14, 7, 13, 1, 4, 2, 17, 0, 0, 0), "explicit-null-pointer"},
 		{"nested unknown", []string{"inner", "future"}, b(1, 13, 4, 2, 17, 0, 0, 0), ""},
 		{"nested valid", []string{"inner", "a"}, b(1, 13, 4, 2, 6, 1, 0, 0), ""},
-		{"nested field order", []string{"inner", "b", "a"}, b(1, 13, 7, 2, 6, 1, 3, 6, 1, 0, 0), "fields-out-of-order"},
+		{"nested reordered fields", []string{"inner", "b", "a"}, b(1, 13, 7, 2, 6, 1, 3, 6, 1, 0, 0), ""},
 		{"keyed element null", []string{"keyed", "A", "p"}, b(1, 16, 8, 13, 1, 2, 4, 3, 17, 0, 0, 0), "explicit-null-pointer"},
 		{"map value nested null", []string{"entries", "key", "value", "p"}, b(1, 14, 17, 13, 1, 14, 2, 4, 0, 0, 0, 0, 3, 13, 4, 4, 17, 0, 0, 0, 0), "explicit-null-pointer"},
 		{"union arm nested null", []string{"pick", "item", "p"}, b(1, 15, 2, 13, 4, 3, 17, 0, 0, 0), "explicit-null-pointer"},
