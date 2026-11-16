@@ -14593,8 +14593,9 @@ inline bool RunsCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
 inline bool RunsSpansEntryCookBody( uint8_t * at, const RunsSpansEntry & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.key, 2, order );
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.value_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.value_count; i++ )
     {
         if ( !ItemCookBody( at + 4 + i * 4, value.value[i], order ) ) { return false; }
     }

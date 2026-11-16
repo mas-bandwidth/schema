@@ -1284,9 +1284,9 @@ fn jr_collection(c: JvIn&, s: i64, d: FieldDesc, mark: i64, placed: i64) {
     c.vals[s].len = if d.shape == ShapeArr && d.array == ArrayFixed { n } else { placed };
 }
 
-// jr_shape is the JSON type a value takes (Shape, ElementShape): o a s b n,
-// and N a wide integer, which is written as a string and read as a string or
-// a number (docs/SPEC-TABLES.md §16.2).
+// jr_shape is the JSON dispatch shape (Shape, ElementShape): o a s b n,
+// and N a wide integer. The scalar reader accepts its value only as a string
+// (docs/SPEC-TABLES.md §16.2).
 fn jr_shape(c: JvIn&, d: FieldDesc, owner: const u8[:], ord: i32, element: bool) -> u8 {
     if !element {
         if d.shape == ShapeStr || d.shape == ShapeText || d.shape == ShapeBytes || d.shape == ShapeSBlob || d.shape == ShapeBBlob { return 's'; }
@@ -1307,9 +1307,8 @@ fn jr_shape(c: JvIn&, d: FieldDesc, owner: const u8[:], ord: i32, element: bool)
     return 'n';
 }
 
-// jr_shape_takes reports whether a value of the given JSON shape satisfies the
-// shape a declaration takes: a wide integer declares 'N' and takes a string
-// or a number, every other shape is exact.
+// jr_shape_takes routes strings and numbers for N to the scalar reader; the
+// reader counts a wide number as kind mismatch. Other shapes are exact.
 fn jr_shape_takes(want: u8, got: u8) -> bool {
     if want == got { return true; }
     return want == 'N' && (got == 's' || got == 'n');
@@ -2131,9 +2130,8 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         return true;
     }
     if jv_wide(d) {
-        // a 128-bit integer or a fixed-point kind: it reads as a string or a
-        // number, the same digits, when its storage is wider than 32 bits
-        // (docs/SPEC-TABLES.md §16.2)
+        // Wide integer and fixed-point kinds read only strings; narrow fixed
+        // kinds retain number tokens (docs/SPEC-TABLES.md §16.2).
         let pure = d.ibits == 0 && d.fbits == 0;
         if d.kw > 4 && json_peek(c.jr) == '"' {
             let buf, ok = json_scan_all(c.jr);
@@ -2142,6 +2140,7 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         let start, end, whole, ok = json_number(c.jr);
         if !ok { return false; }
+        if d.kw > 4 { c.jr.rep.mismatch += 1; return true; }
         if pure && !whole {
             c.jr.rep.mismatch += 1;
             return true;

@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // docs/SPEC-TABLES.md §2.3: the Python target carries `?T` and the by-value

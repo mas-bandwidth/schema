@@ -20553,8 +20553,9 @@ inline bool ShipEntryCookBody( uint8_t * at, const ShipEntry & value, TableByteO
     { uint32_t bits = 0; memcpy( &bits, &value.health, 4 ); table_cook_put( at + 40, (uint64_t) bits, 4, order ); }
     if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint32_t bits = 0; memcpy( &bits, &value.mass, 4 ); table_cook_put( at + 44, (uint64_t) bits, 4, order ); }
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.hardpoints_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.hardpoints_count; i++ )
     {
         table_cook_put( at + 48 + i * 4, (uint64_t) value.hardpoints[i], 4, order );
     }
@@ -20595,8 +20596,9 @@ inline bool PackConfigCookBody( uint8_t * at, const PackConfig & value, TableByt
     {
         table_cook_put( at + 400 + i * 4, (uint64_t) value.thresholds.slots[i], 4, order );
     }
-    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 3; i++ )
+    // 3 slots of storage, value.reserves_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.reserves_count; i++ )
     {
         if ( !ShipEntryCookBody( at + 412 + i * 108, value.reserves[i], order ) ) { return false; }
     }

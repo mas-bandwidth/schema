@@ -8,7 +8,8 @@
 # each must go red by name. It needs the pins, so test-python runs it beside
 # the table tests, and make/negative-controls.d schedules it in the
 # python-table-core group.
-test-python: python-vt-unbounded-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-unbounded
+python-ci-vt-unbounded: python-vt-unbounded-negative-control
 
 .PHONY: python-vt-unbounded-negative-control
 python-vt-unbounded-negative-control:

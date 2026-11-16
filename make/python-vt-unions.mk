@@ -18,7 +18,8 @@
 # minimum and the write tag) and requires the probe, still running to its
 # end, to lose the line that names that check.
 .PHONY: python-vt-unions python-vt-unions-negative-control
-test-python: python-vt-unions python-vt-unions-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-unions
+python-ci-vt-unions: python-vt-unions python-vt-unions-negative-control
 
 python-vt-unions: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtUnions$$' ./internal/codegen/pythontable/

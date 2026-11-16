@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+ROOT=$(pwd -P)
+PYTHON=${PYTHON:-$ROOT/dist/python-3.15.2/bin/python3.15}
+if [ ! -x "$PYTHON" ]; then echo "missing pinned Python: run make dist-python" >&2; exit 2; fi
+version=$("$PYTHON" -I -c 'import platform; print(platform.python_implementation(), platform.python_version())')
+case "$version" in
+    "CPython 3.11.18"|"CPython 3.15.2") ;;
+    *) echo "bench-python refuses $version: expected CPython 3.11.18 or 3.15.2" >&2; exit 1 ;;
+esac
+if [ ! -f generated/bench/python/bench/Bench.py ]; then echo "missing generated benchmark: run make generated/bench/python/.stamp" >&2; exit 2; fi
+exec "$PYTHON" -W error -I -B bench/python/main.py "$@"

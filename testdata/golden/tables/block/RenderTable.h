@@ -30495,56 +30495,65 @@ inline bool RenderExplosionCookBody( uint8_t * at, const RenderExplosion & value
 inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.version, 8, order );
-    // all 1 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 1; i++ )
+    // 1 slots of storage, value.cameras_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.cameras_count; i++ )
     {
         if ( !RenderCameraCookBody( at + 8 + i * 72, value.cameras[i], order ) ) { return false; }
     }
     table_cook_put( at + 80, (uint64_t) (uint32_t) value.cameras_count, 4, order );
-    // all 4096 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4096; i++ )
+    // 4096 slots of storage, value.ships_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.ships_count; i++ )
     {
         if ( !RenderShipCookBody( at + 88 + i * 88, value.ships[i], order ) ) { return false; }
     }
     table_cook_put( at + 360536, (uint64_t) (uint32_t) value.ships_count, 4, order );
-    // all 1024 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 1024; i++ )
+    // 1024 slots of storage, value.turrets_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.turrets_count; i++ )
     {
         if ( !RenderTurretCookBody( at + 360544 + i * 64, value.turrets[i], order ) ) { return false; }
     }
     table_cook_put( at + 426080, (uint64_t) (uint32_t) value.turrets_count, 4, order );
-    // all 4096 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4096; i++ )
+    // 4096 slots of storage, value.missiles_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.missiles_count; i++ )
     {
         if ( !RenderMissileCookBody( at + 426088 + i * 72, value.missiles[i], order ) ) { return false; }
     }
     table_cook_put( at + 721000, (uint64_t) (uint32_t) value.missiles_count, 4, order );
-    // all 4096 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4096; i++ )
+    // 4096 slots of storage, value.dynamic_props_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.dynamic_props_count; i++ )
     {
         if ( !RenderDynamicPropCookBody( at + 721008 + i * 72, value.dynamic_props[i], order ) ) { return false; }
     }
     table_cook_put( at + 1015920, (uint64_t) (uint32_t) value.dynamic_props_count, 4, order );
-    // all 20000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 20000; i++ )
+    // 20000 slots of storage, value.static_props_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.static_props_count; i++ )
     {
         if ( !RenderStaticPropCookBody( at + 1015928 + i * 80, value.static_props[i], order ) ) { return false; }
     }
     table_cook_put( at + 2615928, (uint64_t) (uint32_t) value.static_props_count, 4, order );
-    // all 8192 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 8192; i++ )
+    // 8192 slots of storage, value.cosmetic_props_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.cosmetic_props_count; i++ )
     {
         if ( !RenderCosmeticPropCookBody( at + 2615936 + i * 80, value.cosmetic_props[i], order ) ) { return false; }
     }
     table_cook_put( at + 3271296, (uint64_t) (uint32_t) value.cosmetic_props_count, 4, order );
-    // all 32000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 32000; i++ )
+    // 32000 slots of storage, value.lasers_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.lasers_count; i++ )
     {
         if ( !RenderLaserCookBody( at + 3271304 + i * 64, value.lasers[i], order ) ) { return false; }
     }
     table_cook_put( at + 5319304, (uint64_t) (uint32_t) value.lasers_count, 4, order );
-    // all 32000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 32000; i++ )
+    // 32000 slots of storage, value.explosions_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.explosions_count; i++ )
     {
         if ( !RenderExplosionCookBody( at + 5319312 + i * 80, value.explosions[i], order ) ) { return false; }
     }

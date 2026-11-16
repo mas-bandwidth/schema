@@ -3264,6 +3264,19 @@
       "python": "pin"
     },
     {
+      "name": "python-packet-close",
+      "when": "pull-request",
+      "why": "The packet golden and strict analyzer controls plant a reader fault and a type error into copies of generated code and require each gate to name its failure.",
+      "targets": [
+        "python-packet-close-negative-control",
+        "python-packet-analyzer-negative-control",
+        "packet-defaults-python-negative-control",
+        "bench-python-negative-control",
+        "python-hosted-packet-text-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "python-packet-floats",
       "when": "pull-request",
       "why": "the Python packet float kinds' controls (make/python.mk, packet-finite-python-negative-control): the finite rule is removed from a copy of the generated tree once per direction and test/packet-finite/python/main.py must fail exactly the vectors in its read.expected and write.expected, and the compressed float's range check is cut from a copy of a generated validator and the contract probe must name exactly its vectors, and the fixed point read's raw span check is cut from a copy of the bit layer and the probe must name exactly the headroom reads. One SCHEMA_SLOW go test, about a second of interpreter time on a bench; the row's cost is the pin cache restore.",

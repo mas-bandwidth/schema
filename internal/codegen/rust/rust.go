@@ -201,6 +201,9 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string, shadowed
 		sort.Strings(sorted)
 		for _, mod := range sorted {
 			switch {
+			case strings.HasSuffix(mod, "_fixed_values"):
+				// Conversion impls have no items to glob re-export.
+				fmt.Fprintf(&b, "mod %s;\n", mod)
 			case strings.HasSuffix(mod, "_block") || mod == "block_runtime":
 				fmt.Fprintf(&b, "#[cfg(feature = \"block\")]\nmod %s;\n#[cfg(feature = \"block\")]\npub use %s::*;\n", mod, mod)
 			case strings.HasSuffix(mod, "_cook") || mod == "cook_runtime":
@@ -221,6 +224,9 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string, shadowed
 		fmt.Fprintf(&b, "/// table layer's type for a schema name the packet layer also declares.\n")
 		fmt.Fprintf(&b, "pub mod %s {\n", TablesModule)
 		for _, mod := range sorted {
+			if strings.HasSuffix(mod, "_fixed_values") {
+				continue
+			}
 			name := mod
 			if strings.HasSuffix(mod, "_variable") {
 				name = mod + "_constants"

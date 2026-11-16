@@ -12,8 +12,8 @@ import (
 )
 
 // TestCommittedSplitsRunEveryDeclaredTestExactlyOnce holds the table's
-// patterns against real test names. The complement supplies the union, but
-// overlapping patterns would silently run a test in two matrix jobs.
+// patterns against declared tests and fuzz seed targets. The complement
+// supplies the union, but overlapping patterns would run a test in two jobs.
 func TestCommittedSplitsRunEveryDeclaredTestExactlyOnce(t *testing.T) {
 	t.Parallel()
 	tb, err := readTable(filepath.Join("..", "..", tablePath))
@@ -37,7 +37,7 @@ func TestCommittedSplitsRunEveryDeclaredTestExactlyOnce(t *testing.T) {
 				}
 				for _, decl := range file.Decls {
 					fn, ok := decl.(*ast.FuncDecl)
-					if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") {
+					if !ok || fn.Recv != nil || (!strings.HasPrefix(fn.Name.Name, "Test") && !strings.HasPrefix(fn.Name.Name, "Fuzz")) {
 						continue
 					}
 					selected := 0
@@ -69,7 +69,7 @@ func TestPlanRunsEveryTestExactlyOnce(t *testing.T) {
 	tb := table{
 		short:  map[string]float64{"./a": 50, "./b": 30, "./c": 25, "./big": 90},
 		plain:  map[string]float64{},
-		splits: map[string][]string{"./s": {"^TestHeavy$", "^TestOther$"}},
+		splits: map[string][]string{"./s": {"^(TestHeavy|FuzzHeavy)$", "^TestOther$"}},
 	}
 	pkgs := []string{"./a", "./b", "./c", "./big", "./s", "./unknown"}
 	rows := plan(tb, pkgs, true, 60)
@@ -107,7 +107,7 @@ func TestPlanRunsEveryTestExactlyOnce(t *testing.T) {
 		t.Fatalf("./s has %d rows, want its 2 patterns and the complement: %+v", len(split), split)
 	}
 	// every test name lands in exactly one of the split rows
-	for _, name := range []string{"TestHeavy", "TestOther", "TestNew", "TestHeavyish"} {
+	for _, name := range []string{"TestHeavy", "TestOther", "TestNew", "TestHeavyish", "FuzzHeavy", "FuzzNew"} {
 		n := 0
 		for _, r := range split {
 			if selects(t, r, name) {
