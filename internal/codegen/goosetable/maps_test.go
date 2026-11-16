@@ -47,7 +47,7 @@ table Root { scores map[int32]int64
 
 // mapsProbeText names every map's keys out of order, and points two link
 // entries at one shared leaf, so the numbering follows the entry order.
-const mapsProbeText = `{"scores":{"5":50,"-3":-30,"1":10,"-40":4},` +
+const mapsProbeText = `{"scores":{"5":"50","-3":"-30","1":"10","-40":"4"},` +
 	`"deep":{"9":{"tags":{"7":1,"-2":2,"3":3},"n":4},"3":{"n":1},"6":{"tags":{"1":5}}},` +
 	`"names":{"zed":1,"al":2,"b":3,"alpha":4},` +
 	`"links":{"8":{"&node":1,"v":80},"2":{"v":20},"5":{"&node":1}},` +

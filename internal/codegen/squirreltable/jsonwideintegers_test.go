@@ -37,8 +37,9 @@ local jwide = function(unit, mod, root, key) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
   local J = schema.require("schema_table_json");
-  local v = J.FromJson(T, root, inputs[key + ".json"], {});
-  if (v == null) { print("jwide " + key + " refused\n"); return; }
+  local report = {};
+  local v = J.FromJson(T, root, inputs[key + ".json"], report);
+  if (v == null) { print("jwide " + key + " refused " + (("reason" in report) ? report.reason : "unknown") + "\n"); return; }
   local text = J.ToJson(T, root, v);
   local measure = J.ToJsonMeasure(T, root, v);
   print("jwide " + key + " " + (text == null ? "null" : hexOf(text)) + " " + measure + "\n");
@@ -47,8 +48,7 @@ local jwide = function(unit, mod, root, key) {
 
 // TestSquirrelJsonWideIntegersAreStrings holds the Squirrel leg to both JSON
 // integer rules of docs/SPEC-TABLES.md §16.2: an integer kind wider than 32
-// bits is WRITTEN as a string of decimal digits and reads as a string or a
-// number; every integer field takes an integer token only — no fraction, no
+// bits is WRITTEN as a string of decimal digits and reads as a string only; every integer field takes an integer token only — no fraction, no
 // exponent, no `-0` — and the range is tested on the exact value. Every accept
 // row writes the committed canonical text byte for byte, and every refuse row
 // is refused.
@@ -72,6 +72,7 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 
 	type vector struct {
 		name, json, verdict string
+		numberToken         bool
 		body                []byte
 	}
 	var vectors []vector
@@ -95,9 +96,29 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 	if len(vectors) == 0 {
 		t.Fatal("no vector rows read; the gate would pass over an empty set")
 	}
+	numberManifest, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	numberCount := 0
+	for line := range strings.SplitSeq(string(numberManifest), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 5 || f[1] != "Integers" || f[3] != "refused" {
+			t.Fatalf("invalid NUMBER-TOKEN row: %q", line)
+		}
+		vectors = append(vectors, vector{name: f[0], json: f[2], verdict: f[3], numberToken: true})
+		numberCount++
+	}
+	if numberCount != 13 {
+		t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", numberCount)
+	}
 
 	// A NUMBER TOKEN IS READ AT ANY LENGTH (docs/SPEC-TABLES.md §16.2
-	// Numbers): a wide fixed-point field's long in-range spelling is the same
+	// Numbers): a wide fixed-point string's long in-range spelling is the same
 	// value as its canonical "0.5", and the writer spells the canonical text.
 	longFrac := "0.5" + strings.Repeat("0", 600)
 	vectors = append(vectors, vector{
@@ -105,11 +126,11 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 		verdict: "read",
 		body: []byte(`{
   "small": 7,
-  "wide": -42,
-  "uwide": 18446744073709551615,
-  "wide128": 170141183460469231731687303715884105727,
-  "ranged": 9007199254740993,
-  "frac": ` + longFrac + `,
+  "wide": "-42",
+  "uwide": "18446744073709551615",
+  "wide128": "170141183460469231731687303715884105727",
+  "ranged": "9007199254740993",
+  "frac": "` + longFrac + `",
   "counts": {
     "0": 1,
     "9007199254740993": 2
@@ -161,6 +182,9 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 				t.Errorf("%s: FromJson answered %v, want refused", v.name, g)
 				continue
 			}
+			if v.numberToken && (len(g) < 2 || g[1] != "kind_mismatch") {
+				t.Errorf("%s: got %v, want kind_mismatch", v.name, g)
+			}
 			compared++
 			continue
 		}
@@ -187,5 +211,96 @@ func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 	}
 	if compared != len(vectors) {
 		t.Errorf("compared %d of %d integer vectors", compared, len(vectors))
+	}
+	t.Run("integer sites", func(t *testing.T) { t.Parallel(); squirrelWideIntegerSites(t) })
+}
+
+const squirrelWideSitesSchema = `package jsonsites
+
+enum Slot { A, B }
+union Pick
+{
+    wide int64
+    narrow int32
+}
+table Sites
+{
+    wide int64
+    bits33 bits(33)
+    bits64 bits(64)
+    u128 uint128
+    fixed64 fixed(48, 16) | min = -10, max = 10
+    fixed128 fixed(64, 64) | min = -10, max = 10
+    counts map[uint64]int64
+    list [2]int64
+    keyed [Slot]int64
+    opt ?int64
+    pick Pick
+    narrow int32
+}
+`
+
+func squirrelWideIntegerSites(t *testing.T) {
+	t.Helper()
+	cases := []struct{ name, number, quoted, value string }{
+		{"plain", `{"wide":42}`, `{"wide":"42"}`, `"42"`},
+		{"array", `{"list":[42,"0"]}`, `{"list":["42","0"]}`, `"42"`},
+		{"optional", `{"opt":42}`, `{"opt":"42"}`, `"42"`},
+		{"union", `{"pick":{"wide":42}}`, `{"pick":{"wide":"42"}}`, `"42"`},
+		{"map", `{"counts":{"1":42}}`, `{"counts":{"1":"42"}}`, `"42"`},
+		{"keyed", `{"keyed":{"A":42}}`, `{"keyed":{"A":"42"}}`, `"42"`},
+		{"bits33", `{"bits33":42}`, `{"bits33":"42"}`, `"42"`},
+		{"bits64", `{"bits64":42}`, `{"bits64":"42"}`, `"42"`},
+		{"uint128", `{"u128":42}`, `{"u128":"42"}`, `"42"`},
+		{"fixed64", `{"fixed64":0.5}`, `{"fixed64":"0.5"}`, `"0.5"`},
+		{"fixed128", `{"fixed128":0.5}`, `{"fixed128":"0.5"}`, `"0.5"`},
+	}
+	u := loadSource(t, squirrelWideSitesSchema)
+	out := t.TempDir()
+	mod := emitUnit(t, out, "jsonsites", u)
+	var probe strings.Builder
+	probe.WriteString(jsonPrelude)
+	probe.WriteString(jsonIntegersProbe)
+	inputs := map[string][]byte{"narrow.json": []byte(`{"narrow":42}`)}
+	fmt.Fprintf(&probe, "jwide(%q, %q, %q, %q);\n", "jsonsites", mod, "Sites", "narrow")
+	for _, c := range cases {
+		for _, variant := range []struct{ name, body string }{{"number", c.number}, {"quoted", c.quoted}} {
+			key := c.name + "-" + variant.name
+			inputs[key+".json"] = []byte(variant.body)
+			fmt.Fprintf(&probe, "jwide(%q, %q, %q, %q);\n", "jsonsites", mod, "Sites", key)
+		}
+	}
+	writeFile(t, filepath.Join(out, "main.nut"), []byte(probe.String()))
+	got := map[string][]string{}
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, out, "main.nut", inputs)), "\n"), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 || f[0] != "jwide" {
+			t.Fatalf("unexpected probe line %q", line)
+		}
+		got[f[1]] = f[2:]
+	}
+	for _, c := range cases {
+		v := got[c.name+"-number"]
+		if len(v) < 2 || v[0] != "refused" || v[1] != "kind_mismatch" {
+			t.Errorf("%s number: got %v, want kind_mismatch", c.name, v)
+		}
+		v = got[c.name+"-quoted"]
+		if len(v) < 2 || v[0] == "refused" || v[0] == "null" {
+			t.Errorf("%s quoted: got %v, want accepted", c.name, v)
+			continue
+		}
+		text, ok := unhex(v[0])
+		if !ok || !strings.Contains(string(text), c.value) {
+			t.Errorf("%s quoted: output %q lacks %s", c.name, text, c.value)
+		}
+	}
+	v := got["narrow"]
+	if len(v) < 2 || v[0] == "refused" || v[0] == "null" {
+		t.Errorf("narrow: got %v, want accepted", v)
+		return
+	}
+	text, ok := unhex(v[0])
+	if !ok || !strings.Contains(string(text), `"narrow": 42`) {
+		t.Errorf("narrow: output %q does not retain 42", text)
 	}
 }
