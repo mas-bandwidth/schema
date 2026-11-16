@@ -1010,7 +1010,7 @@ fixed table ShipConfig
 				if !strings.Contains(line, "BuildVersion = 0x") {
 					continue
 				}
-				if !strings.Contains(strings.ToLower(line), "482a6d07fc09a843") {
+				if !strings.Contains(strings.ToLower(line), want) {
 					t.Errorf("%s emits %q — docs/SPEC-TABLES.md §20.2's number for this unit is %s", name, strings.TrimSpace(line), want)
 				}
 				found = true
