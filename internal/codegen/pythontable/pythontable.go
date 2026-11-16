@@ -93,6 +93,12 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 		if !surfaces.Fixed && rel == "_schema/fixedform.py" {
 			continue
 		}
+		if !unitHasJSON(u, surfaces) && (rel == "_schema/json_scan.py" || rel == "_schema/json_table.py") {
+			continue
+		}
+		if (!surfaces.TextForm || !unitHasJSON(u, surfaces)) && (rel == "_schema/textform.py" || rel == "_schema/textform_scan.py") {
+			continue
+		}
 		out[path.Join(u.Package, rel)] = data
 	}
 	// The hosted packet classes carry the packet core's own codec, so the
@@ -516,10 +522,14 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
-	b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
-	b.WriteString("from ._schema.textform import Document as _s_TextDocument, Limits as _s_TextLimits, read as _s_read_text_form\n")
+	if unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
+		b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
+	}
+	if surfaces.TextForm && unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.textform import Document as _s_TextDocument, Limits as _s_TextLimits, read as _s_read_text_form\n")
+	}
 	b.WriteString("from ._schema.text_carrier import decode_text as _s_decode_text, encode_text as _s_encode_text\n")
-	b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
 	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	if surfaces.Fixed {
 		b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
@@ -772,7 +782,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
 		emitStraightLine(b, st)
-		emitStraightLineJSON(b, st)
+		if surfaceCarries(surfaces, st, "json") {
+			emitStraightLineJSON(b, st)
+		}
 	}
 	b.WriteString("\n")
 }

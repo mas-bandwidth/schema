@@ -45,6 +45,15 @@ func surfaceForms(s Surfaces, st *ir.Struct) []string {
 	return out
 }
 
+func unitHasJSON(u *ir.Unit, s Surfaces) bool {
+	for _, st := range u.Tables {
+		if st != nil && !st.IsMapEntry() && !st.IsTextListElem() && surfaceCarries(s, st, "json") {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidateSurfaces applies the shared explicit-list rule. The default
 // set, including an explicit full set, is exempt. Synthetic entries never name
 // the refusal, even though their owner declaration also governs them.

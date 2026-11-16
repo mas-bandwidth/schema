@@ -170,6 +170,26 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 	if strings.Contains(string(files["probe/Core.py"]), "def from_text_form(") {
 		t.Fatal("wire-only table emitted textform")
 	}
+	if _, ok := files["probe/_schema/json_table.py"]; ok {
+		t.Fatal("wire-only table emitted JSON runtime")
+	}
+	if _, ok := files["probe/_schema/textform.py"]; ok {
+		t.Fatal("wire-only table emitted textform runtime")
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root
+v = Root()
+v.from_text_form = 7
+assert Root.load_text(v.save_text()).from_text_form == 7
+assert not callable(v.from_text_form)
+print('ok')
+`
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); got != "ok\n" {
+			t.Fatalf("wire-only runtime: %q", got)
+		}
+	}
 }
 
 func TestPythonHandtextSurfaceNegativeControl(t *testing.T) {
