@@ -18219,7 +18219,6 @@ is a kind change and is refused (§4.1). This restores the pre-existing
 presence evolution contract rather than adding a ban to justify read-side
 elision.
 
-
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
 

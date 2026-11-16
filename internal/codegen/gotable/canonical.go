@@ -8,10 +8,10 @@ import (
 
 // The read emitters' canonical-spelling checks (docs/SPEC-TABLES.md §3, §3.1,
 // §3.2, §3.3; docs/rulings.json reads-refuse-non-canonical) live here, so the
-// core files carry one call each: a field stored at the default its writer
-// elides (g.elides), an element riding as its default where its array or
-// slot elides whole (g.sink), keyed slots in variant order, and the id
-// table's first-use order (tableFirstUseSource).
+// message read can check a field against the announced writer (g.elides);
+// keyed slots use unconditional slot elision (g.sink); and file reads check
+// observable first-use ID order (tableFirstUseSource). Form 1 does not carry
+// the writer declaration needed to judge whole-field elision or enum order.
 
 // pointerNullCheck is a pointer read's check of its node index: an explicit
 // null at a field is refused (null elides, §3.1); a null element of an [N]
