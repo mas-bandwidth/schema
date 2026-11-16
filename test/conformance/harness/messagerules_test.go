@@ -349,7 +349,10 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	// THE MESSAGE CLOSURE ANNOUNCES NO NODE-TABLE ID (§3.3), but a vocabulary
 	// from a build that still announced one carries it once, so the rows read
 	// against the unit's own entries with the node-table id after them
-	v, vreport, verr := readAnnouncement(announce(own.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), own.Entries()...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})))
+	// Unknown fields may be skipped for another build, allowing the malformed
+	// value references below to reach the kept and skipped enum walks.
+	future := evolvedMessageVocabulary(t, bunit)
+	v, vreport, verr := readAnnouncement(announce(future.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), own.Entries()...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})))
 	if verr != nil || !v.Announced() || vreport.Refused {
 		t.Fatalf("the announcement carrying the node-table id was refused: %v %+v", verr, vreport)
 	}
