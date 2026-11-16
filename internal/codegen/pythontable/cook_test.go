@@ -282,7 +282,7 @@ func parseCookWrite(out string) (parsedCookWrite, error) {
 		return nil, fmt.Errorf("the probe did not finish:\n%s", out)
 	}
 	seen := parsedCookWrite{}
-	for _, line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
@@ -457,7 +457,7 @@ func verifyCookOpen(cases []cookOpenCase, out string) error {
 		return fmt.Errorf("the probe did not finish:\n%s", out)
 	}
 	got := map[string]map[string]string{}
-	for _, line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
 			continue
