@@ -566,7 +566,6 @@ public final class MixedEventVariable {
         return v;
     }
 
-<<<<<<< HEAD
     // checkWrite is the selected arm's contract walk (docs/SPEC.md §5.1),
     // reached from its holder's checkWrite under `assert`: debug only.
     static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
@@ -583,7 +582,8 @@ public final class MixedEventVariable {
             assert MixedPickupEventVariable.checkWrite(v.pickup, walk);
         }
         return true;
-=======
+    }
+
     /**
      * carry a MixedEventFixed value into this value (the text form's reader of a fixed root's
      * value; docs/SPEC-TABLES.md §16, §3.4).
@@ -595,6 +595,5 @@ public final class MixedEventVariable {
         v.chat = MixedChatEventVariable.fromFixed(fixed.chat);
         v.pickup = MixedPickupEventVariable.fromFixed(fixed.pickup);
         return v;
->>>>>>> 0c79caa0f419ff55efa8653fdd1f217f101d5eb1
     }
 }
