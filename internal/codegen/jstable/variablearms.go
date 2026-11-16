@@ -127,7 +127,7 @@ func (g *variableGen) emitUnionDescriptors(closure []*ir.Struct) {
 				g.pf("      { name: %s, id: %s, k: %d, void: false, body: true, fw: 0, t: %s },\n", jsStr(arm.Name), id, armWireKind(arm), jsStr(arm.Ref.Name))
 			default:
 				g.pf("      { name: %s, id: %s, k: %d, void: false, body: false, fw: %d, f: %s },\n",
-					jsStr(arm.Name), id, armWireKind(arm), ir.ArmWireFixedWidth(arm.F), g.fieldDescNamed(arm.F, "value", 0, nil))
+					jsStr(arm.Name), id, armWireKind(arm), ir.ArmWireFixedWidth(arm.F), g.fieldDescNamed(arm.F, "value", 0, nil, false))
 			}
 		}
 		g.pf("    ],\n")
@@ -547,6 +547,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     // the array list first, under any count (docs/SPEC-TABLES.md §3, §4).
     if (!TableVariableArrayElementKindAllowed(ek)) { report.damaged = true; r.at = end; return false; }
     if (ek !== 13) { report.mismatch++; r.at = end; return undefined; }
+    if (!fd.opt && !fd.req && count === 0) { report.damaged = true; r.at = end; return false; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
@@ -615,12 +616,15 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; r.at = end; return undefined; }
     report.widened++;
   }
+  if (!fd.opt && !fd.req && count === 0) { report.damaged = true; r.at = end; return false; }
   const arr = v[fd.n];
   let rode = null;
+  let lastSlot = -1;
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
     if (rode === null) { rode = [key]; } else if (rode.includes(key)) { report.damaged = true; break; } else { rode.push(key); }
+    TableVariableIntroduce(st, key);
     const elen = sub.leb();
     if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
     const slot = fd.slotById.get(table[key - 1]);
@@ -633,11 +637,19 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
       sub.at += elen;
       continue;
     }
+    // Slots ride in ascending variant ordinal (§3.2): a slot that does not
+    // increase is a spelling no conforming writer produces.
+    if (slot <= lastSlot) { report.damaged = true; break; }
+    lastSlot = slot;
     const er = new TableVariableReader(r.b, sub.at, sub.at + elen);
     switch (fd.e.s) {
       case "enum": {
-        const x = TableVariableEnumRead(fd.e, er, table, report, retain);
-        if (x !== undefined) { arr[slot] = x; }
+        const unknownBefore = report.unknown;
+        const x = TableVariableEnumRead(fd.e, er, table, report, retain, st);
+        if (x !== undefined) {
+          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
+          arr[slot] = x;
+        }
         break;
       }
       case "tab": {
@@ -647,12 +659,18 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (path !== null) { path.pop(); }
         if (TableVariableCountRefused(report)) { return false; }
         if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
+        // A slot whose table body is its terminator alone is the default the
+        // writer elides (§3.2).
+        if (!fd.opt && !fd.req && elen <= 1) { report.damaged = true; break; }
         arr[slot] = inst;
         break;
       }
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
-        if (x !== undefined) { arr[slot] = x; }
+        if (x !== undefined) {
+          if (!fd.opt && !fd.req && TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
+          arr[slot] = x;
+        }
       }
     }
     // Bytes left inside a keyed slot after its element are damage (decode.go keyed).
@@ -675,8 +693,15 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, o); }
   const ref = r.leb();
   if (r.bad) { report.damaged = true; return undefined; }
-  if (ref === 0) { return null; }
+  if (ref === 0) {
+    const atField = st !== null && st.unionAtField;
+    if (st !== null) { st.unionAtField = false; }
+    if (atField) { report.damaged = true; return undefined; }
+    return null;
+  }
+  if (st !== null) { st.unionAtField = false; }
   if (ref > table.length || r.at >= r.end) { report.damaged = true; return undefined; }
+  TableVariableIntroduce(st, ref);
   const armId = table[ref - 1];
   const kind = r.u8();
   const n = r.leb();
@@ -758,7 +783,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       return holder;
     }
     case "bytes": case "arr": {
-      const res = TableVariableReadArrayBody(f, r, r.end, table, holder, report, st, retain, path);
+      const res = TableVariableReadArrayBody(f, r, r.end, table, holder, report, st, retain, path, false);
       return res ? holder : null;
     }
     case "union": {
@@ -769,7 +794,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       return holder;
     }
     case "enum": {
-      const x = TableVariableEnumRead(f, r, table, report, retain);
+      const x = TableVariableEnumRead(f, r, table, report, retain, st);
       if (x === undefined) { return null; }
       if (r.at !== r.end) { report.damaged = true; return null; }
       holder.value = x;
@@ -870,7 +895,7 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   holder[fd.n] = TableVariableFieldDefault(fd);
   if (!TableVariableShapeMatches(fd.js, shape)) {
     report.mismatch++;
-    return inp.skip(depth, graph);
+    return inp.skip(depth, graph, report);
   }
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
@@ -900,11 +925,11 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     if (status === "damaged") { report.damaged = true; inp.bad = true; return false; }
     if (status === "mismatch") {
       report.mismatch++;
-      if (!inp.skip(depth, graph)) { return false; }
+      if (!inp.skip(depth, graph, report)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
       // KEYS NEVER CLAMP: the entry drops whole (§2.8)
       report.oor++;
-      if (!inp.skip(depth, graph)) { return false; }
+      if (!inp.skip(depth, graph, report)) { return false; }
     } else {
       const entry = fd.c.make();
       entry.key = key;
@@ -935,6 +960,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     if (ch === "") { inp.bad = true; return false; }
     const key = inp.name();
     if (key === null) { return false; }
+    if (!TableVariableStoredText(key, inp, report)) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
     inp.p++;
     // A REPEATED KEY IS DAMAGE (docs/plans/strict-only.md decision 5), the
@@ -945,10 +971,10 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     const slot = fd.slotByName.get(key);
     if (slot === undefined) {
       report.unknown++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else if (!TableVariableShapeMatches(fd.e.js, inp.shape())) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
       return false;
     }
@@ -969,16 +995,17 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() === "}") { inp.p++; return true; }
   const k = inp.name();
   if (k === null) { return false; }
+  if (!TableVariableStoredText(k, inp, report)) { return false; }
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
   const arm = d.u.byName.get(k);
   if (arm === undefined) {
     report.unknown++;
-    if (!inp.skip(depth + 1, graph)) { return false; }
+    if (!inp.skip(depth + 1, graph, report)) { return false; }
   } else if (arm.void) {
     if (inp.shape() !== "z") {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       if (!inp.literal("null")) { return false; }
       holder[key] = { arm: arm.name, value: null };
@@ -986,7 +1013,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   } else if (arm.body) {
     if (inp.shape() !== (arm.c.jsonArray ? "a" : "o")) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       const inst = arm.c.make();
       if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
@@ -1001,7 +1028,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       holder[key] = h;
     } else if (!TableVariableShapeMatches(arm.f.js, shape)) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 1, graph, report)) { return false; }
     } else {
       if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
       holder[key] = h;

@@ -25,6 +25,9 @@ class _Table:
             raise InvalidValue(path, f"not a {fd.target}")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         from .load import read_body
 
         length = r.varint()
@@ -34,14 +37,18 @@ class _Table:
         return obj
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        # The field's id is numbered before its body's, so the id table is in
+        # the pre-order the Go engine writes.
+        w.varint(ctx.idref(fd.field_id))
+        w.byte(fd.kind)
+        self.write_element(w, fd, value, ctx)
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         from .save import write_body
 
-        field_ref = ctx.idref(fd.field_id)
         body = bytearray()
         bw = _body_writer(body)
         write_body(bw, value, ctx, False)
-        w.varint(field_ref)
-        w.byte(fd.kind)
         w.varint(len(body))
         w.raw(body)
 

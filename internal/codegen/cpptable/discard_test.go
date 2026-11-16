@@ -488,12 +488,14 @@ func TestCyclicWireIsRefusedCPP(t *testing.T) {
 	cyclePatch(t, unreached, 4, 2)
 	body.WriteString(cycleProbe("unreached", unreached, false, "cycle: a cycle the root does not reach loaded"))
 
-	// root(1) -> A(2), A.on and A.side -> L(3); the guard turned off on the
-	// wire with the slot kept, and the slot turned back at A
+	// root(1) -> A(2). The acyclic twin elides A.on, so its declared default
+	// leaves the guarded slot off the wire; the cycle wire keeps that slot
+	// under a false guard and turns it back at A.
 	guarded := []cycleLink{{0, "left", 1}, {1, "side", 2}}
+	twinOff := cycleEncode(t, m, 3, nil, guarded[:1])
+	body.WriteString(cycleProbe("guard twin", twinOff, true, "cycle: the acyclic twin of the false-guard case was refused"))
 	off := cycleEncode(t, m, 3, []int{1}, guarded)
 	cycleGuardOff(t, m, off)
-	body.WriteString(cycleProbe("guard twin", off, true, "cycle: the acyclic twin of the false-guard case was refused"))
 	cyclePatch(t, off, 3, 2)
 	body.WriteString(cycleProbe("false guard", off, false, "cycle: a cycle through a slot under a false guard loaded"))
 

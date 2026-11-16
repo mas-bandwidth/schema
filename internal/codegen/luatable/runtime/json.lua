@@ -267,9 +267,9 @@ end
 -- ONE JSON string into bytes, bounded at cap bytes (cap < 0 unbounded). A
 -- fourth truth is returned when the body carried a U+0000 unit — the \u0000
 -- escape into text storage §16.3 refuses as text_holds_zero — so the caller
--- that places the value can name the field; callers that only scan (an object
--- key that names no field, a skipped value) ignore it, because a zero that
--- never lands in text storage is not the event.
+-- that places the value can name the field; an object key, a skipped value and
+-- every key scan refuse the read on it as well, because a zero in a key or a
+-- skipped string is still the event.
 local function scan_string(inp, cap)
   if peek(inp) ~= '"' then
     inp.bad = true
@@ -507,11 +507,12 @@ local function skip_container(inp, close, depth, graph)
       return false
     end
     if close == "}" then
-      -- §16.2: a key is a schema name in every object, a skipped one
-      -- included, so one past 255 decoded bytes refuses the read
-      local key, over_bound, ok = scan_string(inp, MAX_KEY)
+      -- A SKIPPED OBJECT'S KEY IS HELD TO THE GRAMMAR AND TEXT RULES OF A
+      -- PLACED VALUE (§16.2, §16.3): one past 255 decoded bytes, or one that
+      -- decodes to U+0000, refuses the read.
+      local key, over_bound, ok, nul = scan_string(inp, MAX_KEY)
       if not ok then return false end
-      if over_bound then
+      if over_bound or nul then
         inp.bad = true
         return false
       end
@@ -567,7 +568,13 @@ skip_value = function(inp, depth, graph)
   if c == "{" then return skip_container(inp, "}", depth, graph) end
   if c == "[" then return skip_container(inp, "]", depth, graph) end
   if c == '"' then
-    local _, _, ok = scan_string(inp, -1)
+    -- a skipped string is held to the text rules of a placed value: one that
+    -- decodes to U+0000 refuses the read (§16.3)
+    local _, _, ok, nul = scan_string(inp, -1)
+    if nul then
+      inp.bad = true
+      return false
+    end
     return ok
   end
   if c == "t" then return literal(inp, "true") end
@@ -1315,9 +1322,9 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
         inp.bad = true
         return false
       end
-      local over_bound, ok
-      key, over_bound, ok = scan_string(inp, MAX_KEY)
-      if not ok or over_bound then
+      local over_bound, ok, nul
+      key, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+      if not ok or over_bound or nul then
         inp.bad = true
         return false
       end
@@ -1408,8 +1415,8 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
     inp.bad = true
     return false
   end
-  local k, over_bound, ok = scan_string(inp, MAX_KEY)
-  if not ok or over_bound then
+  local k, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+  if not ok or over_bound or nul then
     inp.bad = true
     return false
   end
@@ -1840,8 +1847,8 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
       inp.bad = true
       return false
     end
-    local name, over_bound, ok = scan_string(inp, MAX_KEY)
-    if not ok or over_bound then
+    local name, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+    if not ok or over_bound or nul then
       inp.bad = true
       return false
     end
@@ -1903,11 +1910,12 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     inp.p = inp.p + 1
     return { tag = 0 }
   end
-  -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3)
-  local name, over_bound, ok = scan_string(inp, MAX_KEY)
+  -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3);
+  -- §16.2: a key past 255 decoded bytes, or one that decodes to U+0000,
+  -- refuses the read
+  local name, over_bound, ok, nul = scan_string(inp, MAX_KEY)
   if not ok then return nil end
-  if over_bound then
-    -- §16.2: an arm key past 255 decoded bytes refuses the read
+  if over_bound or nul then
     inp.bad = true
     return nil
   end

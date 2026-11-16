@@ -2,5 +2,4 @@
 # every line is a FIX-CARD the rust port owes; the runner fails if one goes green (test/rust-hostile/src/main.rs)
 # a name of the form <case>@release or <case>@debug is owed in that build profile only
 wire-valid	rust-fixed-root-text-digest	inputs/wire-valid.bin	the Rust fixed row (ShipEntryRow) has no text form and no bridge to the variable value, so an accepted form-3 file is checked by write-back only and its canonical text digest is owed
-conformance-base64-unpadded	rust-hostile-rows	inputs/conformance-base64-unpadded.json	RELAXED 2026-11-14 (maintainer: get main green): the rust JSON read accepts unpadded base64 the ruling json-base64-canonical refuses; re-enable: relax/hostile-rows-rust
 conformance-str-zero-escape-unknown-key	rust-hostile-rows	inputs/conformance-str-zero-escape-unknown-key.json	RELAXED 2026-11-14 (maintainer: get main green): the rust JSON read accepts a zero escape in a skipped value the skipped-value rule refuses; re-enable: relax/hostile-rows-rust

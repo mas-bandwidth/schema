@@ -214,6 +214,7 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 	GunnerSettingsReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -258,6 +259,11 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 		}
 		switch fieldID {
 		case 0xb75aa3662201646a: // reaction
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GunnerSettings.reaction")
 				return false
@@ -277,7 +283,16 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 					value.Reaction = v
 				}
 			}
+			if !(math.Float32bits(value.Reaction) != math.Float32bits(0.2)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xa6bf719a4602b0bc: // tracking
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GunnerSettings.tracking")
 				return false
@@ -294,7 +309,16 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 				}
 				value.Tracking = b != 0
 			}
+			if !(value.Tracking != false) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x5bc44627b9848818: // callsign
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GunnerSettings.callsign")
 				return false
@@ -311,6 +335,10 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 			clear(value.Callsign[:])
 			copy(value.Callsign[:], sub.Buffer)
 			value.CallsignLength = int32(len(sub.Buffer))
+			if !(value.CallsignLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		default:
 			r.Report.Unknown++
 			if !tableWireSkipValue(r, kind) {
@@ -351,7 +379,8 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -478,6 +507,7 @@ func GunnerSettingsLoadBodyRetain(r *TableRetainReader, value *GunnerSettings) b
 	GunnerSettingsReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -523,6 +553,11 @@ func GunnerSettingsLoadBodyRetain(r *TableRetainReader, value *GunnerSettings) b
 		}
 		switch fieldID {
 		case 0xb75aa3662201646a: // reaction
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GunnerSettings.reaction")
 				return false
@@ -542,7 +577,16 @@ func GunnerSettingsLoadBodyRetain(r *TableRetainReader, value *GunnerSettings) b
 					value.Reaction = v
 				}
 			}
+			if !(math.Float32bits(value.Reaction) != math.Float32bits(0.2)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0xa6bf719a4602b0bc: // tracking
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GunnerSettings.tracking")
 				return false
@@ -559,7 +603,16 @@ func GunnerSettingsLoadBodyRetain(r *TableRetainReader, value *GunnerSettings) b
 				}
 				value.Tracking = b != 0
 			}
+			if !(value.Tracking != false) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x5bc44627b9848818: // callsign
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GunnerSettings.callsign")
 				return false
@@ -576,6 +629,10 @@ func GunnerSettingsLoadBodyRetain(r *TableRetainReader, value *GunnerSettings) b
 			clear(value.Callsign[:])
 			copy(value.Callsign[:], sub.Buffer)
 			value.CallsignLength = int32(len(sub.Buffer))
+			if !(value.CallsignLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "GunnerSettings") {
@@ -787,6 +844,7 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 	ShipEntryReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -831,6 +889,11 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 		}
 		switch fieldID {
 		case 0x2d21d7cd66bd5a5d: // display_name
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.display_name")
 				return false
@@ -847,7 +910,16 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 			clear(value.DisplayName[:])
 			copy(value.DisplayName[:], sub.Buffer)
 			value.DisplayNameLength = int32(len(sub.Buffer))
+			if !(value.DisplayNameLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x7f69d4b5288ba9cf: // health
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.health")
 				return false
@@ -867,7 +939,16 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 					value.Health = v
 				}
 			}
+			if !(math.Float32bits(value.Health) != math.Float32bits(100.0)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x1f3757a2ce7b0ab1: // mass
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.mass")
 				return false
@@ -887,7 +968,16 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 					value.Mass = v
 				}
 			}
+			if !(math.Float32bits(value.Mass) != math.Float32bits(1.0)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x95d0cce09ca82b73: // hardpoints
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.hardpoints")
 				return false
@@ -941,7 +1031,16 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 					return false
 				}
 			}
+			if !(value.HardpointsCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x40dbb648c0cd44aa: // gunner
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.gunner")
 				return false
@@ -1004,7 +1103,8 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1246,6 +1346,7 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 	ShipEntryReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -1291,6 +1392,11 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 		}
 		switch fieldID {
 		case 0x2d21d7cd66bd5a5d: // display_name
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.display_name")
 				return false
@@ -1307,7 +1413,16 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 			clear(value.DisplayName[:])
 			copy(value.DisplayName[:], sub.Buffer)
 			value.DisplayNameLength = int32(len(sub.Buffer))
+			if !(value.DisplayNameLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x7f69d4b5288ba9cf: // health
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.health")
 				return false
@@ -1327,7 +1442,16 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 					value.Health = v
 				}
 			}
+			if !(math.Float32bits(value.Health) != math.Float32bits(100.0)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x1f3757a2ce7b0ab1: // mass
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.mass")
 				return false
@@ -1347,7 +1471,16 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 					value.Mass = v
 				}
 			}
+			if !(math.Float32bits(value.Mass) != math.Float32bits(1.0)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x95d0cce09ca82b73: // hardpoints
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.hardpoints")
 				return false
@@ -1402,7 +1535,16 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 					return false
 				}
 			}
+			if !(value.HardpointsCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x40dbb648c0cd44aa: // gunner
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ShipEntry.gunner")
 				return false
@@ -1616,6 +1758,7 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 	GlobalSettingsReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -1660,6 +1803,11 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 		}
 		switch fieldID {
 		case 0xa65f859b617deaf3: // tick_rate
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -1674,6 +1822,10 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 							return false
 						}
 						value.TickRate = uint32(v)
+					}
+					if !(value.TickRate != 60) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -1694,7 +1846,16 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 				}
 				value.TickRate = uint32(v)
 			}
+			if !(value.TickRate != 60) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x467f35a74c6e4a70: // difficulty
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 30 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GlobalSettings.difficulty")
 				return false
@@ -1715,10 +1876,18 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 					}
 					if !value.Difficulty.TableEnumValue(id) {
 						r.Report.Unknown++
+					} else if value.Difficulty == DifficultyNormal {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 				}
 			}
 		case 0x14ec921cc2549d60: // build_note
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GlobalSettings.build_note")
 				return false
@@ -1735,7 +1904,16 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 			clear(value.BuildNote[:])
 			copy(value.BuildNote[:], sub.Buffer)
 			value.BuildNoteLength = int32(len(sub.Buffer))
+			if !(value.BuildNoteLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x09ae5613b0051271: // spawn_delays
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GlobalSettings.spawn_delays")
 				return false
@@ -1787,6 +1965,17 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 					return false
 				}
 			}
+			allDefault := true
+			for i := range value.SpawnDelays {
+				if math.Float32bits(value.SpawnDelays[i]) != math.Float32bits(0.0) {
+					allDefault = false
+					break
+				}
+			}
+			if !(!allDefault) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		default:
 			r.Report.Unknown++
 			if !tableWireSkipValue(r, kind) {
@@ -1827,7 +2016,8 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -2011,6 +2201,7 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 	GlobalSettingsReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -2056,6 +2247,11 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 		}
 		switch fieldID {
 		case 0xa65f859b617deaf3: // tick_rate
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2070,6 +2266,10 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 							return false
 						}
 						value.TickRate = uint32(v)
+					}
+					if !(value.TickRate != 60) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2090,7 +2290,16 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 				}
 				value.TickRate = uint32(v)
 			}
+			if !(value.TickRate != 60) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x467f35a74c6e4a70: // difficulty
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 30 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GlobalSettings.difficulty")
 				return false
@@ -2114,10 +2323,18 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 						if r.Retain != nil {
 							r.Report.RetainLost++
 						}
+					} else if value.Difficulty == DifficultyNormal {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 				}
 			}
 		case 0x14ec921cc2549d60: // build_note
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GlobalSettings.build_note")
 				return false
@@ -2134,7 +2351,16 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 			clear(value.BuildNote[:])
 			copy(value.BuildNote[:], sub.Buffer)
 			value.BuildNoteLength = int32(len(sub.Buffer))
+			if !(value.BuildNoteLength > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x09ae5613b0051271: // spawn_delays
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "GlobalSettings.spawn_delays")
 				return false
@@ -2186,6 +2412,17 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			allDefault := true
+			for i := range value.SpawnDelays {
+				if math.Float32bits(value.SpawnDelays[i]) != math.Float32bits(0.0) {
+					allDefault = false
+					break
+				}
+			}
+			if !(!allDefault) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -2788,6 +3025,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 	PackConfigReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -2832,6 +3070,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 		}
 		switch fieldID {
 		case 0xbb62c62c9808ea37: // version
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -2841,6 +3084,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					{
 						v := r.Unsigned(kind)
 						value.Version = uint32(v)
+					}
+					if !(value.Version != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -2856,13 +3103,26 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				v := r.Get32()
 				value.Version = uint32(v)
 			}
+			if !(value.Version != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x7fb43557b54149ce: // settings
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.settings")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2879,6 +3139,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				return false
 			}
 		case 0x294a5c4913e1ad44: // ships
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 16 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.ships")
 				return false
@@ -2904,8 +3169,13 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.ships")
 					return false
 				}
+				if count == 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				var keySeen [64]byte
 				var keySeenHigh map[uint64]struct{}
+				lastSlot := 0
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
@@ -2946,8 +3216,17 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					if int(slot) <= lastSlot {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					lastSlot = int(slot)
 					elem.Depth += 1
 					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if len(elem.Buffer) == 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2965,6 +3244,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				}
 			}
 		case 0x9cda940a344e1571: // thresholds
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 16 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.thresholds")
 				return false
@@ -2993,8 +3277,13 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					}
 					r.Report.Widened++
 				}
+				if count == 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				var keySeen [64]byte
 				var keySeenHigh map[uint64]struct{}
+				lastSlot := 0
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
@@ -3035,6 +3324,12 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					if int(slot) <= lastSlot {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					lastSlot = int(slot)
+					slotDefault := true
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3048,6 +3343,13 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
 					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3059,6 +3361,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				}
 			}
 		case 0x77707fccd201c228: // reserves
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.reserves")
 				return false
@@ -3113,6 +3420,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					return false
 				}
 			}
+			if !(value.ReservesCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		default:
 			r.Report.Unknown++
 			if !tableWireSkipValue(r, kind) {
@@ -3153,7 +3464,8 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -3833,6 +4145,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 	PackConfigReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
+	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -3878,6 +4191,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 		}
 		switch fieldID {
 		case 0xbb62c62c9808ea37: // version
+			if order >= 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 0
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -3887,6 +4205,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					{
 						v := r.Unsigned(kind)
 						value.Version = uint32(v)
+					}
+					if !(value.Version != 1) {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					r.Report.Widened++
 					break
@@ -3902,13 +4224,26 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				v := r.Get32()
 				value.Version = uint32(v)
 			}
+			if !(value.Version != 1) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 		case 0x7fb43557b54149ce: // settings
+			if order >= 1 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 1
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.settings")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -3926,6 +4261,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				return false
 			}
 		case 0x294a5c4913e1ad44: // ships
+			if order >= 2 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 2
 			if kind != 16 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.ships")
 				return false
@@ -3951,8 +4291,13 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.ships")
 					return false
 				}
+				if count == 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				var keySeen [64]byte
 				var keySeenHigh map[uint64]struct{}
+				lastSlot := 0
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
@@ -3996,9 +4341,18 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					if int(slot) <= lastSlot {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					lastSlot = int(slot)
 					elem.Path = r.Path.step(2, uint32(int(slot)-1))
 					elem.Depth += 1
 					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if len(elem.Buffer) == 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -4016,6 +4370,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				}
 			}
 		case 0x9cda940a344e1571: // thresholds
+			if order >= 3 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 3
 			if kind != 16 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.thresholds")
 				return false
@@ -4044,8 +4403,13 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					}
 					r.Report.Widened++
 				}
+				if count == 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				var keySeen [64]byte
 				var keySeenHigh map[uint64]struct{}
+				lastSlot := 0
 				for range count {
 					keyRef, ok := sub.Leb()
 					if !ok {
@@ -4089,6 +4453,12 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					if int(slot) <= lastSlot {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					lastSlot = int(slot)
+					slotDefault := true
 					elem.Path = r.Path.step(3, uint32(int(slot)-1))
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4103,6 +4473,13 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
 					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -4114,6 +4491,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				}
 			}
 		case 0x77707fccd201c228: // reserves
+			if order >= 4 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			order = 4
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "PackConfig.reserves")
 				return false
@@ -4169,6 +4551,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+			}
+			if !(value.ReservesCount > 0) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -4808,10 +5194,10 @@ func GunnerSettingsFixedMeasure(count int64) int64 {
 }
 
 // GunnerSettingsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func GunnerSettingsFixedSave(values []GunnerSettings, buffer []byte) int64 {
 	need := GunnerSettingsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -4930,6 +5316,11 @@ func GunnerSettingsFixedLoad(values []GunnerSettings, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5096,10 +5487,10 @@ func ShipEntryFixedMeasure(count int64) int64 {
 }
 
 // ShipEntryFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func ShipEntryFixedSave(values []ShipEntry, buffer []byte) int64 {
 	need := ShipEntryFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5218,6 +5609,11 @@ func ShipEntryFixedLoad(values []ShipEntry, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5378,10 +5774,10 @@ func GlobalSettingsFixedMeasure(count int64) int64 {
 }
 
 // GlobalSettingsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func GlobalSettingsFixedSave(values []GlobalSettings, buffer []byte) int64 {
 	need := GlobalSettingsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5500,6 +5896,11 @@ func GlobalSettingsFixedLoad(values []GlobalSettings, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5774,10 +6175,10 @@ func PackConfigFixedMeasure(count int64) int64 {
 }
 
 // PackConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func PackConfigFixedSave(values []PackConfig, buffer []byte) int64 {
 	need := PackConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5896,6 +6297,11 @@ func PackConfigFixedLoad(values []PackConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}

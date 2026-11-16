@@ -74,7 +74,7 @@ namespace Blockdemo
         {
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
             if (v.Tag != 0 && !ids.Add(0x56d7ab194448a4f3ul)) return false;
-            if (!double.IsFinite(v.Value)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Value));
             if (BitConverter.DoubleToUInt64Bits(v.Value) != 0x0000000000000000ul && !ids.Add(0x7ce4fd9430e80ceaul)) return false;
             if (v.Flag != false && !ids.Add(0xd5f2d079088c0b17ul)) return false;
             if (v.Id != 0 && !ids.Add(0x08b72e07b55c3ac0ul)) return false;
@@ -1024,7 +1024,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PaddedRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (PaddedRowFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PaddedRowFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(PaddedRowFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -5027,7 +5027,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PaddedFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (PaddedFrameFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PaddedFrameFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(PaddedFrameFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
