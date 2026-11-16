@@ -20,7 +20,14 @@ func (pythonTarget) Names() []string { return []string{"python"} }
 // Generate selects the table frame for a table unit and the packet core
 // otherwise. Each emitter holds the identifier rules and names any construct
 // outside its carried surface (docs/PORT-PYTHON.md).
-func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (pythonTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	surfaces, err := pythontable.ParseSurfaces(opts["surface"])
+	if err != nil {
+		return nil, err
+	}
+	if err := pythontable.ValidateSurfaces(u, surfaces); err != nil {
+		return nil, err
+	}
 	if len(u.Tables) == 0 {
 		if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
 			return nil, err
@@ -42,7 +49,7 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	if len(u.Tables) > 0 {
-		return pythontable.Generate(u)
+		return pythontable.GenerateSurface(u, surfaces)
 	}
 	if err := refuseTables(u, "python"); err != nil {
 		return nil, err
