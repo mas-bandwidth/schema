@@ -670,14 +670,26 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	if ir.VariableTables(u)[st.Name] {
 		b.WriteString("\n    @classmethod\n")
 		b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: TableRetain, report: LoadReport | None = None) -> Self:\n")
+		if st.Integrity == "crc32c" {
+			b.WriteString("        data = _s_open_crc(data)\n")
+		}
 		b.WriteString("        return load_table(cls, data, report, retain)\n")
 		b.WriteString("\n    def measure_retain(self, retain: TableRetain) -> int:\n")
 		b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
-		b.WriteString("        return _encode_retain(self, retain, Writer(None))[0]\n")
+		if st.Integrity == "crc32c" {
+			b.WriteString("        return _encode_retain(self, retain, Writer(None))[0] + 4\n")
+		} else {
+			b.WriteString("        return _encode_retain(self, retain, Writer(None))[0]\n")
+		}
 		b.WriteString("\n    def save_retain(self, retain: TableRetain, report: LoadReport) -> bytes:\n")
 		b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
 		b.WriteString("        if report is None:\n            raise InvalidValue(\"report\", \"save_retain requires a report\")\n")
-		b.WriteString("        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n        report.retain_lost += lost\n        return bytes(output)\n\n\n")
+		b.WriteString("        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n        report.retain_lost += lost\n")
+		if st.Integrity == "crc32c" {
+			b.WriteString("        return _s_seal_crc(bytes(output))\n\n\n")
+		} else {
+			b.WriteString("        return bytes(output)\n\n\n")
+		}
 	} else {
 		b.WriteString("\n    @classmethod\n")
 		b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: object, report: LoadReport | None = None) -> Self:\n")
