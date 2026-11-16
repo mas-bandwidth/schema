@@ -507,6 +507,7 @@ func TestCyclicWireIsRefusedCPP(t *testing.T) {
 	body.WriteString(cycleProbe("guard twin", twinOff, true, "cycle: the acyclic twin of the false-guard case was refused"))
 	off := cycleEncode(t, m, 3, []int{1}, guarded)
 	off = cycleGuardOff(t, m, off)
+	body.WriteString(cycleProbe("false guard acyclic", off, true, "cycle: the acyclic false-guard edge was refused"))
 	cyclePatch(t, off, 3, 2)
 	body.WriteString(cycleProbe("false guard", off, false, "cycle: a cycle through a slot under a false guard loaded"))
 
