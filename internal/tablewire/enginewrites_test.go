@@ -88,6 +88,17 @@ func TestEngineReadsEverythingItWrites(t *testing.T) {
     }`)
 	value := place(t, m, "Node", `{"extra":77,"left":{"extra":77,"left":{"extra":77,"lookup":{"1":{"extra":77}}}}}`)
 	assertEngineWrites(t, m, value)
+	wire, err := tablewire.Encode(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ids := trailerOf(t, wire)
+	for _, id := range ids {
+		if id == ir.TableWireId("a") {
+			t.Fatal("map_twin writer stored a field at its default zero")
+		}
+	}
+	t.Logf("map_twin: %d bytes, %d ids, no stored default a field", len(wire), len(ids))
 }
 
 func assertEngineWrites(t *testing.T, m *tabletext.Model, value *tabletext.Instance) {
