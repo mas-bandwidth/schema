@@ -13,9 +13,9 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// sized once for the deepest nesting this body's declaration reaches, and
 	// the test is one look at the named entry (tableMessageSeenRepeat).
 	nest := messageBodyNest(st, map[*ir.Struct]int{})
-	if nest >= ir.TableBinaryMaxDepth {
-		// The per-level marks do not reach a body at the binary bound, and no
-		// conforming reader takes a walk that deep (§4): no form is emitted.
+	if nest > ir.TableBinaryMaxDepth {
+		// A body at the binary bound has no body inside it, so its level fits
+		// the marks; no conforming read goes deeper (§4), so no form is emitted.
 		return
 	}
 	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return tableMessageBody%s(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)

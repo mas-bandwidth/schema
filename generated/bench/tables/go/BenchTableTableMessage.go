@@ -207,12 +207,12 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 // vocabulary's size. Each body read takes the next tick of the vocabulary's
 // clock and keeps it in starts[depth], an array the generated read declares
 // at the unit's deepest nesting. An entry keeps the tick of its last naming
-// (above seven bits holding that body's level) and a bit for each shallower
-// level whose body had named it, in two words so every level up to the binary
-// bound has one: a level's mark still stands when that level's open body began
-// at or before the last naming, and the levels whose bodies were opened since
-// are dropped as the entry is named again. Two slots announcing one id are one
-// entry, the first.
+// (above eight bits holding that body's level, so the binary bound's deepest
+// body fits) and a bit for each shallower level whose body had named it, in
+// two words so every level below the binary bound has one: a level's mark
+// still stands when that level's open body began at or before the last naming,
+// and the levels whose bodies were opened since are dropped as the entry is
+// named again. Two slots announcing one id are one entry, the first.
 func tableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	v.bodyClock++
 	starts[depth] = v.bodyClock
@@ -227,27 +227,22 @@ func tableMessageSeenFirst(v *TableVocabulary) {
 		}
 	}
 }
-func tableMessageSeenBelowAt(b [2]uint64, i int) bool { return b[i>>6]>>uint(i&63)&1 != 0 }
-func tableMessageSeenBelowSet(b *[2]uint64, i int)    { b[i>>6] |= 1 << uint(i&63) }
-func tableMessageSeenBelowDrop(b *[2]uint64, i int) {
-	if i < 64 {
-		b[0] &= 1<<uint(i) - 1
-		b[1] = 0
-	} else if i < 128 {
-		b[1] &= 1<<uint(i-64) - 1
-	}
-}
 func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
 	e := &v.Entries[ref-1]
 	if e.bodyFirst != 0 {
 		e = &v.Entries[e.bodyFirst-1]
 	}
-	at, last := e.bodySeenAt>>7, int(e.bodySeenAt&127)
+	at, last := e.bodySeenAt>>8, int(e.bodySeenAt&255)
 	if starts[depth] <= at {
-		if last == depth || tableMessageSeenBelowAt(e.bodySeenBelow, depth) {
+		if last == depth || depth < 128 && e.bodySeenBelow[depth>>6]>>uint(depth&63)&1 != 0 {
 			return true
 		}
-		tableMessageSeenBelowDrop(&e.bodySeenBelow, depth)
+		if depth < 64 {
+			e.bodySeenBelow[0] &= 1<<uint(depth) - 1
+			e.bodySeenBelow[1] = 0
+		} else if depth < 128 {
+			e.bodySeenBelow[1] &= 1<<uint(depth-64) - 1
+		}
 	} else {
 		kept, hi := 0, depth
 		for kept < hi {
@@ -259,11 +254,16 @@ func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref 
 			}
 		}
 		if last < kept {
-			tableMessageSeenBelowSet(&e.bodySeenBelow, last)
+			e.bodySeenBelow[last>>6] |= 1 << uint(last&63)
 		}
-		tableMessageSeenBelowDrop(&e.bodySeenBelow, kept)
+		if kept < 64 {
+			e.bodySeenBelow[0] &= 1<<uint(kept) - 1
+			e.bodySeenBelow[1] = 0
+		} else if kept < 128 {
+			e.bodySeenBelow[1] &= 1<<uint(kept-64) - 1
+		}
 	}
-	e.bodySeenAt = v.bodyClock<<7 | uint64(depth)
+	e.bodySeenAt = v.bodyClock<<8 | uint64(depth)
 	return false
 }
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
