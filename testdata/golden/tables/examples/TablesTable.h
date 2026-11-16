@@ -26512,8 +26512,9 @@ inline bool WeaponConfigCookBody( uint8_t * at, const WeaponConfig & value, Tabl
 inline bool LoadoutConfigCookBody( uint8_t * at, const LoadoutConfig & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.grade, 1, order );
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.grades_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.grades_count; i++ )
     {
         table_cook_put( at + 1 + i * 1, (uint64_t) value.grades[i], 1, order );
     }
@@ -26528,8 +26529,9 @@ inline bool LoadoutConfigCookBody( uint8_t * at, const LoadoutConfig & value, Ta
     {
         if ( !WeaponConfigCookBody( at + 52 + i * 28, value.backups[i], order ) ) { return false; }
     }
-    // all 8 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 8; i++ )
+    // 8 slots of storage, value.attachments_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.attachments_count; i++ )
     {
         if ( !AttachmentCookBody( at + 108 + i * 8, value.attachments[i], order ) ) { return false; }
     }
@@ -26566,14 +26568,16 @@ inline bool RootConfigCookBody( uint8_t * at, const RootConfig & value, TableByt
 {
     table_cook_bytes( at + 0, value.version_note, value.version_note_length, 17 );
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.version_note_length, 4, order );
-    // all 8 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 8; i++ )
+    // 8 slots of storage, value.weapons_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.weapons_count; i++ )
     {
         if ( !WeaponConfigCookBody( at + 24 + i * 28, value.weapons[i], order ) ) { return false; }
     }
     table_cook_put( at + 248, (uint64_t) (uint32_t) value.weapons_count, 4, order );
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.profiles_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.profiles_count; i++ )
     {
         if ( !ProfileConfigCookBody( at + 256 + i * 304, value.profiles[i], order ) ) { return false; }
     }

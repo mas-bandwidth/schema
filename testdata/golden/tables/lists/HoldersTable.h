@@ -26744,8 +26744,9 @@ inline bool ArmyCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
 template <typename Ctx>
 inline bool DeckCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Deck & value, TableByteOrder order )
 {
-    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 3; i++ )
+    // 3 slots of storage, value.hands_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.hands_count; i++ )
     {
         if ( !RowCookBody( ctx, region, at + 0 + i * 24, value.hands[i], order ) ) { return false; }
     }

@@ -38,6 +38,7 @@ class FieldDesc:
         "bound",
         "size",
         "key_enum",
+        "keyed_list",
         "array_kind",
         "array_min",
         "elem_kind",
@@ -66,6 +67,7 @@ class FieldDesc:
     bound: int
     size: int
     key_enum: str
+    keyed_list: bool
     array_kind: int
     array_min: int
     elem_kind: int
@@ -104,6 +106,7 @@ class FieldDesc:
         elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
+        keyed_list: bool = False,
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -121,6 +124,7 @@ class FieldDesc:
         self.bound = bound
         self.size = size
         self.key_enum = key_enum
+        self.keyed_list = keyed_list
         self.array_kind = array_kind
         self.array_min = array_min
         self.elem_kind = elem_kind
@@ -186,7 +190,8 @@ class FieldDesc:
             # (kind_keyed.py): the same test, slot by slot, so a table that
             # holds one elides as its body does.
             elem = self.elem
-            return elem is not None and all(elem.is_default(slot) for slot in value._values)
+            slots = value if self.keyed_list else value._values
+            return elem is not None and all(elem.is_default(slot) for slot in slots)
         return bool(value == self.default)
 
 
@@ -345,3 +350,145 @@ def new_union_by_name(name: str) -> Any:
     if cls is None:
         raise KeyError(f"the union {name} is not registered in this package")
     return cls()
+
+
+class BlockField:
+    """One field of a block record (docs/SPEC-TABLES.md §19.2, §19.3).
+
+    The columns are the GENERIC ROW WALK's: where the field starts, how many
+    slots it holds, how wide one is, and where its count and presence
+    companions live. An out-of-line array's field is its sixteen-byte triple.
+    """
+
+    __slots__ = (
+        "name",
+        "kind",
+        "offset",
+        "size",
+        "out_of_line",
+        "counted",
+        "optional",
+        "array",
+        "bound",
+        "elem_size",
+        "count_offset",
+        "present_offset",
+        "target",
+        "offset_of_offset",
+        "stride_offset",
+        "stride",
+    )
+
+    name: str
+    kind: int
+    offset: int
+    size: int
+    out_of_line: bool
+    counted: bool
+    optional: bool
+    array: bool
+    bound: int
+    elem_size: int
+    count_offset: int
+    present_offset: int
+    target: str
+    offset_of_offset: int
+    stride_offset: int
+    stride: int
+
+    def __init__(
+        self,
+        name: str,
+        kind: int,
+        offset: int,
+        size: int,
+        out_of_line: bool = False,
+        counted: bool = False,
+        optional: bool = False,
+        array: bool = False,
+        bound: int = 0,
+        elem_size: int = 0,
+        count_offset: int = -1,
+        present_offset: int = -1,
+        target: str = "",
+        offset_of_offset: int = -1,
+        stride_offset: int = -1,
+        stride: int = 0,
+    ) -> None:
+        self.name = name
+        self.kind = kind
+        self.offset = offset
+        self.size = size
+        self.out_of_line = out_of_line
+        self.counted = counted
+        self.optional = optional
+        self.array = array
+        self.bound = bound
+        self.elem_size = elem_size
+        self.count_offset = count_offset
+        self.present_offset = present_offset
+        self.target = target
+        self.offset_of_offset = offset_of_offset
+        self.stride_offset = stride_offset
+        self.stride = stride
+
+
+class BlockRecord:
+    """One record the block form touches, as data (docs/SPEC-TABLES.md §19.3)."""
+
+    __slots__ = ("name", "size", "align", "fields")
+
+    name: str
+    size: int
+    align: int
+    fields: tuple[BlockField, ...]
+
+    def __init__(self, name: str, size: int, align: int, fields: tuple[BlockField, ...]) -> None:
+        self.name = name
+        self.size = size
+        self.align = align
+        self.fields = fields
+
+
+class BlockArray:
+    """One out-of-line array of a block-form table (docs/SPEC-TABLES.md §19.1)."""
+
+    __slots__ = ("name", "offset", "maximum", "stride", "elem_align", "element")
+
+    name: str
+    offset: int
+    maximum: int
+    stride: int
+    elem_align: int
+    element: str
+
+    def __init__(self, name: str, offset: int, maximum: int, stride: int, elem_align: int, element: str) -> None:
+        self.name = name
+        self.offset = offset
+        self.maximum = maximum
+        self.stride = stride
+        self.elem_align = elem_align
+        self.element = element
+
+
+class BlockTable:
+    """A table's block form: its projection, arrays and maximum-sized extent."""
+
+    __slots__ = ("name", "projection", "arrays", "max_bytes")
+
+    name: str
+    projection: BlockRecord
+    arrays: tuple[BlockArray, ...]
+    max_bytes: int
+
+    def __init__(
+        self,
+        name: str,
+        projection: BlockRecord,
+        arrays: tuple[BlockArray, ...],
+        max_bytes: int,
+    ) -> None:
+        self.name = name
+        self.projection = projection
+        self.arrays = arrays
+        self.max_bytes = max_bytes
