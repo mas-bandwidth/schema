@@ -210,12 +210,12 @@ func TestDeadCook(t *testing.T){t.Parallel();var v Root;RootReset(&v);got:=make(
 				continue
 			}
 			text := string(data)
-			needle := "if !live {\n\t\treturn true\n\t}"
+			needle := "count = used"
 			changed += strings.Count(text, needle)
-			files[name] = []byte(strings.ReplaceAll(text, needle, "if false && !live {\n\t\treturn true\n\t}"))
+			files[name] = []byte(strings.ReplaceAll(text, needle, "count = f.ArrayBound"))
 		}
-		if changed != 2 {
-			t.Fatalf("cook dead-slot guard hook changed: %d", changed)
+		if changed != 1 {
+			t.Fatalf("cook live-count hook changed: %d", changed)
 		}
 	})
 	if err == nil || !strings.Contains(string(out), "dead slot differs") {

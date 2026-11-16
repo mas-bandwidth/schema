@@ -1,12 +1,13 @@
 package gotable
 
 import (
-	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"math"
-	"strings"
-	"testing"
+ "fmt"
+ "math"
+ "strings"
+ "testing"
+
+ "github.com/mas-bandwidth/schema/v2/internal/tablecook"
+ "github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 // A branch guard controls the graph walk, not the inline record's storage.
@@ -14,8 +15,13 @@ import (
 func TestGoCookGuardedStorageMatchesTool(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
-type Child {n int32 = 7
- values [..2]int32}
+table Holder {extra []int32}
+table Child {n int32 = 7
+ values [..2]int32
+ extra []int32
+ free [..2]string
+ real float64
+ dead [..2]Holder}
 union Pick {number int32
  words string(8)}
 table Leaf {n int32}
@@ -27,11 +33,12 @@ table Root {gate bool
   pick Pick
   child Child
   real float64
+  free [..2]string
   ptr *Leaf
   list []int32
  }
  maybe ?Child}`
-	const text = `{"gate":true,"number":73,"text":"abc","values":[41,42],"pick":{"number":9},"child":{"n":19,"values":[5]},"real":1.25,"ptr":null,"list":[],"maybe":{"n":99,"values":[13]}}`
+	const text = `{"gate":true,"number":73,"text":"abc","values":[41,42],"pick":{"number":9},"child":{"n":19,"values":[5]},"real":1.25,"free":[],"ptr":null,"list":[],"maybe":{"n":99,"values":[13]}}`
 	field := func(v *tabletext.Instance, name string) *tabletext.Field {
 		for i := range v.Fields {
 			if v.Fields[i].Def.Name == name {
@@ -50,6 +57,12 @@ table Root {gate bool
 		{"false guard nonfinite", text, "v.Gate=false;v.Real=math.NaN()", true},
 		{"false guard reference", strings.Replace(text, `"ptr":null`, `"ptr":{"n":5}`, 1), "v.Gate=false", true},
 		{"false guard container", strings.Replace(text, `"list":[]`, `"list":[17]`, 1), "v.Gate=false", true},
+		{"false guard unbounded", strings.Replace(text, `"free":[]`, `"free":["extent"]`, 1), "v.Gate=false", true},
+		{"false guard nested extent", strings.Replace(text, `"child":{"n":19,"values":[5]}`, `"child":{"n":19,"values":[5],"extra":[29]}`, 1), "v.Gate=false", true},
+		{"optional extent", strings.Replace(text, `"maybe":{"n":99,"values":[13]}`, `"maybe":{"n":99,"values":[13],"extra":[23]}`, 1), "v.MaybePresent=false", true},
+		{"optional unbounded", strings.Replace(text, `"maybe":{"n":99,"values":[13]}`, `"maybe":{"n":99,"values":[13],"free":["extent"]}`, 1), "v.MaybePresent=false", true},
+		{"optional nonfinite", text, "v.MaybePresent=false;v.Maybe.Real=math.NaN()", false},
+		{"optional counted tail", strings.Replace(text, `"maybe":{"n":99,"values":[13]}`, `"maybe":{"n":99,"values":[13],"dead":[{"extra":[37]}]}`, 1), "v.MaybePresent=false;v.Maybe.DeadCount=0", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := tabletext.NewModel(unitFrom(t, schema))
@@ -58,13 +71,19 @@ table Root {gate bool
 			if !m.Read(v, []byte(tc.text), &report) {
 				t.Fatal(report)
 			}
-			if tc.name == "optional absence" {
+			if strings.HasPrefix(tc.name, "optional") {
 				field(v, "maybe").Present = false
 			} else {
 				field(v, "gate").Cell.B = false
 			}
 			if tc.name == "false guard nonfinite" {
 				field(v, "real").Cell.F = math.NaN()
+			}
+			if tc.name == "optional nonfinite" {
+				field(field(v, "maybe").Cell.Tab, "real").Cell.F = math.NaN()
+			}
+			if tc.name == "optional counted tail" {
+				field(field(v, "maybe").Cell.Tab, "dead").Count = 0
 			}
 			var probe strings.Builder
 			probe.WriteString(fmt.Sprintf(`package probe
