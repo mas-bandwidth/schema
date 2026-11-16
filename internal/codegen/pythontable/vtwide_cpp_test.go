@@ -90,6 +90,22 @@ int main() {
 	return out
 }
 
+// wideDecodedChecks names expected raw values independently of both writers.
+var wideDecodedChecks = map[string]string{
+	"wide_field_alone": `assert value.x == -(1 << 127) and value.y == (1 << 128) - 1
+assert value.f == -12345 * 65536 - 32768 and value.g == 832`,
+	"wide_with_base_kinds": `assert value.b is True and value.i == -7 and value.u == (1 << 64) - 1 and value.h == (1 << 40) - 1
+assert value.x == -(1 << 127) and value.y == (1 << 128) - 1 and value.f == -12345 * 65536 - 32768 and value.g == 832`,
+	"wide_every_width": `assert (value.f8, value.f16, value.f32, value.f64, value.f128) == (-7, 1234, -123456, 1099511627779, -999999 * 65536 - 32768)
+assert (value.u8, value.u16, value.u32, value.u64, value.u128) == (250, 65000, 4000000000, 4611686018427387911, 1999999 * 65536 + 32768)
+assert value.i == 123456789012345678901234567890 and value.u == 123456789012345678901234567890`,
+	"wide_nested_table": `assert value.tag is True and value.inner.x == 123456789012345678901234567890 and value.inner.y == -12 * 65536 - 16384
+assert value.u == 12345678901234567890`,
+	"wide_pointer_closure": `assert value.head is not None and value.head.v == -(1 << 127) and value.head.f == -24
+assert value.head.next is not None and value.head.next.v == 1 and value.head.next.f == 36
+assert value.n == (1 << 128) - 1`,
+}
+
 // TestPythonVtWideCppOracle compares independently generated C++ form-1 bytes
 // with the engine and with Python's strict load/save under both pinned versions.
 func TestPythonVtWideCppOracle(t *testing.T) {
@@ -97,6 +113,10 @@ func TestPythonVtWideCppOracle(t *testing.T) {
 	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	for _, c := range wideVTConstructs {
 		t.Run(c.name, func(t *testing.T) {
+			checks, ok := wideDecodedChecks[c.name]
+			if !ok || checks == "" {
+				t.Fatalf("missing decoded checks for %s", c.name)
+			}
 			u := loadUnit(t, c.schema)
 			wire := cppWideWire(t, u, c)
 			if goWire := wideEngineWire(t, u, c.root, c.json); !bytes.Equal(wire, goWire) {
@@ -112,7 +132,7 @@ func TestPythonVtWideCppOracle(t *testing.T) {
 				name string
 				path func(testing.TB) string
 			}{{"current", pyrun.Interpreter}, {"floor", pyrun.Floor}} {
-				out, stderr, err := pyrun.Try(t, pin.path(t), dir, "main.py", map[string][]byte{"main.py": []byte(wideProbeSource(u.Package, c.root)), "wire": wire})
+				out, stderr, err := pyrun.Try(t, pin.path(t), dir, "main.py", map[string][]byte{"main.py": []byte(strings.Replace(wideProbeSource(u.Package, c.root), "before = repr(value)", checks+"\nbefore = repr(value)", 1)), "wire": wire})
 				if err != nil || strings.TrimSpace(out) != fmt.Sprintf("same %d", len(wire)) {
 					t.Errorf("%s: %v stdout=%s stderr=%s", pin.name, err, out, stderr)
 				}
