@@ -67,7 +67,7 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
   - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
   - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
-  - `relax/hostile-rows-js`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried finding); jref_zero_byte and str-zero-escape-unknown-key are gated again: the JS text writer refuses a zero byte, and the JS reader validates a skipped value. The js text-boundary control does not count its leg's relaxed json-hostile cases.
+  - `relax/hostile-rows-js`: gated again. The JSON read refuses unpadded base64 and nonzero pad bits, and validates skipped values; the writer refuses zero bytes.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
   - `relax/hostile-rows-lua`: gated again (str-zero-escape-unknown-key and jref_zero_byte); the JSON read validates skipped values and refuses invalid Base64.
   - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
@@ -224,16 +224,6 @@ leg run on that commit (the cells are the `relaxed` list of
 list; each line names its cells and why they are red. The write-refusal proof
 slugs are each leg answering the four write-refusal surfaces; I15 on elixir is
 PR 3290. WIP for every proof slug: none unless named here.
-
-- `relax/proof-blob-shared-elixir`: 2 cell(s), red at main 18bd2eebb (CI
-  full 43637319296): `surface cook-write / elixir` (2 case(s) answered absent
-  with no ruling: cook-write/blob_shared, cook-write/blob_shared-be) and
-  `cases blobdemo / elixir` (cook-write/blob_shared). PR 3290 made Elixir's
-  load strict, and a blob named from two slots is refused (§2.5); since then
-  the driver answers the blob_shared cook-write recipe row
-  (`input=<json> share=<from>:<to>`) absent. Real fix: the Elixir driver
-  answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
-  on the Rust side).
 
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).
 - `relax/proof-i3-luau`: 1 cell(s): `porting I3 / luau` (❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)). Real fix: the porting register's I3 cell for luau is proven (docs/PORTING.md).
