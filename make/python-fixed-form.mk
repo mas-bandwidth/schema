@@ -28,3 +28,10 @@ python-fixed-form-conformance-negative-control: build/conformance-python
 
 python-fixed-writer-lineage-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedWriterLockNegativeControl$$' ./compiler/
+
+.PHONY: python-fixed-core-values python-fixed-core-values-negative-control
+test-python: python-fixed-core-values python-fixed-core-values-negative-control
+python-fixed-core-values:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedCoreValues$$' ./internal/codegen/pythontable/
+python-fixed-core-values-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedCoreValuesNegativeControl$$' ./internal/codegen/pythontable/
