@@ -365,12 +365,11 @@ func (g *gen) emitCookField(b *strings.Builder, f *ir.Field, x, base string, off
 		inner := *f
 		inner.Type.Optional = false
 		fmt.Fprintf(b, "%sw.put(%s, if %s.is_some() { 1 } else { 0 }, 1);\n", ind, cookAt(base, present.Offset), x)
-		fmt.Fprintf(b, "%smatch %s {\n", ind, cookRef(x))
-		fmt.Fprintf(b, "%s    Some(o) => {\n", ind)
-		g.emitCookFieldValue(b, &inner, "(*o)", base, off, ind+"        ")
-		fmt.Fprintf(b, "%s    }\n", ind)
-		// The payload is dead when absent; the zeroed region already holds it.
-		fmt.Fprintf(b, "%s    None => {}\n", ind)
+		if inner.IsMap() || inner.IsList() {
+			return // the carve owns the live span; an absent payload stays zero
+		}
+		fmt.Fprintf(b, "%sif let Some(o) = %s {\n", ind, cookRef(x))
+		g.emitCookFieldValue(b, &inner, "(*o)", base, off, ind+"    ")
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -416,6 +415,9 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 		count := fmt.Sprintf("%d_usize", bound)
 		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
 			count = x + ".len()"
+			if unparen(x) != x {
+				count = cookRef(x) + ".len()"
+			}
 		}
 		fmt.Fprintf(b, "%sfor i in 0..%s {\n", ind, count)
 		fmt.Fprintf(b, "%s    let ea = %s + i as i64 * %d;\n", ind, cookAt(base, value.Offset), step)

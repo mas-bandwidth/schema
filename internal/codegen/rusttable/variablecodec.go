@@ -103,7 +103,6 @@ func (g *gen) variableCodecModule() []byte {
 		}
 	}
 	g.emitVariableText(&b)
-	g.emitFixedValues(&b, names)
 	g.emitCookWriteFromStorage(&b, names)
 	body := b.String()
 	importLine := ""
