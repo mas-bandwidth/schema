@@ -51,6 +51,7 @@ class FieldDesc:
         "json_flags",
         "unbounded",
         "json_text_list",
+        "json_text_unbounded",
         "doc",
         "tags",
         "type_name",
@@ -125,6 +126,7 @@ class FieldDesc:
     json_flags: bool
     unbounded: bool
     json_text_list: bool
+    json_text_unbounded: bool
     doc: str
     tags: tuple[str, ...]
     type_name: str
@@ -199,6 +201,7 @@ class FieldDesc:
         json_flags: bool = False,
         unbounded: bool = False,
         json_text_list: bool = False,
+        json_text_unbounded: bool = False,
         ordinal: int = 0,
         lo: int = 0,
         hi: int = 0,
@@ -288,6 +291,7 @@ class FieldDesc:
         self.json_flags = json_flags
         self.unbounded = unbounded
         self.json_text_list = json_text_list
+        self.json_text_unbounded = json_text_unbounded
         self.doc = doc
         self.tags = tags
         self.field_id = field_id
@@ -343,7 +347,7 @@ class FieldDesc:
                 frac_bits=frac_bits,
                 json_variants=json_variants,
                 json_flags=json_flags,
-                unbounded=unbounded,
+                unbounded=json_text_unbounded if json_text_list else unbounded,
                 wide=wide,
             )
             if array and elem_codec
