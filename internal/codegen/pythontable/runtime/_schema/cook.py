@@ -317,6 +317,8 @@ def _scan_record(
                     raise Refused("bad_layout", "a union array count exceeds its bound")
                 if any(region[at + count * stride : at + fd.bound * stride]):
                     raise Refused("bad_layout", "a dead union array slot is not zero")
+                if any(region[at + fd.bound * stride : count_at]):
+                    raise Refused("bad_layout", "union array padding is not zero")
             field = SimpleNamespace(name=fd.name, codec="union", target=fd.target, at=0)
             for position in range(count):
                 _scan_record(h, region, SimpleNamespace(fields=(field,), padding=()), at + position * stride, offsets)
