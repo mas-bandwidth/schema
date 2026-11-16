@@ -2,7 +2,8 @@
 
 A fixed [N]T or counted [..N]T array of a declared type by value (a table or
 a packet type, docs/PORT-PYTHON.md) rides the same body with element kind 13,
-and its length is held to the declaration on write and on read.
+and the writer requires the declared length; a shorter historical array is
+padded on read, and a longer one is refused.
 
 An unbounded array is a counted array whose count the data decides: kind 14,
 the element kind, the count, then the elements. Nothing new rides the wire;
@@ -173,10 +174,10 @@ class _Array:
                 "count_over_extent_cap",
                 f"an array count of {count} is past the int32 storage cap",
             )
-        if fd.array_kind == 1 and count != fd.bound:
+        if fd.array_kind == 1 and count > fd.bound:
             raise Refused(
-                "wire_damaged",
-                f"{fd.name} carries {count} elements where {fd.bound} are declared",
+                "count_over_bound",
+                f"{fd.name} carries {count} elements where at most {fd.bound} are declared",
             )
         if fd.array_kind == 2 and (count < fd.array_min or (fd.bound and count > fd.bound)):
             raise Refused(
@@ -196,6 +197,12 @@ class _Array:
             raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
         if fd.text_total and sum(len(item.encode("utf-8")) for item in items if item is not None) > fd.text_total:
             raise Refused("length_over_bound", f"{fd.name} exceeds its text total")
+        if fd.array_kind == 1 and count < fd.bound:
+            if element.codec == "table":
+                from .descriptor import new_by_name
+                items.extend(new_by_name(element.target) for _ in range(fd.bound - count))
+            else:
+                items.extend(element.default for _ in range(fd.bound - count))
         return items
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:

@@ -1,9 +1,9 @@
 // Command gen writes the non-canonical spelling vectors
 // (docs/SPEC-TABLES.md §3, §3.1, §3.3, §22; docs/rulings.json
 // reads-refuse-non-canonical): the canonical variable-form file and the
-// message-form batch the engine writes, then one file per spelling a
-// current writer elides or a conforming writer cannot emit. Lawful Required
-// removal makes stored defaults/null/None readable. Each is re-encoded with
+// message-form batch the engine writes, deliberate non-canonical cases, and
+// variable evolution positives. A prior required or optional declaration can
+// make stored defaults, nulls and None readable; each case is re-encoded with
 // every LEB128, length, count and id reference recomputed.
 //
 // The canonical bytes are the engine's own Encode. Each variant is parsed back
