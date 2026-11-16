@@ -1461,3 +1461,41 @@ print('keyed-enum-retain')
 		}
 	}
 }
+
+func TestPythonRetainArrayWideningReport(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and the Go widening oracle")
+	writer := loadUnit(t, "package probe\ntable Root {\n values []int16\n future int32\n}\n")
+	reader := loadUnit(t, "package probe\ntable Root { values []int32 }\n")
+	wire := wideEngineWire(t, writer, "Root", `{"values":[-1265,17],"future":7}`)
+	files, err := Generate(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert value.values==[-1265,17]
+assert (report.unknown,report.widened,report.retained,report.retain_lost)==(1,1,1,0)
+saved=value.save_retain(keep,report)
+assert value.measure_retain(keep)==len(saved) and report.retain_lost==0
+with open('saved','wb') as f: f.write(saved)
+print('retain-widen')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "retain-widen" {
+			t.Fatalf("retaining widening: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, reader, saved); !strings.HasPrefix(verdict, "read 1 ") {
+			t.Fatalf("Go engine rejected widened retained file: %s", verdict)
+		}
+	}
+}
