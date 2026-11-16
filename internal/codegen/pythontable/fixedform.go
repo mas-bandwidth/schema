@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
 	"sort"
 	"strconv"
@@ -302,6 +303,14 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 				known = append(known, entry)
 				continue
 			}
+			fills := []any{}
+			plan, reason := compilePythonFixedPlan(node, spec, e.Wire == hash, &fills)
+			entry["fills"] = fills
+			entry["refusal"], entry["source"], entry["plan"] = reason, fixedNodeData(node), plan
+			if reason != "" {
+				known = append(known, entry)
+				continue
+			}
 			if e.Writer != nil {
 				writerLayout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(e.Writer))
 				if string(writerLayout) != string(e.Layout) || ir.TableFixedLayoutHash(writerLayout, e.Writer) != e.Wire {
@@ -316,13 +325,7 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 				// reader's wider declaration as if that were the writer's.
 				return "", fmt.Errorf("python: fixed table %s: historical layout 0x%016x needs its writer declaration snapshot; the lock lineage does not retain enough historical definition facts", st.Name, e.Wire)
 			}
-			plan, reason := compilePythonFixedPlan(node, spec, e.Wire == hash)
-			entry["refusal"] = reason
-			entry["source"] = fixedNodeData(node)
-			entry["plan"] = plan
-			if reason == "" {
-				planMax = max(planMax, len(plan))
-			}
+			planMax = max(planMax, len(plan)+len(fills))
 			ranges := map[string]any{}
 			for _, r := range e.Ranges {
 				ranges[r.Name] = []any{r.Lo, r.Hi}
@@ -352,7 +355,7 @@ func fixedSigned(kind int) bool {
 // compilePythonFixedPlan works wholly at generate time in the record-image
 // domain. The identity is one whole-body copy; older layouts get coalesced
 // copy/widen/ordinal/constant operations, partitioned by their guard chains.
-func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, identity bool) ([]any, string) {
+func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, identity bool, fills *[]any) ([]any, string) {
 	if identity {
 		return []any{map[string]any{"op": "copy", "src": int64(0), "dst": int64(0), "size": writer.Size, "guards": []any{}}}, ""
 	}
@@ -360,13 +363,11 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 	why := ""
 	emit := func(op string, src, dst, size, width int64, guards []any, extra map[string]any) {
 		p := map[string]any{"op": op, "src": src, "dst": dst, "size": size, "width": width, "guards": append([]any{}, guards...)}
-		for k, v := range extra {
-			p[k] = v
-		}
+		maps.Copy(p, extra)
 		ops = append(ops, p)
 	}
-	var walk func(*fixedLayoutNode, map[string]any, int64, int64, []any, int)
-	walk = func(w *fixedLayoutNode, r map[string]any, src, dst int64, guards []any, depth int) {
+	var walk func(*fixedLayoutNode, map[string]any, int64, int64, []any, bool, int)
+	walk = func(w *fixedLayoutNode, r map[string]any, src, dst int64, guards []any, localDefaults bool, depth int) {
 		if why != "" {
 			return
 		}
@@ -379,7 +380,7 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 		shape, _ := r["shape"].(string)
 		if rk == 35 && w.Kind != 35 {
 			emit("const", 0, dst, 1, 0, guards, map[string]any{"value": 1})
-			walk(w, fixedChildren(r)[0].(map[string]any), src, dst+1, guards, depth+1)
+			walk(w, fixedChildren(r)[0].(map[string]any), src, dst+1, guards, true, depth+1)
 			return
 		}
 		if rk != w.Kind {
@@ -419,7 +420,9 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 				id := c["id"].(uint64)
 				mine[id] = true
 				if hit, ok := theirs[id]; ok {
-					walk(hit.node, c, hit.at, at, guards, depth+1)
+					walk(hit.node, c, hit.at, at, guards, localDefaults, depth+1)
+				} else if localDefaults {
+					*fills = append(*fills, map[string]any{"dst": at, "size": fixedInt(c, "size"), "guards": append([]any{}, guards...), "spec": c})
 				}
 				at += fixedInt(c, "size")
 			}
@@ -436,7 +439,7 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 			}
 			emit("copy", src, dst, 1, 0, guards, nil)
 			gs := append(append([]any{}, guards...), []any{src, int64(1), int64(1), "eq"})
-			walk(w.Children[0], fixedChildren(r)[0].(map[string]any), src+1, dst+1, gs, depth+1)
+			walk(w.Children[0], fixedChildren(r)[0].(map[string]any), src+1, dst+1, gs, true, depth+1)
 		case "array", "keyed":
 			elem := fixedChildren(r)[0].(map[string]any)
 			es := fixedInt(elem, "size")
@@ -483,12 +486,17 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 			if head != 0 {
 				emit("count", src, dst, n, 4, guards, nil)
 			}
-			for i := int64(0); i < n; i++ {
+			for i := range n {
 				gs := guards
 				if head != 0 {
 					gs = append(append([]any{}, guards...), []any{src, int64(4), i, "gt"})
 				}
-				walk(we, elem, src+head+i*we.Size, dst+head+i*es, gs, depth+1)
+				walk(we, elem, src+head+i*we.Size, dst+head+i*es, gs, localDefaults || head != 0, depth+1)
+			}
+			if localDefaults && head == 0 {
+				for i := n; i < bound; i++ {
+					*fills = append(*fills, map[string]any{"dst": dst + i*es, "size": es, "guards": append([]any{}, guards...), "spec": elem})
+				}
 			}
 		case "bytes":
 			if len(w.Children) != 1 || w.Children[0].Kind != 6 || w.Children[0].Size != 1 || w.Size > rs {
@@ -523,7 +531,7 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 				}
 				gs := append(append([]any{}, guards...), []any{src, tag, int64(i + 1), "eq"})
 				emit("const", 0, dst, mytag, 0, gs, map[string]any{"value": i + 1})
-				walk(c, arm, src+tag, dst+mytag, gs, depth+1)
+				walk(c, arm, src+tag, dst+mytag, gs, true, depth+1)
 			}
 		case "enum":
 			variants, _ := r["variants"].([]any)
@@ -551,7 +559,7 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 			}
 		}
 	}
-	walk(writer, reader, 0, 0, nil, 0)
+	walk(writer, reader, 0, 0, nil, false, 0)
 	if why != "" {
 		return nil, why
 	}
@@ -578,7 +586,7 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 		}
 		out = append(out, p)
 	}
-	if len(out) > 4096 {
+	if len(out)+len(*fills) > 4096 {
 		return nil, "plan_too_large"
 	}
 	return out, ""

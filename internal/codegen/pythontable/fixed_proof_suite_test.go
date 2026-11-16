@@ -2,6 +2,7 @@ package pythontable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,7 +28,7 @@ func pythonFixedLineage(lineage map[string][]fixedproof.LineageEntry) map[string
 	out := map[string][]pythontable.FixedLineageEntry{}
 	for name, entries := range lineage {
 		for _, e := range entries {
-			out[name] = append(out[name], pythontable.FixedLineageEntry{Wire: e.Wire, Layout: e.Layout, Record: e.Record, Retired: e.Retired, Reason: e.Reason})
+			out[name] = append(out[name], pythontable.FixedLineageEntry{Wire: e.Wire, Layout: e.Layout, Record: e.Record, Retired: e.Retired, Reason: e.Reason, Writer: e.Writer})
 		}
 	}
 	return out
@@ -40,9 +41,7 @@ func pythonFixedRun(t *testing.T, files map[string][]byte, script string, inputs
 	for index, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		dir := pythonFixedTree(t, files)
 		in := map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + script)}
-		for k, v := range inputs {
-			in[k] = v
-		}
+		maps.Copy(in, inputs)
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", in)
 		if err != nil {
 			t.Fatalf("fixed probe: %v\n%s\n%s", err, out, stderr)
@@ -85,7 +84,7 @@ def dump(spec, value, prefix):
         for field in spec["children"]:
             dump(field, getattr(value, field["name"]), prefix + "." + field["name"])
     elif shape == "optional":
-        print("FIELD " + prefix + "_present=" + str(value is not None).lower())
+        print("FIELD " + prefix + "_present=" + str(int(value is not None)))
         if value is not None:
             dump(spec["children"][0], value, prefix)
     elif shape in ("array", "keyed"):

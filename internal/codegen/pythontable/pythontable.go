@@ -585,7 +585,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        pass\n")
 	} else {
 		for _, f := range st.Fields {
-			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f))
+			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f, st.FixedDeclared))
 		}
 	}
 	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
@@ -881,7 +881,7 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 	b.WriteString("        self.type = 0\n")
 	for _, v := range un.Variants {
 		if v.F != nil {
-			fmt.Fprintf(b, "        self.%s = %s\n", v.Name, defaultExpr(un.Name, v.F))
+			fmt.Fprintf(b, "        self.%s = %s\n", v.Name, defaultExpr(un.Name, v.F, false))
 		}
 	}
 	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
@@ -1319,7 +1319,7 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // defaultExpr is the value a field is born with (docs/PORT-PYTHON.md, THE
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
-func defaultExpr(owner string, f *ir.Field) string {
+func defaultExpr(owner string, f *ir.Field, fixed bool) string {
 	if f.Type.Pointer || f.Type.Optional {
 		return "None"
 	}
@@ -1330,9 +1330,14 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A fresh counted array has its declared minimum, and a fixed
-		// array every slot (SPEC §4.6). Every nested value is distinct.
-		count := f.BornCount()
+		// Fixed files carry every field, so their fresh counted arrays
+		// start at the declared minimum. Preserve the form-1 empty reset
+		// for an absent counted field; that separate wire behavior is held
+		// by the form-1 read/write oracle. Every nested value is distinct.
+		count := int64(0)
+		if fixed {
+			count = f.BornCount()
+		}
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
 		}

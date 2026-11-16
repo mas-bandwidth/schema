@@ -3,6 +3,7 @@ package pythontable_test
 import (
 	"bytes"
 	"encoding/binary"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -280,10 +283,7 @@ if T.fixed_save(rows)!=wire: raise SystemExit('fixed_writer_control')
 	} {
 		t.Run(control.name, func(t *testing.T) {
 			t.Parallel()
-			files := map[string][]byte{}
-			for k, v := range base {
-				files[k] = v
-			}
+			files := maps.Clone(base)
 			path := "probe/_schema/fixedform.py"
 			source := string(files[path])
 			if strings.Count(source, control.anchor) != 1 {
@@ -394,4 +394,50 @@ print('writer-snapshot-bounds')
 	if err == nil || !strings.Contains(err.Error(), "needs its writer declaration snapshot") {
 		t.Fatalf("missing historical writer facts did not hold generation: %v", err)
 	}
+}
+
+func TestPythonFixedFormGuardedDefaults(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned interpreters")
+	source := `package probe
+ fixed table Arm { x int32 }
+ union Pick {
+ payload Arm
+ small uint8
+ }
+ fixed table T {
+  pick Pick
+  opt ?Arm
+  items [..2]Arm
+ }
+ `
+	old := fixedproof.ParseCheckUnit(t, source)
+	newer := fixedproof.ParseCheckUnit(t, strings.Replace(source, "x int32", "x int32\n y int32 = 55", 1))
+	model := tabletext.NewModel(old)
+	value := model.New(old.Tables["T"])
+	var rep tabletext.Report
+	if !model.Read(value, []byte(`{"pick":{"payload":{"x":21}},"opt":{"x":22},"items":[{"x":23}]}`), &rep) || rep.Refused {
+		t.Fatalf("engine fixture: %+v", rep)
+	}
+	wire, err := tablewire.EncodeFixed(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, hash, size := fixedproof.RootFacts(old.Tables["T"])
+	files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {{Wire: hash, Layout: layout, Record: 8 + size, Writer: old.Tables["T"]}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := `from probe import T
+with open('wire','rb') as f: rows=T.fixed_load(f.read())
+r=rows[0]
+assert r.pick.payload.x==21 and r.pick.payload.y==55
+assert r.opt.x==22 and r.opt.y==55
+assert r.items[0].x==23 and r.items[0].y==55
+saved=T.fixed_save(rows)
+back=T.fixed_load(saved)[0]
+assert back.pick.payload.y==55 and back.opt.y==55 and back.items[0].y==55
+print('guarded-declared-defaults')
+`
+	pythonFixedRun(t, files, script, map[string][]byte{"wire": wire})
 }

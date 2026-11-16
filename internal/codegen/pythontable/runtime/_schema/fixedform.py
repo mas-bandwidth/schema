@@ -181,6 +181,25 @@ def _encode(spec: _Spec, value: Any, out: bytearray, at: int, path: str, check: 
         raise InvalidValue(path, "unsupported fixed value")
 
 
+def _seed(spec: _Spec, out: bytearray, at: int) -> None:
+    """Write a declaration's default image without constructing user values."""
+    shape = spec["shape"]
+    if shape == "table":
+        for field in spec["children"]:
+            _seed(field, out, at)
+            at += field["size"]
+    elif shape in ("array", "keyed"):
+        count = spec.get("minimum", 0) if spec.get("counted", False) else spec["bound"]
+        if spec.get("counted", False):
+            _store(out, at, 4, count)
+            at += 4
+        elem = spec["children"][0]
+        for index in range(count):
+            _seed(elem, out, at + index * elem["size"])
+    elif shape not in ("optional", "union", "void"):
+        _encode(spec, spec.get("default", 0), out, at, "default", False)
+
+
 def _source_spec(node: _Spec, reader: _Spec, ranges: _Spec) -> _Spec:
     """Resolve the lock's check descriptors once, outside the load path."""
     result = dict(reader)
@@ -359,13 +378,17 @@ def fixed_register(roots: dict[str, _Spec]) -> None:
         root["prefix"] = root["hash"].to_bytes(8, "little")
         root["header"] = b"\x03" + bytes(7) + root["prefix"] + len(root["layout"]).to_bytes(4, "little") + root["layout"]
         reset = bytearray(root["body"])
-        _encode(root["spec"], _default(root["spec"]), reset, 0, name, False)
+        _seed(root["spec"], reset, 0)
         root["reset"] = bytes(reset)
         known = {}
         for entry in root["known"]:
             entry["layout"] = bytes.fromhex(entry["layout"])
             if not entry["refusal"]:
                 entry["check"] = entry.get("check_spec") or (root["spec"] if entry["hash"] == root["hash"] else _source_spec(entry["source"], root["spec"], entry["ranges"]))
+                for fill in entry["fills"]:
+                    image = bytearray(fill["size"])
+                    _seed(fill["spec"], image, 0)
+                    fill["image"] = bytes(image)
                 cover = bytearray(root["body"])
                 for op in entry["plan"]:
                     count = op["size"]
@@ -453,7 +476,7 @@ def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: in
         raise Refused("layout_malformed")
     if entry["refusal"]:
         raise Refused(entry["refusal"])
-    if plan_capacity is not None and (type(plan_capacity) is not int or plan_capacity < len(entry["plan"])):
+    if plan_capacity is not None and (type(plan_capacity) is not int or plan_capacity < len(entry["plan"]) + len(entry["fills"])):
         raise Refused("plan_too_large")
     record = entry["record"]
     rest = len(source) - 20 - length
@@ -478,6 +501,9 @@ def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: in
         image = bytearray(root["body"])
         for begin, end in entry["holes"]:
             image[begin:end] = root["reset"][begin:end]
+        for fill in entry["fills"]:
+            if not fill["guards"] or _guarded(fill, body):
+                image[fill["dst"]:fill["dst"] + fill["size"]] = fill["image"]
         plan = entry["plan"]
         split = entry["split"]
         for op in plan[:split]:

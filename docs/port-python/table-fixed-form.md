@@ -43,3 +43,10 @@ missing writer snapshot. The existing lock format does
 not retain complete historical snapshots; that limitation still holds full
 backward-reading acceptance. No roadmap completion is implied by the core
 byte-oracle gate.
+
+A missing field inside an active union arm, present optional or live counted
+array element is prefilled from its own declared default image under the
+writer's guard chain. The root's inactive storage is not a substitute: its
+zero bytes would otherwise erase the active child's newly added defaults.
+These precomputed guarded fills are counted in `fixed_plan_max` and obey the
+same caller plan capacity as the copy and widening operations.
