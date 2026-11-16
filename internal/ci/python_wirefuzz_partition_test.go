@@ -12,7 +12,7 @@ import (
 
 // The 24 real support rows replace only the expensive omnibus; focused
 // pipe and planted control tests must remain in the discovered package shards.
-func TestPythonCIWireFuzzPartitionCoverage(t *testing.T) {
+func TestPythonCIWireFuzzStandalonePartition(t *testing.T) {
 	slowtest.Gate(t, "Python wire-fuzz CI plan")
 	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
 	cmd.Dir = repoRoot(t)
