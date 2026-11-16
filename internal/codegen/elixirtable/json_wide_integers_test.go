@@ -43,7 +43,13 @@ table Sites
     values map[uint64]int64
     maybe  ?int64
     pick   Pick
+    keyed  [Key]int64
+    u128   uint128
+    b33    bits(33)
+    f128   fixed(64, 64) | min = -10, max = 10
 }
+
+enum Key { A, B }
 
 flags Mode { A, B, C }
 
@@ -56,8 +62,7 @@ table FlagSites
 
 // TestElixirJsonWideIntegersAreStrings holds the Elixir JSON writer and reader
 // to docs/SPEC-TABLES.md §16.2's two integer rules: an integer wider than 32
-// bits is written as a string of decimal digits and reads as a string or a
-// number, and every integer field takes an integer token only — no fraction,
+// bits is written and read as a string of decimal digits, and every integer field takes an integer token only — no fraction,
 // no exponent, no negative zero — with the value never passing through a
 // double. Every manifest row of testdata/wire/json-integers is answered here,
 // and the canonical read row is compared with the committed text byte for byte.
@@ -142,10 +147,38 @@ end
 		t.Fatal("no manifest rows read; the gate would pass over an empty set")
 	}
 
+	// Each wide number-token fixture must refuse the complete read.
+	tokenManifest, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokenRows := 0
+	for _, line := range strings.Split(string(tokenManifest), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(f) != 5 || f[3] != "refused" {
+			t.Fatalf("NUMBER-TOKEN.tsv: invalid row %q", line)
+		}
+		body, err := os.ReadFile(filepath.Join(dir, f[2]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&probe, `
+case Jsonintegers.Table.from_json(%q, Base.decode16!(%q, case: :mixed)) do
+  {:error, :kind_mismatch, %%{reason: "kind_mismatch"}} -> :ok
+  other -> Probe.check(false, %q <> " expected kind_mismatch: " <> inspect(other))
+end
+`, f[1], hex.EncodeToString(body), f[0])
+		tokenRows++
+	}
+	if tokenRows != 13 {
+		t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", tokenRows)
+	}
+
 	// Every other integer site: a field, an array element, a map value, an
-	// optional and a union arm. Each reads as a string or a number and writes
-	// the same canonical text the engine writes; a fraction, an exponent or -0
-	// at any of those sites is refused.
+	// optional, union arm and enum-keyed slot. Wide values require strings.
 	sites := []struct {
 		name    string
 		text    string
@@ -157,7 +190,11 @@ end
   "felems": ["0.5", "-0.25"],
   "values": { "9007199254740993": "1234567890123456789" },
   "maybe": "7",
-  "pick": { "count": "9007199254740993" }
+  "pick": { "count": "9007199254740993" },
+  "keyed": { "A": "1" },
+  "u128": "340282366920938463463374607431768211455",
+  "b33": "8589934591",
+  "f128": "0.5"
 }`, false},
 		{"sites-numbers", `{
   "field": 9007199254740993,
@@ -166,7 +203,17 @@ end
   "values": { "9007199254740993": 1234567890123456789 },
   "maybe": 7,
   "pick": { "count": 9007199254740993 }
-}`, false},
+}`, true},
+		{"field-number", `{"field":1}`, true},
+		{"element-number", `{"elems":[1]}`, true},
+		{"fixed-element-number", `{"felems":[0.5]}`, true},
+		{"map-number", `{"values":{"1":1}}`, true},
+		{"optional-number", `{"maybe":1}`, true},
+		{"arm-number", `{"pick":{"count":1}}`, true},
+		{"keyed-number", `{"keyed":{"A":1}}`, true},
+		{"u128-number", `{"u128":1}`, true},
+		{"bits33-number", `{"b33":1}`, true},
+		{"fixed128-number", `{"f128":0.5}`, true},
 		{"sites-absent-optional", `{
   "field": "1",
   "elems": [],
@@ -199,11 +246,10 @@ end
 			}
 			fmt.Fprintf(&probe, `
 case Jsonintegers.Table.from_json("Sites", Base.decode16!(%q, case: :mixed)) do
-  {:ok, _value, _report} -> Probe.check(false, %q <> " accepted")
-  {:error, _reason, _report} -> :ok
-  other -> Probe.check(false, %q <> " unexpected: " <> inspect(other))
+  {:error, :kind_mismatch, %%{reason: "kind_mismatch"}} -> :ok
+  other -> Probe.check(false, %q <> " expected kind_mismatch: " <> inspect(other))
 end
-`, hex.EncodeToString([]byte(tc.text)), tc.name, tc.name)
+`, hex.EncodeToString([]byte(tc.text)), tc.name)
 			continue
 		}
 		if !ok || report.Refused {
