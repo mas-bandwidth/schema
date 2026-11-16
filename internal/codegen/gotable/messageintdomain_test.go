@@ -17,7 +17,7 @@ fixed table Probe
 {
 	a int8
 	b int16
-	c uint8
+	c uint8 = 1
 	d int32
 	e uint32
 	f int64
@@ -27,6 +27,8 @@ fixed table Probe
 	j timestamp
 }
 `
+	// Keep zero distinct from the declared default so the uint8 minimum has
+	// a canonical explicit payload under the same-build message rules.
 	runGenerated(t, schema, "package probe\n"+messageIntDomainProbe)
 }
 

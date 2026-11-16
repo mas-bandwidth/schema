@@ -3534,6 +3534,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip_body(blockdemo_table_messa
  int64_t ref;
   if(!blockdemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
      reference is bounded where the file form bounds it, so the bitset fits. */
   ref=entry-r->vocabulary->entries+1;
@@ -3570,7 +3571,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
  /* a node reference: no fixed body holds one */
  case 15:
   if(!blockdemo_table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && blockdemo_table_message_skip_deeper(r,entry));
+  return entry==NULL || (entry->id<UINT64_C(0xfffffffffffffffd) && entry->kind!=0 && blockdemo_table_message_skip_deeper(r,entry));
  case 12:
   /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
      is inside the announced bound and its bytes are well-formed UTF-8 with no
@@ -4452,11 +4453,18 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_save_messages(const blockdemo_
 }
 static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_padded_row_t * value)
 {
+ uint8_t seen[512];
  blockdemo_padded_row_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
@@ -5110,11 +5118,18 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_save_messages(const blockdem
 }
 static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_padded_frame_t * value)
 {
+ uint8_t seen[512];
  blockdemo_padded_frame_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xeddcb72b15486e77): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;

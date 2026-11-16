@@ -103,6 +103,9 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 	ArchiveConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -125,6 +128,11 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -134,8 +142,15 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 						return false
 					}
 				}
-				if !RootConfigLoadMessageBody(r, &value.Root) {
-					return false
+				{
+					start := r.Bits.Offset
+					if !RootConfigLoadMessageBody(r, &value.Root) {
+						return false
+					}
+					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 				}
 				if widened {
 					r.Report.Widened++
@@ -143,6 +158,11 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 			}
 		case 0xb1e5e28e4479a274:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -183,6 +203,10 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 						}
 						value.Count = int32(v)
 					}
+				}
+				if exact && !(value.Count != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++

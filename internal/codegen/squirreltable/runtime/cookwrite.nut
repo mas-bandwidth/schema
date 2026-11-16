@@ -344,6 +344,10 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
   if (f.optional) {
     local present = inst[f.member + "Present"];
     put(buf, at + f.presentOffset - f.offset, present ? 1 : 0, 1, order);
+    // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md §7.2;
+    // docs/rulings.json fixed-dead-bytes-are-zero): it stays the buffer's zero
+    // whatever its declared default is, which stays a READ rule.
+    if (!present) return true;
   }
   // the extent walk places maps, unbounded arrays and unbounded text
   if (f.shape == "map" || (f.shape == "arr" && f.list) || (f.shape == "str" && f.unbounded)) return true;
@@ -372,10 +376,15 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
   }
   if (f.isArray) {
     local val = inst[f.member];
-    // A BOUNDED ARRAY WRITES ITS WHOLE STORAGE (docs/SPEC-TABLES.md §7.6): the
-    // slots past the live count keep the element's born value, exactly as the
-    // reference's storage does.
+    // A FIXED ARRAY WRITES EVERY SLOT; A COUNTED ARRAY WRITES ITS LIVE
+    // ELEMENTS ONLY (docs/SPEC-TABLES.md §7.2, §7.6; docs/rulings.json
+    // fixed-dead-bytes-are-zero): a slot past the count is dead bytes and
+    // stays the buffer's zero.
     local n = f.bound;
+    if (f.counted) {
+      n = val == null ? 0 : val.len();
+      if (n > f.bound) n = f.bound;
+    }
     for (local i = 0; i < n; i++) {
       local ev = (val != null && i < val.len()) ? val[i] : elemDefault(T, f.elem);
       if (!elementWrite(T, f.elem, ev, buf, regionBase, at + i * f.elemSize, order, nodes, offsets, f.elemSize)) return false;
