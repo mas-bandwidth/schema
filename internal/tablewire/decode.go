@@ -78,7 +78,12 @@ func decodeWithOrder(m *tabletext.Model, inst *tabletext.Instance, data []byte, 
 		if rt != nil {
 			rt.store.reset()
 		}
-		refuseReport(report, err)
+		if ReadRefusal(err) {
+			refuseReport(report, err)
+		} else {
+			// A setup error is not a verdict about the input wire.
+			*report = tabletext.Report{}
+		}
 		return false, err
 	}
 	report.Refused = false
