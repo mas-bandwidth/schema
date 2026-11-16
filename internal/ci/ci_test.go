@@ -1138,7 +1138,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1219,7 +1219,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1346,6 +1346,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
+		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
@@ -1355,6 +1356,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
 		"ci-full.yml:cpp-lock",
@@ -1383,8 +1385,10 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
 		"promotion-tag.yml:tag",
+		"python-leg.yml:plan",
 		"python-leg.yml:test",
 		"release.yml:release",
+		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",

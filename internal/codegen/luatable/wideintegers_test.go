@@ -4,7 +4,7 @@ package luatable
 // two JSON integer rules (docs/rulings.json json-wide-integers-are-strings and
 // json-integer-token-only) over the committed vectors under
 // testdata/wire/json-integers/: a wide integer is written as a JSON STRING of
-// decimal digits and reads as a string or a number; every integer field takes
+// decimal digits and reads as a string only; every integer field takes
 // an integer token only — digits with an optional minus, no fraction, no
 // exponent, no negative zero — and the value never passes through a double.
 
@@ -40,9 +40,9 @@ type luaIntegerVector struct {
 	verdict string
 }
 
-func luaIntegerVectors(t *testing.T, dir string) []luaIntegerVector {
+func luaIntegerVectors(t *testing.T, dir, manifest string) []luaIntegerVector {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))
+	data, err := os.ReadFile(filepath.Join(dir, manifest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +54,10 @@ func luaIntegerVectors(t *testing.T, dir string) []luaIntegerVector {
 		}
 		fields := strings.Split(line, "\t")
 		if len(fields) != 5 {
-			t.Fatalf("%s/MANIFEST.tsv:%d: want five columns, got %d", dir, i+1, len(fields))
+			t.Fatalf("%s/%s:%d: want five columns, got %d", dir, manifest, i+1, len(fields))
 		}
 		if fields[0] == "" || fields[2] == "" || (fields[3] != "read" && fields[3] != "refused") {
-			t.Fatalf("%s/MANIFEST.tsv:%d: bad vector row %q", dir, i+1, line)
+			t.Fatalf("%s/%s:%d: bad vector row %q", dir, manifest, i+1, line)
 		}
 		rows = append(rows, luaIntegerVector{name: fields[0], json: fields[2], verdict: fields[3]})
 	}
@@ -86,7 +86,7 @@ for i, key in ipairs(rows) do
   local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
   local v = J.FromJson(T, "Integers", inputs[key], report)
   if v == nil then
-    print(key .. "|refused")
+    print(key .. "|refused|" .. tostring(report.Reason))
   else
     local wlo, whi = v.wide128.lo, v.wide128.hi
     local keys = {}
@@ -108,15 +108,26 @@ end
 	return b.String()
 }
 
-// TestLuaJsonWideIntegersAreStrings reads every accept row (a wide field as a
-// string and as a number) to the same exact values, refuses every refuse row,
+// TestLuaJsonWideIntegersAreStrings reads every accepted string row exactly,
+// refuses every numeric-token and other refusal row,
 // and writes each accepted value back as the committed canonical text byte for
 // byte (plus the form's own trailing line feed).
 func TestLuaJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Lua interpreter")
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
-	rows := luaIntegerVectors(t, dir)
+	rows := luaIntegerVectors(t, dir, "MANIFEST.tsv")
+	ordinaryRows := len(rows)
+	numberRows := luaIntegerVectors(t, dir, "NUMBER-TOKEN.tsv")
+	if len(numberRows) != 13 {
+		t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", len(numberRows))
+	}
+	for _, row := range numberRows {
+		if row.verdict != "refused" {
+			t.Fatalf("%s: NUMBER-TOKEN.tsv verdict %q, want refused", row.name, row.verdict)
+		}
+	}
+	rows = append(rows, numberRows...)
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -164,8 +175,11 @@ func TestLuaJsonWideIntegersAreStrings(t *testing.T) {
 			continue
 		}
 		if row.verdict == "refused" {
-			if line != "refused" {
+			if !strings.HasPrefix(line, "refused|") {
 				t.Errorf("%s: read accepted the row: %s", row.name, line)
+			}
+			if i >= ordinaryRows && line != "refused|kind_mismatch" {
+				t.Errorf("%s: got %s, want kind_mismatch", row.name, line)
 			}
 			continue
 		}
@@ -200,7 +214,10 @@ table Sites
     wide    int64
     uwide   uint64
     bits64  bits(64)
+    bits33  bits(33)
+    u128    uint128
     fixed64 fixed(48, 16) | min = -10, max = 10
+    fixed128 fixed(64, 64) | min = -10, max = 10
     counts  map[uint64]int64
     list    [3]int64
     ulist   [3]uint64
@@ -218,7 +235,10 @@ const luaJsonSitesCanonical = `{
   "wide": "-9007199254740993",
   "uwide": "18446744073709551615",
   "bits64": "18446744073709551615",
+  "bits33": "8589934591",
+  "u128": "340282366920938463463374607431768211455",
   "fixed64": "-1.5",
+  "fixed128": "0.5",
   "counts": {
     "1": "-9007199254740993",
     "9007199254740993": "9007199254740993"
@@ -247,12 +267,15 @@ const luaJsonSitesCanonical = `{
 }`
 
 // luaJsonSitesNumbers is the same value with every wide integer a bare number
-// token: it must read to the same values and write the canonical strings.
+// token: it must be refused as a kind mismatch.
 const luaJsonSitesNumbers = `{
   "wide": -9007199254740993,
   "uwide": 18446744073709551615,
   "bits64": 18446744073709551615,
+  "bits33": 8589934591,
+  "u128": 340282366920938463463374607431768211455,
   "fixed64": -1.5,
+  "fixed128": 0.5,
   "counts": {
     "1": -9007199254740993,
     "9007199254740993": 9007199254740993
@@ -279,6 +302,20 @@ const luaJsonSitesNumbers = `{
     "wide": -9007199254740993
   }
 }`
+
+var luaJsonSitesNumberTokens = map[string]string{
+	"plain-number":    `{"wide": 42}`,
+	"array-number":    `{"list": [42, "0", "0"]}`,
+	"optional-number": `{"opt": 42}`,
+	"union-number":    `{"pick": {"wide": 42}}`,
+	"map-number":      `{"counts": {"1": 42}}`,
+	"keyed-number":    `{"keyed": {"A": 42}}`,
+	"bits-number":     `{"bits64": 42}`,
+	"bits33-number":   `{"bits33": 42}`,
+	"uint128-number":  `{"u128": 42}`,
+	"fixed-number":    `{"fixed64": 1.5}`,
+	"fixed128-number": `{"fixed128": 0.5}`,
+}
 
 var luaJsonSitesRefused = map[string]string{
 	"list-fraction":        `{"list": [-1.5, "0", "9007199254740993"]}`,
@@ -312,7 +349,7 @@ for _, key in ipairs(keys) do
   local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
   local v = J.FromJson(T, "Sites", inputs[key], report)
   if v == nil then
-    print(key .. "|refused")
+    print(key .. "|refused|" .. tostring(report.Reason))
   else
     print(key .. "|ok|" .. hex(J.ToJson(T, "Sites", v)))
   end
@@ -323,8 +360,8 @@ end
 
 // luaJsonIntegerSites holds the two rules at every integer site: a wide field,
 // an array element, an enum-keyed slot, a map value, an optional and a union
-// arm each take a string or a number and write the canonical string, and a
-// fraction, exponent, negative zero or a value past the range is refused.
+// arm each take a string and reject a number token; a narrow int32 still takes
+// a number, and fraction, exponent, negative zero or an out-of-range value is refused.
 func luaJsonIntegerSites(t *testing.T) {
 	t.Helper()
 	work := t.TempDir()
@@ -344,7 +381,12 @@ func luaJsonIntegerSites(t *testing.T) {
 		"canonical": []byte(luaJsonSitesCanonical),
 		"numbers":   []byte(luaJsonSitesNumbers),
 	}
-	keys := []string{"canonical", "numbers"}
+	keys := []string{"canonical", "numbers", "narrow"}
+	inputs["narrow"] = []byte(`{"pick": {"narrow": 42}}`)
+	for key, body := range luaJsonSitesNumberTokens {
+		inputs[key] = []byte(body)
+		keys = append(keys, key)
+	}
 	for key, body := range luaJsonSitesRefused {
 		inputs[key] = []byte(body)
 		keys = append(keys, key)
@@ -362,14 +404,30 @@ func luaJsonIntegerSites(t *testing.T) {
 		byRow[key] = rest
 	}
 	want := "ok|" + hexBytes(append(append([]byte{}, luaJsonSitesCanonical...), '\n'))
-	for _, key := range []string{"canonical", "numbers"} {
+	for _, key := range []string{"canonical"} {
 		if byRow[key] != want {
 			t.Errorf("%s: read or wrote the sites unit differently\n got: %s\nwant: %s", key, byRow[key], want)
 		}
 	}
+	if !strings.HasPrefix(byRow["narrow"], "ok|") || !strings.Contains(byRow["narrow"], hexBytes([]byte(`"narrow": 42`))) {
+		t.Errorf("narrow: got %s, want numeric int32 accepted", byRow["narrow"])
+	}
+	for _, key := range append([]string{"numbers"}, mapKeys(luaJsonSitesNumberTokens)...) {
+		if byRow[key] != "refused|kind_mismatch" {
+			t.Errorf("%s: got %s, want kind_mismatch", key, byRow[key])
+		}
+	}
 	for key := range luaJsonSitesRefused {
-		if byRow[key] != "refused" {
+		if !strings.HasPrefix(byRow[key], "refused|") {
 			t.Errorf("%s: read accepted the row: %s", key, byRow[key])
 		}
 	}
+}
+
+func mapKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }

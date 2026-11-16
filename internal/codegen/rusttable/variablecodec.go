@@ -1202,7 +1202,7 @@ func emitEnumDecode(b *strings.Builder, f *ir.Field, dst, bound, onBad, ind stri
 	// one assignment, so dst may be a fresh `let`; onBad diverges, so a
 	// refused reference leaves dst as it was
 	fmt.Fprintf(b, "%s%s = if vref == 0 { %s::None }\n", ind, dst, e.Name)
-	fmt.Fprintf(b, "%selse if vref as usize > ids.len() { report.damaged = true; %s }\n", ind, onBad)
+	fmt.Fprintf(b, "%selse if vref > ids.len() as u64 { report.damaged = true; %s }\n", ind, onBad)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	fmt.Fprintf(b, "%s    match ids[vref as usize - 1] {\n", ind)
 	for i, v := range e.Variants {
@@ -1998,6 +1998,10 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
 	fmt.Fprintf(b, "    let mut retain = retain;\n")
+	fmt.Fprintf(b, "    if table_ids_all_used(&wire[1..end], ids) == Some(false) {\n")
+	fmt.Fprintf(b, "        report.damaged = true;\n")
+	fmt.Fprintf(b, "        if let Some(store) = retain { store.bytes.clear(); store.ids.clear(); store.nodes.clear(); }\n")
+	fmt.Fprintf(b, "        return None;\n    }\n")
 	if !st.FixedDeclared {
 		measure := fnName + "_load_measure"
 		if st.Integrity == "crc32c" {
@@ -2067,7 +2071,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            if p >= end { break; }\n")
 	fmt.Fprintf(b, "            let Some(r) = leb_read(wire, &mut p) else { break; };\n")
 	fmt.Fprintf(b, "            if r == 0 { term = Some(p); break; }\n")
-	fmt.Fprintf(b, "            if r as usize > ids.len() { break; }\n")
+	fmt.Fprintf(b, "            if r > ids.len() as u64 { break; }\n")
 	fmt.Fprintf(b, "            if p >= end { break; }\n")
 	fmt.Fprintf(b, "            let kind = wire[p]; p += 1;\n")
 	fmt.Fprintf(b, "            if !leb_skip(wire, &mut p, end, kind) { break; }\n")
@@ -2242,6 +2246,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        *slot = id;\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
+	fmt.Fprintf(b, "    if table_ids_all_used(&wire[1..end], ids) == Some(false) { return -1; }\n")
 	fmt.Fprintf(b, "    let round = |n: i64| (n + %d - 1) & -%d;\n", align, align)
 	g.emitNestedMeasureHelper(b, st)
 	fmt.Fprintf(b, "    let mut blob_total: i64 = 0;\n")
@@ -2271,9 +2276,9 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            let mut cur_blob = 0i64;\n")
 	fmt.Fprintf(b, "            while off < sub {\n")
 	fmt.Fprintf(b, "                let Some(tref) = leb_read(wire, &mut off) else { return -1; };\n")
-	fmt.Fprintf(b, "                if tref == 0 || tref as usize > ids.len() { return -1; }\n")
+	fmt.Fprintf(b, "                if tref == 0 || tref > ids.len() as u64 { return -1; }\n")
 	fmt.Fprintf(b, "                let Some(bl) = leb_read(wire, &mut off) else { return -1; };\n")
-	fmt.Fprintf(b, "                if off > sub || bl as usize > sub - off { return -1; }\n")
+	fmt.Fprintf(b, "                if off > sub || bl > (sub - off) as u64 { return -1; }\n")
 	fmt.Fprintf(b, "                if ids[tref as usize - 1] == STRING_TYPE_ID || ids[tref as usize - 1] == BYTES_TYPE_ID {\n")
 	fmt.Fprintf(b, "                    if bl > 0xffffffff { return -1; }\n")
 	fmt.Fprintf(b, "                    // Only text needs a terminator in region storage (§6.5).\n")
@@ -2337,7 +2342,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "                    if carries {\n")
 		fmt.Fprintf(b, "                        if c > 0x7fffffff { return -1; }\n")
 		fmt.Fprintf(b, "                        let floor = if ek == %d { 2 } else { table_kind_width(ek).max(1) };\n", ir.TableKindTable)
-		fmt.Fprintf(b, "                        if off > sub || c as usize > (sub - off) / floor { return -1; }\n")
+		fmt.Fprintf(b, "                        if off > sub || c > ((sub - off) / floor) as u64 { return -1; }\n")
 		// the root's own extent is root_at's (nested_measure walks the root
 		// body, lists included); this pass only refuses the framing, and
 		// descends into each element that is itself a body

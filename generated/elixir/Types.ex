@@ -522,6 +522,19 @@ defmodule Example.Types do
 
     v = value_object_id
     scratch = v
+
+    if not is_integer(value_object_sequence) do
+      raise ArgumentError, "value.object_sequence is not an integer"
+    end
+
+    if value_object_sequence < 0 do
+      raise ArgumentError, "value.object_sequence is below the wire minimum"
+    end
+
+    if value_object_sequence > 255 do
+      raise ArgumentError, "value.object_sequence is above the wire maximum"
+    end
+
     v = value_object_sequence &&& 0xFF
     scratch = scratch ||| v <<< 14
     data = <<scratch::little-size(2)-unit(8)>>
@@ -1558,13 +1571,51 @@ defmodule Example.Types do
       inputs: value_inputs
     } = value
 
+    if not is_integer(value_synchronize_sequence) do
+      raise ArgumentError, "value.synchronize_sequence is not an integer"
+    end
+
+    if value_synchronize_sequence < 0 do
+      raise ArgumentError, "value.synchronize_sequence is below the wire minimum"
+    end
+
+    if value_synchronize_sequence > 65535 do
+      raise ArgumentError, "value.synchronize_sequence is above the wire maximum"
+    end
+
     v = value_synchronize_sequence &&& 0xFFFF
     scratch = v
+
+    if not is_integer(value_current_frame) do
+      raise ArgumentError, "value.current_frame is not an integer"
+    end
+
+    if value_current_frame < 0 do
+      raise ArgumentError, "value.current_frame is below the wire minimum"
+    end
+
+    if value_current_frame > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.current_frame is above the wire maximum"
+    end
+
     v = value_current_frame &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 16
     v = value_current_frame >>> 32 &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
+
+    if not is_integer(value_start_frame) do
+      raise ArgumentError, "value.start_frame is not an integer"
+    end
+
+    if value_start_frame < 0 do
+      raise ArgumentError, "value.start_frame is below the wire minimum"
+    end
+
+    if value_start_frame > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.start_frame is above the wire maximum"
+    end
+
     v = value_start_frame &&& 0xFFFFFFFF
     sc1 = scratch
     scratch = v
@@ -2308,12 +2359,38 @@ defmodule Example.Types do
     v = w >>> 32
     sc4 = scratch
     scratch = v
+
+    if not is_integer(value_floor_default) do
+      raise ArgumentError, "value.floor_default is not an integer"
+    end
+
+    if value_floor_default < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "value.floor_default is below the wire minimum"
+    end
+
+    if value_floor_default > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "value.floor_default is above the wire maximum"
+    end
+
     v = value_floor_default &&& 0xFFFFFFFF
     sc5 = scratch
     scratch = v
     v = value_floor_default >>> 32 &&& 0xFFFFFFFF
     sc6 = scratch
     scratch = v
+
+    if not is_integer(value_ceiling_default) do
+      raise ArgumentError, "value.ceiling_default is not an integer"
+    end
+
+    if value_ceiling_default < 0 do
+      raise ArgumentError, "value.ceiling_default is below the wire minimum"
+    end
+
+    if value_ceiling_default > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.ceiling_default is above the wire maximum"
+    end
+
     v = value_ceiling_default &&& 0xFFFFFFFF
     sc7 = scratch
     scratch = v
@@ -2506,12 +2583,38 @@ defmodule Example.Types do
     v = w >>> 32
     sc2 = scratch
     scratch = v
+
+    if not is_integer(value_floor_def) do
+      raise ArgumentError, "value.floor_def is not an integer"
+    end
+
+    if value_floor_def < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "value.floor_def is below the wire minimum"
+    end
+
+    if value_floor_def > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "value.floor_def is above the wire maximum"
+    end
+
     v = value_floor_def &&& 0xFFFFFFFF
     sc3 = scratch
     scratch = v
     v = value_floor_def >>> 32 &&& 0xFFFFFFFF
     sc4 = scratch
     scratch = v
+
+    if not is_integer(value_ceiling_def) do
+      raise ArgumentError, "value.ceiling_def is not an integer"
+    end
+
+    if value_ceiling_def < 0 do
+      raise ArgumentError, "value.ceiling_def is below the wire minimum"
+    end
+
+    if value_ceiling_def > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.ceiling_def is above the wire maximum"
+    end
+
     v = value_ceiling_def &&& 0xFFFFFFFF
     sc5 = scratch
     scratch = v

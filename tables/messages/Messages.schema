@@ -145,3 +145,10 @@ fixed table ToolMessage
     trace    ?[..3]Script
     marks    ?[2]Mode
 }
+
+// Variable-form twin for the nested union envelope boundary probes.
+table ToolEnvelope
+{
+    sequence uint32
+    body     ToolBody
+}

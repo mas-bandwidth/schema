@@ -84,12 +84,8 @@ print("OK")
 `
 	shapes := map[string]string{}
 	for name, runner := range map[string]func(t testing.TB, dir, main string, inputs map[string][]byte) []byte{
-		"python-3.15.2": func(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
-			return pyrun.Run(t, dir, main, inputs)
-		},
-		"python-3.11.18": func(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
-			return pyrun.RunFloor(t, dir, main, inputs)
-		},
+		"python-3.15.2":  pyrun.Run,
+		"python-3.11.18": pyrun.RunFloor,
 	} {
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if !strings.Contains(out, "OK\n") {
@@ -126,4 +122,140 @@ func timedValue(t *testing.T, out, key string) float64 {
 	}
 	t.Fatalf("the probe printed no %s line:\n%s", key, out)
 	return 0
+}
+
+const pointerArraysBenchSchema = `package ptrbench
+
+fixed table Leaf
+{
+    id     int32
+    weight uint64
+}
+
+table Holder
+{
+    active  bool
+    muted   bool
+    tag     int64
+    items   []*Leaf
+    fixed4  [4]*Leaf
+    bounded [..6]*Leaf
+    if active
+    {
+        extra []*Leaf
+        if !muted
+        {
+            bonus int64
+        }
+    }
+    else
+    {
+        fallback *Leaf
+    }
+}
+`
+
+// TestPythonVtPointerArraysShapeBench measures the two code shapes docs/PORT-PYTHON.md
+// names for pointer-array and guarded tables: generated straight-line root
+// save/load with bound locals and inline guard checks against the generic
+// runtime descriptor walk, under both pinned interpreters.
+func TestPythonVtPointerArraysShapeBench(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, pointerArraysBenchSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `import time
+import ptrbench.Core as Core
+from ptrbench import Holder, Leaf
+from ptrbench._schema.load import load_table
+from ptrbench._schema.save import save_table
+
+a = Leaf()
+a.id = 10
+a.weight = 1000
+b = Leaf()
+b.id = 20
+b.weight = 2000
+c = Leaf()
+c.id = 30
+c.weight = 3000
+
+h = Holder()
+h.active = True
+h.muted = False
+h.tag = -987654321
+h.items = [a, None, b, a, c, b]
+h.fixed4 = [b, None, a, c]
+h.bounded = [c, a, b]
+h.extra = [a, c]
+h.bonus = 424242
+
+data = h.save()
+if Core._s_save_Holder(h) != data or save_table(h) != data:
+    raise SystemExit("the straight-line save differs from the descriptor walk")
+if Core._s_load_Holder(Holder, data) != h or load_table(Holder, data) != h:
+    raise SystemExit("the straight-line load differs from the descriptor walk")
+
+N = 5000
+ROUNDS = 5
+
+def run(fn):
+    best = None
+    for _ in range(ROUNDS):
+        start = time.perf_counter()
+        for _ in range(N):
+            fn()
+        value = (time.perf_counter() - start) * 1e9 / N
+        if best is None or value < best:
+            best = value
+    return best
+
+def gen_save():
+    Core._s_save_Holder(h)
+
+def desc_save():
+    save_table(h)
+
+def gen_load():
+    Core._s_load_Holder(Holder, data)
+
+def desc_load():
+    load_table(Holder, data)
+
+gen_save()
+desc_save()
+gen_load()
+desc_load()
+print("save_generated", round(run(gen_save), 1))
+print("save_descriptor", round(run(desc_save), 1))
+print("load_generated", round(run(gen_load), 1))
+print("load_descriptor", round(run(desc_load), 1))
+print("OK")
+`
+	shapes := map[string]string{}
+	for name, runner := range map[string]func(t testing.TB, dir, main string, inputs map[string][]byte) []byte{
+		"python-3.15.2":  pyrun.Run,
+		"python-3.11.18": pyrun.RunFloor,
+	} {
+		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
+		if !strings.Contains(out, "OK\n") {
+			t.Fatalf("%s did not finish:\n%s", name, out)
+		}
+		shapes[name] = out
+		for _, key := range []string{"save_generated", "save_descriptor", "load_generated", "load_descriptor"} {
+			value := timedValue(t, out, key)
+			t.Logf("%s %s %.1f ns/op", name, key, value)
+		}
+	}
+	for _, key := range []string{"save_generated", "save_descriptor", "load_generated", "load_descriptor"} {
+		current := timedValue(t, shapes["python-3.15.2"], key)
+		floor := timedValue(t, shapes["python-3.11.18"], key)
+		if current <= 0 || floor <= 0 {
+			t.Fatalf("%s did not report a positive time: current %.1f, floor %.1f", key, current, floor)
+		}
+	}
 }

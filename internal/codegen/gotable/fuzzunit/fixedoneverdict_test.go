@@ -8,6 +8,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -15,18 +16,15 @@ import (
 // TestGeneratedFixedOneVerdictEveryByte substitutes every value of every byte
 // past the header of each fixed root's record, one at a time, and holds the
 // generated fixed read to the engine's verdict on each (docs/SPEC-TABLES.md
-// §4, §6.5; the slack rule of §3.4 included).
+// §4, §6.5; the dead-byte rule of §3.4 included).
 func TestGeneratedFixedOneVerdictEveryByte(t *testing.T) {
+	// every value of every byte of every fixed root: 126 s alone on a loaded
+	// bench, past what a two-minute fast-lane job can hold, so it runs nightly
+	slowtest.Gate(t, "every byte value of every fixed root")
 	t.Parallel()
 	c := compiler.New()
 	paths, _ := compiler.GatherPaths([]string{"../../../../tables/examples"})
 	u, _ := c.Load(paths)
-	var relaxedDeadBytes int
-	defer func() {
-		if relaxedDeadBytes > 0 {
-			t.Logf("RELAXED 2026-11-15 (get main green): %d generated accepts the engine refuses for non-zero dead bytes were held; re-enable: relax/go-fixed-read-dead-bytes-zero", relaxedDeadBytes)
-		}
-	}()
 	m := tabletext.NewModel(u)
 	for _, target := range fixedTargets {
 		root := m.Lookup(target.name)
@@ -57,16 +55,6 @@ func TestGeneratedFixedOneVerdictEveryByte(t *testing.T) {
 				var erep tabletext.Report
 				eok, eerr := tablewire.Decode(m, inst, in, &erep)
 				if gok == eok {
-					continue
-				}
-				if gok && !eok {
-					// RELAXED 2026-11-15 (get main green): the engine refuses a
-					// fixed record whose dead bytes are not zero (325796bca) and
-					// the generated Go fixed read does not check them yet, so a
-					// generated accept against an engine refusal is held, not
-					// failed; a generated refusal the engine accepts still fails.
-					// re-enable: relax/go-fixed-read-dead-bytes-zero
-					relaxedDeadBytes++
 					continue
 				}
 				js, _ := m.Write(inst)

@@ -501,11 +501,10 @@ func TestLockLineageRecordsTheDefinitionsDigest(t *testing.T) {
 	}
 }
 
-// TestLockDigestLandingRewritesInPlace: a lock written with an empty digest
-// recorded the layout-bytes-only hash. Filling the digest moves the wire hash
-// without moving a layout byte — not a new version — so `schema lock` rewrites
-// the last entry in place rather than appending.
-func TestLockDigestLandingRewritesInPlace(t *testing.T) {
+// A digest-less historical identity stays known when the current definition
+// acquires a digest: append the current hash without rewriting shipped bytes.
+func TestLockDigestLandingPreservesHistoricalIdentity(t *testing.T) {
+	t.Parallel()
 	dir, paths := fixture(t, rowTable("    n int32 | min = 0, max = 100"))
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 		t.Fatal(err)
@@ -524,6 +523,7 @@ func TestLockDigestLandingRewritesInPlace(t *testing.T) {
 		t.Fatal("the first lock holds one lineage entry")
 	}
 	t0.Lineage[0].Digest = nil
+	t0.Lineage[0].Writer = nil
 	t0.Lineage[0].Wire = ir.TableFixedLayoutHash(t0.Lineage[0].Layout, nil)
 	if err := os.WriteFile(path, []byte(locked.Text()), 0o644); err != nil {
 		t.Fatal(err)
@@ -532,12 +532,16 @@ func TestLockDigestLandingRewritesInPlace(t *testing.T) {
 		t.Fatalf("filling the digest rewrites the lock: rewrote=%v err=%v", rewrote, err)
 	}
 	got := lineageOf(t, path, "Row")
-	if len(got) != 1 {
-		t.Fatalf("digest landing is not a new version: want 1 entry, got %d", len(got))
+	if len(got) != 2 {
+		t.Fatalf("both historical and current hashes stay known: got %d", len(got))
+	}
+	old := t0.Lineage[0]
+	if got[0].Wire != old.Wire || got[0].Record != old.Record || string(got[0].Layout) != string(old.Layout) || len(got[0].Digest) != 0 || got[0].Writer != nil || got[0].Retired != old.Retired || got[0].Reason != old.Reason {
+		t.Fatal("digest migration changed historical facts")
 	}
 	want, _, _ := wireHashOf(t, paths, "Row")
-	if got[0].Wire != want || len(got[0].Digest) == 0 {
-		t.Errorf("the rewritten entry carries the digest hash 0x%016x, got 0x%016x digest %q", want, got[0].Wire, got[0].Digest)
+	if got[1].Wire != want || len(got[1].Digest) == 0 || got[1].Writer == nil {
+		t.Errorf("the appended entry carries the current digest hash 0x%016x, got 0x%016x digest %q", want, got[1].Wire, got[1].Digest)
 	}
 }
 

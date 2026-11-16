@@ -2328,6 +2328,10 @@ final class TableMessageShape {
       s.elem = sig[at];
       at += 1;
       if (!tableMessageKnownKind(s.elem)) return null;
+      // AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (docs/SPEC-TABLES.md
+      // §3.3, ir.DecodeShape): no declaration produces a list of lists or a
+      // list of keyed arrays.
+      if (s.elem == 14 || s.elem == 16) return null;
       final inner = decode(sig, at, end, s.elem);
       if (inner == null) return null;
       s.inner = inner.$1;
@@ -2526,8 +2530,12 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   var vocabularyLength = 0;
   var terminated = false;
   while (at < bodyEnd) {
-    final ref = bytes[at];
-    at += 1;
+    final reference = tableMessageLeb(bytes, at, bodyEnd);
+    if (!reference.$3 || reference.$1 < 0) {
+      break;
+    }
+    final ref = reference.$1;
+    at = reference.$2;
     if (ref == 0) {
       if (at != bodyEnd) {
         break;

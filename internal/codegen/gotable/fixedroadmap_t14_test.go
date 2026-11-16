@@ -162,7 +162,7 @@ func TestContract(t *testing.T) {
 	r := TableBitReader{Buffer: buf}
 	s := TableMessageShape{Kind: 10, Packing: 2, Bits: 5, QMin: -1, QDelta: 3, QCount: 30}
 	var out [16]byte
-	if !tableMessageReadScalar(&r, s, &out) {
+	if ok, _ := tableMessageReadScalar(&r, s, &out); !ok {
 		t.Fatal("read")
 	}
 	bits := binary.LittleEndian.Uint32(out[:4])

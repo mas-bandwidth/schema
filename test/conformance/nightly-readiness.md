@@ -20,7 +20,7 @@ does not add an all-pairs matrix or ask the reference to read each writer.
 | Runner contracts | C++ executes the permanent Python regression suite once. Its phase and nonzero test count are mandatory; no-op invocation cannot stand in for execution. |
 | Feature support | Build the current harness, then `implementation --lang <lang>`. Require exit zero and exactly one matching `IMPLEMENTATION_PREREQUISITES_PASS` line with positive construct and active-witness counts. The harness checks the compiler's mandatory construct registry, valid active instances and code generation independently of the 929-row claim manifest. This is a prerequisite, not a replacement for native execution. |
 | Native compiler suites | `SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -json -timeout=0 -count=1 -parallel=2 ./internal/codegen/<packet> ./internal/codegen/<table>`, executed as separate package phases. C++ also executes `./compiler` and the entire `./test/conformance/harness` package once, including the BOM oracle and permanent shared corpus/gate regressions. Its prerequisite builds both native C/C++ collection drivers and pins their paths for the shared differential tests; missing drivers cannot turn those tests into accepted skips. Each package's discovered tests/examples/fuzz seed tests must finish, at least one must pass, and the package must pass. The small internal/lockfile suite also runs to certify the replacements for retired layout-validation tests. |
-| Packets | Execute the normal and ludicrous packet programs below, plus defaults, UTF-8, wide-text and their existing negative controls. Run the finite-value targets where registered. C++ executes its own wide, guard and random packet binaries and four wide/text controls. |
+| Packets | Execute the normal and ludicrous packet programs below, plus defaults, UTF-8 and their existing negative controls. Run the finite-value targets where registered. C++ executes its current guard, random and ludicrous packet binaries and the defaults gate. The retired `wstring` packet corpus, binaries and targets are excluded; current text remains UTF-8. |
 | External table executables | The existing fixed-form/paired/native targets listed below complement the package tests. Missing targets, missing corpora, failed builds or nonzero programs fail readiness. |
 | Wire and retaining load | Build the existing all-roots driver. Run the shared differential `wire-fuzz` directly for plain and `--retain`, each at seeds 1, 2 and 3 with 100000 random mutants plus the complete enumerated pass. Dart and JavaScript use the mixed-builder profile for their managed variable-file loaders; the complete fixed/message roster retains its form-specific oracle. No `--finite-owed`, replay-only replacement, caller seed/count reduction or custom roster is accepted. |
 | Wire/retention controls | Execute the existing planted wire controls and retention controls. C, Go and Rust's existing retention overlays are reproduced with only the outer Go-suite timeout changed to zero; the exact intended test failure and diagnostic remain mandatory. |
@@ -37,7 +37,7 @@ The packet/table package pairs are:
 
 | Language | Packet package | Table package | Packet execution |
 | --- | --- | --- | --- |
-| C++ | cpp | cpptable | schema_test, guard, wide, random, ludicrous |
+| C++ | cpp | cpptable | schema_test, guard, random, ludicrous |
 | C | c | ctable | normal, ASan, ludicrous, bench |
 | C# | csharp | cstable | dotnet Debug and Release, normal and ludicrous |
 | Go | golang | gotable | go run, normal and ludicrous |
@@ -108,7 +108,7 @@ programs are internal/codegen/moo's probes, which generate `examples` and
 interpreter: `packet-normal-0` runs the golden write, read, truncation,
 hostile-value and out-of-contract probes, `packet-ludicrous-0` the ludicrous
 wire, each a `go test -json` phase whose every named probe must pass. Its
-packet features are the defaults, UTF-8, wide-text and finite gates with their
+packet features are the defaults, UTF-8 and finite gates with their
 controls.
 
 MOO's wire-fuzz leg is already one process over the whole roster
@@ -166,8 +166,6 @@ runs may use N=0; they never stand in for the six positive release runs.
   deadlines retain their meanings. Exactly two outer Go calls in the C++
   external targets (UnitView listing and fixed-twin) run through a private
   Makefile copy whose only changes are `-timeout=0`/uncached execution.
-  The Go wide-packet recipe has the same narrowly copied outer invocation,
-  preserving its native build, differential and negative-control dependencies.
   Exact source anchors and before/after hashes are recorded. An anchor change
   fails closed. Other package-only legacy targets are replaced by the full
   uncapped package runs. No global Go wrapper rewrites test flags, and no

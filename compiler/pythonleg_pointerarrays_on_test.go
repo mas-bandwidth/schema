@@ -1,0 +1,105 @@
+// Pointer arrays and table field guards through the built-in compiler target.
+package compiler
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func writeDriverSchema(t *testing.T, name, src string) []string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return []string{p}
+}
+
+// TestPythonVtPointerArraysThroughDriver checks that the public compiler
+// driver accepts []*T, [N]*T, [..N]*T, [A..N]*T, and guarded table fields on
+// the python target, alongside scalar and by-value lists, while refusing pointer lists targeting
+// packet types.
+func TestPythonVtPointerArraysThroughDriver(t *testing.T) {
+	t.Parallel()
+
+	const accepted = `package ptrdrv
+
+fixed table Leaf
+{
+    id int32
+}
+
+table Node
+{
+    value    int32
+    children []*Node
+    fixed3   [3]*Leaf
+    bounded  [..4]*Leaf
+    ranged   [2..4]*Leaf
+    active   bool
+    if active
+    {
+        extra *Node
+        list2 []*Leaf
+    }
+    else
+    {
+        fallback int32
+    }
+}
+`
+	c := New()
+	u, err := c.Load(writeDriverSchema(t, "Ptr.schema", accepted))
+	if err != nil {
+		t.Fatalf("load accepted schema: %v", err)
+	}
+	files, err := c.Generate(u, "python", nil)
+	if err != nil {
+		t.Fatalf("driver refused pointer arrays and guarded fields: %v", err)
+	}
+	for _, want := range []string{
+		"ptrdrv/__init__.py",
+		"ptrdrv/Ptr.py",
+		"ptrdrv/_schema/kind_pointer_array.py",
+	} {
+		if _, ok := files[want]; !ok {
+			t.Errorf("driver output lacks %s", want)
+		}
+	}
+
+	const scalarList = `package badlist
+
+table Bag
+{
+    values []int32
+}
+`
+	uScalar, err := c.Load(writeDriverSchema(t, "BadList.schema", scalarList))
+	if err != nil {
+		t.Fatalf("load scalar list schema: %v", err)
+	}
+	if files, err := c.Generate(uScalar, "python", nil); err != nil || len(files) == 0 {
+		t.Fatalf("driver did not generate []int32: %v", err)
+	}
+
+	const tableValueList = `package badtbllist
+
+fixed table Item
+{
+    x int32
+}
+
+table Bag
+{
+    items []Item
+}
+`
+	uTbl, err := c.Load(writeDriverSchema(t, "BadTblList.schema", tableValueList))
+	if err != nil {
+		t.Fatalf("load value-table list schema: %v", err)
+	}
+	if files, err := c.Generate(uTbl, "python", nil); err != nil || len(files) == 0 {
+		t.Fatalf("driver did not generate []Item: %v", err)
+	}
+}

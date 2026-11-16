@@ -239,7 +239,7 @@ func TestSquirrelWideKindsStrictRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("squirrel refused the 128-bit probe: %v", err)
 	}
-	in := squirrelOracleWire(t, wide, "W", `{"e": 99}`)
+	in := squirrelOracleWire(t, wide, "W", `{"e": "99"}`)
 	if got := squirrelGoVerdict(u, "W", in); got != "accepted" {
 		t.Fatalf("the Go engine %s the in-range wire", got)
 	}
@@ -248,6 +248,6 @@ func TestSquirrelWideKindsStrictRead(t *testing.T) {
 	if got := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": in}))); got != "accepted" {
 		t.Errorf("the Squirrel strict read %s the in-range 128-bit wire", got)
 	}
-	out := squirrelOracleWire(t, wide, "W", `{"e": 1000000000000000000000}`)
+	out := squirrelOracleWire(t, wide, "W", `{"e": "1000000000000000000000"}`)
 	squirrelRefusalControl(t, u, files, "W", out, squirrelWalkBladed(t, files))
 }

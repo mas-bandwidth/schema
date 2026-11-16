@@ -1663,8 +1663,18 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 		g.emitWriteOffset(name, f.IntMin, f.IntMax, ind)
 		return
 	}
-	// bare integer at storage width; signed values mask to the same-width
-	// two's-complement pattern (the family's bare-integer wire)
+	// bare integer at storage width (SPEC §5.1 row 1): a BEAM term has no
+	// storage width, so the writer refuses a non-integer and a value outside
+	// the declared intN/uintN range in every build. Signed values then mask
+	// to the same-width two's-complement pattern (the family's bare-integer
+	// wire).
+	lo, hi := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+	if f.Type.Signed {
+		lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(w-1)))
+		hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w-1)), big.NewInt(1))
+	}
+	g.raiseIf(fmt.Sprintf("not is_integer(%s)", name), fmt.Sprintf("%s is not an integer", g.dsp(name)), ind)
+	g.emitCheckRange(name, g.dsp(name), lo, hi, ind)
 	g.emitWriteWideRaw(name, w, ind)
 }
 
@@ -1703,6 +1713,12 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.raiseIf(fmt.Sprintf("byte_size(%s) > %d", name, f.Type.Size),
 		fmt.Sprintf("%s longer than the declared %d-byte bound", g.dsp(name), f.Type.Size), ind)
+	if f.Type.Kind == ir.TString {
+		g.raiseIf(fmt.Sprintf("not String.valid?(%s)", name),
+			fmt.Sprintf("%s is not well-formed UTF-8 (SPEC §4.7)", g.dsp(name)), ind)
+		g.raiseIf(fmt.Sprintf(":binary.match(%s, <<0>>) != :nomatch", name),
+			fmt.Sprintf("%s holds a zero byte (SPEC §4.7)", g.dsp(name)), ind)
+	}
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 	g.pf("%sv = byte_size(%s)\n", ind, name)
 	g.mergeW(lenBits, ind)

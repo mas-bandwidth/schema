@@ -17,7 +17,7 @@ import (
 
 // TestFromJsonKeepsUint64AboveInt64MaxJava sends the Java variable form a table
 // with a uint64 field, a []uint64 and a union arm of uint64, reads JSON values
-// at and above 2^63-1 (both integral and non-integral spellings) as well as
+// at and above 2^63-1 in string form, and invalid number-token spellings as well as
 // negative and out-of-range inputs, and compares the decoded values, the saved
 // bytes and the verdict to what the Go oracle (internal/tabletext,
 // internal/tablewire) produces for the same JSON, byte for byte. Values in
@@ -83,26 +83,37 @@ table T
 	cases := []struct {
 		json    string
 		want    string
-		refused bool // the value is outside 0..2^64-1 (or int64 range): the whole read refuses
+		refused bool
 	}{
-		// in range (integral): kept exactly
-		{`{ "f": 9223372036854775807, "xs": [9223372036854775807], "u": { "a": 9223372036854775807 } }`, "f=9223372036854775807 xs=[9223372036854775807] u.a=9223372036854775807 i=0", false},
-		{`{ "f": 9223372036854775808, "xs": [9223372036854775808], "u": { "a": 9223372036854775808 } }`, "f=9223372036854775808 xs=[9223372036854775808] u.a=9223372036854775808 i=0", false},
-		{`{ "f": 18446744073709551615, "xs": [18446744073709551615], "u": { "a": 18446744073709551615 } }`, "f=18446744073709551615 xs=[18446744073709551615] u.a=18446744073709551615 i=0", false},
-		// out of range (integral): the whole read refuses, never clamps
+		// Wide integers carry exact values as strings, including the uint64 boundary.
+		{`{ "f": "9223372036854775807", "xs": ["9223372036854775807"], "u": { "a": "9223372036854775807" } }`, "f=9223372036854775807 xs=[9223372036854775807] u.a=9223372036854775807 i=0", false},
+		{`{ "f": "9223372036854775808", "xs": ["9223372036854775808"], "u": { "a": "9223372036854775808" } }`, "f=9223372036854775808 xs=[9223372036854775808] u.a=9223372036854775808 i=0", false},
+		{`{ "f": "18446744073709551615", "xs": ["18446744073709551615"], "u": { "a": "18446744073709551615" } }`, "f=18446744073709551615 xs=[18446744073709551615] u.a=18446744073709551615 i=0", false},
+		{`{ "f": "10000000000000000000", "xs": ["10000000000000000000"], "u": { "a": "10000000000000000000" } }`, "f=10000000000000000000 xs=[10000000000000000000] u.a=10000000000000000000 i=0", false},
+		{`{ "f": "0", "xs": ["0"], "u": { "a": "0" } }`, "f=0 xs=[0] u.a=0 i=0", false},
+		{`{ "i": "-5" }`, "f=0 xs=[] u.a=none i=-5", false},
+		// Keep the formerly numeric spellings as explicit refusals.
+		{`{ "f": 9223372036854775807, "xs": [9223372036854775807], "u": { "a": 9223372036854775807 } }`, "", true},
+		{`{ "f": 9223372036854775808, "xs": [9223372036854775808], "u": { "a": 9223372036854775808 } }`, "", true},
+		{`{ "f": 18446744073709551615, "xs": [18446744073709551615], "u": { "a": 18446744073709551615 } }`, "", true},
 		{`{ "f": 18446744073709551616, "xs": [18446744073709551616], "u": { "a": 18446744073709551616 } }`, "", true},
 		{`{ "f": -5, "xs": [-5], "u": { "a": -5 } }`, "", true},
 		{`{ "f": 18446744073709551616 }`, "", true},
 		{`{ "xs": [1, 18446744073709551616] }`, "", true},
 		{`{ "u": { "a": -1 } }`, "", true},
-		// non-integral and -0 spellings (§16.2):
 		{`{ "f": -5.0, "xs": [-5.0], "u": { "a": -5.0 } }`, "", true},
-		{`{ "f": 9223372036854775808.0, "xs": [9223372036854775808.0], "u": { "a": 9223372036854775808.0 } }`, "f=9223372036854775808 xs=[9223372036854775808] u.a=9223372036854775808 i=0", false},
-		{`{ "f": 1e19, "xs": [1e19], "u": { "a": 1e19 } }`, "f=10000000000000000000 xs=[10000000000000000000] u.a=10000000000000000000 i=0", false},
-		{`{ "f": -0, "xs": [-0], "u": { "a": -0 } }`, "f=0 xs=[0] u.a=0 i=0", false},
-		// int64 stays signed:
-		{`{ "i": -5 }`, "f=0 xs=[] u.a=none i=-5", false},
+		{`{ "f": 9223372036854775808.0, "xs": [9223372036854775808.0], "u": { "a": 9223372036854775808.0 } }`, "", true},
+		{`{ "f": 1e19, "xs": [1e19], "u": { "a": 1e19 } }`, "", true},
+		{`{ "f": -0, "xs": [-0], "u": { "a": -0 } }`, "", true},
+		{`{ "i": -5 }`, "", true},
 		{`{ "i": 9223372036854775808 }`, "", true},
+		// The required string form also refuses invalid digits and out-of-range values.
+		{`{ "f": "18446744073709551616" }`, "", true},
+		{`{ "xs": ["1", "18446744073709551616"] }`, "", true},
+		{`{ "u": { "a": "-1" } }`, "", true},
+		{`{ "f": "1e19" }`, "", true},
+		{`{ "f": "-0" }`, "", true},
+		{`{ "i": "9223372036854775808" }`, "", true},
 	}
 
 	var in strings.Builder

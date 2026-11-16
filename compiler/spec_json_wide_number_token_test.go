@@ -18,7 +18,7 @@ import (
 
 // numberTokenRow is one row of testdata/wire/json-integers/NUMBER-TOKEN.tsv:
 // a refused vector that writes the named wide fields as bare number tokens,
-// and the read vector (its string twin) that holds the same values as strings.
+// and its string twin in MANIFEST.tsv, which holds the same values as strings.
 type numberTokenRow struct {
 	name   string
 	fields []string
@@ -35,6 +35,16 @@ var numberTokenRows = []numberTokenRow{
 	{"ranged-number", []string{"ranged"}, "canonical.read.json"},
 	{"frac-number", []string{"frac"}, "canonical.read.json"},
 	{"numbers", []string{"wide", "uwide", "wide128", "ranged", "frac"}, "strings.read.json"},
+	// the unlawful values a bare number token spelled, moved out of
+	// MANIFEST.tsv: each twin holds the same digits in a string and refuses
+	// for them
+	{"wide-fraction", []string{"wide"}, "wide-string-fraction.refused.json"},
+	{"wide-exponent", []string{"wide"}, "wide-string-exponent.refused.json"},
+	{"wide-neg-zero", []string{"wide"}, "wide-string-neg-zero.refused.json"},
+	{"ranged-one-past", []string{"ranged"}, "ranged-one-past-string.refused.json"},
+	{"ranged-below-min", []string{"ranged"}, "ranged-below-min-string.refused.json"},
+	{"uwide-one-past", []string{"uwide"}, "uwide-one-past-string.refused.json"},
+	{"wide128-one-past", []string{"wide128"}, "wide128-one-past-string.refused.json"},
 }
 
 // decodeVector reads a JSON vector keeping every number token as its text.
