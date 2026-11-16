@@ -1196,9 +1196,9 @@ static void test_message_form_announcement_check()
     {
         int64_t at = 0;
         memcpy( body + at, version_field, 10 ); at += 10;
+        memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         const uint8_t unknown[6] = { 3, 8, 9, 0, 0, 0 }; // slot 3 is an ordinary id, under kind 8 with a u32 payload
         memcpy( body + at, unknown, 6 ); at += 6;
-        memcpy( body + at, vocabulary_field, (size_t) field_bytes ); at += field_bytes;
         body[at++] = 0;
         const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 3 );
         VOCABULARY( backenddemo, vocabulary );
