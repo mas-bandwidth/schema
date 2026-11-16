@@ -39,6 +39,14 @@ func TestPythonSurfaceBehavior(t *testing.T) {
 				t.Fatal("fixed runtime selection")
 			}
 			probe := pythonSurfaceProbe(fixed)
+			forms := `("wire",)`
+			if selection == "wire,block" {
+				forms = `("wire", "block")`
+			}
+			if selection == "" {
+				forms = `("wire", "json", "block", "cook")`
+			}
+			probe += "\nassert Root.descriptor.forms == " + forms + ", 'selected forms metadata drift'\n"
 			if selection == "wire" || selection == "fixed" {
 				probe = probe + "\nassert Root.block is None and not hasattr(Root, 'block_row'), 'block descriptor leaked'\n"
 			}
