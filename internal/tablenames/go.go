@@ -253,6 +253,8 @@ func init() {
 		Name{Name: "tableWireSkipFramed", What: "the wire-alone check: a framed payload (a union arm or a nested body) skipped under the same conditions (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireCheck", What: "the wire-alone check over every byte of a file (docs/SPEC-TABLES.md §4, §6.5)"},
 		Name{Name: "tableBinaryMaxDepth", What: "the binary nesting bound the wire-alone check holds (docs/SPEC-TABLES.md §4, binary_max_depth)"},
+		Name{Name: "tableWireBytesID", What: "the wire-alone check: the bytes kind's field id"},
+		Name{Name: "tableWireStringID", What: "the wire-alone check: the string kind's field id"},
 		Name{Name: "tableFirstUse", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},
 		Name{Name: "tableFirstUseCount", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},
 		Name{Name: "tableFirstUseMeet", What: "the id table's first-use order (docs/SPEC-TABLES.md §3, §3.1, §3.2, §3.3)"},

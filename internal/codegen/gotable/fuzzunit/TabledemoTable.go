@@ -28,13 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-<<<<<<< HEAD
-const _ = uint64(goruntime.Version - 0x89b203cfa90364c5)
-const _ = uint64(0x89b203cfa90364c5 - goruntime.Version)
-=======
-const _ = uint64(goruntime.Version - 0x86bc2d1b737bcddd)
-const _ = uint64(0x86bc2d1b737bcddd - goruntime.Version)
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
+const _ = uint64(goruntime.Version - 0x63c033c441bb0f3c)
+const _ = uint64(0x63c033c441bb0f3c - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -113,6 +108,10 @@ type TableMissingRequired = goruntime.TableMissingRequired
 type TableOutOfRange = goruntime.TableOutOfRange
 
 type TableMalformedField = goruntime.TableMalformedField
+
+const tableWireBytesID = goruntime.TableWireBytesID
+
+const tableWireStringID = goruntime.TableWireStringID
 
 func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
 
@@ -300,15 +299,7 @@ func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 Tabl
 	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4)
 }
 
-<<<<<<< HEAD
-func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) bool {
-=======
-func tableMessageSkipBody(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 int) bool {
-	return goruntime.TableMessageSkipBody(a0, a1, a2, a3)
-}
-
 func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) (bool, bool) {
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	return goruntime.TableMessageReadScalar(a0, a1, a2)
 }
 
