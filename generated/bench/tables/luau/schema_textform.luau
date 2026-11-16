@@ -684,14 +684,17 @@ local function int_value(r: ResolverT, v: Node, f: any): boolean
 			if wide_ucmp(raw, zero) < 0 or wide_ucmp(raw, max) > 0 then return r:fail(BOUND, v, v.start) end
 		end
 	end
-	if f.dom == "number" then
-		local n = tonumber(v.text)
-		if n == nil then return r:fail(SYNTAX, v, v.start) end
-		v.canon = string.format("%.0f", n)
-		r:raw(v.canon)
+	if raw.lo == 0i and raw.hi == 0i then
+		v.canon = "0"
+	elseif f.signed ~= false and integer.lt(raw.hi, 0i) then
+		v.canon = "-" .. bn_digits(bn_from_u128(u128_negate(raw)))
 	else
 		v.canon = bn_digits(bn_from_u128(raw))
+	end
+	if f.fbits ~= nil or (f.kw or 8) == 16 then
 		r:raw(v.text)
+	else
+		r:raw(v.canon)
 	end
 	return true
 end

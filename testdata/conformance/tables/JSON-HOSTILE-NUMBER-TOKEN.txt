@@ -1,0 +1,38 @@
+# THE JSON-HOSTILE NUMBER-TOKEN VECTORS (docs/SPEC-TABLES.md §16.2,
+# docs/rulings.json json-wide-integers-refuse-number-token). The row format is
+# MANIFEST.txt's json-hostile row, and the units are MANIFEST.txt's:
+#
+#   json-hostile <case> <unit> <root> <tree> <verdict>
+#
+# The rule: an integer field whose kind is wider than 32 bits — int64, uint64,
+# int128, uint128, bits(33..64), and a fixed kind of 64 or 128 bits — takes
+# the JSON STRING form only, and a bare number token there refuses
+# kind_mismatch. Each vector here writes one or more such values as bare
+# number tokens, so each one's verdict is `refused`: eight of them read before
+# the rule, and five refused for the value's range before it and refuse for the
+# token's kind under it. Each has a string twin in MANIFEST.txt, the row named
+# `<case>-string`, which holds the same values as strings and whose verdict the
+# rule does not change.
+#
+# This is a separate manifest from MANIFEST.txt because the readers are being
+# moved to it one leg at a time, as testdata/wire/json-integers/NUMBER-TOKEN.tsv
+# was: a leg reads these rows once its own reader refuses a bare number token
+# in a wide field. The trees live in json-hostile-number-token/, beside
+# json-hostile/, and the shared hostile corpus carries its copies in
+# internal/ci/hostilecorpus/corpus/number-token.tsv.
+
+unit tabledemo tables/examples
+unit scalars     tables/scalars
+json-hostile num-int64-min               tabledemo  RootConfig  testdata/conformance/tables/json-hostile-number-token/num-int64-min refused
+json-hostile num-int64-extremes          tabledemo  RootConfig  testdata/conformance/tables/json-hostile-number-token/num-int64-extremes refused
+json-hostile num-uint64-max              tabledemo  RootConfig  testdata/conformance/tables/json-hostile-number-token/num-uint64-max refused
+json-hostile num-uint64-two-to-63        tabledemo  RootConfig  testdata/conformance/tables/json-hostile-number-token/num-uint64-two-to-63 refused
+json-hostile num-int64-past-extremes     tabledemo  RootConfig  testdata/conformance/tables/json-hostile-number-token/num-int64-past-extremes refused
+json-hostile fixed-integral-token        scalars    SimState    testdata/conformance/tables/json-hostile-number-token/fixed-integral-token refused
+json-hostile fixed-at-bound              scalars    SimState    testdata/conformance/tables/json-hostile-number-token/fixed-at-bound refused
+json-hostile int128-beyond-int64         scalars    SimState    testdata/conformance/tables/json-hostile-number-token/int128-beyond-int64 refused
+json-hostile int128-over-range           scalars    SimState    testdata/conformance/tables/json-hostile-number-token/int128-over-range refused
+json-hostile uint128-max                 scalars    SimState    testdata/conformance/tables/json-hostile-number-token/uint128-max refused
+json-hostile uint128-over                scalars    SimState    testdata/conformance/tables/json-hostile-number-token/uint128-over refused
+json-hostile uint128-negative            scalars    SimState    testdata/conformance/tables/json-hostile-number-token/uint128-negative refused
+json-hostile fixed-nested-type           scalars    SimState    testdata/conformance/tables/json-hostile-number-token/fixed-nested-type refused

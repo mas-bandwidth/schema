@@ -57,7 +57,7 @@ func repeatedKeyEnumText() string {
 func repeatedKeyInterleavedText() string {
 	var b strings.Builder
 	b.WriteString(`{`)
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		fmt.Fprintf(&b, `"u%d":{"c%d":%d},`, i, i, i)
 	}
 	b.WriteString(`"u9":0}`)

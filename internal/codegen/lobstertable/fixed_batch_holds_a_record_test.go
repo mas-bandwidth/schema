@@ -96,15 +96,17 @@ print("save_none " + string(fixedemptybatch.BatchFixedSave(empty) == ""))
 		t.Fatalf("fixed batch of none without asserts (exit %d):\n%s\nwant:\n%s", code, got, want)
 	}
 
-	// The trusted decoder asserts its input as it asserts the header: a
-	// header and a layout with no record behind them (the save's own bytes,
-	// before the integrity trailer) trap, after a one-record control decodes.
-	const decode = prelude + `print("one " + string(length(fixedemptybatch.BatchFixedDecode(substring(one, 0, length(one) - 4)))))
-let decoded = fixedemptybatch.BatchFixedDecode(substring(none, 0, length(none) - 4))
-print("none " + string(length(decoded)))
+	// The one fixed read refuses a header and a layout with no record behind
+	// them, with or without the integrity trailer (the save's own bytes
+	// before the trailer); the one-record control above reads.
+	const empty = prelude + `let plan:[schema_rt.TableFixedEntry] = []
+for(4096): push(plan, schema_rt.TableFixedEntry {})
+let report = schema_rt.TableReport {}
+let rows = [fixedemptybatch.NewBatch()]
+print("none " + string(fixedemptybatch.BatchFixedLoad(rows, substring(none, 0, length(none) - 4), plan, report) == -1))
 `
-	out, code = lobsterrun.RunExit(t, write(t, decode), "main.lobster", inputs)
-	if got := strings.TrimSpace(string(out)); code == 0 || !strings.HasPrefix(got, "one 1") || strings.Contains(got, "none ") {
-		t.Fatalf("trusted decode of no record (exit %d):\n%s", code, got)
+	out, code = lobsterrun.RunExit(t, write(t, empty), "main.lobster", inputs)
+	if got := strings.TrimSpace(string(out)); code != 0 || got != "none true" {
+		t.Fatalf("one read of no record before the trailer (exit %d):\n%s", code, got)
 	}
 }

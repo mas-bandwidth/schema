@@ -10,6 +10,7 @@ package compiler
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,31 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 	mustState(t, "SPEC §5.1 the Rust idiom row", oneLine(spec),
 		"the storage is `iN`/`uN`")
 
+	writeSection := specTablesSection(t, spec, "Each leg's `FixedSave`", "## 6. ")
+	row11 := regexp.MustCompile(`11 (every build|debug|unrepresentable|not yet held)`)
+	for _, leg := range []string{"C++", "C", "C#", "Rust", "Java", "Dart", "Go", "JavaScript", "Elixir", "Lua", "Luau", "Squirrel", "MOO", "Goose", "Lobster"} {
+		marker := "- **" + leg + "**"
+		_, cell, found := strings.Cut(writeSection, marker)
+		if !found {
+			t.Errorf("packet column missing %s", leg)
+			continue
+		}
+		cell, _, _ = strings.Cut(cell, "\n- **")
+		packet := ""
+		for line := range strings.SplitSeq(cell, "\n") {
+			if strings.Contains(line, "packet `Write`:") {
+				packet = line
+				break
+			}
+		}
+		if !row11.MatchString(packet) {
+			t.Errorf("%s packet Write does not state row 11: %s", leg, packet)
+		}
+		if (leg == "Rust" || leg == "Goose") && !strings.Contains(packet, "11 unrepresentable") {
+			t.Errorf("%s packet Write must state row 11 unrepresentable", leg)
+		}
+	}
+
 	for _, page := range []struct{ name, text string }{
 		{"docs/SPEC.md", spec},
 		{"docs/PACKET-WIRE-ALGORITHM.md", wire},
@@ -91,7 +117,7 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 	mustState(t, "cases.txt header", casesText,
 		"by the writer's refusal in every build in an every-build leg")
 	got := map[string]string{}
-	for _, line := range strings.Split(cases, "\n") {
+	for line := range strings.SplitSeq(cases, "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

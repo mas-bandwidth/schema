@@ -9,7 +9,9 @@
 // pinned corpus for its rows and, for the flips, an oracle written here from
 // the SPEC rules, held to the corpus first exactly as the harness holds the
 // C++ oracle. No C++ toolchain is needed, so the gate runs in the lobster
-// unit leg. The control removes the Lobster reader's UTF-8 check and must
+// unit leg. The driver reads through read_body_Narrow, the composable read
+// that reports bits and runs no end check (the end check is
+// packet-end-lobster's). The control removes the Lobster reader's UTF-8 check and must
 // turn the bit-flip agreement red.
 package lobster
 
@@ -316,7 +318,7 @@ if text:
             let r = serialize_read_stream_padded(unhex(parts[1]))
             if bound == 0:
                 let v = packettext.NewNarrow()
-                if not packettext.ReadNarrow(r, v):
+                if not packettext.read_body_Narrow(r, v):
                     print("REFUSE")
                 else:
                     let bits, enc = written() w: packettext.WriteNarrow(w, v)

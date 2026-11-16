@@ -240,8 +240,11 @@ func TestLuauEveryTypeHasAViewNegativeControl(t *testing.T) {
 // adding it may not change the table module a game links (docs/SPEC-TABLES.md
 // §8.5). Moved when the table module began registering the unit's wire ids
 // (retainids.go, docs/SPEC-TABLES.md §6.6), a change to the module itself, and
-// when the announcement's tail lost its third blob id with wide text (§3.3).
-const wantTableDigest = "41f89eb6bd8e2e89b396b4cee5d4391ac3f406c16b325f7193e587a53d3e68be"
+// when the announcement's tail lost its third blob id with wide text (§3.3),
+// when the announcement moved to the message closure's vocabulary (0e0f4b5bc,
+// §3.3), and when the module began declaring its table type ids (258708e08,
+// §3.1).
+const wantTableDigest = "9ce86c6576120d138c932db023aea262ff6af9d37262a53f5c293d5dad853fa7"
 
 // declaredViewNames is every `type`, `union`, `enum` and `flags` the unit
 // declares, the set §8.2 says every one of has a view.

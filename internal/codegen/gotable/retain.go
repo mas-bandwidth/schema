@@ -44,7 +44,7 @@ func (g *tableGen) emitRetainRuntime() {
 	save = tableSourceRewriter(save, "tableRegionSaveReason(", "tableRegionSaveRetain(", "tableWireFrame", "tableRetainFrame", "TableWriter", "TableRetainWriter", "info.SaveBody(", "info.SaveBodyRetain(", "tableNodeMeasure(", "tableNodeMeasureRetain(", "tableNodeWrite(", "tableNodeWriteRetain(")
 	save = tableSourceReplace(save, "return w.Offset", "if !measure{retain.countLost(report)};return w.Offset", 1)
 	g.pf("%s", save)
-	g.pf("func tableNodeWriteRetain(w *TableRetainWriter,e *tableNodeEntry)bool{if e.info!=nil{path:=w.Ids.Path;w.Ids.Path=tableRetainPath{at:e.node};ok:=e.info.SaveBodyRetain(w,e.node);w.Ids.Path=path;return ok};length:=(*TableBlob)(e.node).Length;w.Raw(unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length)));return !w.Overflow}\n")
+	g.pf("func tableNodeWriteRetain(w *TableRetainWriter,e *tableNodeEntry)bool{if e.info!=nil{path:=w.Ids.Path;w.Ids.Path=tableRetainPath{at:e.node};ok:=e.info.SaveBodyRetain(w,e.node);w.Ids.Path=path;return ok};length:=(*TableBlob)(e.node).Length;text:=unsafe.Slice((*byte)(unsafe.Add(e.node,8)),int(length));if e.id==tableStringTypeID&&!tableUTF8Valid(text){return false};w.Raw(text);return !w.Overflow}\n")
 	g.pf("func tableNodeMeasureRetain(w *TableRetainWriter,ids *TableRetainIds,e *tableNodeEntry)int64{*w=TableRetainWriter{Measuring:true,Ids:ids};if !tableNodeWriteRetain(w,e){return -1};return w.Offset}\n")
 	if unitHasContainers(g.unit) {
 		g.pf("func(r *TableRetainReader)Take(sub TableRetainReader){r.tableRetainPlainReader.Take(sub.tableRetainPlainReader)}\n")
@@ -195,7 +195,7 @@ func(p tableRetainPath)step(ordinal,index uint32)tableRetainPath{if p.depth<len(
 func(t *TableRetain)reset(base unsafe.Pointer,directory []TableNodeDirEntry){if t!=nil{t.Used=0;t.Count=0;t.idUsed=0;t.base=base;t.directory=directory}}
 func tableRetainRecordSize(b []byte)int{return int(binary.LittleEndian.Uint32(b))}
 func(t *TableRetain)matches(b []byte,p tableRetainPath,under bool,field bool,ordinal uint32)bool{
- node:=binary.LittleEndian.Uint32(b[4:]);depth:=int(binary.LittleEndian.Uint32(b[8:]));if node==0||int(node)>len(t.directory)||t.directory[node-1].Offset==^uint64(0)||unsafe.Add(t.base,t.directory[node-1].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))!=p.at{return false}
+ node:=binary.LittleEndian.Uint32(b[4:]);depth:=int(binary.LittleEndian.Uint32(b[8:]));if node==0||int(node)>len(t.directory)||t.directory[node-1].Offset&tableNodeNoStorage!=0||unsafe.Add(t.base,t.directory[node-1].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))!=p.at{return false}
  if depth<p.depth||!under&&depth!=p.depth||field&&depth==p.depth||p.depth>len(p.steps){return false}
  for i := range p.depth {if binary.LittleEndian.Uint32(b[26+i*8:])!=p.steps[i].ordinal||binary.LittleEndian.Uint32(b[30+i*8:])!=p.steps[i].index{return false}}
  return !field||binary.LittleEndian.Uint32(b[26+p.depth*8:])==ordinal

@@ -203,14 +203,14 @@ func TestUncoveredPaths(t *testing.T) {
 		inst := m.New(st)
 		var r tabletext.Report
 		text := `{
-			"tilt": 1.5, "angle": -12.25, "position": 3.5, "reach": -100.25,
-			"ticks": 42, "ratio": 1.5, "speed": 2.5, "span": 3.5, "mass": 4.5,
-			"frames": 5, "flux": 9007199254740993, "energy": -250,
-			"entity_id": 340282366920938463463374607431768211455, "scale": 1.0,
+			"tilt": 1.5, "angle": -12.25, "position": "3.5", "reach": "-100.25",
+			"ticks": 42, "ratio": 1.5, "speed": 2.5, "span": "3.5", "mass": "4.5",
+			"frames": 5, "flux": "9007199254740993", "energy": "-250",
+			"entity_id": "340282366920938463463374607431768211455", "scale": 1.0,
 			"samples": [1.5, 2.5, 3.5], "weights": [1.5, 2.5],
-			"axes": { "X": 1.0, "Y": 2.0, "Z": 3.0 }, "seeds": [1, 2],
-			"pose": { "x": 1.5, "y": 2.5, "heading": 3.5 },
-			"spawn": { "x": 1.0, "y": 1.0, "heading": 1.0 }
+			"axes": { "X": "1.0", "Y": "2.0", "Z": "3.0" }, "seeds": ["1", "2"],
+			"pose": { "x": "1.5", "y": "2.5", "heading": 3.5 },
+			"spawn": { "x": "1.0", "y": "1.0", "heading": 1.0 }
 		}`
 		if !m.Read(inst, []byte(text), &r) || r.Refused {
 			t.Fatalf("wide text refused: %+v", r)
@@ -232,9 +232,10 @@ func TestUncoveredPaths(t *testing.T) {
 		// a value past the declared range refuses as out_of_range, and a finer
 		// fraction refuses as a kind mismatch; the range's edge reads.
 		for text, reason := range map[string]string{
-			`{ "angle": 1e9 }`:    "out_of_range",
-			`{ "position": 1e9 }`: "out_of_range",
-			`{ "angle": 1e-9 }`:   "kind_mismatch",
+			`{ "angle": 1e9 }`:             "out_of_range",
+			`{ "position": "1000000000" }`: "out_of_range",
+			`{ "position": 3.5 }`:          "kind_mismatch",
+			`{ "angle": 1e-9 }`:            "kind_mismatch",
 		} {
 			var rr tabletext.Report
 			if m.Read(m.New(st), []byte(text), &rr) || !rr.Refused || !strings.HasPrefix(rr.Reason, reason) {

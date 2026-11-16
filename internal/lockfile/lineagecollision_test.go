@@ -54,7 +54,7 @@ func TestLineageRefusesHashCollision(t *testing.T) {
 	}
 	var lines []string
 	doubled := false
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		lines = append(lines, line)
 		if !doubled && strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
 			lines = append(lines, line)

@@ -148,12 +148,20 @@ func TestCsCarriesBlobs(t *testing.T) {
 	if err == nil {
 		t.Fatal("refuseBlobs accepted a blob-bearing unit for a new leg")
 	}
-	carry := "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau and rust"
+	// python is registered as a carrier under its build tag
+	// (compiler/carries_python_blobs.go), so it too is named only in that build.
+	legs := []string{"c", "cpp", "cs", "dart", "elixir", "go", "js", "lobster", "lua", "luau"}
 	wants := []string{"--lang cs", "--lang js", "--lang rust"}
+	if slices.Contains(blobTargets, "python") {
+		legs = append(legs, "python")
+		wants = append(wants, "--lang python")
+	}
+	legs = append(legs, "rust")
 	if slices.Contains(blobTargets, "squirrel") {
-		carry = "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau, rust and squirrel"
+		legs = append(legs, "squirrel")
 		wants = append(wants, "--lang squirrel")
 	}
+	carry := strings.Join(legs[:len(legs)-1], ", ") + " and " + legs[len(legs)-1]
 	wants = append(wants, mooLegSpelled(gooseLegSpelled("*bytes and *string are "+carry+" only today")))
 	for _, want := range wants {
 		if !strings.Contains(err.Error(), want) {

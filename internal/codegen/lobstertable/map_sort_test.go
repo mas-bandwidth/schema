@@ -111,7 +111,8 @@ func mapSortRun(t *testing.T, sabotage func(string) string) ([]string, int) {
 		fmt.Fprintf(&b, "let d%d = read_file(\"w%d\")\nassert d%d\n", i, i, i)
 		fmt.Fprintf(&b, "let r%d = schema_rt.load(%q, d%d, schema_rt.LoadReport {})\nassert r%d\n", i, r.root, i, i)
 		fmt.Fprintf(&b, "let n%d = reverse_maps(r%d)\n", i, i)
-		fmt.Fprintf(&b, "print(%q + \" {n%d} \" + hx(schema_rt.save(r%d)))\n", r.name, i, i)
+		fmt.Fprintf(&b, "let out%d = schema_rt.save(r%d)\n", i, i)
+		fmt.Fprintf(&b, "print(%q + \" {n%d} \" + (if out%d == \"\": \"refused\" else: hx(out%d)))\n", r.name, i, i, i)
 	}
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)

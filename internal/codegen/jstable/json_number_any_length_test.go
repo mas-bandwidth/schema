@@ -39,10 +39,15 @@ func TestJavaScriptJsonNumberAnyLength(t *testing.T) {
 		text string
 		ok   bool
 	}{
-		{"experience-509", `{"experience":1.` + zeros(509) + `}`, true},
-		{"experience-510", `{"experience":1.` + zeros(510) + `}`, true},
-		{"experience-511", `{"experience":1.` + zeros(511) + `}`, true},
-		{"experience-600", `{"experience":1.` + zeros(600) + `}`, true},
+		{"experience-509", `{"experience":1.` + zeros(509) + `}`, false},
+		{"experience-510", `{"experience":1.` + zeros(510) + `}`, false},
+		{"experience-511", `{"experience":1.` + zeros(511) + `}`, false},
+		{"experience-600", `{"experience":1.` + zeros(600) + `}`, false},
+		// A fraction token is the wrong shape for uint32, however integral its
+		// value. Float controls preserve acceptance on both sides of 512 bytes.
+		{"precision-509", `{"precision":1.` + zeros(509) + `}`, true},
+		{"precision-510", `{"precision":1.` + zeros(510) + `}`, true},
+		{"precision-511", `{"precision":1.` + zeros(511) + `}`, true},
 		{"precision-600", `{"precision":1.` + zeros(600) + `}`, true},
 		{"unknown-key-5000", `{"x":1` + zeros(4999) + `}`, true},
 		{"experience-600-integer", `{"experience":1` + zeros(599) + `}`, false},

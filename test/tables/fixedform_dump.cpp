@@ -763,8 +763,13 @@ static bool fu2_file( const char * dir )
 // THE COMPRESSED FLOAT'S NEGATIVE ZERO (docs/SPEC-TABLES.md §3.3). The record
 // holds the bits of -0 in `value`; the manifest's `expect=` states the rule's
 // landing, the value 0 itself, which is also the canonical bytes with that
-// field all zero. The read is not asserted here: the file records what went
-// onto the wire, and every leg's own read is where the rule is held.
+// field all zero.
+//
+// THE DUMP ASSERTS THE REFERENCE'S OWN READ BEFORE IT WRITES THE FILE, the way
+// it asserts hostile_range_widen.bin: the file reads as one record, refused and
+// counted nothing, its `value` lands as +0 with the sign bit clear, and saving
+// that landing writes the canonical bytes. Each leg then holds its own reader
+// to the same bytes.
 static bool nz_file( const char * dir )
 {
     std::vector<tblfnz::NegZero> v( 1 );
@@ -773,7 +778,48 @@ static bool nz_file( const char * dir )
     MS( v[0].value, float_from_bits( 0x80000000u ) );
     MS( v[0].trail, 2u );
     g_expect = "r0.value=0";
-    return emit( dir, "negative_zero.bin", v, tblfnz::NegZeroFixedMeasure, tblfnz::NegZeroFixedSave );
+    std::vector<uint8_t> out( (size_t) tblfnz::NegZeroFixedMeasure( 1 ) );
+    if ( tblfnz::NegZeroFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+    {
+        std::fprintf( stderr, "negative_zero.bin: save refused\n" );
+        g_values.clear();
+        return false;
+    }
+    {
+        tblfnz::NegZero back;
+        tblfnz::NegZeroReset( back );
+        tblfnz::TableReport r;
+        std::vector<tblfnz::TableFixedEntry> plan( 4096 );
+        const int64_t n = tblfnz::NegZeroFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                    plan.data(), 4096, NULL, &r );
+        uint32_t bits = 0;
+        std::memcpy( (void *) &bits, (const void *) &back.value, 4 );
+        if ( n != 1 || r.refused || r.damaged || r.unknown != 0 || r.widened != 0 || bits != 0u )
+        {
+            std::fprintf( stderr, "negative_zero.bin: the reference answered n=%lld refused=%d damaged=%d value bits %#08x, want one record read with value +0\n",
+                          (long long) n, (int) r.refused, (int) r.damaged, (unsigned) bits );
+            g_values.clear();
+            return false;
+        }
+        std::vector<uint8_t> again( out.size() );
+        if ( tblfnz::NegZeroFixedSave( &back, 1, again.data(), (int64_t) again.size() ) != (int64_t) again.size() )
+        {
+            std::fprintf( stderr, "negative_zero.bin: the re-save refused\n" );
+            g_values.clear();
+            return false;
+        }
+        const int64_t value_at = tblfnz::kTableFixedHeaderBytes + 4 + tblfnz::NegZeroFixedLayoutBytes + 8 + 4;
+        std::vector<uint8_t> canonical = out;
+        std::memset( (void *) ( canonical.data() + value_at ), 0, 4 );
+        if ( again != canonical )
+        {
+            std::fprintf( stderr, "negative_zero.bin: saving the landed +0 did not write the canonical bytes\n" );
+            g_values.clear();
+            return false;
+        }
+    }
+    man_finish( "negative_zero.bin", "NegZero", 1 );
+    return spill( dir, "negative_zero.bin", out );
 }
 
 // ---- the DEAD-BYTE corpus --------------------------------------------------

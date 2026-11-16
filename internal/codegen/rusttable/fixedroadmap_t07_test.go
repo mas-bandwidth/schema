@@ -18,8 +18,9 @@ package rusttable
 // a counted array's LIVE elements, an optional's payload only when the present
 // byte says so, a union's arm only when the tag names it.
 //
-// rust/W4 [weak]: read slack is unspecified and validates the used units only;
-// non-zero slack is not malformed, not a refusal, and moves no counter.
+// rust/W4 [held]: the content rules validate the used units only, and every
+// byte past the used extent is dead: a non-zero one refuses the whole load
+// (docs/rulings.json fixed-dead-bytes-are-zero).
 //
 // rust/W9 [owed]: prefill the bytes the plan does not write; the identity
 // plan's list is empty.
@@ -155,13 +156,13 @@ fixed table Lineage
 
 // ---- rust/W4 -----------------------------------------------------------------
 
-// t07W4 holds rust/W4 to §3.1's read rule: "Slack is UNSPECIFIED on read and
-// not a refusal: a reader validates the USED UNITS only, and non-zero slack is
-// not `malformed`, not a refusal, and moves no counter." The text content rule
-// is applied over the used length (`..value.c_length.clamp(0, 8)`), never the
-// declared span, so the slack behind it is never read; a counted array's clamp
-// loop is the live count; and a `bytes(N)` has no content rule at all, so a
-// bytes-only unit emits no bounds body.
+// t07W4 holds rust/W4 to §3.1's read rule as the dead-byte ruling leaves it:
+// the CONTENT rules validate the USED UNITS only, and every byte past the used
+// extent is DEAD, so a non-zero one refuses the whole load before a record
+// lands. The text content rule is applied over the used length
+// (`..value.c_length.clamp(0, 8)`), never the declared span; a counted array's
+// clamp loop is the live count; and a `bytes(N)` has no content rule at all, so
+// a bytes-only unit emits no bounds body.
 func t07W4(t *testing.T) {
 	text := t07Fixed(t, t07gen(t, `package probe
 
@@ -178,7 +179,7 @@ fixed table Lineage
 	t07Has(t, clamp, "table_utf8_valid(&value.c[..value.c_length.clamp(0, 8) as usize])", "W4 text is validated over the USED units")
 	t07Has(t, clamp, "for i in 0..value.a_count.clamp(0, 4) as usize {", "W4 a counted array's bounds cover its LIVE elements")
 	if strings.Contains(clamp, "value.c[..8]") {
-		t.Error("W4: the content rule is applied over the declared span, so the slack is being read")
+		t.Error("W4: the content rule is applied over the declared span, so dead bytes are being read as content")
 	}
 
 	// A bytes(N) HAS NO CONTENT RULE: it is bytes, so a unit whose only

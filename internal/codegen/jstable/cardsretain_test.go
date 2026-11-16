@@ -130,7 +130,7 @@ func TestRetainGolden(t *testing.t) {
 	}
 	defer b.Shutdown()
 	var report newer.TableReport
-	if !newer.EntryFromJson(&b, []byte("{\"id\":\"retain\",\"future\":42,\"future_text\":\"kept text\",\"future_note\":\"lost note\"}"), &report) {
+	if !newer.EntryFromJson(&b, []byte("{\"id\":\"retain\",\"future\":\"42\",\"future_text\":\"kept text\",\"future_note\":\"lost note\"}"), &report) {
 		t.Fatalf("fromjson: %+v", report)
 	}
 	v := b.GetRoot()
@@ -546,7 +546,7 @@ console.log("SAVED_HEX " + Buffer.from(saved).toString("hex"));
 	// cannot place counts one unknown at the record (§3.1) and one retain_lost
 	// (§6.6), beside the field that named it
 	load, total := oracleRetainReport(t, newer, older,
-		`{"id": "retain", "future": 42, "future_text": "kept text", "future_note": "lost note"}`, 4096, 64)
+		`{"id": "retain", "future": "42", "future_text": "kept text", "future_note": "lost note"}`, 4096, 64)
 	t.Logf("the oracle's counters: load unknown=%d retained=%d retain_lost=%d; after the save retain_lost=%d",
 		load.Unknown, load.Retained, load.RetainLost, total.RetainLost)
 	script = strings.NewReplacer(append(retainCounters("LOAD", load), retainCounters("SAVE", total)...)...).Replace(script)
@@ -656,7 +656,7 @@ for (let i = 0; i < wire.length; i++) { if (wire[i] !== wireCopy[i]) { console.l
 console.log("loss is named: zero bytes, short ids and an unknown variant all report, input unchanged");
 `
 	// THE COUNTERS ARE THE ORACLE'S, for the same two stores (§6.6)
-	const text = `{"id": "retain", "future": 7, "future_text": "kept", "future_note": "note"}`
+	const text = `{"id": "retain", "future": "7", "future_text": "kept", "future_note": "note"}`
 	zeroLoad, zeroTotal := oracleRetainReport(t, newer, older, text, 0, 64)
 	idsLoad, idsTotal := oracleRetainReport(t, newer, older, text, 4096, 1)
 	var pairs []string

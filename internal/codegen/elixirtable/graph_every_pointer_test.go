@@ -84,11 +84,11 @@ defmodule GraphProbe do
     end
   end
 
-  defp plain({:ok, value, %{reason: ""}}) when is_map(value), do: true
+  defp plain({:ok, {root, nodes}, %{reason: ""}}) when is_map(root) and is_tuple(nodes), do: true
   defp plain({:error, _why, %{reason: reason}}) when reason != "", do: false
   defp plain(_other), do: :unexpected
 
-  defp retaining({:ok, value, %{reason: ""}, _retain}) when is_map(value), do: true
+  defp retaining({:ok, {root, nodes}, %{reason: ""}, _retain}) when is_map(root) and is_tuple(nodes), do: true
   defp retaining({:error, _why, %{reason: reason}, %{records: [], used: 0, ids: []}}) when reason != "", do: false
   defp retaining(_other), do: :unexpected
 

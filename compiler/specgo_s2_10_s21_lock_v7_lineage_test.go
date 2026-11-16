@@ -4,7 +4,7 @@
 // keeps has to be the rule the page states. This pin reads the sections the
 // card edits and holds each row to the Go spelling it folded in, and holds the
 // stale sentence it replaced out: internal/lockfile/lockfile.go:110 (Version =
-// 7), :1002-1014, :1073, :1124; cmd/schema/main.go:202-203;
+// 8), :1002-1014, :1073, :1124; cmd/schema/main.go:202-203;
 // internal/lockfile/monotone.go:205, :340, :363; internal/lockfile/diff.go:238;
 // compiler/compiler.go:249; internal/check/check_fixed.go:47; ir.FixedClosureBreaks.
 package compiler
@@ -50,12 +50,12 @@ func TestSpecGoS210S21LockV7Lineage(t *testing.T) {
 		stales []string
 	}{
 		{
-			// §2.10: rendering version 7, lineage lines, bits=/ibits=,
+			// §2.10: rendering version 8, lineage lines, bits=/ibits=,
 			// v6 salvage, a newer compiler's own refusal, --retire.
-			row:  "§2.10 lock v7 and lineage",
+			row:  "§2.10 lock v8 and lineage",
 			text: lock,
 			wants: []string{
-				"schema-lock 7",
+				"schema-lock 8",
 				"lineage wire=",
 				"bits=",
 				"ibits=",
