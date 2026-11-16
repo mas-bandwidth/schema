@@ -1037,6 +1037,11 @@ macro_rules! with_root {
                 use widelistdemo::{wide_from_json_bytes as $from_json, wide_load as $load, wide_save_checked as $save, wide_to_json_checked as $to_json};
                 Some($body)
             }
+            ("messagedemo", "ToolEnvelope") => {
+                #[allow(unused_imports)]
+                use messagedemo::{tool_envelope_from_json_bytes as $from_json, tool_envelope_load as $load, tool_envelope_save_checked as $save, tool_envelope_to_json_checked as $to_json};
+                Some($body)
+            }
             ("messagedemo", "ToolMessage") => {
                 #[allow(unused_imports, unused_variables)]
                 use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_to_json_checked as $to_json};
