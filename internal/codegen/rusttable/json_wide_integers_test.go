@@ -29,8 +29,7 @@ table Integers
 
 // TestRustJsonWideIntegersAreStrings holds every manifest row of
 // testdata/wire/json-integers/ through the Rust writer and reader: a wide
-// integer is written as a STRING of decimal digits and reads as a string or a
-// number; every integer field takes an integer token only — no fraction, no
+// integer is written as a STRING of decimal digits and reads only as a string; every integer field takes an integer token only — no fraction, no
 // exponent, no negative zero — and its range is tested on the exact value
 // (docs/SPEC-TABLES.md §16.2, §16.14 W10 and W11).
 func TestRustJsonWideIntegersAreStrings(t *testing.T) {
@@ -73,6 +72,27 @@ func TestRustJsonWideIntegersAreStrings(t *testing.T) {
 	}
 	if accepts == 0 || refusals == 0 {
 		t.Fatalf("the manifest names %d accept and %d refuse rows; both are needed", accepts, refusals)
+	}
+
+	numberManifest, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	numberRows := 0
+	for i, line := range strings.Split(string(numberManifest), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 5 || fields[1] != "Integers" || fields[3] != "refused" {
+			t.Fatalf("NUMBER-TOKEN.tsv:%d: invalid row %q", i+1, line)
+		}
+		vectors = append(vectors, vector{name: fields[0], json: fields[2], verdict: fields[3]})
+		numberRows++
+	}
+	if numberRows != 13 {
+		t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", numberRows)
 	}
 
 	var body strings.Builder
@@ -124,5 +144,47 @@ func TestRustJsonWideIntegersAreStrings(t *testing.T) {
 	}
 	if !strings.Contains(out, "wide integers ok\n") {
 		t.Fatalf("the probe did not reach its end: %s", out)
+	}
+}
+
+// TestRustJsonWideIntegerPositions checks every value-bearing container.
+func TestRustJsonWideIntegerPositions(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "rustc (wide integer JSON positions)")
+	requireRustcForCards(t)
+	kinds := []string{"int64", "uint64", "uint128", "fixed(48, 16)", "fixed(80, 48)", "int32"}
+	var schema, body strings.Builder
+	schema.WriteString("package positions\nenum Key { A, B }\n")
+	for i, kind := range kinds {
+		bounds := ""
+		if strings.HasPrefix(kind, "fixed(") {
+			bounds = " | min = -10, max = 10"
+		}
+		fmt.Fprintf(&schema, "union Pick%d { value %s%s }\ntable Probe%d { plain %s%s\n array [..2]%s%s\n optional ?%s%s\n choice Pick%d\n keyed [Key]%s%s\n", i, kind, bounds, i, kind, bounds, kind, bounds, kind, bounds, i, kind, bounds)
+		if bounds == "" {
+			fmt.Fprintf(&schema, " entries map[uint32]%s\n", kind)
+		}
+		schema.WriteString("}\n")
+		for _, shape := range []string{`{"plain":%s}`, `{"array":[%s]}`, `{"optional":%s}`, `{"choice":{"value":%s}}`, `{"entries":{"1":%s}}`, `{"keyed":{"A":%s}}`} {
+			if bounds != "" && strings.Contains(shape, "entries") {
+				continue
+			}
+			quoted := fmt.Sprintf(shape, `"1"`)
+			bare := fmt.Sprintf(shape, `1`)
+			if i < len(kinds)-1 {
+				fmt.Fprintf(&body, "{ let mut r = TableReport::default(); assert!(probe%d_from_json(%q, &mut r).is_some(), \"{}\", %q); }\n", i, quoted, kind+" quoted "+shape)
+				fmt.Fprintf(&body, "{ let mut r = TableReport::default(); assert!(probe%d_from_json(%q, &mut r).is_none(), \"{}\", %q); }\n", i, bare, kind+" bare "+shape)
+			} else {
+				fmt.Fprintf(&body, "{ let mut r = TableReport::default(); assert!(probe%d_from_json(%q, &mut r).is_some(), \"{}\", %q); }\n", i, bare, kind+" bare "+shape)
+			}
+		}
+	}
+	schema.WriteString("table Boundary { narrow bits(32)\n wide bits(33)\n}\n")
+	body.WriteString(`{ let mut r = TableReport::default(); assert!(boundary_from_json(r#"{"narrow":1,"wide":"1"}"#, &mut r).is_some()); }
+ { let mut r = TableReport::default(); assert!(boundary_from_json(r#"{"wide":1}"#, &mut r).is_none()); }
+`)
+	out, err := rustConstructProbe(t, unitFrom(t, schema.String()), body.String())
+	if err != nil {
+		t.Fatalf("position probe: %v\n%s", err, out)
 	}
 }
