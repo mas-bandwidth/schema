@@ -180,49 +180,69 @@ func TestPythonStrictGateGoesRed(t *testing.T) {
 // TestPythonRefusesUncarriedKindsByName: the packet core carries the class
 // surface of every declaration and the wire of the kinds it names; a field or
 // item of any other kind is refused at generate time by its kind, naming P4.
+//
+// One row per kind, each its own paragraph: want is "" for a kind the core
+// carries (it generates) and the refusal's text for one it does not, so a card
+// that carries a kind changes only its own row's want.
 func TestPythonRefusesUncarriedKindsByName(t *testing.T) {
 	t.Parallel()
-	generates := []struct {
-		name string
-		decl ir.Decl
-	}{
-		{"const", &ir.Const{Name: "MaxPlayers", Int: big.NewInt(64)}},
-		{"enum", &ir.Enum{Name: "Weapon", Variants: []string{"Laser"}, Max: 1}},
-		{"flags", &ir.Flags{Name: "Caps", Variants: []string{"Armed"}, WireBits: 1}},
-		{"type", &ir.Struct{Name: "Player", Fields: []*ir.Field{
-			{Name: "health", Type: ir.FieldType{Kind: ir.TInt, Width: 16, Signed: true}},
-			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
-		}}},
-		{"union", &ir.Union{Name: "Event"}},
-	}
-	for _, c := range generates {
-		u := emptyUnit("game", "Game")
-		u.Files[0].Decls = []ir.Decl{c.decl}
-		if _, err := Generate(u); err != nil {
-			t.Errorf("%s: a carried declaration was refused: %v", c.name, err)
-		}
-	}
-	refused := []struct {
+	kinds := []struct {
 		name string
 		decl ir.Decl
 		want string
 	}{
-		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, "uses bits"},
-		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16}}}}, "uses fixed"},
-		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}, "uses float32"},
-		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}, "uses float64"},
+		{"const", &ir.Const{Name: "MaxPlayers", Int: big.NewInt(64)}, ""},
+
+		{"enum", &ir.Enum{Name: "Weapon", Variants: []string{"Laser"}, Max: 1}, ""},
+
+		{"flags", &ir.Flags{Name: "Caps", Variants: []string{"Armed"}, WireBits: 1}, ""},
+
+		{"type", &ir.Struct{Name: "Player", Fields: []*ir.Field{
+			{Name: "health", Type: ir.FieldType{Kind: ir.TInt, Width: 16, Signed: true}},
+			{Name: "alive", Type: ir.FieldType{Kind: ir.TBool}},
+		}}, ""},
+
+		{"union", &ir.Union{Name: "Event"}, ""},
+
+		{"fixed", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", HasIntRange: true, IntMin: big.NewInt(-100), IntMax: big.NewInt(100),
+			Type: ir.FieldType{Kind: ir.TFixed, Signed: true, Width: 32, IntBits: 16, FracBits: 16}}}}, ""},
+
+		{"float32", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat32}}}}, ""},
+
+		{"float64", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TFloat64}}}}, ""},
+
+		{"bits", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "small", Type: ir.FieldType{Kind: ir.TBits, Width: 9}}}}, ""},
+
 		{"string", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
+
 		{"bytes", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TBytes, Size: 8}}}}, "uses bytes"},
-		{"int128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, "uses int128"},
-		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses array"},
+
+		{"uint128", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Type: ir.FieldType{Kind: ir.TInt, Width: 128}}}}, ""},
+
+		{"array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, ""},
+
+		{"array of an uncarried kind", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, Type: ir.FieldType{Kind: ir.TString, Size: 8}}}}, "uses string"},
+
+		{"keyed array", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayFixed, ArrayBound: 2, KeyEnum: "Slot", Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses keyed array"},
+
+		{"list", &ir.Struct{Name: "Probe", Fields: []*ir.Field{{Name: "x", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TInt, Width: 8}}}}, "uses list"},
+
 		{"const item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ConstItem{Value: big.NewInt(1), Bits: 8}}}, "uses const"},
+
 		{"reserved item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.ReservedItem{Bits: 5}}}, "uses reserved"},
+
 		{"align item", &ir.Struct{Name: "Probe", Items: []ir.Item{&ir.AlignItem{}}}, "uses align"},
 	}
-	for _, c := range refused {
+	for _, c := range kinds {
 		u := emptyUnit("game", "Game")
 		u.Files[0].Decls = []ir.Decl{c.decl}
 		files, err := Generate(u)
+		if c.want == "" {
+			if err != nil {
+				t.Errorf("%s: a carried declaration was refused: %v", c.name, err)
+			}
+			continue
+		}
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: got %v (%d files), want a refusal containing %q", c.name, err, len(files), c.want)
 		}

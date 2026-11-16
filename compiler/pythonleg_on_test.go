@@ -29,7 +29,7 @@ func writeSchemas(t *testing.T, files map[string]string) []string {
 }
 
 // TestPythonTargetIsRegistered: the tagged build carries the python target,
-// registered from its own init, with its carries set registered empty.
+// registered from its own init, with the timestamp construct this layer adds.
 func TestPythonTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "python") {
@@ -39,8 +39,8 @@ func TestPythonTargetIsRegistered(t *testing.T) {
 	if !ok {
 		t.Fatal("the python target registered no carries set (compiler/carries_python.go)")
 	}
-	if len(got) != 0 {
-		t.Fatalf("the python skeleton carries %v; it carries nothing until a layer registers a construct", got)
+	if !slices.Contains(got, carryTimestamp) {
+		t.Fatalf("the python target carries %v; want the timestamp construct", got)
 	}
 }
 
@@ -71,7 +71,7 @@ func TestPythonGeneratesAnEmptyUnitThroughTheDriver(t *testing.T) {
 func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 	t.Parallel()
 	c := New()
-	u, err := c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\nconst MaxPlayers = 64\n\ntype Player\n{\n    health int16\n    alive bool\n}\n"}))
+	u, err := c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\nconst MaxPlayers = 64\n\ntype Player\n{\n    health int16\n    alive bool\n    level uint8 = 1 | min = 1, max = 99\n    small bits(9)\n}\n"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +82,12 @@ func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 	if _, ok := files["game/Game.py"]; !ok {
 		t.Fatal("generate --lang python emitted no game/Game.py")
 	}
-	u, err = c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\ntype Probe\n{\n    small bits(9)\n}\n"}))
+	u, err = c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\ntype Probe\n{\n    name string(16)\n}\n"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = c.Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "uses bits, which the Python target does not carry yet") {
-		t.Fatalf("got %v, want the bits field refused by name", err)
+	if err == nil || !strings.Contains(err.Error(), "uses string, which the Python target does not carry yet") {
+		t.Fatalf("got %v, want the string field refused by name", err)
 	}
 }

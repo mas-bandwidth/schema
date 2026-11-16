@@ -62,7 +62,7 @@ local function skip(r: any, kind: number): boolean
 	end
 	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			return false
 		end
 		r.at += n
@@ -78,7 +78,7 @@ local function skip(r: any, kind: number): boolean
 			end
 			r_u8(r)
 			local n = r_leb(r)
-			if r.bad or r.at + n > r.e then
+			if r.bad or n > r.e - r.at then
 				return false
 			end
 			r.at += n
@@ -206,7 +206,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 				break
 			end
 			local n = r_leb(w)
-			if w.bad or w.at + n > w.e then
+			if w.bad or n > w.e - w.at then
 				bad = true
 				break
 			end
@@ -240,7 +240,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 			return nil
 		end
 		local tlen = r_leb(rec)
-		if rec.bad or rec.at + tlen > rec.e then
+		if rec.bad or tlen > rec.e - rec.at then
 			damage(report)
 			return nil
 		end
@@ -259,6 +259,7 @@ end
 -- THE LINK: each descriptor learns its fields by id, once (§3, §8.1).
 local byIdCache: { [any]: { [string]: any } } = {}
 local typeCache: { [any]: { [string]: any } } = {}
+local declaredCache: { [any]: { [string]: boolean } } = {}
 
 local function fields_by_id(desc: any): { [string]: any }
 	local m = byIdCache[desc]
@@ -284,6 +285,23 @@ local function place_types(desc: any): { [string]: any }
 			end
 		end
 		typeCache[desc] = built
+		return built
+	end
+	return m
+end
+
+-- THE TYPES THIS READER DECLARES (§3.1): every table of the unit, reachable
+-- from this root or not, so a record it placed no storage for is still told
+-- apart from a newer writer's type. A record of one that a pointer names at
+-- the wrong type is damage; only a type outside this set reads null.
+local function declared_types(desc: any): { [string]: boolean }
+	local m = declaredCache[desc]
+	if m == nil then
+		local built: { [string]: boolean } = {}
+		for _, id in desc.declared do
+			built[id] = true
+		end
+		declaredCache[desc] = built
 		return built
 	end
 	return m
@@ -549,7 +567,7 @@ local function scan_key(keyfd: any, body: any, entry: any): (any, boolean, boole
 					end
 				elseif keyfd.s == "str" or keyfd.s == "text" then
 					local n = r_leb(scan)
-					if scan.bad or scan.at + n > scan.e then
+					if scan.bad or n > scan.e - scan.at then
 						return keyVal, kindBad, entryWidened, false
 					end
 					if not V.utf8(scan.b, scan.at, n) then
@@ -574,7 +592,7 @@ end
 
 local function read_map_inner(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return false
 	end
@@ -623,7 +641,7 @@ local function read_map_inner(fd: any, r: any, report: any, v: any): boolean
 		local hasLast = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then
+			if sub.bad or elemLen > sub.e - sub.at then
 				damage(report)
 				break
 			end
@@ -780,7 +798,7 @@ end
 -- reference and then its framed payload. Key variant k lands at index k.
 local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return false
 	end
@@ -835,7 +853,7 @@ local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 				end
 			end
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then
+			if sub.bad or elemLen > sub.e - sub.at then
 				damage(report)
 				break
 			end
@@ -978,7 +996,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 	if fd.s == "bytes" then
 		-- bytes(N) rides as an array of u8 (§2.5); a body shorter than its
 		-- count is damage, never a payload cut to what the body holds
-		if sub.at + keep > sub.e then
+		if keep > sub.e - sub.at then
 			damage(report)
 			return false
 		end
@@ -1052,7 +1070,7 @@ end
 -- the header is read against the PARENT buffer (§2.9).
 local function read_array(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return false, false
 	end
@@ -1097,7 +1115,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(report)
 			return false
 		end
@@ -1128,7 +1146,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	elseif s == "str" or s == "text" then
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(report)
 			return false
 		end
@@ -1253,7 +1271,7 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 	local kind = r_u8(r)
 	local lpos = r.at
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return done(u, false)
 	end
@@ -1336,7 +1354,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "str" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(_report)
 			return false
 		end
@@ -1356,7 +1374,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "text" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(_report)
 			return false
 		end
@@ -1389,7 +1407,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(_report)
 			return false
 		end
@@ -1451,6 +1469,7 @@ local function resolve(report: any)
 	if not _numberingGood then
 		return
 	end
+	local declared = declared_types(_rootDesc)
 	local landed: { [any]: boolean } = {}
 	local prior = _ctx
 	for _, p in _pending do
@@ -1494,6 +1513,23 @@ local function resolve(report: any)
 						value = n.v
 					else
 						kind_mismatch(report)
+					end
+				elseif n ~= nil then
+					-- A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the
+					-- reader cannot name at all it reads null, counted unknown
+					-- once; of a type the reader DECLARES, or a blob, that is
+					-- not the slot's target it is a wrong-type pointer target,
+					-- damage (§6.5).
+					local want: string = ""
+					if p.d.s == "sblob" then
+						want = StringBlobId
+					elseif p.d.s == "bblob" then
+						want = BytesBlobId
+					else
+						want = S.lookup(p.d.t).id
+					end
+					if n.tid ~= want and (declared[n.tid] or n.tid == StringBlobId or n.tid == BytesBlobId) then
+						damage(report)
 					end
 				end
 			end
@@ -1876,7 +1912,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 				if not V.utf8(rec.body, 0, buffer.len(rec.body)) then
 					-- §3.1: a refused record KEEPS ITS INDEX as a placeholder
 					damage(report)
-					_nodes[#_nodes + 1] = { kind = "x" }
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "s", blob = rec.body }
 				end
@@ -1890,7 +1926,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 					if _retain ~= nil then
 						_retain.lost(report) -- a node record of a type this build cannot place (§6.6)
 					end
-					_nodes[#_nodes + 1] = { kind = "x" }
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = nc.new(), body = rec.body }
 				end

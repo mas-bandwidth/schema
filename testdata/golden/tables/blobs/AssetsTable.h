@@ -13,6 +13,22 @@
 #include <stddef.h> // offsetof, for the reflection descriptors
 #include <string> // the hand-editable text form's document (§16.9.3)
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 // schema_allocate / schema_release — what "no allocator handed in" means for
 // this program. schema_allocate hands back ZEROED bytes and NULL on failure:
 // an arena segment is copied whole, padding included, so anything left
@@ -1447,6 +1463,7 @@ struct TableStrict
     // reach a node: a fixed reader cannot, so a non-null pointer is damage
     bool pointers;
     TableRefuseReason refusal;
+    uint64_t next_ref;
 };
 
 // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4): a framed payload is one
@@ -1464,7 +1481,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -1537,7 +1554,10 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
         uint64_t ref = 0;
         if ( !r.getleb( ref ) ) { return false; }
         if ( ref == 0 ) { return r.offset == n; } // the terminator is the body's last byte (L3)
+        if ( root && s.node_table_present ) { return false; }
         if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; } // F9
+        if ( ref > s.next_ref ) { return false; }
+        if ( ref == s.next_ref ) { s.next_ref++; }
         const uint64_t id = s.ids->at( ref );
         if ( !TableStrictSeen( seen, ref ) ) { return false; } // R5: one field id twice in one body
         if ( !r.has( 1 ) ) { return false; }
@@ -1548,6 +1568,11 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
             if ( !root || kind != 12 ) { return false; }
             uint64_t len = 0;
             if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
+            {
+                TableReader nt( r.buffer + r.offset, (int64_t) len, &ignored, s.ids );
+                uint64_t node_count = 0;
+                if ( !nt.getleb( node_count ) || node_count == 0 ) { return false; }
+            }
             s.node_table = r.buffer + r.offset;
             s.node_table_bytes = (int64_t) len;
             s.node_table_present = true;
@@ -1627,7 +1652,13 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         case 30: // an enum: a variant reference into the id table
         {
             uint64_t ref = 0;
-            return r.getleb( ref ) && ( s.ids == NULL || ref <= (uint64_t) s.ids->count );
+            if ( !r.getleb( ref ) || ( s.ids != NULL && ref > (uint64_t) s.ids->count ) ) { return false; }
+            if ( ref != 0 )
+            {
+                if ( ref > s.next_ref ) { return false; }
+                if ( ref == s.next_ref ) { s.next_ref++; }
+            }
+            return true;
         }
         case 15:
             return TableStrictUnion( s, r, depth );
@@ -1651,6 +1682,8 @@ inline bool TableStrictUnion( TableStrict & s, TableReader & r, int depth )
     if ( !r.getleb( ref ) ) { return false; }
     if ( ref == 0 ) { return true; } // the empty arm carries nothing
     if ( s.ids == NULL || ref > (uint64_t) s.ids->count || !r.has( 1 ) ) { return false; }
+    if ( ref > s.next_ref ) { return false; }
+    if ( ref == s.next_ref ) { s.next_ref++; }
     const uint8_t kind = r.get8();
     uint64_t len = 0;
     if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
@@ -1703,6 +1736,8 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     {
         uint64_t key = 0;
         if ( !r.getleb( key ) || key == 0 || s.ids == NULL || key > (uint64_t) s.ids->count ) { return false; } // H7
+        if ( key > s.next_ref ) { return false; }
+        if ( key == s.next_ref ) { s.next_ref++; }
         if ( !TableStrictSeen( seen, key ) ) { return false; } // the same keyed slot twice
         uint64_t len = 0;
         if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
@@ -3011,6 +3046,12 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
         if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( entry.kind == 15 )
+        {
+            TableBitReader peek = r;
+            uint64_t arm = 0;
+            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+        }
         if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
@@ -4048,7 +4089,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
         }
     }
-    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG.
+    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG. A NESTED tag is judged
+    // only while every tag outside it selects the arm it sits in: under any
+    // other outer arm its bytes are that arm's live payload, or the outer
+    // tag's own dead span, which the outer tag's check holds to zero.
     for ( int32_t i = 0; i < count; ++i )
     {
         const TableFixedEntry & e = plan[i];
@@ -4057,6 +4101,11 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( j > 0 )
+                {
+                    const TableFixedGuardLink & outer = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + ( j - 1 ) * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, outer.guard, outer.argw ) != outer.arg ) { break; }
+                }
                 if ( TableFixedTagSeen( plan, i, l.guard, guard_pool ) ) { continue; }
                 if ( TableFixedInAbsentPayload( plan, count, src, (int64_t) l.guard ) ) { continue; }
                 if ( !TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool ) )
@@ -4068,7 +4117,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else
         {
-            if ( e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
+            // guard2 is the OUTER tag of a two-lane entry, guard the inner one.
+            const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
+                                     TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
+            if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
                  !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
                  !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
@@ -6727,11 +6779,12 @@ struct TableNodeScan
     bool present;              // the root body carries a node table at all
     bool damaged;
     const TableIdTable * ids;
+    uint64_t type_ref;
 };
 
 inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report, const TableIdTable * ids )
 {
-    TableNodeScan s = { TableReader( body, size, report, ids ), NULL, 0, 0, false, 0, 0, false, false, ids };
+    TableNodeScan s = { TableReader( body, size, report, ids ), NULL, 0, 0, false, 0, 0, false, false, ids, 0 };
     return s;
 }
 
@@ -6798,6 +6851,7 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
         s.damaged = true; // a type id reference of 0, or one past the table
         return false;
     }
+    s.type_ref = ref;
     type_id = s.ids->at( ref );
     // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
     // MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3): the node table, the build
@@ -7221,6 +7275,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     s.node_table_present = false;
     s.pointers = true;
     s.refusal = wire_damaged;
+    s.next_ref = 1;
     if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }
     int64_t records = 0;
     if ( s.node_table_present )
@@ -7232,6 +7287,8 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
         TableNodeScan scan = TableNodeScanBegin( body, body_bytes, &ignored, &table );
         while ( TableNodeScanNext( scan, type_id, rec, len ) )
         {
+            if ( scan.type_ref > s.next_ref ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+            if ( scan.type_ref == s.next_ref ) { s.next_ref++; }
             // a blob record is its bytes; the graph check reads its text (§3.1)
             if ( type_id != kTableBytesTypeId && type_id != kTableStringTypeId )
             {
@@ -7240,6 +7297,12 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
             records++;
         }
         if ( !TableNodeScanWhole( scan ) ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+    }
+    if ( s.next_ref - 1 != (uint64_t) table.count )
+    {
+        report->damaged = true;
+        report->refuse_reason = wire_damaged;
+        return false;
     }
     TableNodeDirEntry * scratch = (TableNodeDirEntry *) schema_allocate( ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( scratch == NULL ) { report->damaged = true; return false; }
@@ -9059,7 +9122,7 @@ inline int64_t AssetMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 12, 0xef9c96d721673243ull ) ) + 1 + 4; } // kind
     {
@@ -9110,7 +9173,7 @@ inline bool AssetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -9167,6 +9230,7 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
 {
     (void) nodes;
     AssetReset( value ); // prefill declared defaults in place, then overlay
+    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9206,6 +9270,12 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
         {
             case 0xc4bcadba8e631b86ull: // name
             {
+                if ( 1 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9235,6 +9305,11 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                     r.offset += (int64_t) len;
                     break;
                 }
+                if ( len == 0 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 uint64_t keep = len;
                 if ( keep > 32 )
                 {
@@ -9250,6 +9325,12 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
             }
             case 0xef9c96d721673243ull: // kind
             {
+                if ( 2 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 2;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -9263,6 +9344,11 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
+                        if ( decoded_v == 0 )
+                        {
+                            r.report->damaged = true;
+                            return false;
+                        }
                         value.kind = decoded_v;
                         r.report->widened++;
                         break;
@@ -9284,11 +9370,22 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
+                if ( decoded_v == 0 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 value.kind = decoded_v;
                 break;
             }
             case 0x855b556730a34a05ull: // data
             {
+                if ( 3 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 3;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9308,6 +9405,11 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -9318,6 +9420,12 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
             }
             case 0x5daa28eb864c02a5ull: // caption
             {
+                if ( 4 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 4;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9337,6 +9445,11 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -9347,6 +9460,12 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
             }
             case 0xe5316cbaa025f028ull: // next
             {
+                if ( 5 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 5;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9366,6 +9485,11 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -9403,7 +9527,7 @@ inline int64_t CatalogMeasureBody( const Ctx & ctx, const TableNumbering & numbe
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const Asset * pointee_head = AssetAt( ctx, value.head ); // *Asset
@@ -9466,7 +9590,7 @@ inline bool CatalogSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -9528,6 +9652,7 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
 {
     (void) nodes;
     CatalogReset( value ); // prefill declared defaults in place, then overlay
+    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9567,6 +9692,12 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
         {
             case 0xc4bcadba8e631b86ull: // name
             {
+                if ( 1 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9596,6 +9727,11 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                     r.offset += (int64_t) len;
                     break;
                 }
+                if ( len == 0 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 uint64_t keep = len;
                 if ( keep > 32 )
                 {
@@ -9611,6 +9747,12 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
             }
             case 0x0a8f12cc5f9a0c03ull: // head
             {
+                if ( 2 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9630,6 +9772,11 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -9640,6 +9787,12 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
             }
             case 0x613b19720ff4b203ull: // thumb
             {
+                if ( 3 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 3;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9659,6 +9812,11 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -9669,6 +9827,12 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
             }
             case 0x3bf8fbbad1587cddull: // note
             {
+                if ( 4 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 4;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9688,6 +9852,11 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -9698,6 +9867,12 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
             }
             case 0x509220bb65a646b7ull: // alias
             {
+                if ( 5 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 5;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -9717,6 +9892,11 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -12107,7 +12287,7 @@ inline int64_t AssetMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 12, 0xef9c96d721673243ull ) ) + 1 + 4; } // kind
     {
@@ -12159,7 +12339,7 @@ inline bool AssetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12222,6 +12402,7 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12261,6 +12442,12 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
         {
             case 0xc4bcadba8e631b86ull: // name
             {
+                if ( 1 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12290,6 +12477,11 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                     r.offset += (int64_t) len;
                     break;
                 }
+                if ( len == 0 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 uint64_t keep = len;
                 if ( keep > 32 )
                 {
@@ -12305,6 +12497,12 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
             }
             case 0xef9c96d721673243ull: // kind
             {
+                if ( 2 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 2;
                 if ( kind != 8 )
                 {
                     if ( TableKindWidens( kind, 8 ) )
@@ -12318,6 +12516,11 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                             return false;
                         }
                         uint32_t decoded_v = (uint32_t) widened_v;
+                        if ( decoded_v == 0 )
+                        {
+                            r.report->damaged = true;
+                            return false;
+                        }
                         value.kind = decoded_v;
                         r.report->widened++;
                         break;
@@ -12339,11 +12542,22 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                     return false;
                 }
                 uint32_t decoded_v = uint32_t( r.get32() );
+                if ( decoded_v == 0 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 value.kind = decoded_v;
                 break;
             }
             case 0x855b556730a34a05ull: // data
             {
+                if ( 3 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 3;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12363,6 +12577,11 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -12373,6 +12592,12 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
             }
             case 0x5daa28eb864c02a5ull: // caption
             {
+                if ( 4 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 4;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12392,6 +12617,11 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -12402,6 +12632,12 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
             }
             case 0xe5316cbaa025f028ull: // next
             {
+                if ( 5 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 5;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12421,6 +12657,11 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -12458,7 +12699,7 @@ inline int64_t CatalogMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const Asset * pointee_head = AssetAt( ctx, value.head ); // *Asset
@@ -12522,7 +12763,7 @@ inline bool CatalogSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
 {
     (void) ctx;
     (void) numbering;
-    if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
+    schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12590,6 +12831,7 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12629,6 +12871,12 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
         {
             case 0xc4bcadba8e631b86ull: // name
             {
+                if ( 1 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 1;
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12658,6 +12906,11 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     r.offset += (int64_t) len;
                     break;
                 }
+                if ( len == 0 )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 uint64_t keep = len;
                 if ( keep > 32 )
                 {
@@ -12673,6 +12926,12 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
             }
             case 0x0a8f12cc5f9a0c03ull: // head
             {
+                if ( 2 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 2;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12692,6 +12951,11 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -12702,6 +12966,12 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
             }
             case 0x613b19720ff4b203ull: // thumb
             {
+                if ( 3 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 3;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12721,6 +12991,11 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -12731,6 +13006,12 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
             }
             case 0x3bf8fbbad1587cddull: // note
             {
+                if ( 4 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 4;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12750,6 +13031,11 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;
@@ -12760,6 +13046,12 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
             }
             case 0x509220bb65a646b7ull: // alias
             {
+                if ( 5 <= last_field_ord )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                last_field_ord = 5;
                 if ( kind != 17 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12779,6 +13071,11 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     uint64_t node_index = 0;
                     if ( !r.getleb( node_index ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    if ( node_index == 0 )
                     {
                         r.report->damaged = true;
                         return false;

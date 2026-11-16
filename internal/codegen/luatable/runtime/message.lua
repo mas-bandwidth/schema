@@ -45,11 +45,11 @@ end
 -- a triple SPEC.md calls non-conforming.
 local function quant_facts(qmin, qmax, qres)
   local mn, mx, rs = f32(qmin), f32(qmax), f32(qres)
-  if not (mn < mx) or not (rs > 0) then return 0, 0, false, mn end
+  if mn ~= mn or mx ~= mx or rs ~= rs or mn >= mx or rs <= 0 then return 0, 0, false, mn end
   local delta = f32(mx - mn)
   local values = f32(delta / rs)
   if delta - delta ~= 0 or values - values ~= 0 then return 0, 0, false, mn end
-  if not (values >= 1) then
+  if values < 1 then
     values = 1
   elseif values > 4294967040.0 then
     values = 4294967040.0
@@ -61,9 +61,9 @@ local function quantize(qmin, qmax, qres, value)
   local count, delta, ok, mn = quant_facts(qmin, qmax, qres)
   if not ok then return 0 end
   local normalized = f32(f32(f32(value) - mn) / delta)
-  if not (normalized >= 0) then
+  if normalized ~= normalized or normalized < 0 then
     normalized = 0
-  elseif not (normalized <= 1) then
+  elseif normalized > 1 then
     normalized = 1
   end
   local scaled = f32(normalized * f32(count))
@@ -251,14 +251,14 @@ local function entry_matches_field(e, f)
     end
     return e.packing == nil
   elseif f.shape == "wide" then
-    if f.lo ~= nil and f.hi ~= nil then
-      return e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi)
-    end
+    if f.lo ~= nil and f.hi ~= nil then return e.packing == 1 and (e.bits or 0) == wide_bits(f.lo, f.hi) end
     return e.packing == nil
   elseif f.shape == "array" then
     -- A FIXED array announces [bound, bound]; a counted one [min, bound].
     local lo, hi = f.min or 0, f.bound or 0
-    if f.fixed then lo, hi = f.bound or 0, f.bound or 0 end
+    if f.fixed then
+      lo, hi = f.bound or 0, f.bound or 0
+    end
     return (e.max or 0) == hi and (e.min or 0) == lo and (e.elem or 0) == (f.elem_kind or 0)
   elseif f.shape == "flags" then
     return (e.bits or 0) == (f.bits or 0)
@@ -325,9 +325,9 @@ end
 -- A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE (docs/SPEC-TABLES.md §3.3,
 -- "-0 IS A VALUE, AND IT RIDES"): the elision compares BIT PATTERNS, never
 -- ==, because -0 == +0 under == and a -0 must ride the message form too.
-local function same_float(f32, a, b)
+local function same_float(is_f32, a, b)
   if type(a) ~= "number" or type(b) ~= "number" then return a == b end
-  if f32 then return string.pack("<f", a) == string.pack("<f", b) end
+  if is_f32 then return string.pack("<f", a) == string.pack("<f", b) end
   return string.pack("<d", a) == string.pack("<d", b)
 end
 
@@ -583,12 +583,15 @@ end
 -- array's level.
 skip_body = function(R, ctx, depth)
   if depth > 128 then return false end
+  local seen = {}
   while true do
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
     if ref == 0 then return true end
     local fe = ctx.vocab[ref]
     if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then return false end
+    if seen[fe.id] then return false end
+    seen[fe.id] = true
     if not skip_entry(R, fe, ctx, depth) then return false end
   end
 end
@@ -633,15 +636,24 @@ skip_entry = function(R, e, ctx, depth)
       local v = dequantize(e.qmin, e.qmax, e.qres, index)
       return v - v == 0
     end
-    local _, ok = R:get(32)
-    return ok
+    -- A PLAIN FLOAT IS FINITE, as in the named read (§3.3).
+    local raw, ok = R:get(32)
+    if not ok then return false end
+    return raw & D.F32_EXP ~= D.F32_EXP
   elseif k == 11 then
-    local _, ok = R:get(64)
-    return ok
+    local raw, ok = R:get(64)
+    if not ok then return false end
+    return raw & D.F64_EXP ~= D.F64_EXP
   elseif k == 12 then
+    -- A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its
+    -- length is inside the announced bound and its bytes are well-formed
+    -- UTF-8 with no zero byte, which is the check a named read applies.
     local n, ok = R:get(bits_range(0, e.max or 0))
     if not ok or not R:align() then return false end
-    return R:raw(n) ~= nil
+    if n > (e.max or 0) then return false end
+    local raw = R:raw(n)
+    if raw == nil then return false end
+    return D.text_ok(raw)
   elseif k == 30 then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
@@ -678,6 +690,8 @@ skip_entry = function(R, e, ctx, depth)
         n = raw
       end
     end
+    -- THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3).
+    if n > (e.max or 0) then return false end
     if k == 14 and e.elem == 6 and (e.inner == nil or e.inner.packing == nil) then
       if not R:align() then return false end
       return R:raw(n) ~= nil
@@ -690,6 +704,9 @@ skip_entry = function(R, e, ctx, depth)
     -- bytes of wire.
     local run = element_run_bits(k, e.elem or inner.kind or 0, inner)
     if run >= 0 then return skip_run(R, n, run) end
+    -- A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+    -- REPEATS (§3.2, §3.3).
+    local seen = k == 16 and {} or nil
     -- A STRING, A TABLE, A NESTED ARRAY OR KEYED BODY, A UNION AND AN ENUM
     -- ARE WALKED ONE LEVEL DEEPER; a fixed-width scalar element rides at the
     -- array body's level (§3.3, message_skip_depth).
@@ -713,6 +730,8 @@ skip_entry = function(R, e, ctx, depth)
         then
           return false
         end
+        if seen[ke.id] then return false end
+        seen[ke.id] = true
       end
       if not skip_entry(R, inner, ctx, walked and depth + 1 or depth) then return false end
       -- A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3), even when
@@ -994,9 +1013,7 @@ load_fields = function(R, T, name, value, ctx)
       local retired = (ctx.retiredVariants or 0) ~= retiredBefore
       -- PRESENCE IS A WIRE FACT (§3.3): a field reference that arrives is a
       -- present optional, whatever its payload holds, so the record says so.
-      if f.optional then
-        value[f.name .. "_present"] = true
-      end
+      if f.optional then value[f.name .. "_present"] = true end
       -- An explicit default is refused where this reader knows it exactly:
       -- the same announced shape at the same build version (§3.3 (a)). An
       -- enum's default is the VARIANT the wire names, since a deprecated
@@ -1014,9 +1031,7 @@ load_fields = function(R, T, name, value, ctx)
           atDefault = not rides(T, f, value[f.name])
         end
       end
-      if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then
-        return false
-      end
+      if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then return false end
     end
   end
 end

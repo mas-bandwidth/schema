@@ -449,10 +449,9 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	// a map's entries need their key and value ids in the same id table
 	entries := func(keys ...elem) func(w *TableWriter) {
 		return func(w *TableWriter) {
-			var tids TableIds
+			w.ID(ids["byname"])
 			scratch := make([]byte, 1<<20)
 			inner := TableWriter{Buffer: scratch, Ids: w.Ids}
-			_ = tids
 			inner.Put8(13)
 			inner.PutLeb(uint64(len(keys)))
 			for i, k := range keys {
@@ -473,7 +472,6 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 				inner.PutLeb(uint64(e.Offset))
 				inner.Raw(ebuf[:e.Offset])
 			}
-			w.ID(ids["byname"])
 			w.Put8(14)
 			w.PutLeb(uint64(inner.Offset))
 			w.Raw(scratch[:inner.Offset])

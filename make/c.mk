@@ -1615,16 +1615,15 @@ build/wire-fuzz-c: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.
 build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) test/c-tables/wire_fuzz_main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $@ -lm
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C read skips an unknown
-# union arm without walking it, so the pinned vector unknown_arm_text_nul
-# loads; C_RELAX_VECTORS keeps it counted, not failed, in the C wire fuzz.
-# re-enable: relax/unknown-arm-text-c
-C_RELAX_VECTORS := --relax-vector unknown_arm_text_nul
-
+# The ASan leg turns leak detection off: LeakSanitizer suspends threads with
+# ptrace to walk the still-reachable set, and a sandbox that denies ptrace
+# turns that into a fatal error at exit after every mutant has already run
+# (a harness crash, not a divergence and not a leak). AddressSanitizer and
+# UBSan stay on; only the leak report is off.
 .PHONY: tables-c-wire-fuzz
 tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N) $(C_RELAX_VECTORS)
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) $(C_RELAX_VECTORS) --failed build/wire-fuzz/failed-c-asan.bin
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
+	ASAN_OPTIONS=detect_leaks=0 ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
 
 
@@ -1645,7 +1644,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
 	@echo 'C wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-c: tables-c-wire-fuzz-negative-control
@@ -1806,8 +1805,8 @@ tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-a
 	sh test/slowgate/proof tables-c-retain \
 		'TestCTableRetainFile TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName' \
 		./compiler -run '^TestCTableRetain' -count=1
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) $(C_RELAX_VECTORS) --failed build/wire-fuzz/failed-c-retain.bin
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) $(C_RELAX_VECTORS) --failed build/wire-fuzz/failed-c-retain-asan.bin
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
 tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
@@ -2316,3 +2315,36 @@ packet-end-c-negative-control: packet-end-c
 	@echo 'packet end C negative control: removing the end check accepts trailing data and final padding'
 
 test-c: packet-end-c packet-end-c-negative-control
+
+# Packet Write holds row 8 in a C debug build, one child per shared case.
+build/packet-write-text/c/.stamp: bin/schema test/packet-write-text/c/Text.schema
+	@mkdir -p build/packet-write-text/c
+	./bin/schema generate --lang c --out build/packet-write-text/c test/packet-write-text/c/Text.schema
+	@touch $@
+
+build/packet-write-text/c/driver: build/packet-write-text/c/.stamp test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c $(SERIALIZE_C)/serialize.h
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c \
+		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-write-text-c packet-write-text-c-negative-control
+packet-write-text-c: build/packet-write-text/c/driver
+	./build/packet-write-text/c/driver test/packet-write-text/cases.txt
+
+packet-write-text-c-negative-control: packet-write-text-c
+	@mkdir -p build/packet-write-text/c-negative
+	go run ./tools/sabotage -name packet-write-text-c-utf8-write \
+		-out build/packet-write-text/c-negative/fields.gotext internal/codegen/c/fields.go
+	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-text/c-negative/fields.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-text/c-negative/overlay.json
+	go build -overlay=build/packet-write-text/c-negative/overlay.json -o build/packet-write-text/c-negative/schema ./cmd/schema
+	./build/packet-write-text/c-negative/schema generate --lang c --out build/packet-write-text/c-negative/generated test/packet-write-text/c/Text.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-text/c-negative/generated \
+		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o build/packet-write-text/c-negative/driver -lm
+	@if ./build/packet-write-text/c-negative/driver test/packet-write-text/cases.txt > build/packet-write-text/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: C packet Write without UTF-8 validation passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C packet Write did not fail on invalid-byte'; cat build/packet-write-text/c-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-text invalid-byte:' build/packet-write-text/c-negative/log
+	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
+
+test-c: packet-write-text-c packet-write-text-c-negative-control

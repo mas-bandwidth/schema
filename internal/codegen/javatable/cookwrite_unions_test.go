@@ -18,8 +18,11 @@ import (
 //     stores the tag and skips the arm (message_open) is wrong.
 //   - an OPTIONAL scalar's slot is its value piece; a store at the field's
 //     whole size runs over the presence bool written before it (v1_seams).
-//   - a COUNTED array's slots past the live count hold the element record's
-//     declared defaults; a writer that leaves them zero is wrong (root_full).
+//   - a COUNTED array's slots past the live count are dead bytes and stay
+//     zero (docs/rulings.json fixed-dead-bytes-are-zero); a writer that fills
+//     them with the element record's declared defaults is wrong (root_full).
+//   - an ABSENT optional's payload is dead bytes and stays zero, whatever
+//     its declared default; a writer that stores it is wrong (keyed_config).
 //   - a 128-bit slot is its low half first in a little-endian cook and its
 //     high half first in a big-endian one; a writer with the halves the other
 //     way round is wrong (scalars_full).
@@ -44,10 +47,14 @@ func TestCookWriteUnionsJavaReversed(t *testing.T) {
 			"TableCookWrite.java",
 			"put(out, order, at, order == BIG ? hi : lo, 8);",
 			"put(out, order, at, order == BIG ? lo : hi, 8);"},
-		{"slot_defaults_zero", "../../../tables/examples", "tabledemo", "RootConfig", "root_full",
+		{"dead_slots_filled", "../../../tables/examples", "tabledemo", "RootConfig", "root_full",
 			"TableCookWrite.java",
-			"Object held = source != null ? source : (r.defaults != null ? r.defaults.get() : null);",
-			"Object held = source;"},
+			"int slots = f.countOffset >= 0 ? used : f.arrayBound;",
+			"int slots = f.arrayBound;"},
+		{"absent_payload_stored", "../../../tables/examples", "tabledemo", "KeyedConfig", "keyed_config",
+			"TableCookWrite.java",
+			"if (!present) {",
+			"if (false) { /* planted: the absent payload is stored */"},
 	}
 	m := readCookManifest(t)
 	for _, pl := range plants {

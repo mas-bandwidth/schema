@@ -1478,58 +1478,6 @@ defmodule Bench.TableMessage do
   defp bits_left({_int, off, total}) when total > off, do: total - off
   defp bits_left({_int, _off, _total}), do: 0
 
-  # An enum-keyed array (docs/SPEC-TABLES.md §3.2, §3.3): the present-slot
-  # count at bits_required(0, slots), then per slot a KEY REFERENCE and the
-  # element, read in wire order. A key reference of zero, one that names no
-  # kind-0 entry, one past the announced slots, and one that appears twice are
-  # each damage (docs/SPEC-TABLES.md §3.2, §3.3): the batch is discarded. No
-  # align: a keyed body never aligns, whatever its element kind.
-  defp read_keyed(vocab, shape, elem, r, depth) do
-    with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
-         true <- n <= shape.max do
-      next_depth = elem_depth(elem, depth)
-      read_keyed_slots(vocab, elem, n, rest, [], next_depth, MapSet.new())
-    else
-      _ -> :malformed
-    end
-  end
-
-  defp read_keyed_slots(_vocab, _elem, 0, r, acc, _depth, _seen), do: {:ok, Enum.reverse(acc), r}
-
-  defp read_keyed_slots(vocab, elem, n, r, acc, depth, seen) do
-    case get_bits(r, vocab.ref_bits) do
-      {:ok, key_ref, rest} ->
-        case entry_at(vocab, key_ref) do
-          {:ok, entry} when entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
-            if MapSet.member?(seen, entry.id) do
-              :malformed
-            else
-              case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
-                {:ok, value, rest2} ->
-                  read_keyed_slots(
-                    vocab,
-                    elem,
-                    n - 1,
-                    rest2,
-                    [{key_ref, value} | acc],
-                    depth,
-                    MapSet.put(seen, entry.id)
-                  )
-
-                :malformed ->
-                  :malformed
-              end
-            end
-
-          _ ->
-            :malformed
-        end
-
-      :error ->
-        :malformed
-    end
-  end
-
   defp read_union(vocab, r, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->

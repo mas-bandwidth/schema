@@ -47,17 +47,16 @@ func announceShapeCases() []announceShapeCase {
 	return []announceShapeCase{
 		{
 			// array [0..1] of array [0..1] of int8, the int8's packing byte
-			// missing: DecodeShape refuses the inner int8 shape.
+			// missing: DecodeShape refuses the nested element kind before it
+			// reaches the inner int8 shape.
 			name:  "nested_array_truncated",
 			entry: announceShapeEntry(ir.TableKindArray, 0, 1, ir.TableKindArray, 0, 1, ir.TableKindI8),
 		},
 		{
-			// The same nested array whole: DecodeShape reads it, so announceRead
-			// must too.
-			name:        "nested_array_wellformed",
-			entry:       announceShapeEntry(ir.TableKindArray, 0, 2, ir.TableKindArray, 0, 2, ir.TableKindI8, 0),
-			want:        true,
-			payloadBits: 2,
+			// The same nested array whole: an array element is framing damage
+			// (§3.3), so DecodeShape refuses it, and announceRead must too.
+			name:  "nested_array_wellformed",
+			entry: announceShapeEntry(ir.TableKindArray, 0, 2, ir.TableKindArray, 0, 2, ir.TableKindI8, 0),
 		},
 		{
 			// array [0..4] of string(16), a text list (§2.13).
@@ -67,11 +66,10 @@ func announceShapeCases() []announceShapeCase {
 			payloadBits: 3,
 		},
 		{
-			// keyed array (4) of keyed array (4) of a raw uint8.
-			name:        "keyed_array_of_keyed_array",
-			entry:       announceShapeEntry(ir.TableKindKeyed, 4, ir.TableKindKeyed, 4, ir.TableKindU8, 0),
-			want:        true,
-			payloadBits: 3,
+			// keyed array (4) of keyed array (4) of a raw uint8: a keyed
+			// element is framing damage (§3.3) like an array element.
+			name:  "keyed_array_of_keyed_array",
+			entry: announceShapeEntry(ir.TableKindKeyed, 4, ir.TableKindKeyed, 4, ir.TableKindU8, 0),
 		},
 		{
 			// A timestamp, whose shape carries no bytes.
@@ -270,21 +268,48 @@ func TestDartAnnounceShapesAsTheEngineNegativeControl(t *testing.T) {
 		batches[i] = announceShapeBatch(refBits, total, c.payloadBits)
 	}
 	body := announceShapeProbeBody(root, cases, anns, batches)
-	const step = "final inner = decode(sig, at, end, s.elem);"
-	out, err := runAnnounceShapeProbe(t, u, root, body, func(files map[string][]byte) {
-		replaced := false
-		for name, data := range files {
-			s := string(data)
-			if strings.Contains(s, step) {
-				files[name] = []byte(strings.Replace(s, step, "final inner = (TableMessageShape(), at);", 1))
-				replaced = true
+	// Each plant takes one rule out of the emitted announceRead, and the
+	// probe must go red on the case that rule holds.
+	plants := []struct {
+		name, from, to, want string
+	}{
+		{
+			// the element's own shape is no longer read
+			name: "element_shape_step",
+			from: "final inner = decode(sig, at, end, s.elem);",
+			to:   "final inner = (TableMessageShape(), at);",
+			want: "array_of_string: announceRead=false want=true",
+		},
+		{
+			// an array or keyed element is no longer refused
+			name: "nested_element_refusal",
+			from: "if (s.elem == 14 || s.elem == 16) return null;",
+			to:   "",
+			want: "nested_array_wellformed: announceRead=true want=false",
+		},
+	}
+	for _, p := range plants {
+		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := runAnnounceShapeProbe(t, u, root, body, func(files map[string][]byte) {
+				replaced := false
+				for name, data := range files {
+					s := string(data)
+					if strings.Contains(s, p.from) {
+						files[name] = []byte(strings.Replace(s, p.from, p.to, 1))
+						replaced = true
+					}
+				}
+				if !replaced {
+					t.Fatalf("the emitted source carries no %q", p.from)
+				}
+			})
+			if err == nil {
+				t.Fatalf("the %s plant unexpectedly passed:\n%s", p.name, out)
 			}
-		}
-		if !replaced {
-			t.Fatalf("the emitted source carries no nested-shape step")
-		}
-	})
-	if err == nil {
-		t.Fatalf("removing the nested-shape step from the emitted source unexpectedly passed:\n%s", out)
+			if !strings.Contains(out, p.want) {
+				t.Fatalf("the %s plant did not fail on %q:\n%s", p.name, p.want, out)
+			}
+		})
 	}
 }
