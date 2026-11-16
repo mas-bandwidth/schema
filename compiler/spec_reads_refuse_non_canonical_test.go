@@ -2,7 +2,7 @@
 // (docs/rulings.json reads-refuse-non-canonical): a read of the VARIABLE form
 // (form 1) or the MESSAGE form (form 2) refuses a file or batch that decodes
 // to a good value but that no conforming writer of a lawful lineage version
-// would produce. The seven refusal cases are named, the three lawful evolutions
+// would produce. The six refusal cases are named, the three lawful evolutions
 // stay lawful, the JSON read still accepts any field order, and the stale
 // sentences that named field order and id-table order as reader permissions
 // are gone.
@@ -43,10 +43,8 @@ func TestSpecReadsRefuseNonCanonical(t *testing.T) {
 				"an id-table entry that is unused, or out of first-use order",
 				"an empty node table, or one out of its place",
 				"a union written with arm reference `0`",
-				// no distinct wire found for this item; open question for the owner, 2026-11-15
-				"a message body that omits a field its own announcement declares",
 			},
-			stales: []string{},
+			stales: []string{"a message body that omits a field its own announcement declares"},
 		},
 		{
 			row:  "§4 the refusal list carries the rule and the lawful evolutions",
@@ -59,12 +57,10 @@ func TestSpecReadsRefuseNonCanonical(t *testing.T) {
 				"an id-table entry that is unused, or out of first-use order",
 				"an empty node table, or one out of its place",
 				"a union written with arm reference `0`",
-				// no distinct wire found for this item; open question for the owner, 2026-11-15
-				"a message body that omits a field its own announcement declares",
 				"Absent fields, unknown fields from a newer writer and widened fields stay lawful",
 				"a JSON read accepts any field order",
 			},
-			stales: []string{},
+			stales: []string{"a message body that omits a field its own announcement declares"},
 		},
 	}
 	for _, r := range rows {

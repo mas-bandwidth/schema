@@ -6631,10 +6631,9 @@ plain float's NaN or infinity.
 **THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
 batch that decodes to a good value but that no conforming writer of a lawful
 lineage version would produce is refused: fields out of the writer's order; a
-field stored at its declared default; a union written with arm reference `0`;
-and a message body that omits a field its own announcement declares. Absent
-fields, unknown fields from a newer writer and widened fields stay lawful and
-read as today (§4).
+field stored at its declared default; and a union written with arm reference
+`0`. Absent fields, unknown fields from a newer writer and widened fields stay
+lawful and read as today (§4).
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -8830,16 +8829,15 @@ diagnostic name, which is not normative and is never compared:
 - **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
   to a value but that no conforming writer of a lawful lineage version would
   produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
-  docs/rulings.json reads-refuse-non-canonical). The seven shapes, on the
+  docs/rulings.json reads-refuse-non-canonical). The six shapes, on the
   variable and message forms: fields out of the writer's order; a field stored
   at its declared default (a default change is refused by the lineage check,
   docs/VERSIONING.md, so every lawful writer's default for a field the reader
   names is the reader's own, which is what makes the case decidable); an
   explicit null pointer; an id-table entry that is unused, or out of first-use
-  order; an empty node table, or one out of its place; a union written with arm
-  reference `0`; and a message body that omits a field its own announcement
-  declares. Absent fields, unknown fields from a newer writer and widened
-  fields stay lawful and read as today. The JSON form is not changed here: a
+  order; an empty node table, or one out of its place; and a union written with
+  arm reference `0`. Absent fields, unknown fields from a newer writer and
+  widened fields stay lawful and read as today. The JSON form is not changed here: a
   JSON read accepts any field order (§16.2), and this rule is the binary
   forms' alone.
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
