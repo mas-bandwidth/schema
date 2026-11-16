@@ -653,6 +653,53 @@ print('ok')
 	}
 }
 
+func TestPythonJsonMapKeyedValuesAgainstEngine(t *testing.T) {
+	t.Parallel()
+	const schema = `package jsonmapkeyed
+ enum Slot { A, B }
+ table Root { seats map[int32][Slot]int32 }`
+	unit := loadUnit(t, schema)
+	model := tabletext.NewModel(unit)
+	instance := model.New(model.Lookup("Root"))
+	input := []byte(`{"seats":{"-3":{"A":4,"B":7},"2":{"A":9}}}`)
+	var report tabletext.Report
+	if !model.Read(instance, input, &report) {
+		t.Fatalf("engine refused: %+v", report)
+	}
+	canonical, err := model.Write(instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := tablewire.Encode(model, instance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from jsonmapkeyed import Root
+with open('input', encoding='utf-8') as f: text = f.read()
+with open('text','rb') as f: expected_text = f.read()
+with open('wire','rb') as f: expected_wire = f.read()
+value = Root.from_json(text)
+assert value.seats[-3][1] == 4 and value.seats[-3][2] == 7
+assert value.to_json().encode() == expected_text
+assert value.save() == expected_wire
+assert Root.load(expected_wire).to_json().encode() == expected_text
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "input": input, "text": append(canonical, '\n'), "wire": wire}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
 func TestPythonJsonTimestamp(t *testing.T) {
 	t.Parallel()
 	const schema = `package jsontimestamp
