@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -436,8 +437,23 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 	}
 	if width >= 0 {
 		value, err := w.r.number(width)
-		if err != nil || f == nil {
+		if err != nil {
 			return false, err
+		}
+		if e.Kind == ir.TableKindF32 && s.Packing != 2 {
+			v := float64(math.Float32frombits(uint32(value.Uint64())))
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				return false, fmt.Errorf("non-finite message float")
+			}
+		}
+		if e.Kind == ir.TableKindF64 {
+			v := math.Float64frombits(value.Uint64())
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				return false, fmt.Errorf("non-finite message float")
+			}
+		}
+		if f == nil {
+			return false, nil
 		}
 		want := new(big.Int)
 		switch f.Type.Kind {
@@ -482,7 +498,13 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 			return false, fmt.Errorf("invalid message string length: %v", err)
 		}
 		p, err := w.r.bytes(n)
-		return f != nil && bytes.Equal(p, f.DefBytes), err
+		if err != nil {
+			return false, err
+		}
+		if !utf8.Valid(p) || bytes.IndexByte(p, 0) >= 0 {
+			return false, fmt.Errorf("ill-formed message text")
+		}
+		return f != nil && bytes.Equal(p, f.DefBytes), nil
 	case 13:
 		var st *ir.Struct
 		if f != nil {
@@ -1030,5 +1052,40 @@ func TestSharedMessageTextAndBytesDefaults(t *testing.T) {
 		if err != nil || got["field-at-default"] != tc.want || len(got) > 1 {
 			t.Errorf("%s payload=%q: spellings=%v atDefault=%v error=%v", tc.declaration, tc.payload, got, tc.want, err)
 		}
+	}
+}
+
+func TestSharedMessageTextFloatDomains(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, decl string
+		payload    []byte
+		float      bool
+		bad        bool
+	}{{"nul text", "value string(3)", []byte{0}, false, true}, {"invalid utf8", "value string(3)", []byte{0xff}, false, true}, {"valid utf8", "value string(3)", []byte{0xc3, 0xa9}, false, false}, {"nan float", "value float32", []byte{0, 0, 0xc0, 0x7f}, true, true}, {"negative zero", "value float32", []byte{0, 0, 0, 0x80}, true, false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := tempUnit(t, "package messagevalues\nfixed table Root { "+tc.decl+" }\n")
+			st := u.Tables["Root"]
+			w := &bitw{}
+			w.put(1, 1)
+			if tc.float {
+				for _, b := range tc.payload {
+					w.put(uint64(b), 8)
+				}
+			} else {
+				w.put(uint64(len(tc.payload)), 2)
+				w.align()
+				w.bytes(tc.payload)
+			}
+			w.put(0, 1)
+			_, err := messageStructuralSpellings(u, st, announce(ir.BuildVersion(u), []ir.TableVocabularyEntry{ir.TableFieldEntry(st.Fields[0])}), batchOf(w))
+			if tc.bad {
+				if _, ok := errors.AsType[*sharedMessageDamage](err); !ok {
+					t.Fatalf("want typed damage, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

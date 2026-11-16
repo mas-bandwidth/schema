@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -200,6 +201,8 @@ func (s *fixtureWalker) payload(k, off, end int, nodes bool) (int, bool) {
 			s.damage(off, "invalid boolean byte")
 			return off, false
 		}
+        if k == ir.TableKindF32 { v:=float64(math.Float32frombits(binary.LittleEndian.Uint32(s.data[off:off+4]))); if math.IsNaN(v)||math.IsInf(v,0){s.damage(off,"non-finite float");return off,false} }
+        if k == ir.TableKindF64 { v:=math.Float64frombits(binary.LittleEndian.Uint64(s.data[off:off+8])); if math.IsNaN(v)||math.IsInf(v,0){s.damage(off,"non-finite float");return off,false} }
 		return off + w, true
 	}
 }
@@ -344,7 +347,7 @@ func (s *fixtureWalker) nodes(off, end int) {
 
 // damageAwareFrame is independent of frameWire, frameScanner and the production
 // reader. It covers variable file framing and wire-level boolean/text validity,
-// not finite floats, declaration bounds or graph reachability. Only completed fields are
+// not declaration bounds or graph reachability. Only completed fields are
 // exposed to the six-shape classifier. Damage is retained as an explicit result.
 func damageAwareFrame(data []byte) (*wireFrame, error) {
 	f := &wireFrame{}

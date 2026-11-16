@@ -336,7 +336,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 					if len(damage.PrefixShapes) != 1 || !damage.PrefixShapes["same-build-unknown-field"] {
 						t.Errorf("%s: certified prefix=%v", p[0], damage.PrefixShapes)
 					}
-				case "message_bytes_truncated_isolated":
+				case "message_bytes_truncated_isolated", "message_ill_formed_text":
 					if len(damage.PrefixShapes) != 0 {
 						t.Errorf("%s: certified prefix=%v", p[0], damage.PrefixShapes)
 					}
@@ -358,7 +358,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	for _, sub := range []struct {
 		name string
 		fn   func(*testing.T)
-	}{{"messages", TestSharedMessageManifestSpellings}, {"message-purposes", TestSharedMessagePurposeSpellings}, {"message-damage-boundary", TestSharedMessageDamageDiscardsProvisionalSpellings}, {"blob-witnesses", TestSharedBlobWitnessSpellings}, {"variable-purposes", TestNoncanonicalVariablePurposeShapes}, {"framing-purposes", TestFramingPurposeSpellingsRemain}, {"reordered-variable", TestVariableFieldOrderAcrossDeclarations}, {"unknown-required-union", TestUnknownEmptyUnionPurpose}, {"damage-boundaries", TestDamageAwareBoundaries}, {"reserved-node-kind", TestDamageAwareReservedNodeKind}, {"boolean-text-domains", TestDamageAwareBooleanAndText}, {"damage-id-controls", TestDamageAwareIDTableControls}, {"retaining-pins", TestRetainingFuzzCanonicalPins}, {"array-retaining-pins", TestRetainedArrayDuplicatePins}, {"blob-owner-pin", TestBlobDuplicateOwnerPin}, {"unknown-arm-pin", TestUnknownArmTextPin}, {"map-kind-pin", TestMapDepthRootKindPin}, {"list-child-pins", TestListDamagedChildPins}, {"variable-arm-pins", TestVariableArmKindPins}, {"a2-pointer-pin", TestFixedRootVariablePointerArmPin}, {"unknown-node-pin", TestUnknownNodeFixedReaderPin}} {
+	}{{"messages", TestSharedMessageManifestSpellings}, {"message-purposes", TestSharedMessagePurposeSpellings}, {"message-damage-boundary", TestSharedMessageDamageDiscardsProvisionalSpellings}, {"message-value-domains", TestSharedMessageTextFloatDomains}, {"blob-witnesses", TestSharedBlobWitnessSpellings}, {"variable-purposes", TestNoncanonicalVariablePurposeShapes}, {"framing-purposes", TestFramingPurposeSpellingsRemain}, {"reordered-variable", TestVariableFieldOrderAcrossDeclarations}, {"unknown-required-union", TestUnknownEmptyUnionPurpose}, {"damage-boundaries", TestDamageAwareBoundaries}, {"reserved-node-kind", TestDamageAwareReservedNodeKind}, {"boolean-text-domains", TestDamageAwareBooleanAndText}, {"damage-id-controls", TestDamageAwareIDTableControls}, {"retaining-pins", TestRetainingFuzzCanonicalPins}, {"array-retaining-pins", TestRetainedArrayDuplicatePins}, {"blob-owner-pin", TestBlobDuplicateOwnerPin}, {"unknown-arm-pin", TestUnknownArmTextPin}, {"map-kind-pin", TestMapDepthRootKindPin}, {"list-child-pins", TestListDamagedChildPins}, {"variable-arm-pins", TestVariableArmKindPins}, {"a2-pointer-pin", TestFixedRootVariablePointerArmPin}, {"unknown-node-pin", TestUnknownNodeFixedReaderPin}} {
 		t.Run(sub.name, sub.fn)
 	}
 	for path := range idsWant {
