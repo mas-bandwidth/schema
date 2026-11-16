@@ -1905,46 +1905,46 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
 // does. The expectation is the tool's two files. A root this leg's writer does
 // not reach answers `<case>.absent` for both orders, counted as work left.
 macro_rules! with_cook_root {
-    ($unit:expr, $root:expr, |$load:ident, $cook:ident| $body:expr) => {{
+    ($unit:expr, $root:expr, |$load:ident, $cook:ident, $from:ident| $body:expr) => {{
         match ($unit, $root) {
-            ("tabledemo", "RootConfig") => { use tabledemo::{root_config_load as $load, root_config_cook_write as $cook}; Some($body) }
-            ("tabledemo", "ProfileConfig") => { use tabledemo::{profile_config_load as $load, profile_config_cook_write as $cook}; Some($body) }
-            ("tabledemo", "LoadoutConfig") => { use tabledemo::{loadout_config_load as $load, loadout_config_cook_write as $cook}; Some($body) }
-            ("tabledemo", "ArchiveConfig") => { use tabledemo::{archive_config_load as $load, archive_config_cook_write as $cook}; Some($body) }
-            ("tabledemo", "KeyedConfig") => { use tabledemo::{keyed_config_load as $load, keyed_config_cook_write as $cook}; Some($body) }
-            ("tabledemo", "WideBlob") => { use tabledemo::{wide_blob_load as $load, wide_blob_cook_write as $cook}; Some($body) }
-            ("tblv1", "Cfg") => { use tblv1::{cfg_load as $load, cfg_cook_write as $cook}; Some($body) }
-            ("tblv2", "Cfg") => { use tblv2::{cfg_load as $load, cfg_cook_write as $cook}; Some($body) }
-            ("tblp1", "Chain") => { use tblp1::{chain_load as $load, chain_cook_write as $cook}; Some($body) }
-            ("tblp3", "Chain") => { use tblp3::{chain_load as $load, chain_cook_write as $cook}; Some($body) }
-            ("tblm1", "Msg") => { use tblm1::{msg_load as $load, msg_cook_write as $cook}; Some($body) }
-            ("tblm2", "Msg") => { use tblm2::{msg_load as $load, msg_cook_write as $cook}; Some($body) }
-            ("graphdemo", "Scene") => { use graphdemo::{scene_load as $load, scene_cook_write as $cook}; Some($body) }
-            ("blobdemo", "Catalog") => { use blobdemo::{catalog_load as $load, catalog_cook_write as $cook}; Some($body) }
-            ("streamdemo", "Feed") => { use streamdemo::{feed_load as $load, feed_cook_write as $cook}; Some($body) }
-            ("messagedemo", "ToolMessage") => { use messagedemo::{tool_message_load as $load, tool_message_cook_write as $cook}; Some($body) }
-            ("scalars", "SimState") => { use scalars::{sim_state_load as $load, sim_state_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Cells") => { use mapdemo::{cells_load as $load, cells_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Chunks") => { use mapdemo::{chunks_load as $load, chunks_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Crews") => { use mapdemo::{crews_load as $load, crews_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Depth") => { use mapdemo::{depth_load as $load, depth_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Docs") => { use mapdemo::{docs_load as $load, docs_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Fleet") => { use mapdemo::{fleet_load as $load, fleet_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Pairs") => { use mapdemo::{pairs_load as $load, pairs_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Slots") => { use mapdemo::{slots_load as $load, slots_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Spans") => { use mapdemo::{spans_load as $load, spans_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Text") => { use mapdemo::{text_load as $load, text_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Trails") => { use mapdemo::{trails_load as $load, trails_cook_write as $cook}; Some($body) }
-            ("mapdemo", "Runs") => { use mapdemo::{runs_load as $load, runs_cook_write as $cook}; Some($body) }
-            ("listdemo", "Save") => { use listdemo::{save_load as $load, save_cook_write as $cook}; Some($body) }
-            ("listdemo", "Mixed") => { use listdemo::{mixed_load as $load, mixed_cook_write as $cook}; Some($body) }
-            ("listdemo", "Album") => { use listdemo::{album_load as $load, album_cook_write as $cook}; Some($body) }
-            ("listdemo", "Sheet") => { use listdemo::{sheet_load as $load, sheet_cook_write as $cook}; Some($body) }
-            ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook}; Some($body) }
-            ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook}; Some($body) }
-            ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook}; Some($body) }
-            ("featurewitnesses", "Root") => { use featurewitnesses::{root_load as $load, root_cook_write as $cook}; Some($body) }
-            ("featurewitnesses", "ArrayRoot") => { use featurewitnesses::{array_root_load as $load, array_root_cook_write as $cook}; Some($body) }
+            ("tabledemo", "RootConfig") => { use tabledemo::{root_config_load as $load, root_config_cook_write as $cook, root_config_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "ProfileConfig") => { use tabledemo::{profile_config_load as $load, profile_config_cook_write as $cook, profile_config_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "LoadoutConfig") => { use tabledemo::{loadout_config_load as $load, loadout_config_cook_write as $cook, loadout_config_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "ArchiveConfig") => { use tabledemo::{archive_config_load as $load, archive_config_cook_write as $cook, archive_config_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "KeyedConfig") => { use tabledemo::{keyed_config_load as $load, keyed_config_cook_write as $cook, keyed_config_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "WideBlob") => { use tabledemo::{wide_blob_load as $load, wide_blob_cook_write as $cook, wide_blob_from_json_bytes as $from}; Some($body) }
+            ("tblv1", "Cfg") => { use tblv1::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }
+            ("tblv2", "Cfg") => { use tblv2::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }
+            ("tblp1", "Chain") => { use tblp1::{chain_load as $load, chain_cook_write as $cook, chain_from_json_bytes as $from}; Some($body) }
+            ("tblp3", "Chain") => { use tblp3::{chain_load as $load, chain_cook_write as $cook, chain_from_json_bytes as $from}; Some($body) }
+            ("tblm1", "Msg") => { use tblm1::{msg_load as $load, msg_cook_write as $cook, msg_from_json_bytes as $from}; Some($body) }
+            ("tblm2", "Msg") => { use tblm2::{msg_load as $load, msg_cook_write as $cook, msg_from_json_bytes as $from}; Some($body) }
+            ("graphdemo", "Scene") => { use graphdemo::{scene_load as $load, scene_cook_write as $cook, scene_from_json_bytes as $from}; Some($body) }
+            ("blobdemo", "Catalog") => { use blobdemo::{catalog_load as $load, catalog_cook_write as $cook, catalog_from_json_bytes as $from}; Some($body) }
+            ("streamdemo", "Feed") => { use streamdemo::{feed_load as $load, feed_cook_write as $cook, feed_from_json_bytes as $from}; Some($body) }
+            ("messagedemo", "ToolMessage") => { use messagedemo::{tool_message_load as $load, tool_message_cook_write as $cook, tool_message_from_json_bytes as $from}; Some($body) }
+            ("scalars", "SimState") => { use scalars::{sim_state_load as $load, sim_state_cook_write as $cook, sim_state_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Cells") => { use mapdemo::{cells_load as $load, cells_cook_write as $cook, cells_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Chunks") => { use mapdemo::{chunks_load as $load, chunks_cook_write as $cook, chunks_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Crews") => { use mapdemo::{crews_load as $load, crews_cook_write as $cook, crews_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Depth") => { use mapdemo::{depth_load as $load, depth_cook_write as $cook, depth_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Docs") => { use mapdemo::{docs_load as $load, docs_cook_write as $cook, docs_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Fleet") => { use mapdemo::{fleet_load as $load, fleet_cook_write as $cook, fleet_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Pairs") => { use mapdemo::{pairs_load as $load, pairs_cook_write as $cook, pairs_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Slots") => { use mapdemo::{slots_load as $load, slots_cook_write as $cook, slots_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Spans") => { use mapdemo::{spans_load as $load, spans_cook_write as $cook, spans_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Text") => { use mapdemo::{text_load as $load, text_cook_write as $cook, text_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Trails") => { use mapdemo::{trails_load as $load, trails_cook_write as $cook, trails_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "Runs") => { use mapdemo::{runs_load as $load, runs_cook_write as $cook, runs_from_json_bytes as $from}; Some($body) }
+            ("listdemo", "Save") => { use listdemo::{save_load as $load, save_cook_write as $cook, save_from_json_bytes as $from}; Some($body) }
+            ("listdemo", "Mixed") => { use listdemo::{mixed_load as $load, mixed_cook_write as $cook, mixed_from_json_bytes as $from}; Some($body) }
+            ("listdemo", "Album") => { use listdemo::{album_load as $load, album_cook_write as $cook, album_from_json_bytes as $from}; Some($body) }
+            ("listdemo", "Sheet") => { use listdemo::{sheet_load as $load, sheet_cook_write as $cook, sheet_from_json_bytes as $from}; Some($body) }
+            ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook, army_from_json_bytes as $from}; Some($body) }
+            ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook, unbounded_from_json_bytes as $from}; Some($body) }
+            ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook, wide_from_json_bytes as $from}; Some($body) }
+            ("featurewitnesses", "Root") => { use featurewitnesses::{root_load as $load, root_cook_write as $cook, root_from_json_bytes as $from}; Some($body) }
+            ("featurewitnesses", "ArrayRoot") => { use featurewitnesses::{array_root_load as $load, array_root_cook_write as $cook, array_root_from_json_bytes as $from}; Some($body) }
             _ => None,
         }
     }};
@@ -1955,6 +1955,32 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
         let Some(inst) = manifest.of_kind("instance").find(|i| i[1] == f[1]) else {
             fail(&format!("cook-write {} names no instance", f[1]));
         };
+        // A recipe constructs a storage value, not a wire read (§7.6). In
+        // particular shared blobs have no wire form but do have a cooked image.
+        // The harness derives: cook-write case input-or-- source-or-- alias-or--.
+        let input = f.get(2).map(String::as_str).filter(|value| *value != "-");
+        let source = f.get(3).map(String::as_str).filter(|value| *value != "-");
+        let alias = f.get(4).map(String::as_str).filter(|value| *value != "-");
+        if let Some(input) = input.filter(|_| source.is_some() || alias.is_some()) {
+            if inst[2] != "blobdemo" || inst[3] != "Catalog" || source != Some("thumb") || alias != Some("alias") {
+                fail(&format!("{}: unsupported cook recipe site", f[1]));
+            }
+            let mut report = Default::default();
+            let mut value = blobdemo::catalog_from_json_bytes(&slurp(input), &mut report)
+                .unwrap_or_else(|| fail(&format!("{}: recipe JSON refused", f[1])));
+            if report.damaged || report.refused || value.thumb.is_none() {
+                fail(&format!("{}: recipe did not construct the requested blob", f[1]));
+            }
+            value.alias = value.thumb.clone();
+            let little = blobdemo::catalog_cook_write(&value, 1)
+                .unwrap_or_else(|why| fail(&format!("{}: recipe cook refused: {why}", f[1])));
+            let big = blobdemo::catalog_cook_write(&value, 2)
+                .unwrap_or_else(|why| fail(&format!("{}: recipe big cook refused: {why}", f[1])));
+            spill(out, &f[1], &little);
+            spill(out, &format!("{}-be", f[1]), &big);
+            continue;
+        }
+        if input.is_none() && (source.is_some() || alias.is_some()) { fail(&format!("{}: share recipe has no input", f[1])); }
         let data = slurp(&inst[4]);
         if is_fixed_form(&data) {
             if let Some(answer) = fixed_value_cook(&inst[2], &inst[3], &data) {
@@ -1964,12 +1990,16 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
                 continue;
             }
         }
-        let answer = with_cook_root!(inst[2].as_str(), inst[3].as_str(), |load, cook| {
+        let answer = with_cook_root!(inst[2].as_str(), inst[3].as_str(), |load, cook, from_json| {
             let mut report = Default::default();
-            // the cook's input is the instance's form 1 read; where this
-            // leg's strict read refuses it (a blob two slots name, §2.5), the
-            // row answers ABSENT naming the refusal rather than ending the run
-            match load(&data, &mut report) {
+            // The derived recipe provides JSON where the value has text;
+            // a no-text graph keeps its instance's wire construction.
+            let value = if let Some(path) = input {
+                from_json(&slurp(path), &mut report)
+            } else {
+                load(&data, &mut report)
+            };
+            match value {
                 Some(v) => {
                     let little = cook(&v, 1).unwrap_or_else(|why| fail(&format!("{}: the cook refused: {why}", f[1])));
                     let big = cook(&v, 2).unwrap_or_else(|why| fail(&format!("{}: the big-endian cook refused: {why}", f[1])));
