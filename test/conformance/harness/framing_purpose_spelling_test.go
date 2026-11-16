@@ -100,7 +100,7 @@ func TestFramingPurposeSpellingsRemain(t *testing.T) {
 		last = idx
 	}
 	if !found {
-		t.Error("field order purpose missing")
+		t.Error("reordered-field positive lost its reordered fields")
 	}
 }
 
@@ -207,7 +207,7 @@ func TestExplicitNullPurposeAndPositive(t *testing.T) {
 }
 
 // noncanonicalPurposeShapes classifies this small corpus directly from the
-// wire and its declared Root field order. It does not decode the value.
+// wire. It does not decode the value; variable field order can evolve.
 func noncanonicalPurposeShapes(data []byte) map[string]bool {
 	f := frameWire(data)
 	shapes := map[string]bool{}
@@ -218,8 +218,7 @@ func noncanonicalPurposeShapes(data []byte) map[string]bool {
 	if strings.Contains(fault, "first uses slot") {
 		shapes["id-table-out-of-order"] = true
 	}
-	places := map[uint64]int{ir.TableWireId("mode"): 0, ir.TableWireId("count"): 1, ir.TableWireId("head"): 2, ir.TableWireId("pick"): 3}
-	last, nodePos, fields := -1, -1, 0
+	nodePos, fields := -1, 0
 	for i, sp := range f.spots {
 		if sp.kind == spotNodeCount && sp.value == 0 {
 			shapes["empty-node-table"] = true
@@ -233,11 +232,6 @@ func noncanonicalPurposeShapes(data []byte) map[string]bool {
 		}
 		if id == ir.TableNodeWireId {
 			nodePos = fields
-		} else if at, ok := places[id]; ok {
-			if at < last {
-				shapes["fields-out-of-order"] = true
-			}
-			last = at
 		}
 		fields++
 		if i+1 >= len(f.spots) || f.spots[i+1].kind != spotKind {

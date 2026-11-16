@@ -137,7 +137,8 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 
 	cases := map[string][]byte{}
 
-	// FIELDS OUT OF THE WRITER'S DECLARATION ORDER: count and head swapped.
+	// A VALID REORDERING: count and head swapped relative to this reader.
+	// A different writer declaration may have emitted that order.
 	f := mustParse(canonical)
 	swapFields(f.root, countID, headID)
 	cases["variable-fields-out-of-order.bin"] = encodeFile(f)
@@ -205,7 +206,7 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 func manifestText() string {
 	return "file\tform\tcase\tverdict\n" +
 		"variable-canonical.bin\tvariable\tcanonical\tread\n" +
-		"variable-fields-out-of-order.bin\tvariable\tfields-out-of-order\trefused\n" +
+		"variable-fields-out-of-order.bin\tvariable\tcanonical\tread\n" +
 		"variable-field-at-default.bin\tvariable\tfield-at-default\trefused\n" +
 		"variable-explicit-null-pointer.bin\tvariable\texplicit-null-pointer\trefused\n" +
 		"variable-unused-id-entry.bin\tvariable\tunused-id-entry\trefused\n" +
