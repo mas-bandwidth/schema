@@ -152,12 +152,8 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 // freshly constructed one
 // ---------------------------------------------------------------------------
 //
-// A refusal at record k resets every record the read wrote (0..k) to its Init
-// defaults (docs/plans/strict-only.md; docs/FIXED-FORM-ALGORITHM.md §5.4). A
-// destination that STARTED at its defaults would pass that check whether the
-// reset ran or not, so every refusal case below poisons the destination first —
-// every number, bool, bigint and typed-array byte moved off its construction
-// value — and then compares the whole object with a fresh one.
+// Poison every destination field so a refusal's required untouched behavior
+// (§5.3) is visible even when a reset would restore construction defaults.
 function poisonDeep(v) {
   if (v === null || typeof v !== "object") { return; }
   if (ArrayBuffer.isView(v)) {
@@ -220,8 +216,8 @@ function deepDiff(a, b, path = "") {
 //
 // So the decode checks, on BOTH paths, against THIS reader's bound, and the
 // strict read (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4) REFUSES a value past
-// it by name — count_over_bound or length_over_bound — never clamps, resets
-// the record to its Init defaults, and moves no counter. Below, each forged
+// it by name — count_over_bound or length_over_bound — never clamps, leaves
+// every destination untouched, and moves no counter. Below, each forged
 // value is planted in a record of the reference's own corpus, one at a time.
 function forgedCounts(check, bench, fixed, corpusDir) {
   const corpus = new Uint8Array(readFileSync(resolve(corpusDir, "bench_fixed.bin")));
@@ -240,15 +236,15 @@ function forgedCounts(check, bench, fixed, corpusDir) {
   const AT_PAYLOAD = 1145;  // payload     bytes(16)
   const AT_HAS_EXTRA = 1227; // has_extra bool
 
-  // the destination is POISONED before every read, so a refusal's reset to
-  // Init defaults is observable and not the construction values left standing
+  // The destination is poisoned, so a reset cannot masquerade as untouched.
   const read = (bytes) => {
     const values = [new bench.FixedTable()];
     poisonDeep(values[0]);
+    const before = structuredClone(values[0]);
     const report = new bench.TableFixedReport();
     const n = fixed.FixedTableFixedLoad(values, 1, bytes, bytes.length,
       fixed.FixedTableFixedNewPlan(), report);
-    return { n, report, v: values[0].value, whole: values[0] };
+    return { n, report, v: values[0].value, whole: values[0], before };
   };
   const refuses = (what, bytes, reason) => {
     const r = read(bytes);
@@ -256,8 +252,8 @@ function forgedCounts(check, bench, fixed, corpusDir) {
       `IDENTITY REFUSE: ${what} refuses ${bench.TableFixedRefusalName(reason)} (n=${r.n} refused=${bench.TableFixedRefusalName(r.report.refused)})`);
     check(r.report.oor === 0 && r.report.widened === 0 && r.report.unknown === 0 && r.report.mismatch === 0,
       `IDENTITY REFUSE: ${what} moves no counter (oor=${r.report.oor} widened=${r.report.widened})`);
-    const d = deepDiff(r.whole, new bench.FixedTable());
-    check(d === null, `IDENTITY REFUSE: ${what} resets the record to its Init defaults (differs at ${d})`);
+    const d = deepDiff(r.whole, r.before);
+    check(d === null, `IDENTITY REFUSE: ${what} leaves the destination untouched (differs at ${d})`);
     return r;
   };
 
@@ -390,8 +386,8 @@ export function duplicateNeverRaised(check, bench, fixed) {
 // docs/FIXED-FORM-ALGORITHM.md §4.6: a fixed-point field's bounds are in VALUE
 // UNITS and its storage is raw, so both ends are shifted by F first; a bits(N)
 // is bounded by 2^N - 1. Under the strict read (§4.6, §5.4) a raw past either
-// bound REFUSES out_of_range, the record goes back to its Init defaults, and no
-// counter moves; a raw AT the bound reads.
+// bound REFUSES out_of_range, leaves the destination untouched, and moves no
+// counter; a raw AT the bound reads.
 //
 // The record is written by THIS BUILD's own writer, so the reader takes the
 // identity plan, and the forged raw is the only thing that differs from bytes
@@ -416,10 +412,11 @@ export function fixedPointShiftBits(check, bench, fixed) {
   const read = (bytes) => {
     const values = [new bench.FixedTable()];
     poisonDeep(values[0]);
+    const before = structuredClone(values[0]);
     const report = new bench.TableFixedReport();
     const n = fixed.FixedTableFixedLoad(values, 1, bytes, bytes.length,
       fixed.FixedTableFixedNewPlan(), report);
-    return { n, report, v: values[0].value, whole: values[0] };
+    return { n, report, v: values[0].value, whole: values[0], before };
   };
   const reads = (what, bytes, get, want) => {
     const r = read(bytes);
@@ -432,8 +429,8 @@ export function fixedPointShiftBits(check, bench, fixed) {
       `${what} refuses out_of_range (n ${r.n}, refused ${bench.TableFixedRefusalName(r.report.refused)})`);
     check(r.report.oor === 0 && r.report.widened === 0,
       `${what} moves no counter (oor ${r.report.oor}, widened ${r.report.widened})`);
-    const d = deepDiff(r.whole, new bench.FixedTable());
-    check(d === null, `${what} resets the record to its Init defaults (differs at ${d})`);
+    const d = deepDiff(r.whole, r.before);
+    check(d === null, `${what} leaves the destination untouched (differs at ${d})`);
   };
 
   // THE POSITIVE CONTROL FIRST: untouched storage is in range and reads.
@@ -1862,11 +1859,9 @@ function referenceOracleCompiled(check, fx1, fx1home, oracleDir) {
   }
 }
 
-// LIVE-COUNT: decode walks MarksCount, never the bound. Constructed count=1,
-// wire slack poisoned after write (write already walks MarksCount, so the
-// template's zeros are what the writer put there). A fresh object after load
-// has template zeros in the slack and oor 0, not 3. Walking the bound
-// would have copied the poison into the object.
+// LIVE-COUNT: only used slots land, but every dead wire byte must be zero
+// (§5.3 step 11). Stale constructed tails write zero; forged wire tails refuse
+// before touching a destination. Keep a clean positive twin beside the poison.
 function liveCountSlack(check, fx1, fx1home) {
   const one = new fx1home.FxRoot();
   one.marksCount = 1;
@@ -1887,20 +1882,26 @@ function liveCountSlack(check, fx1, fx1home) {
     view.getInt32(recBody + marksAt + 12, true) === 0 &&
     view.getInt32(recBody + marksAt + 16, true) === 0,
     "live-count: write left slack as the template's zeros");
+  const clean = [new fx1home.FxRoot()];
+  const cr = new fx1home.TableFixedReport();
+  check(fx1.FxRootFixedLoad(clean, 1, buf, buf.length, fx1.FxRootFixedNewPlan(), cr) === 1,
+    "live-count: clean zero-slack twin reads");
+  check(clean[0].marksCount === 1 && clean[0].marks[0] === 42 && clean[0].marks[1] === 0 &&
+    clean[0].marks[2] === 0 && clean[0].marks[3] === 0,
+    "live-count: clean live prefix and zero tails land");
   view.setInt32(recBody + marksAt + 8, 999, true);
   view.setInt32(recBody + marksAt + 12, 888, true);
   view.setInt32(recBody + marksAt + 16, 777, true);
 
   const back = [new fx1home.FxRoot()];
+  poisonDeep(back[0]);
+  const before = structuredClone(back[0]);
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(back, 1, buf, buf.length, fx1.FxRootFixedNewPlan(), r);
-  check(n === 1 && !r.damaged && r.refused === 0, `live-count: load of the poisoned-slack record, got ${n}`);
-  check(back[0].marksCount === 1 && back[0].marks[0] === 42,
-    `live-count: live prefix lands — got count ${back[0].marksCount} [${back[0].marks[0]}]`);
-  check(back[0].marks[1] === 0 && back[0].marks[2] === 0 && back[0].marks[3] === 0,
-    `live-count: object slack is template zeros, not the poisoned wire — got [${back[0].marks[1]}, ${back[0].marks[2]}, ${back[0].marks[3]}]`);
-  check(r.oor === 0,
-    `live-count: oor counts 0 not 3 (got ${r.oor})`);
+  check(n === -1 && r.refused === fx1home.TableFixedRefusal.WireDamaged,
+    `live-count: poisoned slack refuses wire_damaged, got ${n}`);
+  check(deepDiff(back[0], before) === null, "live-count: poisoned slack leaves destination untouched");
+  check(r.oor === 0 && r.widened === 0, "live-count: a refused load commits no counters");
 }
 
 // ---------------------------------------------------------------------------
@@ -1924,8 +1925,7 @@ function liveCountSlack(check, fx1, fx1home) {
 // REFUSE IS TOTAL, and the sweep holds it on every refusal: the destination is
 // preloaded with the lawful record, so a refusal answered before any record was
 // decoded (the header, the layout, the record's hash, or damage) must leave it
-// exactly as it was, and a refusal of a record's CONTENT must leave it at the
-// Init defaults — the reset of every record the read wrote.
+// exactly as it was. Content checks obey the same whole-batch boundary.
 //
 // THE SANITIZER HALF of §7 item 5 is what the C++ reference gets from ASan+UBSan.
 // JavaScript cannot step outside a Uint8Array: an in-range DataView offset is
@@ -1955,11 +1955,8 @@ export function hostileByteSweep(check, fx1, fx1home) {
   check(fx1.FxRootFixedSave([clean], 1, file) === file.length,
     "P3 hostile bytes: the lawful record saves");
 
-  // the refusals a record's CONTENT earns, after the read has begun writing
-  // record 0: these reset it to Init. Every other refusal is answered before
-  // any record is decoded and writes nothing at all.
-  const content = new Set([R.CountOverBound, R.LengthOverBound, R.OutOfRange, R.WireDamaged,
-    R.TextIllFormed, R.NonFiniteFloat]);
+  // CHECK covers the complete batch before LAND, so content and framing
+  // refusals alike preserve the caller's previously loaded value.
   const fresh = new fx1home.FxRoot();
 
   // THE POSITIVE CONTROL, and it is the rule's own legitimate value: the
@@ -2018,11 +2015,9 @@ export function hostileByteSweep(check, fx1, fx1home) {
         if (r.oor !== 0 || r.widened !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.repeated !== 0) {
           fail(`P3 hostile bytes: ${where} refused and still moved a counter (oor ${r.oor}, widened ${r.widened})`);
         }
-        const want = content.has(r.refused) ? fresh : lawful[0];
-        const d = deepDiff(back[0], want);
+        const d = deepDiff(back[0], lawful[0]);
         if (d !== null) {
-          fail(`P3 hostile bytes: ${where} refused ${fx1home.TableFixedRefusalName(r.refused)} and the destination is not ` +
-            `${content.has(r.refused) ? "back at its Init defaults" : "untouched"} (differs at ${d})`);
+          fail(`P3 hostile bytes: ${where} refused ${fx1home.TableFixedRefusalName(r.refused)} and the destination changed (differs at ${d})`);
         }
         continue;
       }
@@ -2546,45 +2541,51 @@ function optionalVersioning(check, o, dir) {
 // declares are therefore held by the DECODE — the identity plan is ONE copy of
 // the whole body. A record under this build's own hash still arrives from a
 // writer this reader cannot vouch for, so under the strict read an
-// out-of-range value REFUSES out_of_range: n = -1, the record goes back to its
-// Init defaults, and no counter moves. `plain` is `int32 = 5 | min = 0, max = 1000`.
+// out-of-range value REFUSES out_of_range: n = -1, the destination stays
+// untouched, and no counter moves. `plain` is `int32 = 5 | min = 0, max = 1000`.
 //
-// THE POISON GOES THROUGH THE WRITER, the way the reference forges it: the
-// write side's checks are debug-only by rule and a range is not one of them, so
-// a caller can put 5000 on the wire and the reader is what answers for it.
+// The JS writer refuses invalid values before output (§5.1). Save a lawful
+// record and forge the scalar's wire bytes, so the reader sees a real form-3
+// header and the intended range violation.
 //
 // The COMPILED half — a plan carrying an OLD writer's bound — is a stranger's
 // layout and is owed on the lineage harness; only the identity half runs here.
 export function rangedScalarClamp(check, o) {
   const { fo1, fo1home } = o;
 
-  // One record, written by THIS build's own writer with `planted` in `plain`,
-  // then read back through the identity plan into a POISONED destination, so
-  // a reset to Init defaults is visible. `tail` rides behind the ranged field
-  // so a value that ran off the end of its own field is visible on a read.
+  // Save one lawful record, forge plain at its independent schema offset,
+  // then read into poisoned storage. Tail also checks the neighboring field.
   const read = (planted) => {
     const one = new fo1home.OptRoot();
-    one.plain = planted;
+    one.plain = 5;
     one.tail = 203;
     const w = new Uint8Array(fo1.OptRootFixedMeasure(1));
     check(fo1.OptRootFixedSave([one], 1, w) === w.length,
-      "C7 RANGED: the record saves");
+      "C7 RANGED: the lawful record saves");
+    // name string(12) occupies its i32 count plus twelve bytes; plain follows.
+    const body = HEADER_BYTES + 4 + fo1.OptRootFixedLayoutBytes + 8;
+    new DataView(w.buffer, w.byteOffset, w.length).setInt32(body + 4 + 12, planted, true);
     const back = [new fo1home.OptRoot()];
     poisonDeep(back[0]);
+    const before = structuredClone(back[0]);
     const r = new fo1home.TableFixedReport();
     const n = fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r);
-    return { n, v: back[0], r };
+    return { n, v: back[0], r, before };
   };
 
   // OFF EITHER END: the declaration's own answer is a refusal by name.
   const refuses = (planted) => {
-    const { n, v, r } = read(planted);
+    const { n, v, r, before } = read(planted);
+    const invalid = new fo1home.OptRoot(); invalid.plain = planted;
+    const untouched = new Uint8Array(fo1.OptRootFixedMeasure(1)).fill(0xa5);
+    check(fo1.OptRootFixedSave([invalid], 1, untouched) === -1 && untouched.every((b) => b === 0xa5),
+      `C7 RANGED: writer refuses ${planted} before output`);
     check(n === -1 && r.refused === fo1home.TableFixedRefusal.OutOfRange,
       `C7 RANGED: a value of ${planted} refuses out_of_range (n ${n}, refused ${fo1home.TableFixedRefusalName(r.refused)})`);
     check(r.oor === 0 && r.widened === 0,
       `C7 RANGED: a value of ${planted} moves no counter (oor ${r.oor}, widened ${r.widened})`);
-    const d = deepDiff(v, new fo1home.OptRoot());
-    check(d === null, `C7 RANGED: a value of ${planted} resets the record to its Init defaults (differs at ${d})`);
+    const d = deepDiff(v, before);
+    check(d === null, `C7 RANGED: a value of ${planted} leaves the destination untouched (differs at ${d})`);
   };
   // IN RANGE: the value stands, the neighbour lands, nothing moves.
   const reads = (planted) => {
