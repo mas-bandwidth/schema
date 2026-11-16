@@ -809,3 +809,42 @@ print('keyed-map')
 		}
 	}
 }
+
+func TestPythonRetainCrossVersionInternal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and the retained C++ file")
+	root := filepath.Join("..", "..", "..")
+	files, err := Generate(loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt2.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt1_save.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from tblrt1 import Node, LoadReport
+from tblrt1._schema.retain import TableRetain
+from tblrt1._schema.load import load_table
+from tblrt1._schema.save import _encode_retain, Writer
+with open('input','rb') as f: data=f.read()
+with open('expected','rb') as f: expected=f.read()
+keep=TableRetain(bytearray(65536), bytearray(24*8192)); report=LoadReport()
+value=load_table(Node,data,report,keep)
+assert (report.unknown,report.retained,report.retain_lost)==(11,9,2)
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert out==expected and size==len(expected) and lost==0, (out.hex(),expected.hex(),lost)
+print('cross-version-internal')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "input": input, "expected": want})
+		if err != nil || strings.TrimSpace(out) != "cross-version-internal" {
+			t.Fatalf("cross-version internal: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
