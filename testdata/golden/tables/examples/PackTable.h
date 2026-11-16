@@ -14281,7 +14281,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                         break;
                     }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    int32_t last_key_slot = 0;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
@@ -14318,12 +14317,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
-                        if ( int32_t( slot ) <= last_key_slot )
-                        {
-                            r.report->damaged = true;
-                            break;
-                        }
-                        last_key_slot = int32_t( slot );
                         if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )
                         {
                             r.report->damaged = true;
@@ -14395,7 +14388,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                         }
                         r.report->widened++; // ONE count for the field, every slot at the wire kind's width
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -14432,12 +14424,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 int64_t widened_v = 0;
@@ -14474,7 +14460,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                     else
                     {
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -14511,12 +14496,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 if ( !elem.has( 4 ) )
@@ -19457,7 +19436,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                         break;
                     }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    int32_t last_key_slot = 0;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
@@ -19494,12 +19472,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
-                        if ( int32_t( slot ) <= last_key_slot )
-                        {
-                            r.report->damaged = true;
-                            break;
-                        }
-                        last_key_slot = int32_t( slot );
                         if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )
                         {
                             r.report->damaged = true;
@@ -19571,7 +19543,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                         }
                         r.report->widened++; // ONE count for the field, every slot at the wire kind's width
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -19608,12 +19579,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 int64_t widened_v = 0;
@@ -19650,7 +19615,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                     else
                     {
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -19687,12 +19651,6 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 if ( !elem.has( 4 ) )

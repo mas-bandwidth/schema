@@ -11671,7 +11671,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                         }
                         r.report->widened++; // ONE count for the field, every slot at the wire kind's width
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -11708,12 +11707,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 int64_t widened_v = 0;
@@ -11738,7 +11731,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                     else
                     {
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -11775,12 +11767,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 if ( !elem.has( 4 ) )
@@ -13742,7 +13728,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                         }
                         r.report->widened++; // ONE count for the field, every slot at the wire kind's width
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -13779,12 +13764,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 int64_t widened_v = 0;
@@ -13809,7 +13788,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                     else
                     {
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                        int32_t last_key_slot = 0;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
@@ -13846,12 +13824,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
-                            if ( int32_t( slot ) <= last_key_slot )
-                            {
-                                r.report->damaged = true;
-                                break;
-                            }
-                            last_key_slot = int32_t( slot );
                             {
                                 TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                                 if ( !elem.has( 4 ) )

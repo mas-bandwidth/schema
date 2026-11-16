@@ -12460,7 +12460,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                         break;
                     }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    int32_t last_key_slot = 0;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
@@ -12497,12 +12496,6 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
-                        if ( int32_t( slot ) <= last_key_slot )
-                        {
-                            r.report->damaged = true;
-                            break;
-                        }
-                        last_key_slot = int32_t( slot );
                         if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )
                         {
                             r.report->damaged = true;
@@ -16436,7 +16429,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         break;
                     }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    int32_t last_key_slot = 0;
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
@@ -16473,12 +16465,6 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
-                        if ( int32_t( slot ) <= last_key_slot )
-                        {
-                            r.report->damaged = true;
-                            break;
-                        }
-                        last_key_slot = int32_t( slot );
                         if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )
                         {
                             r.report->damaged = true;
