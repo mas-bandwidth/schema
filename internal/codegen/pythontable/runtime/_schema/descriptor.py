@@ -362,7 +362,7 @@ def _as_bytes(value: Any) -> bytes | None:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "json_array")
+    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "json_array", "forms")
 
     name: str
     type_id: int
@@ -370,6 +370,7 @@ class TableDesc:
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
     json_array: bool
+    forms: tuple[str, ...]
 
     def __init__(
         self,
@@ -378,7 +379,9 @@ class TableDesc:
         variable: bool,
         fields: tuple[FieldDesc, ...],
         json_array: bool = False,
+        forms: tuple[str, ...] = ("wire", "json", "block", "cook"),
     ) -> None:
+        self.forms = forms
         self.name = name
         self.type_id = type_id
         self.variable = variable
