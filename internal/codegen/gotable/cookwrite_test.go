@@ -178,7 +178,7 @@ table Root { tail *Tail
 import("testing";"unsafe";"bytes")
 func TestWideRegion(t *testing.T){
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var r TableReport
- if !RootFromJSON(&b,[]byte("{\"tail\":{\"wides\":[3]},\"wides\":[1],\"tags\":[2]}"),&r){t.Fatal(r)}
+ if !RootFromJSON(&b,[]byte("{\"tail\":{\"wides\":[\"3\"]},\"wides\":[\"1\"],\"tags\":[\"2\"]}"),&r){t.Fatal(r)}
  wire:=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));if RootSave(b.GetRoot(),wire,&b.Arena)!=int64(len(wire)){t.Fatal("save")}
  size:=RootLoadMeasure(wire);if size<0{t.Fatal("measure")}
  raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63
