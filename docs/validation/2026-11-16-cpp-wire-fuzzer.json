@@ -1,0 +1,331 @@
+{
+  "frozen_revision": "1240d3d8562397b0c111c524dbf0e4479f4042e4",
+  "frozen_tree": "51fe1b12d5b1231ae966a5748b6b245128023347",
+  "platform": "Linux x86-64, amd-2, nova-reserve",
+  "campaigns": [
+    {
+      "name": "cpp-plain-asan-1",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-asan-1.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed 1 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-asan-1-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: seed 1, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 20.0 s, 16222 mutants/s",
+      "log_sha256": "0316a279425b02844518fe35b41486eb501cb350b8099f54a89eadc32a5aebfd"
+    },
+    {
+      "name": "cpp-plain-asan-2",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-asan-2.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed 2 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-asan-2-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: seed 2, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 18.3 s, 17671 mutants/s",
+      "log_sha256": "3b1d24c68345f6bb7212b006163ff7dd3bb5cdc3556c62c5247becbaa6c9902b"
+    },
+    {
+      "name": "cpp-plain-asan-3",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-asan-3.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed 3 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-asan-3-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: seed 3, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 18.4 s, 17580 mutants/s",
+      "log_sha256": "99a3351187eda457dfed7b1f4eeb077d09b4d030803b1381a48dae07d27b309c"
+    },
+    {
+      "name": "cpp-plain-normal-1",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-normal-1.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed 1 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-normal-1-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: seed 1, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 18.8 s, 17196 mutants/s",
+      "log_sha256": "c0700b778b12da4a30f1b76a8062450f97254ff5f651ecfbcbb4a9d7dd7fa1d2"
+    },
+    {
+      "name": "cpp-plain-normal-2",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-normal-2.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed 2 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-normal-2-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: seed 2, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 15.4 s, 21002 mutants/s",
+      "log_sha256": "8d72b06c068728e7c8ff01d289a22eb8795d8d95c05d10792af86a856f1e86bb"
+    },
+    {
+      "name": "cpp-plain-normal-3",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-normal-3.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed 3 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-plain-normal-3-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: seed 3, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 18.4 s, 17662 mutants/s",
+      "log_sha256": "6557c6ff266506a4ddd6fecec52424e29c3c0a2d20c792fff168649251173453"
+    },
+    {
+      "name": "cpp-retain-asan-1",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-asan-1.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed 1 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-asan-1-failed.bin --retain",
+      "exit": 0,
+      "summary": "wire-fuzz retain: seed 1, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 15.1 s, 15540 mutants/s",
+      "log_sha256": "2c3cc05e18aee3029f794c045ed88a9f22405953d38476e42d7de9b19151836d"
+    },
+    {
+      "name": "cpp-retain-asan-2",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-asan-2.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed 2 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-asan-2-failed.bin --retain",
+      "exit": 0,
+      "summary": "wire-fuzz retain: seed 2, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 13.0 s, 18041 mutants/s",
+      "log_sha256": "09af52049a89b1f4463105ca7eb5a856c218b0b535b177f9d1743d69d6e1860b"
+    },
+    {
+      "name": "cpp-retain-asan-3",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-asan-3.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed 3 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-asan-3-failed.bin --retain",
+      "exit": 0,
+      "summary": "wire-fuzz retain: seed 3, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 16.6 s, 14210 mutants/s",
+      "log_sha256": "56c9a19a9350e6dcdd589cf5f8d2ed5c6c0b5c38bfb502fd407f8b030de6a3ff"
+    },
+    {
+      "name": "cpp-retain-normal-1",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-normal-1.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed 1 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-normal-1-failed.bin --retain",
+      "exit": 0,
+      "summary": "wire-fuzz retain: seed 1, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 12.0 s, 19676 mutants/s",
+      "log_sha256": "370cd2e4ac86dbf3c0f2dbf02322532c7ff3b692e4afa494f52bc2091c4b6552"
+    },
+    {
+      "name": "cpp-retain-normal-2",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-normal-2.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed 2 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-normal-2-failed.bin --retain",
+      "exit": 0,
+      "summary": "wire-fuzz retain: seed 2, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 13.1 s, 17950 mutants/s",
+      "log_sha256": "c0cd4d8e90351cb7abba75e97dfde270ccdbb583fd9ac782b68b626af906fecd"
+    },
+    {
+      "name": "cpp-retain-normal-3",
+      "command": "sh test/conformance/wire-fuzz-complete /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-normal-3.fuzz.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed 3 --n 100000 --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/cpp-retain-normal-3-failed.bin --retain",
+      "exit": 0,
+      "summary": "wire-fuzz retain: seed 3, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 11.6 s, 20314 mutants/s",
+      "log_sha256": "11fd13b238ab53acf270d98184dabeeaaaaa56d02b64f13ab686671481a6efae"
+    }
+  ],
+  "cpp_bounded_replays": [
+    {
+      "name": "replay-cpp-asan-body-field-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-body-field-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "3e097e9ff8125dbdf2ab70cf1f562ea1d60332ad28271fc76c58a5d0e970416b"
+    },
+    {
+      "name": "replay-cpp-asan-body-field-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-body-field-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "16296bb249aa8486f6374191a98dd1cde2841916d838b4710829d81f5181c3d6"
+    },
+    {
+      "name": "replay-cpp-asan-enum-array-and-None-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-enum-array-and-None-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "a6fe5e1de91d062f2d446eb066dcb27ad90e9f3d4b72c67537959f6969b66f4b"
+    },
+    {
+      "name": "replay-cpp-asan-enum-array-and-None-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-enum-array-and-None-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "f890b12c52cbfe3a40fa21e99acc175b94c9bb391059493311386df6939ef899"
+    },
+    {
+      "name": "replay-cpp-asan-enum-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-enum-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "6bdc17048abc5dd519ab57cf600ba4bb3b3a5e990ffc4a698736f3f6c6c82b08"
+    },
+    {
+      "name": "replay-cpp-asan-enum-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-enum-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "6c64b376eb14831d58e2f1d89d9f132b80020777e1fa76d339b93d53a9fef2b8"
+    },
+    {
+      "name": "replay-cpp-asan-keyed-slot-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-keyed-slot-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "13144bc6983c504490ef44925044cb0409fbecf4fe2fd3baf984757942431894"
+    },
+    {
+      "name": "replay-cpp-asan-keyed-slot-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-keyed-slot-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "8d0bbbea9c49d30576b4cbc7e4df54e9664d0f67ddcf4b3b806a5923e1d6e3a0"
+    },
+    {
+      "name": "replay-cpp-asan-union-array-and-None-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-union-array-and-None-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "4ac7b3f55662fb67bf4a5145ac4b99c18f1e7e634774b73112a95f51d59515fd"
+    },
+    {
+      "name": "replay-cpp-asan-union-array-and-None-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-union-array-and-None-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "89d68f0a897a90bad88fdcd86fc4a7f1c6c60af3c48e34ace9e43b94ec31f01a"
+    },
+    {
+      "name": "replay-cpp-asan-union-frame",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/wirefuzz-drivers/c-plain-normal-1-failed.bin --unit messagedemo --root ToolEnvelope --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-union-frame-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/wirefuzz-drivers/c-plain-normal-1-failed.bin over messagedemo.ToolEnvelope as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "44cc1d08a5313b18a6670f28572196fcc3dbd6ab2e4a916f33c9f6d11bfdcc0c"
+    },
+    {
+      "name": "replay-cpp-asan-union-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-union-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "6360fc73efd9cc912a7bc3a02375915f1a7294ead8c07b7443e05906fcd3503e"
+    },
+    {
+      "name": "replay-cpp-asan-union-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-asan-union-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "fa55976dc3ea6ff562d391d0e65353a8b027a5ff6f5b0a0be893c9a4f56124f1"
+    },
+    {
+      "name": "replay-cpp-normal-body-field-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-body-field-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "3e097e9ff8125dbdf2ab70cf1f562ea1d60332ad28271fc76c58a5d0e970416b"
+    },
+    {
+      "name": "replay-cpp-normal-body-field-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-body-field-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/body-field-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "16296bb249aa8486f6374191a98dd1cde2841916d838b4710829d81f5181c3d6"
+    },
+    {
+      "name": "replay-cpp-normal-enum-array-and-None-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-enum-array-and-None-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "a6fe5e1de91d062f2d446eb066dcb27ad90e9f3d4b72c67537959f6969b66f4b"
+    },
+    {
+      "name": "replay-cpp-normal-enum-array-and-None-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-enum-array-and-None-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-array-and-None-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "f890b12c52cbfe3a40fa21e99acc175b94c9bb391059493311386df6939ef899"
+    },
+    {
+      "name": "replay-cpp-normal-enum-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-enum-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "6bdc17048abc5dd519ab57cf600ba4bb3b3a5e990ffc4a698736f3f6c6c82b08"
+    },
+    {
+      "name": "replay-cpp-normal-enum-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-enum-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/enum-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "6c64b376eb14831d58e2f1d89d9f132b80020777e1fa76d339b93d53a9fef2b8"
+    },
+    {
+      "name": "replay-cpp-normal-keyed-slot-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-keyed-slot-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "13144bc6983c504490ef44925044cb0409fbecf4fe2fd3baf984757942431894"
+    },
+    {
+      "name": "replay-cpp-normal-keyed-slot-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-keyed-slot-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/keyed-slot-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "8d0bbbea9c49d30576b4cbc7e4df54e9664d0f67ddcf4b3b806a5923e1d6e3a0"
+    },
+    {
+      "name": "replay-cpp-normal-union-array-and-None-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-union-array-and-None-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "4ac7b3f55662fb67bf4a5145ac4b99c18f1e7e634774b73112a95f51d59515fd"
+    },
+    {
+      "name": "replay-cpp-normal-union-array-and-None-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-union-array-and-None-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-array-and-None-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "89d68f0a897a90bad88fdcd86fc4a7f1c6c60af3c48e34ace9e43b94ec31f01a"
+    },
+    {
+      "name": "replay-cpp-normal-union-frame",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/wirefuzz-drivers/c-plain-normal-1-failed.bin --unit messagedemo --root ToolEnvelope --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-union-frame-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/wirefuzz-drivers/c-plain-normal-1-failed.bin over messagedemo.ToolEnvelope as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "44cc1d08a5313b18a6670f28572196fcc3dbd6ab2e4a916f33c9f6d11bfdcc0c"
+    },
+    {
+      "name": "replay-cpp-normal-union-hash-zero",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-hash-zero.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-union-hash-zero-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-hash-zero.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "6360fc73efd9cc912a7bc3a02375915f1a7294ead8c07b7443e05906fcd3503e"
+    },
+    {
+      "name": "replay-cpp-normal-union-nonzero-control",
+      "command": "./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-nonzero-control.bin --unit graphdemo --root Scene --retain --failed /home/nova/stella-landing-20261115/native-wirefuzz-final/qualified-logs/replay-cpp-normal-union-nonzero-control-failed.bin",
+      "exit": 0,
+      "summary": "wire-fuzz: replay of /home/nova/stella-landing-20261115/native-wirefuzz-final/hash-zero-vectors/union-nonzero-control.bin over graphdemo.Scene as a file, 1 mutant, 0 divergences, 0.0 s",
+      "log_sha256": "fa55976dc3ea6ff562d391d0e65353a8b027a5ff6f5b0a0be893c9a4f56124f1"
+    }
+  ],
+  "oracle_and_driver_sha256": [
+    "a06e882f29c6fce4f07e6f3c02e2e95e272761094ae8dba95cc7cb87cba24cf7  build/conformance-harness",
+    "d723b0a08df4e3806b791af607c2bb4b0af0bad1d67f3439359f4db19e112847  build/wire-fuzz-c",
+    "a2ea344b5e105270b094b502ae6dd277af3511608af91953911d5f5f66533e12  build/wire-fuzz-c-asan",
+    "aa3a36814c9d59802a03c3f8faded4993cf7355f3b867ba61cc725daba28e717  build/wire-fuzz-cpp",
+    "94a320bb29e79a826c7df01a75c7a8dd96b299381bc2bf76147d2568dfbcc4de  build/wire-fuzz-cpp-asan"
+  ],
+  "serialize_pins": [
+    "serialize 7bf1877b38cfdd737d0bf102a546ec2674335786",
+    "serialize.c 1d072f62e72ed357c094a7f52b29327ed8cdd862",
+    "serialize.go 97c6825383cffe9f43af64526dea4e0ef10d1662",
+    "serialize.js 5ed211576f9f2a780cfc95dd11b4ea2a3dc7d00d",
+    "serialize.rs be2591509c68f828b43029a543ef9ffa290637b8"
+  ],
+  "current_main_revision": "f2b8acbddc01e4f0585822cfc1ee077168694781",
+  "source_equivalence": "C++ emitter, driver, Go wire and text oracle, harness, schemas, IR and wire corpus match frozen source; current generation matches all 1130 C++ .cpp/.h files byte for byte.",
+  "coverage": "12 campaigns, 3356796 mutations, no absent-codec summaries or divergences; 26 C++ bounded replays pass. 64 cross-leg replay exits were checked, without claiming full C or JS qualification.",
+  "current_main_controls": [
+    {
+      "name": "hashzero",
+      "command": "go test -count=1 -v -run \\^TestCppRetainNestedHashZero\\$ ./internal/codegen/cpptable",
+      "exit": 0,
+      "log_sha256": "afb59154094158256aa2750b0f57af36c8f27c757d67ac344ff5c165f72f9ef4",
+      "summary": [
+        "--- PASS: TestCppRetainNestedHashZero (7.95s)"
+      ]
+    },
+    {
+      "name": "controls",
+      "command": "make N=0 SEED=1 tables-wire-fuzz-negative-control tables-wire-fuzz-retain-negative-control",
+      "exit": 0,
+      "log_sha256": "84ef25fc43afe985a0cf2f7eb1a9b9efac20a2c9606023301007abbbacbd73c4",
+      "summary": [
+        "negative control: removing the length guard makes the reader accept and the wire fuzzer RED",
+        "negative control: removing the index guard makes the reader accept and the wire fuzzer RED",
+        "negative control: removing the arm-width guard makes the reader accept and the wire fuzzer RED",
+        "negative control: removing the arm-terminator guard makes the reader accept and the wire fuzzer RED",
+        "negative control: the oracle's root-extent panic turns the pinned vector RED",
+        "negative control: an oracle that accepts ill-formed message text turns the pinned vector RED",
+        "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED",
+        "negative control: removing the oracle's drop rule turns the retention leg RED",
+        "negative control: removing the retain-class check from the emitter turns the retention leg RED"
+      ]
+    },
+    {
+      "name": "regressions",
+      "command": "make tables-wire-fuzz-regressions",
+      "exit": 0,
+      "log_sha256": "b81399d89b17d89ad15185e0d97b9abeeb23230388b5fcea0fae4602bb9be507",
+      "summary": [
+        "wire-fuzz regressions: four file verdicts, fixed-form write-back and historical rewrite pass",
+        "wire-fuzz regressions: four file verdicts, fixed-form write-back and historical rewrite pass"
+      ]
+    }
+  ],
+  "rebuild_note": "The separate ASan rebuild was deliberately stopped before completion after source/generated equality was established; the verified frozen C++ normal and ASan binaries and harness were reused for controls. The interrupted build was not counted as a pass."
+}
