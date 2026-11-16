@@ -88,6 +88,11 @@ class _Blob:
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         # The save numbered each slot visit in write order (save.py, _collect):
         # the next number is this slot's own record.
+        if value is None:
+            w.varint(ctx.idref(fd.field_id))
+            w.byte(fd.kind)
+            w.varint(0)
+            return
         if ctx.blob_next >= len(ctx.blob_slots):
             raise InvalidValue(fd.name, "the byte buffer slot has no node index")
         index = ctx.blob_slots[ctx.blob_next]

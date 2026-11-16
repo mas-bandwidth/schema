@@ -50,6 +50,7 @@ class FieldDesc:
         "map_entry",
         "pointer",
         "optional",
+        "required",
         "array",
         "bound",
         "size",
@@ -86,6 +87,7 @@ class FieldDesc:
     map_entry: str
     pointer: bool
     optional: bool
+    required: bool
     array: bool
     bound: int
     size: int
@@ -122,6 +124,7 @@ class FieldDesc:
         map_entry: str = "",
         pointer: bool = False,
         optional: bool = False,
+        required: bool = False,
         array: bool = False,
         bound: int = 0,
         size: int = 0,
@@ -157,6 +160,7 @@ class FieldDesc:
         self.map_entry = map_entry
         self.pointer = pointer
         self.optional = optional
+        self.required = required
         self.array = array
         self.bound = bound
         self.size = size
