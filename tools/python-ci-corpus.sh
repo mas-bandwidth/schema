@@ -18,12 +18,14 @@ case ${1:-} in
     check_runtime
     # A fresh writer prevents a previous checkout's build products from
     # being relabelled with this source SHA. No interpreter is needed here.
-    make -j2 -B tables-fixedform-corpus SERIALIZE=../serialize
+    make -j2 -B tables-fixedform-corpus build/conformance-python SERIALIZE=../serialize
     test -s build/fixedform-corpus/manifest.txt
+    test -d build/conformance-python
     cp -R build/fixedform-corpus "$stage/fixedform-corpus"
+    cp -R build/conformance-python "$stage/conformance-python"
     printf '%s\n' "$source_head" > "$stage/source"
     printf '%s\n' "$runtime_pin" > "$stage/runtime"
-    (cd "$stage" && find fixedform-corpus -type f -print | LC_ALL=C sort | xargs sha256sum > contents.sha256)
+    (cd "$stage" && find fixedform-corpus conformance-python -type f -print | LC_ALL=C sort | xargs sha256sum > contents.sha256)
     tar -cf "$archive" -C "$stage" .
     ;;
   restore)
@@ -35,8 +37,11 @@ case ${1:-} in
     (cd "$stage" && sha256sum -c contents.sha256)
     test -s "$stage/fixedform-corpus/manifest.txt"
     test -f "$stage/fixedform-corpus/.stamp"
+    test -d "$stage/conformance-python"
     rm -rf build/fixedform-corpus
+    rm -rf build/conformance-python
     mv "$stage/fixedform-corpus" build/fixedform-corpus
+    mv "$stage/conformance-python" build/conformance-python
     ;;
   *) echo 'usage: python-ci-corpus.sh build|restore [archive]' >&2; exit 2 ;;
 esac
