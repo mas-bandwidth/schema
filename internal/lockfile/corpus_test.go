@@ -54,12 +54,20 @@ func TestCorpusLocksAreCurrent(t *testing.T) {
 				t.Fatalf("the corpus does not compile: %v", err)
 			}
 			locked, err := lockfile.Parse(path, want)
-			if err != nil { t.Fatal(err) }
-			if errs := lockfile.Check(u, paths); len(errs) != 0 { t.Fatal(errs) }
+			if err != nil {
+				t.Fatal(err)
+			}
+			if errs := lockfile.Check(u, paths); len(errs) != 0 {
+				t.Fatal(errs)
+			}
 			live := lockfile.Render(u)
 			if locked.Version < lockfile.Version {
 				live.Version = locked.Version
-				for i := range live.Tables { for j := range live.Tables[i].Lineage { live.Tables[i].Lineage[j].Writer = nil } }
+				for i := range live.Tables {
+					for j := range live.Tables[i].Lineage {
+						live.Tables[i].Lineage[j].Writer = nil
+					}
+				}
 			}
 			if got := live.Text(); got != string(want) {
 				t.Errorf("%s is stale — a fixed table's layout moved:\n  ./bin/schema lock %s\n--- committed ---\n%s\n--- current ---\n%s",
