@@ -36,9 +36,16 @@ TableReport ar;
 if (!AnnounceRead(vocabulary, ann, sizeof(ann), &ar) || vocabulary.build_version != BuildVersion) { printf("announcement mismatch\n"); return 1; }
 LoginRequest value; int64_t count = 1; TableReport same;
 if (LoginRequestLoadMessages(&value, &count, vocabulary, wire, sizeof(wire), &same) || !same.damaged || count != 0) { printf("same-build unknown accepted\n"); return 2; }
-vocabulary.build_version ^= 1;
+// The checked-in announcement begins with form, build-field ref, kind 9,
+// then its eight-byte version. Change only that version and read the actual
+// foreign announcement through the public API.
+if (sizeof(ann) < 11 || ann[0] != 1 || ann[1] != 1 || ann[2] != 9) { printf("announcement framing moved\n"); return 3; }
+std::vector<uint8_t> foreign_ann(ann, ann + sizeof(ann)); foreign_ann[3] ^= 1;
+TableMessageEntry foreign_entries[kTableMessageEntriesHere];
+TableVocabulary foreign_vocab(foreign_entries, kTableMessageEntriesHere); TableReport foreign_ar;
+if (!AnnounceRead(foreign_vocab, foreign_ann.data(), foreign_ann.size(), &foreign_ar) || foreign_vocab.build_version == BuildVersion) { printf("foreign announcement refused\n"); return 3; }
 count = 1; TableReport foreign;
-if (!LoginRequestLoadMessages(&value, &count, vocabulary, wire, sizeof(wire), &foreign) || foreign.damaged || foreign.refused || foreign.unknown != 1 || count != 1) { printf("foreign-build unknown refused\n"); return 3; }
+if (!LoginRequestLoadMessages(&value, &count, foreign_vocab, wire, sizeof(wire), &foreign) || foreign.damaged || foreign.refused || foreign.unknown != 1 || count != 1) { printf("foreign-build unknown refused\n"); return 4; }
 `, cppBytes(ann), cppBytes(wire))
 	edit := func(files map[string][]byte) {
 		if !undermine {
