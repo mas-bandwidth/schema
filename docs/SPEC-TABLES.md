@@ -6219,12 +6219,14 @@ union at `None` (§22.2, §22.6). A reader therefore refuses the whole batch
   sender default this reader cannot know — one it meets under a different build
   version — is read as today: an absent field takes this reader's declared
   default, which is lawful version evolution.
-- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.** The
-  order a writer emits is the sender's declaration order (§22.2, §22.6), which
-  is the order the announcement gives each record's fields: the cook projection
-  renders a record's fields in declaration order (§20.2). A reader refuses a
-  body whose field references do not follow that order, and a field this reader
-  cannot name still has its place in that order.
+- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.**
+  Under the same announced shape and build version, the reader checks a body's
+  field references against the record's declaration order, because field order
+  is digested into the build version (§20.1). It refuses a body out of that
+  order and a field the record does not declare. The announcement stores each
+  field once even when several records share it, so its slot order is no one
+  record's order. Under a different build version, order is not judged and the
+  body reads, which is lawful version evolution.
 - **(c) A UNION FIELD WRITTEN WITH THE NONE REFERENCE.** Reference `0` is the
   union's empty arm, and a conforming writer elides an empty union (§22.2), so
   an explicit arm `0` is not the one encoding a conforming writer emits.
@@ -6631,10 +6633,9 @@ plain float's NaN or infinity.
 **THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
 batch that decodes to a good value but that no conforming writer of a lawful
 lineage version would produce is refused: fields out of the writer's order; a
-field stored at its declared default; a union written with arm reference `0`;
-and a message body that omits a field its own announcement declares. Absent
-fields, unknown fields from a newer writer and widened fields stay lawful and
-read as today (§4).
+field stored at its declared default; and a union written with arm reference
+`0`. Absent fields, unknown fields from a newer writer and widened fields stay
+lawful and read as today (§4).
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -8830,16 +8831,15 @@ diagnostic name, which is not normative and is never compared:
 - **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
   to a value but that no conforming writer of a lawful lineage version would
   produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
-  docs/rulings.json reads-refuse-non-canonical). The seven shapes, on the
+  docs/rulings.json reads-refuse-non-canonical). The six shapes, on the
   variable and message forms: fields out of the writer's order; a field stored
   at its declared default (a default change is refused by the lineage check,
   docs/VERSIONING.md, so every lawful writer's default for a field the reader
   names is the reader's own, which is what makes the case decidable); an
   explicit null pointer; an id-table entry that is unused, or out of first-use
-  order; an empty node table, or one out of its place; a union written with arm
-  reference `0`; and a message body that omits a field its own announcement
-  declares. Absent fields, unknown fields from a newer writer and widened
-  fields stay lawful and read as today. The JSON form is not changed here: a
+  order; an empty node table, or one out of its place; and a union written with
+  arm reference `0`. Absent fields, unknown fields from a newer writer and
+  widened fields stay lawful and read as today. The JSON form is not changed here: a
   JSON read accepts any field order (§16.2), and this rule is the binary
   forms' alone.
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
