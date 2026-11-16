@@ -4,7 +4,7 @@
 # float tests apart; the table package has thirty-two; other packages use eight.
 # The table corpus import test is split by its existing unit subtests, so each
 # unit still runs both interpreters and strict mypy. New tests are added automatically.
-# stale hand-maintained list. The unsplit make target stays the local/nightly
+# The unsplit make target stays the local/nightly
 # contract; each support target is one named portion of its prerequisites.
 set -eu
 rows=$(mktemp)
