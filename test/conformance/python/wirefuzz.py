@@ -64,10 +64,12 @@ def main():
             cls = None
         if form == 2 and (module is None or not hasattr(module, "load_messages") or not hasattr(cls, "fixed_load")):
             cls = None
-        if form not in (1, 2) or retain:
+        if form not in (1, 2):
             cls = None
-        roster.append((module, cls, form))
-    stdout.write(bytes(int(cls is not None) for _, cls, _ in roster))
+        if retain and (form != 1 or cls is None or not cls.descriptor.variable or not hasattr(module, "TableRetain") or not hasattr(cls, "load_retain")):
+            cls = None
+        roster.append((module, cls, form, retain))
+    stdout.write(bytes(int(cls is not None) for _, cls, _, _ in roster))
     stdout.flush()
     while True:
         header = stdin.read(8)
@@ -77,14 +79,20 @@ def main():
             raise EOFError("truncated mutant header")
         index, size = struct.unpack("<II", header)
         data = exact(size)
-        module, cls, form = roster[index]
+        module, cls, form, retain = roster[index]
         if cls is None:
             raise RuntimeError("mutant for absent roster entry")
         report = module.LoadReport()
         loaded = refused = False
         saved = None
+        retained = None
         try:
-            if form == 2:
+            if retain:
+                retained = module.TableRetain(bytearray(64 * len(data) + 4096), bytearray(24 * 4096))
+                value = cls.load_retain(data, retained, report)
+                if report.retain_lost:
+                    raise RuntimeError("retention capacity was insufficient")
+            elif form == 2:
                 vocab = module.MessageVocabulary()
                 module.announce_read(vocab, module.ANNOUNCEMENT)
                 value = module.load_messages(cls, vocab, data, report=report)
@@ -97,7 +105,11 @@ def main():
             refused = True
         if loaded:
             try:
-                if form == 2:
+                if retain:
+                    saved = value.save_retain(retained, report)
+                    if report.retain_lost:
+                        raise RuntimeError("retention capacity was insufficient")
+                elif form == 2:
                     saved = module.save_messages(cls, value)
                 elif hasattr(cls, "fixed_load"):
                     saved = cls.fixed_save(value)

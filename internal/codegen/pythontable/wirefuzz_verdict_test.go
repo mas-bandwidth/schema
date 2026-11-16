@@ -63,17 +63,24 @@ func TestPythonWireFuzzVerdictPipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	generated := filepath.Join(dir, "corpus")
-	for _, entry := range units {
-		unit, err := loadManifestUnit(root, entry.paths)
-		if err != nil {
-			t.Fatalf("load %s: %v", entry.key, err)
-		}
-		files, err := Generate(unit)
-		if err != nil {
-			t.Fatalf("generate %s: %v", entry.key, err)
-		}
-		writeTree(t, filepath.Join(generated, entry.key), files)
+	compiler := filepath.Join(dir, "schema")
+	buildCompiler := exec.Command("go", "build", "-tags", "schema_leg_python", "-o", compiler, "./cmd/schema")
+	buildCompiler.Dir = root
+	if out, err := buildCompiler.CombinedOutput(); err != nil {
+		t.Fatalf("build Python compiler: %v: %s", err, out)
 	}
+	for _, entry := range units {
+		args := []string{"generate", "--lang", "python", "--out", filepath.Join(generated, entry.key)}
+		for _, path := range entry.paths {
+			args = append(args, filepath.Join(root, path))
+		}
+		cmd := exec.Command(compiler, args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("generate %s: %v\n%s", entry.key, err, out)
+		}
+	}
+
 	harness := filepath.Join(dir, "harness")
 	cmd := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
 	cmd.Dir = root
@@ -81,10 +88,12 @@ func TestPythonWireFuzzVerdictPipe(t *testing.T) {
 		t.Fatalf("build harness: %v: %s", err, out)
 	}
 	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
-		for _, arm := range []string{"plain", "mixed-builder"} {
+		for _, arm := range []string{"plain", "mixed-builder", "retain"} {
 			args := []string{"wire-fuzz", "--driver", fmt.Sprintf("%s -W error -I -B %s %s", python, filepath.Join(dir, "wirefuzz.py"), generated), "--seed", "1", "--n", "200", "--failed", filepath.Join(dir, "failed.bin")}
 			if arm == "mixed-builder" {
 				args = append(args, "--mixed-builder")
+			} else if arm == "retain" {
+				args = append(args, "--retain")
 			}
 			cmd := exec.Command(harness, args...)
 			cmd.Dir = root
