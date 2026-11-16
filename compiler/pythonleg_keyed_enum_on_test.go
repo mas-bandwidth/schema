@@ -10,11 +10,19 @@ func TestPythonKeyedEnumThroughDriver(t *testing.T) {
 	for _, src := range []string{
 		`package enumkey
         enum Slot { head, body, feet }
-        enum Grade { Low, Mid, Old | deprecated }
+        enum Grade {
+            Low
+            Mid
+            Old | deprecated
+        }
         fixed table Root { ranks [Slot]Grade }`,
 		`package enumkey
         enum Slot { head, body, feet }
-        enum Grade { Low, Mid, Old | deprecated }
+        enum Grade {
+            Low
+            Mid
+            Old | deprecated
+        }
         type Scores { ranks [Slot]Grade }
         fixed table Holder { values Scores }`,
 	} {
