@@ -153,7 +153,7 @@ func TestPythonDynamicRunPatternBindingsAndCoverageWiring(t *testing.T) {
 			found := false
 			for line := range strings.SplitSeq(s, "\n") {
 				if strings.HasPrefix(line, prefix) {
-					for _, field := range strings.Fields(line[len(prefix):]) {
+					for field := range strings.FieldsSeq(line[len(prefix):]) {
 						if field == tc.target {
 							found = true
 						}
