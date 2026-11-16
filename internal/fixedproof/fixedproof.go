@@ -106,6 +106,9 @@ type LegRunner interface {
 
 // LineageEntry is a target-neutral locked fixed layout entry.
 type LineageEntry struct {
+	// Writer is the checked declaration snapshot that produced this layout.
+	// Definition facts are not recoverable from anonymous digest records.
+	Writer  *ir.Struct
 	Wire    uint64
 	Layout  []byte
 	Record  int64
@@ -309,6 +312,7 @@ func LineageEntryOf(u *ir.Unit, root string) (LineageEntry, bool) {
 		}
 		layout, hash, body := RootFacts(st)
 		return LineageEntry{
+			Writer: st,
 			Wire:   hash,
 			Layout: layout,
 			Record: 8 + body,
@@ -2215,8 +2219,8 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 			t.Parallel()
 			u := ParseCheckUnit(t, "package probe\nfixed table Target {\n    lead uint32 = 1\n    name string(8) = \"ok\"\n    trail uint32 = 2\n}\nfixed table Boundary {\n    lead uint32 = 1\n    name string(8) = \"ok\"\n}\n")
 			base, _ := LineageEntryOf(u, "Target")
-			bound, _ := LineageEntryOf(u, "Boundary")
-			bound.Wire ^= 0x1111
+			olderBoundary := ParseCheckUnit(t, "package probe\nfixed table Boundary {\n lead uint32 = 1 | min = 0, max = 50\n name string(8) = \"ok\"\n}\n")
+			bound, _ := LineageEntryOf(olderBoundary, "Boundary")
 			size := func(e *LineageEntry, i int, n uint32) {
 				binary.LittleEndian.PutUint32(e.Layout[4+17*i+9:], n)
 			}
@@ -2592,9 +2596,12 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		const planSchema = "package probe\nenum Kind { A, B }\nunion Choice\n{\n    n int32\n    s string(4)\n}\nfixed table T\n{\n    head int32 = 1\n    opt ?int32\n    arr [..2]Kind\n    ch Choice\n}\n"
 		u := ParseCheckUnit(t, planSchema)
 		eOwn, _ := LineageEntryOf(u, "T")
-		eForged := eOwn
-		eForged.Wire ^= 1
-		lin := map[string][]LineageEntry{"T": {eForged}}
+		older := ParseCheckUnit(t, strings.Replace(planSchema, "head int32 = 1", "head int32 = 1 | min = 0, max = 100", 1))
+		eOlder, _ := LineageEntryOf(older, "T")
+		if eOlder.Wire == eOwn.Wire || !bytes.Equal(eOlder.Layout, eOwn.Layout) {
+			t.Fatal("P1 fixture needs equal layouts and distinct lawful definition hashes")
+		}
+		lin := map[string][]LineageEntry{"T": {eOlder}}
 		// head 42, opt -99 present, arr {2, 0} with count 1, ch string "hi"
 		body := make([]byte, eOwn.Record-8)
 		binary.LittleEndian.PutUint32(body[0:], 42)
@@ -2606,12 +2613,7 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		binary.LittleEndian.PutUint32(body[16:], 2)
 		copy(body[20:], "hi")
 		idBytes := MakeFixedFile(eOwn.Wire, eOwn.Layout, body, body)
-		planBytes := bytes.Clone(idBytes)
-		planBytes[8] ^= 1
-		stride := int(eOwn.Record)
-		for at := len(planBytes) - 2*stride; at < len(planBytes); at += stride {
-			planBytes[at] ^= 1
-		}
+		planBytes := MakeFixedFile(eOlder.Wire, eOlder.Layout, body, body)
 		idN, idR, idF, idSaved := zeroLoad(t, runner, u, "T", lin, idBytes, -1)
 		planN, planR, planF, planSaved := zeroLoad(t, runner, u, "T", lin, planBytes, -1)
 		if idN != 2 || planN != idN || idR != planR || !maps.Equal(idF, planF) ||
