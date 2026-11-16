@@ -32,7 +32,7 @@ table Integers
 // TestLobsterJsonWideIntegersAreStrings holds every row of
 // testdata/wire/json-integers/ through the generated Lobster JSON reader and
 // writer: a wide integer is written as a STRING of decimal digits and reads
-// as a string or a number; every integer field takes an integer token only —
+// as a string only; every integer field takes an integer token only —
 // no fraction, no exponent, no negative zero — the value never passes through
 // a double, and its range is tested on the exact value (docs/SPEC-TABLES.md
 // §16.2, §16.14; docs/rulings.json json-wide-integers-are-strings and
@@ -62,6 +62,7 @@ func TestLobsterJsonWideIntegersAreStrings(t *testing.T) {
 
 	type row struct {
 		name, root, file, verdict string
+		numberToken               bool
 	}
 	var rows []row
 	for i, line := range strings.Split(string(data), "\n") {
@@ -78,6 +79,25 @@ func TestLobsterJsonWideIntegersAreStrings(t *testing.T) {
 		}
 		rows = append(rows, row{name: fields[0], root: fields[1], file: fields[2], verdict: fields[3]})
 	}
+	numberData, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for line := range strings.SplitSeq(string(numberData), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 5 || f[1] != "Integers" || f[3] != "refused" {
+			t.Fatalf("bad number token row: %q", line)
+		}
+		rows = append(rows, row{name: f[0], root: f[1], file: f[2], verdict: f[3], numberToken: true})
+		count++
+	}
+	if count != 13 {
+		t.Fatalf("got %d number token rows, want 13", count)
+	}
 	if len(rows) == 0 {
 		t.Fatal("no manifest rows read; the gate would pass over an empty set")
 	}
@@ -87,7 +107,7 @@ func TestLobsterJsonWideIntegersAreStrings(t *testing.T) {
 		fmt.Fprintf(&program, "import .%s\n", mod)
 	}
 	program.WriteString(`import .json
-def check(name:string, verdict:string, path:string):
+def check(name:string, verdict:string, path:string, number_token:bool):
     let text = read_file(path)
     assert text
     let report = schema_rt.LoadReport {}
@@ -103,6 +123,8 @@ def check(name:string, verdict:string, path:string):
         assert write_file("out-" + name, out)
     elif value:
         print("BAD " + name + " accepted")
+    elif number_token and report.reason != "kind_mismatch":
+        print("BAD " + name + " reason " + report.reason)
 `)
 	inputs := map[string][]byte{}
 	for _, r := range rows {
@@ -112,7 +134,7 @@ def check(name:string, verdict:string, path:string):
 		}
 		name := "in-" + r.name
 		inputs[name] = body
-		fmt.Fprintf(&program, "check(%q, %q, %q)\n", r.name, r.verdict, name)
+		fmt.Fprintf(&program, "check(%q, %q, %q, %t)\n", r.name, r.verdict, name, r.numberToken)
 	}
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program.String()), 0o644); err != nil {
 		t.Fatal(err)

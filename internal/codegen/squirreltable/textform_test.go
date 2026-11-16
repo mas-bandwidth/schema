@@ -530,3 +530,39 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	}
 	t.Logf("ran %d document vectors", count)
 }
+
+func TestSquirrelDocumentWideIntegerIntegralForms(t *testing.T) {
+	t.Parallel()
+	u := unitFromSchema(t, textFormDocumentSchema)
+	files, err := squirrel.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := squirreltable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "probe"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		writeFile(t, filepath.Join(dir, "probe", name), data)
+	}
+	for name, data := range tables {
+		writeFile(t, filepath.Join(dir, "probe", name), data)
+	}
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(documentPrelude+`load("integral", inputs.integral, null);`))
+	input := []byte(`(:signed 1e1 :unsigned 20.0)`)
+	line := strings.Fields(strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"integral": input}))))
+	if len(line) != 4 || line[0] != "integral" || line[1] != "ok" {
+		t.Fatalf("integral forms: %v", line)
+	}
+	if got := probeBytes(t, line[2]); !bytes.Equal(got, input) {
+		t.Errorf("rewrite got %q, want %q", got, input)
+	}
+	text := string(probeBytes(t, line[3]))
+	if !strings.Contains(text, `"signed": "10"`) || !strings.Contains(text, `"unsigned": "20"`) {
+		t.Errorf("typed values: %s", text)
+	}
+}

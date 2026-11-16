@@ -88,7 +88,7 @@ func (m *pyModule) assemble() string {
 		h.WriteString("\n")
 	}
 	h.WriteString(m.body.String())
-	return h.String()
+	return strings.TrimRight(h.String(), "\n") + "\n"
 }
 
 func sortedKeys(set map[string]bool) []string {
