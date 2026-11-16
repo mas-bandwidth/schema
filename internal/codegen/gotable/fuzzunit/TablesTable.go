@@ -370,10 +370,6 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 			clear(value.VersionNote[:])
 			copy(value.VersionNote[:], sub.Buffer)
 			value.VersionNoteLength = int32(len(sub.Buffer))
-			if !(value.VersionNoteLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x41cbd901b87fabb6: // weapons
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.weapons")
@@ -429,10 +425,6 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 					return false
 				}
 			}
-			if !(value.WeaponsCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x8181e61fc0436767: // profiles
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.profiles")
@@ -487,10 +479,6 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.ProfilesCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -868,10 +856,6 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			clear(value.VersionNote[:])
 			copy(value.VersionNote[:], sub.Buffer)
 			value.VersionNoteLength = int32(len(sub.Buffer))
-			if !(value.VersionNoteLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x41cbd901b87fabb6: // weapons
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.weapons")
@@ -929,10 +913,6 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 					return false
 				}
 			}
-			if !(value.WeaponsCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x8181e61fc0436767: // profiles
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "RootConfig.profiles")
@@ -989,10 +969,6 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.ProfilesCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -1238,10 +1214,6 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 					value.Damage = v
 				}
 			}
-			if !(math.Float32bits(value.Damage) != math.Float32bits(21.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.speed")
@@ -1262,10 +1234,6 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 					value.Speed = v
 				}
 			}
-			if !(math.Float32bits(value.Speed) != math.Float32bits(500.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x4f31c5309e13e932: // penetration
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
@@ -1281,10 +1249,6 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 							return false
 						}
 						value.Penetration = int32(v)
-					}
-					if !(value.Penetration != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -1305,10 +1269,6 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				}
 				value.Penetration = int32(v)
 			}
-			if !(value.Penetration != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xa5013e9ad5caeda4: // channel
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.channel")
@@ -1327,10 +1287,6 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				}
 				value.Channel = uint32(v)
 			}
-			if !(value.Channel != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xad6587bc602e3f59: // homing
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.homing")
@@ -1348,10 +1304,6 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				}
 				value.Homing = b != 0
 			}
-			if !(value.Homing != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x36c1c83b51f24394: // effect
 			if kind != 15 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.effect")
@@ -1361,10 +1313,6 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				payload9 := &value.Effect
 				armRef, ok := r.Leb()
 				if !ok {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
-				if armRef == 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1716,10 +1664,6 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 					value.Damage = v
 				}
 			}
-			if !(math.Float32bits(value.Damage) != math.Float32bits(21.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.speed")
@@ -1740,10 +1684,6 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 					value.Speed = v
 				}
 			}
-			if !(math.Float32bits(value.Speed) != math.Float32bits(500.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x4f31c5309e13e932: // penetration
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
@@ -1759,10 +1699,6 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 							return false
 						}
 						value.Penetration = int32(v)
-					}
-					if !(value.Penetration != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -1783,10 +1719,6 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				}
 				value.Penetration = int32(v)
 			}
-			if !(value.Penetration != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xa5013e9ad5caeda4: // channel
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.channel")
@@ -1805,10 +1737,6 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				}
 				value.Channel = uint32(v)
 			}
-			if !(value.Channel != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xad6587bc602e3f59: // homing
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.homing")
@@ -1826,10 +1754,6 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				}
 				value.Homing = b != 0
 			}
-			if !(value.Homing != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x36c1c83b51f24394: // effect
 			if kind != 15 {
 				r.Report.Refuse(TableRefuseKindMismatch, "WeaponConfig.effect")
@@ -1840,10 +1764,6 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				payload7 := &value.Effect
 				armRef, ok := r.Leb()
 				if !ok {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
-				if armRef == 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2376,9 +2296,6 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					}
 					if !value.Grade.TableEnumValue(id) {
 						r.Report.Unknown++
-					} else if value.Grade == GradeSilver {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 				}
 			}
@@ -2439,10 +2356,6 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					return false
 				}
 			}
-			if !(value.GradesCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb46ff45a23d72549: // podium
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.podium")
@@ -2473,7 +2386,6 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.podium")
 					return false
 				}
-				allDefault := true
 				for i := range count {
 					{
 						variantRef, ok := sub.Leb()
@@ -2491,16 +2403,9 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 							}
 							if !value.Podium[i].TableEnumValue(id) {
 								r.Report.Unknown++
-								allDefault = false
-							} else if value.Podium[i] != GradeNone {
-								allDefault = false
 							}
 						}
 					}
-				}
-				if allDefault {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2518,10 +2423,6 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 						v := r.Unsigned(kind)
 						value.Perks = Perks(v)
 					}
-					if !(value.Perks != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -2536,10 +2437,6 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 				v := r.Get64()
 				value.Perks = Perks(v)
 			}
-			if !(value.Perks != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xbf31137ff783e939: // primary
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.primary")
@@ -2547,10 +2444,6 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2674,10 +2567,6 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.AttachmentsCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -3237,9 +3126,6 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						if r.Retain != nil {
 							r.Report.RetainLost++
 						}
-					} else if value.Grade == GradeSilver {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 				}
 			}
@@ -3304,10 +3190,6 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					return false
 				}
 			}
-			if !(value.GradesCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb46ff45a23d72549: // podium
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.podium")
@@ -3339,7 +3221,6 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.podium")
 					return false
 				}
-				allDefault := true
 				for i := range count {
 					{
 						variantRef, ok := sub.Leb()
@@ -3357,19 +3238,12 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 							}
 							if !value.Podium[i].TableEnumValue(id) {
 								r.Report.Unknown++
-								allDefault = false
 								if r.Retain != nil {
 									r.Report.RetainLost++
 								}
-							} else if value.Podium[i] != GradeNone {
-								allDefault = false
 							}
 						}
 					}
-				}
-				if allDefault {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -3387,10 +3261,6 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 						v := r.Unsigned(kind)
 						value.Perks = Perks(v)
 					}
-					if !(value.Perks != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -3405,10 +3275,6 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 				v := r.Get64()
 				value.Perks = Perks(v)
 			}
-			if !(value.Perks != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xbf31137ff783e939: // primary
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "LoadoutConfig.primary")
@@ -3416,10 +3282,6 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -3548,10 +3410,6 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-			}
-			if !(value.AttachmentsCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -3928,10 +3786,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			clear(value.Name[:])
 			copy(value.Name[:], sub.Buffer)
 			value.NameLength = int32(len(sub.Buffer))
-			if !(value.NameLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xdbff4cc56c2092f0: // icon
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.icon")
@@ -3978,10 +3832,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					return false
 				}
 			}
-			if !(value.IconLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xab8b6d521f80b969: // experience
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
@@ -3992,10 +3842,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					{
 						v := r.Unsigned(kind)
 						value.Experience = uint32(v)
-					}
-					if !(value.Experience != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4011,10 +3857,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				v := r.Get32()
 				value.Experience = uint32(v)
 			}
-			if !(value.Experience != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x1e5088ef2e9bafc6: // tilt
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.tilt")
@@ -4028,10 +3870,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				v := int8(r.Get8())
 				value.Tilt = int8(v)
 			}
-			if !(value.Tilt != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb128829190ca0f75: // heading
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
@@ -4042,10 +3880,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					{
 						v := r.Signed(kind)
 						value.Heading = int16(v)
-					}
-					if !(value.Heading != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4061,10 +3895,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				v := int16(r.Get16())
 				value.Heading = int16(v)
 			}
-			if !(value.Heading != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x5ddc92338ef53403: // timestamp
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -4075,10 +3905,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					{
 						v := r.Signed(kind)
 						value.Timestamp = int64(v)
-					}
-					if !(value.Timestamp != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4094,10 +3920,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				v := int64(r.Get64())
 				value.Timestamp = int64(v)
 			}
-			if !(value.Timestamp != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x10bda981fe095518: // badge
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.badge")
@@ -4111,10 +3933,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				v := r.Get8()
 				value.Badge = uint8(v)
 			}
-			if !(value.Badge != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x8c2cdb0da8933fa6: // port
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
@@ -4125,10 +3943,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					{
 						v := r.Unsigned(kind)
 						value.Port = uint16(v)
-					}
-					if !(value.Port != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4144,10 +3958,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				v := r.Get16()
 				value.Port = uint16(v)
 			}
-			if !(value.Port != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xfc9697d1196e6ba6: // epoch
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
@@ -4158,10 +3968,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					{
 						v := r.Unsigned(kind)
 						value.Epoch = uint64(v)
-					}
-					if !(value.Epoch != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4176,10 +3982,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			{
 				v := r.Get64()
 				value.Epoch = uint64(v)
-			}
-			if !(value.Epoch != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0x288427f5babd05f7: // precision
 			if kind != 11 {
@@ -4205,10 +4007,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 							value.Precision = v
 						}
 					}
-					if !(math.Float64bits(value.Precision) != math.Float64bits(0.0)) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -4229,10 +4027,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					v := math.Float64frombits(b)
 					value.Precision = v
 				}
-			}
-			if !(math.Float64bits(value.Precision) != math.Float64bits(0.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
@@ -4286,17 +4080,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					return false
 				}
 			}
-			allDefault := true
-			for i := range value.Ratings {
-				if math.Float32bits(value.Ratings[i]) != math.Float32bits(0.0) {
-					allDefault = false
-					break
-				}
-			}
-			if !(!allDefault) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xa06f5e0a148e253c: // has_loadout
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.has_loadout")
@@ -4314,10 +4097,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				}
 				value.HasLoadout = b != 0
 			}
-			if !(value.HasLoadout != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x5759ce7586bbb5a3: // loadout
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.loadout")
@@ -4325,10 +4104,6 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -4785,10 +4560,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			clear(value.Name[:])
 			copy(value.Name[:], sub.Buffer)
 			value.NameLength = int32(len(sub.Buffer))
-			if !(value.NameLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xdbff4cc56c2092f0: // icon
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.icon")
@@ -4836,10 +4607,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					return false
 				}
 			}
-			if !(value.IconLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xab8b6d521f80b969: // experience
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
@@ -4850,10 +4617,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					{
 						v := r.Unsigned(kind)
 						value.Experience = uint32(v)
-					}
-					if !(value.Experience != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4869,10 +4632,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				v := r.Get32()
 				value.Experience = uint32(v)
 			}
-			if !(value.Experience != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x1e5088ef2e9bafc6: // tilt
 			if kind != 2 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.tilt")
@@ -4886,10 +4645,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				v := int8(r.Get8())
 				value.Tilt = int8(v)
 			}
-			if !(value.Tilt != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb128829190ca0f75: // heading
 			if kind != 3 {
 				if tableKindWidens(kind, 3) {
@@ -4900,10 +4655,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					{
 						v := r.Signed(kind)
 						value.Heading = int16(v)
-					}
-					if !(value.Heading != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4919,10 +4670,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				v := int16(r.Get16())
 				value.Heading = int16(v)
 			}
-			if !(value.Heading != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x5ddc92338ef53403: // timestamp
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -4933,10 +4680,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					{
 						v := r.Signed(kind)
 						value.Timestamp = int64(v)
-					}
-					if !(value.Timestamp != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4952,10 +4695,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				v := int64(r.Get64())
 				value.Timestamp = int64(v)
 			}
-			if !(value.Timestamp != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x10bda981fe095518: // badge
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.badge")
@@ -4969,10 +4708,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				v := r.Get8()
 				value.Badge = uint8(v)
 			}
-			if !(value.Badge != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x8c2cdb0da8933fa6: // port
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
@@ -4983,10 +4718,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					{
 						v := r.Unsigned(kind)
 						value.Port = uint16(v)
-					}
-					if !(value.Port != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -5002,10 +4733,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				v := r.Get16()
 				value.Port = uint16(v)
 			}
-			if !(value.Port != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xfc9697d1196e6ba6: // epoch
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
@@ -5016,10 +4743,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					{
 						v := r.Unsigned(kind)
 						value.Epoch = uint64(v)
-					}
-					if !(value.Epoch != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -5034,10 +4757,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			{
 				v := r.Get64()
 				value.Epoch = uint64(v)
-			}
-			if !(value.Epoch != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0x288427f5babd05f7: // precision
 			if kind != 11 {
@@ -5063,10 +4782,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 							value.Precision = v
 						}
 					}
-					if !(math.Float64bits(value.Precision) != math.Float64bits(0.0)) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -5087,10 +4802,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					v := math.Float64frombits(b)
 					value.Precision = v
 				}
-			}
-			if !(math.Float64bits(value.Precision) != math.Float64bits(0.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
@@ -5145,17 +4856,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					return false
 				}
 			}
-			allDefault := true
-			for i := range value.Ratings {
-				if math.Float32bits(value.Ratings[i]) != math.Float32bits(0.0) {
-					allDefault = false
-					break
-				}
-			}
-			if !(!allDefault) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xa06f5e0a148e253c: // has_loadout
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.has_loadout")
@@ -5173,10 +4873,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				}
 				value.HasLoadout = b != 0
 			}
-			if !(value.HasLoadout != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x5759ce7586bbb5a3: // loadout
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ProfileConfig.loadout")
@@ -5184,10 +4880,6 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -5367,10 +5059,6 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 						}
 						value.Slot = int32(v)
 					}
-					if !(value.Slot != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -5389,10 +5077,6 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 					return false
 				}
 				value.Slot = int32(v)
-			}
-			if !(value.Slot != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0xeef9d1358ae7b4e6: // power
 			if kind != 10 {
@@ -5413,10 +5097,6 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 					v := math.Float32frombits(b)
 					value.Power = v
 				}
-			}
-			if !(math.Float32bits(value.Power) != math.Float32bits(1.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -5571,10 +5251,6 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 						}
 						value.Slot = int32(v)
 					}
-					if !(value.Slot != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -5593,10 +5269,6 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 					return false
 				}
 				value.Slot = int32(v)
-			}
-			if !(value.Slot != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		case 0xeef9d1358ae7b4e6: // power
 			if kind != 10 {
@@ -5617,10 +5289,6 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 					v := math.Float32frombits(b)
 					value.Power = v
 				}
-			}
-			if !(math.Float32bits(value.Power) != math.Float32bits(1.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -5771,10 +5439,6 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 					value.Multiplier = v
 				}
 			}
-			if !(math.Float32bits(value.Multiplier) != math.Float32bits(1.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		default:
 			r.Report.Unknown++
 			if !tableWireSkipValue(r, kind) {
@@ -5921,10 +5585,6 @@ func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 					value.Multiplier = v
 				}
 			}
-			if !(math.Float32bits(value.Multiplier) != math.Float32bits(1.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "Buff") {
@@ -6070,10 +5730,6 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 						}
 						value.Amount = int32(v)
 					}
-					if !(value.Amount != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -6092,10 +5748,6 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 					return false
 				}
 				value.Amount = int32(v)
-			}
-			if !(value.Amount != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -6239,10 +5891,6 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 						}
 						value.Amount = int32(v)
 					}
-					if !(value.Amount != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -6261,10 +5909,6 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 					return false
 				}
 				value.Amount = int32(v)
-			}
-			if !(value.Amount != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
