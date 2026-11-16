@@ -2,15 +2,73 @@ package ci
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
+
+func TestPythonHandtextCISelection(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "make and Go test listing (hand-text support rows)")
+	run := func(name string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(name, args...)
+		cmd.Dir = repoRoot(t)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s %v: %v\n%s", name, args, err, out)
+		}
+		return string(out)
+	}
+	patterns := strings.Fields(run("make", "-s", "python-handtext-ci-patterns"))
+	if len(patterns) != 4 {
+		t.Fatalf("got %d hand-text rows, want four", len(patterns))
+	}
+	var expressions []*regexp.Regexp
+	for _, pattern := range patterns {
+		expressions = append(expressions, regexp.MustCompile(pattern))
+	}
+	var names []string
+	for line := range strings.SplitSeq(run("go", "test", "-tags", "schema_leg_python", "-list", "^TestPythonHandtext", "./internal/codegen/pythontable/"), "\n") {
+		if strings.HasPrefix(line, "TestPythonHandtext") {
+			names = append(names, line)
+		}
+	}
+	if len(names) == 0 {
+		t.Fatal("hand-text test listing is empty")
+	}
+	missing := func(rows []*regexp.Regexp) int {
+		bad := 0
+		for _, name := range names {
+			count := 0
+			for _, row := range rows {
+				if row.MatchString(name) {
+					count++
+				}
+			}
+			if count != 1 {
+				bad++
+			}
+		}
+		return bad
+	}
+	if bad := missing(expressions); bad != 0 {
+		t.Fatalf("%d hand-text tests are missing or repeated in support rows", bad)
+	}
+	if missing(expressions[:3]) == 0 {
+		t.Fatal("removing the control row escaped the selection check")
+	}
+}
 
 func TestPythonCISupportCoversEveryPrerequisite(t *testing.T) {
 	t.Parallel()
@@ -83,8 +141,8 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 		t.Fatalf("plan Python rows: %v\n%s", err, out)
 	}
 	var rows []struct {
-		Target, Package string
-		Corpus          bool
+		Target, Package, Test string
+		Corpus                bool
 	}
 	if err := json.Unmarshal(out, &rows); err != nil {
 		t.Fatal(err)
@@ -104,6 +162,39 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 	}
 	if fixed < 19 || packages == 0 {
 		t.Fatalf("fixed support=%d, table package rows=%d; want all fixed support and package rows", fixed, packages)
+	}
+	// The four complete shape tests are delegated out of package shards.
+	// Derive the value rows from the actual test source so adding/removing a
+	// shape cannot silently leave an unmatched or stale CI support slice.
+	wantShapes := map[string]int{
+		"python-fixed-proof-shapes-text":             0,
+		"python-fixed-proof-shapes-array-bounds":     0,
+		"python-fixed-proof-shapes-negative-control": 0,
+	}
+	for _, name := range pythonCIShapeRows(t) {
+		wantShapes["python-fixed-proof-shapes-"+name] = 0
+	}
+	for _, row := range rows {
+		if strings.HasPrefix(row.Target, "python-fixed-proof-shapes") {
+			if _, exists := wantShapes[row.Target]; !exists {
+				t.Errorf("unmatched or monolithic shape support row %s", row.Target)
+			} else {
+				wantShapes[row.Target]++
+			}
+		}
+		if strings.HasSuffix(row.Package, "/internal/codegen/pythontable") {
+			for _, name := range []string{"TestPythonFixedProofShapes", "TestPythonFixedProofShapesText", "TestPythonFixedProofShapesArrayBounds", "TestPythonFixedProofShapesNegativeControl"} {
+				matched, err := regexp.MatchString("^"+row.Test+"$", name)
+				if err != nil || matched {
+					t.Errorf("delegated shape test %s reintroduced in package shard %+v: %v", name, row, err)
+				}
+			}
+		}
+	}
+	for name, count := range wantShapes {
+		if count != 1 {
+			t.Errorf("shape support %s appears %d times, want exactly once", name, count)
+		}
 	}
 	wf, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/python-leg.yml"))
 	if err != nil {
@@ -203,4 +294,49 @@ fi
 			}
 		})
 	}
+}
+
+// pythonCIShapeRows reads the proof's own row selection, independently of the
+// Makefile's shard list. The ordinary Go tests still run the original suite.
+func pythonCIShapeRows(t *testing.T) []string {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(repoRoot(t), "internal/codegen/pythontable/fixed_proof_shapes_test.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "TestPythonFixedProofShapes" {
+			continue
+		}
+		for _, stmt := range fn.Body.List {
+			assign, ok := stmt.(*ast.AssignStmt)
+			if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+				continue
+			}
+			name, ok := assign.Lhs[0].(*ast.Ident)
+			if !ok || name.Name != "rows" {
+				continue
+			}
+			list, ok := assign.Rhs[0].(*ast.CompositeLit)
+			if !ok || len(list.Elts) == 0 {
+				t.Fatal("shape proof rows are not an explicit nonempty list")
+			}
+			var rows []string
+			for _, elem := range list.Elts {
+				literal, ok := elem.(*ast.BasicLit)
+				if !ok {
+					t.Fatal("shape proof row is not a literal")
+				}
+				value, err := strconv.Unquote(literal.Value)
+				if err != nil || value == "" || slices.Contains(rows, value) {
+					t.Fatalf("invalid or duplicate shape proof row %q: %v", literal.Value, err)
+				}
+				rows = append(rows, value)
+			}
+			return rows
+		}
+	}
+	t.Fatal("shape proof row selection not found")
+	return nil
 }
