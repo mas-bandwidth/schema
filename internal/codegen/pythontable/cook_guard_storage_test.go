@@ -17,6 +17,7 @@ func TestPythonCookInactiveGuardStorage(t *testing.T) {
 	u := loadUnit(t, `package guardstorage
  table Node { value int32 }
  table Other { value int32 }
+ table Child { data *bytes }
  table Root {
   active bool
   if active {
@@ -24,8 +25,10 @@ func TestPythonCookInactiveGuardStorage(t *testing.T) {
    text string(3)
    next *Node
    hidden *bytes
+   child Child
   }
   live *Other
+  live_blob *bytes
   live_text *string
  }
 `)
@@ -72,6 +75,18 @@ for field, value, live, live_value in (("next", other, "live", other), ("hidden"
         try: op(r)
         except InvalidValue: pass
         else: raise AssertionError("inactive-kind-" + field)
+r = Root(); r.next = Node()
+for op in (cook.cook_measure, cook.cook):
+    try: op(r)
+    except InvalidValue: pass
+    else: raise AssertionError("inactive-unindexed-pointer-" + op.__name__)
+r = Root(); r.child.data = b"x"
+for op in (cook.cook_measure, cook.cook):
+    try: op(r)
+    except InvalidValue: pass
+    else: raise AssertionError("inactive-unindexed-child-" + op.__name__)
+r = Root(); blob = BlobRef(b"x"); r.child.data = blob; r.live_blob = blob
+cook.check_cook(Root, cook.cook(r))
 r = Root(); r.items = [7]; r.text = "ok"
 cook.check_cook(Root, cook.cook(r))
 for order in (1, 2): print(cook.cook(r, order).hex())
@@ -100,4 +115,30 @@ for order in (1, 2): print(cook.cook(r, order).hex())
 			}
 		}
 	})
+	for _, control := range []struct{ name, from, to, want string }{
+		{"inactive-index", `_edges(entry.desc, entry.value, inactive_edges, True)`, `pass`, "inactive-unindexed-pointer-cook_measure"},
+		{"inherited-blob", `if inactive:
+                    blob_entry`, `if hasattr(fd, "guard_holds") and not fd.guard_holds(value):
+                    blob_entry`, "StopIteration"},
+	} {
+		t.Run(control.name+"-negative-control", func(t *testing.T) {
+			t.Parallel()
+			planted := cloneFiles(files)
+			const path = "guardstorage/_schema/cookwrite.py"
+			body := string(planted[path])
+			if !strings.Contains(body, control.from) {
+				t.Fatal("control anchor missing")
+			}
+			planted[path] = []byte(strings.Replace(body, control.from, control.to, 1))
+			dir := t.TempDir()
+			writeTree(t, dir, planted)
+			for _, pin := range []func(testing.TB) string{pyrun.Interpreter, pyrun.Floor} {
+				_, stderr, err := pyrun.Try(t, pin(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+				if err == nil || !strings.Contains(stderr, control.want) {
+					t.Errorf("%s control missed fault: %v %s", control.name, err, stderr)
+				}
+			}
+		})
+	}
+
 }
