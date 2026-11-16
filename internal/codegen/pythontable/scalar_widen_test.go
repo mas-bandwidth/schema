@@ -233,3 +233,39 @@ else: raise AssertionError("accepted non-finite float")
 		}
 	}
 }
+
+func TestPythonOptionalScalarWiden(t *testing.T) {
+	slowtest.Gate(t, "historical optional scalar widening")
+	writer := loadUnit(t, "package scalarwiden\ntable Root { value ?int8 }\n")
+	reader := loadUnit(t, "package scalarwiden\ntable Root { value ?int32 }\n")
+	wire := wideEngineWire(t, writer, "Root", `{"value":7}`)
+	model := tabletext.NewModel(reader)
+	value := model.New(model.Lookup("Root"))
+	var report tabletext.Report
+	ok, err := tablewire.Decode(model, value, wire, &report)
+	if !ok || err != nil || report.Widened != 1 {
+		t.Fatalf("Go: %v %v %+v", ok, err, report)
+	}
+	expected, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from scalarwiden import Root, LoadReport
+with open("wire", "rb") as f: data=f.read()
+r=LoadReport();v=Root.load(data,r)
+assert v.value==7 and r.widened==1
+print(v.save().hex())
+`
+	for _, py := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, py, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "wire": wire})
+		if err != nil || out != fmt.Sprintf("%x\n", expected) {
+			t.Errorf("%s: %q %s %v", py, out, stderr, err)
+		}
+	}
+}
