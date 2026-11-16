@@ -1,0 +1,17 @@
+// Integers.schema — the small unit the json-integers vectors read
+// (MANIFEST.tsv, NUMBER-TOKEN.tsv): an int32, an int64, a uint64, a ranged
+// int128, a ranged int64, a wide fixed-point field and a map keyed by uint64 —
+// every integer storage width the two JSON integer rules name
+// (docs/SPEC-TABLES.md §16.2).
+package jsonintegers
+
+table Integers
+{
+    small   int32
+    wide    int64
+    uwide   uint64
+    wide128 int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    ranged  int64 | min = 0, max = 9007199254740993
+    frac    fixed(48, 16) | min = -10, max = 10
+    counts  map[uint64]int32
+}

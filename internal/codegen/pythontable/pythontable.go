@@ -652,7 +652,14 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
+<<<<<<< HEAD
 		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codec))
+=======
+		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codecOf(f)))
+		if f.Type.Optional {
+			fmt.Fprintf(b, "            inner=%s,\n", strconv.Quote(innerCodecOf(f)))
+		}
+>>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		fmt.Fprintf(b, "            ordinal=%d,\n", ordinal)
 		fmt.Fprintf(b, "            lo=%s,\n", lo)
 		fmt.Fprintf(b, "            hi=%s,\n", hi)
@@ -680,6 +687,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
+<<<<<<< HEAD
 		fmt.Fprintf(b, "            default=%s,\n", defaultFor(f, codec))
 		if isFloat(f) {
 			fmt.Fprintf(b, "            f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
@@ -688,6 +696,13 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 			fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
 		}
 		if codec == "keyed" {
+=======
+		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+		if innerCodecOf(f) == "array" {
+			emitOptionalArrayElem(b, f)
+		}
+		if codecOf(f) == "keyed" {
+>>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 			emitKeyedDesc(b, f)
 		}
 		fmt.Fprintf(b, "        ),\n")
@@ -1140,7 +1155,13 @@ func codecOf(f *ir.Field) string {
 		}
 		return "map"
 	}
-	if f.KeyEnum != "" || f.Type.Optional || f.Array != ir.ArrayNone {
+	if f.KeyEnum != "" {
+		return "unsupported"
+	}
+	if f.Type.Optional {
+		return "optional"
+	}
+	if f.Array != ir.ArrayNone {
 		return "unsupported"
 	}
 	switch f.Type.Kind {
@@ -1196,6 +1217,7 @@ func elementCodecOf(f *ir.Field) string {
 	return "unsupported"
 }
 
+<<<<<<< HEAD
 // arrayElemCodec is the codec an array field's element rides through: an
 // unbounded array's is elementCodecOf's, and a fixed [N]T or counted [..N]T
 // array also carries the fixed class's floats, strings, enums and flags masks.
@@ -1284,6 +1306,68 @@ func equalExpr(a, b string, f *ir.Field) string {
 		return fmt.Sprintf("_s_float64_bits_eq(%s, %s)", a, b)
 	}
 	return a + " == " + b
+=======
+// innerCodecOf is the codec an optional wraps: ?T rides T's own framing, so
+// the optional kind owns presence and delegates the bytes to it.
+//
+// An optional ARRAY, ?[N]T or ?[..N]T, wraps the "array" framing (kind 14),
+// which the optional kind writes itself (runtime/_schema/kind_optional.py):
+// presence decides whether the field rides, and a present array always rides,
+// a counted one at count zero and a fixed one whole (docs/SPEC-TABLES.md
+// §2.3). Its elements delegate to their own codecs; an element kind this cut
+// does not carry keeps the array "unsupported", refused by name.
+func innerCodecOf(f *ir.Field) string {
+	if !f.Type.Optional {
+		return ""
+	}
+	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
+		switch optionalElemCodecOf(f) {
+		case "bool", "int", "table":
+			return "array"
+		}
+		return "unsupported"
+	}
+	single := *f
+	single.Type.Optional = false
+	return codecOf(&single)
+}
+
+// optionalElemCodecOf is the codec of one element of an optional array: the
+// field's own type with neither the presence bit nor the array shape.
+func optionalElemCodecOf(f *ir.Field) string {
+	elem := *f
+	elem.Type.Optional = false
+	elem.Array = ir.ArrayNone
+	elem.ArrayBound = 0
+	elem.ArrayMin = 0
+	return codecOf(&elem)
+}
+
+// emitOptionalArrayElem writes the elem entry of an optional array's
+// descriptor: the element's own codec, wire kind, range, target and zero
+// value, so the optional kind delegates each element. The outer emit writes
+// array_kind and array_min (the array shape's own numbers) for every field.
+func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
+	lo, hi := intRange(f)
+	codec := optionalElemCodecOf(f)
+	def := "None"
+	switch codec {
+	case "bool":
+		def = "False"
+	case "int":
+		def = "0"
+	}
+	fmt.Fprintf(b, "            elem=FieldDesc(\n")
+	fmt.Fprintf(b, "                name=%s,\n", strconv.Quote(f.Name))
+	fmt.Fprintf(b, "                field_id=0,\n")
+	fmt.Fprintf(b, "                kind=%d,\n", ir.TableWireElemKind(f))
+	fmt.Fprintf(b, "                codec=%s,\n", strconv.Quote(codec))
+	fmt.Fprintf(b, "                lo=%s,\n", lo)
+	fmt.Fprintf(b, "                hi=%s,\n", hi)
+	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                default=%s,\n", def)
+	fmt.Fprintf(b, "            ),\n")
+>>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 }
 
 func targetName(f *ir.Field) string {

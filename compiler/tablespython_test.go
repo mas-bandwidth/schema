@@ -93,6 +93,7 @@ func TestPythonTableCarrySetCarriesTimestamp(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 // TestPythonTableDriverCarriesUnboundedArrays: the driver registers python as
 // a `[]T` carrier, so a plain table unit with an unbounded array generates the
 // array codec rather than being refused by refuseLists.
@@ -105,14 +106,37 @@ func TestPythonTableDriverCarriesUnboundedArrays(t *testing.T) {
 	}
 	if _, ok := files["probe/_schema/kind_array.py"]; !ok {
 		t.Error("the []T unit emitted no probe/_schema/kind_array.py")
+=======
+// TestPythonTableCarrySetIsRegisteredByItsLayers: the table frame itself adds
+// no construct from the §2 carry vocabulary (docs/SPEC-TABLES.md); every
+// construct the python set holds is one a field-kind layer registers in its
+// own compiler/carries_python_<kind>.go and appends to nonGoCarriers["python"]
+// from its own test file (the optional kind: optional-variable-closure).
+func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
+	t.Parallel()
+	got, ok := Carried("python")
+	if !ok {
+		t.Fatal("the python target registered no carries set")
+	}
+	for _, construct := range got {
+		if !slices.Contains(nonGoCarriers["python"], construct) {
+			t.Errorf("the table frame registered %q, which no field-kind layer claims", construct)
+		}
+>>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 	}
 }
 
 // The compiler keeps the common carry checks before the table frame. Direct
-// descriptor generation remains available for later field-codec layers.
+// descriptor generation remains available for later field-codec layers. The
+// optional array `?[3]int16` left this list when the optional kind began
+// carrying it (compiler/carries_python_optional.go).
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
+<<<<<<< HEAD
 	for _, field := range []string{"?[3]int16"} {
+=======
+	for _, field := range []string{"[]int32"} {
+>>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
 		_, err := New().Generate(u, "python", Options{})
 		if err == nil {

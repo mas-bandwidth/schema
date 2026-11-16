@@ -625,9 +625,9 @@ fixed table Every
 	wv := vocabularyOf(t, writer)
 	inst := wm.New(wm.Lookup("Every"))
 	var read tabletext.Report
-	text := `{"b":true,"i8":-3,"i16":-300,"i32":-70000,"i64":-5000000000,"u8":200,"u16":60000,"u32":4000000000,"u64":9000000000000000000,` +
+	text := `{"b":true,"i8":-3,"i16":-300,"i32":-70000,"i64":"-5000000000","u8":200,"u16":60000,"u32":4000000000,"u64":"9000000000000000000",` +
 		`"r32":999,"f32":1.5,"q32":0.25,"f64":2.5,"bits7":100,"mask":["A","C"],"s":"hi","by":"AQID","t":{"x":7},"arr":[1,2,3],"fix":[4,5,6],` +
-		`"un":{"inner":{"x":9}},"color":"Blue","keyed":{"Green":5},"wide":340282366920938463463374607431768211455,"fx":1.5,"last":2147483649}`
+		`"un":{"inner":{"x":9}},"color":"Blue","keyed":{"Green":5},"wide":"340282366920938463463374607431768211455","fx":1.5,"last":2147483649}`
 	if !wm.Read(inst, []byte(text), &read) || !read.Silent() {
 		t.Fatalf("the writer's text did not read: %+v", read)
 	}
@@ -1289,7 +1289,7 @@ func TestTheSixFindings(t *testing.T) {
 		}
 		mine := sm.New(sm.Lookup("SimState"))
 		var textReport tabletext.Report
-		if !sm.Read(mine, []byte(`{"flux":-1267650600228229401496703205371,"energy":123,"entity_id":77}`), &textReport) || !textReport.Silent() {
+		if !sm.Read(mine, []byte(`{"flux":"-1267650600228229401496703205371","energy":"123","entity_id":"77"}`), &textReport) || !textReport.Silent() {
 			t.Fatalf("the scalars text did not read: %+v", textReport)
 		}
 		if own, err := tablewire.EncodeMessage(sm, mine); err != nil || string(own) != string(pinned) {

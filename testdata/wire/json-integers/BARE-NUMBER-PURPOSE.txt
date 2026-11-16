@@ -1,0 +1,13 @@
+# The fixtures whose PURPOSE is a bare JSON number token in a wide integer
+# field (docs/SPEC-TABLES.md §16.2; docs/rulings.json
+# json-wide-integers-refuse-number-token). TestJsonFixturesHoldNoBareWideInteger
+# (compiler/spec_json_wide_fixtures_strings_test.go) exempts exactly what this
+# file names and nothing else; every other shared fixture writes a wide integer
+# as a string of digits.
+#
+# One line each: <manifest> [<row>] # <why the bare token is the point>.
+# A line that binds no fixture fails the checker.
+
+testdata/wire/json-integers/NUMBER-TOKEN.tsv # the refused number-token vectors of the json-integers unit
+testdata/conformance/tables/JSON-HOSTILE-NUMBER-TOKEN.txt # the json-hostile vectors that write a wide value as a bare number token
+internal/ci/hostilecorpus/corpus/number-token.tsv # the shared hostile corpus's copies of the JSON-HOSTILE-NUMBER-TOKEN.txt vectors

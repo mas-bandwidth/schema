@@ -48,9 +48,10 @@ func TestCppGraphCheckedOverEveryPointer(t *testing.T) {
 		{"graph_string_blob_zero_byte", "Scene", false},
 		{"graph_unknown_type_unreached", "Scene", false},
 		{"graph_string_blob_unreached", "Scene", false},
-		// element kind 17 is not on the keyed body's closed list (§3), so the
-		// keyed slot is damage rather than a pointer to read.
-		{"graph_reach_unknown_keyed_slot", "Scene", false},
+		{"graph_reach_unknown_keyed_slot", "Scene", true},
+		// Kind 17 is not on the keyed body's closed list (§3). A separate
+		// mutation keeps this refusal covered alongside the legal table case.
+		{"graph_reach_keyed_illegal_kind", "Scene", false},
 		{"graph_reach_unknown_field", "Scene", true},
 		{"graph_reach_unknown_nested", "Scene", true},
 		{"graph_reach_unknown_union_arm", "Scene", true},
@@ -59,9 +60,19 @@ func TestCppGraphCheckedOverEveryPointer(t *testing.T) {
 	u := loadGraphDirUnit(t, filepath.Join(repo, "tables", "pointers"))
 	var body strings.Builder
 	for _, c := range cases {
-		wire, err := os.ReadFile(filepath.Join(framing, c.name+".bin"))
+		name := c.name
+		if name == "graph_reach_keyed_illegal_kind" {
+			name = "graph_reach_unknown_keyed_slot"
+		}
+		wire, err := os.ReadFile(filepath.Join(framing, name+".bin"))
 		if err != nil {
-			t.Fatalf("%s: the pinned vector is missing: %v", c.name, err)
+			t.Fatalf("%s: the pinned vector is missing: %v", name, err)
+		}
+		if c.name == "graph_reach_keyed_illegal_kind" {
+			if len(wire) < 5 || wire[4] != 13 {
+				t.Fatal("keyed table element kind moved")
+			}
+			wire[4] = 17
 		}
 		fmt.Fprintf(&body, `
     {
