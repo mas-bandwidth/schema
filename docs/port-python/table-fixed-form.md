@@ -34,22 +34,42 @@ its probe red by name. The shared proof runner is in
 `internal/codegen/pythontable/fixed_proof_suite_test.go`; row files supply
 constructors and assertions without creating another interpreter harness.
 
-Historical declaration facts come from the writer, rather than the reader's
-widened bounds. Version-8 locks capture complete writer snapshots, and the
-compiler's public generation route passes them to `GenerateLineage`. The
-backend verifies each snapshot's layout and hash before baking its bounds
-checks. The production lock test performs a lock, lawful bound widening,
-second lock and generation, then reads clean older data and refuses four
-forgeries outside the older writer's int32 and int128 bounds under both pins.
-Its negative control widens a check in the generated writer metadata and must
-make the same refusal assertion fail by name.
+Historical declaration facts come from the writer. Version-9 locks retain each
+entry's recorded digest scheme, complete writer snapshot and exact wire key.
+The compiler passes those facts through `GenerateLineage`; Python recomputes
+the snapshot's digest under that recorded scheme, compares every digest byte,
+verifies layout and whole-record size, and hashes exactly the stored layout
+and digest. A current hasher never rewrites an older key. Prospective version-2
+definition digests bind full-width bounds, field paths and count minima.
 
-Legacy entries without enough writer facts hold generation with a diagnostic
-naming the table, layout and missing snapshot. A checked historical source
-can be attached through the lock command's `--writer` and `--from` import.
-This recovers a declaration; it does not alter the definition-hash algorithm
-or resolve histories that the older algorithm assigned the same hash. Full
-historical acceptance remains subject to that shared hash contract.
+Every supported historical entry needs a checked writer snapshot. An empty
+legacy digest is not proof that the writer had no constraints. Missing facts
+hold generation with a diagnostic naming the root and key; the lock command's
+`--writer` and `--from` import supplies explicit historical source. A genuine
+older layout-only key whose digest omitted facts requires the separate
+`--legacy-layout-only` trust decision. That marker is rejected for a nonempty
+prospective digest, and does not authorize changing the old layout or key.
+
+`make python-fixed-identity-negative-control` reads actual pre-v2 writer files,
+widens a 128-bit bound through the public lock and generation commands, and
+runs both interpreter pins. Clean old data remains readable; the captured old
+writer's bounds still reject a forgery. A prospective wider writer emits a
+new key and bytes equal to a live C++ writer. Generated checks widened to the
+reader's bounds and a writer changed back to the old key must each fail their
+named probe. The same gate covers explicit layout-only source import and
+refusal of unknown, erased or invalidly trusted digest schemes.
+
+Older collisions remain an information limit. The historical fixtures include
+a lawful larger writer's file that is byte-identical to a smaller writer's
+forgery. With the smaller writer snapshot configured, both identical inputs
+refuse. Source provenance records which contract a legacy key serves; it
+cannot recover the creator of indistinguishable bytes. New version-2 keys
+prevent that particular loss of full-width bounds and field attribution.
+
+Unknown and retired layout diagnostics include the offending fixed-width
+`0x` hash while leaving caller reports untouched. Deprecated enum variants
+read as the reader field or element's declared default, including array and
+active union payload values, without incrementing `unknown`.
 
 A missing field inside an active union arm, present optional or live counted
 array element is prefilled from its own declared default image under the

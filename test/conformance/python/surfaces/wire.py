@@ -1,22 +1,26 @@
-"""The wire surface: load the wire file, save it, write the bytes."""
+"""The wire surface: observe the public read/save or strict blob refusal."""
 
-from _common import absent, read_bytes, root_class, supported, write_bytes
+from _common import absent, entries, read_bytes, root_class, supported, unit_package, write_bytes
+
+
+def observed_wire(outdir, case, unit, root, wire):
+    """Observe the public verdict without the harness's expected-answer flags."""
+    cls = root_class(unit, root)
+    if cls is None or not supported(cls):
+        raise AssertionError(case + ": wire root is not generated and supported")
+    package = unit_package(unit)
+    try:
+        value = cls.load(read_bytes(wire))
+    except package.Refused as err:
+        if err.reason != "blob_shared":
+            raise AssertionError(case + ": unexpected public wire refusal: " + err.reason) from err
+        # The shared harness uses this filename for the observed strict blob
+        # refusal (§2.5). It judges whether this particular input owes it.
+        absent(outdir, case, "blob_shared")
+        return
+    write_bytes(outdir, case, value.save())
 
 
 def run(manifest, outdir):
-    from _common import entries
-
     for row in entries(manifest, "instance"):
-        case, unit, root, wire = row[1], row[2], row[3], row[4]
-        try:
-            cls = root_class(unit, root)
-            if cls is None:
-                absent(outdir, case, "unit not generated for python")
-                continue
-            if not supported(cls):
-                absent(outdir, case, "the python table runtime does not carry this construct")
-                continue
-            value = cls.load(read_bytes(wire))
-            write_bytes(outdir, case, value.save())
-        except Exception as err:  # noqa: BLE001 - a case this leg cannot answer is absent
-            absent(outdir, case, err)
+        observed_wire(outdir, row[1], row[2], row[3], row[4])

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0xc93127c82f083edf (packets only: tables version by field id, not by protocol id)
+// package bench — protocol id 0xc52a41defad6ebb0 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): includable from
 // any TU — the one thing taken from serialize.h is the 128-bit storage type.
 
@@ -2421,14 +2421,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x52,
-    0xa8,
-    0xbf,
+    0xf0,
+    0xff,
+    0xdb,
+    0xeb,
     0x78,
-    0x93,
-    0x55,
-    0xd3,
-    0x41,
+    0xad,
+    0x2d,
+    0xba,
     0x02,
     0x0e,
     0xcf,
@@ -6427,7 +6427,7 @@ namespace bench {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x41d3559378bfa852ull;
+static const uint64_t BuildVersion = 0xba2dad78ebdbfff0ull;
 
 } // namespace bench
 

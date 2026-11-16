@@ -12,6 +12,7 @@ from typing import Any, TypeVar
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor
 from .load import buffer_view
+from .integrity import open_crc, seal_crc
 
 _T = TypeVar("_T")
 _Spec = dict[str, Any]
@@ -200,41 +201,6 @@ def _seed(spec: _Spec, out: bytearray, at: int) -> None:
         _encode(spec, spec.get("default", 0), out, at, "default", False)
 
 
-def _source_spec(node: _Spec, reader: _Spec, ranges: _Spec) -> _Spec:
-    """Resolve the lock's check descriptors once, outside the load path."""
-    result = dict(reader)
-    result["size"] = node["size"]
-    result["kind"] = node["kind"]
-    shape = reader["shape"]
-    if shape == "optional" and node["kind"] != 35:
-        return _source_spec(node, reader["children"][0], ranges)
-    if shape == "table":
-        named = {field["id"]: field for field in reader["children"]}
-        result["children"] = [_source_spec(child, named[child["id"]], ranges) for child in node["children"]]
-    elif shape == "optional":
-        result["children"] = [_source_spec(node["children"][0], reader["children"][0], ranges)]
-    elif shape in ("array", "keyed"):
-        elem = node["children"][1 if shape == "keyed" else 0]
-        result["children"] = [_source_spec(elem, reader["children"][0], ranges)]
-        result["bound"] = (node["size"] - (4 if reader.get("counted", False) else 0)) // elem["size"]
-    elif shape == "union":
-        result["children"] = [_source_spec(child, reader["children"][index], ranges) for index, child in enumerate(node["children"])]
-        result["tag"] = node["size"] - max((child["size"] for child in node["children"]), default=0)
-    elif shape == "enum":
-        result["variants"] = [child["id"] for child in node["children"]]
-    elif shape == "int":
-        kind = node["kind"]
-        result["signed"] = 2 <= kind <= 5 or kind == 18 or 20 <= kind <= 24
-        bits = node["size"] * 8
-        result["lo"] = -(1 << (bits - 1)) if result["signed"] else 0
-        result["hi"] = (1 << (bits - (1 if result["signed"] else 0))) - 1
-        if reader.get("name", "") in ranges:
-            result["lo"], result["hi"] = ranges[reader["name"]]
-    elif shape in ("string", "bytes"):
-        result["bound"] = node["size"] - 4
-    return result
-
-
 def _check(spec: _Spec, data: memoryview, at: int) -> None:
     shape = spec["shape"]
     size = spec["size"]
@@ -385,7 +351,7 @@ def fixed_register(roots: dict[str, _Spec]) -> None:
         for entry in root["known"]:
             entry["layout"] = bytes.fromhex(entry["layout"])
             if not entry["refusal"]:
-                entry["check"] = entry.get("check_spec") or (root["spec"] if entry["hash"] == root["hash"] else _source_spec(entry["source"], root["spec"], entry["ranges"]))
+                entry["check"] = entry["check_spec"]
                 for fill in entry["fills"]:
                     image = bytearray(fill["size"])
                     _seed(fill["spec"], image, 0)
@@ -434,7 +400,7 @@ def fixed_measure(cls: type[Any], count: int) -> int:
     root = _root(cls, True)
     if type(count) is not int or count < 1:
         raise InvalidValue(cls.__name__, "a fixed file holds at least one record")
-    return int(len(root["header"]) + count * (root["body"] + 8))
+    return int(len(root["header"]) + count * (root["body"] + 8) + (4 if root["integrity"] else 0))
 
 
 def fixed_save(cls: type[_T], values: list[_T]) -> bytes:
@@ -450,7 +416,8 @@ def fixed_save(cls: type[_T], values: list[_T]) -> bytes:
         image = bytearray(root["body"])
         _encode(root["spec"], value, image, 0, f"[{index}]")
         records.append(root["prefix"] + image)
-    return bytes(root["header"]) + b"".join(records)
+    result = bytes(root["header"]) + b"".join(records)
+    return seal_crc(result) if root["integrity"] else result
 
 
 def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: int = 4096, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[_T]:
@@ -459,6 +426,9 @@ def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: in
         raise Refused("truncated")
     if source[0] != 3:
         raise Refused("previous_form" if source[0] == 1 else "message_form_as_file" if source[0] == 2 else "newer_form")
+    declared_root = _ROOTS.get(cls.__name__)
+    if declared_root is not None and declared_root["integrity"]:
+        source = open_crc(source, 3)
     if len(source) < 20:
         raise Refused("truncated")
     if any(source[1:8]):

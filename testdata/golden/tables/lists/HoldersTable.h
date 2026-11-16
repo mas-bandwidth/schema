@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package listdemo — protocol id 0x6f357df726f08bc5 (packets only: tables version by field id, not by protocol id)
+// package listdemo — protocol id 0x63cf59843d9eb62f (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2466,14 +2466,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x95,
-    0x50,
+    0x8d,
+    0x07,
+    0xe9,
+    0x70,
     0x7c,
-    0xe7,
-    0xf8,
-    0x5d,
-    0xec,
-    0x86,
+    0x4f,
+    0x0f,
+    0x21,
     0x02,
     0x0e,
     0x90,
@@ -10649,7 +10649,7 @@ namespace listdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x86ec5df8e77c5095ull;
+static const uint64_t BuildVersion = 0x210f4f7c70e9078dull;
 
 } // namespace listdemo
 
@@ -14199,7 +14199,7 @@ inline void ItemFixedWriteBody( uint8_t * b, const Item & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t SampleFixedBodyBytes = 4;
 constexpr int64_t SampleFixedRecordBytes = 8 + SampleFixedBodyBytes; // the hash and the body
-constexpr uint64_t SampleFixedHash = 0x0ee6a9f190922d63ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t SampleFixedHash = 0xd60cbcb26f964cd0ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -14260,9 +14260,10 @@ constexpr int32_t SampleFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t SampleFixedLineage[] = {
-    0x0ee6a9f190922d63ull, // identity
+    0x0ee6a9f190922d63ull, // lock
+    0xd60cbcb26f964cd0ull, // identity
 };
-constexpr int32_t SampleFixedLineageCount = 1;
+constexpr int32_t SampleFixedLineageCount = 2;
 constexpr int32_t SampleFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t SampleFixedFloorLive = SampleFixedFloor;
@@ -14274,14 +14275,21 @@ constexpr uint8_t SampleFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t SampleFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0xa7, 0x0a, 0xc7, 0x54, 0x12, 0xd6, 0x40, 0xdc, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout SampleFixedKnown[] = {
-    { 0x0ee6a9f190922d63ull, SampleFixedKnown0Layout, 38, 12 }, // identity
+    { 0x0ee6a9f190922d63ull, SampleFixedKnown0Layout, 38, 12 }, // lock
+    { 0xd60cbcb26f964cd0ull, SampleFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * SampleFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t SampleFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t SampleFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -14610,7 +14618,7 @@ inline int64_t SampleFixedLoad( Sample * values, int64_t capacity, const uint8_t
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t ItemFixedBodyBytes = 4;
 constexpr int64_t ItemFixedRecordBytes = 8 + ItemFixedBodyBytes; // the hash and the body
-constexpr uint64_t ItemFixedHash = 0xd285587ad8f0ebdcull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t ItemFixedHash = 0xdf45971e0ae36e5bull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -14671,9 +14679,10 @@ constexpr int32_t ItemFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t ItemFixedLineage[] = {
-    0xd285587ad8f0ebdcull, // identity
+    0xd285587ad8f0ebdcull, // lock
+    0xdf45971e0ae36e5bull, // identity
 };
-constexpr int32_t ItemFixedLineageCount = 1;
+constexpr int32_t ItemFixedLineageCount = 2;
 constexpr int32_t ItemFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t ItemFixedFloorLive = ItemFixedFloor;
@@ -14685,14 +14694,21 @@ constexpr uint8_t ItemFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t ItemFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout ItemFixedKnown[] = {
-    { 0xd285587ad8f0ebdcull, ItemFixedKnown0Layout, 38, 12 }, // identity
+    { 0xd285587ad8f0ebdcull, ItemFixedKnown0Layout, 38, 12 }, // lock
+    { 0xdf45971e0ae36e5bull, ItemFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * ItemFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t ItemFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t ItemFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

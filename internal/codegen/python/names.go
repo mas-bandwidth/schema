@@ -18,6 +18,10 @@ const HelperPrefix = "_s_"
 // like one would replace the member, so it is refused.
 var generatedMembers = wordSet(`read write load save descriptor fixed_load fixed_save fixed_measure fixed_plan_max`)
 
+// These methods are emitted on table classes, not packet classes.
+var generatedTableJSONMembers = wordSet(`from_json to_json`)
+var generatedTableWireTextMembers = wordSet(`load_text save_text`)
+
 // moduleNames are the names a generated module binds itself: the imports it
 // spells unqualified and the constants it writes beside the declarations. A
 // declaration with one of these names would replace the binding.
@@ -42,6 +46,11 @@ var unionMembers = wordSet(`type read write load save descriptor`)
 // names, the names __init__.py always exports, dunder and helper prefixes,
 // builtins at module level, and the generated members.
 func CheckNames(u *ir.Unit) error {
+	return CheckNamesWithTextSurfaces(u, true, false)
+}
+
+// CheckNamesWithTextSurfaces reserves only the selected table text methods.
+func CheckNamesWithTextSurfaces(u *ir.Unit, json, textform bool) error {
 	if err := checkPackage(u.Package); err != nil {
 		return err
 	}
@@ -73,6 +82,11 @@ func CheckNames(u *ir.Unit) error {
 			}
 			if err := checkFields(f.Base, t.Name, t.Fields); err != nil {
 				return err
+			}
+			for _, field := range t.Fields {
+				if generatedTableWireTextMembers[field.Name] || (json && t.CarriesForm("json") && generatedTableJSONMembers[field.Name]) || (textform && json && t.CarriesForm("json") && field.Name == "from_text_form") {
+					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated table text method; rename the field", f.Base, t.Name, field.Name)
+				}
 			}
 		}
 		for _, un := range f.TableUnions {

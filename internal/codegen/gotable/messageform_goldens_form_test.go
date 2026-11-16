@@ -1,13 +1,17 @@
 package gotable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -88,5 +92,48 @@ func TestMessageFormGoldensCarryTheBuildVersionForm(t *testing.T) {
 					c.name, committed, expected, ir.BuildVersionForm)
 			}
 		})
+	}
+}
+
+// The original graph announcement is a historical reader fixture. A new build
+// gets a separately named announcement; changing the manifest must not silently
+// turn the original peer's build word into this writer's current word.
+func TestGraphAnnouncementKeepsItsHistoricalEpoch(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldBytes, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/graph_conn.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentBytes, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/graph_conn_current.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitPaths(t, root, []string{"tables/pointers"})
+	if !bytes.Equal(currentBytes, tablewire.Announce(u)) {
+		t.Fatal("current graph announcement is not the checked writer's output")
+	}
+	if len(oldBytes) != len(currentBytes) || len(oldBytes) < 11 ||
+		!bytes.Equal(oldBytes[:3], currentBytes[:3]) || !bytes.Equal(oldBytes[11:], currentBytes[11:]) {
+		t.Fatal("graph vocabulary, framing or size changed across identity epochs")
+	}
+	if binary.LittleEndian.Uint64(oldBytes[3:11]) != 0xfdaabe4726d81d5c {
+		t.Fatal("the original graph announcement's historical build was changed")
+	}
+	var old, current tablewire.Vocabulary
+	var report tabletext.Report
+	if err := old.AnnounceRead(oldBytes, &report); err != nil || !report.Silent() {
+		t.Fatalf("historical graph announcement: %v %+v", err, report)
+	}
+	report = tabletext.Report{}
+	if err := current.AnnounceRead(currentBytes, &report); err != nil || !report.Silent() {
+		t.Fatalf("current graph announcement: %v %+v", err, report)
+	}
+	if old.BuildVersion() == current.BuildVersion() || current.BuildVersion() != ir.BuildVersion(u) ||
+		!reflect.DeepEqual(old.Entries(), current.Entries()) {
+		t.Fatal("graph announcement epochs or unchanged vocabulary were not preserved")
 	}
 }

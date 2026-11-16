@@ -2823,7 +2823,7 @@ int tableMessageBits(int n) {
 /// version and the vocabulary and whose trailer is the two reserved ids
 /// (docs/SPEC-TABLES.md §3.3).
 final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
-  0x01, 0x01, 0x09, 0x69, 0x75, 0x5a, 0x29, 0xdf, 0xf2, 0x5c, 0xd1, 0x02,
+  0x01, 0x01, 0x09, 0xd6, 0x19, 0x67, 0x75, 0x65, 0x2b, 0x3d, 0x3e, 0x02,
   0x0e, 0xbf, 0x06, 0x06, 0xbc, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e,
   0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
   0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd,
@@ -2899,7 +2899,7 @@ final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
 ]);
 const int tableAnnouncementLength = 871;
 /// The unit's own build version, emitted beside the announcement.
-const int tableBuildVersion = -3360544181639809687;
+const int tableBuildVersion = 4484788518692264406;
 
 
 // ---------------------------------------------------------------------------
@@ -5725,7 +5725,7 @@ const int tableEntityFixedRecordBytes = 59; // the hash and the body
 
 /// fnv1a64 over the layout's bytes exactly as written. A Dart int is a full
 /// 64-bit two's complement value, so the hash rides as itself.
-const int tableEntityFixedHash = 0x45d64db53ce7ac1f;
+const int tableEntityFixedHash = 0x5eac483826ba8dad;
 
 /// THE LAYOUT: 30 entries, a PRE-ORDER walk of the closure in the writer's
 /// declared order. Every byte is settled by the compiler.
@@ -5885,7 +5885,7 @@ const int tableEntityFixedIdentitySplit = 1;
 /// is `layout_newer` — ship the reader.
 // dart format off
 final List<TableFixedKnownLayout> tableEntityFixedKnown = <TableFixedKnownLayout>[
-  TableFixedKnownLayout(0x45d64db53ce7ac1f, Uint8List.fromList(const <int>[
+  TableFixedKnownLayout(0x5eac483826ba8dad, Uint8List.fromList(const <int>[
   0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31,
   0x0d, 0x33, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00, 0x12, 0x67, 0xe3,
   0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -6298,7 +6298,7 @@ const int tableStatFixedRecordBytes = 16; // the hash and the body
 
 /// fnv1a64 over the layout's bytes exactly as written. A Dart int is a full
 /// 64-bit two's complement value, so the hash rides as itself.
-const int tableStatFixedHash = 0x1cdc2a66a7601422;
+const int tableStatFixedHash = 0x85b325df6d7f019;
 
 /// THE LAYOUT: 3 entries, a PRE-ORDER walk of the closure in the writer's
 /// declared order. Every byte is settled by the compiler.
@@ -6389,7 +6389,7 @@ const int tableStatFixedIdentitySplit = 1;
 /// is `layout_newer` — ship the reader.
 // dart format off
 final List<TableFixedKnownLayout> tableStatFixedKnown = <TableFixedKnownLayout>[
-  TableFixedKnownLayout(0x1cdc2a66a7601422, Uint8List.fromList(const <int>[
+  TableFixedKnownLayout(0x85b325df6d7f019, Uint8List.fromList(const <int>[
   0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29,
   0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d,
   0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -6760,7 +6760,7 @@ const int tableMixedFixedRecordBytes = 1232; // the hash and the body
 
 /// fnv1a64 over the layout's bytes exactly as written. A Dart int is a full
 /// 64-bit two's complement value, so the hash rides as itself.
-const int tableMixedFixedHash = 0x301b55c58e640302;
+const int tableMixedFixedHash = 0xd9aba5d49eb0840c;
 
 /// THE LAYOUT: 75 entries, a PRE-ORDER walk of the closure in the writer's
 /// declared order. Every byte is settled by the compiler.
@@ -7141,7 +7141,7 @@ const int tableMixedFixedIdentitySplit = 9;
 /// is `layout_newer` — ship the reader.
 // dart format off
 final List<TableFixedKnownLayout> tableMixedFixedKnown = <TableFixedKnownLayout>[
-  TableFixedKnownLayout(0x301b55c58e640302, Uint8List.fromList(const <int>[
+  TableFixedKnownLayout(0xd9aba5d49eb0840c, Uint8List.fromList(const <int>[
   0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43,
   0x0d, 0xc8, 0x04, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x00, 0xfd, 0x15, 0xa1,
   0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,

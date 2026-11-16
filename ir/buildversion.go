@@ -51,7 +51,11 @@ import (
 // (§4.1, §20.1, §20.2). A bounded and a fixed array already carry the
 // element's kind in `kind=`, and a map's element is its entry, whose `key`
 // and `value` lines carry their kinds.
-const BuildVersionForm = 5
+// FORM 6 (THE COUNTED MINIMUM): counted arrays carry countmin= beside their
+// maximum bound. A minimum changes message shape and read/write admission even
+// when it changes no storage byte; sharing a build id would falsely assert the
+// same announced shape. Legacy form5 facts and hashes remain historical bytes.
+const BuildVersionForm = 6
 
 // blockPrologueFacts renders the block projection's generated prologue as the
 // digest sees it: each word in order, named, with its width in bytes.
@@ -342,7 +346,7 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 	case f.Array == ArrayFixed:
 		fmt.Fprintf(&b, " elem=%d array=fixed bound=%d", elementPiece(u, f).size, f.ArrayBound)
 	case f.Array == ArrayCounted:
-		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d", elementPiece(u, f).size, f.ArrayBound)
+		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d countmin=%d", elementPiece(u, f).size, f.ArrayBound, f.ArrayMin)
 	case f.Array == ArrayList:
 		// `array=unbounded` is the shape, `elem=` the ELEMENT'S OWN storage
 		// size, the pitch its elements lie at inside the holder's node extent,

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xf4a226f4166d919b — the Lobster unit registry (docs/PORT-LOBSTER.md)
+// package ludicrous — protocol id 0xd2ded2cc8a482aa1 — the Lobster unit registry (docs/PORT-LOBSTER.md)
 
 import .descriptors
 import .Ludicrous
@@ -183,7 +183,7 @@ let FixedQuatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     ]::schema_rt.FieldDescriptor
 })
 
-schema_rt.set_unit("ludicrous", 0xf4a226f4166d919b)
+schema_rt.set_unit("ludicrous", 0xd2ded2cc8a482aa1)
 schema_rt.view_constant("MaxWorldUnits", "Ludicrous.schema", "int64", false, 30000, 0.0, "", []::string)
 schema_rt.view_vocabulary("DriveMode", "Ludicrous.schema", "", []::string, [schema_rt.ViewVariant { name: "None", id: 0 }, schema_rt.ViewVariant { value: 1, name: "Cruise", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 2, name: "Warp", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }, schema_rt.ViewVariant { value: 3, name: "Ludicrous", id: 0x0000000000000000, deprecated: false, doc: "", tags: []::string }]::schema_rt.ViewVariant, "enum", 3, 8, 0)
 schema_rt.view_type(FixedProbeDescriptor, "Ludicrous.schema", "", []::string)

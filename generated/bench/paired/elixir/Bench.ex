@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package bench — protocol id 0xc93127c82f083edf
+# package bench — protocol id 0xc52a41defad6ebb0
 #
 # The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
 # read windows (every intermediate a BEAM small integer), single
@@ -451,7 +451,7 @@ defmodule Bench.Bench do
   sides at the same id speak identical bits; there is no other versioning.
   """
   @spec protocol_id() :: non_neg_integer()
-  def protocol_id, do: 0xC93127C82F083EDF
+  def protocol_id, do: 0xC52A41DEFAD6EBB0
 
   @doc """
   The most wire bits a BenchPacket can take: the longest wire path, align padding at its worst case (SPEC §6.1).

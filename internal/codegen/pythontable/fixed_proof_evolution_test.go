@@ -46,7 +46,7 @@ func TestPythonFixedProofEvolutionNumeric(t *testing.T) {
 	if !ok {
 		t.Fatal("missing writer layout")
 	}
-	lineage := map[string][]pythontable.FixedLineageEntry{"T": {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables["T"]}}}
+	lineage := map[string][]pythontable.FixedLineageEntry{"T": {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables["T"]}}}
 	files, err := pythontable.GenerateLineage(newer, lineage)
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +108,19 @@ else:
 	}
 	path := "probe/_schema/fixedform.py"
 	source := string(files[path])
+	floatAnchor := `struct.pack_into("<d", image, dst, struct.unpack_from("<f", source, src)[0])`
+	if strings.Count(source, floatAnchor) != 1 {
+		t.Fatal("float widening control anchor changed")
+	}
+	floatFiles := maps.Clone(files)
+	floatFiles[path] = []byte(strings.Replace(source, floatAnchor, `struct.pack_into("<d", image, dst, 0.0)`, 1))
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := pythonFixedTree(t, floatFiles)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + script), "old": oldWire})
+		if err == nil || !strings.Contains(stderr, "numeric_evolution_control") {
+			t.Fatalf("float widening control escaped: %v\n%s", err, stderr)
+		}
+	}
 	writerAnchor := `records.append(root["prefix"] + image)`
 	if strings.Count(source, writerAnchor) != 1 {
 		t.Fatal("writer control anchor changed")
@@ -568,6 +581,10 @@ func TestPythonFixedProofEvolutionWideningCorpus(t *testing.T) {
 		{"array_elem_widen", `assert rows[0].vals == [-1, -32768, 32767, 0] and report.widened == 4`, `value[0].lead = 0xAAAAAAAAu; value[0].vals_count = 4; value[0].vals[0] = -1; value[0].vals[1] = -32768; value[0].vals[2] = 32767; value[0].vals[3] = 0; value[0].trail = 0xBBBBBBBBu;`, 1},
 		{"range_widen", `assert rows[0].v == 100`, `value[0].lead = 0xAAAAAAAAu; value[0].v = 100; value[0].trail = 0xBBBBBBBBu;`, 1},
 		{"cfloat_range_widen", `assert rows[0].aim == 0.5`, `value[0].lead = 1; value[0].aim = 0.5f; value[0].trail = 2;`, 1},
+		{"bits_grow", `assert rows[0].lead == 0xAAAAAAAA and rows[0].v == 0xFF and rows[0].trail == 0xBBBBBBBB and report.widened == 1`, `value[0].lead = 0xAAAAAAAAu; value[0].v = 0xFFu; value[0].trail = 0xBBBBBBBBu;`, 1},
+		{"fixed_I_grow", `assert rows[0].lead == 0xAAAAAAAA and rows[0].v == -1 and rows[0].trail == 0xBBBBBBBB and report.widened == 1`, `value[0].lead = 0xAAAAAAAAu; value[0].v = -1; value[0].trail = 0xBBBBBBBBu;`, 1},
+		{"fixed_I_grow_element", `assert rows[0].lead == 0xAAAAAAAA and rows[0].vals == [-1, -128, 0, 112] and rows[0].trail == 0xBBBBBBBB and report.widened == 4`, `value[0].lead = 0xAAAAAAAAu; value[0].vals[0] = -1; value[0].vals[1] = -128; value[0].vals[2] = 0; value[0].vals[3] = 112; value[0].trail = 0xBBBBBBBBu;`, 1},
+		{"cfloat_res_refine", `assert rows[0].lead == 1 and rows[0].aim == 0.30000001192092896 and rows[0].trail == 2 and report.widened == 0`, `value[0].lead = 1; value[0].aim = 0.3f; value[0].trail = 2;`, 1},
 		{"union_arm_payload_widen", `assert rows[0].pick.type == 1 and rows[0].pick.alpha.x == 21 and rows[0].pick.alpha.y == 55 and rows[0].seq == 18`, `value[0].pick.type = PickType::Alpha; value[0].pick.alpha.x = 21; value[0].seq = 18;`, 1},
 	} {
 		t.Run(tc.row, func(t *testing.T) {
@@ -579,7 +596,7 @@ func TestPythonFixedProofEvolutionWideningCorpus(t *testing.T) {
 			if !ok {
 				t.Fatal("missing writer layout")
 			}
-			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables[root]}}})
+			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables[root]}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -690,7 +707,7 @@ func TestPythonFixedProofEvolutionWriterBounds(t *testing.T) {
 			if !ok {
 				t.Fatal("missing writer layout")
 			}
-			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables[root]}}})
+			files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{root: {{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables[root]}}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -761,7 +778,7 @@ func TestPythonFixedProofEvolutionRetirementControl(t *testing.T) {
 	if !ok {
 		t.Fatal("missing writer layout")
 	}
-	e := pythontable.FixedLineageEntry{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Writer: old.Tables["T"], Retired: true}
+	e := pythontable.FixedLineageEntry{Wire: entry.Wire, Layout: entry.Layout, Record: entry.Record, Digest: entry.Digest, Writer: old.Tables["T"], Retired: true}
 	retired, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {e}})
 	if err != nil {
 		t.Fatal(err)
