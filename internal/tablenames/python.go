@@ -64,6 +64,8 @@ func init() {
 		Name{Name: "measure_messages", What: "measure a message batch", Scoped: true},
 		Name{Name: "save_messages", What: "save a message batch", Scoped: true},
 		Name{Name: "ANNOUNCEMENT", What: "the unit's message announcement", Scoped: true},
+		Name{Name: "_widens", What: "array element widening predicate", Scoped: true},
+		Name{Name: "_read_widened", What: "array element widening reader", Scoped: true},
 		Name{Name: "kinds", What: "the field-kind dispatch table", Scoped: true},
 		Name{Name: "FieldKind", What: "the field codec protocol", Scoped: true},
 		Name{Name: "FORM", What: "the variable form's form byte (1)", Scoped: true},

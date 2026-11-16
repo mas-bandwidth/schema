@@ -12,8 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestFramingPurposeSpellingsRemain checks the deliberate non-canonical
-// framing and rewrite cases directly on the wire, without asking a reader.
+// TestFramingPurposeSpellingsRemain checks the non-canonical framing and
+// ID-order cases and the reordered-field positive directly on the wire.
 func TestFramingPurposeSpellingsRemain(t *testing.T) {
 	t.Parallel()
 	root := conformanceRoot(t)

@@ -1179,7 +1179,7 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 	}
 	codec := codecOf(f)
 	switch codec {
-	case "keyed", "string_blob", "bytes_blob":
+	case "keyed":
 		codec = "unsupported"
 	}
 	elemCodec := ""
@@ -1350,6 +1350,12 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	if codec == "enum" {
+		fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+		if dep := deprecatedOrdinals(f); dep != "" {
+			fmt.Fprintf(b, "                deprecated=%s,\n", dep)
+		}
+	}
 	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
 	fmt.Fprintf(b, "            ),\n")
 	keys := make([]string, 0, f.ArrayBound)
@@ -1369,7 +1375,7 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
 // element the keyed kind does not carry yet: bool, the integer and
-// fixed-point kinds, and tables by value.
+// fixed-point kinds, enums, and tables by value.
 func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1377,8 +1383,13 @@ func keyedElemCodec(f *ir.Field) string {
 	case ir.TInt, ir.TFixed:
 		return "int"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-			return "table"
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref.IsTable {
+				return "table"
+			}
+		case *ir.Enum:
+			return "enum"
 		}
 	}
 	return ""
