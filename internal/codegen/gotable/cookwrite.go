@@ -76,17 +76,6 @@ func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,l
 `
 	}
 	s = tableSourceReplace(s, "type tableCookWriter struct {", "type tableCookWriter struct { numbering *TableNumbering;", 1)
-	// §2.3: an absent ?T over a variable closure owns no node, so the cooked
-	// writer follows its references only while it rides and writes them null
-	// otherwise. The gate is presence, not a dead counted-array slot: §7.6
-	// still refuses a non-null pointer in storage the numbering walk did not
-	// reach, so a slot past the count is written fully live and meets
-	// reference's refusal. Emitted only where the construct is, so no other
-	// unit moves.
-	if len(ir.TableOptionalPointerClosures(u)) > 0 {
-		s = tableSourceReplace(s, " if f.Pointer{return w.reference((*int64)(p),at)}\n", " if f.Pointer{if !live{return true};return w.reference((*int64)(p),at)}\n", 1)
-		s = tableSourceReplace(s, "live&&i<used", "live", 1)
-	}
 	s += goCookRegionWriteRuntime
 	if !unitHasContainers(u) {
 		s += "func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool{return false}\n"
@@ -107,6 +96,7 @@ func(w *tableCookWriter) record(p unsafe.Pointer,t *TableTypeInfo,at int64,live 
  for i:=range t.Fields {f:=&t.Fields[i];rides:=live&&tableJSONGuardHolds(p,t,f.Guard);if f.Optional {rides=rides&&*(*bool)(unsafe.Add(p,f.PresentOffset))};if !w.field(p,f,at,rides){return false}};return true
 }
 func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
+ if !live{return true}
  p:=unsafe.Add(base,f.Offset);dest:=at+int64(f.CookOffset)
  if f.Optional {v:=uint64(0);if *(*bool)(unsafe.Add(base,f.PresentOffset)){v=1};w.put(at+int64(f.CookPresentOffset),v,1)}
  if f.List||f.Map {return w.container(p,f,dest,live)}
@@ -119,6 +109,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
  for i:=int32(0);i<count;i++ {if !w.value(unsafe.Add(p,int64(i)*int64(f.ElemSize)),f,dest+int64(i)*int64(f.CookElemSize),live&&i<used){return false}};return true
 }
 func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
+ if !live{return true}
  if f.Pointer{return w.reference((*int64)(p),at)}
  if f.Arms!=nil {u:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};w.put(at,tag,u.CookTagSize);if tag==0||u.Arms[tag].Void{return true};return w.field(p,&u.Arms[tag].Field,at,live)}
  if f.Table!=nil{return w.record(p,f.Table(),at,live)}
