@@ -27,3 +27,9 @@ and the runtime rejects unknown keys, duplicate keys, values outside declared
 bounds, malformed references and resource-limit violations before publishing a
 value. The JSON reader supplies the final value walk; hand-text integers first
 use exact decimal arithmetic and never pass through a binary float.
+
+For a text channel that must carry the binary wire instead, `value.save_text()`
+returns standard padded Base64 without whitespace or a newline, and
+`Table.load_text(text, report=None)` decodes that canonical spelling and calls
+the table's ordinary binary loader. Noncanonical or damaged Base64 is refused;
+the wire's own framing and validation rules apply after decoding.

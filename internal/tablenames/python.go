@@ -27,6 +27,8 @@ func init() {
 		Name{Name: "Document", What: "a preserved hand-text document", Scoped: true},
 		Name{Name: "Limits", What: "hand-text resource ceilings", Scoped: true},
 		Name{Name: "Comment", What: "hand-text comment span and attachment", Scoped: true},
+		Name{Name: "decode_text", What: "decode a canonical Base64 wire carrier", Scoped: true},
+		Name{Name: "encode_text", What: "encode a Base64 wire carrier", Scoped: true},
 		Name{Name: "parse_with_comments", What: "scan hand-text while retaining comments", Scoped: true},
 		Name{Name: "read", What: "read a hand-text document", Scoped: true},
 		Name{Name: "load", What: "resolve a hand-text document", Scoped: true},

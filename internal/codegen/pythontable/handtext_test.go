@@ -111,9 +111,11 @@ for token in (b'8 :enabled false', b' 8', b'(8)'):
 
 func TestPythonHandtextReservedName(t *testing.T) {
 	t.Parallel()
-	unit := loadUnit(t, "package probe\ntable Root { from_text_form int32 }\n")
-	if _, err := Generate(unit); err == nil || !strings.Contains(err.Error(), "from_text_form") {
-		t.Fatalf("generated method collision was not refused: %v", err)
+	for _, name := range []string{"from_text_form", "load_text", "save_text"} {
+		unit := loadUnit(t, "package probe\ntable Root { "+name+" int32 }\n")
+		if _, err := Generate(unit); err == nil || !strings.Contains(err.Error(), name) {
+			t.Fatalf("generated method collision %s was not refused: %v", name, err)
+		}
 	}
 }
 
@@ -539,6 +541,72 @@ assert value.values == [3], 'HANDTEXT_ARRAY_ROOT_CONTROL'
 		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
 		if err == nil || !strings.Contains(stderr, "HANDTEXT_ARRAY_ROOT_CONTROL") {
 			t.Fatalf("array root control: %v %s", err, stderr)
+		}
+	}
+}
+
+func TestPythonHandtextWireCarrier(t *testing.T) {
+	t.Parallel()
+	files, err := Generate(loadUnit(t, coreSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `import base64
+from core import Counters, Root, Refused, LoadReport
+for cls in (Counters, Root):
+    value = cls()
+    wire = value.save()
+    text = value.save_text()
+    assert text == base64.b64encode(wire).decode('ascii') and '\n' not in text
+    assert cls.load_text(text).save() == wire
+    for damaged in ('/x==', 'AQ=', 'AQ==\n', 'AQ== ', '!AAA', 'é', b'AQ=='):
+        report = LoadReport()
+        report.unknown = 17
+        try:
+            cls.load_text(damaged, report)
+        except Refused:
+            assert report.unknown == 17
+        else:
+            raise AssertionError(('accepted', damaged))
+print('ok')
+`
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); got != "ok\n" {
+			t.Fatalf("wire carrier: %s", got)
+		}
+	}
+}
+
+func TestPythonHandtextWireCarrierNegativeControl(t *testing.T) {
+	t.Parallel()
+	files, err := Generate(loadUnit(t, coreSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "core/_schema/text_carrier.py"
+	source := string(files[path])
+	const anchor = "if base64.b64encode(wire) != encoded:"
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("wire carrier control anchor missing")
+	}
+	files[path] = []byte(strings.Replace(source, anchor, "if False:", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from core import Refused
+from core._schema.text_carrier import decode_text
+try:
+    decode_text('/x==')
+except Refused:
+    pass
+else:
+    raise AssertionError('HANDTEXT_CARRIER_CANONICAL_CONTROL')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "HANDTEXT_CARRIER_CANONICAL_CONTROL") {
+			t.Fatalf("wire carrier control: %v %s", err, stderr)
 		}
 	}
 }

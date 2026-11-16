@@ -19,7 +19,7 @@ const HelperPrefix = "_s_"
 var generatedMembers = wordSet(`read write load save descriptor`)
 
 // These methods are emitted on table classes, not packet classes.
-var generatedTableJSONMembers = wordSet(`from_json to_json from_text_form`)
+var generatedTableJSONMembers = wordSet(`from_json to_json from_text_form load_text save_text`)
 
 // moduleNames are the names a generated module binds itself: the imports it
 // spells unqualified and the constants it writes beside the declarations. A
@@ -79,7 +79,7 @@ func CheckNames(u *ir.Unit) error {
 			}
 			for _, field := range t.Fields {
 				if generatedTableJSONMembers[field.Name] {
-					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated JSON method; rename the field", f.Base, t.Name, field.Name)
+					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated table text method; rename the field", f.Base, t.Name, field.Name)
 				}
 			}
 		}
