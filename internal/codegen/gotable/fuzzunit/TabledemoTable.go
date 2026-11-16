@@ -28,13 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-<<<<<<< HEAD
-const _ = uint64(goruntime.Version - 0x11536863a144e917)
-const _ = uint64(0x11536863a144e917 - goruntime.Version)
-=======
-const _ = uint64(goruntime.Version - 0xaf3c2a0488047dc2)
-const _ = uint64(0xaf3c2a0488047dc2 - goruntime.Version)
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
+const _ = uint64(goruntime.Version - 0x1bd5b16bed89d84d)
+const _ = uint64(0x1bd5b16bed89d84d - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -47,10 +42,6 @@ func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJ
 func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
-
-type tableFirstUse = goruntime.TableFirstUse
-
-type tableFirstUseRun = goruntime.TableFirstUseRun
 
 func tableFirstUseCount(a0 *TableReport, a1 uint8) { goruntime.TableFirstUseCount(a0, a1) }
 
@@ -117,6 +108,10 @@ type TableMissingRequired = goruntime.TableMissingRequired
 type TableOutOfRange = goruntime.TableOutOfRange
 
 type TableMalformedField = goruntime.TableMalformedField
+
+const tableWireBytesID = goruntime.TableWireBytesID
+
+const tableWireStringID = goruntime.TableWireStringID
 
 func tableLebBytes(a0 uint64) int64 { return goruntime.TableLebBytes(a0) }
 
@@ -314,15 +309,7 @@ func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 Tabl
 	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4)
 }
 
-<<<<<<< HEAD
-func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) bool {
-=======
-func tableMessageSkipBody(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 int) bool {
-	return goruntime.TableMessageSkipBody(a0, a1, a2, a3)
-}
-
 func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) (bool, bool) {
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	return goruntime.TableMessageReadScalar(a0, a1, a2)
 }
 

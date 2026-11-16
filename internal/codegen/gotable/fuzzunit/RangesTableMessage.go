@@ -229,14 +229,9 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedSignedReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1493,14 +1488,9 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedUnsignedReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2658,14 +2648,9 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedWidthsReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {

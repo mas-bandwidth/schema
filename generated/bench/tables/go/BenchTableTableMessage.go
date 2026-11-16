@@ -1095,14 +1095,9 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableEntityReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2002,14 +1997,9 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableStatReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2601,14 +2591,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableMixedReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -4313,14 +4298,9 @@ func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) b
 func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableHitEventReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -4595,14 +4575,9 @@ func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent)
 func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TableChatEventReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -4772,14 +4747,9 @@ func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEv
 func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupEvent, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TablePickupEventReset(value)
-<<<<<<< HEAD
-=======
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
 	_ = exact
->>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
