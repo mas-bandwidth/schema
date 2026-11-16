@@ -1,0 +1,2 @@
+package msgarrayevo
+fixed table Probe { items [..4]int32 }

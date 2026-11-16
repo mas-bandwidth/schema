@@ -225,7 +225,7 @@ class Ctx:
         self.nonfinite: list[bool] | None = None
 
 
-def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T:
+def load_table(cls: type[_T], data: Any, report: LoadReport | None = None, retain: Any = None) -> _T:
     view = buffer_view(data)
     ids = _id_table(view)
     _check_id_order(view, ids)
@@ -254,11 +254,19 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
     _resolve(ctx)
     if ctx.missing:
         raise Refused("missing_required", ", ".join(ctx.missing))
+    retained = 0
+    lost = 0
+    if retain is not None:
+        from importlib import import_module
+
+        retained, lost = import_module(__package__ + ".retain")._capture_file(cls, view, retain, ids)
+        retain.directory = ctx.nodes
+        retain.loaded_root = obj
     if report is not None:
         report.unknown = ctx.unknown
         report.widened = ctx.widened
-        report.retained = 0
-        report.retain_lost = 0
+        report.retained = retained
+        report.retain_lost = lost
     return obj
 
 
@@ -329,6 +337,8 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool, map_key: FieldDes
         reference = reader.varint()
         if reference == 0:
             break
+        if root and ctx.saw_node:
+            raise Refused("wire_damaged", "the node table is not the root body's last field")
         field_id = reader.id_at(reference)
         kind = reader.byte()
         if field_id in seen:
@@ -465,6 +475,8 @@ def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
         if blob and length > kind_blob._BLOB_CAP:
             raise Refused("blob_over_size_cap", "a byte buffer record is past the storage cap")
         body = reader.take(length)
+        if type_id in (NODE_WIRE_ID, _BUILD_VERSION_WIRE_ID, _MESSAGE_VOCABULARY_WIRE_ID):
+            raise Refused("wire_damaged", "a reserved id in a record's type position")
         edges: list[int] = []
         ctx.children.append(edges)
         types.append(type_id)
@@ -671,10 +683,13 @@ def _check_file(view: memoryview, ids: list[int]) -> None:
     ctx.nonfinite = []
     reader = Reader(view, 1, _body_end(view), ids)
     seen: set[int] = set()
+    saw_node = False
     while True:
         reference = reader.varint()
         if reference == 0:
             break
+        if saw_node:
+            raise Refused("wire_damaged", "the node table is not the root body's last field")
         field_id = reader.id_at(reference)
         if field_id in seen:
             raise Refused("wire_damaged", "the same field id twice in one body")
@@ -686,6 +701,7 @@ def _check_file(view: memoryview, ids: list[int]) -> None:
             if kind != 12:
                 raise Refused("wire_damaged", "the node table under a kind other than 12")
             _check_node_table(reader.take(reader.varint()), ctx)
+            saw_node = True
             continue
         _skip_payload(reader, kind, ctx, 0)
     if reader.pos != reader.end:

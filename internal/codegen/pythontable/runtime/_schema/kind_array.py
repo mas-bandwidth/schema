@@ -153,8 +153,18 @@ def _read_widened(sub: Any, wire: int, element: FieldDesc, count: int) -> list[A
 def _write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
     """The per-element shape: each element through its own kind module."""
     codec = cast(kinds._ElementKind, kinds._REGISTRY[element.codec])
-    for item in value:
-        codec.write_element(w, element, item, ctx)
+    from .save import _RetainCtx
+
+    if isinstance(ctx, _RetainCtx) and element.codec == "table":
+        parent = ctx.steps
+        ordinal = ctx.ordinal
+        for index, item in enumerate(value):
+            ctx.steps = parent + ((ordinal, index),)
+            codec.write_element(w, element, item, ctx)
+        ctx.steps = parent
+    else:
+        for item in value:
+            codec.write_element(w, element, item, ctx)
 
 
 def _write_bulk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> bool:
@@ -244,14 +254,24 @@ class _Array:
         # follow their holder's.
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
-        body = bytearray()
-        writer = _writer(body)
-        writer.byte(fd.elem_kind)
-        writer.varint(len(value))
-        if not _write_bulk(writer, element, value, ctx):
-            _write_walk(writer, element, value, ctx)
-        w.varint(len(body))
-        w.raw(body)
+        from .save import _RetainCtx
+
+        if isinstance(ctx, _RetainCtx):
+            frame = w.begin_frame()
+            w.byte(fd.elem_kind)
+            w.varint(len(value))
+            if not _write_bulk(w, element, value, ctx):
+                _write_walk(w, element, value, ctx)
+            w.finish_frame(frame)
+        else:
+            body = bytearray()
+            writer = _writer(body)
+            writer.byte(fd.elem_kind)
+            writer.varint(len(value))
+            if not _write_bulk(writer, element, value, ctx):
+                _write_walk(writer, element, value, ctx)
+            w.varint(len(body))
+            w.raw(body)
 
     def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         raise Refused("unsupported_kind", "an unbounded array cannot be an element")

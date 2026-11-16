@@ -1,0 +1,4 @@
+package lockdemo
+fixed table Row {
+ a int128 | min = 0, max = 1208925819614629174706176
+}

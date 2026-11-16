@@ -55,7 +55,7 @@ func TestSpecGoS210S21LockV7Lineage(t *testing.T) {
 			row:  "§2.10 lock v8 and lineage",
 			text: lock,
 			wants: []string{
-				"schema-lock 8",
+				"schema-lock 9",
 				"lineage wire=",
 				"bits=",
 				"ibits=",

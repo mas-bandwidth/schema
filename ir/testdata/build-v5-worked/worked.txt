@@ -1,0 +1,13 @@
+schema-build-version 5
+protocol 0123456789abcdef
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record ShipConfig sizeof=12 alignof=4
+    field 7f6308be8ab37fc0 kind=10 offset=0 size=4 default=21.0
+    field 1733055702acb1d2 kind=10 offset=4 size=4 default=500.0
+    field d19988b67e699194 kind=6 offset=8 size=1 min=0 max=100
+    field 32a89b2977c48ad4 kind=30 offset=9 size=1 enum=Grade default=Silver
+enum Grade
+    variant 1 Bronze
+    variant 2 Silver
+    variant 3 Gold

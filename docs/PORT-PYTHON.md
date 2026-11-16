@@ -563,7 +563,7 @@ A cell becomes ✅ when the layer that carries it lands with its proof.
 | P10 | the conformance driver, every surface | `port/python/p10-conformance` |
 | P11 | the wire-fuzz differential | `port/python/p11-wirefuzz` |
 | P12 | the hostile corpus runner and resource bounds | `port/python/p12-hostile` |
-| P13 | cards | `port/python/p13-cards` |
+| P13 | [cards](port-python/table-cards.md) | `port/python/p13-cards` |
 | P14 | the strict analyzer gate and every negative control | `port/python/p14-lint-controls` |
 | P15 | CI, nightly fuzz, readiness, bench legs, release tier | `port/python/p15-ci` |
 | P16 | USAGE fragments, per-language prose, the register complete | `port/python/p16-docs` |
@@ -690,3 +690,20 @@ Each kind a card adds to the packet or the table leg has its own page under
 (`packet-<kind>.md`, `table-<kind>.md`): what the kind carries, its code
 shape and its measured bench numbers. The first is
 [packet-floats.md](port-python/packet-floats.md).
+
+The form-3 codec's current oracle-gated `FixedLoad` and `FixedSave` timings,
+method and reproducible target are recorded in
+[Python fixed-form files](port-python/table-fixed-form.md).
+
+
+### Selecting table surfaces
+
+`schema generate --lang python --surface wire` emits table descriptors and
+variable-table wire methods while omitting fixed batch methods, fixed layout
+metadata and block descriptors. A declared fixed root's plain `load`, `save`
+and `measure` refuse `fixed_surface_not_selected`; they never fall back to
+form 1. Select `fixed` to include its batch API and form-3 file methods, or
+`block` to include block descriptors; both imply `wire`. The absent option and
+explicit full default set preserve existing output. Other explicit Python
+surface requests are refused until their emitters connect selection; this does
+not register support for per-table `forms` declarations (SPEC-TABLES §8.8).

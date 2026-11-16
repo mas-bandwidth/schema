@@ -19,7 +19,9 @@ test-python: python-ci-support
 	$(MAKE) --no-print-directory python-ci-compiler
 
 .PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
-PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
+PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-compiler-coverage python-ci-map-bench-current python-ci-map-bench-floor python-ci-map-bench-coverage
+PYTHON_PACKET_CORE_SHARDS := $(addprefix python-ci-packet-core-,0 1 2 3 4 5 6 7)
+PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_PACKET_CORE_SHARDS) python-ci-packet-core-coverage
 python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
 .PHONY: python-ci-support-list
 python-ci-support-list:
@@ -29,6 +31,12 @@ python-ci-packages:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 python-ci-compiler:
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -skip '^TestPythonRequiredPublicShapes$$' -count=1
+python-ci-compiler-coverage:
+	sh test/slowgate/proof python-ci-compiler-coverage 'TestPythonCompilerCIShardCoverage' ./internal/ci -run '^TestPythonCompilerCIShardCoverage$$' -count=1
+# Planner-selected compiler shards retain run-proof, including the four
+# named gates of the aggregate. New matching tests are discovered by Go.
+python-ci-compiler-shard-%:
+	sh tools/python-ci-compiler-shard.sh '$*'
 update-goldens-python: ;
 
 # python-packet-core-negative-control: the packet core's own control. It edits
@@ -89,6 +97,12 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 		fi; \
 	done
 	@echo "conformance-python: $$(ls -d $@/*/ 2>/dev/null | wc -l | tr -d " ") units generated, $$(ls $@/*.refused 2>/dev/null | wc -l | tr -d " ") refused by name"
+	# Framing exercises form 1 for Cfg, whose source also declares a fixed class.
+	@test "$$(grep -c '^fixed table Cfg$$' test/tables/R1.schema)" = 1
+	@test "$$(grep -c '^package tblr1$$' test/tables/R1.schema)" = 1
+	@mkdir -p $@/tblr1/_framing/source $@/tblr1/_framing/tblr1
+	@sed -e 's/^fixed table Cfg$$/table Cfg/' -e 's/^package tblr1$$/package tblr1_framing/' test/tables/R1.schema > $@/tblr1/_framing/source/R1.schema
+	./build/schema-python generate --lang python --out $@/tblr1/_framing/tblr1 $@/tblr1/_framing/source/R1.schema
 
 # The table core's negative control: the generated runtime's form byte is
 # moved in a copy, and the interpreter probe must go red by name. It needs the
@@ -158,3 +172,17 @@ python-hosted-packet-text: python-toolchain-check
 python-hosted-packet-text-negative-control: python-toolchain-check
 	sh test/slowgate/proof python-hosted-packet-text-negative-control 'TestPythonHostedPacketTextNegativeControl/current TestPythonHostedPacketTextNegativeControl/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketTextNegativeControl$$' ./internal/codegen/pythontable/
 python-ci-hosted: python-hosted-packet-text python-hosted-packet-text-negative-control
+
+# Run every packet pin on both interpreters, partitioned for per-commit CI.
+.PHONY: $(PYTHON_PACKET_CORE_SHARDS)
+$(PYTHON_PACKET_CORE_SHARDS): python-ci-packet-core-%:
+	SCHEMA_SLOW=1 PYTHON_PACKET_CORE_SHARD=$* go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCore$$' ./internal/codegen/python/
+
+.PHONY: python-ci-packet-core-coverage
+python-ci-packet-core-coverage:
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestPythonPacketCoreCIPlan$$' ./internal/ci/
+.PHONY: python-ci-map-bench-current python-ci-map-bench-floor python-ci-map-bench-coverage
+python-ci-map-bench-current python-ci-map-bench-floor: python-ci-map-bench-%:
+	SCHEMA_SLOW=1 PYTHON_MAP_BENCH_PIN=$* go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMapShapeBench$$' ./internal/codegen/pythontable/
+python-ci-map-bench-coverage:
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestPythonMapBenchCIPlan$$' ./internal/ci/

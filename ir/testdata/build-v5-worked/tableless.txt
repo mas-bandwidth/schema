@@ -1,0 +1,4 @@
+schema-build-version 5
+protocol 0123456789abcdef
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8

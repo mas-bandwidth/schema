@@ -2,11 +2,17 @@ package tablewire
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -17,7 +23,8 @@ import (
 //
 // The pin is the goose refusal pin's own unit and value
 // (internal/codegen/goosetable/testdata/load_refusal_reasons.tsv), and the two
-// files are the C++ reference's: fixedRootForm3 is RootFixedSave of one record,
+// files are the C++ reference's: fixedRootLegacyForm3 preserves the original RootFixedSave file;
+// fixedRootForm3 is the v2 C++ reference regenerated for that same value,
 // and fixedRootForm1 is the same value under the variable form's writer, the
 // bytes every plain Save wrote at a fixed root before the ruling.
 const fixedRootUnit = `package fixedpin
@@ -32,8 +39,9 @@ fixed table Root
 `
 
 const (
-	fixedRootForm3 = "030000000000000009cb5e63a5a41b685900000005000000a5b251ef2bfe7cca0d0a000000040000008cec01864cdc63af040400000000000000170b8c0879d0f2d50101000000000000008c9998e072e16c7d020100000000000000d9ea01864cdb63af0a040000000000000009cb5e63a5a41b680700000001030000c03f"
-	fixedRootForm1 = "01010407000000020101030203040a0000c03f008cec01864cdc63af170b8c0879d0f2d58c9998e072e16c7dd9ea01864cdb63af0400000000000000"
+	fixedRootLegacyForm3 = "030000000000000009cb5e63a5a41b685900000005000000a5b251ef2bfe7cca0d0a000000040000008cec01864cdc63af040400000000000000170b8c0879d0f2d50101000000000000008c9998e072e16c7d020100000000000000d9ea01864cdb63af0a040000000000000009cb5e63a5a41b680700000001030000c03f"
+	fixedRootForm3       = "03000000000000007275e527d2d06e495900000005000000a5b251ef2bfe7cca0d0a000000040000008cec01864cdc63af040400000000000000170b8c0879d0f2d50101000000000000008c9998e072e16c7d020100000000000000d9ea01864cdb63af0a04000000000000007275e527d2d06e490700000001030000c03f"
+	fixedRootForm1       = "01010407000000020101030203040a0000c03f008cec01864cdc63af170b8c0879d0f2d58c9998e072e16c7dd9ea01864cdb63af0400000000000000"
 )
 
 func fixedRootValue(t *testing.T, m *tabletext.Model) *tabletext.Instance {
@@ -74,6 +82,65 @@ func TestFixedRootReadsForm3(t *testing.T) {
 	back, err := Encode(m, inst)
 	if err != nil || !bytes.Equal(back, mustHex(t, fixedRootForm3)) {
 		t.Fatalf("the value read back does not write the same bytes: %x, %v", back, err)
+	}
+}
+
+// The old C++ bytes remain an actual cross-epoch fixture. An explicitly
+// recorded key and checked historical writer supply their source contract;
+// decoding does not silently reinterpret them as the new own epoch.
+func TestFixedRootReadsLegacyForm3WithExplicitWriter(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "FixedRoot.schema")
+	if err := os.WriteFile(path, []byte(fixedRootUnit), 0600); err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{path}
+	parsed, parseErrors := parser.Parse(path, []byte(fixedRootUnit))
+	if len(parseErrors) != 0 {
+		t.Fatal(parseErrors)
+	}
+	u, checkErrors := check.Unit([]check.SourceFile{{Path: path, Name: "FixedRoot.schema", Base: "FixedRoot", Bytes: []byte(fixedRootUnit), AST: parsed}})
+	if len(checkErrors) != 0 {
+		t.Fatal(checkErrors)
+	}
+	locked := lockfile.Render(u)
+	root := u.Tables["Root"]
+	current := locked.Table("Root").Lineage[0]
+	old := current
+	old.Digest = ir.TableFixedDefinitionsDigestLegacy(root)
+	old.Wire = ir.TableFixedLayoutHashRecorded(old.Layout, old.Digest)
+	old.Writer = nil
+	legacy := mustHex(t, fixedRootLegacyForm3)
+	if old.Wire != binary.LittleEndian.Uint64(legacy[8:16]) || old.Wire == current.Wire {
+		t.Fatal("legacy fixture no longer identifies its original writer epoch")
+	}
+	locked.Table("Root").Lineage = []lockfile.LineageEntry{old, current}
+	if err := os.WriteFile(filepath.Join(dir, lockfile.FileName), []byte(locked.Text()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// fixedRootUnit is the recorded declaration that produced the old C++
+	// fixture, unchanged here. Strict legacy-v1 digest validation must pass.
+	if _, _, err := lockfile.ImportWriter(u, paths, fmt.Sprintf("Root@0x%016x", old.Wire), u); err != nil {
+		t.Fatal(err)
+	}
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	ok, err := Decode(m, inst, legacy, &report)
+	if err != nil || !ok || !report.Silent() {
+		t.Fatalf("explicit old C++ read: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	back, err := Encode(m, inst)
+	if err != nil || !bytes.Equal(back, mustHex(t, fixedRootForm3)) {
+		t.Fatalf("old value must save under the current epoch: %x %v", back, err)
+	}
+	// With no matching recorded history the same old bytes are unknown.
+	plain := covModel(t, fixedRootUnit)
+	var unknown tabletext.Report
+	ok, err = Decode(plain, plain.New(plain.Lookup("Root")), legacy, &unknown)
+	if ok || err == nil || unknown.Reason != FixedReasonLayoutUnknown {
+		t.Fatalf("unrecorded old epoch accepted: ok=%v err=%v report=%+v", ok, err, unknown)
 	}
 }
 

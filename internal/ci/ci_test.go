@@ -561,16 +561,19 @@ func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
 // ciEvent models a GitHub Actions trigger context for static workflow admission
 // and branch-routing tests. Never execute untrusted fork code to test policy.
 type ciEvent struct {
-	Name     string   // "pull_request", "push", "schedule", "workflow_dispatch"
-	Branch   string   // target branch for push, or base_ref for pull_request
-	HeadRef  string   // head_ref for pull_request
-	Repo     string   // github.repository, e.g. "mas-bandwidth/schema"
-	HeadRepo string   // github.event.pull_request.head.repo.full_name
-	Labels   []string // pull_request labels
-	PlanPkgs string   // needs.plan.outputs.packages
-	PlanLegs string   // needs.plan.outputs.legs
-	PRPins   string   // needs.pr-select.outputs.pins (ci-full.yml)
-	PRCS     string   // needs.pr-select.outputs.cs (ci-full.yml)
+	Name           string   // "pull_request", "push", "schedule", "workflow_dispatch"
+	Branch         string   // target branch for push, or base_ref for pull_request
+	HeadRef        string   // head_ref for pull_request
+	Repo           string   // github.repository, e.g. "mas-bandwidth/schema"
+	HeadRepo       string   // github.event.pull_request.head.repo.full_name
+	Labels         []string // pull_request labels
+	PlanPkgs       string   // needs.plan.outputs.packages
+	PlanLegs       string   // needs.plan.outputs.legs
+	PlanRows       string   // needs.plan.outputs.rows
+	PlanResult     string   // needs.plan.result, success when omitted
+	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
+	PRPins         string   // needs.pr-select.outputs.pins (ci-full.yml)
+	PRCS           string   // needs.pr-select.outputs.cs (ci-full.yml)
 }
 
 type selfHostedJob struct {
@@ -769,6 +772,10 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 		}
 		return true, nil
 	}
+	if rest, ok := strings.CutPrefix(expr, "!"); ok {
+		value, err := evalCIExpr(rest, ev)
+		return !value, err
+	}
 	if strings.HasPrefix(expr, "contains(") && strings.HasSuffix(expr, ")") {
 		inner := strings.TrimSpace(expr[len("contains(") : len(expr)-1])
 		lhs, rhs, ok := strings.Cut(inner, ",")
@@ -777,6 +784,17 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 		}
 		lhs = strings.TrimSpace(lhs)
 		want := strings.Trim(strings.TrimSpace(rhs), `"'`)
+		if lhs == "needs.plan.outputs.rows" {
+			rows, err := resolveCIToken(lhs, ev)
+			if err != nil {
+				return false, err
+			}
+			raw := strings.TrimSpace(rhs)
+			if len(raw) >= 2 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
+				want = raw[1 : len(raw)-1]
+			}
+			return strings.Contains(rows, want), nil
+		}
 		if lhs == "needs.plan.outputs.legs" {
 			// the plan's legs are a JSON array of strings; a leg is in it
 			// when its quoted name is
@@ -924,6 +942,26 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return "skipped", nil
 		}
 		return "success", nil
+	case "needs.plan.result":
+		if ev.PlanResult != "" {
+			return ev.PlanResult, nil
+		}
+		return "success", nil
+	case "needs.go-fixed-corpus.result":
+		if ev.GoCorpusResult != "" {
+			return ev.GoCorpusResult, nil
+		}
+		return "success", nil
+	case "needs.plan.outputs.rows":
+		if ev.PlanRows != "" {
+			return ev.PlanRows, nil
+		}
+		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
+			if pkg == "./internal/codegen/gotable" || pkg == "./..." {
+				return `[{"make":"tables-go-fixedform"}]`, nil
+			}
+		}
+		return "[]", nil
 	case "needs.plan.outputs.packages":
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
@@ -1138,7 +1176,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1219,7 +1257,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1272,6 +1310,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-rust-runs-hostile-corpus.yml:corpus",
 		"schema-rust-runs-hostile-corpus.yml:negative-control",
 	} {
@@ -1346,6 +1385,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
+		"ci-fast.yml:ci-policy",
+		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
@@ -1384,8 +1425,10 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
 		"promotion-tag.yml:tag",
+		"python-leg.yml:fixed-corpus",
 		"python-leg.yml:plan",
 		"python-leg.yml:test",
+		"python-leg.yml:test-second",
 		"release.yml:release",
 		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
@@ -1429,6 +1472,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-generated-analyze-strict-gate.yml:gate",
 		"schema-moo-nightly-fuzz.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:wiring",
+		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-rust-runs-hostile-corpus.yml:corpus",
 		"schema-rust-runs-hostile-corpus.yml:negative-control",
 		"schema-shared-hostile-corpus.yml:drift",

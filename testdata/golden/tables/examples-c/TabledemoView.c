@@ -101,7 +101,7 @@ static const char * const MaxLoadoutSlots_view_tags[] = { "tuning" };
         { "MaxLoadoutSlots", "Tables.schema", "int64", 0, INT64_C(8), 0.0, "The slots a loadout admits. Raising it is a free edit on the wire: a\nbound sizes storage, and it is not an id.", 1, MaxLoadoutSlots_view_tags },
         { "MaxProfileName", "Tables.schema", "int64", 0, INT64_C(32), 0.0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-    static const tabledemo_unit_view_info_t info = { "tabledemo", 0xba7b344f28584d33ull,
+    static const tabledemo_unit_view_info_t info = { "tabledemo", 0x5c9bc5717146f630ull,
         4, types,
         19, tables,
         6, enums,

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package mapdemo — protocol id 0x1ac124decde5b2aa (packets only: tables version by field id, not by protocol id)
+// package mapdemo — protocol id 0x45d9d3ccd4c2f4b9 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2466,14 +2466,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xa1,
-    0x8a,
-    0x4b,
-    0x32,
-    0x79,
-    0xc3,
-    0x52,
-    0xe6,
+    0xe3,
+    0x9d,
+    0x54,
+    0x9e,
+    0x37,
+    0x1a,
+    0xd6,
+    0x22,
     0x02,
     0x0e,
     0xd3,
@@ -10853,7 +10853,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xe652c379324b8aa1ull;
+static const uint64_t BuildVersion = 0x22d61a379e549de3ull;
 
 } // namespace mapdemo
 
@@ -15427,7 +15427,7 @@ inline bool ShipConfigFixedClamp( ShipConfig & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t ShipConfigFixedBodyBytes = 72;
 constexpr int64_t ShipConfigFixedRecordBytes = 8 + ShipConfigFixedBodyBytes; // the hash and the body
-constexpr uint64_t ShipConfigFixedHash = 0x9579bc245248ed0full; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t ShipConfigFixedHash = 0x68bca3496d1e5dbcull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -15494,9 +15494,10 @@ constexpr int32_t ShipConfigFixedCoverCount = 2;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t ShipConfigFixedLineage[] = {
-    0x9579bc245248ed0full, // identity
+    0x9579bc245248ed0full, // lock
+    0x68bca3496d1e5dbcull, // identity
 };
-constexpr int32_t ShipConfigFixedLineageCount = 1;
+constexpr int32_t ShipConfigFixedLineageCount = 2;
 constexpr int32_t ShipConfigFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t ShipConfigFixedFloorLive = ShipConfigFixedFloor;
@@ -15509,14 +15510,22 @@ constexpr uint8_t ShipConfigFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x04,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t ShipConfigFixedKnown1Layout[] = {
+    0x03, 0x00, 0x00, 0x00, 0x0d, 0x4f, 0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x0d, 0x48, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x44, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout ShipConfigFixedKnown[] = {
-    { 0x9579bc245248ed0full, ShipConfigFixedKnown0Layout, 55, 80 }, // identity
+    { 0x9579bc245248ed0full, ShipConfigFixedKnown0Layout, 55, 80 }, // lock
+    { 0x68bca3496d1e5dbcull, ShipConfigFixedKnown1Layout, 55, 80 }, // identity
 };
 
 constexpr const TableFixedKnownRange * ShipConfigFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t ShipConfigFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t ShipConfigFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -15858,7 +15867,7 @@ inline int64_t ShipConfigFixedLoad( ShipConfig * values, int64_t capacity, const
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t ItemFixedBodyBytes = 4;
 constexpr int64_t ItemFixedRecordBytes = 8 + ItemFixedBodyBytes; // the hash and the body
-constexpr uint64_t ItemFixedHash = 0xd285587ad8f0ebdcull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t ItemFixedHash = 0xdf45971e0ae36e5bull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -15919,9 +15928,10 @@ constexpr int32_t ItemFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t ItemFixedLineage[] = {
-    0xd285587ad8f0ebdcull, // identity
+    0xd285587ad8f0ebdcull, // lock
+    0xdf45971e0ae36e5bull, // identity
 };
-constexpr int32_t ItemFixedLineageCount = 1;
+constexpr int32_t ItemFixedLineageCount = 2;
 constexpr int32_t ItemFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t ItemFixedFloorLive = ItemFixedFloor;
@@ -15933,14 +15943,21 @@ constexpr uint8_t ItemFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t ItemFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout ItemFixedKnown[] = {
-    { 0xd285587ad8f0ebdcull, ItemFixedKnown0Layout, 38, 12 }, // identity
+    { 0xd285587ad8f0ebdcull, ItemFixedKnown0Layout, 38, 12 }, // lock
+    { 0xdf45971e0ae36e5bull, ItemFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * ItemFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t ItemFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t ItemFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

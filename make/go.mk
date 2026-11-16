@@ -93,9 +93,10 @@ tables-go-shared-runtime:
 test-go: tables-go-shared-runtime
 
 # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md). The rows live in
-# test/conformance/go/rows under the test/conformance/go module; the fixed-form
-# rows read the C++ reference corpus, so the gate stands on the two build
-# stamps and the sibling runtime, exactly as tables-go-fixedform does.
+# test/conformance/go/rows under the test/conformance/go module. These rows use
+# generated Go, checked-source constants and committed/inline vectors; they do
+# not read fixedform-corpus. tables-go-fixedform above still owns the C++ corpus
+# byte gate. Rebuilding its broad dump here can exhaust CI before tests start.
 .PHONY: conformance-go-rows conformance-go-rows-a conformance-go-rows-b conformance-go-rows-negative-control
 # THE TWO HALVES feed ci-full.yml's go-test versioning matrix, one row each,
 # so each row runs about half the Go conformance rows in parallel (the single
@@ -103,11 +104,11 @@ test-go: tables-go-shared-runtime
 # umbrella target below keeps `make test-go` and the local run whole. Each
 # half runs ONLY its own rows (-run, anchored): before, both halves ran the
 # whole package and the names were only checked, so the split saved nothing.
-conformance-go-rows-a: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+conformance-go-rows-a: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
 		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR20' \
 		./rows/ -count=1 -timeout 600s -run '^(TestRowC12|TestRowC13|TestRowC14|TestRowC14WriterRefusesOutOfRange|TestRowC7|TestRowC8|TestRowC8WriterRefusesOutOfRange|TestRowCountedArraysValidData|TestRowE5|TestRowF12|TestRowF8|TestRowF8NegativeControl|TestRowF8RaggedTailByName|TestRowFloat32ValuesNonFiniteRefused|TestRowFloat32ValuesValidData|TestRowP2|TestRowP3|TestRowR10|TestRowR14|TestRowR14LayoutRecordTooLargeByName|TestRowR15|TestRowR17|TestRowR19|TestRowR20)$$'
-conformance-go-rows-b: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+conformance-go-rows-b: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
 		'TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
 		./rows/ -count=1 -timeout 600s -run '^(TestRowR19NegativeControl|TestRowR20AddedFieldDefault|TestRowR20DroppedFieldUnknown|TestRowR20NarrowIntWidensExactly|TestRowR20SameWidthBaseline|TestRowR20ShortStringSlackZeros|TestRowR20VocabularyIdentity|TestRowR22|TestRowR26|TestRowR26NegativeControl|TestRowR27|TestRowR31|TestRowR6|TestRowR7|TestRowW12|TestRowW12NegativeControl|TestRowW13|TestRowW2|TestRowW2WriterRefusesTheOldPayload|TestRowW3|TestRowW4|TestRowW7)$$'
@@ -417,7 +418,7 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
 # ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
-# cards-conformance-go and every cards-<lang>-conformance target across all fourteen
+# cards-conformance-go and every cards-<lang>-conformance target across all fifteen
 # carded languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
 # parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
 # the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
@@ -428,7 +429,7 @@ CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
 cards-conformance-all:
 	@mkdir -p build/cards-conformance-all
 	@fail=0; \
-	for leg in go c cpp cs rust java js dart elixir lua luau moo lobster squirrel; do \
+	for leg in go c cpp cs rust java js dart elixir lua luau moo lobster squirrel python; do \
 		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
 		log=build/cards-conformance-all/$$leg.log; \
 		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \

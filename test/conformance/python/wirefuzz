@@ -1,0 +1,8 @@
+#!/bin/sh
+# Run the wire-fuzz pipe under the pinned interpreter.
+python="${PYTHON:-dist/python-3.15.2/bin/python3.15}"
+if [ ! -x "$python" ]; then
+    echo "wirefuzz: pinned Python missing at $python; run make dist-python" >&2
+    exit 1
+fi
+exec "$python" -W error -I -B test/conformance/python/wirefuzz.py "${PYTHON_CONFORMANCE_GENERATED:-build/conformance-python}"
