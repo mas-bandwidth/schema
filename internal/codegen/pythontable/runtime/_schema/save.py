@@ -69,12 +69,17 @@ class Ctx:
     def idref(self, value: int) -> int:
         reference = self.refs.get(value)
         if reference is None:
-            if len(self.ids) >= 4096:
-                raise InvalidValue("", "known values need more than 4096 wire IDs")
             self.ids.append(value)
             reference = len(self.ids)
             self.refs[value] = reference
         return reference
+
+    def write_ids(self, writer: Writer) -> None:
+        if len(self.ids) > 4096:
+            raise InvalidValue("", "known values need more than 4096 wire IDs")
+        for table_id in self.ids:
+            writer.raw(table_id.to_bytes(8, "little"))
+        writer.raw(len(self.ids).to_bytes(8, "little"))
 
 
 def save_table(value: Any) -> bytes:
@@ -104,9 +109,7 @@ def _encode(value: Any, writer: Writer) -> int:
     _collect_root(value, ctx)
     _write_form(writer)
     write_body(writer, value, ctx, True)
-    for table_id in ctx.ids:
-        writer.raw(table_id.to_bytes(8, "little"))
-    writer.raw(len(ctx.ids).to_bytes(8, "little"))
+    ctx.write_ids(writer)
     return writer.count
 
 
