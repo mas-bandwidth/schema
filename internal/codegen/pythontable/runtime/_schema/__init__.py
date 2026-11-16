@@ -79,6 +79,52 @@ def _validate_int(value: object, path: str, min: int, max: int) -> None:
         raise InvalidValue(path, f"{value} is outside [{min}, {max}]")
 
 
+
+def _validate_array(value: object, path: str, min: int, max: int) -> None:
+    """Hold an array field to a list whose length is in [min, max]: exactly N
+    for [N]T, the count's range for [A..B]T."""
+    if type(value) is not list:
+        raise InvalidValue(path, "expected list")
+    if len(value) < min or len(value) > max:
+        if min == max:
+            raise InvalidValue(path, f"{len(value)} elements, expected {max}")
+        raise InvalidValue(path, f"{len(value)} elements is outside [{min}, {max}]")
+
+
+def _validate_string(value: object, path: str, size: int) -> None:
+    """Hold a string(N) field to its contract (docs/PORT-PYTHON.md, TEXT AND
+    BYTES): a str, no NUL, encodable as UTF-8 (a lone surrogate is not), and
+    at most size bytes of UTF-8. A valid value returns; the generated writer
+    calls this for every value its inline ASCII check does not pass.
+    """
+    if type(value) is not str:
+        raise InvalidValue(path, "expected str")
+    if "\x00" in value:
+        raise InvalidValue(path, "holds a NUL")
+    try:
+        data = value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise InvalidValue(path, "is not encodable as UTF-8 (a lone surrogate)") from None
+    if len(data) > size:
+        raise InvalidValue(path, f"{len(data)} bytes of UTF-8 exceed the bound {size}")
+
+
+def _validate_bytes(value: object, path: str, size: int) -> None:
+    """Hold a bytes(N) field to its contract: bytes, a bytearray or a
+    one-dimensional "B" memoryview, of at most size bytes. Any other
+    memoryview is refused rather than reinterpreted. A valid value returns.
+    """
+    if isinstance(value, memoryview):
+        if value.format != "B" or value.ndim != 1:
+            raise InvalidValue(path, f"a memoryview needs format 'B' and one dimension, got {value.format!r} in {value.ndim}")
+        n = value.nbytes
+    elif type(value) is bytes or type(value) is bytearray:
+        n = len(value)
+    else:
+        raise InvalidValue(path, "expected bytes, bytearray or a 'B' memoryview")
+    if n > size:
+        raise InvalidValue(path, f"{n} bytes exceed the bound {size}")
+
 def _validate_bool(value: object, path: str) -> None:
     """Hold a bool field to True or False; 0 and 1 are refused."""
     if type(value) is not bool:
