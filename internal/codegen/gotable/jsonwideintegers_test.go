@@ -29,7 +29,7 @@ table Integers
 
 // TestGoJsonWideIntegersAreStrings holds both JSON integer rules on the
 // generated Go writer and reader (docs/SPEC-TABLES.md §16.2). A wide integer
-// is written as a string of decimal digits and reads as a string or a number.
+// is written and read as a string of decimal digits.
 // Every integer, every width, takes an integer token only. The committed
 // canonical file is the engine body; the generated writer appends the one
 // trailing newline §16.1 requires, and the comparison is that text byte for
@@ -37,31 +37,37 @@ table Integers
 func TestGoJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
-	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var rows strings.Builder
 	count := 0
-	for i, line := range strings.Split(string(manifest), "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		if len(fields) != 5 {
-			t.Fatalf("%s:%d: want 5 columns, got %d", filepath.Join(dir, "MANIFEST.tsv"), i+1, len(fields))
-		}
-		body, err := os.ReadFile(filepath.Join(dir, fields[2]))
+	for _, manifestName := range []string{"MANIFEST.tsv", "NUMBER-TOKEN.tsv"} {
+		manifest, err := os.ReadFile(filepath.Join(dir, manifestName))
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&rows, "\t\t{%s, %s, []byte(%s)},\n", strconv.Quote(fields[0]), strconv.Quote(fields[3]), strconv.Quote(string(body)))
-		count++
+		before := count
+		for i, line := range strings.Split(string(manifest), "\n") {
+			line = strings.TrimRight(line, "\r")
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			fields := strings.Split(line, "\t")
+			if len(fields) != 5 {
+				t.Fatalf("%s:%d: want 5 columns, got %d", manifestName, i+1, len(fields))
+			}
+			body, err := os.ReadFile(filepath.Join(dir, fields[2]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Fprintf(&rows, "\t\t{%s, %s, []byte(%s), %t},\n", strconv.Quote(fields[0]), strconv.Quote(fields[3]), strconv.Quote(string(body)), manifestName == "NUMBER-TOKEN.tsv")
+			count++
+		}
+		if count == before {
+			t.Fatalf("%s has no rows", manifestName)
+		}
 	}
 	if count == 0 {
 		t.Fatal("no manifest rows")
@@ -85,6 +91,7 @@ func TestWide(t *testing.T) {
 	rows := []struct {
 		name, verdict string
 		body          []byte
+		numberToken   bool
 	}{
 %s	}
 	if len(rows) == 0 {
@@ -104,9 +111,12 @@ func TestWide(t *testing.T) {
 				if ok || !report.Refused() {
 					t.Fatalf("%%s: read accepted %%q", row.name, row.body)
 				}
+				if row.numberToken && report.Err() != error(TableRefuseKindMismatch) {
+					t.Fatalf("%%s: expected kind mismatch, got %%v", row.name, report.Err())
+				}
 				return
 			}
-			if row.verdict != "read" {
+				if row.verdict != "read" {
 				t.Fatalf("verdict %%s", row.verdict)
 			}
 			if !ok || report.Refused() {
