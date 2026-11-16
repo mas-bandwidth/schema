@@ -252,7 +252,7 @@ int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabula
 
 func TestCMessageFullWidthFlagsDefaultProof(t *testing.T) {
 	var names []string
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		names = append(names, fmt.Sprintf("Bit%d", i))
 	}
 	schema := "package probe\nflags Features { " + strings.Join(names, ",") + " }\nfixed table Root { mask Features }\n"
