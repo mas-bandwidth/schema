@@ -32,6 +32,12 @@ func messageModule(u *ir.Unit) string {
 	for _, name := range roots {
 		fmt.Fprintf(&b, "    %q,\n", name)
 	}
+	b.WriteString("))\n_CRC_ROOTS = frozenset((\n")
+	for _, name := range roots {
+		if u.Tables[name].Integrity == "crc32c" {
+			fmt.Fprintf(&b, "    %q,\n", name)
+		}
+	}
 	b.WriteString("))\nFIELD_KEYS: dict[tuple[str, str], bytes] = {\n")
 	closure := tablewire.MessageClosure(u)
 	names := make([]string, 0, len(closure))
@@ -83,6 +89,7 @@ from . import LoadReport
 from .message import BuildVersionMismatch as BuildVersionMismatch, MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
 from .message import BitWriter, _write_value
 from .descriptor import by_name as _by_name
+from .integrity import open_crc as _open_crc, seal_crc as _seal_crc
 from .message import load_messages as _load, measure_messages as _measure, save_messages as _save
 
 _T = TypeVar("_T")
@@ -104,12 +111,16 @@ def announce_read(vocab: MessageVocabulary, data: bytes | bytearray | memoryview
     _resolve(vocab, _local, _records)
 
 def save_messages(root: type[_T], values: list[_T]) -> bytes:
-    return _save(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(getattr(root, "descriptor", None), "name", "")))
+    raw = _save(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(getattr(root, "descriptor", None), "name", "")))
+    return _seal_crc(raw) if getattr(getattr(root, "descriptor", None), "name", "") in _CRC_ROOTS else raw
 
 def measure_messages(root: type[_T], values: list[_T]) -> int:
-    return _measure(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(getattr(root, "descriptor", None), "name", "")))
+    size = _measure(root, list(values), _local, FIELD_KEYS, ROOTS, _WRITERS.get(getattr(getattr(root, "descriptor", None), "name", "")))
+    return size + (4 if getattr(getattr(root, "descriptor", None), "name", "") in _CRC_ROOTS else 0)
 
 def load_messages(root: type[_T], vocab: MessageVocabulary, data: bytes | bytearray | memoryview, capacity: int = 256, report: LoadReport | None = None) -> list[_T]:
+    if getattr(getattr(root, "descriptor", None), "name", "") in _CRC_ROOTS:
+        data = _open_crc(data, 2)
     return cast(list[_T], _load(root, vocab, data, BUILD_VERSION, FIELD_KEYS, ROOTS, capacity, report))
 `)
 	entries := tablewire.MessageVocabulary(u)
