@@ -2008,3 +2008,36 @@ print('retained-keyed-bound')
 		})
 	}
 }
+
+func TestPythonRetainSelectedRuntime(t *testing.T) {
+	slowtest.Gate(t, "both pinned Python interpreters")
+	u := loadUnit(t, "package probe\ntable Root { value int32 }\n")
+	surfaces, err := ParseSurfaces("wire,retain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := GenerateSurface(u, surfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+assert not hasattr(Root, 'from_json') and not hasattr(Root, 'to_json')
+value=Root(); value.value=9
+keep=TableRetain(bytearray(1024),bytearray(24*16)); report=LoadReport()
+loaded=Root.load_retain(value.save(),keep,report)
+assert loaded.value==9 and loaded.measure_retain(keep)==len(value.save())
+assert loaded.save_retain(keep,report)==value.save()
+print('selected-retain')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "selected-retain" {
+			t.Fatalf("selected retain: %v\n%s\n%s", err, out, stderr)
+		}
+		if out, err := pyrun.Analyze(t, dir, "probe"); err != nil {
+			t.Fatalf("selected retain mypy: %v\n%s", err, out)
+		}
+	}
+}
