@@ -22,11 +22,11 @@ while IFS= read -r package; do
   case "$package" in */internal/codegen/pythontable|*/internal/codegen/pythontable/*) corpus=true ;; esac
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
   names=$(printf '%s\n' "$tests" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
-  # These four complete shape tests are delegated to the support row shards
-  # above. Keeping the monolithic parent in an automatic package shard would
+  # These fixed proof tests are delegated to the support row shards above.
+  # Keeping a monolithic parent in an automatic package shard would
   # still hit the two-minute limit. New test names remain auto-discovered.
   case "$package" in */internal/codegen/pythontable)
-    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d') ;;
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d') ;;
   esac
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
@@ -39,7 +39,7 @@ while IFS= read -r package; do
     while [ "$part" -lt 8 ]; do
       selected=$(printf '%s\n' "$units" | awk -v part="$part" '(NR-1)%8 == part' | paste -sd '|' -)
       if [ -n "$selected" ]; then
-        jq -cn --arg name "python-build-version-imports-$part" --arg package "$package" --arg test "TestPythonVtFixedClassBuildVersionImports$/($selected)" '{name:$name,target:"",package:$package,test:$test}' >> "$rows"
+        jq -cn --arg name "python-build-version-imports-$part" --arg package "$package" --arg test "TestPythonVtFixedClassBuildVersionImports$/($selected)" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:$test,corpus:$corpus}' >> "$rows"
       fi
       part=$((part+1))
     done
