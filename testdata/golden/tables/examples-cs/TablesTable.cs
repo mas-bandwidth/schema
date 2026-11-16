@@ -294,9 +294,9 @@ namespace Tabledemo
         public static bool WeaponConfigCollectTyped(WeaponConfig v, ref TableWire.Ids ids)
         {
             TableFieldInfo[] fields = WeaponConfigTableType().Fields;
-            if (!float.IsFinite(v.Damage)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Damage));
             if (BitConverter.SingleToUInt32Bits(v.Damage) != 0x41a80000u && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
-            if (!float.IsFinite(v.Speed)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Speed));
             if (BitConverter.SingleToUInt32Bits(v.Speed) != 0x43fa0000u && !ids.Add(0x1733055702acb1d2ul)) return false;
             if (v.Penetration != 1 && !ids.Add(0x4f31c5309e13e932ul)) return false;
             if (v.Channel != 0 && !ids.Add(0xa5013e9ad5caeda4ul)) return false;
@@ -650,7 +650,7 @@ namespace Tabledemo
             if (v.Badge != 0 && !ids.Add(0x10bda981fe095518ul)) return false;
             if (v.Port != 0 && !ids.Add(0x8c2cdb0da8933fa6ul)) return false;
             if (v.Epoch != 0 && !ids.Add(0xfc9697d1196e6ba6ul)) return false;
-            if (!double.IsFinite(v.Precision)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Precision));
             if (BitConverter.DoubleToUInt64Bits(v.Precision) != 0x0000000000000000ul && !ids.Add(0x288427f5babd05f7ul)) return false;
             if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
             if (v.HasLoadout != false && !ids.Add(0xa06f5e0a148e253cul)) return false;
@@ -810,7 +810,7 @@ namespace Tabledemo
         public static bool AttachmentCollectTyped(Attachment v, ref TableWire.Ids ids)
         {
             if (v.Slot != 0 && !ids.Add(0x6a771618f6fe31d1ul)) return false;
-            if (!float.IsFinite(v.Power)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Power));
             if (BitConverter.SingleToUInt32Bits(v.Power) != 0x3f800000u && !ids.Add(0xeef9d1358ae7b4e6ul)) return false;
             return true;
         }
@@ -907,7 +907,7 @@ namespace Tabledemo
 
         public static bool BuffCollectTyped(Buff v, ref TableWire.Ids ids)
         {
-            if (!float.IsFinite(v.Multiplier)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Multiplier));
             if (BitConverter.SingleToUInt32Bits(v.Multiplier) != 0x3f800000u && !ids.Add(0x9adc623a805c87c6ul)) return false;
             return true;
         }
@@ -3875,7 +3875,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RootConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -4529,7 +4529,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = WeaponConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (WeaponConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(WeaponConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -5451,7 +5451,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -6475,7 +6475,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ProfileConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)

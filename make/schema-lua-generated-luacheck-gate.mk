@@ -21,15 +21,19 @@ LUA_LUACHECK_CONFIG := build/lua-luacheck.rc
 # every schema directory a Makefile generate target reads, plus the per-file
 # units under test/tables (the tables_generate macro names each file) and the
 # two-file guard unit.
-LUA_LUACHECK_DIRS := examples examples128 bench/corpus \
+LUA_LUACHECK_DIRS := examples examples128 \
 	tables/examples tables/pointers tables/block tables/blockhome \
 	tables/messages tables/stream tables/blobs tables/scalars tables/maps \
 	tables/lists tables/arms tables/backend tables/vocab tables/vocab9
 LUA_LUACHECK_FILES := $(wildcard test/tables/*.schema) $(wildcard test/guard/*.schema)
 LUA_LUACHECK_UNITS := $(LUA_LUACHECK_DIRS) $(LUA_LUACHECK_FILES)
+# bench/corpus holds units of different packages, so each unit is named by the
+# files that make it rather than by the whole directory.
+LUA_LUACHECK_GROUPS := 'bench/corpus/Bench.schema bench/corpus/FixedTable.schema' \
+	bench/corpus/BenchTable.schema bench/corpus/RealWorld.schema
 # A directory's mtime does not change when an existing schema file is edited.
 # Track its member files so a local gate cannot reuse stale generated Lua.
-LUA_LUACHECK_SOURCES := $(foreach dir,$(LUA_LUACHECK_DIRS),$(wildcard $(dir)/*.schema)) $(LUA_LUACHECK_FILES)
+LUA_LUACHECK_SOURCES := $(foreach dir,$(LUA_LUACHECK_DIRS),$(wildcard $(dir)/*.schema)) $(LUA_LUACHECK_FILES) $(wildcard bench/corpus/*.schema)
 
 .PHONY: toolchain-luacheck
 toolchain-luacheck:
@@ -95,11 +99,11 @@ $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 # generate the corpus exactly as the other legs generate theirs: one directory
 # (or one schema file) per unit, a refusal kept by name in <unit>.refused, and
 # the count printed. A refused unit is not checked, and it says so.
-$(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gate.mk $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_SOURCES)
+$(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gate.mk tools/lua-luacheck-dedupe.py $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_SOURCES)
 	@rm -rf $(LUA_LUACHECK_CORPUS) && mkdir -p $(LUA_LUACHECK_CORPUS)
 	@set -e; ok=0; refused=0; \
-	for u in $(LUA_LUACHECK_UNITS); do \
-		key=$$(printf '%s' "$$u" | sed 's#[/.]#_#g'); \
+	for u in $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_GROUPS); do \
+		key=$$(printf '%s' "$$u" | sed 's#[/. ]#_#g'); \
 		log=$(LUA_LUACHECK_CORPUS)/$$key.log; \
 		if ./bin/schema generate --lang lua --out $(LUA_LUACHECK_CORPUS)/$$key $$u > $$log 2>&1; then \
 			rm -f $$log; ok=$$((ok + 1)); \
@@ -111,16 +115,9 @@ $(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gat
 		fi; \
 	done; \
 	echo "luacheck-lua corpus: $$ok units generated, $$refused refused by name"
-	@mkdir -p $(LUA_LUACHECK_CORPUS)/unique; \
-	seen=$(LUA_LUACHECK_CORPUS)/.seen; : > $$seen; n=0; \
-	for f in $$(find $(LUA_LUACHECK_CORPUS) -name '*.lua' | sort); do \
-		h=$$(sha256sum "$$f" | cut -d' ' -f1); \
-		if grep -qx "$$h" $$seen; then continue; fi; \
-		echo "$$h" >> $$seen; n=$$((n + 1)); \
-		cp "$$f" "$(LUA_LUACHECK_CORPUS)/unique/$$n-$$(basename $$f)"; \
-	done; \
-	rm -f $$seen; \
-	echo "luacheck-lua corpus: $$n distinct files (the runtime repeats in every unit and is checked once)"
+	@mkdir -p $(LUA_LUACHECK_CORPUS)/unique
+	@find $(LUA_LUACHECK_CORPUS) -name '*.lua' -print0 | sort -z | \
+		python3 tools/lua-luacheck-dedupe.py $(LUA_LUACHECK_CORPUS)/unique
 	@touch $@
 
 # THE GATE. One run over the whole generated corpus and the runtime emitted

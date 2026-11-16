@@ -1,0 +1,37 @@
+#!/bin/sh
+# THE SQUIRREL COOK-WRITE VERDICT over one harness log (make/squirrel-cook-write.mk).
+# The cook-write cell must read `pass N/N`, the same N twice and no `+Ka`
+# absence suffix, and the log must carry no RELAXED line for
+# `squirrel / cook-write`: every row is the tool's bytes with no relaxation, so
+# an absent optional's payload and every dead slot of a counted array are zero
+# (docs/SPEC-TABLES.md §7.2, §7.6).
+#
+# usage: cook-write-check <log>
+set -eu
+log=$1
+cell=$(grep -E '^cook-write +' "$log" | head -n 1 || true)
+if [ -z "$cell" ]; then
+	echo "SQUIRREL COOK-WRITE FAILED: $log has no cook-write cell" >&2
+	exit 1
+fi
+if ! printf '%s\n' "$cell" | grep -Eq '^cook-write +pass ([0-9]+)/([0-9]+) *$'; then
+	echo "SQUIRREL COOK-WRITE FAILED: the cell is not a whole pass ($cell)" >&2
+	exit 1
+fi
+pass=$(printf '%s\n' "$cell" | sed -E 's/^cook-write +pass ([0-9]+)\/([0-9]+) *$/\1/')
+total=$(printf '%s\n' "$cell" | sed -E 's/^cook-write +pass ([0-9]+)\/([0-9]+) *$/\2/')
+if [ "$pass" != "$total" ] || [ "$total" -eq 0 ]; then
+	echo "SQUIRREL COOK-WRITE FAILED: $pass of $total rows pass ($cell)" >&2
+	exit 1
+fi
+if grep -q 'RELAXED.*squirrel / cook-write' "$log"; then
+	echo "SQUIRREL COOK-WRITE FAILED: a cook-write row is relaxed:" >&2
+	grep 'RELAXED.*squirrel / cook-write' "$log" >&2
+	exit 1
+fi
+if grep -q 'squirrel / cook-write:' "$log"; then
+	echo "SQUIRREL COOK-WRITE FAILED: the log names a cook-write failure:" >&2
+	grep 'squirrel / cook-write:' "$log" >&2
+	exit 1
+fi
+echo "Squirrel cook-write: $cell"

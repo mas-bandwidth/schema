@@ -38,6 +38,11 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 		return
 	}
 	bits := ir.TableMessageValueBits(kind, shape)
+	if _, flags := f.Type.Ref.(*ir.Flags); flags && bits < 64 {
+		// Message masks must fit their announced width. File and cook
+		// masks still carry every storage bit; this check is debug only.
+		g.pf("%sschema_assert(((uint64_t)(%s) >> %d) == 0); /* message flags domain, debug only (§5.1) */\n", ind, expr, bits)
+	}
 	switch int(kind) {
 	case tkBool:
 		g.pf("%stable_bit_put(w,%s ? 1 : 0,1);\n", ind, expr)
@@ -194,48 +199,57 @@ func (g *tableGen) emitMessageUnionSave(un *ir.Union) {
 	g.pf(" default: return 0;\n } return !w->overflow;\n}\n")
 }
 
+// messageFieldPresence is the message writer's elision predicate. The same
+// predicate validates a field read under our own announced build (§3.3(a));
+// probing a nested table never consults padding or copies its raw storage.
+func (g *tableGen) messageFieldPresence(f *ir.Field, expr string) (string, string) {
+	kind := ir.TableWireScalarKind(f)
+	condition := "!(" + g.wireDefaultEquals(f, expr) + ")"
+	count := strconv.FormatInt(f.ArrayBound, 10)
+	switch {
+	case (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString):
+		count = expr + "_length"
+		g.writeStorageBound(count, f.Type.Size, " ")
+		condition = g.wireBytesDiffer(f, expr)
+	case f.Array == ir.ArrayCounted:
+		count = expr + "_count"
+		g.writeStorageBound(count, f.ArrayBound, " ")
+		condition = count + ">0"
+	case f.Type.Optional:
+		condition = expr + "_present"
+	case f.KeyEnum != "":
+		g.pf(" int rides=0; { int32_t i; for(i=0;i<%d;i++) {\n", f.ArrayBound)
+		g.messageKeyedRides(f, expr+"[i]", "  ")
+		g.pf("  rides=1; break; } }\n")
+		condition = "rides"
+	case f.Array == ir.ArrayFixed:
+		condition = "1"
+		if kind != tkTable {
+			g.pf(" int rides=0; { int32_t i; for(i=0;i<%d;i++) if(!(%s)) { rides=1; break; } }\n", f.ArrayBound, g.wireDefaultEquals(f, expr+"[i]"))
+			condition = "rides"
+		}
+	case kind == tkTable:
+		g.pf(" TableBitWriter probe=*w; probe.buffer=NULL; probe.capacity=INT64_MAX; probe.bits=0; probe.check_default=1;\n if(!%s(&probe,&%s)) return 0;\n", g.api(f.Type.Name, "save_message_body"), expr)
+		condition = "probe.bits>kTableMessageRefBitsHere"
+	case kind == tkUnion:
+		condition = expr + ".type!=" + enumNoneConst(f.Type.Name+"Type")
+	}
+	if f.Type.Optional {
+		condition = expr + "_present"
+	}
+	return condition, count
+}
+
 func (g *tableGen) emitMessageSave(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(TableBitWriter * w,const %s * value)\n{\n (void)value;\n", g.api(st.Name, "save_message_body"), st.Name)
 	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
-		expr, kind := "value->"+f.Name, ir.TableWireScalarKind(f)
+		expr := "value->" + f.Name
 		g.pf(" { /* %s */\n", f.Name)
 		if guard := guards[f.Name]; guard != "" {
 			g.pf(" if(%s) {\n", guard)
 		}
-		condition := "!(" + g.wireDefaultEquals(f, expr) + ")"
-		count := strconv.FormatInt(f.ArrayBound, 10)
-		switch {
-		case (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString):
-			count = expr + "_length"
-			g.writeStorageBound(count, f.Type.Size, " ")
-			condition = g.wireBytesDiffer(f, expr)
-		case f.Array == ir.ArrayCounted:
-			count = expr + "_count"
-			g.writeStorageBound(count, f.ArrayBound, " ")
-			condition = count + ">0"
-		case f.Type.Optional:
-			condition = expr + "_present"
-		case f.KeyEnum != "":
-			g.pf(" int rides=0; { int32_t i; for(i=0;i<%d;i++) {\n", f.ArrayBound)
-			g.messageKeyedRides(f, expr+"[i]", "  ")
-			g.pf("  rides=1; break; } }\n")
-			condition = "rides"
-		case f.Array == ir.ArrayFixed:
-			condition = "1"
-			if kind != tkTable {
-				g.pf(" int rides=0; { int32_t i; for(i=0;i<%d;i++) if(!(%s)) { rides=1; break; } }\n", f.ArrayBound, g.wireDefaultEquals(f, expr+"[i]"))
-				condition = "rides"
-			}
-		case kind == tkTable:
-			g.pf(" TableBitWriter probe=*w; probe.buffer=NULL; probe.capacity=INT64_MAX; probe.bits=0; probe.check_default=1;\n if(!%s(&probe,&%s)) return 0;\n", g.api(f.Type.Name, "save_message_body"), expr)
-			condition = "probe.bits>kTableMessageRefBitsHere"
-		case kind == tkUnion:
-			condition = expr + ".type!=" + enumNoneConst(f.Type.Name+"Type")
-		}
-		if f.Type.Optional {
-			condition = expr + "_present"
-		}
+		condition, count := g.messageFieldPresence(f, expr)
 		g.pf(" if(%s) {\n", condition)
 		if g.canProbe(st) {
 			g.pf("  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;return 1;}\n")

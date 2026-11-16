@@ -1,21 +1,19 @@
-// W4 — read slack unspecified (docs/FIXED-FORM-ALGORITHM.md:347).
-//
-// "It walks only what a read can have written — a counted array's LIVE
-// elements and never its slack."  The bounds pass over a fixed table's
-// STORAGE iterates a counted array's live count, not its declared capacity,
-// so bytes behind the live count on the wire — even bytes past the ranged
-// element's clamped range — must move no counter and must not be malformed.
-// This is the Go leg's assertion of go/W4.
+// W4 — only live elements are read as values; every dead byte is zero
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3). A non-zero unused array slot
+// refuses the whole load before any destination value changes.
 package main
 
 import (
+	"bytes"
+	"reflect"
 	"testing"
 
 	tblv1 "tblv1"
 )
 
 func TestRowW4(t *testing.T) {
-	// ONE LIVE ELEMENT: ItemsCount=1, Items[0]=7 (in [0,255], so no clamp).
+	t.Parallel()
+	// ONE LIVE ELEMENT: ItemsCount=1, Items[0]=7 (inside [0,255]).
 	var v1 tblv1.Cfg
 	tblv1.CfgReset(&v1)
 	v1.ItemsCount = 1
@@ -46,9 +44,21 @@ func TestRowW4(t *testing.T) {
 		t.Fatal("wire count is not 1 — can't find ItemsCount offset")
 	}
 
+	// The clean writer image reads its live value and saves byte identically.
+	var back [1]tblv1.Cfg
+	var rep tblv1.TableReport
+	plan := make([]tblv1.TableFixedEntry, tblv1.CfgFixedPlan.Count)
+	if got := tblv1.CfgFixedLoad(back[:], save, plan, &rep); got != 1 || rep.Err() != nil || back[0].ItemsCount != 1 || back[0].Items[0] != 7 {
+		t.Fatalf("clean control: n=%d report=%+v value=%+v", got, rep, back[0])
+	}
+	again := make([]byte, len(save))
+	if tblv1.CfgFixedSave(back[:], again) != int64(len(again)) || !bytes.Equal(again, save) {
+		t.Fatal("clean control did not save byte identically")
+	}
+
 	// STAIN THE SLACK: every slack int32 gets 0xFF — a value past the
 	// declared [0,255] range that a bounds pass walking the full array would
-	// clamp.
+	// refuse if it were live.
 	for i := slackStart; i < slackEnd; i++ {
 		save[i] = 0xFF
 	}
@@ -64,29 +74,14 @@ func TestRowW4(t *testing.T) {
 		t.Fatal("stain verification failed: not all slack bytes are 0xFF")
 	}
 
-	// READ BACK with the identity plan.
-	var back [1]tblv1.Cfg
-	var rep tblv1.TableReport
-	plan := make([]tblv1.TableFixedEntry, tblv1.CfgFixedPlan.Count)
-	copy(plan, tblv1.CfgFixedPlan.Entries)
-	read := tblv1.CfgFixedLoad(back[:], save, plan, &rep)
-	if read != 1 {
-		t.Fatalf("CfgFixedLoad returned %d, want 1", read)
+	// The dead-slot check refuses before the batch lands.
+	back[0].ItemsCount = 3
+	back[0].Items[0] = 23
+	before := back
+	if got := tblv1.CfgFixedLoad(back[:], save, plan, &rep); got >= 0 || rep.Err() == nil {
+		t.Fatalf("stained dead slots read: n=%d report=%+v", got, rep)
 	}
-
-	// SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal.
-	if rep.Refused() {
-		t.Errorf("stained slack refused: %+v", rep)
-	}
-	if rep.Verdict != tblv1.TableOpenOk {
-		t.Errorf("verdict=%v — stained slack must not be a refusal", rep.Verdict)
-	}
-
-	// The USED UNITS landed: ItemsCount=1, Items[0]=7.
-	if back[0].ItemsCount != 1 {
-		t.Errorf("ItemsCount=%d, want 1", back[0].ItemsCount)
-	}
-	if back[0].Items[0] != 7 {
-		t.Errorf("Items[0]=%d, want 7", back[0].Items[0])
+	if !reflect.DeepEqual(back, before) {
+		t.Fatal("dead-slot refusal changed the destination")
 	}
 }

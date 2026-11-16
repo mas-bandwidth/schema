@@ -92,6 +92,11 @@ func (m *pyModule) emitStruct(d *ir.Struct) {
 		m.printf("%s", docComment(d.Doc, "", "#"))
 	}
 	m.line("class %s:", d.Name)
+	if m.hosted {
+		m.need("Any")
+		m.need("ClassVar")
+		m.line("    descriptor: ClassVar[Any]")
+	}
 	if len(d.Fields) == 0 {
 		m.line("    __slots__ = ()")
 		m.line("")
@@ -159,6 +164,11 @@ func (m *pyModule) emitUnion(d *ir.Union) {
 		m.printf("%s", docComment(d.Doc, "", "#"))
 	}
 	m.line("class %s:", d.Name)
+	if m.hosted {
+		m.need("Any")
+		m.need("ClassVar")
+		m.line("    descriptor: ClassVar[Any]")
+	}
 	arms := unionArms(d)
 	slots := []string{"type"}
 	for _, v := range arms {

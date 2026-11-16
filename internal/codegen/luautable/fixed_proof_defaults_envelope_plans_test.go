@@ -503,7 +503,11 @@ if back == nil then
 	print("@refused")
 	return
 end
-print(string.format("@ok %%d u%%d k%%d c%%d w%%d", #back, report.unknown, report.kindMismatch, report.clamped, report.widened))
+if report.reason ~= nil then error("successful fixed read reported a refusal") end
+-- The strict fixed report has no clamped counter; if one is supplied it
+-- must not have moved. Never substitute a missing diagnostic for a value.
+if report.clamped ~= nil and report.clamped ~= 0 then error("fixed read clamped") end
+print(string.format("@ok %%d u%%d k%%d w%%d", #back, report.unknown, report.kindMismatch, report.widened))
 for i, v in back do
 	dumpRecord(d, v, "r" .. int(i - 1))
 end
@@ -657,7 +661,7 @@ func TestLuauFixedProofGroupD(t *testing.T) {
 			if !bytes.Equal(p.saved, cppBytes) {
 				t.Fatalf("luau's save is not the C++ reference's bytes: %s\nluau=%x\ncpp=%x", luauGroupDFirstDiff(p.saved, cppBytes), p.saved, cppBytes)
 			}
-			if want := fmt.Sprintf("ok %d u0 k0 c0 w0", c.count); p.load != want {
+			if want := fmt.Sprintf("ok %d u0 k0 w0", c.count); p.load != want {
 				t.Fatalf("luau's load of the reference's file: %s, want %s", p.load, want)
 			}
 			if m := luauGroupDWantMismatch(c.want, p.dump); m != "" {
@@ -708,7 +712,7 @@ func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 			if err := verifyInCpp(mutated); err == nil {
 				t.Fatal("the C++ verifier accepted a flipped body byte")
 			}
-			if p := runLuauGroupDProof(t, g, c, mutated); p.load == fmt.Sprintf("ok %d u0 k0 c0 w0", c.count) && luauGroupDWantMismatch(c.want, p.dump) == "" && bytes.Equal(p.resaved, cppBytes) {
+			if p := runLuauGroupDProof(t, g, c, mutated); p.load == fmt.Sprintf("ok %d u0 k0 w0", c.count) && luauGroupDWantMismatch(c.want, p.dump) == "" && bytes.Equal(p.resaved, cppBytes) {
 				t.Fatalf("luau loaded a flipped body byte and every want line and re-save still hold: the row's values prove nothing")
 			}
 

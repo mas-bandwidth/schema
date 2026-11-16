@@ -313,20 +313,15 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 		g.pf("%sif %s.Count<0 {return false}\n", ind, expr)
 		return
 	}
-	if f.Type.Pointer {
-		if f.Array == ir.ArrayCounted {
-			g.pf("%sif %sCount<0 || %sCount>%d { return false }\n", ind, expr, expr, f.ArrayBound)
-		}
-		return
+	if f.Array == ir.ArrayCounted {
+		g.pf("%sif %sCount < %d || %sCount > %d { return false }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
 	}
 	switch {
-	case f.Type.TextUnbounded():
+	case f.Type.Pointer || f.Type.TextUnbounded():
 		// unbounded text (docs/SPEC-TABLES.md §2.13.1): no length bound beyond
 		// the blob record's own, which the text rule below reads
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
-	case f.Array == ir.ArrayCounted:
-		g.pf("%sif %sCount < 0 || %sCount > %d { return false }\n", ind, expr, expr, f.ArrayBound)
 	}
 }
 
@@ -350,16 +345,16 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 		return byteValueRides(f, expr)
 	}
 	if f.Array == ir.ArrayCounted {
+		if f.BornCount() > 0 {
+			return g.emitCountedBirthRides(f, expr, ind, false)
+		}
 		return expr + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {
 		if isStructRef(f.Type) && !f.Type.Pointer {
 			return "true"
 		}
-		differs := g.elideDiffers(f, expr+"[i]", fieldDefaultExpr(f))
-		if isUnionRef(f.Type) {
-			differs = expr + "[i].Type != " + f.Type.Name + "TypeNone"
-		}
+		differs := g.emitFieldRides(messageElement(f), expr+"[i]", ind)
 		g.pf("%sallDefault := true; for i := range %s { if %s { allDefault = false; break } }\n", ind, expr, differs)
 		return "!allDefault"
 	}
@@ -367,6 +362,40 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 		return expr + ".Type != " + f.Type.Name + "TypeNone"
 	}
 	return g.elideDiffers(f, expr, fieldDefaultExpr(f))
+}
+
+// emitCountedBirthRides compares only live birth slots. Composite defaults use
+// their existing measured bodies, including retained content on file writes.
+func (g *tableGen) emitCountedBirthRides(f *ir.Field, expr, ind string, message bool) string {
+	g.pf("%sallBirth := %sCount == %d\n%sif allBirth { for i := 0; i < %d; i++ {\n", ind, expr, f.BornCount(), ind, f.BornCount())
+	elem := messageElement(f)
+	if isStructRef(f.Type) && !f.Type.Pointer {
+		if message {
+			g.pf("probe := TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};if !%sSaveMessageBody(&probe,&%s[i]) {return false};if probe.Bits > TableMessageRefBitsHere {allBirth=false;break}\n", f.Type.Name, expr)
+		} else {
+			g.pf("mark := w.Ids.Count\n")
+			path := ""
+			if g.retain {
+				path = g.retainWritePush("w", "i")
+			}
+			g.pf("n := %sMeasureBody(&%s[i],w.Ids)\n", f.Type.Name, expr)
+			// Keep the result outside the retained-path block.
+			if g.retain {
+				g.pf("if n < 0 {return false};allBirth=n<=1\n")
+				g.retainWritePop("w", path)
+			}
+			g.pf("w.Ids.Truncate(mark)\n")
+			if !g.retain {
+				g.pf("if n < 0 {return false};allBirth=n<=1\n")
+			}
+			g.pf("if !allBirth {break}\n")
+		}
+	} else {
+		differs := g.emitFieldRides(elem, expr+"[i]", ind)
+		g.pf("if %s {allBirth=false;break}\n", differs)
+	}
+	g.pf("} }\n")
+	return "!allBirth"
 }
 
 // elideDiffers is the default-elision test: the field rides when it differs
