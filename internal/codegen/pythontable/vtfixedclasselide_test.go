@@ -423,7 +423,7 @@ func TestPythonVtFixedClassElisionNegativeControl(t *testing.T) {
 		// a subclass is accepted
 		{"subclass", "vtel/_schema/save.py", "if target is None or type(current) is not target:\n                raise InvalidValue(where, f\"not a {field.target}\")", "if target is None or not isinstance(current, target):\n                raise InvalidValue(where, f\"not a {field.target}\")", "vt_elide_subclass"},
 		// equality by value lets -0.0 equal 0.0
-		{"eq_neg_zero", "vtel/Core.py", "_s_float32_bits_eq(self.f, other.f)", "self.f == other.f", "vt_elide_eq_neg_zero"},
+		{"eq_neg_zero", "vtel/_schema/graph.py", "equal = _float32_bits_eq(x, y) if field.codec == \"float32\" else _float64_bits_eq(x, y)", "equal = x == y", "vt_elide_eq_neg_zero"},
 	} {
 		t.Run(fault.name, func(t *testing.T) {
 			t.Parallel()

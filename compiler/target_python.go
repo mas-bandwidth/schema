@@ -64,6 +64,11 @@ func pythonRefuseUnsupportedLists(u *ir.Unit) error {
 				continue
 			}
 			carried := !f.Type.Pointer && !f.Type.Optional
+			if f.Type.Pointer && !f.Type.Optional && !f.Type.Blob() {
+				if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+					carried = true
+				}
+			}
 			if carried {
 				switch f.Type.Kind {
 				case ir.TBool, ir.TInt:
