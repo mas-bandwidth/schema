@@ -4,7 +4,8 @@ package darttable
 // §3.3): a generated Dart announceRead accepts one entry exactly when
 // ir.DecodeShape accepts its shape, and a batch's unknown-entry skip uses the
 // shape the announcement decoded. The probes below append ONE entry to a unit's
-// own announcement, fix the vocabulary lengths up, and compare the emitted Dart
+// own announcement under a deliberately foreign build version, fix the
+// vocabulary lengths up, and compare the emitted Dart
 // with the Go engine on the same bytes.
 
 import (
@@ -222,7 +223,9 @@ func TestDartAnnounceShapesAsTheEngine(t *testing.T) {
 	batches := make([][]byte, len(cases))
 	for i, c := range cases {
 		vocab := append(append([]byte{}, base...), c.entry...)
-		ann := craftAnnouncement(vocab, ir.BuildVersion(u), true, true)
+		// The appended entry is unknown to LoginRequest. A foreign build permits
+		// that evolution field; the unit's own build must refuse membership.
+		ann := craftAnnouncement(vocab, ir.BuildVersion(u)^1, true, true)
 		batch := announceShapeBatch(refBits, total, c.payloadBits)
 		anns[i], batches[i] = ann, batch
 
@@ -264,7 +267,7 @@ func TestDartAnnounceShapesAsTheEngineNegativeControl(t *testing.T) {
 	anns := make([][]byte, len(cases))
 	batches := make([][]byte, len(cases))
 	for i, c := range cases {
-		anns[i] = craftAnnouncement(append(append([]byte{}, base...), c.entry...), ir.BuildVersion(u), true, true)
+		anns[i] = craftAnnouncement(append(append([]byte{}, base...), c.entry...), ir.BuildVersion(u)^1, true, true)
 		batches[i] = announceShapeBatch(refBits, total, c.payloadBits)
 	}
 	body := announceShapeProbeBody(root, cases, anns, batches)
