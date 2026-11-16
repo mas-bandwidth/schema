@@ -39,8 +39,13 @@ func TestPythonIDOrder(t *testing.T) {
 	unused := append([]byte(nil), valid[:len(valid)-8]...)
 	unused = binary.LittleEndian.AppendUint64(unused, 0x123456789abcdef0)
 	unused = binary.LittleEndian.AppendUint64(unused, 3)
+	// A structurally valid but mismatched field still reports ID damage first.
+	wrongKindReordered := append([]byte(nil), reordered...)
+	wrongKindReordered[2] = 8 // uint32 instead of the reader's int32
+	wrongKindUnused := append([]byte(nil), unused...)
+	wrongKindUnused[2] = 8
 	rm := tabletext.NewModel(reader)
-	for _, data := range [][]byte{reordered, unused} {
+	for _, data := range [][]byte{reordered, unused, wrongKindReordered, wrongKindUnused} {
 		var r tabletext.Report
 		if ok, _ := tablewire.DecodeVariable(rm, rm.New(rm.Lookup("Root")), data, &r); ok || !r.Refused || !strings.Contains(r.Reason, "wire_damaged") {
 			t.Fatalf("engine accepted malformed id table: %+v", r)
@@ -55,14 +60,14 @@ func TestPythonIDOrder(t *testing.T) {
 	probe := pyrun.ImportPrelude + `from idorder import Root, Refused
 with open('valid','rb') as f:v=Root.load(f.read())
 assert (v.a,v.b)==(1,2)
-for name in ('reordered','unused'):
+for name in ('reordered','unused','wrong_kind_reordered','wrong_kind_unused'):
  with open(name,'rb') as f:data=f.read()
  try:Root.load(data)
  except Refused as e:assert e.reason=='wire_damaged'
  else:raise AssertionError('id_first_use_'+name)
 print('ok')
 `
-	inputs := map[string][]byte{"main.py": []byte(probe), "valid": valid, "reordered": reordered, "unused": unused}
+	inputs := map[string][]byte{"main.py": []byte(probe), "valid": valid, "reordered": reordered, "unused": unused, "wrong_kind_reordered": wrongKindReordered, "wrong_kind_unused": wrongKindUnused}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
 		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {
@@ -71,7 +76,7 @@ print('ok')
 	}
 	// Sabotage each check independently: the same probe must expose both losses.
 	for _, fault := range []struct{ old, replacement string }{
-		{"if position != len(self.used):", "if False:"},
+		{"if self.order != list(range(len(self.used))):", "if False:"},
 		{"if len(self.used) != len(self):", "if False:"},
 	} {
 		broken := make(map[string][]byte, len(files))

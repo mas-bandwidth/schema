@@ -139,11 +139,12 @@ class Reader:
 class _FirstUseIds(list[int]):
     """Check each ID's first reference against its position in the trailer."""
 
-    __slots__ = ("used",)
+    __slots__ = ("used", "order")
 
     def __init__(self, ids: list[int]) -> None:
         super().__init__(ids)
         self.used: set[int] = set()
+        self.order: list[int] = []
 
     @overload
     def __getitem__(self, index: SupportsIndex) -> int: ...
@@ -157,14 +158,15 @@ class _FirstUseIds(list[int]):
             position = index_of(index)
             if position in self.used:
                 return value
-            if position != len(self.used):
-                raise Refused("wire_damaged", "the id table is not in first-use order")
             self.used.add(position)
+            self.order.append(position)
         return value
 
     def finish(self) -> None:
         if len(self.used) != len(self):
             raise Refused("wire_damaged", "the id table contains an unused id")
+        if self.order != list(range(len(self.used))):
+            raise Refused("wire_damaged", "the id table is not in first-use order")
 
 
 class Ctx:
@@ -665,6 +667,16 @@ def _check_id_order(view: memoryview, ids: list[int], announcement: bool = False
     walked only after that body ends, matching the writer's ID numbering.
     """
     tracked = _FirstUseIds(ids)
+    try:
+        _walk_id_order(view, tracked, announcement)
+    except Refused:
+        # The ordinary reader judges malformed framing and its refusal details.
+        # An incomplete walk cannot establish the trailer first-use order.
+        return
+    tracked.finish()
+
+
+def _walk_id_order(view: memoryview, tracked: _FirstUseIds, announcement: bool) -> None:
     ctx = Ctx(tracked)
     ctx.nonfinite = []
     reader = Reader(view, 1, _body_end(view), tracked)
@@ -691,7 +703,7 @@ def _check_id_order(view: memoryview, ids: list[int], announcement: bool = False
         raise Refused("wire_damaged", "bytes between the root terminator and the id table")
     if nodes is not None:
         _check_node_table(nodes, ctx)
-    tracked.finish()
+
 
 
 def _check_node_table(data: memoryview, ctx: Ctx) -> None:
@@ -825,6 +837,14 @@ def _skip_array(data: memoryview, ctx: Ctx, depth: int) -> None:
     element, count, reader = _array_header(data, ctx)
     if element not in _ARRAY_ELEMENT_KINDS:
         raise Refused("wire_damaged", "a walked array's element kind outside the closed list")
+    # Fixed-width elements contain no IDs. The normal reader validates their
+    # values; the ID-only walk can advance over them without a Python loop.
+    width = _FIXED_WIDTH.get(element)
+    if isinstance(ctx.ids, _FirstUseIds) and width is not None:
+        reader.take(count * width)
+        if reader.pos != reader.end:
+            raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
+        return
     for _ in range(count):
         _skip_payload(reader, element, ctx, depth)
     if reader.pos != reader.end:
