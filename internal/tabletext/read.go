@@ -239,8 +239,10 @@ func Shape(f *ir.Field) byte {
 }
 
 // jsonScalarShape is a number-or-string field's shape: 'n' for a JSON number,
-// and 'N' for a wide integer, which reads as a string OR a number
-// (docs/SPEC-TABLES.md §16.2). shapeMatches knows the two spellings 'N' takes.
+// and 'N' for a wide integer — a kind wider than 32 bits — which reads as a
+// STRING of digits only (docs/SPEC-TABLES.md §16.2, docs/rulings.json
+// json-wide-integers-refuse-number-token). shapeMatches knows the one
+// spelling 'N' takes.
 func jsonScalarShape(f *ir.Field) byte {
 	if TableKindWideInteger(ir.TableScalarKind(f)) {
 		return 'N'
@@ -249,13 +251,14 @@ func jsonScalarShape(f *ir.Field) byte {
 }
 
 // shapeMatches reports whether a value of the given shape satisfies the shape
-// a declaration takes. A wide integer declares 'N' and takes a string or a
-// number; every other shape is exact.
+// a declaration takes. A wide integer declares 'N' and takes a string only: a
+// bare number token there is a kind mismatch (§16.2). Every other shape is
+// exact.
 func shapeMatches(want, got byte) bool {
 	if want == got {
 		return true
 	}
-	return want == 'N' && (got == 's' || got == 'n')
+	return want == 'N' && got == 's'
 }
 
 // ElementShape is the same classifier one level down, for an array's elements.
@@ -1577,21 +1580,17 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.placeFloat(cell, f, token, kind == ir.TableKindF32)
 	}
 	if TableKindWideInteger(kind) {
-		// a wide integer reads as a string OR a number (§16.2); the string
-		// holds the same digits the number does
-		if in.valueShape() == 's' {
-			text, _, ok := in.scanString(-1)
-			if !ok {
-				return false
-			}
-			return in.placeWideInteger(cell, f, string(text), kind)
+		// a wide integer reads as a STRING of digits only (§16.2); a bare
+		// number token is the wrong JSON type for the kind, refused by name
+		// at every site, never coerced
+		if in.valueShape() != 's' {
+			return in.fail("kind_mismatch: " + f.Name)
 		}
-		token, _, ok := in.scanNumber()
+		text, _, ok := in.scanString(-1)
 		if !ok {
-			in.bad = true
 			return false
 		}
-		return in.placeWideInteger(cell, f, token, kind)
+		return in.placeWideInteger(cell, f, string(text), kind)
 	}
 	if ir.TableKindWide(kind) {
 		// a fixed-point kind 32 bits or narrower: a JSON number only
@@ -1616,8 +1615,8 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	return false
 }
 
-// placeWideInteger converts a wide integer's value — a string's digits or a
-// number token — into storage (docs/SPEC-TABLES.md §16.2). I64/U64 land in the
+// placeWideInteger converts a wide integer's value — its string's digits —
+// into storage (docs/SPEC-TABLES.md §16.2). I64/U64 land in the
 // 64-bit lane, I128/U128 and the wide fixed-point kinds in the wide lane; the
 // pure integers hold the integer-token rule — digits and an optional minus, no
 // fraction, no exponent, no negative zero — and the fixed-point kinds keep
