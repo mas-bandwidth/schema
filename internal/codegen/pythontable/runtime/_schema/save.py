@@ -167,7 +167,9 @@ def _validate_fields(
         if field.codec == "optional":
             if current is None:
                 continue
-            if field.inner == "array":
+            if field.inner == "map":
+                yield from _validate_map_entries(field, current, where)
+            elif field.inner == "array":
                 kind_optional._validate_array(field, current, where)
                 if field.elem is not None and field.elem.codec == "table":
                     for index, item in enumerate(current):
@@ -358,6 +360,9 @@ def _collect_edges(
         codec = field.codec
         if codec == "optional":
             if current is None:
+                continue
+            if field.inner == "map":
+                yield from _collect_map_edges(field, current, (path, field.name, _NO_SUB), ctx, blobs)
                 continue
             if field.inner == "table":
                 yield current, (path, field.name, _NO_SUB), False, blobs
