@@ -696,3 +696,48 @@ print('node-body')
 		}
 	}
 }
+
+func TestPythonRetainTableArrayInternal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	const schema = `package probe
+table Child { x int32 }
+table Root { children [..3]Child }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	w.ref("children")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7), []byte{0})
+	first := unionCat(unionLeb(uint64(len(ghost))), ghost)
+	second := []byte{1, 0}
+	wire := w.file(w.array("children", 13, 2, first, second))
+	script := pyrun.ImportPrelude + `from probe import Root, LoadReport
+from probe._schema.retain import TableRetain
+from probe._schema.load import load_table
+from probe._schema.save import _encode_retain, Writer
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=load_table(Root,wire,report,keep)
+assert (report.unknown,report.retained,report.retain_lost)==(1,1,0)
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert out==wire and size==len(wire) and lost==0, (out,wire,lost)
+value.children.pop(0)
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert lost==0 and size==len(out) and len(Root.load(out).children)==1
+print('table-array')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "table-array" {
+			t.Fatalf("table array: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
+		}
+	}
+}

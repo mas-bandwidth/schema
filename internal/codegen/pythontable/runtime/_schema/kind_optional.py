@@ -122,8 +122,18 @@ def _write_array(w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
     bw = _writer(body)
     bw.byte(elem.kind)
     bw.varint(len(value))
-    for item in value:
-        _write_element(bw, elem, item, ctx)
+    from .save import RetainCtx
+
+    if isinstance(ctx, RetainCtx) and elem.codec == "table":
+        parent = ctx.steps
+        ordinal = ctx.ordinal
+        for index, item in enumerate(value):
+            ctx.steps = parent + ((ordinal, index),)
+            _write_element(bw, elem, item, ctx)
+        ctx.steps = parent
+    else:
+        for item in value:
+            _write_element(bw, elem, item, ctx)
     w.varint(len(body))
     w.raw(body)
 

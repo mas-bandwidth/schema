@@ -77,7 +77,7 @@ class Ctx:
 class RetainCtx(Ctx):
     """Use the caller's id slots without growing the generated id map."""
 
-    __slots__ = ("retain", "node", "steps", "lost", "known")
+    __slots__ = ("retain", "node", "steps", "lost", "known", "ordinal")
 
     def __init__(self, retain: Any) -> None:
         from .retain_known import KNOWN
@@ -88,6 +88,7 @@ class RetainCtx(Ctx):
         self.steps: tuple[tuple[int, int], ...] = ()
         self.lost = 0
         self.known = KNOWN
+        self.ordinal = 0
 
     def idref(self, value: int) -> int:
         reference = self.refs.get(value)
@@ -168,18 +169,24 @@ def _write_retain_body(writer: Writer, value: Any, ctx: RetainCtx, root: bool) -
     desc: TableDesc = value.descriptor
     previous = ctx.current
     parent_steps = ctx.steps
+    parent_ordinal = ctx.ordinal
     ctx.current = value
     for field in desc.fields:
         current = getattr(value, field.name)
         codec = field.inner if field.codec == "optional" else field.codec
         child = parent_steps + ((field.ordinal, 0),)
         has_child = codec == "table" and current is not None and ctx.retain.has_body(ctx.node, child)
+        element = field.elem if field.codec == "optional" else field.element
+        if codec == "array" and current is not None and element is not None and element.codec == "table":
+            has_child = any(ctx.retain.has_body(ctx.node, parent_steps + ((field.ordinal, index),)) for index in range(len(current)))
         if field.is_default(current) and not has_child:
             continue
+        ctx.ordinal = field.ordinal
         if codec == "table":
             ctx.steps = child
         kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
         ctx.steps = parent_steps
+        ctx.ordinal = parent_ordinal
     ctx.lost += ctx.retain.write_tail(ctx.node, parent_steps, ctx.known, ctx, writer)
     if root and ctx.order:
         writer.varint(ctx.idref(NODE_WIRE_ID))

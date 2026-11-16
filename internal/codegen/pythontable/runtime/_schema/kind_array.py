@@ -128,8 +128,18 @@ def _read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] 
 def _write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
     """The per-element shape: each element through its own kind module."""
     codec = cast(kinds._ElementKind, kinds._REGISTRY[element.codec])
-    for item in value:
-        codec.write_element(w, element, item, ctx)
+    from .save import RetainCtx
+
+    if isinstance(ctx, RetainCtx) and element.codec == "table":
+        parent = ctx.steps
+        ordinal = ctx.ordinal
+        for index, item in enumerate(value):
+            ctx.steps = parent + ((ordinal, index),)
+            codec.write_element(w, element, item, ctx)
+        ctx.steps = parent
+    else:
+        for item in value:
+            codec.write_element(w, element, item, ctx)
 
 
 def _write_bulk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> bool:
