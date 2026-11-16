@@ -15,7 +15,10 @@ func TestPythonListKindsCppOracle(t *testing.T) {
 enum Grade { A, B, C }
 flags Perm { Read, Write, Own }
 table Point { x int32 }
-union Hit { point Point, damage int32 }
+union Hit {
+ point Point
+ damage int32
+}
 table Root {
  values []float32
  grades []Grade
