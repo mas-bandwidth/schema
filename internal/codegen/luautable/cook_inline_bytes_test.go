@@ -26,13 +26,13 @@ import (
 // as a list), so that value is built in Luau rather than loaded.
 var paddedCookTexts = []string{
 	`{}`,
-	`{"marker":7,"stamp":1234567890123,"blob":"AAECAwQFBgcICQoL","rows":[{"tag":1,"value":2.5,"flag":true,"id":99,"label":"first","slots":[1,2,3,4],"counter":-3},{"tag":2,"slots":[65535,0,0,9]}]}`,
+	`{"marker":7,"stamp":"1234567890123","blob":"AAECAwQFBgcICQoL","rows":[{"tag":1,"value":2.5,"flag":true,"id":99,"label":"first","slots":[1,2,3,4],"counter":-3},{"tag":2,"slots":[65535,0,0,9]}]}`,
 	paddedCookBuilt,
 }
 
 // paddedCookBuilt is the frame paddedCookProbe builds field by field, its
 // byte-keyed arrays populated in the [N]uint8 storage the type mapping names.
-const paddedCookBuilt = `{"marker":7,"stamp":1234567890123,"blob":"AAECAwQFBgcICQoL","rows":[{"tag":1,"value":2.5,"flag":true,"id":99,"label":"first","slots":[1,2,3,4],"teams":{"Red":5,"Blue":6,"Green":7,"Gold":8},"counter":-3},{"tag":2,"teams":{"Blue":255},"slots":[65535,0,0,9]}]}`
+const paddedCookBuilt = `{"marker":7,"stamp":"1234567890123","blob":"AAECAwQFBgcICQoL","rows":[{"tag":1,"value":2.5,"flag":true,"id":99,"label":"first","slots":[1,2,3,4],"teams":{"Red":5,"Blue":6,"Green":7,"Gold":8},"counter":-3},{"tag":2,"teams":{"Blue":255},"slots":[65535,0,0,9]}]}`
 
 // paddedCookProbe cooks the frame a constructor builds, the frame
 // paddedCookBuilt spells, and the frame the load reads from the wire, and

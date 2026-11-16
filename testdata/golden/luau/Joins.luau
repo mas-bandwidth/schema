@@ -1072,6 +1072,8 @@ function _M.WriteArmAlign(stream: any, v: any): boolean
   if v.Flag then
     if type(v.SLength) ~= "number" or v.SLength % 1 ~= 0 or v.SLength < 0 or v.SLength > 4 then return false end -- the length guards the copy (SPEC §6.3)
     if type(v.S) ~= "buffer" or buffer.len(v.S) < v.SLength then return false end
+    if not utf8valid(v.S, v.SLength) then return false end -- malformed UTF-8 (SPEC §4.7)
+    for k = 0, v.SLength - 1 do if buffer.readu8(v.S, k) == 0 then return false end end -- interior null (SPEC §4.7)
     BITS.value = v.SLength
     if not stream:serializeBits(BITS, 3) then return false end -- the length
     if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.S, 0, v.SLength))) then return false end -- align, then the used bytes (SPEC §4.7)
@@ -1229,6 +1231,8 @@ function _M.WriteRegainAfterAlign(stream: any, v: any): boolean
   end
   if type(v.SLength) ~= "number" or v.SLength % 1 ~= 0 or v.SLength < 0 or v.SLength > 4 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.S) ~= "buffer" or buffer.len(v.S) < v.SLength then return false end
+  if not utf8valid(v.S, v.SLength) then return false end -- malformed UTF-8 (SPEC §4.7)
+  for k = 0, v.SLength - 1 do if buffer.readu8(v.S, k) == 0 then return false end end -- interior null (SPEC §4.7)
   BITS.value = v.SLength
   if not stream:serializeBits(BITS, 3) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.S, 0, v.SLength))) then return false end -- align, then the used bytes (SPEC §4.7)

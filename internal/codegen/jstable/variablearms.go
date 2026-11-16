@@ -127,7 +127,7 @@ func (g *variableGen) emitUnionDescriptors(closure []*ir.Struct) {
 				g.pf("      { name: %s, id: %s, k: %d, void: false, body: true, fw: 0, t: %s },\n", jsStr(arm.Name), id, armWireKind(arm), jsStr(arm.Ref.Name))
 			default:
 				g.pf("      { name: %s, id: %s, k: %d, void: false, body: false, fw: %d, f: %s },\n",
-					jsStr(arm.Name), id, armWireKind(arm), ir.ArmWireFixedWidth(arm.F), g.fieldDescNamed(arm.F, "value", 0, nil))
+					jsStr(arm.Name), id, armWireKind(arm), ir.ArmWireFixedWidth(arm.F), g.fieldDescNamed(arm.F, "value", 0, nil, false))
 			}
 		}
 		g.pf("    ],\n")
@@ -621,6 +621,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
     if (rode === null) { rode = [key]; } else if (rode.includes(key)) { report.damaged = true; break; } else { rode.push(key); }
+    TableVariableIntroduce(st, key);
     const elen = sub.leb();
     if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
     const slot = fd.slotById.get(table[key - 1]);
@@ -636,8 +637,12 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     const er = new TableVariableReader(r.b, sub.at, sub.at + elen);
     switch (fd.e.s) {
       case "enum": {
-        const x = TableVariableEnumRead(fd.e, er, table, report, retain);
-        if (x !== undefined) { arr[slot] = x; }
+        const unknownBefore = report.unknown;
+        const x = TableVariableEnumRead(fd.e, er, table, report, retain, st);
+        if (x !== undefined) {
+          if (TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
+          arr[slot] = x;
+        }
         break;
       }
       case "tab": {
@@ -647,12 +652,18 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (path !== null) { path.pop(); }
         if (TableVariableCountRefused(report)) { return false; }
         if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
+        // A slot whose table body is its terminator alone is the default the
+        // writer elides (§3.2).
+        if (elen <= 1) { report.damaged = true; break; }
         arr[slot] = inst;
         break;
       }
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
-        if (x !== undefined) { arr[slot] = x; }
+        if (x !== undefined) {
+          if (TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
+          arr[slot] = x;
+        }
       }
     }
     // Bytes left inside a keyed slot after its element are damage (decode.go keyed).
@@ -675,8 +686,11 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, o); }
   const ref = r.leb();
   if (r.bad) { report.damaged = true; return undefined; }
-  if (ref === 0) { return null; }
+  if (ref === 0) {
+    return null;
+  }
   if (ref > table.length || r.at >= r.end) { report.damaged = true; return undefined; }
+  TableVariableIntroduce(st, ref);
   const armId = table[ref - 1];
   const kind = r.u8();
   const n = r.leb();
@@ -758,7 +772,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       return holder;
     }
     case "bytes": case "arr": {
-      const res = TableVariableReadArrayBody(f, r, r.end, table, holder, report, st, retain, path);
+      const res = TableVariableReadArrayBody(f, r, r.end, table, holder, report, st, retain, path, false);
       return res ? holder : null;
     }
     case "union": {
@@ -769,7 +783,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       return holder;
     }
     case "enum": {
-      const x = TableVariableEnumRead(f, r, table, report, retain);
+      const x = TableVariableEnumRead(f, r, table, report, retain, st);
       if (x === undefined) { return null; }
       if (r.at !== r.end) { report.damaged = true; return null; }
       holder.value = x;

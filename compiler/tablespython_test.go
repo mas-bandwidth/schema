@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 import (
@@ -93,18 +91,33 @@ func TestPythonTableCarrySetCarriesTimestamp(t *testing.T) {
 	}
 }
 
+// TestPythonTableCarrySetIsRegisteredByItsLayers: the table frame itself adds
+// no construct from the §2 carry vocabulary (docs/SPEC-TABLES.md); every
+// construct the python set holds is one a field-kind layer registers in its
+// own compiler/carries_python_<kind>.go and appends to nonGoCarriers["python"]
+// from its own test file (the optional kind: optional-variable-closure).
+func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
+	t.Parallel()
+	got, ok := Carried("python")
+	if !ok {
+		t.Fatal("the python target registered no carries set")
+	}
+	for _, construct := range got {
+		if !slices.Contains(nonGoCarriers["python"], construct) {
+			t.Errorf("the table frame registered %q, which no field-kind layer claims", construct)
+		}
+	}
+}
+
 // The compiler keeps the common carry checks before the table frame. Direct
-// descriptor generation remains available for later field-codec layers.
+// descriptor generation remains available for later field-codec layers. The
+// optional array `?[3]int16` left this list when the optional kind began
+// carrying it (compiler/carries_python_optional.go).
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"[]int32", "?[3]int16"} {
-		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
-		_, err := New().Generate(u, "python", Options{})
-		if err == nil {
-			t.Errorf("python emitted an uncarried field values %s", field)
-		} else if !strings.Contains(err.Error(), "python") || !strings.Contains(err.Error(), "values") {
-			t.Errorf("the refusal does not name the target and field: %v", err)
-		}
+	list := unitFromSource(t, "package probe\ntable Root {\n values []float32\n}\n")
+	if _, err := New().Generate(list, "python", Options{}); err != nil {
+		t.Fatalf("the table frame refused its float list: %v", err)
 	}
 	// A plain map spends no §2 carry construct; the map carrier registry is
 	// what admits it (compiler/carries_python_maps.go).
@@ -144,7 +157,7 @@ func TestPythonTableRuntimeNamesAreClaimed(t *testing.T) {
 		if !strings.HasSuffix(rel, ".py") {
 			continue
 		}
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '#' {
 				continue
 			}

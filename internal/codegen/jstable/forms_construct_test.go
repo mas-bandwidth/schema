@@ -64,9 +64,21 @@ table All { n int32
 			if !model.Read(value, []byte(`{"n":7}`), &report) {
 				t.Fatal(report)
 			}
-			wire, err := tablewire.Encode(model, value)
+			// The generated <T>Save here is explicitly the variable-form API,
+			// including when T is declared fixed. Compare it with the matching
+			// engine form rather than the fixed-root dispatch of Encode.
+			wire, err := tablewire.EncodeVariable(model, value)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if len(wire) == 0 || wire[0] != 1 {
+				t.Fatalf("%s: variable oracle did not write form 1: %x", name, wire)
+			}
+			if tablewire.FixedRoot(model, st) {
+				fixed, err := tablewire.Encode(model, value)
+				if err != nil || len(fixed) == 0 || fixed[0] != 3 {
+					t.Fatalf("%s: fixed-root oracle did not write form 3: %x %v", name, fixed, err)
+				}
 			}
 			txt, err := model.Write(value)
 			if err != nil {

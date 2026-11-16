@@ -41,7 +41,7 @@ var pyKeyedConstructs = []pyKeyedConstruct{
     money [Slot]ufixed(8, 8) | min = 0, max = 200
     n     int32
 }
-`, "K", `{"ints":{"head":-5,"feet":7},"flags":{"body":true},"wide":{"head":18446744073709551615,"body":1},"small":{"feet":-128},"money":{"body":3.25},"n":3}`},
+`, "K", `{"ints":{"head":-5,"feet":7},"flags":{"body":true},"wide":{"head":"18446744073709551615","body":"1"},"small":{"feet":-128},"money":{"body":3.25},"n":3}`},
 	// every slot present, the last variant included
 	{"scalars_full", "package probe\n" + pyKeyedEnum + `table K
 {
@@ -383,10 +383,12 @@ table R
 
 // pyKeyedUnknownTable builds a keyed field of tables (element kind 13) whose
 // one slot names a key this reader cannot name and carries the table payload
-// that body builds. The payload's own ids are used before the field's.
+// that body builds. The outer field and slot key precede the payload's ids.
 func pyKeyedUnknownTable(body func(b *pyKeyedBuild) []byte) func(f uint64, k []uint64) []byte {
 	return func(f uint64, k []uint64) []byte {
 		b := &pyKeyedBuild{}
+		b.ref(f)
+		b.ref(ir.TableWireId("gone"))
 		payload := body(b)
 		b.keyedField(f, 16, 13, 1, []pyKeyedSlot{{key: ir.TableWireId("gone"), payload: payload}}, nil)
 		return b.file()

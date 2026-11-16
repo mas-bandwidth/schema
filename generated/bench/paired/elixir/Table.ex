@@ -3724,6 +3724,8 @@ defmodule Bench.Table do
 
           if not node_ok, do: throw(:wire_damaged)
 
+          value = Map.merge(defaults(node_desc), value)
+
           {Map.put(records, idx, value), merge_report(report, own_report),
            Map.put(node_fields, idx, fields_of_node)}
 
@@ -4833,7 +4835,7 @@ defmodule Bench.Table do
 
         if status == :halt or ends_early?(sub, ids),
           do: {:cont, %{}, throw(:wire_damaged)},
-          else: {:cont, value, report}
+          else: {:cont, Map.merge(defaults(desc), value), report}
 
       {:stop, fields, [], _remaining} ->
         # the element's body is damaged mid-walk or runs off its own end: the
@@ -4991,10 +4993,19 @@ defmodule Bench.Table do
 
   # defaults is a field's declared default: what an absent field reads (§4). The
   # descriptor's own default column carries it, declared default first, so an
-  # int32 = 1 reads 1 and a text renders 1.
+  # int32 = 1 reads 1 and a text renders 1. A table nested by value reads the
+  # member's own defaults, as the reference's prefill does, so every body takes
+  # one shape whether the wire named its fields or not.
   defp defaults(desc) do
     Map.new(desc.fields, fn f ->
-      {f.name, Map.get(f, :default)}
+      value =
+        case f do
+          %{optional: true} -> Map.get(f, :default)
+          %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
+          _ -> Map.get(f, :default)
+        end
+
+      {f.name, value}
     end)
   end
 
@@ -5429,6 +5440,9 @@ defmodule Bench.Table do
 
       {:out_of_range, name} ->
         {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :json_kind_mismatch ->
+        {:error, :kind_mismatch, Map.put(empty_report(), :reason, "kind_mismatch")}
 
       :wire_damaged ->
         {:error, :malformed, empty_report()}
@@ -6260,10 +6274,24 @@ defmodule Bench.Table do
     end
   end
 
+  # Wide integer fields admit the decimal string form only (§16.2). Keep
+  # flags and timestamps on their own named representations.
+  defp json_read_field(%{t: :int, width: width} = f, raw, _report)
+       when width > 4 and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) and
+              (is_integer(raw) or is_float(raw)) do
+    throw(:json_kind_mismatch)
+  end
+
+  defp json_read_field(%{t: :int, width: width} = f, {tag, _}, _report)
+       when width > 4 and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) and
+              tag in [:decimal, :bigint] do
+    throw(:json_kind_mismatch)
+  end
+
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
   # §4.12), every other field reads it as the double it spells (§16.2).
-  # A wide integer reads its STRING form with the same rule as its number form
+  # A wide integer reads its STRING form with the integer-token rule
   # (docs/SPEC-TABLES.md §16.2): the digits and an optional minus, no fraction,
   # no exponent, not -0. A narrow integer is a number only, so a string there
   # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
@@ -6877,6 +6905,19 @@ defmodule Bench.Table do
     json_skip_value(raw)
     value = if f.text_optional, do: nil, else: ""
     {%{"value" => value}, throw(:wire_damaged)}
+  end
+
+  # The same string-only rule applies to every array and keyed element.
+  defp json_read_list_elem(%{elem_kind: kind} = f, raw, _report)
+       when kind in [5, 9, 18, 19, 23, 24, 28, 29] and
+              not is_map_key(f, :elem_flags) and (is_integer(raw) or is_float(raw)) do
+    throw(:json_kind_mismatch)
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, {tag, _}, _report)
+       when kind in [5, 9, 18, 19, 23, 24, 28, 29] and
+              not is_map_key(f, :elem_flags) and tag in [:decimal, :bigint] do
+    throw(:json_kind_mismatch)
   end
 
   # an integer element takes an INTEGER token only: a fraction, an exponent or
@@ -8351,23 +8392,15 @@ defmodule Bench.Table do
         buf
       end
 
+    # AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (§7.2): its presence byte is
+    # zero and its payload stays zero whatever its declared defaults are,
+    # which stay a read rule
     if Map.get(f, :optional, false) and not present do
-      cook_absent(f, base, index, order, buf)
+      buf
     else
       cook_value(f, Map.get(value, f.name, f.default), base, index, order, buf)
     end
   end
-
-  # WHAT THE STORAGE HOLDS IS WHAT IS WRITTEN (§7.6): an absent optional's
-  # storage is value-initialized, so a record keeps its declared defaults and
-  # an array its value-initialized slots; a scalar's is zero.
-  defp cook_absent(%{t: t} = f, base, index, order, buf) when t in [:table, :keyed],
-    do: cook_value(f, %{}, base, index, order, buf)
-
-  defp cook_absent(%{t: :list} = f, base, index, order, buf),
-    do: cook_value(f, [], base, index, order, buf)
-
-  defp cook_absent(_f, _base, _index, _order, buf), do: buf
 
   # a blob slot holds the mark cook_collect gave it, {:cook_blob, n}: the
   # node of this slot (§2.5)
@@ -8472,10 +8505,11 @@ defmodule Bench.Table do
         buf
       end
 
-    # the storage is allocate-max (§7.2): a record slot past the live count
-    # holds the element type's declared defaults, every other one zero
+    # the storage is allocate-max (§7.2): a counted array's slot past the live
+    # count is dead storage and stays zero; a fixed array's record slot the
+    # value leaves out holds the element type's declared defaults
     elems =
-      if f.elem_t == :record and ceiling != nil and length(elems) < ceiling,
+      if not counted and f.elem_t == :record and ceiling != nil and length(elems) < ceiling,
         do: elems ++ List.duplicate(%{}, ceiling - length(elems)),
         else: elems
 

@@ -1,13 +1,7 @@
-//go:build schema_leg_python
-
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
-// Scaffolded by `schema new-leg python`; docs/PORT-PYTHON.md is the port's
-// design. The schema_leg_python tag keeps this target out of the builtins
-// until the packet surface has claims in compiler/*_test.go;
-// `go build -tags schema_leg_python` is `schema generate --lang python`. The
-// tag is dropped when the port joins the builtins (P4, the packet wire).
+// The packet wire is available through the ordinary built-in registry.
 package compiler
 
 import (
@@ -44,7 +38,7 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseMaps(u, "python"); err != nil {
 		return nil, err
 	}
-	if err := refuseLists(u, "python"); err != nil {
+	if err := pythonRefuseUnsupportedLists(u); err != nil {
 		return nil, err
 	}
 	if len(u.Tables) > 0 {
@@ -54,6 +48,50 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	return python.Generate(u)
+}
+
+// Python's list codec currently carries only a subset of list element shapes.
+// Keep the public driver honest for the rest until their codecs land.
+func pythonRefuseUnsupportedLists(u *ir.Unit) error {
+	var unsupported []string
+	for name := range ir.TableClosure(u) {
+		st := ir.ClosureMember(u, name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if !f.IsList() {
+				continue
+			}
+			carried := !f.Type.Pointer && !f.Type.Optional
+			if f.Type.Pointer && !f.Type.Optional && !f.Type.Blob() {
+				if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+					carried = true
+				}
+			}
+			if carried {
+				switch f.Type.Kind {
+				case ir.TBool, ir.TInt, ir.TFixed, ir.TBits, ir.TFloat32, ir.TFloat64:
+				case ir.TNamed:
+					switch f.Type.Ref.(type) {
+					case *ir.Struct, *ir.Enum, *ir.Flags, *ir.Union:
+					default:
+						carried = false
+					}
+				default:
+					carried = false
+				}
+			}
+			if !carried {
+				unsupported = append(unsupported, name+"."+f.Name)
+			}
+		}
+	}
+	if len(unsupported) == 0 {
+		return nil
+	}
+	sort.Strings(unsupported)
+	return fmt.Errorf("python does not carry the unbounded array element on %s (docs/SPEC-TABLES.md §2.9)", englishList(unsupported))
 }
 
 // pythonRefusePacketUnionArrays is this target's one addition to the shared
@@ -100,5 +138,6 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 }
 
 func init() {
-	registerBuiltin(pythonTarget{}, false, true, false, false)
+	registerBuiltin(pythonTarget{}, true, true, false, false)
+	wasRowTargets = append(wasRowTargets, "python")
 }

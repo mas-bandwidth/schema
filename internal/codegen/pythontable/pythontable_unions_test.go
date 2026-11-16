@@ -339,16 +339,16 @@ var unionCases = []unionCase{
 	{"element-truncated", "refused wire_damaged", func(w *unionWire) []byte {
 		return w.file(w.array("many", 15, 2, unionLeb(0)), w.least())
 	}},
-	{"below-minimum", "read", func(w *unionWire) []byte {
-		// Read as it stands; the engine's writer then refuses it.
+	{"below-minimum", "refused count_over_bound", func(w *unionWire) []byte {
+		// A present counted array must meet the reader minimum.
 		return w.file(w.array("least", 15, 0))
 	}},
 	{"absent-minimum", "read", func(w *unionWire) []byte {
-		// An absent counted field reads empty, as the engine builds it.
+		// An absent counted field is born at its minimum, with None elements.
 		return w.file(w.union("pick", w.arm("number", 4, unionI32(1))))
 	}},
 	{"counted-one-none", "read", func(w *unionWire) []byte {
-		// The engine elides a counted array only at count 0: one None rides.
+		// The minimum-sized array of None elements elides as its birth value.
 		return w.file(w.array("least", 15, 1, unionLeb(0)))
 	}},
 	{"fixed-all-none", "read", func(w *unionWire) []byte {
@@ -361,6 +361,68 @@ var unionCases = []unionCase{
 	{"nested-table-union", "read", func(w *unionWire) []byte {
 		return w.file(w.table("holder", w.union("pick", w.arm("number", 4, unionI32(3)))), w.least())
 	}},
+}
+
+// unionCaseWire interns references in the order they occur on the wire. Go
+// evaluates nested builder arguments first, so predeclare each outer header
+// before its payload and leave the intentionally malformed payload unchanged.
+func unionCaseWire(c unionCase) []byte {
+	var names []string
+	switch c.name {
+	case "arm-zero-field":
+		names = []string{"pick", "least", "toggle"}
+	case "zero-scalar-arm", "arm-kind-mismatch", "arm-short-width", "arm-long-width", "arm-past-body":
+		names = []string{"pick", "number", "least", "toggle"}
+	case "table-arm-default":
+		names = []string{"pick", "leaf", "least", "toggle"}
+	case "nested-none", "nested-trailing":
+		names = []string{"inner", "pick", "least", "toggle"}
+	case "unknown-arm", "unknown-arm-kind32-nonzero-l", "unknown-arm-kind99", "unknown-arm-bad-bool", "unknown-arm-bad-body":
+		names = []string{"pick", "ghost", "least", "toggle"}
+	case "unknown-arm-element":
+		names = []string{"many", "ghost", "number", "least", "toggle"}
+	case "unknown-arm-nested-table":
+		names = []string{"holder", "pick", "ghost", "least", "toggle"}
+	case "unknown-field-kind32-nonzero-l":
+		names = []string{"ghost_field", "least", "toggle"}
+	case "unknown-field-bad-union":
+		names = []string{"ghost_field", "ghost", "least", "toggle"}
+	case "arm-kind-mismatch-then-damage":
+		names = []string{"pick", "number", "least", "toggle", "ghost_field"}
+	case "arm-nonfinite-then-damage":
+		names = []string{"pick", "ghost", "least", "toggle", "ghost_field"}
+	case "arm-kind-mismatch-then-reserved-node-type":
+		names = []string{"pick", "number", "least", "toggle"}
+	case "void-arm-nonzero-l":
+		names = []string{"pick", "ping", "least", "toggle"}
+	case "bool-arm-two":
+		names = []string{"pick", "toggle", "least"}
+	case "table-arm-trailing":
+		names = []string{"pick", "other", "least", "toggle"}
+	case "count-over-bound", "count-over-extent-cap", "element-kind-mismatch", "element-kind-closed", "element-truncated":
+		names = []string{"many", "least", "toggle"}
+	case "below-minimum", "counted-one-none":
+		names = []string{"least"}
+	case "absent-minimum":
+		names = []string{"pick", "number"}
+	case "fixed-all-none":
+		names = []string{"trail", "least", "toggle"}
+	case "fixed-short":
+		names = []string{"trail", "ping", "least", "toggle"}
+	case "nested-table-union":
+		names = []string{"holder", "pick", "number", "least", "toggle"}
+	default:
+		panic("no physical ID order for union case " + c.name)
+	}
+	var w unionWire
+	for _, name := range names {
+		w.ref(name)
+	}
+	if c.name == "arm-kind-mismatch-then-reserved-node-type" {
+		w.refID(ir.TableNodeWireId)
+		w.refID(ir.TableBuildVersionWireId)
+	}
+	return c.build(&w)
 }
 
 // unionsProbe prints one line per check, and a check that raises prints its
@@ -552,8 +614,7 @@ func unionTree(t *testing.T, u *ir.Unit, mutate func(map[string][]byte) error) (
 	put("trail_elided.bin", unionEngineWire(t, u, unionTrailElidedText))
 	var names []string
 	for _, c := range unionCases {
-		var w unionWire
-		put("case_"+c.name+".bin", c.build(&w))
+		put("case_"+c.name+".bin", unionCaseWire(c))
 		names = append(names, c.name)
 	}
 	put("cases.txt", []byte(strings.Join(names, "\n")+"\n"))
@@ -585,8 +646,7 @@ func unionWant(t *testing.T, u *ir.Unit) []string {
 		"OK",
 	}
 	for _, c := range unionCases {
-		var w unionWire
-		verdict := unionEngineVerdict(t, u, c.build(&w))
+		verdict := unionEngineVerdict(t, u, unionCaseWire(c))
 		if !strings.HasPrefix(verdict, c.engine) {
 			t.Errorf("case %s: the engine now answers %q, written for %q", c.name, verdict, c.engine)
 		}
@@ -671,11 +731,12 @@ var unionControls = []struct {
 	{"arm-kind-check", "kind_union.py", "    if kind != arm.kind:\n", "    if False:\n", "case arm-kind-mismatch "},
 	{"void-arm-length", "kind_union.py", "        if length != 0:\n", "        if False:\n", "case void-arm-nonzero-l "},
 	{"arm-trailing", "kind_union.py", "    if sub.pos != sub.end:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "    if False:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "case arm-long-width "},
+	{"count-minimum", "kind_union.py", "elif count > fd.bound or (fd.array_kind == 2 and count < fd.array_min):", "elif count > fd.bound:", "case below-minimum "},
 	{"count-bound-reason", "kind_union.py", "raise Refused(\"count_over_bound\"", "raise Refused(\"out_of_range\"", "case count-over-bound "},
 	{"count-extent-cap", "load.py", "    if count > _COUNT_CAP:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "    if False:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "case count-over-extent-cap "},
-	{"counted-elision", "descriptor.py", "                return len(value) == 0\n", "                return len(value) <= 1 and all(element.type == 0 for element in value)\n", "case counted-one-none "},
+	{"counted-elision", "descriptor.py", "            return len(value) == self.array_min and all(element.type == 0 for element in value)\n", "            return len(value) == 0\n", "case counted-one-none "},
 	{"fixed-elision", "descriptor.py", "            return all(element.type == 0 for element in value)\n", "            return bool(value == self.default)\n", "union_elide_inactive True"},
-	{"table-elision", "descriptor.py", "            return all(field.is_default(getattr(value, field.name)) for field in fields)\n", "            return bool(value == new_by_name(self.target))\n", "union_elide_inactive True"},
+	{"table-elision", "descriptor.py", "            return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)\n", "            return bool(value == new_by_name(self.target))\n", "union_elide_inactive True"},
 	{"write-arm-path", "kind_union.py", "f\"{path}.{arm.name}\"", "path", "union_write_type "},
 	{"write-minimum", "kind_union.py", "        if count < f.array_min or count > f.bound:", "        if count > f.bound:", "union_write_minimum "},
 	{"write-tag-check", "kind_union.py", "    if type(tag) is not int or tag < 0 or tag > len(un.descriptor.arms):", "    if type(tag) is not int or tag < 0:", "union_write_tag "},
@@ -705,6 +766,17 @@ func TestPythonVtUnionsNegativeControl(t *testing.T) {
 					return fmt.Errorf("%s carries %q %d times, want 1: the control would be vacuous", path, ctl.from, strings.Count(src, ctl.from))
 				}
 				files[path] = []byte(strings.Replace(src, ctl.from, ctl.to, 1))
+				if ctl.name == "unknown-field-check" {
+					// The tracker shares this walk; isolate the decoder fault while
+					// its own first-use controls exercise the tracker separately.
+					p := "unions/_schema/load.py"
+					body := string(files[p])
+					const call = "    _check_id_order(view, ids)\n"
+					if strings.Count(body, call) != 1 {
+						return fmt.Errorf("ID order call missing from %s", p)
+					}
+					files[p] = []byte(strings.Replace(body, call, "    pass  # isolate the decoder control\n", 1))
+				}
 				return nil
 			}
 			var named []string
@@ -736,5 +808,81 @@ func TestPythonVtUnionsNegativeControl(t *testing.T) {
 				t.Fatalf("NEGATIVE CONTROL FAILED: %s left %q green; findings: %v", ctl.name, ctl.red, fails)
 			}
 		})
+	}
+}
+
+// TestPythonUnionCountedBirth compares construction and write-back with the engine.
+func TestPythonUnionCountedBirth(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters")
+	const schema = `package unionbirth
+union Pick { number int32 }
+table Root { least [2..4]Pick }
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	inputs := map[string][]byte{
+		"birth.bin": unionEngineWire(t, u, `{}`),
+		"extra.bin": unionEngineWire(t, u, `{"least":[{},{},{}]}`),
+	}
+	probe := pyrun.ImportPrelude + `from unionbirth import Root, Pick, InvalidValue
+r = Root()
+assert len(r.least) == 2 and all(x.type == 0 for x in r.least)
+assert r.least[0] is not r.least[1]
+with open('birth.bin', 'rb') as f: birth = f.read()
+with open('extra.bin', 'rb') as f: extra = f.read()
+assert r.save() == birth
+assert len(Root.load(birth).least) == 2
+r.least.append(Pick())
+assert r.save() == extra and extra != birth
+r.least = []
+try: r.save()
+except InvalidValue: pass
+else: raise AssertionError('accepted a count below the minimum')
+print('ok')
+`
+	inputs["main.py"] = []byte(probe)
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
+// TestPythonUnionCountedBirthNegativeControl removes birth allocation from generated code.
+func TestPythonUnionCountedBirthNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters")
+	const schema = `package unionbirth
+union Pick { number int32 }
+table Root { least [2..4]Pick }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "unionbirth/Core.py"
+	const born = `self.least = [new_union_by_name("Pick"), new_union_by_name("Pick")]`
+	source := string(files[path])
+	if strings.Count(source, born) != 1 {
+		t.Fatalf("birth control target occurs %d times", strings.Count(source, born))
+	}
+	files[path] = []byte(strings.Replace(source, born, `self.least = []`, 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from unionbirth import Root
+assert len(Root().least) == 2, 'counted union birth missing'
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "counted union birth missing") {
+			t.Fatalf("birth control did not fail by name: %v\n%s", err, stderr)
+		}
 	}
 }

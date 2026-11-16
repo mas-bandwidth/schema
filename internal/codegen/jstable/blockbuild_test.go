@@ -159,7 +159,7 @@ console.log("cook-be " + cook(2));
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup("Root"))
 	var report tabletext.Report
-	text := []byte(`{"stamp":42,"rows":[{"value":9,"flag":true},{"value":3}],"other":[{"value":11,"flag":true}]}`)
+	text := []byte(`{"stamp":"42","rows":[{"value":"9","flag":true},{"value":"3"}],"other":[{"value":"11","flag":true}]}`)
 	if !m.Read(inst, text, &report) {
 		t.Fatalf("oracle text: %+v", report)
 	}

@@ -1,6 +1,26 @@
 {
   "groups": [
     {
+      "name": "js-text-list-strict",
+      "when": "pull-request",
+      "why": "The strict text-list positive probes and planted out-of-range verdict bypass, including generated Go and Node oracles; measured under ten seconds on the shared Linux bench.",
+      "targets": [],
+      "node": "26"
+    },
+    {
+      "name": "base-c-retain-hashzero",
+      "when": "pull-request",
+      "why": "C retained hash-zero identity positive and planted bypass, with the independent Go oracle; two focused sanitized generated-unit builds measured under ten seconds on the shared Linux bench.",
+      "targets": []
+    },
+    {
+      "name": "java-transport-id",
+      "when": "pull-request",
+      "why": "The Java variable-file first-use gate and its planted bypass cover the plain and retaining readers against the Go oracle. Two focused generated-unit compilations, measured about 11 seconds together on the shared Linux bench.",
+      "targets": [],
+      "java": "21"
+    },
+    {
       "name": "base-1",
       "when": "pull-request",
       "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, C++ finite-float read and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
@@ -1543,11 +1563,18 @@
     },
     {
       "name": "rust-cook-write-test",
-      "when": "nightly",
-      "why": "RELAXED 2026-11-14 (maintainer: get main green): taken out of rust-conformance-walk because the suite it plants into, TestCookWriteRust, is red on main without the plant: it reads every cook-write row from the instance wire, so the recipe rows (input=<json> share=<from>:<to>, blob_shared) fail, and a form-1 load the Rust leg refuses panics the cook probe; re-enable: relax/rust-cookwrite-test-red.",
+      "when": "pull-request",
+      "why": "The native cook test covers all 71 manifest rows in both byte orders, including shared-blob recipes and fixed values; the finite-value sabotage is detected. Measured 13.70s on Intel Linux at 2c149d006.",
       "targets": [
         "tables-rust-cook-write-negative-control"
       ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-nested-union",
+      "when": "pull-request",
+      "why": "The exact nested arm boundary and its omission control run natively; measured pair 1.396s on Intel Linux.",
+      "targets": ["tables-rust-nested-union-negative-control"],
       "rust": "stable"
     },
     {
@@ -1560,6 +1587,13 @@
         "tables-rust-node-label-negative-control",
         "tables-rust-cook-layout-negative-control"
       ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-unused-ids",
+      "when": "pull-request",
+      "why": "Native unused-ID census proofs include all reference sites, bounded union depth, standalone diagnostics and two omission controls.",
+      "targets": ["tables-rust-unused-ids-negative-control"],
       "rust": "stable"
     },
     {
@@ -1766,11 +1800,13 @@
       "name": "js-discard",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md §4): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
+      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md §4): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. The retained-depth control runs the native boundary witness and lowers the copied retaining walk limit to 127; the retained-hash-zero control mistakes hash zero for None in a copied emitter and requires the enum round trip to fail. A group of its own so the js and js-proof jobs keep their measured time.",
       "targets": [
         "tables-js-discard-negative-control",
         "tables-js-batch-discard-negative-control",
-        "tables-js-cycle-negative-control"
+        "tables-js-cycle-negative-control",
+        "tables-js-retain-depth-negative-control",
+        "tables-js-retain-hashzero-negative-control"
       ]
     },
     {
@@ -1992,6 +2028,17 @@
         "cards-java-conformance-hash-negative-control",
         "conformance-negative-control-java-block",
         "conformance-negative-control-java-walk"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-write-refusal",
+      "when": "pull-request",
+      "why": "the Java leg's write-contract controls (docs/SPEC.md §5.1): the conformance driver runs write-refusal, write-refusal-fixed and write-refusal-message under -ea, and each control removes one generated assertion from a copy of the unit and requires its surface red by the row it names while wire (or message) stays green. Three javac passes over one small unit each, beside the conformance classpath the gate already builds.",
+      "targets": [
+        "conformance-negative-control-java-write-refusal",
+        "conformance-negative-control-java-write-refusal-fixed",
+        "conformance-negative-control-java-write-refusal-message"
       ],
       "java": "21"
     },
@@ -2366,6 +2413,7 @@
         "tables-goose-fixedform-negative-control",
         "tables-goose-tablewire-negative-control",
         "tables-goose-message-form-negative-control",
+        "tables-goose-announcement-first-use-negative-control",
         "tables-goose-message-peer-negative-control",
         "tables-goose-versioning-negative-control",
         "tables-goose-damage-negative-control",
@@ -3124,11 +3172,11 @@
       ]
     },
     {
-      "name": "write-refusal-storage-release-rust",
+      "name": "rust-message-storage-assert",
       "when": "pull-request",
-      "why": "the Rust release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in --release with debug assertions off, and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small cargo build.",
+      "why": "the Rust message storage check is a debug_assert! (docs/SPEC.md §5.1): an assert leg's count or length past its storage is a write check, so a debug build asserts and a release build carries no write-side check. The control strips the generated debug_assert! and requires the test red. One small go test and rustc run.",
       "targets": [
-        "write-refusal-storage-release-rust-negative-control"
+        "tables-rust-message-storage-assert-negative-control"
       ],
       "rust": "stable"
     },
@@ -3151,6 +3199,13 @@
       "dart": "3.13.2"
     },
     {
+      "name": "cpp-message-flags-domain",
+      "when": "pull-request",
+      "seconds": 57,
+      "why": "Native debug, optimized-debug and release legal/full-width controls plus debug writer assertion omission; measured pair56.145s on Intel Linux.",
+      "targets": ["tables-cpp-message-flags-domain-negative-control"]
+    },
+    {
       "name": "base-cpp-write-refusal",
       "when": "pull-request",
       "why": "the write contract's C++ controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated C++ tree, the conformance driver rebuilt against it, and the writer's surface required red with the surface beside it green. One driver compile and one leg run per control.",
@@ -3159,6 +3214,13 @@
         "conformance-negative-control-cpp-write-refusal-fixed",
         "conformance-negative-control-cpp-write-refusal-message"
       ]
+    },
+    {
+      "name": "c-message-flags-domain",
+      "when": "pull-request",
+      "seconds": 55,
+      "why": "Native debug and release legal/full-width message masks plus debug writer assertion omission; measured full make control54.65s on Intel Linux.",
+      "targets": ["tables-c-message-flags-domain-negative-control"]
     },
     {
       "name": "base-c-write-refusal-a",
@@ -3253,11 +3315,23 @@
       "python": "pin"
     },
     {
+<<<<<<< HEAD
       "name": "python-packet-unions",
       "when": "pull-request",
       "why": "the union and payload-free-arm control (docs/PORT-PYTHON.md, THE PACKET CORE CUT; test/packet-void/README.md): a copy of the generated writer spends one extra set bit on the payload-free arms, and a copy of the generated reader widens a union's tag range over its unused tags; TestPythonPacketUnionsNegativeControl must go red on the write marker and on the unused-tag read against the Go reference. One SCHEMA_SLOW go test under a pinned interpreter, the cost of the pin cache restore rather than the run.",
       "targets": [
         "packet-void-python-negative-control"
+=======
+      "name": "python-packet-close",
+      "when": "pull-request",
+      "why": "The packet golden and strict analyzer controls plant a reader fault and a type error into copies of generated code and require each gate to name its failure.",
+      "targets": [
+        "python-packet-close-negative-control",
+        "python-packet-analyzer-negative-control",
+        "packet-defaults-python-negative-control",
+        "bench-python-negative-control",
+        "python-hosted-packet-text-negative-control"
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
       ],
       "python": "pin"
     },
@@ -3355,6 +3429,10 @@
     {
       "target": "packet-defaults-moo-negative-control",
       "reason": "the moo leg's constructor-bytes control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-write-cfloat-moo-negative-control",
+      "reason": "Runs with test-moo on runners that build the moo toolchain."
     },
     {
       "target": "packet-finite-moo-negative-control",
