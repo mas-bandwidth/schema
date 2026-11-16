@@ -173,6 +173,7 @@ class Ctx:
     __slots__ = (
         "ids",
         "unknown",
+        "widened",
         "pending",
         "blob_pending",
         "current",
@@ -192,6 +193,7 @@ class Ctx:
     def __init__(self, ids: list[int]) -> None:
         self.ids = ids
         self.unknown = 0
+        self.widened = 0
         # every known pointer slot: its owner, its field and its node index; a
         # map's pointer value is rewritten to the map, (its key, the field)
         self.pending: list[tuple[Any, Any, int]] = []
@@ -250,7 +252,7 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
     _resolve(ctx)
     if report is not None:
         report.unknown = ctx.unknown
-        report.widened = 0
+        report.widened = ctx.widened
         report.retained = 0
         report.retain_lost = 0
     return obj
