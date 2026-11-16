@@ -98,17 +98,15 @@ message_bytes_truncated backenddemo LoginRequest testdata/wire/tables/fuzz-vecto
 # Isolated 33-byte count, truncated payload: framing damage wins before bound refusal.
 message_bytes_truncated_isolated backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_bytes_truncated_isolated.bin message
 
-# The key scan reads through an incompatible occurrence; the final key kind wins.
+# The map entry repeats a field ID; the strict read refuses wire_damaged.
 map_key_repeat_kind mapdemo Slots testdata/wire/tables/fuzz-vectors/map_key_repeat_kind.bin
 
 # A damaged framed pointer arm cannot produce a pointee-kind mismatch.
 pointer_arm_trailing streamdemo Feed testdata/wire/tables/fuzz-vectors/pointer_arm_trailing.bin
 
-# A later map occurrence supersedes retained bodies even after a damaged key cleared its value.
+# This mutated map wire contains ill-formed text; the strict read refuses it.
 map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin
 
-# BYTES INSIDE AN ENVELOPE ARE SKIPPED, BYTES AFTER THE MESSAGE ARE NOT (§3).
-# A nested-union arm whose L runs one byte past the whole inner union it
 # Bytes after a complete inner union within its arm length are damage (§3),
 # as are bytes after the root terminator. The exact-length twin reads.
 # All three use the variable ToolEnvelope root and declaration-ordered fields.
@@ -153,15 +151,8 @@ root_scan_passes_damage_to_body listdemo Mixed testdata/wire/tables/fuzz-vectors
 # This clean frame preserves the signed-zero elision premise of the fuzz finding.
 list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
 
-# A KEYED SLOT WRITTEN AGAIN DISCARDS WHAT WAS RETAINED UNDER IT (§6.6). Depth's
-# keyed field rides twice; the first occurrence's Squad carries a roster entry
-# whose value arrives under the wrong kind, so the retaining read keeps it.
-# The second occurrence rewrites the same slot, and the oracle forgets the
-# slot's instance, records and all, before refilling it. The Rust retaining
-# reader refilled the slot and kept the first occurrence's record, so it saved
-# 194 bytes where the oracle saved 174. Found by the random pass of the
-# retention arm at mutant 745809 of seed 68719476731 (corpus seed map_depth),
-# on tables-rust-release run on vision.
+# A keyed slot mutation has a length beyond its enclosing body. The strict
+# read refuses wire_damaged before any replacement semantics.
 keyed_slot_rewrite_discards_retained mapdemo Depth testdata/wire/tables/fuzz-vectors/keyed_slot_rewrite_discards_retained.bin
 
 # A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
@@ -235,11 +226,9 @@ retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain
 # Dart saved the right bytes but omitted the unvisited retained-record count.
 retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
 
-# Replaced map entries discard their retained bodies without reporting loss.
-# The discarded body and an unreachable pointer node have different ownership.
+# This retained map mutant shares a blob across slots and refuses blob_shared.
 retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin
-# Final widened key occurrence replaces an earlier incompatible key kind.
-# The neutral oracle and C++ previously retained the earlier mismatch flag.
+# The map entry repeats a field ID; the strict read refuses wire_damaged.
 map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
 # A duplicate ID in a table-array child refuses wire_damaged; an independent
 # later valid sibling is framed in the same array. The paired NaN child uses

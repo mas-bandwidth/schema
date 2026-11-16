@@ -397,7 +397,7 @@ var framingVectors = []framingVector{
 	// R4: a named field under another kind skips by the WIRE kind's rule, and
 	// the field after it lands.
 	{name: "frame_kind_mismatch_skips_by_wire_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(1, 4), i32(0), buffHalf, b(0))},
-	// R5: a repeated id, the last occurrence winning.
+	// R5: a repeated field ID refuses wire_damaged.
 	{name: "frame_repeat_last_wins", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(1, 30, 9), b(0))},
 	// R6: the build-version id in a file body is malformed on that body.
 	{name: "frame_reserved_build_version_id", unit: "tblr1", root: "Cfg", ids: []string{"grade", "Silver", "build-version"}, body: cat(gradeSilver, b(3, 4), i32(0), b(0))},
@@ -432,10 +432,9 @@ var framingVectors = []framingVector{
 	// no terminator, the damage landing exactly at L. The engine and the C++
 	// reference both keep multiplier 1.5.
 	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 6, 7, 10), f32(1.5), b(0))},
-	// HELD (finding N1, reported to the parent): the whole multiplier field,
-	// then a field under kind 37, the damage landing before L. The engine and
-	// the C++ reference both refill the body to its defaults, multiplier 1.
-	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), b(0))},
+	// The multiplier is complete, then a distinct unknown field carries kind
+	// 37. The strict read refuses the unsupported kind without keeping a value.
+	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9, 7, 10), f32(1.5), b(16, 37, 0), b(0))},
 
 	// ---------------------------------------------------------------- C. arrays
 	// H2: L = 0 and L = 1 are inert.
@@ -458,8 +457,8 @@ var framingVectors = []framingVector{
 	// unknown ID already used as an enum variant, so the count crosses L and
 	// is 2 + 2·128 = 258, past the bound of 4.
 	{name: "array_header_crosses_L_bounded", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 30, 0x82), b(2, 6, 1, 0))},
-	// H3, H4: the crossed header under a foreign element kind is a kind
-	// mismatch and nothing else.
+	// H3, H4: the foreign element kind is followed by a count crossing L.
+	// The strict framing refusal occurs before a value can be retained.
 	{name: "array_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 4, 0x82), b(2, 6, 1, 0))},
 	// H4: the element kind inside L.
 	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 6, 4, 1, 2, 0, 0, 0, 0)},
@@ -556,7 +555,7 @@ var framingVectors = []framingVector{
 	// T2: bytes left over inside the field.
 	{name: "node_bytes_left_over", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2), b(0xFF)), b(0))},
 	// T2: the field under a kind other than 12.
-	{name: "node_field_wrong_kind", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 13, 10, 1), listNodeRecord(2), b(0))},
+	{name: "node_field_wrong_kind", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(4, 8), i32(1), b(0))},
 	// T4: a type id reference of 0.
 	{name: "node_type_ref_zero", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, cat(b(0, 7, 1, 4), i32(2), b(0))), b(0))},
 	// T7: an index above node_count + 1; that pointer null, the field after it
@@ -568,9 +567,7 @@ var framingVectors = []framingVector{
 	{name: "node_index_null_canonical", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(0)), held: true},
 	// R6, T5: the reserved id inside a record body stops that body.
 	{name: "node_reserved_id_in_record", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, b(5, 4, 4, 12, 0, 0)), b(0))},
-	// T1 (finding N7, settled): the node table riding twice; the LAST
-	// occurrence is the numbering, on R5's last-wins rule, and the earlier one
-	// is stepped over like any repeated field.
+	// T1: the node table rides twice, so the repeated ID refuses wire_damaged.
 	{name: "node_table_twice", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), nodeTable(1, listNodeRecord(3)), b(0))},
 	// T8: a pointer naming a node whose descent is still OPEN is a cycle, and
 	// no writer produces one (§3.1), so it is damage: node 2 naming itself,
@@ -590,7 +587,7 @@ var framingVectors = []framingVector{
 	// length is not a depth and no pass recurses per pointer. Held out of the
 	// manifest on this file's held rule.
 	{name: "node_chain_200000", unit: "graphdemo", root: "Scene", ids: sceneListNodeIds, body: listNodeChain(200000), held: true},
-	// T6: a reader that cannot name the reserved id counts one unknown.
+	// The malformed unknown-node record stays last in the root and refuses.
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(gradeSilver, b(17, 12, 3, 1, 0, 0), b(0))},
 	// L4 at the node-table field: its L past the root body.
 	{name: "node_table_L_past_body", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 12, 99, 1), listNodeRecord(2), b(0))},
