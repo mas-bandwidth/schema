@@ -8,9 +8,9 @@
 //	4096   ADVISORY, always on. The table still carries the fixed form.
 //	65536  THE WIRE'S CEILING. The fixed form is not emitted for the table at
 //	       all, because a reader holds an untrusted endpoint's layout to the same
-//	       number and would refuse the record; the table keeps form 1. The
-//	       `fixed` KEYWORD DOES NOT MAKE THIS A REFUSAL — it declares the
-//	       CLASS and this bound is the FORM's; see the last test in the file.
+//	       number and would refuse the record. A declared fixed table has no
+//	       file form; a derived table keeps form 1. The keyword still declares
+//	       the CLASS, so this bound never refuses the compile.
 //	--fixed-record-limit  A PROJECT'S POLICY, off by default. Past it the unit
 //	       does not compile.
 package compiler
@@ -101,7 +101,7 @@ func TestFixedRecordPastTheWireCeilingLosesTheForm(t *testing.T) {
 	if len(warns) != 1 {
 		t.Fatalf("exactly one report, got %d: %v", len(warns), warns)
 	}
-	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "form 1"} {
+	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "NO FILE FORM"} {
 		if !strings.Contains(warns[0], want) {
 			t.Errorf("the ceiling report must carry %q: %s", want, warns[0])
 		}
@@ -163,15 +163,15 @@ func generatedFixedForm(t *testing.T, dir string) string {
 	return all.String()
 }
 
-// A DECLARED FIXED TABLE PAST THE CEILING KEEPS FORM 1 AND IS NAMED — it does
-// NOT fail the compile (docs/SPEC-TABLES.md §3.4, #823). This is the one place
+// A DECLARED FIXED TABLE PAST THE CEILING HAS NO FILE FORM AND IS NAMED — it
+// does NOT fail the compile (docs/SPEC-TABLES.md §3.4). This is the one place
 // the keyword's *"if we add any feature that stops it from being fixed, it is a
 // compile error"* does not reach, and the reason is that the keyword declares
 // the CLASS and this bound belongs to the FORM:
 //
 //   - THE CLASS is a by-value storage, a cook, a block form (§19) and no arena
 //     edge anywhere in the closure. A 7.5 MB record is all of those things.
-//   - THE FORM is form `3` on the tolerant wire, and 65536 is what an ENDPOINT's
+//   - THE FORM is form `3` on the file wire, and 65536 is what an ENDPOINT's
 //     reader holds an untrusted layout to (`layout_record_too_large`).
 //
 // §12.1's render frame and §2.8's `WideBlob` are DECLARED `fixed table` in this
@@ -183,7 +183,7 @@ func generatedFixedForm(t *testing.T, dir string) string {
 //
 // AND IT IS NOT SILENT, which is the whole of the owner's rule: the table and
 // its size are in the message, at compile time, always on.
-func TestDeclaredFixedTablePastTheCeilingKeepsFormOneAndIsNamed(t *testing.T) {
+func TestDeclaredFixedTablePastTheCeilingHasNoFileFormAndIsNamed(t *testing.T) {
 	dir, body := fixedSizeUnit(t, "Huge", ir.TableFixedRecordMaxBytes)
 	paths, err := GatherPaths([]string{dir})
 	if err != nil {
@@ -209,10 +209,17 @@ func TestDeclaredFixedTablePastTheCeilingKeepsFormOneAndIsNamed(t *testing.T) {
 	if len(warns) != 1 {
 		t.Fatalf("exactly one report, got %d: %v", len(warns), warns)
 	}
-	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "§3.4", "form 1", "CLASS"} {
+	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "§3.4", "NO FILE FORM", "refuses form 1", "CLASS", "cook", "block form"} {
 		if !strings.Contains(warns[0], want) {
 			t.Errorf("the report must carry %q — the class is what the table keeps: %s", want, warns[0])
 		}
+	}
+	if strings.Contains(warns[0], "keeps form 1") || !strings.Contains(ir.TableFixedJSRefusal(st), "NO FILE FORM") {
+		t.Error("a declared fixed table must not be offered a form-1 fallback")
+	}
+	derived := fixedBoundUnit(t, "package probe\ntable Huge {payload bytes(65536)}\n")
+	if !strings.Contains(ir.TableFixedJSRefusal(derived.Tables["Huge"]), "keeps form 1") {
+		t.Error("derived table's fixed-form diagnostic lost its form-1 route")
 	}
 }
 
