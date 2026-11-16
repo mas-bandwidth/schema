@@ -126,8 +126,14 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 				t.Errorf("%s: canonical save: %v", row.file, err)
 				continue
 			}
-			if !bytes.Equal(saved, data) {
-				t.Errorf("%s: canonical save is not the same bytes", row.file)
+			// A readable file may use a lawful older declaration order.
+			// Its value must still save to the canonical counterpart exactly.
+			canonical, err := os.ReadFile(filepath.Join(vector, canonicalFor(row)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(saved, canonical) {
+				t.Errorf("%s: save does not match its canonical value counterpart", row.file)
 			}
 		case row.form == "message" && row.verdict == "read":
 			announcement, err := os.ReadFile(filepath.Join(vector, "announcement.bin"))

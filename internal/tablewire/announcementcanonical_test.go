@@ -38,6 +38,7 @@ func TestAnnouncementRequiresCanonicalIdTable(t *testing.T) {
 		read bool
 	}{
 		{"canonical", canonical, true},
+		{"unknown header field", withField(t, canonical, ir.TableWireId("future_announcement_field"), ir.TableKindU32, []byte{9, 0, 0, 0}), true},
 		{"unused entry", withTable(body, append(append([]uint64(nil), ids...), unused)), false},
 		// References are renumbered too, preserving both fields' exact
 		// identities and payloads: only the table's first-use order differs.
@@ -48,6 +49,9 @@ func TestAnnouncementRequiresCanonicalIdTable(t *testing.T) {
 		err := vocabulary.AnnounceRead(tc.wire, &report)
 		if (err == nil) != tc.read || vocabulary.Announced() != tc.read || report.Refused == tc.read {
 			t.Errorf("%s: err=%v announced=%v report=%+v", tc.name, err, vocabulary.Announced(), report)
+		}
+		if tc.name == "unknown header field" && report.Unknown != 1 {
+			t.Errorf("unknown header field did not retain ordinary evolution: %+v", report)
 		}
 		if !tc.read && len(vocabulary.Entries()) != 0 {
 			t.Errorf("%s: refused announcement delivered a vocabulary", tc.name)
