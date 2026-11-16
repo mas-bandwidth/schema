@@ -304,11 +304,7 @@ func reflectionColumns(u *ir.Unit, f *ir.Field, offset int64) string {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
 	wide := reflectionWide(f)
-	unbounded := f.Type.TextUnbounded()
-	if f.IsTextList() {
-		unbounded = ir.TextListValue(f).Type.TextUnbounded()
-	}
-	return fmt.Sprintf("counted=%s, count_offset=%d, present_offset=%d, unbounded_container=%s, unbounded=%s, array_bound=%d, frac_bits=%d, wide=%s, guard=%q, required=%s, field_deprecated=%s", pyBool(counted), countOffset, presentOffset, pyBool(f.IsList() || f.IsMap()), pyBool(unbounded), bound, f.Type.FracBits, wide, f.Guard, pyBool(f.Required), pyBool(f.Deprecated))
+	return fmt.Sprintf("counted=%s, count_offset=%d, present_offset=%d, unbounded_container=%s, unbounded=%s, array_bound=%d, frac_bits=%d, wide=%s, guard=%q, required=%s, field_deprecated=%s", pyBool(counted), countOffset, presentOffset, pyBool(f.IsList() || f.IsMap()), pyBool(f.Type.TextUnbounded()), bound, f.Type.FracBits, wide, f.Guard, pyBool(f.Required), pyBool(f.Deprecated))
 }
 
 func viewVariantIds(f *ir.Field, wire bool) string {
