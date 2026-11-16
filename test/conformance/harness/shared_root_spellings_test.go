@@ -9,15 +9,19 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// rootStructuralSpellings examines the root body's field order, explicit null
-// pointer fields, zero union arms and node-table placement from framing alone.
+// rootStructuralSpellings examines the root body's field order, known
+// non-required null pointers and zero union arms, and node-table placement.
+// Unknown and required fields can lawfully carry null or an empty union.
 // It does not judge stored defaults or nested bodies.
 func rootStructuralSpellings(st *ir.Struct, data []byte) map[string]bool {
 	f := frameWire(data)
 	out := map[string]bool{}
 	places := map[uint64]int{}
+	declared := map[uint64]*ir.Field{}
 	for i, field := range st.Fields {
-		places[ir.TableFieldWireId(field)] = i
+		id := ir.TableFieldWireId(field)
+		places[id] = i
+		declared[id] = field
 	}
 	last, nodePos, fields := -1, -1, 0
 	for i, sp := range f.spots {
@@ -44,7 +48,8 @@ func rootStructuralSpellings(st *ir.Struct, data []byte) map[string]bool {
 			continue
 		}
 		k, next := f.spots[i+1], f.spots[i+2]
-		if k.kind != spotKind || k.role != roleField {
+		fd := declared[id]
+		if k.kind != spotKind || k.role != roleField || fd == nil || fd.Required || fd.Type.Optional || ir.TableWireFieldKind(fd) != int(k.value) {
 			continue
 		}
 		if k.value == ir.TableKindPointer && next.kind == spotIndex && next.value == 0 {
@@ -151,7 +156,7 @@ func TestSharedReadableRootStructuralSpellings(t *testing.T) {
 		switch filepath.Base(x.path) {
 		case "rewrite_fields_reversed.bin":
 			want = "fields-out-of-order"
-		case "union_arm_zero_in_field.bin", "frame_unknown_id_union_empty.bin":
+		case "union_arm_zero_in_field.bin":
 			want = "union-arm-zero"
 		}
 		if want == "" {
@@ -167,8 +172,8 @@ func TestSharedReadableRootStructuralSpellings(t *testing.T) {
 	}
 }
 
-// TestUnknownEmptyUnionPurpose preserves the deliberately unknown field with
-// an arm-zero spelling as a named control, even after its manifest refusal.
+// TestUnknownEmptyUnionPurpose preserves the unknown union arm-zero positive:
+// the newer writer may have declared that unknown field required.
 func TestUnknownEmptyUnionPurpose(t *testing.T) {
 	t.Parallel()
 	root := conformanceRoot(t)
@@ -192,8 +197,17 @@ func TestUnknownEmptyUnionPurpose(t *testing.T) {
 		t.Fatal(err)
 	}
 	shapes := rootStructuralSpellings(u.Tables["Cfg"], data)
-	if len(shapes) != 1 || !shapes["union-arm-zero"] {
-		t.Errorf("unknown empty union: got %v, want only arm-zero", shapes)
+	if len(shapes) != 0 {
+		t.Errorf("unknown empty union was classified noncanonical: %v", shapes)
+	}
+	found := false
+	for _, spot := range frameWire(data).spots {
+		if spot.kind == spotArm && spot.value == 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("unknown empty union no longer carries the arm-zero control")
 	}
 	if fault := framingTableFault(framingVector{}, data); fault != "" {
 		t.Errorf("unknown empty union id table: %s", fault)
@@ -228,5 +242,34 @@ func TestRootStructuralScannerKnownCases(t *testing.T) {
 		if len(got) != 1 || !got[tc.shape] {
 			t.Errorf("%s: got %v, want only %s", tc.name, got, tc.shape)
 		}
+	}
+}
+
+// TestRootStructuralRequiredAndUnknownControls preserves the required-field
+// and unknown-field evolution cases beside the known non-required refusals.
+func TestRootStructuralRequiredAndUnknownControls(t *testing.T) {
+	t.Parallel()
+	schema := []byte("package requiredcontrol\ntable Node { value uint8 }\nunion Pick { plain int32 }\ntable Required { p *Node | required\n u Pick | required }\ntable Ordinary { p *Node\n u Pick }\ntable Old { x uint8 }\n")
+	path := filepath.Join(t.TempDir(), "Required.schema")
+	if err := os.WriteFile(path, schema, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := framingVector{ids: []string{"p", "u"}, body: b(1, 17, 0, 2, 15, 0, 0)}
+	wire, err := v.bytes(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Required", "Old"} {
+		if got := rootStructuralSpellings(u.Tables[name], wire); len(got) != 0 {
+			t.Errorf("%s: lawful shapes classified %v", name, got)
+		}
+	}
+	got := rootStructuralSpellings(u.Tables["Ordinary"], wire)
+	if len(got) != 2 || !got["explicit-null-pointer"] || !got["union-arm-zero"] {
+		t.Errorf("known nonrequired controls: got %v", got)
 	}
 }
