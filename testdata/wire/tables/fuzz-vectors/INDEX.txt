@@ -95,6 +95,8 @@ list_flags_widen listdemo Mixed testdata/wire/tables/fuzz-vectors/list_flags_wid
 
 # A truncated message bytes payload fails before any length clamp is counted.
 message_bytes_truncated backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_bytes_truncated.bin message
+# Isolated 33-byte count, truncated payload: framing damage wins before bound refusal.
+message_bytes_truncated_isolated backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_bytes_truncated_isolated.bin message
 
 # The key scan reads through an incompatible occurrence; the final key kind wins.
 map_key_repeat_kind mapdemo Slots testdata/wire/tables/fuzz-vectors/map_key_repeat_kind.bin
@@ -353,3 +355,9 @@ map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vector
 # counted two unknowns and loaded. From streamdemo.Feed (stream_header),
 # random #3851 of seed 24845619678.
 unknown_arm_text_nul streamdemo Feed testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin
+
+# Known uint32 union arm under foreign kinds or a short fixed-width frame.
+stream_tag_enum_mismatch streamdemo Feed testdata/wire/tables/stream_tag_enum_mismatch.bin
+stream_tag_pointer_mismatch streamdemo Feed testdata/wire/tables/stream_tag_pointer_mismatch.bin
+stream_tag_bytes_mismatch streamdemo Feed testdata/wire/tables/stream_tag_bytes_mismatch.bin
+stream_tag_short_width streamdemo Feed testdata/wire/tables/stream_tag_short_width.bin

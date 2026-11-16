@@ -7714,7 +7714,10 @@ static void test_arm_kind_pins()
         else
         {
             b.leb( 1 );
-            b.leb( b.ref( "Gold" ) ); // a reference: kinds 17 and 30 both frame one
+            // A pointer payload is a node index, not an ID-table reference.
+            // Null is legal in an arm and needs no node directory.
+            if ( rows[i].kind == 17 ) b.leb( 0 );
+            else b.leb( b.ref( "Gold" ) );
         }
         b.field( "tail", 8 );
         b.u32( 22 );
@@ -7750,6 +7753,26 @@ static void test_arm_kind_pins()
         CHECK( !tbla2::RootLoad( out, wire, n, &report ) );
         CHECK( report.damaged );
     }
+    // The same boundaries on the variable Feed root, through the normal
+    // variable reader used by every conformance leg. Both named sibling
+    // fields are present, and no value lands after a refusal.
+    struct VariableRow { const char * name; streamdemo::TableRefuseReason reason; };
+    const VariableRow variable_rows[] = {
+        { "stream_tag_enum_mismatch", streamdemo::kind_mismatch },
+        { "stream_tag_pointer_mismatch", streamdemo::kind_mismatch },
+        { "stream_tag_bytes_mismatch", streamdemo::kind_mismatch },
+        { "stream_tag_short_width", streamdemo::wire_damaged },
+    };
+    for ( const auto & row : variable_rows )
+    {
+        const int64_t bytes = read_table_golden( row.name );
+        alignas(16) uint8_t region[4096];
+        streamdemo::TableReport report;
+        const streamdemo::Feed * out = streamdemo::FeedLoad( region, sizeof( region ), golden_pinned, bytes, &report );
+        CHECK( out == NULL );
+        CHECK( report.refuse_reason == row.reason );
+    }
+
 }
 
 // the element-kind separation (§3, §3.1): `parts` arriving as an array of

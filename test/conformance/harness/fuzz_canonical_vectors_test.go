@@ -815,3 +815,235 @@ func TestMapDepthRootKindPin(t *testing.T) {
 		t.Error(fault)
 	}
 }
+
+// TestVariableArmKindPins gives an existing variable Feed a known uint32 arm
+// under three foreign kinds and under a short uint32 frame. Its id and parts
+// siblings are intact so whole-load refusal can be checked independently.
+func TestVariableArmKindPins(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	for _, tc := range []struct {
+		name    string
+		kind    byte
+		payload []byte
+		enum    bool
+	}{{"stream_tag_enum_mismatch", 30, b(4), true}, {"stream_tag_pointer_mismatch", 17, b(0), false}, {"stream_tag_bytes_mismatch", 14, b(6, 2, 'h', 'i'), false}, {"stream_tag_short_width", 8, b(1, 2, 3), false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids := []string{"id", "frame", "tag"}
+			partsRef := byte(4)
+			if tc.enum {
+				ids = append(ids, "Gold")
+				partsRef = 5
+			}
+			ids = append(ids, "parts")
+			body := cat(b(1, 8), i32(11), b(2, 15, 3, tc.kind), leb(uint64(len(tc.payload))), tc.payload, b(partsRef, 14, 3, 17, 1, 0, 0))
+			wire, err := (framingVector{ids: ids, body: body}).bytes(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "testdata/wire/tables", tc.name+".bin")
+			if os.Getenv("FRAMING_WRITE") == "1" {
+				if err := os.WriteFile(path, wire, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, wire) {
+				t.Error("variable arm kind fixture differs from its builder")
+			}
+		})
+	}
+}
+
+func TestVariableArmKindBoundary(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	u, err := units.get("streamdemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := u.Tables["Feed"]
+	for _, tc := range []struct{ name, reason string }{{"stream_tag_enum_mismatch", "kind_mismatch"}, {"stream_tag_pointer_mismatch", "kind_mismatch"}, {"stream_tag_bytes_mismatch", "kind_mismatch"}, {"stream_tag_short_width", "wire_damaged"}} {
+		wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", tc.name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sh, _ := damageAwareFileSpellings(u, st, wire)
+		if len(sh) > 0 {
+			t.Errorf("%s: %v", tc.name, sh)
+		}
+		fault, _ := damageAwareIDTableFault(wire)
+		if fault != "" {
+			t.Errorf("%s: %s", tc.name, fault)
+		}
+		wr, err := newWireRoot(units, "streamdemo", "Feed", false, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report tabletext.Report
+		ok, err := tablewire.Decode(wr.model, wr.model.New(wr.def), wire, &report)
+		if ok || err == nil || !strings.Contains(err.Error(), tc.reason) {
+			t.Errorf("%s: ok=%v err=%v report=%+v", tc.name, ok, err, report)
+		}
+	}
+}
+
+// TestFixedRootVariablePointerArmPin isolates the foreign pointer kind for
+// the explicit A2 variable reader; generic fixed reads still use previous_form.
+func TestFixedRootVariablePointerArmPin(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	v := framingVector{ids: []string{"id", "value", "a", "tail"}, body: cat(b(1, 8), i32(11), b(2, 15, 3, 17, 1, 0, 4, 8), i32(22), b(0))}
+	wire, err := v.bytes(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "testdata/wire/tables/a2_arm_pointer_as_int.bin")
+	if os.Getenv("FRAMING_WRITE") == "1" {
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, wire) {
+		t.Fatal("pointer-arm mismatch differs from builder")
+	}
+	if fault := framingTableFault(framingVector{}, wire); fault != "" {
+		t.Error(fault)
+	}
+}
+
+// TestMessageTruncatedBytesPin isolates the byte-count-before-truncation
+// boundary under LoginRequest's own announced vocabulary.
+func TestMessageTruncatedBytesPin(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	build := func(n uint64, body []byte, finish bool) []byte {
+		w := &bitw{}
+		w.put(3, 5)
+		w.put(n, 6)
+		w.align()
+		w.bytes(body)
+		if finish {
+			w.put(0, 5)
+			w.align()
+		}
+		return append([]byte{ir.TableWireMessageForm, 0}, w.b...)
+	}
+	wire := build(33, []byte{1, 2, 3}, false)
+	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/message_bytes_truncated_isolated.bin")
+	if os.Getenv("FRAMING_WRITE") == "1" {
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, wire) {
+		t.Fatal("truncated message differs from bit builder")
+	}
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	u, err := units.get("backenddemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wr, err := newWireRoot(units, "backenddemo", "LoginRequest", true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announce, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/backend_conn.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shapes, _ := messageStructuralSpellings(u, wr.def, announce, wire)
+	if len(shapes) > 0 {
+		t.Errorf("truncated message has preceding spelling: %v", shapes)
+	}
+	for _, tc := range []struct {
+		name   string
+		data   []byte
+		read   bool
+		reason string
+	}{{"complete at bound", build(32, make([]byte, 32), true), true, ""}, {"complete over bound", build(33, make([]byte, 33), true), false, "length_over_bound"}, {"truncated over bound", wire, false, "wire_damaged"}} {
+		var report tabletext.Report
+		_, ok, err := tablewire.DecodeMessages(wr.model, []*tabletext.Instance{wr.model.New(wr.def)}, tc.data, wr.vocabulary, &report)
+		if ok != tc.read || (tc.read && err != nil) || (!tc.read && (err == nil || !strings.Contains(err.Error(), tc.reason))) {
+			t.Errorf("%s: ok=%v err=%v report=%+v", tc.name, ok, err, report)
+		}
+	}
+}
+
+func TestFixedRootPointerArmRefusals(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	wr, err := newWireRoot(newUnits(m), "tbla2", "Root", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/a2_arm_pointer_as_int.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, reason string
+		variable     bool
+	}{{"generic fixed", "previous_form", false}, {"explicit variable", "kind_mismatch", true}} {
+		var report tabletext.Report
+		value := wr.model.New(wr.def)
+		var ok bool
+		var e error
+		if tc.variable {
+			ok, e = tablewire.DecodeVariable(wr.model, value, wire, &report)
+		} else {
+			ok, e = tablewire.Decode(wr.model, value, wire, &report)
+		}
+		if ok || e == nil || !strings.Contains(e.Error(), tc.reason) {
+			t.Errorf("%s: ok=%v err=%v report=%+v", tc.name, ok, e, report)
+		}
+	}
+}
