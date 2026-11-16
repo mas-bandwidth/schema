@@ -20,6 +20,15 @@ func (pythonTarget) Names() []string { return []string{"python"} }
 // Generate selects the table frame for a table unit and the packet core
 // otherwise. Each emitter holds the identifier rules and names any construct
 // outside its carried surface (docs/PORT-PYTHON.md).
+// ValidateOptions names surface conflicts before the shared forms refusal.
+func (pythonTarget) ValidateOptions(u *ir.Unit, opts Options) error {
+	surfaces, err := pythontable.ParseSurfaces(opts["surface"])
+	if err != nil {
+		return err
+	}
+	return pythontable.ValidateSurfaces(u, surfaces)
+}
+
 func (pythonTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 	surfaces, err := pythontable.ParseSurfaces(opts["surface"])
 	if err != nil {
