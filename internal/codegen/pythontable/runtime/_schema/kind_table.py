@@ -67,3 +67,29 @@ def _body_writer(buf: bytearray) -> Any:
 
 
 kinds.register("table", _Table())
+
+
+class _OptionalTextElement:
+    """A text-list slot is exposed as str or None; kind 13 carries its record."""
+
+    def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
+        if value is not None:
+            kinds._REGISTRY["string"].validate(fd, value, path)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        record = kinds._REGISTRY["table"].read(r, fd, ctx)
+        return record.value
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        record = _target(fd)()
+        record.value = value
+        _Table().write_element(w, fd, record, ctx)
+
+    def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        raise InvalidValue(fd.name, "text element is not a field")
+
+
+kinds.register("text_optional", _OptionalTextElement())

@@ -235,6 +235,8 @@ class _Array:
             items = bulk if bulk is not None else _read_walk(sub, element, count, ctx)
         if sub.pos != length:
             raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
+        if fd.text_total and sum(len(item.encode("utf-8")) for item in items if item is not None) > fd.text_total:
+            raise Refused("length_over_bound", f"{fd.name} exceeds its text total")
         if fd.array_kind == 1 and count < fd.bound:
             if element.codec == "table":
                 from .descriptor import new_by_name
