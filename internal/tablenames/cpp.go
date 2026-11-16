@@ -130,6 +130,8 @@ func init() {
 		// runtime, on the standing rule above: a name free today must not
 		// become a collision the day a unit starts carrying the form.
 		{Name: "TableTextFormNode", What: "one s-expression document node — a list, a string, a number, a keyword or a literal (§16.9.1)"},
+		{Name: "TableTextFormLabel", What: "one document's pointer label, declared kind and completed-definition state (§16.9.2)"},
+		{Name: "TableTextFormReferences", What: "the document-order pointer label registry (§16.9.2)"},
 		{Name: "TableTextFormReader", What: "the strict s-expression lexer and parser (§16.9.1)"},
 		{Name: "TableB64Val", What: "one base64 alphabet position (§16.9.2)"},
 		{Name: "TableB64Valid", What: "canonical base64: zero pad bits and no stray byte, with its decoded length (§16.9.2)"},

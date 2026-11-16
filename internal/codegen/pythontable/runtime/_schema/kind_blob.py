@@ -13,7 +13,7 @@ names one blob record from two slots is refused by name (`blob_shared`); a
 
 from typing import Any
 
-from . import InvalidValue
+from . import BlobRef, InvalidValue
 from . import kinds
 from .descriptor import FieldDesc
 
@@ -53,6 +53,8 @@ def _encode(fd: FieldDesc, value: Any, path: str) -> bytes:
     bytearray or a B-view memoryview; any other memoryview is refused rather
     than reinterpreted.
     """
+    if isinstance(value, BlobRef):
+        value = value.value
     if fd.codec == "string_blob":
         if type(value) is not str:
             raise InvalidValue(path, "not a str")

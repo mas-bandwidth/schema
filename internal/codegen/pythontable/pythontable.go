@@ -53,6 +53,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := python.CheckNames(u); err != nil {
 		return nil, err
 	}
+	if err := checkBlobRefName(u); err != nil {
+		return nil, err
+	}
 	if err := refuseUncarriedPacketKinds(u); err != nil {
 		return nil, err
 	}
@@ -104,6 +107,45 @@ func Runtime() (map[string][]byte, error) {
 		return nil
 	})
 	return out, err
+}
+
+// checkBlobRefName protects the public blob-node type from a package export
+// or schema module that would replace it.
+func checkBlobRefName(u *ir.Unit) error {
+	for _, f := range u.Files {
+		if f.Base == "BlobRef" {
+			return fmt.Errorf("python: %s.schema collides with the BlobRef package export", f.Base)
+		}
+		for _, st := range f.Tables {
+			if st.Name == "BlobRef" {
+				return fmt.Errorf("python: table BlobRef collides with the BlobRef package export")
+			}
+		}
+		for _, un := range f.TableUnions {
+			if un.Name == "BlobRef" {
+				return fmt.Errorf("python: union BlobRef collides with the BlobRef package export")
+			}
+		}
+		for _, decl := range f.Decls {
+			name := ""
+			switch d := decl.(type) {
+			case *ir.Const:
+				name = d.Name
+			case *ir.Enum:
+				name = d.Name
+			case *ir.Flags:
+				name = d.Name
+			case *ir.Struct:
+				name = d.Name
+			case *ir.Union:
+				name = d.Name
+			}
+			if name == "BlobRef" {
+				return fmt.Errorf("python: declaration BlobRef collides with the BlobRef package export")
+			}
+		}
+	}
+	return nil
 }
 
 // closureUnions is the set of table-closure unions: every union a table
@@ -418,6 +460,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		b.WriteString("\n")
 	}
 	schema := map[string]string{
+		"BlobRef":      "BlobRef as _s_BlobRef",
 		"InvalidValue": "InvalidValue",
 		"LoadReport":   "LoadReport",
 		"Refused":      "Refused",
@@ -443,6 +486,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
+	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
@@ -613,19 +657,32 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("\n    @classmethod\n")
 	if straight {
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
-		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
 	} else {
 		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
+	}
+	if st.Integrity == "crc32c" {
+		b.WriteString("        data = _s_open_crc(data)\n")
+	}
+	if straight {
+		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
+	} else {
 		b.WriteString("        return load_table(cls, data, report)\n")
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
+	call := "save_table(self)"
 	if straight {
-		fmt.Fprintf(b, "        return _s_save_%s(self)\n", name)
-	} else {
-		b.WriteString("        return save_table(self)\n")
+		call = fmt.Sprintf("_s_save_%s(self)", name)
 	}
+	if st.Integrity == "crc32c" {
+		call = "_s_seal_crc(" + call + ")"
+	}
+	fmt.Fprintf(b, "        return %s\n", call)
 	b.WriteString("\n    def measure(self) -> int:\n")
-	b.WriteString("        return measure_table(self)\n\n\n")
+	if st.Integrity == "crc32c" {
+		b.WriteString("        return measure_table(self) + 4\n\n\n")
+	} else {
+		b.WriteString("        return measure_table(self)\n\n\n")
+	}
 	emitTableDescriptor(b, u, st, false)
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
@@ -651,6 +708,18 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
+	if !valueClass {
+		var forms []string
+		for _, form := range []string{"wire", "json", "block", "cook"} {
+			if st.CarriesForm(form) {
+				forms = append(forms, strconv.Quote(form))
+			}
+		}
+		if len(forms) == 1 {
+			forms[0] += ","
+		}
+		fmt.Fprintf(b, "    forms=(%s),\n", strings.Join(forms, ", "))
+	}
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
@@ -875,7 +944,7 @@ func emitBlockDescriptors(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks 
 	fmt.Fprintf(b, "%s.block_row = BlockRecord(\n", name)
 	emitBlockRecordBody(b, u, row, nil, false)
 	b.WriteString(")\n")
-	if blocks == nil {
+	if blocks == nil || !st.CarriesForm("block") {
 		fmt.Fprintf(b, "%s.block = None\n\n", name)
 		return
 	}
@@ -1230,8 +1299,8 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	fmt.Fprintf(&b, "# Code generated by the schema compiler from the unit %s. DO NOT EDIT.\n", u.Package)
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
-	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	b.WriteString("from ._schema import BlobRef, InvalidValue, LoadReport, Refused\n")
+	names := []string{"BUILD_VERSION", "BlobRef", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
@@ -1432,7 +1501,7 @@ func codecOf(f *ir.Field) string {
 	}
 	if f.IsMap() {
 		if f.Type.Optional {
-			return "unsupported"
+			return "optional"
 		}
 		return "map"
 	}
@@ -1684,9 +1753,9 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 	if f.Type.Pointer {
 		if f.Type.Blob() {
 			if f.Type.Kind == ir.TString {
-				return "str | None"
+				return "str | _s_BlobRef | None"
 			}
-			return "bytes | bytearray | memoryview | None"
+			return "bytes | bytearray | memoryview | _s_BlobRef | None"
 		}
 		return "object | None"
 	}
@@ -1755,14 +1824,13 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A fixed array is born with every slot; a counted array is born
-		// empty whatever its minimum, as the engine's reset builds it
-		// (internal/tabletext/value.go), so an absent counted field reads as
-		// the engine reads it. The minimum binds the writer, which refuses
-		// an array below it.
+		// A union array is born at its declared minimum, with independent
+		// None-valued elements; fixed arrays are born at their full bound.
 		count := int64(0)
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
+		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
+			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"

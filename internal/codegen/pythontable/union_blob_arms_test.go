@@ -138,12 +138,12 @@ print(w.hex())
 		t.Parallel()
 		planted := maps.Clone(files)
 		const path = "armdemo/_schema/kind_union.py"
-		const anchor = "if value is not None:\n            body = kind_blob._encode(f, value, _save._render(path))"
+		const anchor = "body = kind_blob._encode(f, value, _save._render(path))\n            blobs.append(len(ctx.order) + 2)"
 		body := string(planted[path])
 		if !strings.Contains(body, anchor) {
 			t.Fatal("control anchor absent")
 		}
-		planted[path] = []byte(strings.Replace(body, anchor, "if False:\n            body = kind_blob._encode(f, value, _save._render(path))", 1))
+		planted[path] = []byte(strings.Replace(body, anchor, "body = kind_blob._encode(f, value, _save._render(path))\n            pass", 1))
 		dir := t.TempDir()
 		writeTree(t, dir, planted)
 		for _, pin := range []struct {

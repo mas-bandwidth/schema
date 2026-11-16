@@ -222,11 +222,11 @@ class FieldDesc:
         if self.codec == "pointer_array":
             if type(value) is not list:
                 return False
-            if len(value) == 0:
-                return True
-            if self.array_mode != "fixed":
-                return False
-            return all(elem is None for elem in value)
+            if self.array_mode == "fixed":
+                return all(elem is None for elem in value)
+            if self.array_mode == "counted":
+                return len(value) == self.min_count and all(elem is None for elem in value)
+            return len(value) == 0
         if self.pointer or self.optional:
             return value is None
         if self.codec in ("bool", "int", "enum", "string", "unsupported"):
@@ -259,13 +259,12 @@ class FieldDesc:
         if self.codec == "array":
             return _array_is_default(self, value)
         if self.codec == "union_array":
-            # As the engine elides (internal/tablewire/encode.go): a counted
-            # or unbounded array only when it holds nothing, a fixed array
-            # when every element is at the declared default, judged per
-            # element by its selected arm, never by == against a fresh value.
-            if self.array_kind != 1:
-                return len(value) == 0
-            return all(element.type == 0 for element in value)
+            # Fixed arrays elide when every arm is None. Counted arrays
+            # elide at their birth count only when every born arm is None;
+            # an unbounded list has birth count zero.
+            if self.array_kind == 1:
+                return all(element.type == 0 for element in value)
+            return len(value) == self.array_min and all(element.type == 0 for element in value)
         if self.codec == "keyed":
             # A keyed array whose every slot elides writes no field
             # (kind_keyed.py): the same test, slot by slot, so a table that
@@ -330,13 +329,14 @@ def _as_bytes(value: Any) -> bytes | None:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id")
+    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "forms")
 
     name: str
     type_id: int
     variable: bool
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
+    forms: tuple[str, ...]
 
     def __init__(
         self,
@@ -344,7 +344,9 @@ class TableDesc:
         type_id: int,
         variable: bool,
         fields: tuple[FieldDesc, ...],
+        forms: tuple[str, ...] = ("wire", "json", "block", "cook"),
     ) -> None:
+        self.forms = forms
         self.name = name
         self.type_id = type_id
         self.variable = variable
