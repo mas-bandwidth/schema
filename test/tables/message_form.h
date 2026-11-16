@@ -1238,18 +1238,10 @@ static void test_message_form_reserved_ids()
             backenddemo::LoginRequest out;
             backenddemo::TableReport report;
             backenddemo::LoginRequestLoad( out, file, at, &report );
-            if ( i == 0 )
-            {
-                // THE ROOT BODY IS THE NODE TABLE'S OWN TRANSPORT (§3.1): a fixed
-                // reader meeting one there is the table-gained-a-pointer edit, and
-                // it reads it as the ordinary unknown it is
-                CHECK( !report.damaged && report.unknown == 1 );
-            }
-            else
-            {
-                CHECK( report.damaged );
-                CHECK( report.unknown == 0 );
-            }
+            // The root node-table transport requires its framed kind12
+            // payload; kind9 here is malformed too, not an unknown field.
+            CHECK( report.damaged );
+            CHECK( report.unknown == 0 );
             CHECK( report.refuse_reason != backenddemo::kind_mismatch );
             CHECK( !report.refused );
             char name[128];
