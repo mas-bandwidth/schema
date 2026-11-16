@@ -8,22 +8,32 @@ import (
 )
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
-	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {\n%sReset(value);\n", st.Name, g.storageName(st.Name), st.Name)
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown: the ids this body has carried are held in a stack buffer.
-	g.pf("var seenIDs [64]uint64;seen:=seenIDs[:0]\n")
+	// or unknown, at every nesting level: each body's open tick sits in starts,
+	// sized once for the deepest nesting this body's declaration reaches, and
+	// the test is one look at the named entry (tableMessageSeenRepeat).
+	nest := messageBodyNest(st, map[*ir.Struct]int{})
+	if nest > ir.TableBinaryMaxDepth {
+		// A body at the binary bound has no body inside it, so its level fits
+		// the marks; no conforming read goes deeper (§4), so no form is emitted.
+		return
+	}
+	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return tableMessageBody%s(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)
+	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,starts []uint64,depth int)bool {\n", st.Name, g.storageName(st.Name))
+	g.pf("tableMessageSeenOpen(r.Vocabulary,starts,depth);%sReset(value);\n", st.Name)
 	// A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (docs/SPEC-TABLES.md §3.3):
 	// its fields in the writer's declaration order, no union field at None, and
 	// no field at the default its writer elides where this reader knows that
 	// default exactly, under its own build version (exact).
+	g.pf("exact:=r.Vocabulary.BuildVersion==BuildVersion\n")
 	if len(st.Fields) > 0 {
-		g.pf("order:=-1;exact:=r.Vocabulary.BuildVersion==BuildVersion;_ = exact\n")
+		g.pf("order:=-1\n")
 	}
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if slices.Contains(seen,entry.ID){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seen=append(seen,entry.ID);switch entry.ID {\n")
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageSeenRepeat(r.Vocabulary,starts,depth,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
 	for ordinal, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
-		g.pf("if order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d\n", ordinal, ordinal)
+		g.pf("if exact&&order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d\n", ordinal, ordinal)
 		g.emitMessageCompatibility(f, mine, "entry", "", "\t")
 		elides := !f.Type.Optional && !f.Required
 		g.elides = elides
@@ -42,7 +52,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf("}\n")
 	}
-	g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
+	g.pf("default:if exact{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
 	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): the
 	// batch is a fixed root's, and a variable table has no message form.
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
@@ -94,11 +104,11 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
 		if elide {
-			g.pf("%s{start:=r.Bits.Offset;if !%sLoadMessageBody(r,&%s){return false};if exact&&r.Bits.Offset-start==r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, bad)
+			g.pf("%s{start:=r.Bits.Offset;if !tableMessageBody%s(r,&%s,starts,depth+1){return false};if exact&&r.Bits.Offset-start==r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, bad)
 		} else if sink != "" {
-			g.pf("%s{start:=r.Bits.Offset;if !%sLoadMessageBody(r,&%s){return false};if r.Bits.Offset-start!=r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, sinkOff(sink))
+			g.pf("%s{start:=r.Bits.Offset;if !tableMessageBody%s(r,&%s,starts,depth+1){return false};if r.Bits.Offset-start!=r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, sinkOff(sink))
 		} else {
-			g.pf("%sif !%sLoadMessageBody(r,&%s){return false}\n", ind, f.Type.Name, expr)
+			g.pf("%sif !tableMessageBody%s(r,&%s,starts,depth+1){return false}\n", ind, f.Type.Name, expr)
 		}
 	case isUnionRef(f.Type):
 		target := g.nextWireWriter()
@@ -225,6 +235,9 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	} else if f.KeyEnum == "" && (enumRef(f) != nil || isUnionRef(f.Type)) {
 		sink = fixedArraySink(f, elide)
 	}
+	if elide && f.KeyEnum == "" && f.Array == ir.ArrayCounted && f.BornCount() > 0 && !quantizedMessageFloat(f) {
+		sink = "allDefault"
+	}
 	if f.KeyEnum == "" {
 		g.pf("if %s.Element.Kind==6&&!r.Bits.Align(){%s};", entry, bad)
 	}
@@ -232,7 +245,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	if f.KeyEnum != "" {
 		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §3.2, §3.3)
 		g.pf("var seenKeys [64]uint64;seenKey:=seenKeys[:0];lastKey:=0\n")
-		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if slices.Contains(seenKey,id){%s};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
+		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if slices.Contains(seenKey,id){%s};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if exact&&int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
 		if sink != "" {
 			g.pf("%s:=true\n", sink)
 		}
@@ -250,12 +263,22 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		if sink != "" {
 			g.pf("%s:=true\n", sink)
 		}
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			g.pf("if n<%d{%s};", f.ArrayMin, refuse(over, g.floatOwner(f), "return false"))
+		}
 		g.pf("if n>%d{%s};for i:=range n {p:=&base[i]\n", bound, refuse(over, g.floatOwner(f), "return false"))
 		g.sink = sink
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		g.pf("}\n")
 		if sink != "" {
-			g.pf("if exact&&%s{%s}\n", sink, bad)
+			when := "exact"
+			if f.Array == ir.ArrayCounted {
+				// Equal build labels alone do not establish the sender's default;
+				// the announced count and element shapes must match this field.
+				slot := g.messageSlot(ir.TableFieldEntry(f)) - 1
+				when += fmt.Sprintf("&&!widened&&n==%d&&%s.Shape==tableMessageEntries[%d].Shape&&%s.Element==tableMessageEntries[%d].Element", f.BornCount(), entry, slot, entry, slot)
+			}
+			g.pf("if %s&&%s{%s}\n", when, sink, bad)
 		}
 		if counted {
 			g.pf("%s=int32(n)\n", companion)
@@ -288,4 +311,35 @@ func (g *tableGen) emitMessageArmReset(un *ir.Union, v ir.UnionVariant, expr str
 		g.emitTableResetField(&f)
 		g.pf("}\n")
 	}
+}
+
+// messageBodyNest is how many bodies deep a read of st's body can go below it:
+// one level for each nested table reached by value, through an array's
+// element or a union's arm, exactly where the generated read descends.
+func messageBodyNest(st *ir.Struct, memo map[*ir.Struct]int) int {
+	if d, ok := memo[st]; ok {
+		return d
+	}
+	var field func(f *ir.Field) int
+	field = func(f *ir.Field) int {
+		switch {
+		case isStructRef(f.Type):
+			return 1 + messageBodyNest(f.Type.Ref.(*ir.Struct), memo)
+		case isUnionRef(f.Type):
+			d := 0
+			for _, v := range f.Type.Ref.(*ir.Union).Variants {
+				if v.F != nil {
+					d = max(d, field(v.F))
+				}
+			}
+			return d
+		}
+		return 0
+	}
+	d := 0
+	for _, f := range st.Fields {
+		d = max(d, field(f))
+	}
+	memo[st] = d
+	return d
 }

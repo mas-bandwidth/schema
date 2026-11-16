@@ -292,7 +292,13 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
         const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
-        if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
+        // A map entry cannot omit its value: an absent optional is null,
+        // while the key remains in the map (§2.8, §16.2).
+        if ( value->optional && TableJsonGetRaw( (const uint8_t *) entry + value->present_offset, 1 ) == 0 )
+        {
+            out.raw( "null", 4 );
+        }
+        else if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
     }
     out.line( depth );
     out.put( '}' );
@@ -494,6 +500,13 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         {
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
+        else if ( value->optional && got == 'z' )
+        {
+            // Place resets the value, including a replaced entry, so null
+            // leaves it absent at its defaults just as a field's null does.
+            if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 0 );
+        }
         else if ( value->kind == 17 && !value->is_array )
         {
             // A POINTER VALUE IS SHARED EXACTLY AS A POINTER FIELD IS (§2.8):
@@ -521,11 +534,15 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         {
             in.report->refused = true;
             in.report->refuse_reason = kind_mismatch;
+            // As for an optional field, a non-null key supplies presence
+            // even when its value is refused back to the declared defaults.
+            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
-        else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
+        else
         {
-            return false;
+            if ( !TableJsonReadField( in, entry, value, depth + 1 ) ) { return false; }
+            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
         }
         c = TableJsonPeek( in );
         if ( c == ',' )
@@ -1056,8 +1073,8 @@ inline bool TableJsonKindFixed( uint8_t kind ) { return kind >= 20 && kind <= 29
 inline bool TableJsonKindInteger( uint8_t kind ) { return ( kind >= 2 && kind <= 9 ) || kind == 18 || kind == 19; }
 
 // A kind whose storage is WIDER THAN 32 BITS is written as a JSON STRING of
-// decimal digits and reads as a string or a number (docs/SPEC-TABLES.md §16.2,
-// docs/rulings.json json-wide-integers-are-strings): int64, uint64, int128,
+// decimal digits and reads as a string only (docs/SPEC-TABLES.md §16.2,
+// docs/rulings.json json-wide-integers-refuse-number-token): int64, uint64, int128,
 // uint128, and a fixed or ufixed kind of 64 or 128 bits. A kind of 32 bits and
 // under stays a JSON number.
 inline bool TableJsonKindWideText( const TableFieldInfo * f )
@@ -1298,19 +1315,20 @@ inline char TableJsonElementShape( const TableFieldInfo * f )
     return 'n';
 }
 
-// A WIDE KIND'S STRING FORM IS ITS NUMBER FORM, QUOTED (docs/SPEC-TABLES.md
-// §16.2): the field accepts either a JSON string of digits or a number token,
-// while every other kind keeps the one shape its row names.
+// A wide integer or fixed field takes only a string (§16.2); all other
+// fields keep their declared shape. Map keys remain JSON strings.
 inline bool TableJsonFieldShapeFits( const TableFieldInfo * f, char got )
 {
-    if ( got == TableJsonShape( f ) ) { return true; }
-    return got == 's' && !f->is_array && TableJsonKindWideText( f );
+    const char want = TableJsonShape( f );
+    if ( want == 'n' && TableJsonKindWideText( f ) ) { return got == 's'; }
+    return got == want;
 }
 
 inline bool TableJsonElementShapeFits( const TableFieldInfo * f, char got )
 {
-    if ( got == TableJsonElementShape( f ) ) { return true; }
-    return got == 's' && TableJsonKindWideText( f );
+    const char want = TableJsonElementShape( f );
+    if ( want == 'n' && TableJsonKindWideText( f ) ) { return got == 's'; }
+    return got == want;
 }
 
 // A guarded group rides only when its guard reads true — the wire's own
@@ -2867,20 +2885,26 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
 // THE STRING FORM of a wide integer or fixed value (docs/SPEC-TABLES.md
 // §16.2): the body is validated as a JSON string first — its escapes and its
 // UTF-8 — and its bytes are then handed on as the token the number path reads.
-// A backslash is not part of a decimal spelling, so an escaped body is not
-// this token: the answer is false with the string consumed, and the caller
-// refuses the value. A body that is not well-formed JSON leaves in.bad set,
-// which is malformed rather than a wrong value.
-inline bool TableJsonScanWideString( TableJsonIn & in, const char ** token, int32_t * length )
+// Escapes are decoded before the number grammar is applied. A body that is
+// not well-formed JSON leaves in.bad set, rather than a wrong-value refusal.
+inline bool TableJsonScanWideString( TableJsonIn & in, const char ** token, int32_t * length, std::string & decoded_text )
 {
     const int64_t mark = in.pos;
     int32_t decoded = 0;
-    if ( !TableJsonScanString( in, NULL, 0, &decoded, NULL, true ) ) { return false; }
+    if ( !TableJsonScanString( in, NULL, 0, &decoded ) ) { return false; }
     const int64_t end = in.pos; // just past the closing quote
     const int64_t start = mark + 1;
     for ( int64_t k = start; k < end - 1; k++ )
     {
-        if ( in.text[k] == '\\' ) { return false; }
+        if ( in.text[k] == '\\' )
+        {
+            decoded_text.resize( (size_t) decoded );
+            in.pos = mark;
+            if ( !TableJsonScanString( in, decoded ? &decoded_text[0] : NULL, decoded, &decoded ) ) { return false; }
+            *token = decoded_text.data();
+            *length = decoded;
+            return true;
+        }
     }
     *token = in.text + start;
     *length = (int32_t) ( end - 1 - start );
@@ -3612,13 +3636,11 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         char fd[kTableJsonMaxNumber + 48];
         int32_t fn = 0;
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-        // A digit below 10^-40 is finer than any F can spell, and cannot carry
-        // into a fraction bit however many doublings follow. Only the digits
-        // inside the band are kept; a nonzero digit past it is the same
-        // kind_mismatch the exact arithmetic would reach, without walking a
-        // token of any length into a fixed buffer.
+        // A dyadic fraction at F bits has at most F decimal places. A nonzero
+        // digit past that point is inexact, so arbitrary trailing zeros need
+        // no buffer space and the input length remains unrestricted.
         const int64_t first = ( point > 0 ? point : 0 ) + start;
-        const int64_t last = (int64_t) start + point + 39;
+        const int64_t last = (int64_t) start + point + frac - 1;
         for ( int64_t k = first; k < end && k <= last; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
@@ -4312,11 +4334,17 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     const char * token = NULL;
     int32_t length = 0;
     bool integral = false;
-    if ( TableJsonKindWideText( f ) && TableJsonPeek( in ) == '"' )
+    std::string decoded_number;
+    if ( TableJsonKindWideText( f ) )
     {
-        // A WIDE KIND READS ITS STRING FORM (docs/SPEC-TABLES.md §16.2): the
-        // same digits the writer writes, and it keeps accepting a number token.
-        if ( !TableJsonScanWideString( in, &token, &length ) )
+        // Wide numeric fields take only the writer's string form (§16.2).
+        if ( TableJsonPeek( in ) != '"' )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = kind_mismatch;
+            return TableJsonSkipValue( in, depth + 1 );
+        }
+        if ( !TableJsonScanWideString( in, &token, &length, decoded_number ) )
         {
             if ( in.bad ) { return false; }
             in.report->refused = true;
@@ -4328,6 +4356,19 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     {
         in.bad = true;
         return false;
+    }
+    if ( TableJsonKindWideText( f ) && !TableJsonKindInteger( f->kind ) )
+    {
+        TableJsonIn number = {};
+        number.text = token; number.size = length;
+        bool whole = false;
+        if ( length == 0 || token[0] == ' ' || token[0] == '\t' || token[0] == '\n' || token[0] == '\r' ||
+             !TableJsonWalkNumber( number, &whole ) || number.pos != length )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = kind_mismatch;
+            return true;
+        }
     }
     if ( TableJsonKindInteger( f->kind ) && !TableJsonIntegerTokenOnly( token, length ) )
     {

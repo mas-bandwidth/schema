@@ -959,7 +959,7 @@ namespace Tabledemo
 
             // THE WIDE KINDS' JSON FORM (docs/SPEC-TABLES.md §16.2, §16.14 W10): an
             // integer-shaped kind whose storage is wider than 32 bits is written as a
-            // STRING of decimal digits and reads as a string or a number — int64,
+            // STRING of decimal digits and reads only as a string — int64,
             // uint64, int128, uint128, and the 64- and 128-bit fixed-point kinds.
             static bool TableWideJson(TableFieldInfo f)
             {
@@ -991,11 +991,10 @@ namespace Tabledemo
                 return true;
             }
 
-            // a wide integer declares 'N' and takes a string or a number; every other
-            // shape is exact
+            // a wide integer declares 'N' and takes a string; every other shape is exact
             static bool TableShapeMatches(char want, char got)
             {
-                return want == got || (want == 'N' && (got == 's' || got == 'n'));
+                return want == got || (want == 'N' && got == 's');
             }
 
             static char Shape(TableFieldInfo f)
@@ -2782,8 +2781,9 @@ namespace Tabledemo
                 }
                 if (TableWideJson(f) && Peek(text, ref input) == '"')
                 {
-                    // a wide integer reads as a string OR a number (§16.2); the string
-                    // holds the same digits, judged by the same integer-token rule
+                    // Wide values read from strings (§16.2), with the same
+                    // integer-token rule applied to their contents. Map keys pass their
+                    // already-decoded string body as numeric text below.
                     if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
                     Span<char> wideToken = stackalloc char[MaxNumber];
                     if (body.Length <= wideToken.Length)

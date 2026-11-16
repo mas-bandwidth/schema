@@ -13,7 +13,6 @@ package tabledemo
 import (
 	"encoding/binary"
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -194,13 +193,8 @@ func RangedSignedMeasureMessages(values []*RangedSigned, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := RangedSignedMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -224,12 +218,14 @@ func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) bool {
+	var starts [1]uint64
+	return tableMessageBodyRangedSigned(r, value, starts[:], 0)
+}
+func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedSignedReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -244,15 +240,14 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x48121511bf702eb5:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -308,7 +303,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0x942bfe3168090f7d:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -364,7 +359,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xd182acd105b55dd1:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -420,7 +415,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xef9ded23c8912a81:
 			{
-				if order >= 3 {
+				if exact && order >= 3 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -476,7 +471,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xb655574ea23760b4:
 			{
-				if order >= 4 {
+				if exact && order >= 4 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -532,7 +527,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xd217b3af8d7a2bde:
 			{
-				if order >= 5 {
+				if exact && order >= 5 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -588,7 +583,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0x90652f70c9127900:
 			{
-				if order >= 6 {
+				if exact && order >= 6 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -644,7 +639,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0x6a659d7c354db158:
 			{
-				if order >= 7 {
+				if exact && order >= 7 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -700,7 +695,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xe693bd88532c91d6:
 			{
-				if order >= 8 {
+				if exact && order >= 8 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -756,7 +751,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0x065ee827cf99fbb4:
 			{
-				if order >= 9 {
+				if exact && order >= 9 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -812,7 +807,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xc9b121c4c2a186ee:
 			{
-				if order >= 10 {
+				if exact && order >= 10 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -868,7 +863,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xd363dfa465acf27a:
 			{
-				if order >= 11 {
+				if exact && order >= 11 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -924,7 +919,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0x7549c70700c49d6f:
 			{
-				if order >= 12 {
+				if exact && order >= 12 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -980,7 +975,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0x1cce6617419771db:
 			{
-				if order >= 13 {
+				if exact && order >= 13 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1036,7 +1031,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0x3b54fa60620b5597:
 			{
-				if order >= 14 {
+				if exact && order >= 14 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1092,7 +1087,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xd308fcb98ece5d23:
 			{
-				if order >= 15 {
+				if exact && order >= 15 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1148,7 +1143,7 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			}
 		case 0xc70cde6b85b6197d:
 			{
-				if order >= 16 {
+				if exact && order >= 16 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1225,6 +1220,10 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1451,13 +1450,8 @@ func RangedUnsignedMeasureMessages(values []*RangedUnsigned, report *TableReport
 	return 2 + w.Bits/8
 }
 func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := RangedUnsignedMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1481,12 +1475,14 @@ func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report 
 	return 2 + w.Bits/8
 }
 func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned) bool {
+	var starts [1]uint64
+	return tableMessageBodyRangedUnsigned(r, value, starts[:], 0)
+}
+func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedUnsignedReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1501,15 +1497,14 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x0f8897557f37c021:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1565,7 +1560,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x2e17553f8200a2a1:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1621,7 +1616,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0xa0e5c60df9301b7d:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1677,7 +1672,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x1cb2c073a6f5844d:
 			{
-				if order >= 3 {
+				if exact && order >= 3 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1733,7 +1728,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x4ca0c150b1790960:
 			{
-				if order >= 4 {
+				if exact && order >= 4 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1789,7 +1784,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0xf252136836b04cb2:
 			{
-				if order >= 5 {
+				if exact && order >= 5 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1845,7 +1840,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x4f37e1f216e7610c:
 			{
-				if order >= 6 {
+				if exact && order >= 6 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1901,7 +1896,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0xd176b605978f3304:
 			{
-				if order >= 7 {
+				if exact && order >= 7 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -1957,7 +1952,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x200b924de7479cda:
 			{
-				if order >= 8 {
+				if exact && order >= 8 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2013,7 +2008,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0xa53d2f2a31b5acb0:
 			{
-				if order >= 9 {
+				if exact && order >= 9 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2069,7 +2064,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x9759be8ea1a4e3d2:
 			{
-				if order >= 10 {
+				if exact && order >= 10 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2125,7 +2120,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x8dc515fc082e3c0e:
 			{
-				if order >= 11 {
+				if exact && order >= 11 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2181,7 +2176,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0xbeecef11dbdf8973:
 			{
-				if order >= 12 {
+				if exact && order >= 12 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2237,7 +2232,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x0117ad66e0fff227:
 			{
-				if order >= 13 {
+				if exact && order >= 13 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2293,7 +2288,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0xf2b45af3b50689db:
 			{
-				if order >= 14 {
+				if exact && order >= 14 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2349,7 +2344,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0x713e12017eebcaf7:
 			{
-				if order >= 15 {
+				if exact && order >= 15 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2405,7 +2400,7 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			}
 		case 0xc341febe5aae51e5:
 			{
-				if order >= 16 {
+				if exact && order >= 16 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2482,6 +2477,10 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2609,13 +2608,8 @@ func RangedWidthsMeasureMessages(values []*RangedWidths, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func RangedWidthsSaveMessages(values []*RangedWidths, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	need := RangedWidthsMeasureMessages(values, report)
+	if need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -2639,12 +2633,14 @@ func RangedWidthsSaveMessages(values []*RangedWidths, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) bool {
+	var starts [1]uint64
+	return tableMessageBodyRangedWidths(r, value, starts[:], 0)
+}
+func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedWidthsReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2659,15 +2655,14 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x08a60c07b54d8dc7:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2723,7 +2718,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			}
 		case 0xff95701912ad97be:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2779,7 +2774,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			}
 		case 0xff9c5c1912b39470:
 			{
-				if order >= 2 {
+				if exact && order >= 2 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2835,7 +2830,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			}
 		case 0xff92701912ab61e7:
 			{
-				if order >= 3 {
+				if exact && order >= 3 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2886,7 +2881,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			}
 		case 0xff95741912ad9e8a:
 			{
-				if order >= 4 {
+				if exact && order >= 4 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2942,7 +2937,7 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			}
 		case 0xff8b681912a535a1:
 			{
-				if order >= 5 {
+				if exact && order >= 5 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -2997,6 +2992,10 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

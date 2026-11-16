@@ -269,7 +269,10 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 	rootSt := u.Tables["Root"]
 	nodeSt := u.Tables["Node"]
 	otherSt := u.Tables["Other"]
+<<<<<<< HEAD
 	leafSt := u.Tables["Leaf"]
+=======
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	shelfSt := u.Tables["Shelf"]
 
 	fieldID := func(st *ir.Struct, name string) uint64 {
@@ -292,7 +295,10 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 
 	nodeTypeID := typeID(nodeSt)
 	otherTypeID := typeID(otherSt)
+<<<<<<< HEAD
 	leafTypeID := typeID(leafSt)
+=======
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	listNodesID := fieldID(rootSt, "list_nodes")
 	fixedNodesID := fieldID(rootSt, "fixed_nodes")
 	boundedNodesID := fieldID(rootSt, "bounded_nodes")
@@ -594,7 +600,11 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 				root = append(root, 1, 13, byte(len(nested)))
 				root = append(root, nested...)
 				root = append(root, 0)
+<<<<<<< HEAD
 				return buildForm1File(root, []uint64{shelfFieldID, shelfItemsID, leafTypeID})
+=======
+				return buildForm1File(root, []uint64{shelfFieldID, shelfItemsID})
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 			}(),
 		},
 	}
@@ -646,8 +656,13 @@ func TestPythonVtPointerArrays(t *testing.T) {
 		if got := codecOf(f); got != "pointer_array" {
 			t.Errorf("codecOf(Root.%s) = %q, want \"pointer_array\"", fn, got)
 		}
+<<<<<<< HEAD
 		if got := pythonType(rootSt, f); got != "list[object]" {
 			t.Errorf("pythonType(Root.%s) = %q, want \"list[object]\"", fn, got)
+=======
+		if got := pythonType(rootSt, f); got != "_s_list[object]" {
+			t.Errorf("pythonType(Root.%s) = %q, want \"_s_list[object]\"", fn, got)
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		}
 	}
 	if got := codecOf(fieldByName(rangedSt, "window")); got != "pointer_array" {
@@ -810,12 +825,21 @@ table Root
 	evoUnknownTargetWire := func() []byte {
 		// leaf_list = [node 2 (undeclared), node 3 (Leaf id=55)]
 		var leafBody []byte
+<<<<<<< HEAD
 		leafBody = append(leafBody, 4, 4, 55, 0, 0, 0, 0)
 		var nt []byte
 		nt = append(nt, 2)           // 2 records
 		nt = append(nt, 3, 1, 0)     // rec 2: typeRef=3 (undeclared), empty body [0]
 		nt = append(nt, 5, 7)        // rec 3: typeRef=5 (Leaf), len=7
 		nt = append(nt, leafBody...) // field ref=4 (Leaf.id), kind=4, 55, term=0
+=======
+		leafBody = append(leafBody, 5, 4, 55, 0, 0, 0, 0)
+		var nt []byte
+		nt = append(nt, 2)           // 2 records
+		nt = append(nt, 3, 1, 0)     // rec 2: typeRef=3 (undeclared), empty body [0]
+		nt = append(nt, 4, 7)        // rec 3: typeRef=4 (Leaf), len=7
+		nt = append(nt, leafBody...) // field ref=5 (Leaf.id), kind=4, 55, term=0
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		var root []byte
 		root = append(root, 1, 14, 4, 17, 2, 2, 3) // leaf_list: [2, 3]
 		root = append(root, 2, 12, byte(len(nt)))
@@ -825,8 +849,13 @@ table Root
 			evoLeafListID,
 			^uint64(0),
 			undeclaredNodeTypeID,
+<<<<<<< HEAD
 			ir.TableFieldWireId(fieldByName(evoLeafSt, "id")),
 			evoLeafTypeID,
+=======
+			evoLeafTypeID,
+			ir.TableFieldWireId(fieldByName(evoLeafSt, "id")),
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		})
 	}()
 	{
@@ -1487,6 +1516,16 @@ table Guarded
 	)
 	controls := []pointerArraysControl{
 		{
+<<<<<<< HEAD
+=======
+			name: "counted-pointer-birth", path: "ptrarr/_schema/descriptor.py",
+			target: `return len(value) == self.min_count and all(elem is None for elem in value)`, repl: `return False`,
+			probe: fmt.Sprintf(`v = RangedHolder()
+assert v.save() == bytes.fromhex(%q), "counted-pointer-birth: birth was not elided"
+`, hex.EncodeToString(encodeOracleJSON(t, m, "RangedHolder", `{"window":[null,null]}`))),
+		},
+		{
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 			name: "count-over-bound", path: pa,
 			target: `if fd.array_mode != "list" and count > fd.bound:`, repl: `if False:`,
 			probe: `bounded_id = [f.field_id for f in Root.descriptor.fields if f.name == "bounded_nodes"][0]

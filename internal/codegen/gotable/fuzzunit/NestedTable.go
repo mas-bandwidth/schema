@@ -97,7 +97,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 	ArchiveConfigReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -142,21 +141,12 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 		}
 		switch fieldID {
 		case 0xa354fd1ff0c467c5: // root
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.root")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -173,11 +163,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				return false
 			}
 		case 0xb1e5e28e4479a274: // count
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -192,10 +177,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 							return false
 						}
 						value.Count = int32(v)
-					}
-					if !(value.Count != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -215,10 +196,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 					return false
 				}
 				value.Count = int32(v)
-			}
-			if !(value.Count != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -393,7 +370,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 	ArchiveConfigReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	r.Retain.discard(r.Path, false, 0)
 	for {
 		ref, ok := r.lebPair()
@@ -439,21 +415,12 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 		}
 		switch fieldID {
 		case 0xa354fd1ff0c467c5: // root
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 13 {
 				r.Report.Refuse(TableRefuseKindMismatch, "ArchiveConfig.root")
 				return false
 			}
 			sub, ok := r.Body()
 			if !ok {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			if len(sub.Buffer) == 1 {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -471,11 +438,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				return false
 			}
 		case 0xb1e5e28e4479a274: // count
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -490,10 +452,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 							return false
 						}
 						value.Count = int32(v)
-					}
-					if !(value.Count != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -513,10 +471,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 					return false
 				}
 				value.Count = int32(v)
-			}
-			if !(value.Count != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++

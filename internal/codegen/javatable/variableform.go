@@ -900,11 +900,14 @@ public final class TableVariable {
         // where node k's begin (node 0 the root, node k record k - 1)
         long[] edges = new long[64];
         int edgeCount;
+        int nextRef;
+        boolean firstUseBad;
         // the cursor a walk answers through: the offset after what it read
         int at;
         final int[] table = new int[2];
         final int[] rootOnlyEdgeStart = new int[2];
         int[] recStart = new int[16];
+        int[] recRef = new int[16];
         int[] recEnd = new int[16];
         boolean[] recBlob = new boolean[16];
         int[] edgeStart = new int[16];
@@ -936,6 +939,8 @@ public final class TableVariable {
             fail = OK;
             nonFinite = false;
             edgeCount = 0;
+            nextRef = 1;
+            firstUseBad = false;
             at = 0;
         }
 
@@ -944,6 +949,20 @@ public final class TableVariable {
                 fail = DAMAGED;
             }
             return false;
+        }
+
+        // Entries are distinct, so a reference below nextRef is already seen.
+        // Defer this verdict until the whole walk and graph complete: an
+        // incomplete walk retains its original refusal (such as count cap).
+        void use(long ref) {
+            if (ref == 0) return;
+            if (ref == nextRef) nextRef++;
+            else if (ref > nextRef) firstUseBad = true;
+        }
+
+        int complete() {
+            if (firstUseBad || nextRef - 1 != ids.length) return DAMAGED;
+            return nonFinite ? NON_FINITE : OK;
         }
 
         // leb reads one canonical LEB128 at off below end into at, answering
@@ -1024,7 +1043,7 @@ public final class TableVariable {
             if (table[0] < 0) {
                 rootOnlyEdgeStart[0] = 0;
                 rootOnlyEdgeStart[1] = rootEdges;
-                return graph(rootOnlyEdgeStart, 1, null) ? (nonFinite ? NON_FINITE : OK) : fail;
+                return graph(rootOnlyEdgeStart, 1, null) ? complete() : fail;
             }
             int off = table[0];
             int end = table[1];
@@ -1047,6 +1066,7 @@ public final class TableVariable {
                 }
                 if (n == recStart.length) {
                     recStart = java.util.Arrays.copyOf(recStart, n * 2);
+                    recRef = java.util.Arrays.copyOf(recRef, n * 2);
                     recEnd = java.util.Arrays.copyOf(recEnd, n * 2);
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
@@ -1058,6 +1078,7 @@ public final class TableVariable {
                 if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
                     return DAMAGED;
                 }
+                recRef[n] = (int) ref;
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
@@ -1076,12 +1097,13 @@ public final class TableVariable {
             edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
             for (int k = 0; k < n; k++) {
+                use(recRef[k]);
                 if (!recBlob[k] && !body(recStart[k], recEnd[k], false, null)) {
                     return fail;
                 }
                 edgeStart[k + 2] = edgeCount;
             }
-            return graph(edgeStart, n + 1, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
+            return graph(edgeStart, n + 1, recBlob) ? complete() : fail;
         }
 
         // graph judges the pointer graph: node 0 is the root, node k record k
@@ -1189,6 +1211,7 @@ public final class TableVariable {
                 if (ref == 0) {
                     return true;
                 }
+                use(ref);
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
                 if (id == BUILD_ID || id == VOCAB_ID) {
@@ -1285,6 +1308,7 @@ public final class TableVariable {
                             damage();
                             return -1;
                         }
+                        use(ref);
                         return at;
                     }
                 case 15:
@@ -1471,7 +1495,8 @@ public final class TableVariable {
             }
             p = first;
             for (long i = 0; i < count; i++) {
-                leb(p, end);
+                long key = leb(p, end);
+                use(key);
                 long n = leb(at, end);
                 int from = at;
                 p = from + (int) n;
@@ -1494,6 +1519,7 @@ public final class TableVariable {
             if (ref == 0) {
                 return at;
             }
+            use(ref);
             if (at >= end) {
                 damage();
                 return -1;
@@ -3728,7 +3754,7 @@ public final class TableJson {
         }
 
         // integer reads one integer token into a long. A wide kind (storage
-        // past 32 bits) takes a string of those digits or a number; a narrower
+        // past 32 bits) takes a string of those digits; a narrower
         // kind takes a number. The token is digits and an optional minus — no
         // fraction, no exponent, not -0 — parsed exactly, never through a
         // double. A value past the declared range refuses (§16.2).
@@ -3741,6 +3767,12 @@ public final class TableJson {
                     return 0;
                 }
             } else {
+                if (wide) {
+                    skipValue();
+                    rep.refuse("kind_mismatch");
+                    rejected = true;
+                    return 0;
+                }
                 boolean[] integral = new boolean[1];
                 tok = scanNumber(integral);
                 if (bad || tok == null) {
@@ -6792,8 +6824,8 @@ func writeVariableGraphFieldStep(b *strings.Builder, st *ir.Struct, f *ir.Field,
 }
 
 // jsonWideInteger reports an integer or fixed-point kind whose storage is
-// wider than 32 bits. JSON writes it as a string of digits and reads a string
-// or a number (docs/SPEC-TABLES.md §16.2). A timestamp stays an RFC 3339 string.
+// wider than 32 bits. JSON reads and writes a string of digits
+// (docs/SPEC-TABLES.md §16.2). A timestamp stays an RFC 3339 string.
 func jsonWideInteger(f *ir.Field) bool {
 	if f == nil || f.Type.Timestamp {
 		return false

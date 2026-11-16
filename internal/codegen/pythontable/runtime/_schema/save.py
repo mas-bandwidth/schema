@@ -8,9 +8,9 @@ sink, so the two agree byte for byte by construction.
 
 from typing import Any, Iterator
 
-from . import InvalidValue
+from . import BlobRef, InvalidValue
 from . import descriptor, kinds
-from . import kind_array, kind_blob, kind_map, kind_optional, kind_unsupported
+from . import kind_array, kind_blob, kind_map, kind_optional, kind_union
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -48,7 +48,7 @@ class Writer:
 
 
 class Ctx:
-    __slots__ = ("ids", "refs", "indices", "node_blobs", "blob_slots", "blob_next", "order", "onstack", "current")
+    __slots__ = ("ids", "refs", "indices", "node_blobs", "blob_slots", "blob_next", "order", "onstack", "current", "blob_refs")
 
     def __init__(self) -> None:
         self.ids: list[int] = []
@@ -64,6 +64,7 @@ class Ctx:
         self.order: list[Any] = []
         self.onstack: set[int] = set()
         self.current: Any = None
+        self.blob_refs: set[int] = set()
 
     def idref(self, value: int) -> int:
         reference = self.refs.get(value)
@@ -84,7 +85,16 @@ def measure_table(value: Any) -> int:
     return _encode(value, Writer(None))
 
 
+def _check_root(value: Any) -> None:
+    """Refuse a root that is not exactly a generated class: a subclass could
+    carry another descriptor or __eq__, and neither may change the bytes."""
+    cls = descriptor.by_name(value.descriptor.name)
+    if cls is None or type(value) is not cls:
+        raise InvalidValue("", f"not a {value.descriptor.name}")
+
+
 def _encode(value: Any, writer: Writer) -> int:
+    _check_root(value)
     _validate(value, value.descriptor, "", set())
     ctx = Ctx()
     ctx.indices[id(value)] = 1
@@ -158,7 +168,9 @@ def _validate_fields(
         if field.codec == "optional":
             if current is None:
                 continue
-            if field.inner == "array":
+            if field.inner == "map":
+                yield from _validate_map_entries(field, current, where)
+            elif field.inner == "array":
                 kind_optional._validate_array(field, current, where)
                 if field.elem is not None and field.elem.codec == "table":
                     for index, item in enumerate(current):
@@ -174,7 +186,7 @@ def _validate_fields(
             if current is None:
                 continue
             target = descriptor.by_name(field.target)
-            if target is None or not isinstance(current, target):
+            if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target} or None")
             yield current, where
         elif field.codec == "pointer_array":
@@ -184,9 +196,10 @@ def _validate_fields(
                     yield elem, f"{where}[{index}]"
         elif field.codec == "table":
             target = descriptor.by_name(field.target)
-            if target is None or not isinstance(current, target):
+            if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target}")
             yield current, where
+<<<<<<< HEAD
         elif field.codec == "map":
             yield from _validate_map_entries(field, current, where)
         elif field.codec == "array":
@@ -206,6 +219,14 @@ def _validate_fields(
                     yield item, cell
                 else:
                     kinds._REGISTRY[element.codec].validate(element, item, cell)
+=======
+        elif field.codec in ("union", "union_array"):
+            yield from kind_union._validation_edges(field, current, where)
+        elif field.codec == "map":
+            yield from _validate_map_entries(field, current, where)
+        elif field.codec == "array":
+            yield from _validate_array(field, current, where)
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         else:
             kind = kinds._REGISTRY[field.codec]
             kind.validate(field, current, where)
@@ -215,6 +236,30 @@ def _validate_fields(
                 yield table, table_path
 
 
+<<<<<<< HEAD
+=======
+def _validate_array(field: FieldDesc, current: Any, where: str) -> Iterator[tuple[Any, str]]:
+    if not isinstance(current, list):
+        raise InvalidValue(where, "not a list")
+    kind_array._check_count(where, len(current))
+    kind_array._check_shape(field, len(current), where)
+    element = field.element
+    if element is None:
+        raise InvalidValue(where, "an array carries no element descriptor")
+    for i, item in enumerate(current):
+        cell = f"{where}[{i}]"
+        if element.codec == "table":
+            target = descriptor.by_name(element.target)
+            if target is None or type(item) is not target:
+                raise InvalidValue(cell, f"not a {element.target}")
+            yield item, cell
+        else:
+            kinds._REGISTRY[element.codec].validate(element, item, cell)
+    if field.text_total and sum(len(item.encode("utf-8")) for item in current if item is not None) > field.text_total:
+        raise InvalidValue(where, "text total exceeded")
+
+
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 def _validate_map_entries(
     field: FieldDesc, value: Any, path: str
 ) -> Iterator[tuple[Any, str]]:
@@ -229,11 +274,6 @@ def _validate_map_entries(
     for key, current in value.items():
         where = f"{path}[{key!r}]"
         kinds._REGISTRY[key_field.codec].validate(key_field, key, where)
-        if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
-            # A map whose VALUE is a byte buffer, `map[K]*bytes` or
-            # `map[K]*string`, is not carried yet: an entry refuses by name,
-            # as kind_unsupported.py refused it before the buffers landed.
-            raise InvalidValue(where, kind_unsupported._RULE)
         if value_field.codec == "pointer":
             kinds._REGISTRY["pointer"].validate(value_field, current, where)
             if current is not None:
@@ -241,8 +281,22 @@ def _validate_map_entries(
         elif value_field.codec == "table":
             kinds._REGISTRY["table"].validate(value_field, current, where)
             yield current, where
+<<<<<<< HEAD
         elif value_field.codec == "map":
             yield from _validate_map_entries(value_field, current, where)
+=======
+        elif value_field.codec == "array":
+            yield from _validate_array(value_field, current, where)
+        elif value_field.codec == "pointer_array":
+            kinds._REGISTRY["pointer_array"].validate(value_field, current, where)
+            for index, item in enumerate(current):
+                if item is not None:
+                    yield item, f"{where}[{index}]"
+        elif value_field.codec == "map":
+            yield from _validate_map_entries(value_field, current, where)
+        elif value_field.codec in ("union", "union_array"):
+            yield from kind_union._validation_edges(value_field, current, where)
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         else:
             kinds._REGISTRY[value_field.codec].validate(value_field, current, where)
 
@@ -333,6 +387,9 @@ def _collect_edges(
         if codec == "optional":
             if current is None:
                 continue
+            if field.inner == "map":
+                yield from _collect_map_edges(field, current, (path, field.name, _NO_SUB), ctx, blobs)
+                continue
             if field.inner == "table":
                 yield current, (path, field.name, _NO_SUB), False, blobs
             elif field.inner == "array" and field.elem is not None and field.elem.codec == "table":
@@ -343,6 +400,11 @@ def _collect_edges(
         elif codec == "string_blob" or codec == "bytes_blob":
             if current is None:
                 continue
+            if isinstance(current, BlobRef):
+                identity = id(current)
+                if identity in ctx.blob_refs:
+                    raise InvalidValue(_path(desc.name, field.name), "blob_shared")
+                ctx.blob_refs.add(identity)
             body = kind_blob._encode(field, current, _path(desc.name, field.name))
             index = len(ctx.order) + 2
             ctx.order.append(kind_blob._BlobNode(field.codec == "string_blob", body))
@@ -364,6 +426,11 @@ def _collect_edges(
             if element is not None and element.codec == "table":
                 for index, item in enumerate(current):
                     yield item, (path, field.name, index), False, blobs
+<<<<<<< HEAD
+=======
+        elif codec in ("union", "union_array"):
+            yield from kind_union._collection_edges(field, current, ctx, blobs, (path, field.name, _NO_SUB))
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         elif codec == "map":
             yield from _collect_map_edges(
                 field, current, (path, field.name, _NO_SUB), ctx, blobs
@@ -397,14 +464,43 @@ def _collect_map_edges(
     for key in kind_map._sorted_keys(field, value):
         current = value[key]
         where = (path, "", key)
+<<<<<<< HEAD
         if value_field.codec == "pointer":
+=======
+        if value_field.codec in ("string_blob", "bytes_blob"):
+            if current is not None:
+                if isinstance(current, BlobRef):
+                    identity = id(current)
+                    if identity in ctx.blob_refs:
+                        raise InvalidValue(_render(where), "blob_shared")
+                    ctx.blob_refs.add(identity)
+                body = kind_blob._encode(value_field, current, _render(where))
+                index = len(ctx.order) + 2
+                ctx.order.append(kind_blob._BlobNode(value_field.codec == "string_blob", body))
+                blobs.append(index)
+        elif value_field.codec == "pointer":
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
             if current is not None:
                 yield current, where, True, blobs
         elif value_field.codec == "table":
             if not value_field.is_default(current):
                 yield current, where, False, blobs
+<<<<<<< HEAD
         elif value_field.codec == "map":
             yield from _collect_map_edges(value_field, current, where, ctx, blobs)
+=======
+        elif value_field.codec == "array" and value_field.element is not None and value_field.element.codec == "table":
+            for index, item in enumerate(current):
+                yield item, (where, "", index), False, blobs
+        elif value_field.codec == "pointer_array":
+            for index, item in enumerate(current):
+                if item is not None:
+                    yield item, (where, "", index), True, blobs
+        elif value_field.codec == "map":
+            yield from _collect_map_edges(value_field, current, where, ctx, blobs)
+        elif value_field.codec in ("union", "union_array"):
+            yield from kind_union._collection_edges(value_field, current, ctx, blobs, where)
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
@@ -415,7 +511,7 @@ def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
         if not field.guard_holds(value):
             continue
         current = getattr(value, field.name)
-        if field.is_default(current):
+        if not field.required and field.is_default(current):
             continue
         kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
     if root and ctx.order:

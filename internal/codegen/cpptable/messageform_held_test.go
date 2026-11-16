@@ -42,6 +42,10 @@ import (
 // reach — the repo's native-type headers and the sibling serialize runtime —
 // are on the compile line so a unit that names either still builds.
 func cppHeldRun(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
+	return cppHeldRunEdited(t, u, body, nil)
+}
+
+func cppHeldRunEdited(t *testing.T, u *ir.Unit, body string, edit func(map[string][]byte)) ([]byte, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
@@ -54,6 +58,9 @@ func cppHeldRun(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
 		t.Fatal(err)
 	}
 	maps.Copy(files, tables)
+	if edit != nil {
+		edit(files)
+	}
 
 	outDir := t.TempDir()
 	var headers []string

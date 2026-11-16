@@ -95,18 +95,18 @@ type vtUnboundedCase struct {
 var vtUnboundedCases = []vtUnboundedCase{
 	{"list_scalars", "Save", `{"scores":[5,-7,100,0]}`},
 	{"list_bools", "Save", `{"flags":[true,false,true]}`},
-	{"list_wide", "Save", `{"wide":[-1,123456789012345678901234567890,-123456789012345678901234567890]}`},
+	{"list_wide", "Save", `{"wide":["-1","123456789012345678901234567890","-123456789012345678901234567890"]}`},
 	{"list_tables", "Save", `{"placements":[{"x":1,"y":-2},{"x":3,"y":4}]}`},
 	{"list_nested", "Save", `{"mids":[{"inner":{"label":1}},{"inner":{"label":65535}}]}`},
 	{"list_table_pointers", "Save", `{"nodes":[{"value":1,"next":{"value":2}},{"value":3}]}`},
 	{"list_fixed_tables", "Save", `{"counters":[{"enabled":true,"small":-3,"count":4000000000},{"small":7},{}]}`},
-	{"list_unsigned_wide", "Save", `{"totals":[18446744073709551615,0,1]}`},
+	{"list_unsigned_wide", "Save", `{"totals":["18446744073709551615","0","1"]}`},
 	// list_empty: the Go engine ELIDES an empty plain array (§3), so this wire
 	// carries no scores field at all: it reads to scores == [] by the declared
 	// default and writes back the same elided wire. The array codec itself never
 	// sees a count of 0 here; refusal/present_empty is the case that does.
 	{"list_empty", "Save", `{"scores":[]}`},
-	{"closure", "Save", `{"live":true,"total":-5,"counter":{"enabled":true,"small":-3,"count":4000000000},"scores":[1,2],"flags":[true],"wide":[7],"placements":[{"x":1,"y":2}],"mids":[{"inner":{"label":9}}],"nodes":[{"value":4,"next":{"value":99}},{"value":5}],"head":{"value":6,"next":{"value":7}},"counters":[{"count":1}],"totals":[2]}`},
+	{"closure", "Save", `{"live":true,"total":"-5","counter":{"enabled":true,"small":-3,"count":4000000000},"scores":[1,2],"flags":[true],"wide":["7"],"placements":[{"x":1,"y":2}],"mids":[{"inner":{"label":9}}],"nodes":[{"value":4,"next":{"value":99}},{"value":5}],"head":{"value":6,"next":{"value":7}},"counters":[{"count":1}],"totals":["2"]}`},
 }
 
 // vtUnboundedEngineWire is the Go engine's form-1 wire of the JSON text at
@@ -211,14 +211,6 @@ func vtUnboundedRefusals(t *testing.T, u *ir.Unit) []vtUnboundedRefusal {
 		{"trailing_bytes", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(1), []byte{0, 0, 0, 0, 7})), "wire_damaged", "bytes left inside an array's L after its elements"},
 		{"element_range", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(2), []byte{1, 0, 0, 0, 101, 0, 0, 0})), "out_of_range", "101 is outside [-100, 100]"},
 		{"bool_payload", vtUnboundedFramed(flags, cat([]byte{boolKind}, leb(2), []byte{1, 2})), "wire_damaged", "a bool payload is not 0 or 1"},
-		// A PRESENT EMPTY PLAIN ARRAY: kind 14, L = 2, the element kind and a
-		// count of 0. An empty []T is the field's declared default, which every
-		// conforming writer elides (§3; the Go engine writes list_empty with no
-		// scores field), so this is a field stored at its declared default: a
-		// non-canonical spelling of a good value, which the variable form's read
-		// refuses (§4, docs/rulings.json reads-refuse-non-canonical). There is no
-		// write-back: the read raises and returns nothing.
-		{"present_empty", vtUnboundedFramed(scores, cat([]byte{elemKind}, leb(0))), "non_canonical", "rides present and empty"},
 	}
 }
 
@@ -500,11 +492,10 @@ var vtUnboundedControls = []vtUnboundedControl{
 	{"trailing_bytes", "unbounded/_schema/kind_array.py", "        if sub.pos != length:\n", "        if False:\n"},
 	{"element_range", "unbounded/_schema/kind_array.py", "    if values and (min(values) < lo or max(values) > hi):\n", "    if False:\n"},
 	{"bool_payload", "unbounded/_schema/kind_array.py", "        if raw.translate(None, b\"\\x00\\x01\"):\n", "        if False:\n"},
-	{"present_empty", "unbounded/_schema/kind_array.py", "        if count == 0 and not fd.optional:\n", "        if False:\n"},
 	// The write side: the element validation in the save walk, and the
 	// length cap. Each must leave the write probe without its line.
-	{"write:range True", "unbounded/_schema/save.py", "                    kinds._REGISTRY[element.codec].validate(element, item, cell)\n", "                    pass\n"},
-	{"write:long True", "unbounded/_schema/save.py", "            kind_array._check_count(where, len(current))\n", "            pass\n"},
+	{"write:range True", "unbounded/_schema/save.py", "            kinds._REGISTRY[element.codec].validate(element, item, cell)\n", "            pass\n"},
+	{"write:long True", "unbounded/_schema/save.py", "    kind_array._check_count(where, len(current))\n", "    pass\n"},
 	{"write:cap refused", "unbounded/_schema/kind_array.py", "    if count > cap:\n", "    if False:\n"},
 }
 

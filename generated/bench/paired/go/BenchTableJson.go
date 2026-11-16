@@ -147,7 +147,7 @@ func tableJSONIsEnum(f *TableFieldInfo) bool { return f.VariantID != nil && f.Ar
 // tableJSONWideIntegerKind is an integer or fixed-point kind whose storage is
 // wider than 32 bits (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2): int64, uint64, int128,
 // uint128, and the 64- and 128-bit fixed-point kinds. The writer spells one
-// as a string of decimal digits; the reader takes that string or a number.
+// as a string of decimal digits; the reader takes that string only.
 func tableJSONWideIntegerKind(kind uint8) bool {
 	switch kind {
 	case 5, 9, 18, 19, 23, 24, 28, 29:
@@ -184,12 +184,12 @@ func tableJSONIntegerToken(token []byte) bool {
 }
 
 // tableJSONShapeMatches reports whether got satisfies want. A wide integer
-// declares 'N' and takes a string or a number; every other shape is exact.
+// declares 'N' and takes a string; every other shape is exact.
 func tableJSONShapeMatches(want, got byte) bool {
 	if want == got {
 		return true
 	}
-	return want == 'N' && (got == 's' || got == 'n')
+	return want == 'N' && got == 's'
 }
 
 func tableJSONShape(f *TableFieldInfo) byte {
@@ -561,8 +561,23 @@ func tableJSONWriteFloat(out *tableJSONOut, value float64, single bool) bool {
 // tableJSONWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
 func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+
 	if f.Pointer {
 		return tableJSONWritePointer(out, (*int64)(storage), f, depth)
+	}
+	// Integer bounds use their exact signed or unsigned storage domain.
+	if f.HasRange && f.Kind >= 2 && f.Kind <= 9 {
+		if f.Kind <= 5 {
+			value := tableJSONGetSigned(storage, f.ElemSize)
+			if value < f.RangeIntMin || value > f.RangeIntMax {
+				return false
+			}
+		} else {
+			value := tableJSONGetRaw(storage, f.ElemSize)
+			if value < f.RangeUintMin || value > f.RangeUintMax {
+				return false
+			}
+		}
 	}
 	if f.Kind >= 18 && f.Kind <= 29 {
 		if tableJSONWideIntegerKind(f.Kind) {
@@ -1793,8 +1808,8 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		tableJSONSetRaw(storage, f.ElemSize, 0)
 		return true
 	}
-	// A wide integer reads as a string OR a number (§16.2). The string holds
-	// the same digits. A narrow integer is a number only; the shape check
+	// A wide integer reads as a string (§16.2). The string holds
+	// the decimal digits. A narrow integer is a number only; the shape check
 	// above already refused a string there. Neither path goes through a double.
 	var token []byte
 	if tableJSONWideIntegerKind(f.Kind) && in.valueShape() == 's' {
@@ -2242,6 +2257,9 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		// a fixed array's tail keeps the defaults the prefill left there,
 		// exactly as a short wire count does
 		tableJSONSetCount(base, f, placed)
+		if !tableJSONCountInContract(base, f) {
+			in.report.Refuse(TableRefuseOutOfRange, "")
+		}
 		return true
 	}
 	return tableJSONReadScalar(in, storage, f, depth)
@@ -2875,13 +2893,7 @@ func (g *tableJSONGraph) setLabel(key uint64, entry tableJSONLabel) bool {
 	g.labels[i] = entry
 	return true
 }
-func (g *tableJSONGraph) close() {
-	if g.memory != nil {
-		g.release(g.memory)
-		g.memory = nil
-		g.labels = nil
-	}
-}
+
 func tableJSONPointerAt(slot *int64) unsafe.Pointer {
 	if *slot == 0 {
 		return nil
@@ -3776,21 +3788,6 @@ func (e TableTimestampError) Error() string {
 	return "timestamp_out_of_range: " + e.Field + " " + e.Time.Format(time.RFC3339Nano) +
 		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
 }
-
-// tableTimestampNanos is the count of a time.Time, and false for a time whose
-// count UnixNano cannot represent. Go's zero Time{} is the zero time.
-func tableTimestampNanos(t time.Time) (int64, bool) {
-	if t.IsZero() {
-		return 0, true
-	}
-	if t.Before(time.Unix(0, -1<<63)) || t.After(time.Unix(0, 1<<63-1)) {
-		return 0, false
-	}
-	return t.UnixNano(), true
-}
-
-// tableTimestampTime is the UTC time of a count; every count is legal.
-func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 

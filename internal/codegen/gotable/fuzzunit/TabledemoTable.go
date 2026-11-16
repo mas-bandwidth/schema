@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xd4231158f15ca524)
-const _ = uint64(0xd4231158f15ca524 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x210cd52b1224513a)
+const _ = uint64(0x210cd52b1224513a - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -42,10 +42,6 @@ func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJ
 func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
-
-type tableFirstUse = goruntime.TableFirstUse
-
-type tableFirstUseRun = goruntime.TableFirstUseRun
 
 func tableFirstUseCount(a0 *TableReport, a1 uint8) { goruntime.TableFirstUseCount(a0, a1) }
 
@@ -103,8 +99,6 @@ const TableRefuseLengthOverBound = goruntime.TableRefuseLengthOverBound
 
 const TableRefuseMissingRequired = goruntime.TableRefuseMissingRequired
 
-type tableTruncatedMalformed = goruntime.TableTruncatedMalformed
-
 func tableRefuseError(a0 TableRefuseReason) error { return goruntime.TableRefuseError(a0) }
 
 type TableBuildVersionMismatch = goruntime.TableBuildVersionMismatch
@@ -135,8 +129,6 @@ func tableKindWidens(a0, a1 uint8) bool { return goruntime.TableKindWidens(a0, a
 func tableUTF8Word(a0 []byte) uint64 { return goruntime.TableUTF8Word(a0) }
 
 func tableUTF8Valid(a0 []byte) bool { return goruntime.TableUTF8Valid(a0) }
-
-func tableUTF8Clamp(a0 []byte, a1 int64) int64 { return goruntime.TableUTF8Clamp(a0, a1) }
 
 const tableBinaryMaxDepth = goruntime.TableBinaryMaxDepth
 
@@ -172,11 +164,8 @@ const tableFixedWiden = goruntime.TableFixedWiden
 const tableFixedConst = goruntime.TableFixedConst
 const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
-const tableFixedTag = goruntime.TableFixedTag
-const tableFixedSlack = goruntime.TableFixedSlack
 
-const tableFixedTextUTF8 = goruntime.TableFixedTextUTF8
-const tableFixedTextBytes = goruntime.TableFixedTextBytes
+const tableFixedSlack = goruntime.TableFixedSlack
 
 const tableFixedPresent = goruntime.TableFixedPresent
 
@@ -214,10 +203,6 @@ func tableFixedRuns(a0 uint8) bool { return goruntime.TableFixedRuns(a0) }
 
 func tableFixedArgWidth(a0 uint8) uint32 { return goruntime.TableFixedArgWidth(a0) }
 
-func tableFixedTagAt(a0 []byte, a1 uint32, a2 uint8) uint64 {
-	return goruntime.TableFixedTagAt(a0, a1, a2)
-}
-
 func tableFixedPartition(a0 []TableFixedEntry, a1 int32) int32 {
 	return goruntime.TableFixedPartition(a0, a1)
 }
@@ -238,26 +223,12 @@ func tableFixedPutF32(a0 []byte, a1 float32) { goruntime.TableFixedPutF32(a0, a1
 
 func tableFixedPutF64(a0 []byte, a1 float64) { goruntime.TableFixedPutF64(a0, a1) }
 
-func tableFixedPut128(a0 []byte, a1, a2 uint64) { goruntime.TableFixedPut128(a0, a1, a2) }
-
 func tableFixedGet32(a0 []byte) uint32 { return goruntime.TableFixedGet32(a0) }
 
 func tableFixedGet64(a0 []byte) uint64 { return goruntime.TableFixedGet64(a0) }
 
-func tableFixedCopyRun(a0, a1 []byte, a2 uint32) { goruntime.TableFixedCopyRun(a0, a1, a2) }
-
-func tableFixedPutNative(a0 []byte, a1 uint64, a2 uint32) { goruntime.TableFixedPutNative(a0, a1, a2) }
-
-func tableFixedCopyNative(a0, a1 []byte, a2, a3 uint32) {
-	goruntime.TableFixedCopyNative(a0, a1, a2, a3)
-}
-
 func tableFixedRun(a0 []TableFixedEntry, a1 int32, a2, a3 []byte, a4 *TableReport) string {
 	return goruntime.TableFixedRun(a0, a1, a2, a3, a4)
-}
-
-func tableFixedTextIllFormed(a0 uint8, a1 uint32, a2 []byte) bool {
-	return goruntime.TableFixedTextIllFormed(a0, a1, a2)
 }
 
 func tableFixedUTF8Ok(a0 []byte) bool { return goruntime.TableFixedUTF8Ok(a0) }
@@ -265,14 +236,6 @@ func tableFixedUTF8Ok(a0 []byte) bool { return goruntime.TableFixedUTF8Ok(a0) }
 func tableFixedTextRefusal(a0 []TableFixedEntry, a1 int32, a2 []byte) string {
 	return goruntime.TableFixedTextRefusal(a0, a1, a2)
 }
-
-func tableFixedAllZero(a0 []byte) bool { return goruntime.TableFixedAllZero(a0) }
-
-func tableFixedDeadSpan(a0 []byte, a1, a2 uint32) ([2]uint32, bool) {
-	return goruntime.TableFixedDeadSpan(a0, a1, a2)
-}
-
-func tableFixedDead(a0 [][2]uint32, a1 uint32) bool { return goruntime.TableFixedDead(a0, a1) }
 
 type tableFixedLayoutEntry = goruntime.TableFixedLayoutEntry
 
@@ -284,10 +247,6 @@ func tableFixedEntryAt(a0 tableFixedLayoutView, a1 int32) tableFixedLayoutEntry 
 
 func tableFixedSubtree(a0 tableFixedLayoutView, a1 int32) int32 {
 	return goruntime.TableFixedSubtree(a0, a1)
-}
-
-func tableFixedUnionArmBytes(a0 tableFixedLayoutView, a1 int32) uint32 {
-	return goruntime.TableFixedUnionArmBytes(a0, a1)
 }
 
 func tableFixedTagBytes(a0 tableFixedLayoutView, a1 int32) uint32 {
@@ -303,8 +262,6 @@ func tableFixedChildrenNamed(a0 tableFixedLayoutView, a1 int32, a2 tableFixedLay
 }
 
 type tableFixedHole = goruntime.TableFixedHole
-
-func tableFixedLand(a0 []byte, a1, a2 uint32) { goruntime.TableFixedLand(a0, a1, a2) }
 
 func tableFixedHoles(a0 []TableFixedEntry, a1 int32, a2 uint32) []tableFixedHole {
 	return goruntime.TableFixedHoles(a0, a1, a2)
@@ -332,6 +289,16 @@ const TableMessageBatchMax = goruntime.TableMessageBatchMax
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
 
+func tableMessageSeenOpen(a0 *TableVocabulary, a1 []uint64, a2 int) {
+	goruntime.TableMessageSeenOpen(a0, a1, a2)
+}
+
+func tableMessageSeenFirst(a0 *TableVocabulary) { goruntime.TableMessageSeenFirst(a0) }
+
+func tableMessageSeenRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64) bool {
+	return goruntime.TableMessageSeenRepeat(a0, a1, a2, a3)
+}
+
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
 
 func tableMessageKnownKind(a0 uint8) bool { return goruntime.TableMessageKnownKind(a0) }
@@ -344,10 +311,6 @@ func tableMessageCount(a0 *TableBitReader, a1 TableMessageShape) (uint64, bool) 
 
 func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 TableMessageEntry, a4 int) bool {
 	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4)
-}
-
-func tableMessageSkipBody(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 int) bool {
-	return goruntime.TableMessageSkipBody(a0, a1, a2, a3)
 }
 
 func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) (bool, bool) {
@@ -866,41 +829,6 @@ func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
 	} else {
 		tableJSONSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
 	}
-}
-func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
-	if f.Kind == 12 {
-		for i := 0; i < len(a.text) && i < len(b.text); i++ {
-			if a.text[i] < b.text[i] {
-				return -1
-			}
-			if a.text[i] > b.text[i] {
-				return 1
-			}
-		}
-		if len(a.text) < len(b.text) {
-			return -1
-		}
-		if len(a.text) > len(b.text) {
-			return 1
-		}
-		return 0
-	}
-	if f.Kind >= 2 && f.Kind <= 5 {
-		if int64(a.raw) < int64(b.raw) {
-			return -1
-		}
-		if int64(a.raw) > int64(b.raw) {
-			return 1
-		}
-		return 0
-	}
-	if a.raw < b.raw {
-		return -1
-	}
-	if a.raw > b.raw {
-		return 1
-	}
-	return 0
 }
 
 // A guarded group rides only when its guard reads true — the wire's own elision
@@ -1451,17 +1379,13 @@ func (r *TableReader) Signed(kind uint8) int64 {
 }
 
 type tableWireCheck struct {
-	depth   int32
-	ids     uint64
-	nodes   uint64
-	records TableReader
-	graph   []uint64
-	release bool
-	head    uint64
-	gen     uint32
-	reason  TableRefuseReason
-	mark    func(uint64)
-	stamp   [4097]uint32
+	depth  int32
+	ids    uint64
+	nodes  uint64
+	gen    uint32
+	reason TableRefuseReason
+	mark   func(uint64)
+	stamp  [4097]uint32
 }
 
 func (c *tableWireCheck) fail(reason TableRefuseReason) bool {
@@ -1488,25 +1412,6 @@ func (c *tableWireCheck) edge(index uint64) bool {
 	}
 	if index == 1 || index > c.nodes+1 {
 		return c.fail(TableRefuseWireDamaged)
-	}
-	if c.graph == nil {
-		return true
-	}
-	at := &c.graph[2*(index-1)]
-	if !c.release {
-		if *at&0xffffffff == 0xffffffff {
-			return c.fail(TableRefuseWireDamaged)
-		}
-		*at++
-		return true
-	}
-	if *at&0xffffffff == 0 {
-		return c.fail(TableRefuseWireDamaged)
-	}
-	*at--
-	if *at&0xffffffff == 0 {
-		*at |= c.head << 32
-		c.head = index + 1
 	}
 	return true
 }
@@ -1755,137 +1660,6 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	return r.Offset, true
-}
-
-// record walks the node record at offset in the node table: a blob's bytes, or
-// a table body of any type, named or not.
-func (c *tableWireCheck) record(at int64) bool {
-	r := c.records
-	r.Offset = at
-	ref, _ := r.Leb()
-	id, _ := r.Resolve(ref)
-	body, _ := r.Body()
-	switch id {
-	case tableWireBytesID:
-		return true
-	case tableWireStringID:
-		return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
-	}
-	return c.framed(body, 13)
-}
-
-// tableWireVerify holds every wire-alone condition over an opened file
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): the root body, the node table and every
-// record in it, and the pointer graph. scratch holds two words per node,
-// at the node index less one (record i of the table is node i+1); a nil or
-// short scratch is allocated here, which only a file with a node table needs.
-func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
-	var c tableWireCheck
-	c.ids = uint64(len(r.Ids)) / 8
-	// the node table, found by the root's headers: a declared count, then that
-	// many records, each a type reference and an L-framed body, filling the field
-	probe := r
-	probe.Offset = 0
-	for {
-		ref, ok := probe.Leb()
-		if !ok || ref == 0 {
-			break
-		}
-		id, ok := probe.Resolve(ref)
-		if !ok || !probe.Has(1) {
-			break
-		}
-		kind := probe.Get8()
-		if id == 0xffffffffffffffff && kind == 12 {
-			payload, ok := probe.Body()
-			if !ok {
-				break
-			}
-			count, ok := payload.Leb()
-			if !ok || count > uint64(len(payload.Buffer)) {
-				return TableRefuseWireDamaged
-			}
-			c.records = payload
-			c.nodes = count
-			break
-		}
-		if !probe.Skip(kind) {
-			break
-		}
-	}
-	if c.nodes > 0 {
-		if uint64(len(scratch)) < 2*(c.nodes+1) {
-			scratch = make([]uint64, 2*(c.nodes+1))
-		}
-		c.graph = scratch[:2*(c.nodes+1)]
-		clear(c.graph)
-		rec := c.records
-		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset & math.MaxInt64)
-			ref, ok := rec.Leb()
-			if !ok {
-				return TableRefuseWireDamaged
-			}
-			if _, ok := rec.Resolve(ref); !ok {
-				return TableRefuseWireDamaged
-			}
-			if _, ok := rec.Body(); !ok {
-				return TableRefuseWireDamaged
-			}
-		}
-		if rec.Offset != int64(len(rec.Buffer)) {
-			return TableRefuseWireDamaged
-		}
-	}
-	// the first pass: every check, and each record's in-degree
-	root := r
-	root.Offset = 0
-	if end, ok := c.body(root, true); !ok || end != int64(len(root.Buffer)) {
-		return c.failed()
-	}
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if !c.record(int64(c.graph[2*(i-1)+1] & math.MaxInt64)) {
-			return c.failed()
-		}
-	}
-	if c.nodes == 0 {
-		return TableRefuseOk
-	}
-	// a blob named twice is shared, and a record no pointer names is unreachable
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if c.graph[2*(i-1)]&0xffffffff > 1 {
-			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1] & math.MaxInt64)
-			ref, _ := rec.Leb()
-			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
-				return TableRefuseBlobShared
-			}
-		}
-	}
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if c.graph[2*(i-1)]&0xffffffff == 0 {
-			return TableRefuseWireDamaged
-		}
-	}
-	// Kahn's algorithm from the root: a record a cycle holds is never released
-	c.release = true
-	if _, ok := c.body(root, true); !ok {
-		return c.failed()
-	}
-	visited := uint64(0)
-	for c.head != 0 {
-		i := c.head - 1
-		c.head = c.graph[2*(i-1)] >> 32
-		c.graph[2*(i-1)] &= 0xffffffff
-		visited++
-		if !c.record(int64(c.graph[2*(i-1)+1] & math.MaxInt64)) {
-			return c.failed()
-		}
-	}
-	if visited != c.nodes {
-		return TableRefuseWireDamaged
-	}
-	return TableRefuseOk
 }
 
 // tableWireSkipValue walks one unknown payload with the wire-alone rules while
@@ -3234,6 +3008,19 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	defer n.Release()
 	ids := &frame.ids
 	*ids = TableIds{Numbering: n}
+	if !measure {
+		probe := &frame.measure
+		*probe = TableWriter{Measuring: true, Ids: ids}
+		if !info.SaveBody(probe, root) {
+			return -1, TableRefuseInvalidValue
+		}
+		for i := 1; i < len(n.entries); i++ {
+			if tableNodeMeasure(probe, ids, &n.entries[i]) < 0 {
+				return -1, TableRefuseInvalidValue
+			}
+		}
+		ids.Truncate(0)
+	}
 	w := &frame.writer
 	*w = TableWriter{Buffer: buffer, Measuring: measure, Ids: ids}
 	w.Put8(1)
@@ -4439,10 +4226,6 @@ const tableNodeBlobSeen uint64 = 1 << 62
 const tableNodeNoStorage uint64 = 1 << 61
 const tableNodeSeed uint64 = 1 << 63
 
-func tableCycleCheck(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo) bool {
-	return tableCycleCheckReason(base, root, a, dir, nodeType) == TableRefuseOk
-}
-
 func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo) TableRefuseReason {
 	const mask = uint64(1)<<48 - 1
 	if uint64(len(dir)) > math.MaxUint32 {
@@ -5576,6 +5359,19 @@ func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 	defer n.Release()
 	ids := &frame.ids
 	*ids = TableRetainIds{Numbering: n, Retain: retain, Path: tableRetainPath{at: root, node: 1}}
+	if !measure {
+		probe := &frame.measure
+		*probe = TableRetainWriter{Measuring: true, Ids: ids}
+		if !info.SaveBodyRetain(probe, root) {
+			return -1
+		}
+		for i := 1; i < len(n.entries); i++ {
+			if tableNodeMeasureRetain(probe, ids, &n.entries[i]) < 0 {
+				return -1
+			}
+		}
+		ids.Truncate(0)
+	}
 	w := &frame.writer
 	*w = TableRetainWriter{Buffer: buffer, Measuring: measure, Ids: ids}
 	w.Put8(1)

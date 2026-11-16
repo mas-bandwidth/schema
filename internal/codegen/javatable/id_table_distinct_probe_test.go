@@ -44,11 +44,16 @@ table Root { value int32 }
 	}
 	pkg := javaPackageOf(u)
 
-	// A form-1 file whose root body is the terminator and whose trailer is the
-	// given ids and their little-endian count (§3).
+	// Each entry is named by an unknown scalar field in first-use order.
+	// The trailer remains a legal 4096-entry file under §3.
 	wire := func(ids []uint64) []byte {
-		out := make([]byte, 0, 2+8*len(ids)+8)
-		out = append(out, 1, 0)
+		out := make([]byte, 0, 2+15*len(ids)+8)
+		out = append(out, 1)
+		for i := range ids {
+			out = binary.AppendUvarint(out, uint64(i+1))
+			out = append(out, 4, 1, 0, 0, 0)
+		}
+		out = append(out, 0)
 		for _, id := range ids {
 			out = binary.LittleEndian.AppendUint64(out, id)
 		}

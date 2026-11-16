@@ -107,7 +107,7 @@ table Root
 }
 `,
 		root: "Root",
-		json: `{"items":{"9":{"count":9,"live":true},"2":{"count":2}},"tail":5}`,
+		json: `{"items":{"9":{"count":9,"live":true},"2":{"count":2}},"tail":"5"}`,
 		extra: `from probe import Item
 a = Item()
 a.count = 9

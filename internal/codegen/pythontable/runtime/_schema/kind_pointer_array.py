@@ -91,6 +91,18 @@ class _PointerArray:
                 "count_over_bound",
                 f"{fd.name}: count {count} exceeds bound {fd.bound}",
             )
+<<<<<<< HEAD
+=======
+        if fd.array_mode == "counted" and count < fd.min_count:
+            raise Refused(
+                "count_over_bound",
+                f"{fd.name}: count {count} is below minimum {fd.min_count}",
+            )
+        # Every pointer index needs at least one byte, even a null index.
+        # Reject impossible counts before allocating storage from untrusted input.
+        if count > sub.end - sub.pos:
+            raise Refused("wire_damaged", "a count the array body cannot cover")
+>>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         alloc_len = fd.bound if fd.array_mode == "fixed" else count
         out: list[Any] = [None] * alloc_len
         for slot in range(count):

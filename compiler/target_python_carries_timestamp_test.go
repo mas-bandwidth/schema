@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // SPEC.md §4.13, docs/SPEC-TABLES.md §2.11: the Python target carries the
