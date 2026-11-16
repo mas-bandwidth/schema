@@ -1384,6 +1384,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
+		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
