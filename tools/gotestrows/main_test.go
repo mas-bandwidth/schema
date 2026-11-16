@@ -1,12 +1,65 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
+
+// TestCommittedSplitsRunEveryDeclaredTestExactlyOnce holds the table's
+// patterns against real test names. The complement supplies the union, but
+// overlapping patterns would silently run a test in two matrix jobs.
+func TestCommittedSplitsRunEveryDeclaredTestExactlyOnce(t *testing.T) {
+	t.Parallel()
+	tb, err := readTable(filepath.Join("..", "..", tablePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for pkg := range tb.splits {
+		t.Run(pkg, func(t *testing.T) {
+			t.Parallel()
+			rows := plan(tb, []string{pkg}, true, 60)
+			dir := filepath.Join("..", "..", strings.TrimPrefix(pkg, "./"))
+			files, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			matches := make([]int, len(rows))
+			for _, path := range files {
+				file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, decl := range file.Decls {
+					fn, ok := decl.(*ast.FuncDecl)
+					if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") {
+						continue
+					}
+					selected := 0
+					for i, row := range rows {
+						if selects(t, row, fn.Name.Name) {
+							selected++
+							matches[i]++
+						}
+					}
+					if selected != 1 {
+						t.Errorf("%s is selected by %d rows, want exactly one", fn.Name.Name, selected)
+					}
+				}
+			}
+			for i, count := range matches {
+				if count == 0 {
+					t.Errorf("row %+v selects no declared tests", rows[i])
+				}
+			}
+		})
+	}
+}
 
 // TestPlanRunsEveryTestExactlyOnce: every package lands in exactly one packed
 // row or in its split rows, a split package's rows are its patterns plus the
