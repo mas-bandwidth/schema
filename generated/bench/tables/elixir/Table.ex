@@ -3756,6 +3756,8 @@ defmodule Benchtable.Table do
 
           if not node_ok, do: throw(:wire_damaged)
 
+          value = Map.merge(defaults(node_desc), value)
+
           {Map.put(records, idx, value), merge_report(report, own_report),
            Map.put(node_fields, idx, fields_of_node)}
 
@@ -4865,7 +4867,7 @@ defmodule Benchtable.Table do
 
         if status == :halt or ends_early?(sub, ids),
           do: {:cont, %{}, throw(:wire_damaged)},
-          else: {:cont, value, report}
+          else: {:cont, Map.merge(defaults(desc), value), report}
 
       {:stop, fields, [], _remaining} ->
         # the element's body is damaged mid-walk or runs off its own end: the
@@ -5023,10 +5025,19 @@ defmodule Benchtable.Table do
 
   # defaults is a field's declared default: what an absent field reads (§4). The
   # descriptor's own default column carries it, declared default first, so an
-  # int32 = 1 reads 1 and a text renders 1.
+  # int32 = 1 reads 1 and a text renders 1. A table nested by value reads the
+  # member's own defaults, as the reference's prefill does, so every body takes
+  # one shape whether the wire named its fields or not.
   defp defaults(desc) do
     Map.new(desc.fields, fn f ->
-      {f.name, Map.get(f, :default)}
+      value =
+        case f do
+          %{optional: true} -> Map.get(f, :default)
+          %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
+          _ -> Map.get(f, :default)
+        end
+
+      {f.name, value}
     end)
   end
 

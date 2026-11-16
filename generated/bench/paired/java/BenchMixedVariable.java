@@ -3177,4 +3177,47 @@ public final class BenchMixedVariable {
             return;
         }
     }
+
+    /**
+     * carry a BenchMixedFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(BenchMixedFixed.Value fixed) {
+        Value v = new Value();
+        v.sequence = fixed.sequence;
+        v.ackSequence = fixed.ackSequence;
+        v.ackBits = fixed.ackBits;
+        v.sessionId = fixed.sessionId;
+        v.clientId = fixed.clientId;
+        v.nonce = fixed.nonce;
+        v.worldTime = fixed.worldTime;
+        v.frameTick = fixed.frameTick;
+        v.serverTime = fixed.serverTime;
+        for (int i = 0; i < fixed.entitiesCount; i++) {
+            v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
+        }
+        for (int i = 0; i < fixed.statsCount; i++) {
+            v.stats.add(MixedStatVariable.fromFixed(fixed.stats[i]));
+        }
+        v.gameEvent = MixedEventVariable.fromFixed(fixed.gameEvent);
+        for (int i = 0; i < fixed.loadout.length; i++) {
+            v.loadout.add((fixed.loadout[i] & 0xFF));
+        }
+        v.playerName =
+                new String(fixed.playerName, 0, fixed.playerNameLength, StandardCharsets.UTF_8);
+        v.payload = java.util.Arrays.copyOf(fixed.payload, fixed.payloadLength);
+        v.aimX = fixed.aimX;
+        v.aimY = fixed.aimY;
+        v.aimZ = fixed.aimZ;
+        v.recoil = fixed.recoil;
+        v.drift = fixed.drift;
+        v.wideKey = fixed.wideKey;
+        v.flux = fixed.flux;
+        v.ping = (fixed.ping & 0xFFFF);
+        v.crcHint = fixed.crcHint;
+        v.hasExtra = fixed.hasExtra;
+        v.extra = fixed.extra;
+        v.idleTicks = fixed.idleTicks;
+        return v;
+    }
 }
