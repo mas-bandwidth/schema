@@ -208,9 +208,10 @@ func main() {
 		reason := fs.String("reason", "", "the sentence that goes in the file beside a `--retire` mark, read years later by whoever asks why")
 		writer := fs.String("writer", "", "capture trusted historical writer metadata for one locked Table@0x<hash>")
 		from := fs.String("from", "", "historical schema unit for --writer; provenance is the caller's responsibility")
+		legacyLayoutOnly := fs.Bool("legacy-layout-only", false, "explicitly trust --from source for an old layout-only key whose empty digest did not bind constraints")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
-		if (*writer != "" || *from != "") && (*writer == "" || *from == "" || *retire != "" || *reason != "" || *print) {
+		if (*writer != "" || *from != "" || *legacyLayoutOnly) && (*writer == "" || *from == "" || *retire != "" || *reason != "" || *print) {
 			fail(fmt.Errorf("--writer and --from are paired and cannot combine with --print, --retire or --reason"))
 		}
 		paths, err := compiler.GatherPaths(fs.Args())
@@ -230,7 +231,7 @@ func main() {
 			if err != nil {
 				fail(err)
 			}
-			path, rewrote, err := compiler.ImportSchemaLockWriter(u, paths, *writer, old)
+			path, rewrote, err := compiler.ImportSchemaLockWriterWithOptions(u, paths, *writer, old, compiler.SchemaLockWriterImportOptions{LegacyLayoutOnly: *legacyLayoutOnly})
 			if err != nil {
 				fail(err)
 			}

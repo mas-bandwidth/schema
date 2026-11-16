@@ -68,7 +68,7 @@ for bad in ([0],[0,0,0],[0,101]):
 		t.Fatal("packet-keyed control lost its anchor")
 	}
 	broken := maps.Clone(files)
-	broken[path] = []byte(strings.Replace(string(files[path]), marker, `"positional":False`, 1))
+	broken[path] = []byte(strings.ReplaceAll(string(files[path]), marker, `"positional":False`))
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		dir := pythonFixedTree(t, broken)
 		control := pyrun.ImportPrelude + `from probe import T

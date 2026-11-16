@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package listdemo — protocol id 0x6f357df726f08bc5 (packets only: tables version by field id, not by protocol id)
+// package listdemo — protocol id 0x63cf59843d9eb62f (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2466,14 +2466,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x95,
-    0x50,
+    0x8d,
+    0x07,
+    0xe9,
+    0x70,
     0x7c,
-    0xe7,
-    0xf8,
-    0x5d,
-    0xec,
-    0x86,
+    0x4f,
+    0x0f,
+    0x21,
     0x02,
     0x0e,
     0x90,
@@ -10646,7 +10646,7 @@ namespace listdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x86ec5df8e77c5095ull;
+static const uint64_t BuildVersion = 0x210f4f7c70e9078dull;
 
 } // namespace listdemo
 
@@ -14963,7 +14963,7 @@ TABLE_FIXED_INLINE bool PlacementFixedFiniteBody( const Placement & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PlacementFixedBodyBytes = 12;
 constexpr int64_t PlacementFixedRecordBytes = 8 + PlacementFixedBodyBytes; // the hash and the body
-constexpr uint64_t PlacementFixedHash = 0x612211bc49eed17aull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t PlacementFixedHash = 0xcdee9ba113793835ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 4 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -15034,9 +15034,10 @@ constexpr int32_t PlacementFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t PlacementFixedLineage[] = {
-    0x612211bc49eed17aull, // identity
+    0x612211bc49eed17aull, // lock
+    0xcdee9ba113793835ull, // identity
 };
-constexpr int32_t PlacementFixedLineageCount = 1;
+constexpr int32_t PlacementFixedLineageCount = 2;
 constexpr int32_t PlacementFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t PlacementFixedFloorLive = PlacementFixedFloor;
@@ -15050,14 +15051,23 @@ constexpr uint8_t PlacementFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3a, 0x70, 0x6e, 0x3e, 0x93, 0x43, 0xe5, 0x9d, 0x08,
     0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t PlacementFixedKnown1Layout[] = {
+    0x04, 0x00, 0x00, 0x00, 0x80, 0xea, 0x3a, 0xb9, 0xf1, 0x21, 0xf7, 0x41, 0x0d, 0x0c, 0x00, 0x00,
+    0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0a, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0a, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3a, 0x70, 0x6e, 0x3e, 0x93, 0x43, 0xe5, 0x9d, 0x08,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout PlacementFixedKnown[] = {
-    { 0x612211bc49eed17aull, PlacementFixedKnown0Layout, 72, 20 }, // identity
+    { 0x612211bc49eed17aull, PlacementFixedKnown0Layout, 72, 20 }, // lock
+    { 0xcdee9ba113793835ull, PlacementFixedKnown1Layout, 72, 20 }, // identity
 };
 
 constexpr const TableFixedKnownRange * PlacementFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t PlacementFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t PlacementFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -15394,7 +15404,7 @@ inline int64_t PlacementFixedLoad( Placement * values, int64_t capacity, const u
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t LogEntryFixedBodyBytes = 4;
 constexpr int64_t LogEntryFixedRecordBytes = 8 + LogEntryFixedBodyBytes; // the hash and the body
-constexpr uint64_t LogEntryFixedHash = 0xea98a82ef5707ea9ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t LogEntryFixedHash = 0xb3b894950b773a12ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -15455,9 +15465,10 @@ constexpr int32_t LogEntryFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t LogEntryFixedLineage[] = {
-    0xea98a82ef5707ea9ull, // identity
+    0xea98a82ef5707ea9ull, // lock
+    0xb3b894950b773a12ull, // identity
 };
-constexpr int32_t LogEntryFixedLineageCount = 1;
+constexpr int32_t LogEntryFixedLineageCount = 2;
 constexpr int32_t LogEntryFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t LogEntryFixedFloorLive = LogEntryFixedFloor;
@@ -15469,14 +15480,21 @@ constexpr uint8_t LogEntryFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x84, 0x76, 0xbc, 0x2e, 0xef, 0x83, 0x76, 0x1e, 0x08, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t LogEntryFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x5f, 0x82, 0x58, 0xac, 0x36, 0x15, 0x78, 0x5e, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x84, 0x76, 0xbc, 0x2e, 0xef, 0x83, 0x76, 0x1e, 0x08, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout LogEntryFixedKnown[] = {
-    { 0xea98a82ef5707ea9ull, LogEntryFixedKnown0Layout, 38, 12 }, // identity
+    { 0xea98a82ef5707ea9ull, LogEntryFixedKnown0Layout, 38, 12 }, // lock
+    { 0xb3b894950b773a12ull, LogEntryFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * LogEntryFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t LogEntryFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t LogEntryFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -15805,7 +15823,7 @@ inline int64_t LogEntryFixedLoad( LogEntry * values, int64_t capacity, const uin
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PointFixedBodyBytes = 8;
 constexpr int64_t PointFixedRecordBytes = 8 + PointFixedBodyBytes; // the hash and the body
-constexpr uint64_t PointFixedHash = 0x1e621e0309d27347ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t PointFixedHash = 0x9b8b7c7ce09bb1b4ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -15871,9 +15889,10 @@ constexpr int32_t PointFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t PointFixedLineage[] = {
-    0x1e621e0309d27347ull, // identity
+    0x1e621e0309d27347ull, // lock
+    0x9b8b7c7ce09bb1b4ull, // identity
 };
-constexpr int32_t PointFixedLineageCount = 1;
+constexpr int32_t PointFixedLineageCount = 2;
 constexpr int32_t PointFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t PointFixedFloorLive = PointFixedFloor;
@@ -15886,14 +15905,22 @@ constexpr uint8_t PointFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x04, 0x04,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t PointFixedKnown1Layout[] = {
+    0x03, 0x00, 0x00, 0x00, 0x11, 0xed, 0xd9, 0xce, 0x96, 0x92, 0x43, 0x8a, 0x0d, 0x08, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout PointFixedKnown[] = {
-    { 0x1e621e0309d27347ull, PointFixedKnown0Layout, 55, 16 }, // identity
+    { 0x1e621e0309d27347ull, PointFixedKnown0Layout, 55, 16 }, // lock
+    { 0x9b8b7c7ce09bb1b4ull, PointFixedKnown1Layout, 55, 16 }, // identity
 };
 
 constexpr const TableFixedKnownRange * PointFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t PointFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t PointFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

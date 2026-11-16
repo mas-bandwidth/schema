@@ -353,7 +353,7 @@ func TestPythonFixedFormWriterBounds(t *testing.T) {
 	body[24] = 7
 	binary.LittleEndian.PutUint32(body[27:], 0x3f000000)
 	wire := fixedproof.MakeFixedFile(hash, layout, body)
-	entry := pythontable.FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + size, Writer: st}
+	entry := pythontable.FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + size, Writer: st, Digest: ir.TableFixedDefinitionsDigest(st)}
 	files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {entry}})
 	if err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ print('writer-snapshot-bounds')
 	// if they proved the writer's narrower contract.
 	entry.Writer = nil
 	_, err = pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {entry}})
-	if err == nil || !strings.Contains(err.Error(), "needs its writer declaration snapshot") {
+	if err == nil || !strings.Contains(err.Error(), "needs its checked writer declaration snapshot") {
 		t.Fatalf("missing historical writer facts did not hold generation: %v", err)
 	}
 }
@@ -424,7 +424,7 @@ func TestPythonFixedFormGuardedDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	layout, hash, size := fixedproof.RootFacts(old.Tables["T"])
-	files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {{Wire: hash, Layout: layout, Record: 8 + size, Writer: old.Tables["T"]}}})
+	files, err := pythontable.GenerateLineage(newer, map[string][]pythontable.FixedLineageEntry{"T": {{Wire: hash, Layout: layout, Record: 8 + size, Writer: old.Tables["T"], Digest: ir.TableFixedDefinitionsDigest(old.Tables["T"])}}})
 	if err != nil {
 		t.Fatal(err)
 	}

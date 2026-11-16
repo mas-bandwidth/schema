@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xf4a226f4166d919b
+// package ludicrous — protocol id 0xd2ded2cc8a482aa1
 //
 // The TypeScript declarations of Ludicrous.js (SPEC §6.3).
 
