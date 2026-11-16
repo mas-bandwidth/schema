@@ -562,8 +562,10 @@ var framingVectors = []framingVector{
 	// T7: an index above node_count + 1; that pointer null, the field after it
 	// landing.
 	{name: "node_index_above_count", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(2, 12, 1, 'a'), b(3, 17, 3), nodeTable(1, listNodeRecord(2)), b(0))},
-	// §3.1: index 0 is null.
-	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), nodeTable(1, listNodeRecord(2)), b(0))},
+	// §3.1: an explicit null index is non-canonical; its positive control
+	// omits the pointer and has the same value, without a node directory.
+	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), b(0))},
+	{name: "node_index_null_canonical", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(0)), held: true},
 	// R6, T5: the reserved id inside a record body stops that body.
 	{name: "node_reserved_id_in_record", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, b(5, 4, 4, 12, 0, 0)), b(0))},
 	// T1 (finding N7, settled): the node table riding twice; the LAST

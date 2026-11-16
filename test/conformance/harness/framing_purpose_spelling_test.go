@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -141,4 +142,64 @@ func TestNoncanonicalGraphPurposesAreIsolated(t *testing.T) {
 			t.Errorf("%s: id table %s", tc.name, fault)
 		}
 	}
+}
+
+// TestExplicitNullPurposeAndPositive checks the intentional null pointer in a
+// field against a control where that field is absent. Neither carries nodes.
+func TestExplicitNullPurposeAndPositive(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	for _, tc := range []struct {
+		name  string
+		nulls int
+	}{{"node_index_null", 1}, {"node_index_null_canonical", 0}} {
+		data, err := os.ReadFile(filepath.Join(root, framingDir, tc.name+".bin"))
+		if err != nil {
+			t.Errorf("%s: %v", tc.name, err)
+			continue
+		}
+		f := frameWire(data)
+		nulls, nodes := 0, 0
+		for _, sp := range f.spots {
+			if sp.kind == spotIndex && sp.value == 0 {
+				nulls++
+			}
+			if sp.kind == spotNodeCount {
+				nodes++
+			}
+		}
+		if nulls != tc.nulls || nodes != 0 {
+			t.Errorf("%s: null pointers=%d node tables=%d", tc.name, nulls, nodes)
+		}
+		if fault := framingTableFault(framingVector{}, data); fault != "" {
+			t.Errorf("%s: id table %s", tc.name, fault)
+		}
+	}
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	u, err := newUnits(m).get("graphdemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := tabletext.NewModel(u)
+	inst := model.New(model.Lookup("ListNode"))
+	positive, err := os.ReadFile(filepath.Join(root, framingDir, "node_index_null_canonical.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report tabletext.Report
+	ok, err := strictDecode(model, inst, positive, &report)
+	if err != nil || !ok || report.Refused {
+		t.Fatalf("canonical absent-pointer control: ok=%v err=%v report=%+v", ok, err, report)
+	}
+
 }

@@ -106,7 +106,7 @@ var framingStrictRefusals = map[string]string{
 	"keyed_elem_kind_mismatch":               "H4: an element kind mismatch refuses",
 	"keyed_L1_inert":                         "H2: an enum-keyed body with L = 1 is damage",
 	"node_table_twice":                       "R5, T1: a repeated node table is damage",
-	"node_index_null":                        "T1: a node record no pointer reaches is damage",
+	"node_index_null":                        "§4: a null pointer explicitly stored in a field is non-canonical",
 	"frame_unknown_id_length":                "R2: an unknown field's bytes are checked, and AA BB CC is no body",
 	"frame_unknown_id_reference":             "R2, T7: an unknown pointer's index past the node table is damage",
 	"node_unknown_to_fixed_reader":           "R2, T4: an unknown node table is checked, and its record's type ref is 0",
