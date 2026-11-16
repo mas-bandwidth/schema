@@ -11,7 +11,8 @@ rows=$(mktemp)
 packages=$(mktemp)
 trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
 : > "$rows"
-make -s python-ci-support-list | while IFS= read -r target; do
+supports=$(make -s python-ci-support-list)
+printf '%s\n' "$supports" | while IFS= read -r target; do
   jq -cn --arg name "$target" --arg target "$target" '{name:$name,target:$target,package:"",test:""}' >> "$rows"
 done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
@@ -19,6 +20,13 @@ while IFS= read -r package; do
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
   names=$(printf '%s\n' "$tests" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
   skip=
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
+    printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
+    for part in 0 1 2 3 4 5 6 7; do
+      [ "$(printf '%s\n' "$supports" | grep -cx "python-ci-packet-core-$part")" -eq 1 ] || { echo "missing or duplicate packet core shard $part" >&2; exit 1; }
+    done
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonPacketCore$/d')
+  fi
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
     skip=TestPythonVtFixedClassBuildVersionImports
