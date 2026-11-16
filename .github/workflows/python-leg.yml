@@ -21,6 +21,7 @@ on:
     branches: [ main, dev ]
     paths:
       - 'make/python*'
+      - 'tools/python-ci-*.sh'
       - '.github/workflows/python-leg.yml'
       - '.github/actions/python/**'
       - 'third_party/serialize.py/**'
@@ -34,6 +35,7 @@ on:
   pull_request:
     paths:
       - 'make/python*'
+      - 'tools/python-ci-*.sh'
       - '.github/workflows/python-leg.yml'
       - '.github/actions/python/**'
       - 'third_party/serialize.py/**'
@@ -71,10 +73,30 @@ jobs:
           rows=$(sh tools/python-ci-rows.sh)
           echo "rows=$rows" >> "$GITHUB_OUTPUT"
 
+  fixed-corpus:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: build the reference corpus and generated Python units at this source
+        run: |
+          make serialize-siblings
+          sh tools/python-ci-corpus.sh build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-fixed-corpus-${{ github.sha }}
+          path: build/python-ci-fixed-corpus.tar
+          if-no-files-found: error
+          overwrite: true
+
   test:
     name: python (${{ matrix.name }})
     if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    needs: plan
+    needs: [plan, fixed-corpus]
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -88,16 +110,32 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/python
+      - name: stage the sibling runtimes
+        run: make serialize-siblings
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: matrix.corpus
+        with:
+          name: python-fixed-corpus-${{ github.sha }}
+          path: build
+      - name: verify the reference corpus source, runtime pin and bytes
+        if: matrix.corpus
+        run: sh tools/python-ci-corpus.sh restore
       - name: run the selected complete-leg slice
         env:
           TARGET: ${{ matrix.target }}
           PACKAGE: ${{ matrix.package }}
           TEST: ${{ matrix.test }}
+          CORPUS: ${{ matrix.corpus }}
         run: |
           set -euo pipefail
-          make serialize-siblings
           if [ -n "$TARGET" ]; then
-            make -j"$(getconf _NPROCESSORS_ONLN)" "$TARGET"
+            if [ "$CORPUS" = true ]; then
+              # The validated artifact supplies this prerequisite. Avoid
+              # rebuilding the C++ writer separately in every support row.
+              make -j"$(getconf _NPROCESSORS_ONLN)" --old-file=build/fixedform-corpus/.stamp --old-file=build/conformance-python "$TARGET"
+            else
+              make -j"$(getconf _NPROCESSORS_ONLN)" "$TARGET"
+            fi
           else
             SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run "^${TEST}$" "$PACKAGE"
           fi
