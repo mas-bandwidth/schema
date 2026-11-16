@@ -8131,6 +8131,7 @@ inline int64_t MixedEntityMeasureMessageBody( int64_t at, const MixedEntity & va
     if ( value.damage != 0 )
     {
         bits += kTableMessageRefBitsHere;
+        schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // message flags domain, debug only (§5.1)
         bits += 8;
     }
     if ( value.moving != false )
@@ -8216,6 +8217,7 @@ inline bool MixedEntitySaveMessageBody( TableBitWriter & w, const MixedEntity & 
     if ( value.damage != 0 )
     {
         w.put( 42, kTableMessageRefBitsHere );
+        schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // message flags domain, debug only (§5.1)
         w.put( (uint64_t) ( value.damage ), 8 );
     }
     if ( value.moving != false )
