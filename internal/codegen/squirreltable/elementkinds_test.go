@@ -141,7 +141,8 @@ func TestSquirrelArrayElementKindMatchesDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := []struct{ name, schema, root, want string }{
-		{"declared_enum", "", "Cfg", "kind_mismatch"},
+		{"original_fixed", "", "Cfg", "previous_form"},
+		{"declared_enum", "package probe\nenum Grade { Bronze, Silver, Gold }\ntable Cfg { grades [..4]Grade }\n", "Cfg", "kind_mismatch"},
 		{"matching_i32", "package probe\ntable Cfg { grades [..4]int32 }\n", "Cfg", "ok"},
 		{"widen_i64", "package probe\ntable Cfg { grades [..4]int64 }\n", "Cfg", "ok"},
 		{"unknown_field", "package probe\ntable Cfg { other int32 }\n", "Cfg", "ok"},
@@ -178,8 +179,15 @@ func TestSquirrelArrayElementKindMatchesDeclaration(t *testing.T) {
  local schema = dofile(%q, true); local T = schema.require(%q); local R = schema.require("schema_table_refusal");
  local report = {}; local v = R.ReadStrict(T, %q, inputs.wire, report);
  local result = v == null ? report.reason : "ok";
- print(%q + " " + result + "\n");
-}`+"\n", c.name+"/schema_module.nut", squirreltable.ModuleName(u), c.root, c.name)
+ local name = %q;
+ if (v != null && (name == "matching_i32" || name == "widen_i64")) {
+   local fd = T.Descriptors[%q].byKey.grades; local values = v[fd.member];
+   if (values.len() != 1 || values[0] != 2) result = "bad_value";
+   if (name == "widen_i64" && report.widened != 1) result = "bad_widen";
+ }
+ if (v != null && name == "unknown_field" && report.unknown != 1) result = "bad_unknown";
+ print(name + " " + result + "\n");
+}`+"\n", c.name+"/schema_module.nut", squirreltable.ModuleName(u), c.root, c.name, c.root)
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script.String()))
 	out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wire})
