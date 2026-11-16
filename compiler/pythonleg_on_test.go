@@ -1,8 +1,4 @@
-//go:build schema_leg_python
-
-// The Python skeleton through the compiler's driver (docs/PORT-PYTHON.md,
-// THE CARD MAP: P3), in a build with the schema_leg_python tag:
-// `go test -tags schema_leg_python ./compiler -run Python` (make test-python).
+// The Python target through the ordinary compiler driver (docs/PORT-PYTHON.md).
 package compiler
 
 import (
@@ -28,12 +24,12 @@ func writeSchemas(t *testing.T, files map[string]string) []string {
 	return paths
 }
 
-// TestPythonTargetIsRegistered: the tagged build carries the python target,
+// TestPythonTargetIsRegistered: the compiler carries the python target,
 // registered from its own init, with the timestamp construct this layer adds.
 func TestPythonTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "python") {
-		t.Fatalf("the schema_leg_python build lists no python target: %v", New().Targets())
+		t.Fatalf("the compiler lists no python target: %v", New().Targets())
 	}
 	got, ok := Carried("python")
 	if !ok {

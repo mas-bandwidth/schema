@@ -122,13 +122,23 @@ packet-defaults-python-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaultsNegativeControl$$' ./internal/codegen/python/
 test-python: packet-defaults-python packet-defaults-python-negative-control
 
-generated/bench/python/.stamp: build/schema-python $(SCHEMAS_BENCH)
+generated/bench/python/.stamp: bin/schema $(SCHEMAS_BENCH)
 	@mkdir -p generated/bench/python
-	./build/schema-python generate --lang python --out generated/bench/python bench/corpus/Bench.schema
+	./bin/schema generate --lang python --out generated/bench/python bench/corpus/Bench.schema
 	@touch $@
 
 .PHONY: bench-python-gate bench-python-negative-control
 bench-python-gate: generated/bench/python/.stamp python-toolchain-check
-	bench/python/run --gate
+	PYTHON=$(PYTHON) bench/python/run --gate
+	PYTHON=$(PYTHON_FLOOR) bench/python/run --gate
 bench-python-negative-control: generated/bench/python/.stamp python-toolchain-check
-	bench/python/negative-control
+	PYTHON=$(PYTHON) bench/python/negative-control
+	PYTHON=$(PYTHON_FLOOR) bench/python/negative-control
+
+# Pin the complete generated packet packages, including their vendored runtime.
+generated/python/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang python --out generated/python examples
+	@touch $@
+generated/python-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang python --out generated/python-ludicrous examples128
+	@touch $@
