@@ -69,7 +69,7 @@ func TestPlanRunsEveryTestExactlyOnce(t *testing.T) {
 	tb := table{
 		short:  map[string]float64{"./a": 50, "./b": 30, "./c": 25, "./big": 90},
 		plain:  map[string]float64{},
-		splits: map[string][]string{"./s": {"^TestHeavy$", "^TestOther$"}},
+		splits: map[string][]string{"./s": {"^(TestHeavy|FuzzHeavy)$", "^TestOther$"}},
 	}
 	pkgs := []string{"./a", "./b", "./c", "./big", "./s", "./unknown"}
 	rows := plan(tb, pkgs, true, 60)
@@ -107,7 +107,7 @@ func TestPlanRunsEveryTestExactlyOnce(t *testing.T) {
 		t.Fatalf("./s has %d rows, want its 2 patterns and the complement: %+v", len(split), split)
 	}
 	// every test name lands in exactly one of the split rows
-	for _, name := range []string{"TestHeavy", "TestOther", "TestNew", "TestHeavyish", "FuzzNew"} {
+	for _, name := range []string{"TestHeavy", "TestOther", "TestNew", "TestHeavyish", "FuzzHeavy", "FuzzNew"} {
 		n := 0
 		for _, r := range split {
 			if selects(t, r, name) {
