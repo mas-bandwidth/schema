@@ -31,7 +31,7 @@ func TestPythonRetainRoundTrip(t *testing.T) {
 	script := pyrun.ImportPrelude + `from tblrt1 import Node, TableRetain, LoadReport
 with open('input','rb') as f: data=f.read()
 with open('expected','rb') as f: expected=f.read()
-keep=TableRetain(bytearray(65536), [None]*8192)
+keep=TableRetain(bytearray(65536), bytearray(24*8192))
 report=LoadReport()
 value=Node.load_retain(data, keep, report)
 assert report.unknown > 0 and report.retained > 0
@@ -104,32 +104,39 @@ try: resolved(30,bytes([3]))
 except Refused: pass
 else: raise AssertionError('invalid id reference accepted')
 from probe._schema.retain import TableRetain
-keep=TableRetain(bytearray(256), [None]*2)
+keep=TableRetain(bytearray(256), bytearray(24*2))
 assert keep.capture(1, ((3,2),), 0xabc, 13, memoryview(bytes([4,1,30,2,0])), ids)
 used=keep.used
 entries=list(keep.records())
 assert len(entries)==1 and entries[0][:4] == (1,((3,2),),0xabc,13)
 assert not keep.capture(1, (), 0xdef, 17, memoryview(bytes([0])), ids)
 assert keep.used==used and len(list(keep.records()))==1
-small=TableRetain(bytearray(22), [])
+small=TableRetain(bytearray(22), bytearray())
 assert not small.capture(1, (), 0xabc, 13, memoryview(bytes([4,1,30,2,0])), ids)
 assert small.used==0 and list(small.records())==[]
 keep.reset(); assert keep.used==0 and keep.id_used==0 and list(keep.records())==[]
 from probe._schema.retain import emit_record
-from probe._schema.save import Ctx, Writer
-keep=TableRetain(bytearray(128), [None]*2)
+from probe._schema.save import Ctx, RetainCtx, Writer
+keep=TableRetain(bytearray(128), bytearray(24*2))
 assert keep.capture(1, (), 0xabc, 30, memoryview(bytes([1])), ids)
 node,steps,field,kind,payload=next(keep.records())
-ctx=Ctx(); output=bytearray(); writer=Writer(output)
+ctx=RetainCtx(keep); output=bytearray(); writer=Writer(output)
 assert emit_record(keep,field,kind,payload,frozenset(),ctx,writer)
-assert bytes(output)==bytes([1,30,2]) and ctx.ids==[0xabc,ids[0]]
-assert keep.id_used==2 and keep.ids==[(0xabc,1),(ids[0],2)]
-short=TableRetain(bytearray(128), [None])
+assert bytes(output)==bytes([1,30,2]) and ctx.ids==[]
+assert keep.id_used==2 and keep.retained_id(0xabc)==1 and keep.retained_id(ids[0])==2
+short=TableRetain(bytearray(128), bytearray(24))
 assert short.capture(1, (), 0xabc, 30, memoryview(bytes([1])), ids)
 _,_,field,kind,payload=next(short.records())
-ctx=Ctx(); output=bytearray(); writer=Writer(output)
+ctx=RetainCtx(short); output=bytearray(); writer=Writer(output)
 assert not emit_record(short,field,kind,payload,frozenset(),ctx,writer)
 assert ctx.ids==[] and ctx.refs=={} and short.id_used==0 and output==bytearray()
+keep.begin_save(); ctx=RetainCtx(keep)
+assert ctx.idref(0x100)==1
+keep.add_retained_id(0xabc,2)
+assert ctx.idref(0x200)==3
+keep.add_retained_id(0xdef,4)
+trailer=bytearray(); ctx.write_ids(Writer(trailer))
+assert trailer==b''.join(v.to_bytes(8,'little') for v in (0x100,0xabc,0x200,0xdef,4))
 print('resolved')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -205,7 +212,7 @@ with open('wire','rb') as f: data=f.read()
 report=LoadReport()
 value=Node.load(data,report)
 assert report.unknown==11, report.unknown
-keep=TableRetain(bytearray(65536),[None]*8192)
+keep=TableRetain(bytearray(65536),bytearray(24*8192))
 from tblrt1._schema.load import load_table
 loaded_report=LoadReport()
 loaded=load_table(Node,data,loaded_report,keep)
@@ -221,10 +228,10 @@ def grouped(retain):
     return result
 with open('expected','rb') as f: saved=f.read()
 Node.load(saved)
-again=TableRetain(bytearray(65536),[None]*8192)
+again=TableRetain(bytearray(65536),bytearray(24*8192))
 assert capture_file(Node,memoryview(saved),again)==(9,0)
 assert grouped(again)==grouped(keep)
-small=TableRetain(bytearray(), [])
+small=TableRetain(bytearray(), bytearray())
 assert capture_file(Node,memoryview(data),small)==(0,11)
 for name in ('retain_excluded_0','retain_excluded_1','retain_excluded_2','retain_excluded_3','retain_excluded_4','retain_excluded_5','retain_rt3'):
     with open(name,'rb') as f: sample=f.read()
@@ -252,7 +259,7 @@ func TestPythonRetainPathIndex(t *testing.T) {
 	}
 	script := pyrun.ImportPrelude + `import sys
 from probe._schema.retain import TableRetain
-keep=TableRetain(bytearray(262144),[])
+keep=TableRetain(bytearray(262144),bytearray())
 steps=[0]
 def trace(frame,event,arg):
     if event=='call' and frame.f_code.co_name in ('_bit','_query_bit'):
@@ -272,16 +279,16 @@ sys.settrace(None)
 assert list(keep.records_at(1,((1001,0),)))==[]
 assert keep.capture(1,((7,0),),9999,4,memoryview(bytes([9,8,7,6])),[])
 assert [r[0] for r in keep.records_at(1,((7,0),))]==[1007,9999]
-first=TableRetain(bytearray(1024),[])
+first=TableRetain(bytearray(1024),bytearray())
 assert first.capture(1,((0,0),),7,4,memoryview(bytes([1,2,3,4])),[])
-small=TableRetain(bytearray(first.used+35),[])
+small=TableRetain(bytearray(first.used+35),bytearray())
 assert small.capture(1,((0,0),),7,4,memoryview(bytes([1,2,3,4])),[])
 before=small.used
 assert not small.capture(1,((1,0),),8,4,memoryview(bytes([1,2,3,4])),[])
 assert small.used==before and [r[0] for r in small.records_at(1,((0,0),))]==[7]
 from probe._schema.save import Ctx
 one,two=object(),object()
-remap=TableRetain(bytearray(1024),[])
+remap=TableRetain(bytearray(1024),bytearray())
 for node,identity in ((1,11),(2,22),(3,33)):
     assert remap.capture(node,(),identity,4,memoryview(bytes([1,2,3,4])),[])
 ctx=Ctx(); ctx.indices[id(one)]=3; ctx.indices[id(two)]=2
@@ -299,6 +306,13 @@ ctx=Ctx(); ctx.indices[id(one)]=3; ctx.indices[id(two)]=2
 remap.begin_save(ctx,[one,two])
 assert [r[0] for r in remap.records_at(3,())]==[22]
 assert [r[0] for r in remap.records_at(2,())]==[33]
+ids=TableRetain(bytearray(),bytearray(24*1000))
+for i in range(1000): ids.add_retained_id(i+10,i+1)
+assert ids._id_height(ids.id_root) <= 20
+for i in range(1000): assert ids.retained_id(i+10)==i+1
+ids.truncate_ids(500)
+for i in range(500): assert ids.retained_id(i+10)==i+1
+assert ids.retained_id(510)==0 and ids.id_used==500
 print('path-index')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -328,7 +342,7 @@ func TestPythonRetainPathIndexNegativeControl(t *testing.T) {
 	}
 	files[path] = []byte(strings.Replace(string(files[path]), anchor, "            pass\n", 1))
 	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
-keep=TableRetain(bytearray(1024),[])
+keep=TableRetain(bytearray(1024),bytearray())
 for identity in (7,8): assert keep.capture(1,((0,0),),identity,4,memoryview(bytes([1,2,3,4])),[])
 if [r[0] for r in keep.records_at(1,((0,0),))] != [7,8]: raise SystemExit('retain_path_link_control')
 `
@@ -350,12 +364,12 @@ func TestPythonRetainTail(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
-from probe._schema.save import Ctx, Writer
-keep=TableRetain(bytearray(1024),[None]*2)
+from probe._schema.save import Ctx, RetainCtx, Writer
+keep=TableRetain(bytearray(1024),bytearray(24*2))
 assert keep.capture(1,(),0xabc,30,memoryview(bytes([1])),[0x111])
 assert keep.capture(1,((1,0),),0xdef,4,memoryview(bytes([1,2,3,4])),[])
 def perform(output):
-    keep.begin_save(); ctx=Ctx(); writer=Writer(output)
+    keep.begin_save(); ctx=RetainCtx(keep); writer=Writer(output)
     lost=keep.write_tail(1,(),frozenset(),ctx,writer)
     lost+=keep.write_tail(1,((1,0),),frozenset(),ctx,writer)
     lost+=keep.unplaced()
@@ -363,8 +377,8 @@ def perform(output):
 size,lost,ids=perform(None)
 output=bytearray(); actual,again,ids2=perform(output)
 assert size==actual==len(output)==3 and lost==again==1
-assert ids==ids2==[0xabc,0x111] and bytes(output)==bytes([1,30,2])
-keep.begin_save(); ctx=Ctx(); writer=Writer(bytearray())
+assert ids==ids2==[] and bytes(output)==bytes([1,30,2])
+keep.begin_save(); ctx=RetainCtx(keep); writer=Writer(bytearray())
 assert keep.write_tail(1,(),frozenset(),ctx,writer)==0 and keep.unplaced()==1
 print('tail')
 `
@@ -395,10 +409,10 @@ func TestPythonRetainTailNegativeControl(t *testing.T) {
 	}
 	files[path] = []byte(strings.Replace(string(files[path]), anchor, "            pass\n", 1))
 	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
-from probe._schema.save import Ctx, Writer
-keep=TableRetain(bytearray(128),[None]*2)
+from probe._schema.save import Ctx, RetainCtx, Writer
+keep=TableRetain(bytearray(128),bytearray(24*2))
 assert keep.capture(1,(),0xabc,4,memoryview(bytes([1,2,3,4])),[])
-keep.begin_save(); keep.write_tail(1,(),frozenset(),Ctx(),Writer(bytearray()))
+keep.begin_save(); keep.write_tail(1,(),frozenset(),RetainCtx(keep),Writer(bytearray()))
 if keep.unplaced()!=0: raise SystemExit('retain_placement_control')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -427,7 +441,7 @@ func TestPythonRetainNodeRemapNegativeControl(t *testing.T) {
 	script := pyrun.ImportPrelude + `from probe._schema.retain import TableRetain
 from probe._schema.save import Ctx
 one,two=object(),object()
-keep=TableRetain(bytearray(1024),[])
+keep=TableRetain(bytearray(1024),bytearray())
 for node,identity in ((2,22),(3,33)):
     assert keep.capture(node,(),identity,4,memoryview(bytes([1,2,3,4])),[])
 ctx=Ctx(); ctx.indices[id(one)]=3; ctx.indices[id(two)]=2

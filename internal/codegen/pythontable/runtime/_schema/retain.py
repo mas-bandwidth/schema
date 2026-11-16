@@ -269,11 +269,11 @@ class TableRetain:
     data store grows with the number of records.
     """
 
-    __slots__ = ("storage", "ids", "used", "id_used", "root", "directory", "loaded_root")
+    __slots__ = ("storage", "ids", "used", "id_used", "root", "directory", "loaded_root", "id_root")
 
-    def __init__(self, storage: bytearray, ids: list[tuple[int, int] | None]) -> None:
-        if type(storage) is not bytearray or type(ids) is not list:
-            raise TypeError("retention needs a bytearray and a list of id slots")
+    def __init__(self, storage: bytearray, ids: bytearray) -> None:
+        if type(storage) is not bytearray or type(ids) is not bytearray or len(ids) % 24:
+            raise TypeError("retention needs a bytearray and 24-byte id slots")
         self.storage = storage
         self.ids = ids
         self.used = 0
@@ -281,6 +281,7 @@ class TableRetain:
         self.root = 0  # offsets are stored plus one, so zero is null
         self.directory: list[Any] = []
         self.loaded_root: Any = None
+        self.id_root = 0
 
     def reset(self) -> None:
         self.used = 0
@@ -288,6 +289,7 @@ class TableRetain:
         self.root = 0
         self.directory = []
         self.loaded_root = None
+        self.id_root = 0
 
     @staticmethod
     def _word(data: memoryview, at: int) -> int:
@@ -341,6 +343,121 @@ class TableRetain:
             side = self._bit(data, record, bit)
             pointer = self._word(data, at + 9 + side * 4)
         return -1
+
+    def _id_word(self, node: int, offset: int) -> int:
+        at = (node - 1) * 24 + offset
+        return int.from_bytes(self.ids[at:at + 4], "little")
+
+    def _id_set(self, node: int, offset: int, value: int) -> None:
+        at = (node - 1) * 24 + offset
+        self.ids[at:at + 4] = value.to_bytes(4, "little")
+
+    def _id_key(self, node: int) -> int:
+        at = (node - 1) * 24
+        return int.from_bytes(self.ids[at:at + 8], "little")
+
+    def _id_height(self, node: int) -> int:
+        return self._id_word(node, 20) if node else 0
+
+    def _id_fix(self, node: int) -> None:
+        self._id_set(node, 20, 1 + max(self._id_height(self._id_word(node, 12)), self._id_height(self._id_word(node, 16))))
+
+    def _id_rotate(self, node: int, left: bool) -> int:
+        a, b = (16, 12) if left else (12, 16)
+        child = self._id_word(node, a)
+        self._id_set(node, a, self._id_word(child, b))
+        self._id_set(child, b, node)
+        self._id_fix(node)
+        self._id_fix(child)
+        return child
+
+    def _id_add(self, root: int, node: int) -> int:
+        if not root:
+            return node
+        offset = 12 if self._id_key(node) < self._id_key(root) else 16
+        self._id_set(root, offset, self._id_add(self._id_word(root, offset), node))
+        self._id_fix(root)
+        left = self._id_word(root, 12)
+        right = self._id_word(root, 16)
+        balance = self._id_height(left) - self._id_height(right)
+        if balance > 1:
+            if self._id_key(node) > self._id_key(left):
+                self._id_set(root, 12, self._id_rotate(left, True))
+            return self._id_rotate(root, False)
+        if balance < -1:
+            if self._id_key(node) < self._id_key(right):
+                self._id_set(root, 16, self._id_rotate(right, False))
+            return self._id_rotate(root, True)
+        return root
+
+    def retained_id(self, identity: int) -> int:
+        node = self.id_root
+        while node:
+            key = self._id_key(node)
+            if key == identity:
+                return self._id_word(node, 8)
+            node = self._id_word(node, 12 if identity < key else 16)
+        return 0
+
+    def add_retained_id(self, identity: int, slot: int) -> None:
+        if self.id_used >= len(self.ids) // 24:
+            raise Capacity()
+        node = self.id_used + 1
+        at = (node - 1) * 24
+        self.ids[at:at + 8] = identity.to_bytes(8, "little")
+        self._id_set(node, 8, slot)
+        self._id_set(node, 12, 0)
+        self._id_set(node, 16, 0)
+        self._id_set(node, 20, 1)
+        self.id_root = self._id_add(self.id_root, node)
+        self.id_used = node
+
+    def _id_balance(self, root: int) -> int:
+        self._id_fix(root)
+        left = self._id_word(root, 12)
+        right = self._id_word(root, 16)
+        delta = self._id_height(left) - self._id_height(right)
+        if delta > 1:
+            if self._id_height(self._id_word(left, 16)) > self._id_height(self._id_word(left, 12)):
+                self._id_set(root, 12, self._id_rotate(left, True))
+            return self._id_rotate(root, False)
+        if delta < -1:
+            if self._id_height(self._id_word(right, 12)) > self._id_height(self._id_word(right, 16)):
+                self._id_set(root, 16, self._id_rotate(right, False))
+            return self._id_rotate(root, True)
+        return root
+
+    def _id_pop_min(self, root: int) -> tuple[int, int]:
+        left = self._id_word(root, 12)
+        if not left:
+            return self._id_word(root, 16), root
+        remaining, minimum = self._id_pop_min(left)
+        self._id_set(root, 12, remaining)
+        return self._id_balance(root), minimum
+
+    def _id_remove(self, root: int, identity: int) -> int:
+        if not root:
+            raise ValueError("retained id index is corrupt")
+        key = self._id_key(root)
+        if key != identity:
+            offset = 12 if identity < key else 16
+            self._id_set(root, offset, self._id_remove(self._id_word(root, offset), identity))
+            return self._id_balance(root)
+        left = self._id_word(root, 12)
+        right = self._id_word(root, 16)
+        if not left:
+            return right
+        if not right:
+            return left
+        remaining, replacement = self._id_pop_min(right)
+        self._id_set(replacement, 12, left)
+        self._id_set(replacement, 16, remaining)
+        return self._id_balance(replacement)
+
+    def truncate_ids(self, count: int) -> None:
+        while self.id_used > count:
+            self.id_root = self._id_remove(self.id_root, self._id_key(self.id_used))
+            self.id_used -= 1
 
     def capture(self, node: int, steps: tuple[tuple[int, int], ...], identity: int, kind: int, payload: memoryview, ids: list[int]) -> bool:
         """Attempt one complete, already-validated field; False loses one field."""
@@ -478,6 +595,7 @@ class TableRetain:
         consumes only its existing nodes in the caller's bytearray.
         """
         self.id_used = 0
+        self.id_root = 0
         data = memoryview(self.storage)
         at = 0
         free = 0
@@ -750,15 +868,21 @@ def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryv
     previous_retained = retain.id_used
 
     def intern(value: int) -> int:
-        existing = ctx.refs.get(value)
-        if existing is not None:
-            return int(existing)
-        if value not in known:
-            if retain.id_used >= len(retain.ids):
+        if value in known:
+            existing = ctx.refs.get(value)
+            if existing is not None:
+                return int(existing)
+            if len(ctx.ids) + retain.id_used >= 4096:
                 raise Capacity()
-            retain.ids[retain.id_used] = (value, len(ctx.ids) + 1)
-            retain.id_used += 1
-        return int(ctx.idref(value))
+            return int(ctx.idref(value))
+        existing = retain.retained_id(value)
+        if existing:
+            return existing
+        if len(ctx.ids) + retain.id_used >= 4096:
+            raise Capacity()
+        slot = len(ctx.ids) + retain.id_used + 1
+        retain.add_retained_id(value, slot)
+        return slot
 
     try:
         field_ref = intern(identity)
@@ -767,7 +891,7 @@ def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryv
         while len(ctx.ids) > previous_ids:
             value = ctx.ids.pop()
             del ctx.refs[value]
-        retain.id_used = previous_retained
+        retain.truncate_ids(previous_retained)
         return False
     writer.varint(field_ref)
     writer.byte(kind)

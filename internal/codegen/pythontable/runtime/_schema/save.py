@@ -74,6 +74,38 @@ class Ctx:
         return reference
 
 
+class RetainCtx(Ctx):
+    """Use the caller's id slots without growing the generated id map."""
+
+    __slots__ = ("retain",)
+
+    def __init__(self, retain: Any) -> None:
+        super().__init__()
+        self.retain = retain
+
+    def idref(self, value: int) -> int:
+        reference = self.refs.get(value)
+        if reference is None:
+            reference = len(self.ids) + self.retain.id_used + 1
+            self.ids.append(value)
+            self.refs[value] = reference
+        return reference
+
+    def write_ids(self, writer: Writer) -> None:
+        known = 0
+        retained = 1
+        while known < len(self.ids) or retained <= self.retain.id_used:
+            known_slot = self.refs[self.ids[known]] if known < len(self.ids) else 0
+            retained_slot = self.retain._id_word(retained, 8) if retained <= self.retain.id_used else 0
+            if known_slot and (not retained_slot or known_slot < retained_slot):
+                writer.raw(self.ids[known].to_bytes(8, "little"))
+                known += 1
+            else:
+                writer.raw(self.retain._id_key(retained).to_bytes(8, "little"))
+                retained += 1
+        writer.raw((len(self.ids) + self.retain.id_used).to_bytes(8, "little"))
+
+
 def save_table(value: Any) -> bytes:
     sink = bytearray()
     _encode(value, Writer(sink))
