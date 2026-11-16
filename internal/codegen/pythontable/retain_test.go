@@ -1369,3 +1369,46 @@ func TestPythonRetainKnownIDNegativeControl(t *testing.T) {
 		}
 	}
 }
+
+func TestPythonRetainFixedArrayGrowth(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+table Root { children [3]Child }
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	w.ref("children")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7), []byte{0})
+	wire := w.file(w.array("children", 13, 1, unionCat(unionLeb(uint64(len(ghost))), ghost)))
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert len(value.children)==3 and report.retained==1
+saved=value.save_retain(keep,report)
+assert report.retain_lost==0 and len(Root.load(saved).children)==3
+with open('saved','wb') as f: f.write(saved)
+print('retained-growth')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "retained-growth" {
+			t.Fatalf("retaining fixed array growth: %v\n%s\n%s", err, out, stderr)
+		}
+		saved, err := os.ReadFile(filepath.Join(dir, "saved"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verdict := unionEngineVerdict(t, u, saved); !strings.HasPrefix(verdict, "read 1 ") {
+			t.Fatalf("Go engine rejected retained growth: %s", verdict)
+		}
+	}
+}
