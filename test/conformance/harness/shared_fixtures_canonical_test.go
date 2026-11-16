@@ -327,7 +327,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	for _, sub := range []struct {
 		name string
 		fn   func(*testing.T)
-	}{{"messages", TestSharedMessageManifestSpellings}, {"message-purposes", TestSharedMessagePurposeSpellings}, {"blob-witnesses", TestSharedBlobWitnessSpellings}, {"variable-purposes", TestNoncanonicalVariablePurposeShapes}, {"framing-purposes", TestFramingPurposeSpellingsRemain}} {
+	}{{"messages", TestSharedMessageManifestSpellings}, {"message-purposes", TestSharedMessagePurposeSpellings}, {"message-damage-boundary", TestSharedMessageDamageDiscardsProvisionalSpellings}, {"message-truncation", TestMessageTruncatedBytesPin}, {"blob-witnesses", TestSharedBlobWitnessSpellings}, {"variable-purposes", TestNoncanonicalVariablePurposeShapes}, {"framing-purposes", TestFramingPurposeSpellingsRemain}, {"collection-kind", TestCollectionKindMismatchPins}, {"node-kind", TestNodeFieldWrongKindPin}, {"nested-kind", TestNestedDamageMidwayPin}, {"array-retention", TestRetainedArrayDuplicateBoundary}, {"blob-duplicate", TestBlobDuplicateOwnerBoundary}, {"list-damage", TestListDamagedChildBoundary}, {"variable-arm", TestVariableArmKindBoundary}, {"reordered-variable", TestVariableFieldOrderAcrossDeclarations}, {"unknown-required-union", TestUnknownEmptyUnionPurpose}, {"damage-boundaries", TestDamageAwareBoundaries}, {"damage-id-controls", TestDamageAwareIDTableControls}} {
 		t.Run(sub.name, sub.fn)
 	}
 	for path := range idsWant {
