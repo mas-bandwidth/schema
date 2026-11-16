@@ -50,3 +50,5 @@ Plain and mixed rows each cover 327 seeds across 63 roots (224113 enumerated mut
 | release-retain-3 | 3 | 100000 | 235353 |
 
 Focused controls passed for the verdict pipe, retaining loss, partition, array widening, root node-table ordering, scalar precedence and release roster. The previous release plain seed 2 failure on map_crews mutation SHA-256 `9181751c54d3d2ef4d8d91a8198da820285cda81a96c5ad60fd144bcc98e8f43` now passes. These results qualify the wire-fuzz lane at this source; they do not assert that a separate full Python package run or any unmerged prerequisite has passed.
+
+Several default-row harness times were 121–132 seconds before setup. These results do not establish that the rows fit the fleet's 120-second per-job budget; CI readiness needs a coverage-preserving timing repair. Focused control results are from a successful package-level log, rather than individually verbose receipts.
