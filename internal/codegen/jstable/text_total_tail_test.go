@@ -70,29 +70,29 @@ func TestJavaScriptTextTotalTailConstruct(t *testing.T) {
 }
 
 const jsTextTotalTailGo = `package probe
-import("bytes";"encoding/hex";"encoding/json";"fmt";"os";"testing";"unsafe";"strings")
+import("bytes";"encoding/hex";"encoding/json";"fmt";"os";"testing";"strings")
 func TestTail(t *testing.T){
- type row struct{Input,Wire,Text string;Clamped,JSONClamped int}
+ type row struct{Input,Wire,Text string;WireRead,JSONRead bool}
  var rows []row
  for _,field:=range []string{"a","b","c","d"}{
-  for _,tail:=range []string{"toolong","BAD","COUNT","BODY"}{
+  for _,tail:=range []string{"FIT","toolong","BAD","COUNT","BODY"}{
    if tail=="BODY"&&field!="b"&&field!="d"{continue}
    textTail:=tail;if tail=="BODY"{textTail="BAD"}
    input:=fmt.Sprintf("{%q:[%q,%q,%q]}",field,"abcde","xyz",textTail)
-   wantWire,wantJSON:=1,1
-   if tail=="COUNT"{input=fmt.Sprintf("{%q:[%q,%q,%q,%q]}",field,"ééé","a","z","tail");wantWire,wantJSON=3,2;if field=="c"||field=="d"{wantWire=2}}
+   if tail=="FIT"{input=fmt.Sprintf("{%q:[%q,%q]}",field,"abc","de")}
+   if tail=="COUNT"{input=fmt.Sprintf("{%q:[%q,%q,%q,%q]}",field,"ééé","a","z","tail")}
    var source WideBuilder;source.Init();var r TableReport
    if !WideFromJSON(&source,[]byte(input),&r){t.Fatal(r)}
    size:=WideMeasure(source.GetRoot(),&source.Arena);wire:=make([]byte,size);if WideSave(source.GetRoot(),wire,&source.Arena)!=size{t.Fatal("save")};source.Shutdown()
    if tail=="BAD"{at:=bytes.Index(wire,[]byte("BAD"));if at<0{t.Fatal("marker")};wire[at]=0;input=fmt.Sprintf("{%q:[%q,%q,%q]}",field,"abcde","xyz","\x00AD")}
    if tail=="BODY"{at:=bytes.Index(wire,[]byte("BAD"));if at<0{t.Fatal("marker")};wire[at+3]=255}
    input=strings.ReplaceAll(input,"\\x00","\\u0000")
-   size=TotalsLoadMeasure(wire);region:=make([]byte,size+64);at:=0;for uintptr(unsafe.Pointer(&region[at]))%64!=0{at++}
-   r=TableReport{};v:=TotalsLoadTolerant(region[at:],wire,&r)
-   if v==nil||r.Malformed||int(r.Clamped)!=wantWire{t.Fatalf("wire %s %s: %+v",field,tail,r)}
-   n:=TotalsToJSONMeasure(v);text:=make([]byte,n);TotalsToJSON(v,text)
-   var dest TotalsBuilder;dest.Init();r=TableReport{};if !TotalsFromJSONTolerant(&dest,[]byte(input),&r)||r.Malformed||int(r.Clamped)!=wantJSON{t.Fatalf("JSON %s %s: %+v",field,tail,r)};dest.Shutdown()
-   rows=append(rows,row{input,hex.EncodeToString(wire),string(text),wantWire,wantJSON})
+   var loaded TotalsBuilder;if !loaded.Init(){t.Fatal("load builder")};r=TableReport{};wireRead:=TotalsLoadBuilder(&loaded,wire,&r);var text []byte
+   if wireRead { if !loaded.Lock(){t.Fatal("load lock")};v:=loaded.AsConst();n:=TotalsToJSONMeasure(v);text=make([]byte,n);if TotalsToJSON(v,text)!=n{t.Fatal("text")} };loaded.Shutdown()
+   var dest TotalsBuilder;dest.Init();r=TableReport{};jsonRead:=TotalsFromJSON(&dest,[]byte(input),&r);dest.Shutdown()
+   if tail=="FIT" && (!wireRead || !jsonRead){t.Fatalf("valid control %s: wire=%v JSON=%v",field,wireRead,jsonRead)}
+   if tail!="FIT" && (wireRead || jsonRead){t.Fatalf("strict refusal %s %s: wire=%v JSON=%v",field,tail,wireRead,jsonRead)}
+   rows=append(rows,row{input,hex.EncodeToString(wire),string(text),wireRead,jsonRead})
   }
  }
  out,err:=json.Marshal(rows);if err!=nil{t.Fatal(err)};if err=os.WriteFile("oracle.json",out,0600);err!=nil{t.Fatal(err)}
@@ -103,7 +103,9 @@ import{readFileSync}from"node:fs";import{pathToFileURL}from"node:url";
 const spec=JSON.parse(readFileSync(process.argv[2],"utf8")),m=await import(pathToFileURL(process.argv[3]).href);
 for(const c of spec){for(const mode of ["wire","json"]){
  const r=new m.TableVariableReport(),v=mode==="wire"?m.TotalsLoad(new Uint8Array(Buffer.from(c.Wire,"hex")),r):m.TotalsFromJson(c.Input,r);
- if(v===null||r.damaged||r.oor!==(mode==="wire"?c.Clamped:c.JSONClamped)||m.TotalsToJson(v).trim()!==c.Text.trim())throw new Error(mode+" tail "+JSON.stringify(r));
+ const want=mode==="wire"?c.WireRead:c.JSONRead;
+ if((v!==null)!==want)throw new Error(mode+" verdict "+JSON.stringify(r));
+ if(v!==null&&(r.damaged||m.TotalsToJson(v).trim()!==c.Text.trim()))throw new Error(mode+" valid text "+JSON.stringify(r));
 }}
 console.log("TOTAL TAIL OK");
 `

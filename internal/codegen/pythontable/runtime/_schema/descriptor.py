@@ -58,6 +58,7 @@ class FieldDesc:
         "map_entry",
         "pointer",
         "optional",
+        "required",
         "array",
         "bound",
         "size",
@@ -103,6 +104,7 @@ class FieldDesc:
     map_entry: str
     pointer: bool
     optional: bool
+    required: bool
     array: bool
     bound: int
     size: int
@@ -148,6 +150,7 @@ class FieldDesc:
         map_entry: str = "",
         pointer: bool = False,
         optional: bool = False,
+        required: bool = False,
         array: bool = False,
         bound: int = 0,
         size: int = 0,
@@ -192,6 +195,7 @@ class FieldDesc:
         self.map_entry = map_entry
         self.pointer = pointer
         self.optional = optional
+        self.required = required
         self.array = array
         self.bound = bound
         self.size = size
@@ -283,7 +287,7 @@ class FieldDesc:
             fields: tuple[FieldDesc, ...] = tuple(
                 field for field in value.descriptor.fields if field.guard_holds(value)
             )
-            return all(field.is_default(getattr(value, field.name)) for field in fields)
+            return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)
         if self.codec == "union":
             # None is the absence of the field, and a union whose arm is None
             # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)
