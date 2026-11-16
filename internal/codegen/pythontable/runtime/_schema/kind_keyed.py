@@ -31,7 +31,7 @@ def _elem(fd: FieldDesc) -> FieldDesc:
 
 
 def _slots(fd: FieldDesc, value: Any, path: str) -> list[Any]:
-    values = getattr(value, "_values", None)
+    values = value if fd.keyed_list else getattr(value, "_values", None)
     if type(values) is not list or len(values) != len(fd.keys):
         raise InvalidValue(path, f"not the keyed array of {len(fd.keys)} slots by {fd.key_enum}")
     return values
@@ -92,8 +92,9 @@ class _Keyed:
             )
         # the owner being read was built fresh, so its default is a fresh keyed
         # array of this field's own class
-        out = type(getattr(ctx.current, fd.name))()
-        values = out._values
+        current = getattr(ctx.current, fd.name)
+        out = current if fd.keyed_list else type(current)()
+        values = out if fd.keyed_list else out._values
         target = descriptor.by_name(elem.target) if elem.codec == "table" else None
         codec = kinds._REGISTRY[elem.codec]
         seen: set[int] = set()
@@ -131,7 +132,7 @@ class _Keyed:
         from .save import Writer, write_body
 
         elem = _elem(fd)
-        values = value._values
+        values = value if fd.keyed_list else value._values
         # THE FIELD'S ID IS USED FIRST, then each present slot's key and its
         # element's ids, in the order the bytes ride (§3)
         mark = len(ctx.ids)

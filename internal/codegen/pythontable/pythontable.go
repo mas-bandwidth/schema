@@ -663,6 +663,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
+		if valueClass && f.KeyEnum != "" {
+			b.WriteString("            keyed_list=True,\n")
+		}
 		fmt.Fprintf(b, "            array_kind=%d,\n", int(f.Array))
 		fmt.Fprintf(b, "            array_min=%d,\n", f.ArrayMin)
 		fmt.Fprintf(b, "            elem_kind=%d,\n", ir.TableWireElemKind(f))
