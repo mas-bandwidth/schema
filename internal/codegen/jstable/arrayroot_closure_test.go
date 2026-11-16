@@ -42,13 +42,17 @@ const m=await import(pathToFileURL(process.argv[3]).href);
 const check=(p,s)=>{if(!p)throw new Error(s)};
 for(const c of cases){
  const r=new m.TableVariableReport(),v=m[c.root+"FromJson"](c.text,r);
- check((v===null)===c.malformed, "read verdict "+c.text);
- check(r.mismatch===c.mismatch&&r.oor===c.clamped&&r.damaged===c.malformed,"report "+c.text+" "+JSON.stringify(r));
+ // Historical columns name conditions, not a tolerant-read permission (§6.5).
+ const refused=c.malformed||c.mismatch>0||c.clamped>0;
+ check((v===null)===refused, "read verdict "+c.text);
+ if(!refused)check(!r.damaged&&r.err()===null&&r.unknown===0,"accepted report "+c.text);
  if(c.reason)check(r.reason===c.reason,"reason "+c.text);
  if(v!==null){
   const text=m[c.root+"ToJson"](v),obj=JSON.parse(text);
   if(c.root==="Nested"){
-   check(c.mismatch===0?JSON.stringify(obj.choice.items)==="[5]":JSON.stringify(obj.choice)==="{}","union arm shape "+text);
+   check(JSON.stringify(obj.choice.items)==="[5]","union arm shape "+text);
+  }else{
+   check(JSON.stringify(obj)===JSON.stringify(JSON.parse(c.text)),"array values "+text);
   }
   const wire=m[c.root+"Save"](v),loaded=m[c.root+"Load"](wire,new m.TableVariableReport());
   check(loaded!==null&&m[c.root+"ToJson"](loaded)===text,"wire preserved nested array "+c.text);
@@ -91,15 +95,21 @@ const m=await import(pathToFileURL(process.argv[3]).href);
 const check=(p,s)=>{if(!p)throw new Error(s)};
 for(const c of cases){
  const r=new m.TableVariableReport(),v=m.MapsFromJson(c.input,r);
- check((v===null)===!!c.malformed,"read verdict "+c.name);
- check(r.mismatch===(c.mismatch||0)&&r.repeated===(c.duplicate||0)&&r.damaged===!!c.malformed,"report "+c.name+" "+JSON.stringify(r));
- if(v!==null){
+ // Wrong shape or repetition refuses the whole read (§16.2, §6.5).
+ const refused=!!c.malformed||c.mismatch>0||c.duplicate>0;
+ check((v===null)===refused,"read verdict "+c.name);
+ if(!refused)check(!r.damaged&&r.err()===null&&r.unknown===0,"accepted report "+c.name);
+ if(c.expected){
+  // Keep every declared-default/presence twin live even when input refuses.
   const er=new m.TableVariableReport(),expected=m.MapsFromJson(c.expected,er);
-  check(expected!==null&&er.mismatch===0,"expected input "+c.name);
-  const text=m.MapsToJson(v),want=m.MapsToJson(expected);
-  check(text===want,"present default "+c.name+" "+text+" != "+want);
-  const wire=m.MapsSave(v),loaded=m.MapsLoad(wire,new m.TableVariableReport());
-  check(loaded!==null&&m.MapsToJson(loaded)===text,"wire presence "+c.name);
+  check(expected!==null&&er.err()===null,"expected input "+c.name);
+  const want=m.MapsToJson(expected),obj=JSON.parse(want),declared=JSON.parse(c.expected);
+  for(const field of Object.keys(declared))for(const key of Object.keys(declared[field])){
+   check(Object.hasOwn(obj[field],key),"present default key "+c.name+" "+field+"."+key);
+  }
+  if(v!==null)check(m.MapsToJson(v)===want,"present default "+c.name);
+  const wire=m.MapsSave(expected),loaded=m.MapsLoad(wire,new m.TableVariableReport());
+  check(loaded!==null&&m.MapsToJson(loaded)===want,"wire presence "+c.name);
  }
 }
 console.log("MAP_SHAPE_OK "+cases.length);
