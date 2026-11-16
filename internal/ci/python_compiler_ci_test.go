@@ -1,7 +1,9 @@
 package ci
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -34,12 +36,97 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 			wanted = append(wanted, name)
 		}
 	}
+	plan := run("sh", "tools/python-ci-rows.sh")
 	var rows []struct{ Target string }
-	if err := json.Unmarshal(run("sh", "tools/python-ci-rows.sh"), &rows); err != nil {
+	if err := json.Unmarshal(plan, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) > 256 {
-		t.Fatalf("Python CI matrix has %d rows; GitHub permits at most 256", len(rows))
+	var original, combined []json.RawMessage
+	if err := json.Unmarshal(plan, &original); err != nil {
+		t.Fatal(err)
+	}
+	seenRows := map[string]bool{}
+	for _, row := range original {
+		key := string(row)
+		if seenRows[key] {
+			t.Fatalf("duplicate row in Python CI plan: %s", key)
+		}
+		seenRows[key] = true
+	}
+	for _, part := range []string{"0", "1"} {
+		cmd := exec.Command("sh", "tools/python-ci-partition.sh", part)
+		cmd.Dir = root
+		cmd.Stdin = bytes.NewReader(plan)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("partition %s: %v\n%s", part, err, out)
+		}
+		var shard []json.RawMessage
+		if err := json.Unmarshal(out, &shard); err != nil {
+			t.Fatal(err)
+		}
+		if len(shard) == 0 || len(shard) > 256 {
+			t.Fatalf("partition %s has %d rows", part, len(shard))
+		}
+		combined = append(combined, shard...)
+	}
+	if !pythonPlanCoverage(original, combined) {
+		t.Fatal("matrix partitions lose or duplicate plan rows")
+	}
+	if pythonPlanCoverage(original, combined[1:]) {
+		t.Fatal("missing matrix row escaped coverage control")
+	}
+	if pythonPlanCoverage(original, append(slices.Clone(combined), combined[0])) {
+		t.Fatal("duplicate matrix row escaped coverage control")
+	}
+	if pythonPlanCoverage(original, append(slices.Clone(combined[1:]), combined[1])) {
+		t.Fatal("substituting a duplicate for a missing row escaped coverage control")
+	}
+	// Exercise the actual limit, rather than only today's smaller plan.
+	synthetic := make([]int, 513)
+	for i := range synthetic {
+		synthetic[i] = i
+	}
+	for _, size := range []int{512, 513} {
+		payload, err := json.Marshal(synthetic[:size])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, part := range []string{"0", "1"} {
+			cmd := exec.Command("sh", "tools/python-ci-partition.sh", part)
+			cmd.Dir = root
+			cmd.Stdin = bytes.NewReader(payload)
+			out, err := cmd.CombinedOutput()
+			if size == 513 {
+				if err == nil {
+					t.Fatal("oversized matrix plan was accepted")
+				}
+				continue
+			}
+			var shard []int
+			if err != nil || json.Unmarshal(out, &shard) != nil || len(shard) != 256 {
+				t.Fatalf("512-row plan partition %s: %v %s", part, err, out)
+			}
+		}
+	}
+	wf, err := os.ReadFile(root + "/.github/workflows/python-leg.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := yamlJobs(string(wf))
+	for _, required := range []string{"rows0: ${{ steps.rows.outputs.rows0 }}", "rows1: ${{ steps.rows.outputs.rows1 }}", "sh tools/python-ci-partition.sh 0", "sh tools/python-ci-partition.sh 1"} {
+		if !strings.Contains(jobs["plan"], required) {
+			t.Errorf("Python plan lacks %q", required)
+		}
+	}
+	first, second := jobs["test"], jobs["test-second"]
+	firstBody := strings.TrimSpace(strings.TrimPrefix(first, "  test:"))
+	secondBody := strings.TrimSpace(strings.TrimPrefix(second, "  test-second:"))
+	if first == "" || second == "" || !strings.Contains(first, "needs.plan.outputs.rows0") || !strings.Contains(second, "needs.plan.outputs.rows1") || !strings.Contains(first, "max-parallel: 4") || strings.Replace(firstBody, "needs.plan.outputs.rows0", "needs.plan.outputs.rows1", 1) != secondBody {
+		t.Fatal("Python matrix jobs differ in setup, execution, or partition wiring")
+	}
+	if jobs["fixed-corpus"] != "" && !strings.Contains(first, "needs: [plan, fixed-corpus]") {
+		t.Fatal("Python matrix jobs do not wait for the fixed corpus producer")
 	}
 	var got []string
 	shapeRows := map[string]int{}
@@ -74,6 +161,20 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 	if compilerShardCoverage(wanted, append(slices.Clone(got), got[0])) {
 		t.Fatal("duplicate compiler row escaped coverage control")
 	}
+}
+
+func pythonPlanCoverage(want, got []json.RawMessage) bool {
+	if len(want) != len(got) {
+		return false
+	}
+	a, b := make([]string, len(want)), make([]string, len(got))
+	for i := range want {
+		a[i] = string(want[i])
+		b[i] = string(got[i])
+	}
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
 }
 
 func compilerShardCoverage(want, got []string) bool {

@@ -62,14 +62,18 @@ jobs:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
-      rows: ${{ steps.rows.outputs.rows }}
+      rows0: ${{ steps.rows.outputs.rows0 }}
+      rows1: ${{ steps.rows.outputs.rows1 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: rows
         run: |
           set -euo pipefail
           rows=$(sh tools/python-ci-rows.sh)
-          echo "rows=$rows" >> "$GITHUB_OUTPUT"
+          rows0=$(printf '%s\n' "$rows" | sh tools/python-ci-partition.sh 0)
+          rows1=$(printf '%s\n' "$rows" | sh tools/python-ci-partition.sh 1)
+          echo "rows0=$rows0" >> "$GITHUB_OUTPUT"
+          echo "rows1=$rows1" >> "$GITHUB_OUTPUT"
 
   test:
     name: python (${{ matrix.name }})
@@ -77,9 +81,40 @@ jobs:
     needs: plan
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 4
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.rows) }}
+        include: ${{ fromJSON(needs.plan.outputs.rows0) }}
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/python
+      - name: run the selected complete-leg slice
+        env:
+          TARGET: ${{ matrix.target }}
+          PACKAGE: ${{ matrix.package }}
+          TEST: ${{ matrix.test }}
+        run: |
+          set -euo pipefail
+          make serialize-siblings
+          if [ -n "$TARGET" ]; then
+            make -j"$(getconf _NPROCESSORS_ONLN)" "$TARGET"
+          else
+            SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run "^${TEST}$" "$PACKAGE"
+          fi
+
+  test-second:
+    name: python (${{ matrix.name }})
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: plan
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.rows1) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
