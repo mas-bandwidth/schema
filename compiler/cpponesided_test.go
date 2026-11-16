@@ -91,14 +91,14 @@ int main(){
     FixedOneSidedReset( defaults );
     FixedOneSided v;
     TableReport report = {0};
-    const char * text = "{\"a\":-5,\"b\":20,\"c\":-100}";
+    const char * text = "{\"a\":\"-5\",\"b\":20,\"c\":-100}";
     CHECK(!FixedOneSidedFromJson( v, text, (int64_t) strlen(text), &report ));
     CHECK(report.refused && report.refuse_reason == out_of_range);
     CHECK(v.a == defaults.a && v.b == defaults.b && v.c == defaults.c);
     // the filled sides themselves read exactly: a min 0, b max 9, c min -3
     FixedOneSided edge;
     TableReport re = {0};
-    const char * at = "{\"a\":0,\"b\":9,\"c\":-3}";
+    const char * at = "{\"a\":\"0\",\"b\":9,\"c\":-3}";
     CHECK(FixedOneSidedFromJson( edge, at, (int64_t) strlen(at), &re ));
     CHECK(edge.a == 0 && edge.b == 9 && edge.c == -3);
     CHECK(!re.refused && re.refuse_reason == ok);
