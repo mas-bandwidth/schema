@@ -8,7 +8,7 @@
         "Assert or runtime error. The writer has made an error. stop!",
         "(the caller of the library has made an error)"
       ],
-      "source": "Glenn, live session on message flags held past the announced width, relayed by the coordinator. The invalid value is caller error and must stop through the language's write contract (SPEC.md §5.1): C/C++ assert in debug; runtime-check languages report an error. This confirms SPEC-TABLES §3.3 and corrects the contradictory truncation sentence in §22.6. It makes no case not applicable."
+      "source": "Glenn, live session on message flags held past the announced width, relayed by the coordinator. Write correctness is the caller's responsibility. The invalid value must stop through the language's write contract (SPEC.md §5.1): assertions where available, including C/C++ debug assertions, and runtime errors where assertions are unavailable. This write policy never relaxes reads: readers validate hostile input correctly in every build. This confirms SPEC-TABLES §3.3 and corrects the contradictory truncation sentence in §22.6. It makes no case not applicable."
     },
     {
       "id": "ruby-pure-ruby",
