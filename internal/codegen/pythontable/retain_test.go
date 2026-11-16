@@ -941,3 +941,49 @@ print('frames')
 		}
 	}
 }
+
+func TestPythonRetainPublicNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and the retained C++ file")
+	root := filepath.Join("..", "..", "..")
+	unit := loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema"))
+	input, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt2.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt1_save.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, file, anchor, replacement, marker string }{
+		{"load", "tblrt1/_schema/retain.py", "                if retain.capture(node, steps, identity, kind, raw, ids):\n", "                if False:\n", "retain_public_load_control"},
+		{"save", "tblrt1/_schema/save.py", "    ctx.lost += ctx.retain.write_tail(ctx.node, parent_steps, ctx.known, ctx, writer)\n", "    pass\n", "retain_public_save_control"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := Generate(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(string(files[tc.file]), tc.anchor) != 1 {
+				t.Fatal("public control anchor changed")
+			}
+			files[tc.file] = []byte(strings.Replace(string(files[tc.file]), tc.anchor, tc.replacement, 1))
+			script := pyrun.ImportPrelude + `from tblrt1 import Node, TableRetain, LoadReport
+with open('input','rb') as f: data=f.read()
+with open('expected','rb') as f: expected=f.read()
+r=LoadReport(); keep=TableRetain(bytearray(65536),bytearray(24*8192))
+value=Node.load_retain(data,keep,r)
+if r.retained != 9 or value.save_retain(keep,r) != expected: raise SystemExit('` + tc.marker + `')
+`
+			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+				dir := t.TempDir()
+				writeTree(t, dir, files)
+				_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "input": input, "expected": want})
+				if err == nil || !strings.Contains(stderr, tc.marker) {
+					t.Fatalf("public %s sabotage not detected: %v\n%s", tc.name, err, stderr)
+				}
+			}
+		})
+	}
+}
