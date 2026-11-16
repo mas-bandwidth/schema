@@ -420,15 +420,15 @@ fixed table Root {
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
 int main(void) {
  Root value; TableReport report;
- const char * first="{\"small\":18446744073709551615,\"bounded\":18446744073709551615,\"debt\":-9223372036854775808}";
- const char * second="{\"small\":-1e30,\"bounded\":-1e30}";
+ const char * first="{\"small\":18446744073709551615,\"bounded\":\"18446744073709551615\",\"debt\":\"-9223372036854775808\"}";
+ const char * second="{\"small\":-1e30}";
  memset(&report,0,sizeof(report));
  CHECK(!root_from_json(&value,first,(int64_t)strlen(first),&report));
  CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
  memset(&report,0,sizeof(report));
  CHECK(!root_from_json(&value,second,(int64_t)strlen(second),&report));
- CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+ CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH);
  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
  return 0;
 }
