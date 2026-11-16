@@ -7,6 +7,7 @@
 PYTHON_CI_SUPPORT_GROUPS += python-message python-message-negative-control \
     python-message-write-negative-control python-message-crc-negative-control \
     python-message-onesided-negative-control python-message-substitution-negative-control \
+    python-message-arm-shape-negative-control \
     python-fixed-message-conformance python-fixed-message-surface-control
 .PHONY: python-fixed-message-conformance python-fixed-message-surface-control
 python-fixed-message-conformance: python-message-conformance
@@ -48,3 +49,8 @@ test-python: python-message-onesided-negative-control
 python-message-substitution-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageSubstituted(Enum|Union|Key)$$' ./internal/codegen/pythontable/
 test-python: python-message-substitution-negative-control
+
+.PHONY: python-message-arm-shape-negative-control
+python-message-arm-shape-negative-control: python-toolchain-check deps-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageUnionKeyedArmShape$$' ./internal/codegen/pythontable/
+test-python: python-message-arm-shape-negative-control
