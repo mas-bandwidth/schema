@@ -38,11 +38,7 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseMaps(u, "python"); err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
-	if err := refuseNonPointerLists(u); err != nil {
-=======
 	if err := pythonRefuseUnsupportedLists(u); err != nil {
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		return nil, err
 	}
 	if len(u.Tables) > 0 {
@@ -54,42 +50,16 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	return python.Generate(u)
 }
 
-<<<<<<< HEAD
-// refuseNonPointerLists admits []*T pointer lists into the Python table leg
-// while preserving the named refusal for uncarried []T value lists (and []*blob).
-func refuseNonPointerLists(u *ir.Unit) error {
-	var fields []string
-	for name := range ir.TableClosure(u) {
-		st := u.Tables[name]
-		if st == nil {
-			st = u.Structs[name]
-		}
-=======
 // Python's list codec currently carries only a subset of list element shapes.
 // Keep the public driver honest for the rest until their codecs land.
 func pythonRefuseUnsupportedLists(u *ir.Unit) error {
 	var unsupported []string
 	for name := range ir.TableClosure(u) {
 		st := ir.ClosureMember(u, name)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		if st == nil {
 			continue
 		}
 		for _, f := range st.Fields {
-<<<<<<< HEAD
-			if f.IsList() && (!f.Type.Pointer || f.Type.Blob()) {
-				fields = append(fields, name+"."+f.Name)
-			}
-		}
-	}
-	if len(fields) == 0 {
-		return nil
-	}
-	sort.Strings(fields)
-	carry, flags := carriers(listTargets)
-	return fmt.Errorf("unit declares an unbounded array in a table closure (%s): a []T is %s only today, and the python form is a named follow-on. Generate with %s, or declare the array at a bound, [..N]T, which is the same bytes (docs/SPEC-TABLES.md §2.9, §11, §15)",
-		englishList(fields), englishList(carry), englishList(flags))
-=======
 			if !f.IsList() {
 				continue
 			}
@@ -122,7 +92,6 @@ func pythonRefuseUnsupportedLists(u *ir.Unit) error {
 	}
 	sort.Strings(unsupported)
 	return fmt.Errorf("python does not carry the unbounded array element on %s (docs/SPEC-TABLES.md §2.9)", englishList(unsupported))
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 }
 
 // pythonRefusePacketUnionArrays is this target's one addition to the shared

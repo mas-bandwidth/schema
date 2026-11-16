@@ -19,12 +19,8 @@ Name(...), so the text is bounded by the size of the graph.
 
 from typing import Any
 
-<<<<<<< HEAD
-from .descriptor import TableDesc, UnionDesc
-=======
 from . import _float32_bits_eq, _float64_bits_eq
 from .descriptor import FieldDesc, TableDesc, UnionDesc
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 
 
 def _fields(value: Any) -> tuple[str, ...] | None:
@@ -39,17 +35,10 @@ def _fields(value: Any) -> tuple[str, ...] | None:
 
 
 def _graph_eq(a: Any, b: Any) -> bool:
-<<<<<<< HEAD
-    assumed: set[tuple[int, int]] = set()
-    stack: list[tuple[Any, Any]] = [(a, b)]
-    while stack:
-        x, y = stack.pop()
-=======
     assumed: set[tuple[int, int, int]] = set()
     stack: list[tuple[Any, Any, FieldDesc | None]] = [(a, b, None)]
     while stack:
         x, y, field = stack.pop()
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         if x is y:
             continue
         if type(x) is not type(y):
@@ -60,20 +49,6 @@ def _graph_eq(a: Any, b: Any) -> bool:
             if x != y:
                 return False
             continue
-<<<<<<< HEAD
-        slots = _fields(x)
-        if slots is not None:
-            pair = (id(x), id(y))
-            if pair in assumed:
-                continue
-            assumed.add(pair)
-            for name in slots:
-                stack.append((getattr(x, name), getattr(y, name)))
-        elif type(x) is list:
-            if len(x) != len(y):
-                return False
-            stack.extend(zip(x, y))
-=======
         if type(x) is list or type(x) is dict:
             pair = (id(x), id(y), id(field))
             if pair in assumed:
@@ -98,20 +73,15 @@ def _graph_eq(a: Any, b: Any) -> bool:
                 return False
             elem = field.element if field is not None and field.codec == "array" else None
             stack.extend((left, right, elem) for left, right in zip(x, y))
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         elif type(x) is dict:
             if x.keys() != y.keys():
                 return False
             for key in x:
-<<<<<<< HEAD
-                stack.append((x[key], y[key]))
-=======
                 stack.append((x[key], y[key], None))
         elif field is not None and field.codec in ("float32", "float64") and not field.optional and not field.pointer:
             equal = _float32_bits_eq(x, y) if field.codec == "float32" else _float64_bits_eq(x, y)
             if not equal:
                 return False
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         elif x != y:
             return False
     return True

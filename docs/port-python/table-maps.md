@@ -19,26 +19,22 @@ default, then the end mark) without the object. `TestPythonMapShapeBench`
 (internal/codegen/pythontable) times both on a 64-entry `map[uint32]int32`
 and a 16-entry `map[uint16]*Node`, and the load of each, under both pins.
 Each figure is the minimum of five rounds of 2,000 iterations after warm-up,
-taken over six sittings, in microseconds per operation. They were re-measured
-once the save's validation and numbering walks became iterative
-([the table pointer arrays](table-pointer-arrays.md)), on a shared 16-core
-AMD Ryzen 9 7950X3D fleet bench whose load average stood between 3 and 6; the
-minima are the figures to compare, and they come from another host than the
-figures they replace, so they are compared only with each other:
+taken over six sittings, in microseconds per operation. They were measured on
+a shared fleet bench whose load average stood between 67 and 112 on 16 cores,
+so single sittings swing by up to 2x; the minima are the figures to compare:
 
 | operation | 3.15.2 | 3.11.18 |
 |---|---:|---:|
-| scalar map save, direct entry bodies (kept) | 138.4 | 127.2 |
-| scalar map save, entry objects | 162.5 | 152.7 |
-| pointer map save, direct entry bodies (kept) | 77.2 | 74.2 |
-| pointer map save, entry objects | 82.7 | 80.8 |
-| scalar map load | 288.7 | 316.2 |
-| pointer map load | 132.2 | 145.1 |
+| scalar map save, direct entry bodies (kept) | 141.1 | 135.9 |
+| scalar map save, entry objects | 162.0 | 155.2 |
+| pointer map save, direct entry bodies (kept) | 73.1 | 67.5 |
+| pointer map save, entry objects | 75.6 | 75.8 |
+| scalar map load | 184.3 | 202.0 |
+| pointer map load | 82.7 | 88.2 |
 
-The direct save is 15% faster on the scalar map under 3.15.2 and 17% under
-3.11.18, and 7% and 8% faster on the pointer map, whose time goes mostly to
-the node table; in all 24 comparisons across both pins and the six sittings it
-was the faster of the two. `kind_map.py` writes the direct shape. The load
-reads each entry through `read_body`, which holds the unknown-field skip, the
-repeated-field and kind checks and the pointer fix-up in one place, so it has
-one shape.
+The direct save is 13% faster on the scalar map under 3.15.2 and 12% under
+3.11.18, and 3% and 11% faster on the pointer map, whose time goes mostly to
+the node table; in 21 of the 24 comparisons across both pins it was the faster
+of the two. `kind_map.py` writes the direct shape. The load reads each entry
+through `read_body`, which holds the unknown-field skip, the repeated-field
+and kind checks and the pointer fix-up in one place, so it has one shape.

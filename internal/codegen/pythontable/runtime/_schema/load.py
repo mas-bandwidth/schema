@@ -598,8 +598,6 @@ def _resolve(ctx: Ctx) -> None:
             owner[key] = value
         elif isinstance(owner, list):
             owner[slot[0]] = value
-<<<<<<< HEAD
-=======
         else:
             setattr(owner, field.name, value)
     for owner, slot, index in ctx.blob_pending:
@@ -623,7 +621,6 @@ def _resolve(ctx: Ctx) -> None:
                 value = buffer.value
         if isinstance(owner, dict):
             owner[key] = value
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         else:
             setattr(owner, field.name, value)
 

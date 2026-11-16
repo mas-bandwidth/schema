@@ -1,24 +1,9 @@
-<<<<<<< HEAD
-//go:build schema_leg_python
-
-// Pointer arrays and table field guards through the compiler's driver, in a
-// build with the schema_leg_python tag: `go test -tags schema_leg_python
-// ./compiler -run Python` (make test-python). The driver test lives beside the
-// target, under compiler/, because a tag-bound test file under internal/ is
-// one the untagged toolchain never compiles (internal/ci's
-// TestNoTestFileIsExcludedByABuildConstraint).
-=======
 // Pointer arrays and table field guards through the built-in compiler target.
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 package compiler
 
 import (
 	"os"
 	"path/filepath"
-<<<<<<< HEAD
-	"strings"
-=======
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	"testing"
 )
 
@@ -33,13 +18,8 @@ func writeDriverSchema(t *testing.T, name, src string) []string {
 
 // TestPythonVtPointerArraysThroughDriver checks that the public compiler
 // driver accepts []*T, [N]*T, [..N]*T, [A..N]*T, and guarded table fields on
-<<<<<<< HEAD
-// the python target, while still refusing uncarried []T value lists and
-// pointer lists targeting packet types.
-=======
 // the python target, alongside scalar and by-value lists, while refusing pointer lists targeting
 // packet types.
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 func TestPythonVtPointerArraysThroughDriver(t *testing.T) {
 	t.Parallel()
 
@@ -99,13 +79,8 @@ table Bag
 	if err != nil {
 		t.Fatalf("load scalar list schema: %v", err)
 	}
-<<<<<<< HEAD
-	if _, err := c.Generate(uScalar, "python", nil); err == nil || !strings.Contains(err.Error(), "values") || !strings.Contains(err.Error(), "python") {
-		t.Fatalf("driver did not refuse []int32 by name: %v", err)
-=======
 	if files, err := c.Generate(uScalar, "python", nil); err != nil || len(files) == 0 {
 		t.Fatalf("driver did not generate []int32: %v", err)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	}
 
 	const tableValueList = `package badtbllist
@@ -124,12 +99,7 @@ table Bag
 	if err != nil {
 		t.Fatalf("load value-table list schema: %v", err)
 	}
-<<<<<<< HEAD
-	if _, err := c.Generate(uTbl, "python", nil); err == nil || !strings.Contains(err.Error(), "items") {
-		t.Fatalf("driver did not refuse []Item by name: %v", err)
-=======
 	if files, err := c.Generate(uTbl, "python", nil); err != nil || len(files) == 0 {
 		t.Fatalf("driver did not generate []Item: %v", err)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	}
 }

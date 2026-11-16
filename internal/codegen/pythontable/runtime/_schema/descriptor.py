@@ -70,13 +70,10 @@ class FieldDesc:
         "array_mode",
         "min_count",
         "guards",
-<<<<<<< HEAD
-=======
         "f32",
         "fmin",
         "fmax",
         "float_range",
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
     )
 
     name: str
@@ -111,13 +108,10 @@ class FieldDesc:
     array_mode: str
     min_count: int
     guards: tuple[tuple[str, bool], ...]
-<<<<<<< HEAD
-=======
     f32: bool
     fmin: float
     fmax: float
     float_range: bool
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 
     def __init__(
         self,
@@ -151,14 +145,11 @@ class FieldDesc:
         array_mode: str = "",
         min_count: int = 0,
         guards: tuple[tuple[str, bool], ...] = (),
-<<<<<<< HEAD
-=======
         f32: bool = False,
         fmin: float = 0.0,
         fmax: float = 0.0,
         float_range: bool = False,
         keyed_list: bool = False,
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
     ) -> None:
         self.name = name
         self.field_id = field_id
@@ -231,19 +222,11 @@ class FieldDesc:
         if self.codec == "pointer_array":
             if type(value) is not list:
                 return False
-<<<<<<< HEAD
-            if len(value) == 0:
-                return True
-            if self.array_mode != "fixed":
-                return False
-            return all(elem is None for elem in value)
-=======
             if self.array_mode == "fixed":
                 return all(elem is None for elem in value)
             if self.array_mode == "counted":
                 return len(value) == self.min_count and all(elem is None for elem in value)
             return len(value) == 0
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         if self.pointer or self.optional:
             return value is None
         if self.codec in ("bool", "int", "enum", "string", "unsupported"):
@@ -268,11 +251,7 @@ class FieldDesc:
             fields: tuple[FieldDesc, ...] = tuple(
                 field for field in value.descriptor.fields if field.guard_holds(value)
             )
-<<<<<<< HEAD
-            return all(field.is_default(getattr(value, field.name)) for field in fields)
-=======
             return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         if self.codec == "union":
             # None is the absence of the field, and a union whose arm is None
             # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)

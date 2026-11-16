@@ -66,29 +66,12 @@ def supported(cls):
         for field in descriptor.fields:
             if not carried(field):
                 return False
-<<<<<<< HEAD
-            if field.codec in ("table", "pointer", "pointer_array") and field.target:
-                from importlib import import_module
-
-                target = None
-                for module_name, module in list(sys.modules.items()):
-                    if module is None:
-                        continue
-                    candidate = getattr(module, field.target, None)
-                    if candidate is not None and getattr(candidate, "descriptor", None) is not None:
-                        target = candidate
-                        break
-                if target is None:
-                    return False
-                if not walk(target.descriptor):
-=======
             # An array's element (and a keyed array's slot) is a field of its
             # own: an unsupported element or a child table behind it decides
             # too.
             for name in ("element", "elem"):
                 elem = getattr(field, name, None)
                 if elem is not None and not carried(elem):
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
                     return False
         return True
 

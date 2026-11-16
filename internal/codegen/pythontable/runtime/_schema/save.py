@@ -199,34 +199,12 @@ def _validate_fields(
             if target is None or type(current) is not target:
                 raise InvalidValue(where, f"not a {field.target}")
             yield current, where
-<<<<<<< HEAD
-        elif field.codec == "map":
-            yield from _validate_map_entries(field, current, where)
-        elif field.codec == "array":
-            if not isinstance(current, list):
-                raise InvalidValue(where, "not a list")
-            kind_array._check_count(where, len(current))
-            kind_array._check_shape(field, len(current), where)
-            element = field.element
-            if element is None:
-                raise InvalidValue(where, "an array carries no element descriptor")
-            for i, item in enumerate(current):
-                cell = f"{where}[{i}]"
-                if element.codec == "table":
-                    target = descriptor.by_name(element.target)
-                    if target is None or not isinstance(item, target):
-                        raise InvalidValue(cell, f"not a {element.target}")
-                    yield item, cell
-                else:
-                    kinds._REGISTRY[element.codec].validate(element, item, cell)
-=======
         elif field.codec in ("union", "union_array"):
             yield from kind_union._validation_edges(field, current, where)
         elif field.codec == "map":
             yield from _validate_map_entries(field, current, where)
         elif field.codec == "array":
             yield from _validate_array(field, current, where)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         else:
             kind = kinds._REGISTRY[field.codec]
             kind.validate(field, current, where)
@@ -236,8 +214,6 @@ def _validate_fields(
                 yield table, table_path
 
 
-<<<<<<< HEAD
-=======
 def _validate_array(field: FieldDesc, current: Any, where: str) -> Iterator[tuple[Any, str]]:
     if not isinstance(current, list):
         raise InvalidValue(where, "not a list")
@@ -259,7 +235,6 @@ def _validate_array(field: FieldDesc, current: Any, where: str) -> Iterator[tupl
         raise InvalidValue(where, "text total exceeded")
 
 
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 def _validate_map_entries(
     field: FieldDesc, value: Any, path: str
 ) -> Iterator[tuple[Any, str]]:
@@ -281,10 +256,6 @@ def _validate_map_entries(
         elif value_field.codec == "table":
             kinds._REGISTRY["table"].validate(value_field, current, where)
             yield current, where
-<<<<<<< HEAD
-        elif value_field.codec == "map":
-            yield from _validate_map_entries(value_field, current, where)
-=======
         elif value_field.codec == "array":
             yield from _validate_array(value_field, current, where)
         elif value_field.codec == "pointer_array":
@@ -296,7 +267,6 @@ def _validate_map_entries(
             yield from _validate_map_entries(value_field, current, where)
         elif value_field.codec in ("union", "union_array"):
             yield from kind_union._validation_edges(value_field, current, where)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         else:
             kinds._REGISTRY[value_field.codec].validate(value_field, current, where)
 
@@ -426,11 +396,8 @@ def _collect_edges(
             if element is not None and element.codec == "table":
                 for index, item in enumerate(current):
                     yield item, (path, field.name, index), False, blobs
-<<<<<<< HEAD
-=======
         elif codec in ("union", "union_array"):
             yield from kind_union._collection_edges(field, current, ctx, blobs, (path, field.name, _NO_SUB))
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
         elif codec == "map":
             yield from _collect_map_edges(
                 field, current, (path, field.name, _NO_SUB), ctx, blobs
@@ -464,9 +431,6 @@ def _collect_map_edges(
     for key in kind_map._sorted_keys(field, value):
         current = value[key]
         where = (path, "", key)
-<<<<<<< HEAD
-        if value_field.codec == "pointer":
-=======
         if value_field.codec in ("string_blob", "bytes_blob"):
             if current is not None:
                 if isinstance(current, BlobRef):
@@ -479,16 +443,11 @@ def _collect_map_edges(
                 ctx.order.append(kind_blob._BlobNode(value_field.codec == "string_blob", body))
                 blobs.append(index)
         elif value_field.codec == "pointer":
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
             if current is not None:
                 yield current, where, True, blobs
         elif value_field.codec == "table":
             if not value_field.is_default(current):
                 yield current, where, False, blobs
-<<<<<<< HEAD
-        elif value_field.codec == "map":
-            yield from _collect_map_edges(value_field, current, where, ctx, blobs)
-=======
         elif value_field.codec == "array" and value_field.element is not None and value_field.element.codec == "table":
             for index, item in enumerate(current):
                 yield item, (where, "", index), False, blobs
@@ -500,7 +459,6 @@ def _collect_map_edges(
             yield from _collect_map_edges(value_field, current, where, ctx, blobs)
         elif value_field.codec in ("union", "union_array"):
             yield from kind_union._collection_edges(value_field, current, ctx, blobs, where)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 
 
 def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:

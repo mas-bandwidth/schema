@@ -486,18 +486,11 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
-<<<<<<< HEAD
-	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
-	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
-	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _collect_root, _validate as _validate_value, _write_form, _write_node_table, measure_table, save_table\n\n\n")
-=======
 	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _collect_root, _validate as _validate_value, _check_root as _s_check_root, _write_form, _write_node_table, measure_table, save_table\n\n\n")
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 
 	if body := host.Body(); body != "" {
 		b.WriteString(body)
@@ -676,16 +669,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        return load_table(cls, data, report)\n")
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
-<<<<<<< HEAD
-	if straight {
-		fmt.Fprintf(b, "        return _s_save_%s(self)\n", name)
-	} else {
-		b.WriteString("        return save_table(self)\n")
-=======
 	call := "save_table(self)"
 	if straight {
 		call = fmt.Sprintf("_s_save_%s(self)", name)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	}
 	if st.Integrity == "crc32c" {
 		call = "_s_seal_crc(" + call + ")"
@@ -780,11 +766,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
-<<<<<<< HEAD
-		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
-=======
 		fmt.Fprintf(b, "            default=%s,\n", defaultFor(f, codec))
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		if mode := arrayMode(f); mode != "" {
 			fmt.Fprintf(b, "            array_mode=%s,\n", strconv.Quote(mode))
 		}
@@ -794,15 +776,12 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		if gterms := guards[f.Name]; len(gterms) > 0 {
 			fmt.Fprintf(b, "            guards=%s,\n", formatGuardTuple(gterms))
 		}
-<<<<<<< HEAD
-=======
 		if isFloat(f) {
 			fmt.Fprintf(b, "            f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
 			fmt.Fprintf(b, "            fmin=%s,\n", floatBound(f, f.FMin))
 			fmt.Fprintf(b, "            fmax=%s,\n", floatBound(f, f.FMax))
 			fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
 		}
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		if innerCodecOf(f) == "array" {
 			emitOptionalArrayElem(b, f)
 		}
@@ -939,11 +918,7 @@ func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guar
 				ind = "        "
 			}
 			fmt.Fprintf(b, "%scurrent = value.%s\n", ind, f.Name)
-<<<<<<< HEAD
-			fmt.Fprintf(b, "%sif not f%d.is_default(current):\n", ind, i)
-=======
 			fmt.Fprintf(b, "%sif f%d.required or not f%d.is_default(current):\n", ind, i, i)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 			fmt.Fprintf(b, "%s    w%d(writer, f%d, current, ctx)\n", ind, i, i)
 		}
 	}
@@ -958,8 +933,6 @@ func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guar
 	b.WriteString("    return load_table(cls, data, report)\n\n\n")
 }
 
-<<<<<<< HEAD
-=======
 // emitBlockDescriptors emits a record's row layout and, for a table with a
 // block form, the projection and its out-of-line arrays as constant data
 // (docs/SPEC-TABLES.md §19.2, §19.3). The layout numbers come from ir.Blocks,
@@ -1053,7 +1026,6 @@ func emitValueBlockRow(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("))\n\n\n")
 }
 
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 // scalarOnly reports whether every field is a scalar the generated
 // straight-line shape can bind directly: a bool, an integer (a flags mask
 // included), a string, a bytes or an enum. A by-value table, a pointer, a
@@ -1503,11 +1475,7 @@ func codecOf(f *ir.Field) string {
 			}
 			return "unsupported"
 		}
-<<<<<<< HEAD
-		element := elementCodecOf(f)
-=======
 		element := arrayElemCodec(f)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		if element == "unsupported" {
 			return "unsupported"
 		}
@@ -1783,11 +1751,7 @@ func targetName(f *ir.Field) string {
 
 func pythonType(st *ir.Struct, f *ir.Field) string {
 	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
-<<<<<<< HEAD
-		return "list[object]"
-=======
 		return "_s_list[object]"
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	}
 	if f.Type.Pointer {
 		if f.Type.Blob() {
