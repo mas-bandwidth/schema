@@ -412,6 +412,7 @@ table Values {
  floats [2]float32
  present ?[..3]int32
  names []?string(8) | total = 12
+ marks ?[2]Color
 }`
 	files, err := Generate(loadUnit(t, schema))
 	if err != nil {
@@ -421,9 +422,10 @@ table Values {
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `from probe import Values
 from probe._schema.textform_scan import TextError
-v = Values.from_text_form(b'(:colors (:Red :Blue) :features ((:Fast) (:Fast :Safe)) :floats (1.0 -0.0) :present () :names ("alpha" null "beta"))').value
+v = Values.from_text_form(b'(:colors (:Red :Blue) :features ((:Fast) (:Fast :Safe)) :floats (1.0 -0.0) :present () :names ("alpha" null "beta") :marks (:Red :Blue))').value
 assert v.colors == [1, 2] and v.features == [1, 3]
 assert v.floats[0] == 1.0 and v.present == [] and v.names == ['alpha', None, 'beta']
+assert v.marks == [1, 2]
 for text, reason in ((b'(:colors (:Missing))', 'text_unknown_variant'), (b'(:features ((:Fast :Fast)))', 'text_duplicate_key'), (b'(:floats (1.0))', 'text_bound'), (b'(:names ("123456789"))', 'text_bound')):
     try:
         Values.from_text_form(text)
