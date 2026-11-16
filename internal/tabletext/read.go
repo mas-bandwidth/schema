@@ -1322,6 +1322,9 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 	}
 	// a fixed array's tail keeps the defaults the reset left there, exactly as
 	// a short wire count does
+	if f.Array == ir.ArrayCounted && int64(placed) < f.ArrayMin {
+		return in.fail("count_over_bound: " + f.Name)
+	}
 	fv.Count = placed
 	return true
 }
