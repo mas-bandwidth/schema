@@ -145,7 +145,7 @@ type fixedGen struct {
 	// an absent optional lands its payload's declared default, and for a
 	// nested type that default is that type's own Init.
 	need func(cls, typeName string)
-	// loops is how deep the decode's emitted loops nest. A nested struct is
+	// loops is how deep the CHECK or decode loops nest. A nested struct is
 	// INLINED into its parent's projection (one straight function, the way the
 	// flat packet reader is), so a loop inside an inlined element must not
 	// shadow the loop variable its base offset is written in.
@@ -910,8 +910,11 @@ func (g *fixedGen) emitCheckLoop(f *ir.Field, base string, at int64, count, ind 
 		return
 	}
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
-	g.emitCheckElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
+	iv := g.loopVar()
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitCheckElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), iv, elem), 0, ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
