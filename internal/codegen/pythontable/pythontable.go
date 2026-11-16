@@ -652,14 +652,10 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
-<<<<<<< HEAD
 		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codec))
-=======
-		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codecOf(f)))
 		if f.Type.Optional {
 			fmt.Fprintf(b, "            inner=%s,\n", strconv.Quote(innerCodecOf(f)))
 		}
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 		fmt.Fprintf(b, "            ordinal=%d,\n", ordinal)
 		fmt.Fprintf(b, "            lo=%s,\n", lo)
 		fmt.Fprintf(b, "            hi=%s,\n", hi)
@@ -687,7 +683,6 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
-<<<<<<< HEAD
 		fmt.Fprintf(b, "            default=%s,\n", defaultFor(f, codec))
 		if isFloat(f) {
 			fmt.Fprintf(b, "            f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
@@ -695,14 +690,10 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 			fmt.Fprintf(b, "            fmax=%s,\n", floatBound(f, f.FMax))
 			fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
 		}
-		if codec == "keyed" {
-=======
-		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
 		if innerCodecOf(f) == "array" {
 			emitOptionalArrayElem(b, f)
 		}
-		if codecOf(f) == "keyed" {
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
+		if codec == "keyed" {
 			emitKeyedDesc(b, f)
 		}
 		fmt.Fprintf(b, "        ),\n")
@@ -1217,7 +1208,6 @@ func elementCodecOf(f *ir.Field) string {
 	return "unsupported"
 }
 
-<<<<<<< HEAD
 // arrayElemCodec is the codec an array field's element rides through: an
 // unbounded array's is elementCodecOf's, and a fixed [N]T or counted [..N]T
 // array also carries the fixed class's floats, strings, enums and flags masks.
@@ -1306,7 +1296,8 @@ func equalExpr(a, b string, f *ir.Field) string {
 		return fmt.Sprintf("_s_float64_bits_eq(%s, %s)", a, b)
 	}
 	return a + " == " + b
-=======
+}
+
 // innerCodecOf is the codec an optional wraps: ?T rides T's own framing, so
 // the optional kind owns presence and delegates the bytes to it.
 //
@@ -1367,7 +1358,6 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
 	fmt.Fprintf(b, "                default=%s,\n", def)
 	fmt.Fprintf(b, "            ),\n")
->>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 }
 
 func targetName(f *ir.Field) string {
