@@ -405,6 +405,15 @@ static SCHEMA_UNUSED int table_skip_utf8( const uint8_t * p, uint64_t n )
 static SCHEMA_UNUSED int table_skip_value( TableReader * r, uint8_t kind, int64_t nodes, int depth );
 static SCHEMA_UNUSED int64_t table_skip_body( TableReader r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int table_skip_array( TableReader * sub, int keyed, int64_t nodes, int depth );
+/* A successfully read payload must claim its whole frame. During the
+   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   semantic failures that stopped the walk earlier still take their own path. */
+static SCHEMA_UNUSED int table_skip_whole( TableReader sub, const TableReader * read )
+{
+    if ( read->offset == sub.size ) { return 1; }
+    if ( sub.next_ref != NULL ) { *sub.next_ref = UINT64_MAX; }
+    return 0;
+}
 static SCHEMA_UNUSED int table_skip_framed( TableReader sub, uint8_t kind, int64_t nodes, int depth )
 {
     switch ( kind )
@@ -422,13 +431,13 @@ static SCHEMA_UNUSED int table_skip_framed( TableReader sub, uint8_t kind, int64
         {
             TableReader rr = sub;
             if ( !table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return table_skip_whole( sub, &rr );
         }
         default:
         {
             TableReader rr = sub;
             if ( !table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return table_skip_whole( sub, &rr );
         }
     }
 }
