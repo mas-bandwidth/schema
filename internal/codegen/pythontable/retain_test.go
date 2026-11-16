@@ -482,3 +482,48 @@ if [r[0] for r in keep.records_at(2,())] != [33]: raise SystemExit('retain_node_
 		}
 	}
 }
+
+func TestPythonRetainUnionArrayCapture(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	files, err := Generate(loadUnit(t, unionsSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	ghost := unionCat(w.ref("future_field"), []byte{4}, unionI32(73), []byte{0})
+	first := w.arm("leaf", 13, ghost)
+	second := w.arm("future_arm", 4, unionI32(12))
+	trail := w.array("trail", 15, 2, first, second)
+	nestedGhost := unionCat(w.ref("nested_future"), []byte{4}, unionI32(74), []byte{0})
+	nestedLeaf := w.arm("leaf", 13, nestedGhost)
+	innerPick := w.arm("pick", 15, nestedLeaf)
+	wire := w.file(trail, w.union("inner", innerPick))
+	script := pyrun.ImportPrelude + `from unions import Root, LoadReport
+from unions._schema.retain import TableRetain, capture_file
+with open('wire','rb') as f: wire=f.read()
+report=LoadReport(); Root.load(wire,report)
+assert report.unknown==3, report.unknown
+retain=TableRetain(bytearray(4096),bytearray(240))
+assert capture_file(Root,memoryview(wire),retain)==(2,1)
+trail=Root.descriptor.field('trail'); inner=Root.descriptor.field('inner')
+from unions import Pick, Inner
+arm=next(a for a in Pick.descriptor.arms if a.name=='leaf')
+inner_arm=next(a for a in Inner.descriptor.arms if a.name=='pick')
+rows=list(retain.records())
+assert len(rows)==2 and rows[0][0:2]==(1,((trail.ordinal,0),(trail.ordinal,arm.tag))), rows
+assert rows[1][0:2]==(1,((inner.ordinal,inner_arm.tag),(inner.ordinal,arm.tag))), rows
+print('union-array')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "union-array" {
+			t.Fatalf("union array capture: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "unions/_schema"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
+		}
+	}
+}

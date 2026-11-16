@@ -853,6 +853,31 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: lis
             else:
                 _skip_payload(r, kind, skip, 0)
 
+    def union(reader: Reader, target: str, ordinal: int, node: int, steps: tuple[tuple[int, int], ...]) -> None:
+        ref = reader.varint()
+        if not ref:
+            return
+        arm_id = reader.id_at(ref)
+        arm_kind = reader.byte()
+        payload = reader.take(reader.varint())
+        union_class = descriptor._union_by_name(target)
+        arm = None if union_class is None else union_class.descriptor.by_id.get(arm_id)
+        if arm is None:
+            counts[1] += 1
+            return
+        if arm.field is None:
+            return
+        child_steps = steps + ((ordinal, arm.tag),)
+        if arm.field.codec == "table" and arm_kind == 13:
+            nested(payload, arm.field.target, node, child_steps)
+        elif arm.field.codec == "union" and arm_kind == 15:
+            union(Reader(payload, 0, len(payload), ids), arm.field.target, ordinal, node, child_steps)
+        elif arm.field.codec == "enum" and arm_kind == 30:
+            enum_reader = Reader(payload, 0, len(payload), ids)
+            enum_ref = enum_reader.varint()
+            if enum_ref and enum_reader.id_at(enum_ref) not in arm.field.variant_ids:
+                counts[1] += 1
+
     def value(raw: memoryview, field: Any, node: int, steps: tuple[tuple[int, int], ...]) -> None:
         codec = field.inner if field.codec == "optional" else field.codec
         if codec == "table":
@@ -865,19 +890,14 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: lis
             if ref and r.id_at(ref) not in field.variant_ids:
                 counts[1] += 1
         elif codec == "union":
-            r = Reader(raw, 0, len(raw), ids)
-            ref = r.varint()
-            if not ref:
-                return
-            arm_id = r.id_at(ref)
-            arm_kind = r.byte()
-            payload = r.take(r.varint())
-            union_class = descriptor._union_by_name(field.target)
-            arm = None if union_class is None else union_class.descriptor.by_id.get(arm_id)
-            if arm is None:
-                counts[1] += 1
-            elif arm.field is not None and arm.field.codec == "table" and arm_kind == 13:
-                nested(payload, arm.field.target, node, steps + ((field.ordinal, arm.tag),))
+            union(Reader(raw, 0, len(raw), ids), field.target, field.ordinal, node, steps)
+        elif codec == "union_array":
+            data = framed(raw)
+            reader = Reader(data, 0, len(data), ids)
+            reader.byte()
+            count = reader.varint()
+            for index in range(count):
+                union(reader, field.target, field.ordinal, node, steps + ((field.ordinal, index),))
 
     def nodes(data: memoryview) -> None:
         r = Reader(data, 0, len(data), ids)
