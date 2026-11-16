@@ -179,6 +179,9 @@ def _write_retain_body(writer: Writer, value: Any, ctx: RetainCtx, root: bool) -
         element = field.elem if field.codec == "optional" else field.element
         if codec == "array" and current is not None and element is not None and element.codec == "table":
             has_child = any(ctx.retain.has_body(ctx.node, parent_steps + ((field.ordinal, index),)) for index in range(len(current)))
+        if codec == "keyed" and field.elem is not None and field.elem.codec == "table":
+            slots = current if field.keyed_list else current._values
+            has_child = any(ctx.retain.has_body(ctx.node, parent_steps + ((field.ordinal, index),)) for index in range(len(slots)))
         if field.is_default(current) and not has_child:
             continue
         ctx.ordinal = field.ordinal

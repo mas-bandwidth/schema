@@ -121,7 +121,7 @@ class _Map:
         # bytes write_body gives an entry object (its two fields in order, each
         # elided at its default, then the end mark) without building one: the
         # faster of the two shapes measured (docs/PORT-PYTHON.md, Maps bench).
-        from .save import Writer
+        from .save import RetainCtx, Writer
 
         key_field, value_field = _entry_fields(fd)
         key_codec = kinds._REGISTRY[key_field.codec]
@@ -134,13 +134,26 @@ class _Map:
         body_writer = Writer(body)
         body_writer.byte(13)
         body_writer.varint(len(keys))
-        for key in keys:
+        for index, key in enumerate(keys):
             item = value[key]
             entry_body = bytearray()
             entry_writer = Writer(entry_body)
             if not key_default(key):
                 key_codec.write(entry_writer, key_field, key, ctx)
-            if not value_default(item):
+            if isinstance(ctx, RetainCtx):
+                parent = ctx.steps
+                previous_ordinal = ctx.ordinal
+                entry_path = parent + ((fd.ordinal, index),)
+                value_path = entry_path + ((value_field.ordinal, 0),)
+                has_child = value_field.codec == "table" and ctx.retain.has_body(ctx.node, value_path)
+                if not value_default(item) or has_child:
+                    ctx.ordinal = value_field.ordinal
+                    ctx.steps = value_path if value_field.codec == "table" else entry_path
+                    value_codec.write(entry_writer, value_field, item, ctx)
+                ctx.steps = parent
+                ctx.ordinal = previous_ordinal
+                ctx.lost += ctx.retain.write_tail(ctx.node, entry_path, ctx.known, ctx, entry_writer)
+            elif not value_default(item):
                 value_codec.write(entry_writer, value_field, item, ctx)
             entry_writer.byte(0)
             body_writer.varint(len(entry_body))

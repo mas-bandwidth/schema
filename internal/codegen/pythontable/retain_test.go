@@ -741,3 +741,58 @@ print('table-array')
 		}
 	}
 }
+
+func TestPythonRetainKeyedAndMapInternal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	const schema = `package probe
+enum Slot { A, B }
+table Child { x int32 }
+table Root {
+ keyed [Slot]Child
+ mapping map[int32]int32
+}
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	keyedID := w.ref("keyed")
+	keyID := w.ref("A")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7), []byte{0})
+	keyedBody := unionCat([]byte{13, 1}, keyID, unionLeb(uint64(len(ghost))), ghost)
+	keyed := unionCat(keyedID, []byte{16}, unionLeb(uint64(len(keyedBody))), keyedBody)
+	w.ref("mapping")
+	mapKey := unionCat(w.refID(ir.MapKeyWireId), []byte{4}, unionI32(3))
+	mapGhost := unionCat(w.ref("map_future"), []byte{4}, unionI32(9))
+	entry := unionCat(mapKey, mapGhost, []byte{0})
+	mapping := w.array("mapping", 13, 1, unionCat(unionLeb(uint64(len(entry))), entry))
+	wire := w.file(keyed, mapping)
+	script := pyrun.ImportPrelude + `from probe import Root, LoadReport
+from probe._schema.retain import TableRetain
+from probe._schema.load import load_table
+from probe._schema.save import _encode_retain, Writer
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(2048),bytearray(24*16)); report=LoadReport()
+value=load_table(Root,wire,report,keep)
+assert (report.unknown,report.retained,report.retain_lost)==(2,2,0)
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert out==wire and size==len(wire) and lost==0, (out,wire,lost)
+value.mapping.clear()
+out=bytearray(); size,lost=_encode_retain(value,keep,Writer(out))
+assert lost==1 and size==len(out) and Root.load(out).mapping=={}
+print('keyed-map')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "keyed-map" {
+			t.Fatalf("keyed/map: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
+			t.Fatalf("mypy: %v\n%s", err, output)
+		}
+	}
+}
