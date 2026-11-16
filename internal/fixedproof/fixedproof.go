@@ -106,6 +106,9 @@ type LegRunner interface {
 
 // LineageEntry is a target-neutral locked fixed layout entry.
 type LineageEntry struct {
+	// Writer is the checked declaration snapshot that produced this layout.
+	// Definition facts are not recoverable from anonymous digest records.
+	Writer  *ir.Struct
 	Wire    uint64
 	Layout  []byte
 	Record  int64
@@ -309,6 +312,7 @@ func LineageEntryOf(u *ir.Unit, root string) (LineageEntry, bool) {
 		}
 		layout, hash, body := RootFacts(st)
 		return LineageEntry{
+			Writer: st,
 			Wire:   hash,
 			Layout: layout,
 			Record: 8 + body,
@@ -1335,6 +1339,15 @@ typedef unsigned __int128 uint128_t;
 // runs C++ FixedLoad + FixedSave to prove byte-for-byte agreement.
 func CppOracle(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error) {
 	t.Helper()
+	data, verify, _ := CppOracleWithLoadVerdict(t, tc, u)
+	return data, verify
+}
+
+// CppOracleWithLoadVerdict separates exact round-trip equality from the C++
+// reader's actual verdict. An unequal but valid candidate fails verify and
+// succeeds load; only a failing load proves the reference reader refused it.
+func CppOracleWithLoadVerdict(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error, func(candidate []byte) error) {
+	t.Helper()
 	slowtest.Gate(t, "the C++ compiler")
 	files, err := cpp.Generate(u)
 	if err != nil {
@@ -1413,6 +1426,21 @@ int main( int argc, char ** argv )
         fclose( f );
         return 0;
     }
+    if ( argc >= 3 && strcmp( argv[1], "load" ) == 0 ) {
+        FILE * f = fopen( argv[2], "rb" );
+        if ( !f ) return 2;
+        const int64_t clen = (int64_t) fread( cand_buf, 1, sizeof( cand_buf ), f );
+        fclose( f );
+        static %[1]s from_cand[%[2]d];
+        for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( from_cand[i] );
+        memset( &r, 0, sizeof( r ) );
+        const int64_t cn = %[1]sFixedLoad( from_cand, %[2]d, cand_buf, clen, plan, 4096, NULL, &r );
+        if ( cn < 0 || r.refused || r.damaged ) {
+            printf( "cpp load refused: n=%%lld reason=%%d\n", (long long) cn, (int) r.reason );
+            return 4;
+        }
+        return 0;
+    }
     if ( argc >= 3 && strcmp( argv[1], "verify" ) == 0 ) {
         FILE * f = fopen( argv[2], "rb" );
         if ( !f ) return 2;
@@ -1471,7 +1499,26 @@ int main( int argc, char ** argv )
 		}
 		return nil
 	}
-	return cppBytes, verify
+	load := func(cand []byte) error {
+		t.Helper()
+		if len(cand) > 1<<18 {
+			t.Fatal("C++ load probe buffer cannot hold the candidate")
+		}
+		candPath := filepath.Join(dir, "load.bin")
+		if err := os.WriteFile(candPath, cand, 0o600); err != nil {
+			t.Fatalf("write C++ load candidate: %v", err)
+		}
+		out, err := exec.Command(probeBin, "load", candPath).CombinedOutput()
+		if err != nil {
+			status, ok := err.(*exec.ExitError)
+			if !ok || status.ExitCode() != 4 {
+				t.Fatalf("C++ load probe failed without a refusal: %v\n%s", err, out)
+			}
+			return fmt.Errorf("C++ refused: %s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	return cppBytes, verify, load
 }
 
 // RunValueSuite drives all 49 rows of Cases() against runner:
@@ -1481,8 +1528,49 @@ int main( int argc, char ** argv )
 //   - verifies leg FixedLoad(cppBytes) + FixedSave equals cppBytes byte-for-byte
 //   - verifies C++ FixedLoad(legBytes) + FixedSave equals legBytes byte-for-byte
 func RunValueSuite(t *testing.T, runner LegRunner) {
+	runValueRows(t, runner, nil)
+}
+
+// RunValueRows runs only the requested value rows, retaining the full suite's
+// C++ oracle and round-trip assertions.
+func RunValueRows(t *testing.T, runner LegRunner, rows ...string) {
+	t.Helper()
+	selected, err := selectValueRows(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runValueRows(t, runner, selected)
+}
+
+// selectValueRows rejects empty, repeated and unknown row names before a suite
+// can pass without exercising its intended rows.
+func selectValueRows(rows []string) (map[string]bool, error) {
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no fixed proof rows selected")
+	}
+	valid := make(map[string]bool)
+	for _, tc := range Cases() {
+		valid[tc.ID] = true
+	}
+	selected := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if !valid[row] {
+			return nil, fmt.Errorf("unknown fixed proof row %q", row)
+		}
+		if selected[row] {
+			return nil, fmt.Errorf("duplicate fixed proof row %q", row)
+		}
+		selected[row] = true
+	}
+	return selected, nil
+}
+
+func runValueRows(t *testing.T, runner LegRunner, selected map[string]bool) {
 	SetMemoryCeiling(t)
 	for _, tc := range Cases() {
+		if selected != nil && !selected[tc.ID] {
+			continue
+		}
 		t.Run(tc.ID, func(t *testing.T) {
 			t.Parallel()
 			u := ParseCheckUnit(t, tc.Schema)
@@ -1520,20 +1608,37 @@ func RunValueSuite(t *testing.T, runner LegRunner) {
 // negative control across all 49 rows of Cases() under a hard 2 GiB memory
 // ceiling.
 func RunNegativeControlSuite(t *testing.T, runner LegRunner) {
+	runNegativeControlRows(t, runner, nil)
+}
+
+// RunNegativeControlRows runs both existing controls on each selected row.
+func RunNegativeControlRows(t *testing.T, runner LegRunner, rows ...string) {
+	t.Helper()
+	selected, err := selectValueRows(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runNegativeControlRows(t, runner, selected)
+}
+
+func runNegativeControlRows(t *testing.T, runner LegRunner, selected map[string]bool) {
 	SetMemoryCeiling(t)
 	for _, tc := range Cases() {
+		if selected != nil && !selected[tc.ID] {
+			continue
+		}
 		t.Run(tc.ID, func(t *testing.T) {
 			t.Parallel()
 			u := ParseCheckUnit(t, tc.Schema)
 			st := RootStruct(t, u, tc.Root)
 			layout, _, body := RootFacts(st)
-			cppBytes, verifyInCpp := CppOracle(t, tc, u)
+			cppBytes, verifyInCpp, loadInCpp := CppOracleWithLoadVerdict(t, tc, u)
 
 			// 1. File negative control (envelope damage): corrupting the form byte
 			// must be rejected by both C++ FixedLoad and the leg's reader.
 			corruptForm := bytes.Clone(cppBytes)
 			corruptForm[0] ^= 0x01
-			if err := verifyInCpp(corruptForm); err == nil {
+			if err := loadInCpp(corruptForm); err == nil {
 				t.Fatalf("%s: file negative control failed: C++ FixedLoad accepted corrupted form byte", tc.ID)
 			}
 			if _, err := runner.LoadAndResave(t, tc, u, corruptForm); err == nil {
@@ -1541,8 +1646,8 @@ func RunNegativeControlSuite(t *testing.T, runner LegRunner) {
 			}
 
 			// 2. File negative control (record payload mutation): flipping a live
-			// byte in the last record body must be rejected by the C++ reference
-			// oracle and must not round-trip back to cppBytes in the leg.
+			// byte in the last record body must differ from the reference bytes
+			// and must not round-trip back to cppBytes in the leg. It may be valid.
 			mutatedPayload := bytes.Clone(cppBytes)
 			lastRecBodyStart := 20 + len(layout) + (tc.Count-1)*int(8+body) + 8
 			if lastRecBodyStart >= len(mutatedPayload) || body <= 0 {
@@ -1550,7 +1655,7 @@ func RunNegativeControlSuite(t *testing.T, runner LegRunner) {
 			}
 			mutatedPayload[lastRecBodyStart] ^= 0x01
 			if err := verifyInCpp(mutatedPayload); err == nil {
-				t.Fatalf("%s: file negative control failed: C++ oracle accepted mutated payload byte", tc.ID)
+				t.Fatalf("%s: file negative control failed: C++ equality oracle accepted mutated payload byte", tc.ID)
 			}
 			if resaved, err := runner.LoadAndResave(t, tc, u, mutatedPayload); err == nil && bytes.Equal(resaved, cppBytes) {
 				t.Fatalf("%s: file negative control failed: %s LoadAndResave of mutated payload matched original cppBytes", tc.ID, runner.Name())
@@ -1565,7 +1670,7 @@ func RunNegativeControlSuite(t *testing.T, runner LegRunner) {
 					t.Fatalf("%s: writer negative control failed: mutated %s writer still produced C++ oracle bytes", tc.ID, runner.Name())
 				}
 				if err := verifyInCpp(mutatedWrite); err == nil {
-					t.Fatalf("%s: writer negative control failed: C++ oracle accepted mutated %s writer output", tc.ID, runner.Name())
+					t.Fatalf("%s: writer negative control failed: C++ equality oracle accepted mutated %s writer output", tc.ID, runner.Name())
 				}
 			}
 		})
@@ -1880,7 +1985,8 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 			{"the room exactly", three, 3, 3},
 			{"no capacity", three, -1, 3},
 			{"the bad hash in the room", badLast, 3, -1},
-			{"4097 records with no capacity", four097, -1, 4097},
+			{"4097 records with no capacity", four097, -1, -1},
+			{"4097 records in caller-set capacity", four097, 4097, 4097},
 			{"4097 records past 4096 capacity", four097, 4096, -1},
 		} {
 			n, reason, _, _ := zeroLoad(t, runner, u, "Point", lin, c.file, c.capacity)
@@ -2092,11 +2198,14 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 				t.Errorf("R5: the hash did not move:\n%s", other)
 			}
 		}
-		// R4: a lineage entry handed under a hash that is not its layout's hash
-		// still selects its file: the runtime holds the hash as a constant.
-		older := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n}\n")
+		// R4: the runtime selects the compiler-handed definition hash as a
+		// constant, rather than rehashing only the layout bytes. Use a lawful
+		// writer snapshot: forged hashes are not historical authority.
+		older := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1 | min = -5, max = 5\n}\n")
 		eo, _ := LineageEntryOf(older, "T")
-		eo.Wire = 0x0123456789abcdef
+		if eo.Wire == ir.TableFixedLayoutHash(eo.Layout, nil) {
+			t.Fatal("R4 fixture must carry definition facts beyond the layout hash")
+		}
 		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eo}}, MakeFixedFile(eo.Wire, eo.Layout, []byte{5, 0, 0, 0}), -1)
 		if n != 1 || f["r0.x"] != "5" {
 			t.Errorf("R4: the handed hash: n=%d r=%q fields=%v", n, r, f)
@@ -2156,8 +2265,8 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 			t.Parallel()
 			u := ParseCheckUnit(t, "package probe\nfixed table Target {\n    lead uint32 = 1\n    name string(8) = \"ok\"\n    trail uint32 = 2\n}\nfixed table Boundary {\n    lead uint32 = 1\n    name string(8) = \"ok\"\n}\n")
 			base, _ := LineageEntryOf(u, "Target")
-			bound, _ := LineageEntryOf(u, "Boundary")
-			bound.Wire ^= 0x1111
+			olderBoundary := ParseCheckUnit(t, "package probe\nfixed table Boundary {\n lead uint32 = 1 | min = 0, max = 50\n name string(8) = \"ok\"\n}\n")
+			bound, _ := LineageEntryOf(olderBoundary, "Boundary")
 			size := func(e *LineageEntry, i int, n uint32) {
 				binary.LittleEndian.PutUint32(e.Layout[4+17*i+9:], n)
 			}
@@ -2422,14 +2531,38 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		if why != "" {
 			t.Fatalf("save live_extents_base failed: %s", why)
 		}
+		if len(file) < 13 {
+			t.Fatal("live-extents fixture has no complete record body")
+		}
 		body := len(file) - 13
-		file[body+5] = 99
-		file[body+6] = 99
-		file[body+8] = 99
 		eOwn, _ := LineageEntryOf(u, "T")
-		n, r, f, _ := zeroLoad(t, runner, u, "T", map[string][]LineageEntry{"T": {eOwn}}, file, -1)
-		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || !booleanFieldMatches(f["r0.opt_present"], false) {
-			t.Errorf("C14/W4: n=%d r=%q fields=%v", n, r, f)
+		lineage := map[string][]LineageEntry{"T": {eOwn}}
+		n, r, f, resaved := zeroLoad(t, runner, u, "T", lineage, file, -1)
+		if n != 1 || f["r0.arr_count"] != "1" || f["r0.arr[0]"] != "1" || f["r0.tail"] != "77" || !booleanFieldMatches(f["r0.opt_present"], false) || !bytes.Equal(resaved, file) {
+			t.Errorf("C14/W4 clean image: n=%d r=%q fields=%v", n, r, f)
+		}
+		live := bytes.Clone(file)
+		binary.LittleEndian.PutUint32(live[body:], 2)
+		live[body+5] = 2
+		if n, r, f, _ := zeroLoad(t, runner, u, "T", lineage, live, -1); n != 1 || f["r0.arr_count"] != "2" || f["r0.arr[1]"] != "2" {
+			t.Errorf("C14/W4 live second slot: n=%d r=%q fields=%v", n, r, f)
+		}
+		// Dead bytes are zero, not another unchecked value extent. Check
+		// counted-array slack and the absent optional independently.
+		for _, c := range []struct {
+			name    string
+			offsets []int
+		}{
+			{"nonzero counted-array dead bytes", []int{body + 5, body + 6}},
+			{"nonzero absent-optional dead bytes", []int{body + 8}},
+		} {
+			stained := bytes.Clone(file)
+			for _, at := range c.offsets {
+				stained[at] = 99
+			}
+			if n, r, _, _ := zeroLoad(t, runner, u, "T", lineage, stained, -1); n != -1 {
+				t.Errorf("C14/W4 %s: n=%d r=%q, want refusal", c.name, n, r)
+			}
 		}
 		corpus, _ := findFixedCorpus(t, repoRoot)
 		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_field_append.schema")
@@ -2509,9 +2642,12 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		const planSchema = "package probe\nenum Kind { A, B }\nunion Choice\n{\n    n int32\n    s string(4)\n}\nfixed table T\n{\n    head int32 = 1\n    opt ?int32\n    arr [..2]Kind\n    ch Choice\n}\n"
 		u := ParseCheckUnit(t, planSchema)
 		eOwn, _ := LineageEntryOf(u, "T")
-		eForged := eOwn
-		eForged.Wire ^= 1
-		lin := map[string][]LineageEntry{"T": {eForged}}
+		older := ParseCheckUnit(t, strings.Replace(planSchema, "head int32 = 1", "head int32 = 1 | min = 0, max = 100", 1))
+		eOlder, _ := LineageEntryOf(older, "T")
+		if eOlder.Wire == eOwn.Wire || !bytes.Equal(eOlder.Layout, eOwn.Layout) {
+			t.Fatal("P1 fixture needs equal layouts and distinct lawful definition hashes")
+		}
+		lin := map[string][]LineageEntry{"T": {eOlder}}
 		// head 42, opt -99 present, arr {2, 0} with count 1, ch string "hi"
 		body := make([]byte, eOwn.Record-8)
 		binary.LittleEndian.PutUint32(body[0:], 42)
@@ -2523,12 +2659,7 @@ func runEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner, selected
 		binary.LittleEndian.PutUint32(body[16:], 2)
 		copy(body[20:], "hi")
 		idBytes := MakeFixedFile(eOwn.Wire, eOwn.Layout, body, body)
-		planBytes := bytes.Clone(idBytes)
-		planBytes[8] ^= 1
-		stride := int(eOwn.Record)
-		for at := len(planBytes) - 2*stride; at < len(planBytes); at += stride {
-			planBytes[at] ^= 1
-		}
+		planBytes := MakeFixedFile(eOlder.Wire, eOlder.Layout, body, body)
 		idN, idR, idF, idSaved := zeroLoad(t, runner, u, "T", lin, idBytes, -1)
 		planN, planR, planF, planSaved := zeroLoad(t, runner, u, "T", lin, planBytes, -1)
 		if idN != 2 || planN != idN || idR != planR || !maps.Equal(idF, planF) ||

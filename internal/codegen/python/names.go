@@ -16,7 +16,7 @@ const HelperPrefix = "_s_"
 // generatedMembers are the names the generated classes define beside their
 // fields (docs/PORT-PYTHON.md, ERRORS and THE VALUE MAPPING). A field spelled
 // like one would replace the member, so it is refused.
-var generatedMembers = wordSet(`read write load save descriptor`)
+var generatedMembers = wordSet(`read write load save descriptor fixed_load fixed_save fixed_measure fixed_plan_max`)
 
 // These methods are emitted on table classes, not packet classes.
 var generatedTableJSONMembers = wordSet(`from_json to_json from_text_form load_text save_text`)
