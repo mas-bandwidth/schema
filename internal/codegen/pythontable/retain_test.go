@@ -871,7 +871,7 @@ print('cross-version-internal')
 }
 
 func TestPythonRetainNames(t *testing.T) {
-	for _, name := range []string{"load_retain", "measure_retain", "save_retain"} {
+	for _, name := range []string{"load_retain", "measure_retain", "save_retain", "load_retain_messages", "save_retain_messages"} {
 		u := loadUnit(t, "package probe\ntable Root { n int32 }\n")
 		u.Tables["Root"].Fields[0].Name = name
 		if _, err := Generate(u); err == nil || !strings.Contains(err.Error(), name) {
@@ -900,6 +900,8 @@ for name, call in (
     ('load_retain', lambda: Root.load_retain(b'',object())),
     ('measure_retain', lambda: Root().measure_retain(object())),
     ('save_retain', lambda: Root().save_retain(object(),LoadReport())),
+    ('load_retain_messages', lambda: Root.load_retain_messages()),
+    ('save_retain_messages', lambda: Root().save_retain_messages()),
 ):
     try: call()
     except ValueError as error: assert name in str(error), str(error)

@@ -60,7 +60,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		for _, table := range file.Tables {
 			for _, field := range table.Fields {
 				switch field.Name {
-				case "load_retain", "measure_retain", "save_retain":
+				case "load_retain", "measure_retain", "save_retain", "load_retain_messages", "save_retain_messages":
 					return nil, fmt.Errorf("python: %s.%s is a generated retention method; rename the field", table.Name, field.Name)
 				}
 			}
@@ -697,7 +697,12 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("\n    def measure_retain(self, retain: object) -> int:\n")
 		b.WriteString("        raise InvalidValue(\"measure_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
 		b.WriteString("\n    def save_retain(self, retain: object, report: LoadReport) -> bytes:\n")
-		b.WriteString("        raise InvalidValue(\"save_retain\", \"a fixed-class root cannot retain unknown fields\")\n\n\n")
+		b.WriteString("        raise InvalidValue(\"save_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
+		b.WriteString("\n    @classmethod\n")
+		b.WriteString("    def load_retain_messages(cls, *args: object, **kwargs: object) -> None:\n")
+		b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain_messages is unavailable for a fixed-class root\")\n")
+		b.WriteString("\n    def save_retain_messages(self, *args: object, **kwargs: object) -> None:\n")
+		b.WriteString("        raise InvalidValue(\"save_retain_messages\", \"a fixed-class root cannot retain unknown messages\")\n\n\n")
 	}
 	emitTableDescriptor(b, u, st, false)
 	if fast {
