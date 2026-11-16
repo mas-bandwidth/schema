@@ -469,9 +469,9 @@ def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: in
     wire_hash = _integer(source, 8, 8)
     entry = root["known"].get(wire_hash)
     if entry is None:
-        raise Refused("layout_unknown")
+        raise Refused("layout_unknown", f"0x{wire_hash:016x}")
     if entry["refusal"] == "layout_unsupported":
-        raise Refused("layout_unsupported")
+        raise Refused("layout_unsupported", f"0x{wire_hash:016x}")
     if source[20:20 + length] != entry["layout"]:
         raise Refused("layout_malformed")
     if entry["refusal"]:

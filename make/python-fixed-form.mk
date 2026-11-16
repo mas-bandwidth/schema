@@ -35,3 +35,8 @@ python-fixed-core-values:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedCoreValues$$' ./internal/codegen/pythontable/
 python-fixed-core-values-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedCoreValuesNegativeControl$$' ./internal/codegen/pythontable/
+
+.PHONY: python-fixed-refused-hash-negative-control
+test-python: python-fixed-refused-hash-negative-control
+python-fixed-refused-hash-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedFormRefusedHash$$' ./internal/codegen/pythontable/
