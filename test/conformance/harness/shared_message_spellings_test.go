@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -19,6 +20,19 @@ import (
 // This scanner reads the announcement and batch directly. It uses declaration
 // metadata for identity/defaults, but no tablewire reader or decoded instance.
 // Its errors distinguish damage and unsupported layouts from a clean spelling.
+type sharedMessageDamage struct{ Cause error }
+
+func (e *sharedMessageDamage) Error() string { return e.Cause.Error() }
+func (e *sharedMessageDamage) Unwrap() error { return e.Cause }
+
+type sharedMessageUnsupported struct{ Detail string }
+
+func (e *sharedMessageUnsupported) Error() string { return e.Detail }
+
+func sharedMessageUnsupportedf(format string, args ...any) error {
+	return &sharedMessageUnsupported{fmt.Sprintf(format, args...)}
+}
+
 type sharedMessageBytes struct {
 	data []byte
 	at   int
@@ -55,7 +69,7 @@ func (r *sharedMessageBytes) octet() (byte, error) {
 func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableMessageShape, error) {
 	var s ir.TableMessageShape
 	if depth > 8 {
-		return s, fmt.Errorf("unsupported recursive announcement shape")
+		return s, sharedMessageUnsupportedf("unsupported recursive announcement shape")
 	}
 	numeric := kind >= 2 && kind <= 10 || kind >= 18 && kind <= 29
 	if numeric {
@@ -69,7 +83,7 @@ func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableM
 			return s, nil
 		case 1:
 			if kind == ir.TableKindF32 {
-				return s, fmt.Errorf("unsupported ranged f32 shape")
+				return s, sharedMessageUnsupportedf("unsupported ranged f32 shape")
 			}
 			n, err := r.leb()
 			if err != nil || n > uint64(ir.TableKindWidth(int(kind))*8) {
@@ -102,7 +116,7 @@ func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableM
 			return s, nil
 		case 2:
 			if kind != ir.TableKindF32 {
-				return s, fmt.Errorf("unsupported packing 2 for kind %d", kind)
+				return s, sharedMessageUnsupportedf("unsupported packing 2 for kind %d", kind)
 			}
 			p, err := r.take(12)
 			if err != nil {
@@ -118,7 +132,7 @@ func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableM
 			s.Bits = int64(mathbits.Len64(count))
 			return s, nil
 		default:
-			return s, fmt.Errorf("unsupported numeric packing %d", packing)
+			return s, sharedMessageUnsupportedf("unsupported numeric packing %d", packing)
 		}
 	}
 	switch kind {
@@ -145,14 +159,17 @@ func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableM
 		}
 		s.Max = int64(n)
 		s.Elem, err = r.octet()
-		if err != nil || s.Elem == 14 || s.Elem == 16 {
-			return s, fmt.Errorf("unsupported collection element %d: %v", s.Elem, err)
+		if err != nil {
+			return s, err
+		}
+		if s.Elem == 14 || s.Elem == 16 {
+			return s, sharedMessageUnsupportedf("unsupported collection element %d", s.Elem)
 		}
 		inner, err := sharedMessageShape(r, s.Elem, depth+1)
 		s.Inner = &inner
 		return s, err
 	default:
-		return s, fmt.Errorf("unsupported announced kind %d", kind)
+		return s, sharedMessageUnsupportedf("unsupported announced kind %d", kind)
 	}
 }
 
@@ -210,7 +227,7 @@ func sharedMessageAnnouncement(data []byte) (uint64, []ir.TableVocabularyEntry, 
 				err = fmt.Errorf("announcement payload crosses extent")
 			}
 		case kind != 32:
-			err = fmt.Errorf("unsupported announcement field kind %d", kind)
+			err = sharedMessageUnsupportedf("unsupported announcement field kind %d", kind)
 		}
 		if err != nil {
 			return 0, nil, err
@@ -322,16 +339,16 @@ func (w *sharedMessageWalk) reference() (uint64, error) {
 
 func (w *sharedMessageWalk) body(st *ir.Struct, depth int) (bool, error) {
 	if depth > 256 {
-		return false, fmt.Errorf("unsupported message nesting past 256")
+		return false, sharedMessageUnsupportedf("unsupported message nesting past 256")
 	}
 	fields, order := map[uint64]*ir.Field{}, map[uint64]int{}
 	if st != nil {
 		for i, f := range st.Fields {
 			if f.Required {
-				return false, fmt.Errorf("unsupported required field in a fixed message declaration")
+				return false, sharedMessageUnsupportedf("unsupported required field in a fixed message declaration")
 			}
 			if f.Guard != "" {
-				return false, fmt.Errorf("unsupported guarded message field %s.%s", st.Name, f.Name)
+				return false, sharedMessageUnsupportedf("unsupported guarded message field %s.%s", st.Name, f.Name)
 			}
 			fields[ir.TableFieldWireId(f)], order[ir.TableFieldWireId(f)] = f, i
 		}
@@ -461,8 +478,11 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 	case 14, 16:
 		n, err := w.r.small(mathbits.Len64(uint64(s.Max - s.Min)))
 		n += uint64(s.Min)
-		if err != nil || n > uint64(s.Max) || n > 1<<20 {
-			return false, fmt.Errorf("unsupported or invalid message collection count %d: %v", n, err)
+		if err != nil || n > uint64(s.Max) {
+			return false, fmt.Errorf("invalid message collection count %d: %v", n, err)
+		}
+		if n > 1<<20 {
+			return false, sharedMessageUnsupportedf("unsupported message collection count %d past walk limit", n)
 		}
 		var element *ir.Field
 		if f != nil {
@@ -556,19 +576,30 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 	case 32:
 		return false, nil
 	case 17:
-		return false, fmt.Errorf("unsupported pointer in a message body: fixed roots number no nodes")
+		return false, sharedMessageUnsupportedf("unsupported pointer in a message body: fixed roots number no nodes")
 	default:
-		return false, fmt.Errorf("unsupported message payload kind %d", e.Kind)
+		return false, sharedMessageUnsupportedf("unsupported message payload kind %d", e.Kind)
 	}
 }
 
-func messageStructuralSpellings(unit *ir.Unit, root *ir.Struct, announcement, batch []byte) (map[string]bool, error) {
+func messageStructuralSpellings(unit *ir.Unit, root *ir.Struct, announcement, batch []byte) (shapes map[string]bool, err error) {
+	// A damaged suffix can masquerade as field references before the walk
+	// detects damage. Never certify any provisional spelling from a failed walk.
+	defer func() {
+		if err != nil {
+			shapes = nil
+			var unsupported *sharedMessageUnsupported
+			if !errors.As(err, &unsupported) {
+				err = &sharedMessageDamage{err}
+			}
+		}
+	}()
 	version, entries, err := sharedMessageAnnouncement(announcement)
 	if err != nil {
 		return nil, err
 	}
 	if root == nil || !root.FixedDeclared {
-		return nil, fmt.Errorf("unsupported variable root on message wire")
+		return nil, sharedMessageUnsupportedf("unsupported variable root on message wire")
 	}
 	if len(batch) < 2 || batch[0] != ir.TableWireMessageForm {
 		return nil, fmt.Errorf("not a message batch")
@@ -639,6 +670,46 @@ func TestSharedMessageManifestSpellings(t *testing.T) {
 	t.Logf("classified %d readable message batches and accounted for %d no-wire refusals", read, absent)
 	if read == 0 || absent == 0 {
 		t.Fatalf("message coverage: %d readable batches, %d explicit no-wire refusals", read, absent)
+	}
+}
+
+// A damaged bytes suffix can resemble another vocabulary reference. Markers
+// observed before structural validation finishes are not certified spellings.
+func TestSharedMessageDamageDiscardsProvisionalSpellings(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, path := range m.Units[i].Paths {
+			if !filepath.IsAbs(path) {
+				m.Units[i].Paths[j] = filepath.Join(root, path)
+			}
+		}
+	}
+	connection, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := newUnits(m).get(connection.Unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	announcement, err := os.ReadFile(filepath.Join(root, connection.Wire))
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/fuzz-vectors/message_bytes_truncated.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shapes, err := messageStructuralSpellings(u, u.Tables["LoginRequest"], announcement, batch)
+	var damage *sharedMessageDamage
+	var unsupported *sharedMessageUnsupported
+	if !errors.As(err, &damage) || errors.As(err, &unsupported) || shapes != nil {
+		t.Fatalf("damaged suffix certified spellings or lacked damage type: shapes=%v error=%T %v", shapes, err, err)
 	}
 }
 
@@ -802,7 +873,10 @@ fixed table Root
 	}
 	pointer := append([]ir.TableVocabularyEntry(nil), entries...)
 	pointer[9].Kind = ir.TableKindPointer
-	if _, err := messageStructuralSpellings(u, st, announce(ir.BuildVersion(u)+1, pointer), build(7, 10)); err == nil || !strings.Contains(err.Error(), "pointer") {
+	got, err := messageStructuralSpellings(u, st, announce(ir.BuildVersion(u)+1, pointer), build(7, 10))
+	var unsupported *sharedMessageUnsupported
+	var damage *sharedMessageDamage
+	if !errors.As(err, &unsupported) || errors.As(err, &damage) || got != nil || !strings.Contains(err.Error(), "pointer") {
 		t.Errorf("unsupported pointer was not reported explicitly: %v", err)
 	}
 
