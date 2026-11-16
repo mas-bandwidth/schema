@@ -12,7 +12,83 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
+
+func TestPythonWireFuzzFileDispatch(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned interpreters")
+	u := loadUnit(t, "package fuzzdispatch\ntable Variable { x int32 }\nfixed table Fixed { x int32 }\n")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := pyrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile(filepath.Join(root, "test/conformance/python/wirefuzz.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, filepath.Join(dir, "generated", "probe"), files)
+	if err := os.WriteFile(filepath.Join(dir, "wirefuzz.py"), script, 0644); err != nil {
+		t.Fatal(err)
+	}
+	model := tabletext.NewModel(u)
+	var wires [][]byte
+	for _, name := range []string{"Variable", "Fixed"} {
+		value := model.New(model.Lookup(name))
+		var report tabletext.Report
+		if !model.Read(value, []byte(`{"x":7}`), &report) {
+			t.Fatalf("Go JSON: %+v", report)
+		}
+		wire, err := tablewire.Encode(model, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wires = append(wires, wire)
+	}
+	if wires[0][0] != 1 || wires[1][0] != 3 {
+		t.Fatalf("wrong oracle form bytes %d %d", wires[0][0], wires[1][0])
+	}
+	var input bytes.Buffer
+	binary.Write(&input, binary.LittleEndian, uint32(2))
+	for _, name := range []string{"Variable", "Fixed"} {
+		for _, word := range []string{"probe", name} {
+			binary.Write(&input, binary.LittleEndian, uint16(len(word)))
+			input.WriteString(word)
+		}
+		input.Write([]byte{1, 0})
+	}
+	for index, wire := range wires {
+		binary.Write(&input, binary.LittleEndian, uint32(index))
+		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
+		input.Write(wire)
+	}
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.TryStdin(t, pin, dir, "wirefuzz.py", []string{filepath.Join(dir, "generated")}, input.String())
+		if err != nil {
+			t.Fatalf("driver: %v %s", err, stderr)
+		}
+		data := []byte(out)
+		if len(data) < 2 || data[0] != 1 || data[1] != 1 {
+			t.Fatalf("missing roster: %x", data)
+		}
+		data = data[2:]
+		for i, wire := range wires {
+			if len(data) < 47+len(wire) || data[0] != 1 || !bytes.Equal(data[47:47+len(wire)], wire) {
+				t.Fatalf("file dispatch %d: %x", i, data)
+			}
+			data = data[47+len(wire):]
+		}
+		if len(data) != 0 {
+			t.Fatalf("extra output: %x", data)
+		}
+	}
+}
 
 func TestPythonWireFuzzVerdictPipe(t *testing.T) {
 	t.Parallel()
