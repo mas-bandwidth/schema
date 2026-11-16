@@ -344,7 +344,7 @@ report nopayload_named_field  messagedemo ToolMessage testdata/wire/tables/nopay
 # wire fuzzer's pinned vectors (testdata/wire/tables/fuzz-vectors/INDEX.txt)
 # beside this one. The bytes are the reference leg's, pinned by
 # test/tables/main.cpp.
-report nested_arm_trailing messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
+report nested_arm_trailing messagedemo ToolEnvelope testdata/wire/tables/nested_arm_trailing.bin
 
 # THE ARM'S KIND BYTE, at the four pins §3 names. A2 declares `a` as an int64
 # arm, `b` as a float32 arm and `c` as a string(8) arm; each row puts a payload

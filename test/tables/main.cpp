@@ -7566,34 +7566,29 @@ static void test_escape_and_payload_free_kinds()
         CHECK( report.refuse_reason == messagedemo::kind_mismatch && report.unknown == 0 && !report.damaged );
         CHECK( out.body.type == messagedemo::ToolBodyType::None );
     }
-    // BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the
-    // append rule): a nested-union arm whose L runs past the whole inner union
-    // it frames is NOT damage. The inner union decodes, the bytes after it are
-    // stepped over with the arm, the parent reads on and nothing counts.
+    // Bytes after a whole nested union inside its arm frame are damage
+    // (SPEC-TABLES §3); the top-level twin is damage as well.
     {
         uint8_t wire[256];
         WireBuilder b;
+        b.field( "sequence", 8 );
+        b.u32( 41 );
         b.field( "body", 15 );
         b.leb( b.ref( "origin" ) );
         b.u8( 15 );                           // the arm's payload is a union
-        b.leb( 8 );                           // the inner union's 7 bytes and one more
+        b.leb( 8 );                           // the inner union's 7 bytes and one extra
         b.leb( b.ref( "pid" ) );
         b.u8( 8 );
         b.leb( 4 );
         b.u32( 5 );
-        b.u8( 0xEE );                         // a newer writer's byte, claimed by no field here
-        b.field( "sequence", 8 );
-        b.u32( 41 );
+        b.u8( 0xEE );                         // extra after the complete inner union
         b.end();
         const int64_t n = b.finish( wire );
         pin_table_golden( "nested_arm_trailing", wire, n );
-        messagedemo::ToolMessage out;
+        alignas(16) uint8_t region[4096];
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoad( out, wire, n, &report ) );
-        CHECK( !report.damaged && report.unknown == 0 );
-        CHECK( out.body.type == messagedemo::ToolBodyType::Origin );
-        CHECK( out.body.origin.type == messagedemo::OriginType::Pid && out.body.origin.pid == 5 );
-        CHECK( out.sequence == 41 );
+        CHECK( !messagedemo::ToolEnvelopeLoad( region, sizeof( region ), wire, n, &report ) );
+        CHECK( report.damaged );
     }
     // ITS TOP-LEVEL TWIN: the same byte after the ROOT's terminator, outside
     // every envelope, is claimed by nothing and the file is malformed (§3:
@@ -7601,6 +7596,8 @@ static void test_escape_and_payload_free_kinds()
     {
         uint8_t wire[256];
         WireBuilder b;
+        b.field( "sequence", 8 );
+        b.u32( 41 );
         b.field( "body", 15 );
         b.leb( b.ref( "origin" ) );
         b.u8( 15 );
@@ -7609,16 +7606,40 @@ static void test_escape_and_payload_free_kinds()
         b.u8( 8 );
         b.leb( 4 );
         b.u32( 5 );
-        b.field( "sequence", 8 );
-        b.u32( 41 );
         b.end();
         b.u8( 0xEE );                         // after the whole message
         const int64_t n = b.finish( wire );
         pin_table_golden( "nested_arm_trailing_top", wire, n );
-        messagedemo::ToolMessage out;
+        alignas(16) uint8_t region[4096];
         messagedemo::TableReport report;
-        CHECK( !messagedemo::ToolMessageLoad( out, wire, n, &report ) );
+        CHECK( !messagedemo::ToolEnvelopeLoad( region, sizeof( region ), wire, n, &report ) );
         CHECK( report.damaged );
+    }
+    // The exact-length union frame is the positive control for the pair.
+    {
+        uint8_t wire[256];
+        WireBuilder b;
+        b.field( "sequence", 8 );
+        b.u32( 41 );
+        b.field( "body", 15 );
+        b.leb( b.ref( "origin" ) );
+        b.u8( 15 );
+        b.leb( 7 );
+        b.leb( b.ref( "pid" ) );
+        b.u8( 8 );
+        b.leb( 4 );
+        b.u32( 5 );
+        b.end();
+        const int64_t n = b.finish( wire );
+        pin_table_golden( "nested_arm_exact", wire, n );
+        alignas(16) uint8_t region[4096];
+        messagedemo::TableReport report;
+        const auto * out = messagedemo::ToolEnvelopeLoad( region, sizeof( region ), wire, n, &report );
+        CHECK( out );
+        CHECK( !report.damaged && report.unknown == 0 );
+        CHECK( out->body.type == messagedemo::ToolBodyType::Origin );
+        CHECK( out->body.origin.type == messagedemo::OriginType::Pid && out->body.origin.pid == 5 );
+        CHECK( out->sequence == 41 );
     }
     // (4) AS AN ELEMENT KIND: the array's own identity, so the same rule one
     // level in — a kind mismatch that refuses the load, the array empty

@@ -107,15 +107,12 @@ map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retaine
 
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED, BYTES AFTER THE MESSAGE ARE NOT (§3).
 # A nested-union arm whose L runs one byte past the whole inner union it
-# frames is the append rule's case: a newer writer may add at the end, and an
-# older reader steps over the rest of the envelope with the arm, counting
-# nothing. The C++ leg once called it malformed against the oracle (mutant
-# 72054 of seed 24845619678, messagedemo.ToolMessage); this is that shape
-# built clean. The twin puts the same byte after the ROOT's terminator,
-# outside every envelope, where it is malformed (serialize 2.0's end rule).
-# Both are the reference leg's bytes, pinned by test/tables/main.cpp.
-nested_arm_trailing     messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
-nested_arm_trailing_top messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing_top.bin
+# Bytes after a complete inner union within its arm length are damage (§3),
+# as are bytes after the root terminator. The exact-length twin reads.
+# All three use the variable ToolEnvelope root and declaration-ordered fields.
+nested_arm_trailing     messagedemo ToolEnvelope testdata/wire/tables/nested_arm_trailing.bin
+nested_arm_trailing_top messagedemo ToolEnvelope testdata/wire/tables/nested_arm_trailing_top.bin
+nested_arm_exact messagedemo ToolEnvelope testdata/wire/tables/nested_arm_exact.bin
 
 # A REGION READ WHOSE LIST COUNT THE FRAMED STORAGE CANNOT HOLD reports damage
 # and RESUMES after the array's L (§3, §6.5; the oracle's collectionCap): the

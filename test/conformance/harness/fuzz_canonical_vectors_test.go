@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -213,7 +214,9 @@ func TestRetainingFuzzCanonicalPins(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			seed, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/"+tc.seed+".bin"))
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			wire := bytes.Clone(seed)
 			f := frameWire(wire)
 			if len(f.entries) == 0 || len(f.entries) >= 128 {
@@ -286,4 +289,99 @@ func TestRetainingFuzzCanonicalPins(t *testing.T) {
 			t.Error("union retention vector differs from canonical generator")
 		}
 	})
+}
+
+// TestNestedArmTrailingPins builds the variable-form envelope pair with
+// declaration-ordered fields. The extra byte is either inside the union arm
+// frame or after the root terminator.
+func TestNestedArmTrailingPins(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	for _, tc := range []struct {
+		name  string
+		place string
+	}{{"nested_arm_trailing", "inside"}, {"nested_arm_trailing_top", "outside"}, {"nested_arm_exact", "none"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			arm := cat(b(4, 8, 4), i32(5))
+			if tc.place == "inside" {
+				arm = append(arm, 0xee)
+			}
+			body := cat(b(1, 8), i32(41), b(2, 15, 3, 15), leb(uint64(len(arm))), arm, b(0))
+			if tc.place == "outside" {
+				body = append(body, 0xee)
+			}
+			v := framingVector{unit: "messagedemo", ids: []string{"sequence", "body", "origin", "pid"}, body: body}
+			wire, err := v.bytes(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "testdata/wire/tables", tc.name+".bin")
+			if os.Getenv("FRAMING_WRITE") == "1" {
+				if err := os.WriteFile(path, wire, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, wire) {
+				t.Errorf("%s pin differs from its builder", tc.name)
+			}
+		})
+	}
+}
+
+// TestNestedArmEnvelopeBoundary checks the exact frame and both trailing-byte
+// refusals independently for spelling and through the reader.
+func TestNestedArmEnvelopeBoundary(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	u, err := units.get("messagedemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := u.Tables["ToolEnvelope"]
+	if st == nil {
+		t.Fatal("missing ToolEnvelope")
+	}
+	for _, tc := range []struct {
+		name string
+		read bool
+	}{{"nested_arm_exact", true}, {"nested_arm_trailing", false}, {"nested_arm_trailing_top", false}} {
+		b, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", tc.name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fault := framingTableFault(framingVector{}, b); fault != "" {
+			t.Errorf("%s: %s", tc.name, fault)
+		}
+		for _, shapes := range []map[string]bool{rootStructuralSpellings(st, b), rootStoredDefaults(st, b), nestedStructuralSpellings(u, st, b), nestedStoredDefaults(u, st, b)} {
+			if len(shapes) > 0 {
+				t.Errorf("%s: %v", tc.name, shapes)
+			}
+		}
+		wr, err := newWireRoot(units, "messagedemo", "ToolEnvelope", false, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report tabletext.Report
+		ok, err := tablewire.Decode(wr.model, wr.model.New(wr.def), b, &report)
+		if ok != tc.read || (!tc.read && (err == nil || !strings.Contains(err.Error(), "wire_damaged"))) {
+			t.Errorf("%s: read=%v err=%v", tc.name, ok, err)
+		}
+	}
 }
