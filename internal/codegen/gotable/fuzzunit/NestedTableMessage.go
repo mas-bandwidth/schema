@@ -98,9 +98,8 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 	ArchiveConfigReset(value)
 	var seenIDs [64]uint64
 	seen := seenIDs[:0]
-	order := -1
 	exact := r.Vocabulary.BuildVersion == BuildVersion
-	_ = exact
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -123,7 +122,7 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
-				if order >= 0 {
+				if exact && order >= 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -153,7 +152,7 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 			}
 		case 0xb1e5e28e4479a274:
 			{
-				if order >= 1 {
+				if exact && order >= 1 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -208,6 +207,10 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
