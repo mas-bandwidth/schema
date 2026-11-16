@@ -1,13 +1,13 @@
 package gotable
 
 import (
- "fmt"
- "math"
- "strings"
- "testing"
+	"fmt"
+	"math"
+	"strings"
+	"testing"
 
- "github.com/mas-bandwidth/schema/v2/internal/tablecook"
- "github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 // A branch guard controls the graph walk, not the inline record's storage.
@@ -19,6 +19,7 @@ table Holder {extra []int32}
 table Child {n int32 = 7
  values [..2]int32
  extra []int32
+ refs []*Leaf
  free [..2]string
  real float64
  dead [..2]Holder}
@@ -60,6 +61,7 @@ table Root {gate bool
 		{"false guard unbounded", strings.Replace(text, `"free":[]`, `"free":["extent"]`, 1), "v.Gate=false", true},
 		{"false guard nested extent", strings.Replace(text, `"child":{"n":19,"values":[5]}`, `"child":{"n":19,"values":[5],"extra":[29]}`, 1), "v.Gate=false", true},
 		{"optional extent", strings.Replace(text, `"maybe":{"n":99,"values":[13]}`, `"maybe":{"n":99,"values":[13],"extra":[23]}`, 1), "v.MaybePresent=false", true},
+		{"optional pointer extent", strings.Replace(text, `"maybe":{"n":99,"values":[13]}`, `"maybe":{"n":99,"values":[13],"refs":[{"n":7}]}`, 1), "v.MaybePresent=false", true},
 		{"optional unbounded", strings.Replace(text, `"maybe":{"n":99,"values":[13]}`, `"maybe":{"n":99,"values":[13],"free":["extent"]}`, 1), "v.MaybePresent=false", true},
 		{"optional nonfinite", text, "v.MaybePresent=false;v.Maybe.Real=math.NaN()", false},
 		{"optional counted tail", strings.Replace(text, `"maybe":{"n":99,"values":[13]}`, `"maybe":{"n":99,"values":[13],"dead":[{"extra":[37]}]}`, 1), "v.MaybePresent=false;v.Maybe.DeadCount=0", false},

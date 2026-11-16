@@ -157,8 +157,8 @@ func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,l
 const goCookEmptyExtentSource = `
 func(w *tableCookWriter) empty(base unsafe.Pointer,f *TableFieldInfo)bool {
  p:=unsafe.Add(base,f.Offset)
- if f.Pointer||f.CookElemSize==0{return true}
  if f.List||f.Map{return (*tableContainer)(p).Count==0}
+ if f.Pointer||f.CookElemSize==0{return true}
  if f.Table==nil&&f.Arms==nil{return true}
  count:=int32(1);if f.IsArray {count=f.ArrayBound;if f.Counted{count=max(int32(0),min(count,*(*int32)(unsafe.Add(base,f.CountOffset))))}}
  for i:=int32(0);i<count;i++ {q:=unsafe.Add(p,int64(i)*int64(f.ElemSize));if f.Table!=nil {t:=f.Table();for j:=range t.Fields {if !w.empty(q,&t.Fields[j]){return false}}};if f.Arms!=nil {u:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(q,u.TagOffset),u.TagSize);if tag==0||tag>=uint64(len(u.Arms))||u.Arms[tag].Void{continue};if !w.empty(q,&u.Arms[tag].Field){return false}}};return true
