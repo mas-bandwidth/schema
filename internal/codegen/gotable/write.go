@@ -316,11 +316,8 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 	if f.Array == ir.ArrayCounted {
 		g.pf("%sif %sCount < %d || %sCount > %d { return false }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
 	}
-	if f.Type.Pointer {
-		return
-	}
 	switch {
-	case f.Type.TextUnbounded():
+	case f.Type.Pointer || f.Type.TextUnbounded():
 		// unbounded text (docs/SPEC-TABLES.md §2.13.1): no length bound beyond
 		// the blob record's own, which the text rule below reads
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
