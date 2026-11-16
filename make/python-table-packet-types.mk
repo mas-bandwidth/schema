@@ -15,4 +15,5 @@
 python-table-packet-types-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run '^TestPythonTablePacketTypes(Loose|MapValue)?NegativeControl$$' ./internal/codegen/pythontable/ -count=1
 
-test-python: python-table-packet-types-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-table-packet-types
+python-ci-table-packet-types: python-table-packet-types-negative-control
