@@ -94,7 +94,7 @@ while IFS= read -r package; do
     while [ "$shard" -lt "$shards" ]; do
       selected=$(printf '%s\n' "$names" | awk -v shard="$shard" -v shards="$shards" -v skip="$skip" '(NR-1)%shards == shard && $0 != skip' | paste -sd '|' -)
       if [ -n "$selected" ]; then
-        jq -cn --arg name "$package shard $((shard+1))/$shards" --arg package "$package" --arg test "($selected)" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:$test,corpus:$corpus}' >> "$rows"
+        jq -cn --arg name "$package shard $((shard+1))/$shards" --arg package "$package" --arg test "^($selected)$" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:$test,corpus:$corpus}' >> "$rows"
       fi
       shard=$((shard+1))
     done
