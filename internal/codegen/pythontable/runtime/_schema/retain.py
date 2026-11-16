@@ -587,6 +587,44 @@ class TableRetain:
             yield identity, kind, data[cursor:end], record
             pointer = self._word(data, record + 5)
 
+    def has_body(self, node: int, steps: tuple[tuple[int, int], ...]) -> bool:
+        """Whether this body or a schema-bounded descendant has retained data."""
+        data = memoryview(self.storage)
+        for depth in range(len(steps), _MAX_DEPTH + 1):
+            pointer = self.root
+            while pointer:
+                at = pointer - 1
+                tag = int(data[at + 4])
+                if tag == 2:
+                    break
+                if tag != 3:
+                    raise ValueError("corrupt retained path index")
+                bit = self._word(data, at + 5)
+                word = bit // 32
+                if word == 0:
+                    value = node
+                elif word == 1:
+                    value = depth
+                else:
+                    pair = (word - 2) // 2
+                    value = steps[pair][(word - 2) % 2] if pair < len(steps) else 0
+                pointer = self._word(data, at + 9 + ((value >> (bit % 32)) & 1) * 4)
+            if not pointer:
+                continue
+            record = self._word(data, pointer - 1 + 5) - 1
+            if self._word(data, record + 13) != node or self._word(data, record + 17) != depth:
+                continue
+            cursor = record + 21
+            matches = True
+            for ordinal, index in steps:
+                if self._word(data, cursor) != ordinal or self._word(data, cursor + 4) != index:
+                    matches = False
+                    break
+                cursor += 8
+            if matches:
+                return True
+        return False
+
     def begin_save(self, ctx: Any = None, directory: Any = None) -> None:
         """Clear placement marks; optionally map old node anchors to this walk.
 

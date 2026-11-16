@@ -277,6 +277,11 @@ for index in range(1000):
     assert steps[0]-before <= 128
 sys.settrace(None)
 assert list(keep.records_at(1,((1001,0),)))==[]
+assert keep.has_body(1,()) and keep.has_body(1,((7,0),))
+assert not keep.has_body(2,()) and not keep.has_body(1,((1001,0),))
+assert keep.capture(1,((7,0),(3,2)),9998,4,memoryview(bytes([1,2,3,4])),[])
+assert keep.has_body(1,((7,0),)) and keep.has_body(1,((7,0),(3,2)))
+assert not keep.has_body(1,((7,0),(3,3)))
 assert keep.capture(1,((7,0),),9999,4,memoryview(bytes([9,8,7,6])),[])
 assert [r[0] for r in keep.records_at(1,((7,0),))]==[1007,9999]
 first=TableRetain(bytearray(1024),bytearray())
