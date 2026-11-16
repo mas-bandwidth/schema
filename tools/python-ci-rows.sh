@@ -48,6 +48,13 @@ while IFS= read -r package; do
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
+    for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical; do
+      printf '%s\n' "$names" | grep -qx "$delegated" || { echo "missing $delegated" >&2; exit 1; }
+    done
+    for target in python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3; do
+      [ "$(printf '%s\n' "$support" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
+    done
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonScalarWidenHistorical$/d; /^TestPythonContainerWidenHistorical$/d')
     skip=TestPythonVtFixedClassBuildVersionImports
     units=$(awk '$1 == "unit" { print $2 }' testdata/conformance/tables/MANIFEST.txt)
     [ -n "$units" ] || { echo "missing table corpus units" >&2; exit 1; }
@@ -70,7 +77,7 @@ while IFS= read -r package; do
     while [ "$shard" -lt "$shards" ]; do
       selected=$(printf '%s\n' "$names" | awk -v shard="$shard" -v shards="$shards" -v skip="$skip" '(NR-1)%shards == shard && $0 != skip' | paste -sd '|' -)
       if [ -n "$selected" ]; then
-        jq -cn --arg name "$package shard $((shard+1))/$shards" --arg package "$package" --arg test "($selected)" '{name:$name,target:"",package:$package,test:$test}' >> "$rows"
+        jq -cn --arg name "$package shard $((shard+1))/$shards" --arg package "$package" --arg test "^($selected)$" '{name:$name,target:"",package:$package,test:$test}' >> "$rows"
       fi
       shard=$((shard+1))
     done
