@@ -19544,6 +19544,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | `?T` presence companion | layout | `optional=true`, and the `size=`/`offset=`s the companion moves |
 | `*T` reference slot | layout | kind `17` with `type=` naming the pointee |
 | a `flags` field's storage width | layout | `size=` |
+| a counted array’s minimum count | **meaning** | `countmin=` beside `bound=` — the announced shape and the admitted counts depend on it even when storage does not |
 | a specified DEFAULT | **meaning** | `default=` — an elided field materializes it (§3) |
 | a declared `min`/`max`; a compressed float's range; `bits(N)`'s implied range | **meaning** | `min=` / `max=` — §4 holds a load to the reader's bounds |
 | a compressed float's RESOLUTION | **meaning** | `step=` |
@@ -19612,7 +19613,7 @@ record <Name> sizeof=<n> alignof=<n>
     field <id> kind=<n> offset=<n> size=<n> [ frac=<n> ]
         [ type=<Name> | enum=<Name> | union=<Name> ]
         [ elem=<n> ] [ elemkind=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
-        [ bound=<n> ] [ key=<Name> ]
+        [ bound=<n> ] [ countmin=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
         [ total=<n> ]
@@ -19620,6 +19621,11 @@ record <Name> sizeof=<n> alignof=<n>
 
 **The optional tokens appear in that order and only where the fact exists**,
 and they are one line on the wire — the display above is wrapped for reading.
+A counted array always carries `countmin=`, including zero, beside its maximum
+`bound=`. It is separate from an integer element’s `min=` range. The same tail
+applies to general union arms. This is prospective projection form 6: changing a
+count minimum changes message admission/shape even when storage is unchanged.
+Historical form 5 projections and build ids are not recomputed under form 6.
 `frac=` is a fixed field's `F`: the slot holds units × 2^F, so the scale
 is a meaning fact like a bound (§20.1, group 3) and rides beside the kind;
 a fixed field's `default=` is the raw integer its slot holds.
@@ -19823,7 +19829,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 5
+schema-build-version 6
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -19838,12 +19844,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0x482a6d07fc09a843`**. `ShipConfig` gets no
+and the build version is **`0xdf9d79c984aaa892`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xfb3cc9032b967207`**, deliberately not equal to the protocol id, so no
+**`0x2b425f3c41ab10cf`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 
