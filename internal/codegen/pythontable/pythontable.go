@@ -759,9 +759,12 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            json_key=%s,\n", strconv.Quote(ir.TableFieldJsonKey(f)))
 		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
 		fmt.Fprintf(b, "            frac_bits=%d,\n", f.Type.FracBits)
-		fmt.Fprintf(b, "            unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
+		unbounded := f.Type.TextUnbounded()
+		if f.IsTextList() {
+			unbounded = ir.TextListValue(f).Type.TextUnbounded()
+		}
+		fmt.Fprintf(b, "            unbounded=%s,\n", pyBool(unbounded))
 		fmt.Fprintf(b, "            json_text_list=%s,\n", pyBool(f.IsTextList()))
-		fmt.Fprintf(b, "            json_text_total=%d,\n", f.TextTotal)
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			fmt.Fprintf(b, "            json_variants=%s,\n", pythonJSONNames(ref.Variants))

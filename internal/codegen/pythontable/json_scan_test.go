@@ -1139,7 +1139,8 @@ table Root {
 	probe := pyrun.ImportPrelude + `from jsontextlist import Root, Refused
 text = '{\n  "words": [\n    "one",\n    "two"\n  ]\n}'
 value = Root.from_json(text)
-assert [entry.value for entry in value.words] == ['one', 'two']
+assert value.words == ['one', 'two']
+assert Root.load(value.save()).words == value.words
 assert value.to_json() == text + '\n'
 for bad in ('{"words":["123456789"]}', '{"words":["12345678","12345"]}'):
     try:
@@ -1147,6 +1148,68 @@ for bad in ('{"words":["123456789"]}', '{"words":["12345678","12345"]}'):
     except Refused:
         continue
     raise AssertionError('accepted ' + bad)
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe)}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
+func TestPythonJsonNullableTextList(t *testing.T) {
+	t.Parallel()
+	const schema = `package jsonoptionaltext
+ table Root { words []?string(8) | total = 3 }`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from jsonoptionaltext import Root, Refused, InvalidValue
+value = Root.from_json('{"words":[null,"é","a"]}')
+assert value.words == [None, 'é', 'a']
+assert Root.load(value.save()).words == value.words
+assert Root.from_json(value.to_json()).words == value.words
+try:
+    Root.from_json('{"words":["é","é"]}')
+except Refused: pass
+else: raise AssertionError('accepted excess UTF-8 byte total')
+value.words = ['é', 'é']
+try:
+    value.to_json()
+except InvalidValue: pass
+else: raise AssertionError('wrote excess UTF-8 byte total')
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe)}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
+func TestPythonJsonUnboundedNullableTextList(t *testing.T) {
+	t.Parallel()
+	const schema = `package jsonunboundedtext
+ table Root { words []?string }`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from jsonunboundedtext import Root
+text = 'é' * 300
+value = Root.from_json('{"words":[null,"' + text + '"]}')
+assert value.words == [None, text]
+assert Root.load(value.save()).words == value.words
+assert Root.from_json(value.to_json()).words == value.words
 print('ok')
 `
 	inputs := map[string][]byte{"main.py": []byte(probe)}
