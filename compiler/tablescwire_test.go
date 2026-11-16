@@ -430,6 +430,18 @@ int main(void) {
  CHECK(!root_from_json(&value,second,(int64_t)strlen(second),&report));
  CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH);
  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
+ // Each domain gets its own document so an earlier small field cannot mask it.
+ const char * outside[]={"{\"bounded\":\"-1\"}","{\"bounded\":\"18446744073709551616\"}","{\"debt\":\"9223372036854775808\"}","{\"debt\":\"-9223372036854775809\"}"};
+ for (size_t i=0;i<sizeof(outside)/sizeof(outside[0]);i++) {
+  memset(&report,0,sizeof(report));
+  CHECK(!root_from_json(&value,outside[i],(int64_t)strlen(outside[i]),&report));
+  CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
+ }
+ const char * edges="{\"small\":255,\"bounded\":\"18446744073709551615\",\"debt\":\"-9223372036854775808\"}";
+ memset(&report,0,sizeof(report));
+ CHECK(root_from_json(&value,edges,(int64_t)strlen(edges),&report));
+ CHECK(!report.refused && value.small==255 && value.bounded==UINT64_MAX && value.debt==INT64_MIN);
  return 0;
 }
 `)
