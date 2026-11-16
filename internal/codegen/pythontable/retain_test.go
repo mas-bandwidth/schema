@@ -96,10 +96,10 @@ def resolved(kind, payload, cap=128):
     store=bytearray(cap)
     end=_resolve_payload(kind,memoryview(payload),ids,memoryview(store))
     return bytes(store[:end])
-assert resolved(13,bytes([4,1,30,2,0])) == u32(25)+u32(0)+u64(ids[0])+bytes([30])+u64(ids[1])+u64(0)
+assert resolved(13,bytes([4,1,30,2,0])) == u32(25)+u32(0)+u64(ids[0])+bytes([30])+u64(ids[1])+u64(0xffffffffffffffff)
 assert resolved(14,bytes([4,30,2,1,2])) == u32(18)+u32(0)+bytes([30,2])+u64(ids[0])+u64(ids[1])
 assert resolved(16,bytes([8,4,1,1,4,1,2,3,4])) == u32(22)+u32(0)+bytes([4,1])+u64(ids[0])+u32(4)+u32(0)+bytes([1,2,3,4])
-assert resolved(15,bytes([1,13,1,0])) == u64(ids[0])+bytes([13])+u32(8)+u32(0)+u64(0)
+assert resolved(15,bytes([1,13,1,0])) == u64(ids[0])+bytes([13])+u32(8)+u32(0)+u64(0xffffffffffffffff)
 assert resolved(12,bytes([3,97,98,99])) == bytes([3,97,98,99])
 # Re-interning swaps the two references while keeping the values' ids intact.
 for kind, payload, want in [
@@ -2040,4 +2040,69 @@ print('selected-retain')
 			t.Fatalf("selected retain mypy: %v\n%s", err, out)
 		}
 	}
+}
+
+const retainZeroIDProbe = `from probe import Root, TableRetain, LoadReport
+
+def wire(kind, payload, ids):
+    return bytes([1,1,kind])+payload+bytes([0])+b''.join(x.to_bytes(8,'little') for x in ids)+len(ids).to_bytes(8,'little')
+def check(data):
+    plain=LoadReport(); Root.load(data,plain); assert plain.unknown==1
+    keep=TableRetain(bytearray(2048),bytearray(24*16)); report=LoadReport()
+    value=Root.load_retain(data,keep,report)
+    assert (report.unknown,report.retained,report.retain_lost)==(1,1,0)
+    assert value.measure_retain(keep)==len(data), 'zero-id-not-preserved'
+    assert value.save_retain(keep,report)==data, 'zero-id-not-preserved'
+
+# Exact retained fuzz mutant: the field's ID-table entry is hash zero.
+check(bytes.fromhex('01010e0e04030300000011000000fbffffff0000000000000000000100000000000000'))
+foreign=0x123456789abcdef0
+# None is reference zero; a nonzero reference to hash zero is a value.
+check(wire(30,bytes([0]),[foreign]))
+check(wire(30,bytes([2]),[foreign,0]))
+check(wire(15,bytes([0]),[foreign]))
+check(wire(15,bytes([2,4,4,1,0,0,0]),[foreign,0]))
+# The same distinction inside a nested field and a keyed slot.
+check(wire(13,bytes([7,2,4,1,0,0,0,0]),[foreign,0]))
+check(wire(16,bytes([8,4,1,2,4,1,0,0,0]),[foreign,0]))
+print('zero-id-preserved')
+`
+
+func testRetainZeroID(t *testing.T, sabotage bool) {
+	t.Helper()
+	u := loadUnit(t, "package probe\ntable Root { n int32 }\n")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sabotage {
+		path := "probe/_schema/retain.py"
+		old := "sink.varint(0 if identity == _NULL_ID else intern(identity))"
+		source := string(files[path])
+		if strings.Count(source, old) != 1 {
+			t.Fatal("zero-ID sabotage anchor missing")
+		}
+		files[path] = []byte(strings.Replace(source, old, "sink.varint(0 if identity == 0 else intern(identity))", 1))
+	}
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + retainZeroIDProbe)})
+		if sabotage {
+			if err == nil || !strings.Contains(stderr, "zero-id-not-preserved") {
+				t.Fatalf("zero-ID sabotage not detected: %v\n%s\n%s", err, out, stderr)
+			}
+		} else if err != nil || strings.TrimSpace(out) != "zero-id-preserved" {
+			t.Fatalf("zero-ID read: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+func TestPythonRetainZeroIDField(t *testing.T) {
+	slowtest.Gate(t, "both pinned Python interpreters")
+	testRetainZeroID(t, false)
+}
+func TestPythonRetainZeroIDNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "both pinned Python interpreters")
+	testRetainZeroID(t, true)
 }
