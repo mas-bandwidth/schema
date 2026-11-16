@@ -27085,8 +27085,9 @@ inline bool SceneCookBody( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !table_cook_ref( region, at + 56, (const void *) SettingsAt( ctx, value.settings ), order ) ) { return false; } // settings
     if ( !table_cook_ref( region, at + 64, (const void *) ListNodeAt( ctx, value.alias ), order ) ) { return false; } // alias
     if ( !LayerCookBody( ctx, region, at + 72, value.ground, order ) ) { return false; }
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.layers_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.layers_count; i++ )
     {
         if ( !LayerCookBody( ctx, region, at + 88 + i * 16, value.layers[i], order ) ) { return false; }
     }

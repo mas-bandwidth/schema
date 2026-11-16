@@ -23591,8 +23591,9 @@ inline bool RangedSignedCookBody( uint8_t * at, const RangedSigned & value, Tabl
     table_cook_put( at + 40, (uint64_t) value.i64_low, 8, order );
     table_cook_put( at + 48, (uint64_t) value.i64_high, 8, order );
     table_cook_put( at + 56, (uint64_t) value.i64_inside, 8, order );
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.edges_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.edges_count; i++ )
     {
         table_cook_put( at + 64 + i * 2, (uint64_t) value.edges[i], 2, order );
     }
@@ -23618,8 +23619,9 @@ inline bool RangedUnsignedCookBody( uint8_t * at, const RangedUnsigned & value, 
     table_cook_put( at + 40, (uint64_t) value.u64_low, 8, order );
     table_cook_put( at + 48, (uint64_t) value.u64_high, 8, order );
     table_cook_put( at + 56, (uint64_t) value.u64_inside, 8, order );
-    // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 4; i++ )
+    // 4 slots of storage, value.counts_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.counts_count; i++ )
     {
         table_cook_put( at + 64 + i * 8, (uint64_t) value.counts[i], 8, order );
     }

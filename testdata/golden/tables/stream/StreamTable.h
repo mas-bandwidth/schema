@@ -15862,7 +15862,8 @@ inline bool ChunkCookBody( const Ctx & ctx, const TableCookRegion & region, uint
     table_cook_bytes( at + 0, value.data, value.data_length, 8 );
     table_cook_put( at + 8, (uint64_t) (uint32_t) value.data_length, 4, order );
     if ( !table_cook_ref( region, at + 16, (const void *) ChunkAt( ctx, value.next ), order ) ) { return false; } // next
-    for ( int32_t i = 0; i < 2; i++ ) // links: an array of pointers, every slot
+    schema_assert( value.links_count >= 0 && value.links_count <= 2 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.links_count; i++ ) // links: an array of pointers, the live slots, the rest zero
     {
         if ( !table_cook_ref( region, at + 24 + i * 8, (const void *) ChunkAt( ctx, value.links[i] ), order ) ) { return false; }
     }
@@ -15893,7 +15894,8 @@ inline bool FeedCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
             default: break; // every byte outside the set arm stays zero
         }
     }
-    for ( int32_t i = 0; i < 4; i++ ) // parts: an array of pointers, every slot
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 4 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.parts_count; i++ ) // parts: an array of pointers, the live slots, the rest zero
     {
         if ( !table_cook_ref( region, at + 64 + i * 8, (const void *) ChunkAt( ctx, value.parts[i] ), order ) ) { return false; }
     }
