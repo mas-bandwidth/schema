@@ -57,12 +57,13 @@ func TestPythonBlockRead(t *testing.T) {
 				t.Fatal(err)
 			}
 			root := pyBlockRoot(t, want)
-			probe := pyrun.ImportPrelude + fmt.Sprintf(`import blockdemo
+			probe := pyrun.ImportPrelude + fmt.Sprintf(`from pathlib import Path
+import blockdemo
 from blockdemo._schema import block as B
 
 root = %q
 version = blockdemo.BUILD_VERSION
-data = open("block", "rb").read()
+data = Path("block").read_bytes()
 handle = B.BlockOpen(blockdemo, root, data, version)
 import sys
 sys.stdout.write(B.Dump(handle))
@@ -96,13 +97,14 @@ func TestPythonBlockReadNativeOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := pyrun.ImportPrelude + `import sys
+from pathlib import Path
 import blockdemo
 from blockdemo._schema import block as B
 
 host = 1 if sys.byteorder == "little" else 2
 if B.BYTE_ORDER != host:
     raise SystemExit("the block runtime's byte order is not this host's")
-data = open("block", "rb").read()
+data = Path("block").read_bytes()
 handle = B.BlockOpen(blockdemo, "RenderFrame", data, blockdemo.BUILD_VERSION)
 print("native-order-ok", len(B.Dump(handle)) > 0)
 `
@@ -130,13 +132,14 @@ func TestPythonBlockReadOppositeOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := pyrun.ImportPrelude + fmt.Sprintf(`import sys
+from pathlib import Path
 import blockdemo
 from blockdemo import Refused
 from blockdemo._schema import block as B
 
 MAGIC = 0x4b4c42414d484353
 version = 0x%016x
-base = open("block", "rb").read()
+base = Path("block").read_bytes()
 other = "big" if sys.byteorder == "little" else "little"
 foreign = MAGIC.to_bytes(8, other) + base[8:]
 try:
@@ -179,12 +182,13 @@ func TestPythonBlockReadDamaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := pyrun.ImportPrelude + fmt.Sprintf(`import sys
+from pathlib import Path
 import blockdemo
 from blockdemo import Refused
 from blockdemo._schema import block as B
 
 version = 0x%016x
-base = open("block", "rb").read()
+base = Path("block").read_bytes()
 
 def patch(data, off, width, value):
     out = bytearray(data)
@@ -280,12 +284,13 @@ func TestPythonBlockReadNegativeControls(t *testing.T) {
 			writeTree(t, dir, files)
 			if tc.mode == "refusals" {
 				probe := pyrun.ImportPrelude + fmt.Sprintf(`import sys
+from pathlib import Path
 import blockdemo
 from blockdemo import Refused
 from blockdemo._schema import block as B
 
 version = 0x%016x
-base = open("block", "rb").read()
+base = Path("block").read_bytes()
 
 def patch(data, off, width, value):
     out = bytearray(data)
@@ -320,10 +325,11 @@ print("block-refusals-ok")
 			}
 			root := pyBlockRoot(t, want)
 			probe := pyrun.ImportPrelude + fmt.Sprintf(`import sys
+from pathlib import Path
 import blockdemo
 from blockdemo._schema import block as B
 
-handle = B.BlockOpen(blockdemo, %q, open("block", "rb").read(), 0x%016x)
+handle = B.BlockOpen(blockdemo, %q, Path("block").read_bytes(), 0x%016x)
 sys.stdout.write(B.Dump(handle))
 `, root, ir.BuildVersion(u))
 			got := pyBlockRunBoth(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
