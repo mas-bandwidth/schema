@@ -48,6 +48,11 @@ def _graph_eq(a: Any, b: Any) -> bool:
             if x != y:
                 return False
             continue
+        if type(x) is list or type(x) is dict:
+            pair = (id(x), id(y))
+            if pair in assumed:
+                continue
+            assumed.add(pair)
         slots = _fields(x)
         if slots is not None:
             pair = (id(x), id(y))
