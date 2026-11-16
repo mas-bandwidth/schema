@@ -1551,6 +1551,13 @@
       "rust": "stable"
     },
     {
+      "name": "rust-nested-union",
+      "when": "pull-request",
+      "why": "The exact nested arm boundary and its omission control run natively; measured pair 1.396s on Intel Linux.",
+      "targets": ["tables-rust-nested-union-negative-control"],
+      "rust": "stable"
+    },
+    {
       "name": "rust-conformance-framing",
       "when": "pull-request",
       "why": "Since 2026-11-14 the byte-order, order-word, node-label and cook-layout controls only: the framing control is in rust-conformance-framing-control and the absence control in rust-conformance-absent (the six ran 213-224 s on AWS runners). Before: the Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8) and per-case absence control (docs/PORTING.md I4), with the byte-order, order-word, node-label and cook-layout 3.0.0 proof controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 58 s of control time over the 6 controls on vision (framing 9 s, absent 12 s, byte-order 7 s, order-word 11 s, node-label 15 s, cook-layout 6 s).",
@@ -1560,6 +1567,13 @@
         "tables-rust-node-label-negative-control",
         "tables-rust-cook-layout-negative-control"
       ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-unused-ids",
+      "when": "pull-request",
+      "why": "Native unused-ID census proofs include all reference sites, bounded union depth, standalone diagnostics and two omission controls.",
+      "targets": ["tables-rust-unused-ids-negative-control"],
       "rust": "stable"
     },
     {
