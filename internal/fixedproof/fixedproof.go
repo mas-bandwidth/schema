@@ -1481,8 +1481,49 @@ int main( int argc, char ** argv )
 //   - verifies leg FixedLoad(cppBytes) + FixedSave equals cppBytes byte-for-byte
 //   - verifies C++ FixedLoad(legBytes) + FixedSave equals legBytes byte-for-byte
 func RunValueSuite(t *testing.T, runner LegRunner) {
+	runValueRows(t, runner, nil)
+}
+
+// RunValueRows runs only the requested value rows, retaining the full suite's
+// C++ oracle and round-trip assertions.
+func RunValueRows(t *testing.T, runner LegRunner, rows ...string) {
+	t.Helper()
+	selected, err := selectValueRows(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runValueRows(t, runner, selected)
+}
+
+// selectValueRows rejects empty, repeated and unknown row names before a suite
+// can pass without exercising its intended rows.
+func selectValueRows(rows []string) (map[string]bool, error) {
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no fixed proof rows selected")
+	}
+	valid := make(map[string]bool)
+	for _, tc := range Cases() {
+		valid[tc.ID] = true
+	}
+	selected := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if !valid[row] {
+			return nil, fmt.Errorf("unknown fixed proof row %q", row)
+		}
+		if selected[row] {
+			return nil, fmt.Errorf("duplicate fixed proof row %q", row)
+		}
+		selected[row] = true
+	}
+	return selected, nil
+}
+
+func runValueRows(t *testing.T, runner LegRunner, selected map[string]bool) {
 	SetMemoryCeiling(t)
 	for _, tc := range Cases() {
+		if selected != nil && !selected[tc.ID] {
+			continue
+		}
 		t.Run(tc.ID, func(t *testing.T) {
 			t.Parallel()
 			u := ParseCheckUnit(t, tc.Schema)
@@ -1520,8 +1561,25 @@ func RunValueSuite(t *testing.T, runner LegRunner) {
 // negative control across all 49 rows of Cases() under a hard 2 GiB memory
 // ceiling.
 func RunNegativeControlSuite(t *testing.T, runner LegRunner) {
+	runNegativeControlRows(t, runner, nil)
+}
+
+// RunNegativeControlRows runs both existing controls on each selected row.
+func RunNegativeControlRows(t *testing.T, runner LegRunner, rows ...string) {
+	t.Helper()
+	selected, err := selectValueRows(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runNegativeControlRows(t, runner, selected)
+}
+
+func runNegativeControlRows(t *testing.T, runner LegRunner, selected map[string]bool) {
 	SetMemoryCeiling(t)
 	for _, tc := range Cases() {
+		if selected != nil && !selected[tc.ID] {
+			continue
+		}
 		t.Run(tc.ID, func(t *testing.T) {
 			t.Parallel()
 			u := ParseCheckUnit(t, tc.Schema)
