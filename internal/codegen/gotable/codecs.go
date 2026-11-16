@@ -663,6 +663,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
+	minimum := "0"
+	if f.Array == ir.ArrayCounted {
+		minimum = strconv.FormatInt(f.ArrayMin, 10)
+	}
 
 	elemSize := fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s))", g.storageName(st.Name), name)
 	if isArray && !f.IsList() && !f.IsMap() {
@@ -821,8 +825,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	}
 	g.pf("\t{Name: %q, Json: %q, TypeName: %q, DeclaredTypeName:%q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v,\n",
 		f.Name, json, tableFieldTypeName(f), ir.TableTypeSpelling(f), id, kind, isArray, counted, f.Type.Optional)
-	g.pf("\t\tArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
-		bound, offset, elemSize, countOffset, presentOffset)
+	g.pf("\t\tArrayMin: %s, ArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
+		minimum, bound, offset, elemSize, countOffset, presentOffset)
 	if g.viewPacket == nil {
 		g.emitCookFieldColumns(st, f)
 	}
