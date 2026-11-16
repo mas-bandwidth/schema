@@ -44,6 +44,7 @@ class FieldDesc:
         "elem_align",
         "name",
         "json_key",
+        "required",
         "frac_bits",
         "json_variants",
         "json_keys",
@@ -117,6 +118,7 @@ class FieldDesc:
     elem_align: int
     name: str
     json_key: str
+    required: bool
     frac_bits: int
     json_variants: tuple[str, ...]
     json_keys: tuple[str, ...]
@@ -190,6 +192,7 @@ class FieldDesc:
         kind: int,
         codec: str,
         json_key: str = "",
+        required: bool = False,
         frac_bits: int = 0,
         json_variants: tuple[str, ...] = (),
         json_keys: tuple[str, ...] = (),
