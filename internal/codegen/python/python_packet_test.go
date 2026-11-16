@@ -200,12 +200,8 @@ func itemsBlocker(u *ir.Unit, items []ir.Item, seen map[string]bool) string {
 			if k := itemsBlocker(u, item.Else, seen); k != "" {
 				return k
 			}
-		case *ir.ConstItem:
-			return "const"
-		case *ir.ReservedItem:
-			return "reserved"
-		case *ir.AlignItem:
-			return "align"
+		case *ir.ConstItem, *ir.ReservedItem, *ir.AlignItem:
+			// carried by the packet layout emitters
 		}
 	}
 	return ""
@@ -471,7 +467,7 @@ func TestPythonPacketCore(t *testing.T) {
 			base := pruned.DeclFile[pin.root]
 			intField, boolField, intMin, intMax := topLevelFields(pruned, pin.root)
 			probe := packetProbe(pruned, pin.root, base, intField, boolField, intMin, intMax)
-			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
+			pinBytes, err := os.ReadFile(pinFile(root, pin.name))
 			if err != nil {
 				t.Fatal(err)
 			}
