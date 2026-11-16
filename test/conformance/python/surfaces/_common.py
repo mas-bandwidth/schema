@@ -34,8 +34,8 @@ def absent(outdir, name, reason):
     write_bytes(outdir, name + ".absent", str(reason).encode("utf-8"))
 
 
-def unit_package(key):
-    unitdir = os.path.join(ROOT, key)
+def unit_package(key, tree=None):
+    unitdir = os.path.join(ROOT if tree is None else tree, key)
     if not os.path.isdir(unitdir):
         return None
     for name in sorted(os.listdir(unitdir)):
@@ -49,8 +49,8 @@ def unit_package(key):
     return None
 
 
-def root_class(unit, root):
-    package = unit_package(unit)
+def root_class(unit, root, tree=None):
+    package = unit_package(unit, tree)
     if package is None:
         return None
     return getattr(package, root, None)
