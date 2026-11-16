@@ -121,6 +121,10 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 	for _, name := range pythonCIShapeRows(t) {
 		wantShapes["python-fixed-proof-shapes-"+name] = 0
 	}
+	wantSuite := map[string]int{}
+	for _, name := range pythonCIFixedSuiteRows(t) {
+		wantSuite["python-fixed-form-proof-"+name] = 0
+	}
 	for _, row := range rows {
 		if strings.HasPrefix(row.Target, "python-fixed-proof-shapes") {
 			if _, exists := wantShapes[row.Target]; !exists {
@@ -129,8 +133,15 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 				wantShapes[row.Target]++
 			}
 		}
+		if strings.HasPrefix(row.Target, "python-fixed-form-proof") {
+			if _, exists := wantSuite[row.Target]; !exists {
+				t.Errorf("unmatched or monolithic fixed suite support row %s", row.Target)
+			} else {
+				wantSuite[row.Target]++
+			}
+		}
 		if strings.HasSuffix(row.Package, "/internal/codegen/pythontable") {
-			for _, name := range []string{"TestPythonFixedProofShapes", "TestPythonFixedProofShapesText", "TestPythonFixedProofShapesArrayBounds", "TestPythonFixedProofShapesNegativeControl", "TestPythonFixedProofValues", "TestPythonFixedProofValuesNegativeControl", "TestPythonFixedProofValuesTypes", "TestPythonFixedProofValuesReadRules", "TestPythonFixedProofValuesFloatBounds", "TestPythonFixedProofUnionsOptionals"} {
+			for _, name := range []string{"TestPythonFixedProofShapes", "TestPythonFixedProofShapesText", "TestPythonFixedProofShapesArrayBounds", "TestPythonFixedProofShapesNegativeControl", "TestPythonFixedProofValues", "TestPythonFixedProofValuesNegativeControl", "TestPythonFixedProofValuesTypes", "TestPythonFixedProofValuesReadRules", "TestPythonFixedProofValuesFloatBounds", "TestPythonFixedProofUnionsOptionals", "TestPythonFixedProofSuite"} {
 				matched, err := regexp.MatchString("^"+row.Test+"$", name)
 				if err != nil || matched {
 					t.Errorf("delegated shape test %s reintroduced in package shard %+v: %v", name, row, err)
@@ -143,6 +154,11 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 			t.Errorf("shape support %s appears %d times, want exactly once", name, count)
 		}
 	}
+	for name, count := range wantSuite {
+		if count != 1 {
+			t.Errorf("fixed suite support %s appears %d times, want exactly once", name, count)
+		}
+	}
 	wf, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/python-leg.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -153,15 +169,67 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 			t.Errorf("corpus producer lacks %q", want)
 		}
 	}
-	consumer := jobs["test"]
-	for _, want := range []string{"needs: [plan, fixed-corpus]", "sh tools/python-ci-corpus.sh restore", "if: matrix.corpus", "--old-file=build/fixedform-corpus/.stamp", "--old-file=build/conformance-python"} {
-		if !strings.Contains(consumer, want) {
-			t.Errorf("consumer lacks %q", want)
+	required := []string{"needs: [plan, fixed-corpus]", "make serialize-siblings", "python-fixed-corpus-${{ github.sha }}", "sh tools/python-ci-corpus.sh restore", "if: matrix.corpus", "CORPUS: ${{ matrix.corpus }}", "--old-file=build/fixedform-corpus/.stamp", "--old-file=build/conformance-python"}
+	valid := func(consumer string) bool {
+		for _, want := range required {
+			if !strings.Contains(consumer, want) {
+				return false
+			}
+		}
+		return strings.Index(consumer, "sh tools/python-ci-corpus.sh restore") < strings.Index(consumer, "run the selected complete-leg slice")
+	}
+	for _, name := range []string{"test", "test-second"} {
+		consumer := jobs[name]
+		if !valid(consumer) {
+			t.Errorf("%s lacks the producer dependency, staging or ordered corpus restore", name)
+		}
+		if valid(strings.Replace(consumer, "needs: [plan, fixed-corpus]", "needs: plan", 1)) || valid(strings.Replace(consumer, "sh tools/python-ci-corpus.sh restore", "true", 1)) {
+			t.Errorf("%s corpus omission control escaped the guard", name)
 		}
 	}
-	if strings.Index(consumer, "sh tools/python-ci-corpus.sh restore") > strings.Index(consumer, "run the selected complete-leg slice") {
-		t.Fatal("reference corpus is restored after the tests")
+}
+
+// pythonCIFixedSuiteRows reads the real suite's selected evolution rows, not
+// the independently maintained Make partition.
+func pythonCIFixedSuiteRows(t *testing.T) []string {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(repoRoot(t), "internal/codegen/pythontable/fixed_proof_suite_test.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
+	var rows []string
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "TestPythonFixedProofSuite" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "RunEvolutionRows" {
+				return true
+			}
+			for _, arg := range call.Args[3:] {
+				literal, ok := arg.(*ast.BasicLit)
+				if !ok {
+					t.Fatal("fixed suite row is not a literal")
+				}
+				value, err := strconv.Unquote(literal.Value)
+				if err != nil || value == "" || slices.Contains(rows, value) {
+					t.Fatalf("invalid or duplicate fixed suite row %q: %v", literal.Value, err)
+				}
+				rows = append(rows, value)
+			}
+			return false
+		})
+	}
+	if len(rows) == 0 {
+		t.Fatal("fixed suite row selection not found")
+	}
+	return rows
 }
 
 func TestPythonCICorpusProvenanceAndDamageControls(t *testing.T) {
