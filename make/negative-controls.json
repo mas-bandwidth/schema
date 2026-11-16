@@ -3216,6 +3216,13 @@
       ]
     },
     {
+      "name": "c-message-flags-domain",
+      "when": "pull-request",
+      "seconds": 55,
+      "why": "Native debug and release legal/full-width message masks plus debug writer assertion omission; measured full make control54.65s on Intel Linux.",
+      "targets": ["tables-c-message-flags-domain-negative-control"]
+    },
+    {
       "name": "base-c-write-refusal-a",
       "when": "nightly",
       "why": "RELAXED 2026-11-14 (maintainer: get main green): moved from the pull-request tier to the nightly, unchanged and at full strength, because the job's median wall was 116 s over four CI full runs on 2026-11-13/14 (runs 43478876654, 43605193716, 43605777296, 43606021116), past the 110 s per-commit budget; re-enable: relax/ci-time-base-c-write-refusal-a. Before: slice 1 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal-fixed 287 s.",

@@ -5070,6 +5070,8 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body(bench_table_bit_wr
  { /* damage */
  if(!(value->damage == 0)) {
   bench_table_bit_put(w,42,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert(((uint64_t)(value->damage) >> 8) == 0);
+  /* message flags domain, debug only (§5.1) */
   bench_table_bit_put(w,(uint64_t)(value->damage)-UINT64_C(0),8);
  }
  }
