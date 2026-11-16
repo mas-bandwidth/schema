@@ -1,6 +1,16 @@
 # The message-form golden and its generated-runtime negative control.
 # Runtime files are embedded by the compiler; a runtime edit must rebuild the
 # conformance compiler before a surface is compared.
+# Each local test-python prerequisite is represented in the CI matrix. Surface
+# rows use the fixed-corpus prefix so the planner restores the generated units
+# and live C++ reference before invoking the exact same local targets.
+PYTHON_CI_SUPPORT_GROUPS += python-message python-message-negative-control \
+    python-message-write-negative-control python-message-crc-negative-control \
+    python-message-onesided-negative-control python-message-substitution-negative-control \
+    python-fixed-message-conformance python-fixed-message-surface-negative-control
+.PHONY: python-fixed-message-conformance python-fixed-message-surface-negative-control
+python-fixed-message-conformance: python-message-conformance
+python-fixed-message-surface-negative-control: python-message-surface-negative-control
 build/schema-python: $(shell find internal/codegen/pythontable/runtime/_schema -type f)
 .PHONY: python-message python-message-negative-control
 python-message: python-toolchain-check deps-go
