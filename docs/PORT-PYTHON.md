@@ -272,11 +272,13 @@ per unit, named for the unit's package:
 
 | file | what it is |
 |---|---|
-| `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
+| `compiler/target_python.go` | the built-in target; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
 | `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
+| `internal/codegen/pythontable/runtime/_schema/block.py` | the block form's read side: Open, its refusals, and the descriptor-only row dump |
+| `internal/codegen/pythontable/runtime/_schema/blockbuild.py` | the block form's builder: Begin, BlockMaxBytes and BlockBytes |
 | `internal/codegen/pythontable` | the table surface's emitter and codec, from the table layers (P5) |
 | `internal/tablenames/python.go` | the table runtime's claimed names, from the table layers (P5) |
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
@@ -289,41 +291,114 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_table.py` and
-  `kind_pointer.py` register the kinds this cut carries. A later card adds its
-  module and one registration
-  line, never an edit to the body walk. `kind_unsupported.py` is the named
-  placeholder for a construct whose descriptor exists but whose codec has not
-  landed; a read or write that reaches it refuses by name.
+  each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
+  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_optional.py`,
+  `kind_table.py` and `kind_pointer.py`; the directory is the list). A later
+  card adds its module and one registration line in it, never an edit to the
+  body walk; `kinds.py` imports every `kind_*.py` itself, so no other file
+  names a new module. A kind that wraps another names the wrapped codec in the
+  descriptor's `inner`. `kind_unsupported.py` is the named placeholder for a
+  construct whose descriptor exists but whose codec has not landed; a read or
+  write that reaches it refuses by name.
 - **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
   the whole value or raise `Refused`, validate a write before writing a byte
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
   `LoadReport` on success only. `Measure` runs the same walk into a counting
-  sink, so measure and save agree by construction.
-- **The shape is measured.** A table whose fields are all bools and integers
-  gets the straight-line generated save/load pair, unrolled with each field
-  descriptor bound to a local; every table, and every construct a later card
-  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
-  on the same table, under both pinned interpreters, in
-  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
-  straight-line pair is kept: its save is faster on both pins, and its load is
-  faster on the floor.
-- **Maps are dicts, written sorted.** A `map[K]V` is a `dict` born empty; the
-  save writes its entries in ascending key order (text by its UTF-8 bytes,
-  integers by value), and the read refuses a descending or a repeated key as
-  `Refused("wire_damaged")`, because no conforming writer emits either. A
-  request that does not arrive in that order is not a map this leg accepts;
-  the whole read refuses and returns nothing. `kind_map.py` owns the entry
-  framing, the sort and the order check.
-- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
-  by-value tables, `*T` pointers to tables and `map[K]V` for the base key and
-  value kinds, for both the fixed and the variable class. `*bytes`, `*string`,
-  `?T`, `[]T`, `[E]T`, `?map[K]V` and unions with table arms have descriptors
-  in this cut and refuse by name through `kind_unsupported.py` until their
-  cards land.
-- **A packet-typed field is refused by name.** A table field whose type is a
-  packet `type` reaches `refusePacketValues` and is refused naming the field
-  and the type, until P4 carries packet types into tables.
+  sink, so measure and save agree by construction. A by-value table writes its
+  own field id before its body's ids, so a nested table's id table is the
+  reference's first-use order and a read-then-write is its bytes.
+- **Optional fields are presence.** `?T` is carried over the base kinds (bool,
+  bits, the full-width integers, floats and by-value tables), at every depth: `None` is
+  absent and writes no field, and an absent value owns no node, because the
+  save's numbering follows an optional's edges only when its value is present.
+  A present value ALWAYS rides, its default included, through the inner kind
+  the descriptor names; a read sets the field only when it rode and leaves it
+  `None` otherwise, so "absent" and "present and default" stay two values.
+  `?T` over a VARIABLE closure (a by-value T that holds a `*T`, SPEC-TABLES
+  §2.3's optional-variable-closure) is carried and registered at the compiler
+  (`compiler/carries_python_optional.go`): T's pointers are numbered only when
+  T is present, so a node one present T and another field both name rides
+  once, and a T made absent while it still holds a pointer writes no stale
+  node.
+- **Optional arrays are the array framing behind presence.** `?[N]T`,
+  `?[..N]T` and `?[Min..N]T` over bool, the integers, bits, floats and by-value tables
+  (the by-value `?[N]T` of a T that holds a pointer included) are carried by
+  `kind_optional.py`, with `inner` "array" and the element's own descriptor in
+  `elem`: an absent array (`None`) writes no field; a present list ALWAYS rides
+  as the kind-14 body (element kind, count, elements), a counted array at count
+  zero and a fixed array whole, so "present and empty" and "absent" stay two
+  values. A read refuses a foreign element kind (`kind_mismatch`), a count past
+  the bound (`count_over_bound`) and a damaged body (`wire_damaged`), and pads
+  a shorter fixed array with the element's defaults; a write refuses a value
+  that is not a list, a fixed array of the wrong length, a count outside
+  [Min, N] and an invalid element, by its path (`pairs[0].a`). The target
+  joins the optional-array carriers (`compiler/tablesoptionalarrays.go`). An
+  optional array of an element kind this cut does not carry keeps
+  `inner` "unsupported" and refuses by name.
+- **The shape is measured.** A table whose fields are all carried kinds and
+  that holds no map gets the straight-line generated root save/load pair,
+  unrolled with each field descriptor and codec bound to a local and any
+  field-guard condition emitted inline; nested bodies, node records, a table
+  holding a map and a table holding an uncarried placeholder keep the
+  descriptor walk over `_schema/kinds.py`. The two shapes run on the same
+  table, under both pinned interpreters, in `TestPythonTableCoreShapeBench`
+  (internal/codegen/pythontable), and on pointer arrays and guards in
+  `TestPythonVtPointerArraysShapeBench`
+  ([the table pointer arrays](port-python/table-pointer-arrays.md)). The
+  straight-line save is kept: measured at the merge with the rest of the
+  Python leg, it saves in 45,397 ns/op against the descriptor walk's 46,859
+  under 3.15.2 and in 44,984 against 46,382 under 3.11.18. The generated load
+  for these tables is the runtime's whole-file read (`load_table`), the same
+  read the descriptor walk uses, because the merged reader owns the pointer
+  graph and the non-finite and unknown-record checks; the bench measures that
+  by construction (39,150 against 38,709 on 3.15.2, 44,369 against 43,513 on
+  3.11.18).
+- **Scope.** For both the fixed and the variable class, the runtime carries
+  each construct marked carried below. One marked refused has a descriptor in
+  this cut and refuses by name through `kind_unsupported.py` until its card
+  lands.
+
+  - bool: carried
+
+  - the full-width integers (8 to 128 bits): carried
+
+  - bits, ranged integers, floats, enums, flags, strings, byte buffers and
+    fixed `[N]T` and counted `[..N]T` arrays of them: carried
+    ([the fixed class](port-python/table-fixed-class.md))
+
+  - by-value tables: carried
+
+  - `*T` pointers to tables: carried
+
+  - pointer arrays `[]*T`, `[N]*T`, `[..N]*T` and `[Min..N]*T`: carried
+    ([the table pointer arrays](port-python/table-pointer-arrays.md))
+
+  - table field guards (`if`, `if !`, `else` and nested `if`): carried
+    ([the table pointer arrays](port-python/table-pointer-arrays.md))
+
+  - `*bytes`: carried ([the table blobs](port-python/table-blobs.md))
+
+  - `*string`: carried ([the table blobs](port-python/table-blobs.md))
+
+  - `?T` over the base kinds, over a variable closure included: carried
+
+  - `?[N]T` and `?[..N]T` over the base kinds: carried
+
+  - `[]T`: carried ([the table unbounded arrays](port-python/table-unbounded.md))
+
+  - `[E]T`: carried ([the table keyed arrays](port-python/table-keyed.md))
+
+  - `map[K]V` for the base key and value kinds: carried
+    ([the table maps](port-python/table-maps.md))
+
+  - `?map[K]V`: refused
+
+  - unions with table arms, and arrays of them: carried
+    ([the table unions](port-python/table-unions.md))
+
+- **A packet-typed field is carried by value.** A packet `type` in a table
+  field, array element, map value or union arm is carried
+  ([the table packet types](port-python/table-packet-types.md)).
 - **The compiler keeps the shared carry checks.** Before table dispatch it
   refuses constructs outside the registered carry set, just as the packet
   target does. The table emitter can describe future codec layers directly;
@@ -347,36 +422,41 @@ together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
 so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
 both shapes to the same value.
 
-### Maps bench
+## THE BLOCK FORM
 
-A table that holds a map is variable, so it never takes the straight-line
-pair: its load and save are the descriptor walk. Inside the walk the map's
-save has two shapes. The first builds an entry object per key and walks it
-through `write_body`; the second writes each entry body straight from the key
-and the value, the same bytes (the key, then the value, each elided at its
-default, then the end mark) without the object. `TestPythonMapShapeBench`
-(internal/codegen/pythontable) times both on a 64-entry `map[uint32]int32`
-and a 16-entry `map[uint16]*Node`, and the load of each, under both pins.
-Each figure is the minimum of five rounds of 2,000 iterations after warm-up,
-taken over six sittings, in microseconds per operation. They were measured on
-a shared fleet bench whose load average stood between 67 and 112 on 16 cores,
-so single sittings swing by up to 2x; the minima are the figures to compare:
+A fixed table has a third projection beside its wire and its cook: the block
+form (docs/SPEC-TABLES.md §19). Nothing declares it. The generated class
+carries its `block` and `block_row` descriptors as constant data built once at
+import from the compiler's own `ir.Blocks` layout; the runtime derives no
+layout of its own.
 
-| operation | 3.15.2 | 3.11.18 |
-|---|---:|---:|
-| scalar map save, direct entry bodies (kept) | 141.1 | 135.9 |
-| scalar map save, entry objects | 162.0 | 155.2 |
-| pointer map save, direct entry bodies (kept) | 73.1 | 67.5 |
-| pointer map save, entry objects | 75.6 | 75.8 |
-| scalar map load | 184.3 | 202.0 |
-| pointer map load | 82.7 | 88.2 |
-
-The direct save is 13% faster on the scalar map under 3.15.2 and 12% under
-3.11.18, and 3% and 11% faster on the pointer map, whose time goes mostly to
-the node table; in 21 of the 24 comparisons across both pins it was the faster
-of the two. `kind_map.py` writes the direct shape. The load reads each entry
-through `read_body`, which holds the unknown-field skip, the repeated-field
-and kind checks and the pointer fix-up in one place, so it has one shape.
+- **Read.** `block.BlockOpen(T, name, data, build_version=None, base_offset=0)`
+  returns a handle or raises `Refused`. It checks the three-word prologue
+  (magic, byte order, build version), then every out-of-line array's pitch,
+  count, offset and extent, then the used extent against the bytes passed, and
+  last the base's alignment. A Python `bytes` object has no address, so
+  `base_offset` is the caller's offset into the buffer the bytes view; a
+  non-zero, non-multiple-of-64 offset is `unaligned_base`. `block.Dump(handle)`
+  is the canonical row dump (testdata/conformance/tables/FORMAT.md), read
+  through the descriptors alone.
+- **Build.** `blockbuild.Begin(T, root, counts=None)` writes the prologue and
+  each array's sixteen-byte `(offset_of, count, stride)` triple, refuses a
+  count outside `[0, maximum]` with `InvalidValue` naming the array, and
+  touches no row. `BlockMaxBytes` is the storage size over the maxima and
+  `BlockBytes` is the used extent. The bytes are a `bytearray`, so a caller
+  may fill rows in place; the base offset is supplied at Open, not stamped by
+  Begin.
+- **The shape is fixed.** The block form has one code shape, the descriptor
+  walk: D1's two shapes are the packet and scalar-table hot paths, and the
+  block read is a pointer walk over generated layout data with no alternative
+  to measure.
+- **The corpus.** `TestPythonBlockRead` reads both committed images
+  (`block_render`, `block_padded`) value for value against Go's dump under
+  both pins; its refusal battery and the builder's byte comparison to the
+  generated Go and live C++ builders live beside it, each with a negative control
+  (`TestPythonBlockReadNegativeControls`, `TestPythonBlockBuilderNegativeControls`).
+- **The surfaces.** The conformance driver answers `block`, `block-foreign`,
+  `block-dump` and `forgery` from the same runtime.
 
 ## IDENTIFIERS
 
@@ -510,13 +590,54 @@ the core stands against the P4 row; the rules of this page are unchanged.
   declaration is emitted now: module constants, the enum and flags classes
   with their name tables, a class per type and per union with every field
   born at its default, `__eq__` by value (a float's bits included) and a
-  readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
-  ranged), enums, flags, types by value, unions, and `if`/`else` branches. A
-  field or item of any other kind (`bits`, `fixed`, `float32`, `float64`,
-  `string`, `bytes`, an array, `const`, `reserved`, `align`, or a 128-bit
-  integer) is refused at generate time by its kind, naming P4 the packet
-  wire. The class surface knows how to birth and compare those kinds already;
-  only their wire emitters are still to come.
+  readable `__repr__`. The codec carries each kind marked carried below. A
+  field or item of a kind marked refused is refused at generate time by its
+  kind, naming P4 the packet wire. The class surface knows how to birth and
+  compare those kinds already; only their wire emitters are still to come.
+
+  - `bool`: carried
+
+  - `int8` to `uint64` (bare or ranged): carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
+
+  - enums: carried
+
+  - flags: carried
+
+  - types by value: carried
+
+  - unions: carried ([the packet unions](port-python/packet-unions.md))
+
+  - `if`/`else` branches: carried
+
+  - `fixed`: carried ([the packet floats](port-python/packet-floats.md))
+
+  - `float32`: carried ([the packet floats](port-python/packet-floats.md))
+
+  - `float64`: carried ([the packet floats](port-python/packet-floats.md))
+
+  - `bits`: carried
+    ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
+
+  - `string`: carried ([the packet text kinds](port-python/packet-text.md))
+
+  - `bytes`: carried ([the packet text kinds](port-python/packet-text.md))
+
+  - fixed `[N]T` and counted `[A..B]T` arrays of a carried element kind:
+    carried ([the packet arrays](port-python/packet-arrays.md)); an array of
+    an uncarried element is refused by its element's kind
+
+  - a keyed `[E]T` array: carried as the positional `[E.Max]T` packet wire; its value remains a plain list when the packet is held by value in a table, whose slots use the table wire's keyed encoding
+  - a list `[]T`: refused
+
+  - `const`: carried ([the packet layout](port-python/packet-layout.md))
+
+  - `reserved`: carried ([the packet layout](port-python/packet-layout.md))
+
+  - `align`: carried ([the packet layout](port-python/packet-layout.md))
+
+  - raw `uint128` and ranged `int128`: carried
+    ([the packet int128](port-python/packet-int128.md))
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and
@@ -527,12 +648,15 @@ the core stands against the P4 row; the rules of this page are unchanged.
   attribute; a union arm may not be named `type`, `read`, `write`, `load`,
   `save` or `descriptor`, the members the generated class defines, or export
   `None_`, `Max` or `NAMES` on `<Union>Type`.
-- **The golden harness reads single-root pins.** A C++-pinned packet golden
-  that is one value with one root type is read and written back; the
-  multi-root concatenations (`clauses`, `joins`, `degenerate`) and the table
-  wire's pins are listed as skipped with the reason. Every packet root whose
-  kinds are all carried is read from its pin and must write back byte for
-  byte; a root blocked by an uncarried kind names that kind.
+- **The golden harness covers the packet corpus pins.** `TestPythonPacketClose`
+  inventories and reads and writes back the single-root and default pins and the multi-root
+  `clauses`, `joins`, and `degenerate` pins under both pinned interpreters.
+  The framed concatenations are checked slice by slice, and `degenerate` is
+  checked through one shared bit stream. The table-wire pin belongs to the
+  table gates. `python-packet-analyzer` checks the complete example,
+  ludicrous, benchmark and defaults generated packages and their runtimes
+  with strict mypy. Each gate has a planted-fault control.
+
 
 ## THE PACKET CORE BENCH
 
@@ -559,64 +683,10 @@ every sitting on both pins, because attribute load and store on `__slots__`
 avoid `getattr`/`setattr` and loop dispatch, so the generator emits it and no
 descriptor walk ships.
 
-## THE PACKET FLOATS
+## THE KIND NOTES
 
-The codec now also carries `float32`, `float64`, the compressed `float32` and
-`fixed(I, F)` / `ufixed(I, F)` (P4's floats, compressed-float and fixed-point
-rows); the core cut's list of refused kinds above no longer includes them.
-Each kind is its own emitter file (`kind_float.go`, `kind_fixed.go`)
-registered in the core's kind table.
-
-- **Reads go through the bit layer alone.** `serialize_float` and
-  `serialize_double` refuse a non-finite pattern by its raw bits
-  (`non_finite_float`); a compressed float is read by
-  `serialize_compressed_float_precomputed`, so serialize.py's own quantizer
-  dequantizes it and refuses an index in the bit headroom; a fixed point field
-  is read by `serialize_fixed`, which refuses an offset past the raw span and
-  reads a zero-bit range as its one value.
-- **Writes validate first, inline.** `_s_validate` holds each float field to
-  `type(v) is float` and a chained range test against the largest finite
-  value of its width (a compressed float: its declared `[min, max]` rounded
-  to float32). A value that passes is finite and in range, so the common case
-  never calls out; one that fails goes to `validate_float32`,
-  `validate_float64` or `validate_compressed_float` in the runtime, which
-  decide exactly (a double just above the largest float32 that rounds down to
-  it is accepted and rides as that float32) and raise `InvalidValue` naming
-  the field. A fixed point field is an `int` held to `[min << F, max << F]`.
-- **The quantizer is the runtime's.** The generator folds only the
-  declaration's constants (the step count, the wire width, the float32
-  `delta` and `min`) into the `_precomputed` call; the runtime checks the
-  tuple against the declaration's shape on every call and does every float32
-  operation of the step index itself.
-
-D1's two shapes were measured for the float hot path on a fleet bench (Linux
-x86_64, a shared bench under other load), on a type of four `float32`, two
-`float64` and two compressed `float32` fields, 100,000 reads and writes after
-a 1,000-iteration warmup, five interleaved sittings per interpreter, in
-µs/op as minimum and median over the sittings:
-
-| interpreter | shape | read min / median | write min / median |
-|---|---|---|---|
-| CPython 3.11.18 | inline check, precomputed compressed (kept) | 23.8 / 27.0 | 29.2 / 30.7 |
-| CPython 3.11.18 | inline check, declaration compressed | 25.6 / 26.8 | 28.9 / 31.5 |
-| CPython 3.11.18 | runtime check on every field | 24.9 / 25.3 | 33.5 / 35.2 |
-| CPython 3.15.2 | inline check, precomputed compressed (kept) | 24.4 / 26.0 | 29.4 / 30.2 |
-| CPython 3.15.2 | inline check, declaration compressed | 24.3 / 26.3 | 30.3 / 32.2 |
-| CPython 3.15.2 | runtime check on every field | 24.2 / 25.3 | 34.3 / 36.6 |
-
-The inline check writes 15–21% faster than a runtime call per field on both
-pins; reads do not validate, so the read columns differ only by noise. The
-precomputed compressed call writes 3–7% faster at the median than the
-declaration call, which re-derives the step count from `(min, max,
-resolution)` on every field. The generator emits the kept shape.
-
-The gates are `TestPythonPacketFloats` (fixture schemas of its own: every
-float kind alone and beside `bool` and `uint8`, its wire laid out
-independently in Go from SPEC §4.3 and written byte for byte; every
-out-of-contract write refused naming the field; every truncated or hostile
-input refused; the C++-pinned goldens whose kinds are all carried, today
-`compressed_probe`, `rigidbody_at_rest` and `rigidbody_moving`), and
-`packet-finite-python` (test/packet-finite/python/main.py under both pins),
-with `packet-finite-python-negative-control`. A golden that also needs a kind
-another packet card carries stays on the harness's skip list, named by that
-kind.
+Each kind a card adds to the packet or the table leg has its own page under
+[port-python/](port-python/), named for its leg and kind
+(`packet-<kind>.md`, `table-<kind>.md`): what the kind carries, its code
+shape and its measured bench numbers. The first is
+[packet-floats.md](port-python/packet-floats.md).

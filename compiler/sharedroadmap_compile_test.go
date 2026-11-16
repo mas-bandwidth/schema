@@ -284,7 +284,7 @@ func sharedPlanLayoutBytes(target, src string) ([]byte, error) {
 	case "lobster":
 		// internal/codegen/lobstertable/fixedform.go: one write_int8_le per
 		// layout byte, index then value, in RowFixedLayoutBytes
-		region = between(src, "def RowFixedLayoutBytes() -> string:", "    return b")
+		region = between(src, "def RowFixedLayoutBytes() -> string:", "    return b·")
 		var out []byte
 		for _, m := range sharedLobsterLayoutByte.FindAllStringSubmatch(region, -1) {
 			v, err := strconv.Atoi(m[1])
@@ -330,7 +330,7 @@ func between(src, start, end string) string {
 
 var sharedPlanHex = regexp.MustCompile(`0x([0-9a-fA-F]{2})`)
 
-var sharedLobsterLayoutByte = regexp.MustCompile(`write_int8_le\(b, \d+, (-?\d+)\)`)
+var sharedLobsterLayoutByte = regexp.MustCompile(`write_int8_le\(b·, \d+, (-?\d+)\)`)
 
 // decodeHexBytes reads every two-digit hex literal in a region, in order.
 func decodeHexBytes(region string) []byte {

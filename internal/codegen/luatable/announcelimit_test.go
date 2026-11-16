@@ -27,7 +27,11 @@ func TestLuaAnnouncementLimitCheckedBeforeCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	announce := readFile(t, filepath.Join(repo, "internal", "ci", "hostilecorpus", "corpus", "inputs", "announcement.bin"))
+	// The engine's own announcement for the unit, which carries the message
+	// closure's vocabulary (tablewire.Announce, docs/SPEC-TABLES.md §3.3).
+	// The hostile corpus's announcement.bin predates the trimmed vocabulary
+	// and is an input to other gates, so it is not the reference here.
+	announce := tablewire.Announce(unit)
 	vocabBytes := ir.TableVocabularyBytes(tablewire.MessageVocabulary(unit))
 	if len(vocabBytes) < 2 {
 		t.Fatal("the examples unit announces no vocabulary")

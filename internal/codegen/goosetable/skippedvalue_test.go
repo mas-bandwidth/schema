@@ -98,7 +98,7 @@ func skippedValueJSONInputs(t *testing.T, rows []jsonRow, inline map[string][]by
 func manyKeys(prefix string, distinct, repeat int) string {
 	var b strings.Builder
 	b.WriteString(prefix)
-	for i := 0; i < distinct; i++ {
+	for i := range distinct {
 		if b.Len() > 0 {
 			b.WriteByte(',')
 		}

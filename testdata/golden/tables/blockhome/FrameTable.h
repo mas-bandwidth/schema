@@ -1431,6 +1431,7 @@ struct TableStrict
     // reach a node: a fixed reader cannot, so a non-null pointer is damage
     bool pointers;
     TableRefuseReason refusal;
+    uint64_t next_ref;
 };
 
 // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4): a framed payload is one
@@ -1448,7 +1449,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -1521,7 +1522,10 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
         uint64_t ref = 0;
         if ( !r.getleb( ref ) ) { return false; }
         if ( ref == 0 ) { return r.offset == n; } // the terminator is the body's last byte (L3)
+        if ( root && s.node_table_present ) { return false; }
         if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; } // F9
+        if ( ref > s.next_ref ) { return false; }
+        if ( ref == s.next_ref ) { s.next_ref++; }
         const uint64_t id = s.ids->at( ref );
         if ( !TableStrictSeen( seen, ref ) ) { return false; } // R5: one field id twice in one body
         if ( !r.has( 1 ) ) { return false; }
@@ -1532,6 +1536,11 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
             if ( !root || kind != 12 ) { return false; }
             uint64_t len = 0;
             if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
+            {
+                TableReader nt( r.buffer + r.offset, (int64_t) len, &ignored, s.ids );
+                uint64_t node_count = 0;
+                if ( !nt.getleb( node_count ) || node_count == 0 ) { return false; }
+            }
             s.node_table = r.buffer + r.offset;
             s.node_table_bytes = (int64_t) len;
             s.node_table_present = true;
@@ -1611,7 +1620,13 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         case 30: // an enum: a variant reference into the id table
         {
             uint64_t ref = 0;
-            return r.getleb( ref ) && ( s.ids == NULL || ref <= (uint64_t) s.ids->count );
+            if ( !r.getleb( ref ) || ( s.ids != NULL && ref > (uint64_t) s.ids->count ) ) { return false; }
+            if ( ref != 0 )
+            {
+                if ( ref > s.next_ref ) { return false; }
+                if ( ref == s.next_ref ) { s.next_ref++; }
+            }
+            return true;
         }
         case 15:
             return TableStrictUnion( s, r, depth );
@@ -1635,6 +1650,8 @@ inline bool TableStrictUnion( TableStrict & s, TableReader & r, int depth )
     if ( !r.getleb( ref ) ) { return false; }
     if ( ref == 0 ) { return true; } // the empty arm carries nothing
     if ( s.ids == NULL || ref > (uint64_t) s.ids->count || !r.has( 1 ) ) { return false; }
+    if ( ref > s.next_ref ) { return false; }
+    if ( ref == s.next_ref ) { s.next_ref++; }
     const uint8_t kind = r.get8();
     uint64_t len = 0;
     if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
@@ -1687,6 +1704,8 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     {
         uint64_t key = 0;
         if ( !r.getleb( key ) || key == 0 || s.ids == NULL || key > (uint64_t) s.ids->count ) { return false; } // H7
+        if ( key > s.next_ref ) { return false; }
+        if ( key == s.next_ref ) { s.next_ref++; }
         if ( !TableStrictSeen( seen, key ) ) { return false; } // the same keyed slot twice
         uint64_t len = 0;
         if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
@@ -1708,6 +1727,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     s.node_table_present = false;
     s.pointers = false;
     s.refusal = wire_damaged;
+    s.next_ref = 1;
     if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }
     if ( s.node_table_present )
     {
@@ -1722,6 +1742,12 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
             report->refuse_reason = wire_damaged;
             return false;
         }
+    }
+    if ( s.next_ref - 1 != (uint64_t) table.count )
+    {
+        report->damaged = true;
+        report->refuse_reason = wire_damaged;
+        return false;
     }
     return true;
 }
@@ -3217,6 +3243,12 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
         if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( entry.kind == 15 )
+        {
+            TableBitReader peek = r;
+            uint64_t arm = 0;
+            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+        }
         if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
@@ -4254,7 +4286,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
         }
     }
-    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG.
+    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG. A NESTED tag is judged
+    // only while every tag outside it selects the arm it sits in: under any
+    // other outer arm its bytes are that arm's live payload, or the outer
+    // tag's own dead span, which the outer tag's check holds to zero.
     for ( int32_t i = 0; i < count; ++i )
     {
         const TableFixedEntry & e = plan[i];
@@ -4263,6 +4298,11 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( j > 0 )
+                {
+                    const TableFixedGuardLink & outer = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + ( j - 1 ) * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, outer.guard, outer.argw ) != outer.arg ) { break; }
+                }
                 if ( TableFixedTagSeen( plan, i, l.guard, guard_pool ) ) { continue; }
                 if ( TableFixedInAbsentPayload( plan, count, src, (int64_t) l.guard ) ) { continue; }
                 if ( !TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool ) )
@@ -4274,7 +4314,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else
         {
-            if ( e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
+            // guard2 is the OUTER tag of a two-lane entry, guard the inner one.
+            const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
+                                     TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
+            if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
                  !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
                  !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
@@ -6461,6 +6504,8 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
 {
     PartRowReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
+    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -6498,6 +6543,13 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
         {
             case 0xd19988b67e699194ull: // armor
             {
+                const bool same_shape = same_build && entry.kind == 13 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6511,12 +6563,29 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         return false;
                     }
                     break;
+                }
+                if ( same_shape )
+                {
+                    TableBitReader peek_body = r;
+                    uint64_t peek_ref = 0;
+                    if ( !peek_body.get( peek_ref, vocabulary.ref_bits ) || peek_ref == 0 )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                 }
                 if ( !ArmorConfigLoadMessageBody( r, vocabulary, report, index_bits, value.armor ) ) { return false; }
                 break;
             }
             case 0x40dbb648c0cd44aaull: // gunner
             {
+                const bool same_shape = same_build && entry.kind == 13 && entry.elem_kind == 0;
+                if ( same_shape && 2 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 2; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6531,11 +6600,28 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     }
                     break;
                 }
+                if ( same_shape )
+                {
+                    TableBitReader peek_body = r;
+                    uint64_t peek_ref = 0;
+                    if ( !peek_body.get( peek_ref, vocabulary.ref_bits ) || peek_ref == 0 )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                }
                 if ( !GunnerSettingsLoadMessageBody( r, vocabulary, report, index_bits, value.gunner ) ) { return false; }
                 break;
             }
             case 0x04d6206b33415104ull: // part_id
             {
+                const bool same_shape = same_build && entry.kind == 8 && entry.elem_kind == 0;
+                if ( same_shape && 3 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 3; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6584,6 +6670,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
                         decoded_wide = (int64_t) 4294967295ull;
@@ -6591,12 +6678,24 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     value.part_id = decoded_v;
                 }
                 break;
             }
             case 0x6a771618f6fe31d1ull: // slot
             {
+                const bool same_shape = same_build && entry.kind == 6 && entry.elem_kind == 0;
+                if ( same_shape && 4 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 4; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -6621,6 +6720,7 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                     }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
                         decoded_wide = (int64_t) 255ull;
@@ -6628,11 +6728,17 @@ inline bool PartRowLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     value.slot = decoded_v;
                 }
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -7174,6 +7280,8 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
 {
     PartFrameReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
+    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -7211,6 +7319,13 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
         {
             case 0xbb62c62c9808ea37ull: // version
             {
+                const bool same_shape = same_build && entry.kind == 9 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -7253,13 +7368,26 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
+                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     value.version = decoded_v;
                 }
                 break;
             }
             case 0x0c519da7a1f958c5ull: // parts
             {
+                const bool same_shape = same_build && entry.kind == 14 && entry.elem_kind == 13;
+                if ( same_shape && 2 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 2; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -7282,6 +7410,11 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         uint64_t raw = 0;
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
+                    }
+                    if ( same_shape && n == 0 )
+                    {
+                        report->damaged = true;
+                        return false;
                     }
                     if ( entry.elem_kind == 6 && !r.align() )
                     {
@@ -7309,6 +7442,7 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -11708,8 +11842,9 @@ inline bool PartRowCookBody( uint8_t * at, const PartRow & value, TableByteOrder
 inline bool PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.version, 8, order );
-    // all 32 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 32; i++ )
+    // 32 slots of storage, value.parts_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.parts_count; i++ )
     {
         if ( !PartRowCookBody( at + 8 + i * 352, value.parts[i], order ) ) { return false; }
     }

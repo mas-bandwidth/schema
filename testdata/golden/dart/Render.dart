@@ -53,6 +53,8 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.meshId >= 0);
+  assert(value.meshId <= 4294967295);
   v = value.sortKey;
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -62,6 +64,10 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.materialId >= 0);
+  assert(value.materialId <= 4294967295);
+  assert(value.layer >= 0);
+  assert(value.layer <= 255);
   v = (value.meshId & 0xffffffff) | ((value.materialId & 0xffffffff) << 32);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -237,6 +243,10 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.workerIndex >= 0);
+  assert(value.workerIndex <= 4294967295);
+  assert(value.spriteCountHint >= 0);
+  assert(value.spriteCountHint <= 4294967295);
   assert(value.spritesCount >= 0);
   assert(value.spritesCount <= 64);
   v =
@@ -261,6 +271,8 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
   }
   for (var i0 = 0; i0 < value.spritesCount; i0++) {
     final e0 = value.sprites[i0];
+    assert(e0.meshId >= 0);
+    assert(e0.meshId <= 4294967295);
     v = e0.sortKey;
     scratch |= v << scratchBits;
     scratchBits += 64;
@@ -270,6 +282,10 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
+    assert(e0.materialId >= 0);
+    assert(e0.materialId <= 4294967295);
+    assert(e0.layer >= 0);
+    assert(e0.layer <= 255);
     v = (e0.meshId & 0xffffffff) | ((e0.materialId & 0xffffffff) << 32);
     scratch |= v << scratchBits;
     scratchBits += 64;

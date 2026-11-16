@@ -220,7 +220,16 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 func TestLobsterTableSaveNegativeControl(t *testing.T) {
 	t.Parallel()
 	g := probeUnit(t)
-	wire := probeWire(t, g)
+	m := tabletext.NewModel(g.u)
+	inst := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(inst, []byte(`{"n":3}`), &report) {
+		t.Fatalf("probe text refused: %+v", report)
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
 	row := loadRow{kind: "instance", name: "variable-probe", unit: "probe", root: "Root", data: wire}
 	want, err := goSave(g, row.root, wire)
 	if err != nil {

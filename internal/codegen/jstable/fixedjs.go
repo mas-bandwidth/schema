@@ -1391,10 +1391,12 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 	// compiled plan carries no range at all, so the pass can only be the
 	// reader's. A NaN or an infinity never reaches it: the content pass refused
 	// it on its raw bits first (docs/SPEC-TABLES.md §3.3). `<` and `>` are IEEE
-	// comparisons on purpose, so a negative zero is not below a min of +0.
+	// comparisons on purpose, so a negative zero is not below a min of +0. A
+	// compressed float's -0 IS +0 (§3.3): inside the range and only its spelling
+	// differs, so it lands the value 0 itself and nothing is counted.
 	if lo, hi, ok := fixedFloatClampEnds(f); ok {
-		g.pf("%sif (%s < %s || %s > %s) { report.refused = TableFixedRefusal.OutOfRange; return; }\n",
-			ind, expr, lo, expr, hi)
+		g.pf("%sif (%s < %s || %s > %s) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (%s === 0) { %s = 0; }\n",
+			ind, expr, lo, expr, hi, expr, expr)
 		return
 	}
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {

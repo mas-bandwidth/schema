@@ -117,7 +117,7 @@ func containsWriteRefusalLeg(t *testing.T, source, marker, want string) bool {
 	if open < 0 || close < open {
 		t.Fatalf("write-refusal source has no parenthesized list after %q", marker)
 	}
-	for _, leg := range strings.Split(rest[open+1:close], ",") {
+	for leg := range strings.SplitSeq(rest[open+1:close], ",") {
 		if strings.TrimSpace(leg) == want {
 			return true
 		}

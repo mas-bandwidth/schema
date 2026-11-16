@@ -11,32 +11,25 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// jsonIntegersSchema is the small unit the json-integers vectors read: an
-// int32, an int64, a uint64, a ranged int128, a ranged int64, a wide
-// fixed-point field and a map keyed by uint64 — every integer storage width
-// the two JSON integer rules name (docs/SPEC-TABLES.md §16.2).
-const jsonIntegersSchema = `package jsonintegers
-
-table Integers
-{
-    small   int32
-    wide    int64
-    uwide   uint64
-    wide128 int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
-    ranged  int64 | min = 0, max = 9007199254740993
-    frac    fixed(48, 16) | min = -10, max = 10
-    counts  map[uint64]int32
-}
-`
+// jsonIntegersSchemaPath is the small unit the json-integers vectors read,
+// committed beside their manifests: an int32, an int64, a uint64, a ranged
+// int128, a ranged int64, a wide fixed-point field and a map keyed by uint64 —
+// every integer storage width the two JSON integer rules name
+// (docs/SPEC-TABLES.md §16.2).
+const jsonIntegersSchemaPath = "../../testdata/wire/json-integers/Integers.schema"
 
 func jsonIntegersModel(t *testing.T) *tabletext.Model {
 	t.Helper()
-	f, perrs := parser.Parse("Integers.schema", []byte(jsonIntegersSchema))
+	jsonIntegersSchema, err := os.ReadFile(jsonIntegersSchemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, perrs := parser.Parse("Integers.schema", jsonIntegersSchema)
 	if len(perrs) > 0 {
 		t.Fatal(perrs)
 	}
 	u, cerrs := check.Unit([]check.SourceFile{{
-		Path: "Integers.schema", Name: "Integers.schema", Base: "Integers", Bytes: []byte(jsonIntegersSchema), AST: f,
+		Path: "Integers.schema", Name: "Integers.schema", Base: "Integers", Bytes: jsonIntegersSchema, AST: f,
 	}})
 	if len(cerrs) > 0 {
 		t.Fatal(cerrs)

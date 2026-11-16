@@ -1253,7 +1253,7 @@ namespace Blockhome
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PartRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (PartRowFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PartRowFixedFiniteBody(values[k]) == null); }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PartRowFixedHash);
@@ -14193,7 +14193,7 @@ namespace Blockhome
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = PartFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (PartFrameFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PartFrameFixedFiniteBody(values[k]) == null); }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PartFrameFixedHash);

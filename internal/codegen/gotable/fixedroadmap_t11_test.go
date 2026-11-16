@@ -216,7 +216,8 @@ union Pick
 fixed table Root { picks [..3]Pick }
 `,
 		// §3.4: an array of unions is each element at its union bound, the tag
-		// then the widest arm; the wire ignores the slack behind the narrow one.
+		// then the widest arm. The narrow arm's tail is dead and zero; a
+		// non-zero tail is refused by the dead_union_narrow_tail vector.
 		probe: t11Prelude + `
 func TestUnionArrays(t *testing.T) {
 	var v Root

@@ -432,6 +432,9 @@ public final class TableVariable {
         // (docs/SPEC-TABLES.md §3.3): it lives on the one id table every
         // writer of a save shares, sub-writers included, so the save sees it.
         public boolean nonFinite;
+        // offRange is the SAVE's refusal of a ranged float off its range
+        // (docs/SPEC.md §5.1 row 10), held in every build beside nonFinite.
+        public boolean offRange;
 
         public Ids(int cap) {
             entries = new long[cap];
@@ -682,6 +685,23 @@ public final class TableVariable {
             put64(bits);
         }
 
+        // putF32In and putF64In write a ranged float: its raw bits as putF32
+        // and putF64 do, and a value off [lo, hi] refuses the whole save in
+        // every build (docs/SPEC.md §5.1 row 10), on every field shape.
+        public void putF32In(float v, double lo, double hi) {
+            if ((double) v < lo || (double) v > hi) {
+                ids.offRange = true;
+            }
+            putF32(v);
+        }
+
+        public void putF64In(double v, double lo, double hi) {
+            if (v < lo || v > hi) {
+                ids.offRange = true;
+            }
+            putF64(v);
+        }
+
         public void putLeb(long v) {
             while (true) {
                 int b = (int) (v & 0x7f);
@@ -880,11 +900,14 @@ public final class TableVariable {
         // where node k's begin (node 0 the root, node k record k - 1)
         long[] edges = new long[64];
         int edgeCount;
+        int nextRef;
+        boolean firstUseBad;
         // the cursor a walk answers through: the offset after what it read
         int at;
         final int[] table = new int[2];
         final int[] rootOnlyEdgeStart = new int[2];
         int[] recStart = new int[16];
+        int[] recRef = new int[16];
         int[] recEnd = new int[16];
         boolean[] recBlob = new boolean[16];
         int[] edgeStart = new int[16];
@@ -916,6 +939,8 @@ public final class TableVariable {
             fail = OK;
             nonFinite = false;
             edgeCount = 0;
+            nextRef = 1;
+            firstUseBad = false;
             at = 0;
         }
 
@@ -924,6 +949,20 @@ public final class TableVariable {
                 fail = DAMAGED;
             }
             return false;
+        }
+
+        // Entries are distinct, so a reference below nextRef is already seen.
+        // Defer this verdict until the whole walk and graph complete: an
+        // incomplete walk retains its original refusal (such as count cap).
+        void use(long ref) {
+            if (ref == 0) return;
+            if (ref == nextRef) nextRef++;
+            else if (ref > nextRef) firstUseBad = true;
+        }
+
+        int complete() {
+            if (firstUseBad || nextRef - 1 != ids.length) return DAMAGED;
+            return nonFinite ? NON_FINITE : OK;
         }
 
         // leb reads one canonical LEB128 at off below end into at, answering
@@ -1004,7 +1043,7 @@ public final class TableVariable {
             if (table[0] < 0) {
                 rootOnlyEdgeStart[0] = 0;
                 rootOnlyEdgeStart[1] = rootEdges;
-                return graph(rootOnlyEdgeStart, 1, null) ? (nonFinite ? NON_FINITE : OK) : fail;
+                return graph(rootOnlyEdgeStart, 1, null) ? complete() : fail;
             }
             int off = table[0];
             int end = table[1];
@@ -1027,6 +1066,7 @@ public final class TableVariable {
                 }
                 if (n == recStart.length) {
                     recStart = java.util.Arrays.copyOf(recStart, n * 2);
+                    recRef = java.util.Arrays.copyOf(recRef, n * 2);
                     recEnd = java.util.Arrays.copyOf(recEnd, n * 2);
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
@@ -1038,6 +1078,7 @@ public final class TableVariable {
                 if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
                     return DAMAGED;
                 }
+                recRef[n] = (int) ref;
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
@@ -1056,12 +1097,13 @@ public final class TableVariable {
             edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
             for (int k = 0; k < n; k++) {
+                use(recRef[k]);
                 if (!recBlob[k] && !body(recStart[k], recEnd[k], false, null)) {
                     return fail;
                 }
                 edgeStart[k + 2] = edgeCount;
             }
-            return graph(edgeStart, n + 1, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
+            return graph(edgeStart, n + 1, recBlob) ? complete() : fail;
         }
 
         // graph judges the pointer graph: node 0 is the root, node k record k
@@ -1169,6 +1211,7 @@ public final class TableVariable {
                 if (ref == 0) {
                     return true;
                 }
+                use(ref);
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
                 if (id == BUILD_ID || id == VOCAB_ID) {
@@ -1265,6 +1308,7 @@ public final class TableVariable {
                             damage();
                             return -1;
                         }
+                        use(ref);
                         return at;
                     }
                 case 15:
@@ -1451,7 +1495,8 @@ public final class TableVariable {
             }
             p = first;
             for (long i = 0; i < count; i++) {
-                leb(p, end);
+                long key = leb(p, end);
+                use(key);
                 long n = leb(at, end);
                 int from = at;
                 p = from + (int) n;
@@ -1474,6 +1519,7 @@ public final class TableVariable {
             if (ref == 0) {
                 return at;
             }
+            use(ref);
             if (at >= end) {
                 damage();
                 return -1;
@@ -1842,6 +1888,58 @@ public final class TableVariable {
             }
         }
         return len;
+    }
+
+    // textWritable is the write contract on text (docs/SPEC.md §5.1 rows 4
+    // and 8): no lone surrogate, no zero, and a UTF-8 length inside max (a
+    // negative max is unbounded). A writer's checkWrite asserts it: debug only.
+    public static boolean textWritable(String s, long max) {
+        if (s == null) {
+            return true;
+        }
+        int n = s.length();
+        long len = 0;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c == 0) {
+                return false;
+            } else if (c < 0x80) {
+                len += 1;
+            } else if (c < 0x800) {
+                len += 2;
+            } else if (Character.isHighSurrogate(c)) {
+                if (i + 1 >= n || !Character.isLowSurrogate(s.charAt(i + 1))) {
+                    return false;
+                }
+                len += 4;
+                i++;
+            } else if (Character.isLowSurrogate(c)) {
+                return false;
+            } else {
+                len += 3;
+            }
+        }
+        return max < 0 || len <= max;
+    }
+
+    // WriteCheck is the write contract's walk over the tables a value points
+    // to (docs/SPEC.md §5.1): each target is checked once, by identity, so a
+    // cycle ends the walk and stays the graph's own refusal. A work list, not
+    // a recursion, so a long chain cannot run out of stack. Debug only: a
+    // writer's checkWrite makes one under an assert.
+    public static final class WriteCheck {
+        private final java.util.IdentityHashMap<Object, Boolean> seen = new java.util.IdentityHashMap<>();
+        private final java.util.ArrayDeque<Object> pending = new java.util.ArrayDeque<>();
+
+        public void point(Object target) {
+            if (target != null && seen.put(target, Boolean.TRUE) == null) {
+                pending.add(target);
+            }
+        }
+
+        public Object next() {
+            return pending.poll();
+        }
     }
 
     // textValid reports whether a kind-12 payload is well-formed UTF-8 with no
@@ -2725,6 +2823,7 @@ public final class TableVariable {
             ids.count = 0;
             ids.overflow = false;
             ids.nonFinite = false;
+            ids.offRange = false;
             writer.off = 0;
             writer.overflow = false;
             return writer;
@@ -3534,11 +3633,12 @@ public final class TableJson {
 
         // scanName reads one string that NAMES a schema name — an object key
         // naming a field, an enum variant, a flags element, a union arm, an
-        // &node name — and holds it to §16.2's 255-byte cap after decoding.
-        // A longer one refuses the read; a map key and a string value are data
-        // and go through scanString/scanStored, never this.
+        // &node name — holds it to a placed string's text rule (§16.3) and to
+        // §16.2's 255-byte cap after decoding. A longer one refuses the read,
+        // and one that decodes to U+0000 refuses too; a map key and a string
+        // value are data and go through scanStored, never this.
         public String scanName() {
-            String s = scanString();
+            String s = scanStored();
             if (s == null) {
                 return null;
             }
@@ -3653,80 +3753,56 @@ public final class TableJson {
             return new String(t, start, p - start, java.nio.charset.StandardCharsets.US_ASCII);
         }
 
-        // integer reads one number into a long, clamping to the field's declared
-        // range and counting a genuinely fractional value as a kind mismatch
-        // (never coerced), a value past the range as a clamp (§16.2).
-        public long integer(boolean signed, long min, long max) {
+        // integer reads one integer token into a long. A wide kind (storage
+        // past 32 bits) takes a string of those digits; a narrower
+        // kind takes a number. The token is digits and an optional minus — no
+        // fraction, no exponent, not -0 — parsed exactly, never through a
+        // double. A value past the declared range refuses (§16.2).
+        public long integer(boolean signed, boolean wide, long min, long max) {
             rejected = false;
-            boolean[] integral = new boolean[1];
-            String tok = scanNumber(integral);
-            if (bad) {
+            String tok;
+            if (wide && peek() == '"') {
+                tok = scanString();
+                if (bad || tok == null) {
+                    return 0;
+                }
+            } else {
+                if (wide) {
+                    skipValue();
+                    rep.refuse("kind_mismatch");
+                    rejected = true;
+                    return 0;
+                }
+                boolean[] integral = new boolean[1];
+                tok = scanNumber(integral);
+                if (bad || tok == null) {
+                    return 0;
+                }
+            }
+            if (!TableJson.integerToken(tok)) {
+                rep.refuse("kind_mismatch");
+                rejected = true;
                 return 0;
             }
             long v;
-            if (integral[0]) {
-                if (signed) {
-                    try {
-                        v = Long.parseLong(tok);
-                    } catch (NumberFormatException e) {
-                        rep.refuse("out_of_range");
-                        return tok.charAt(0) == '-' ? min : max;
-                    }
-                } else {
-                    if (tok.charAt(0) == '-') {
-                        if (!"-0".equals(tok)) {
-                            rep.refuse("out_of_range");
-                            return min;
-                        }
-                        v = 0;
-                    } else {
-                        try {
-                            v = Long.parseUnsignedLong(tok);
-                        } catch (NumberFormatException e) {
-                            rep.refuse("out_of_range"); // past what sixty-four bits hold
-                            // the largest unsigned magnitude; the range checks below add
-                            // a second clamp when the bound is narrower than uint64
-                            v = -1L;
-                        }
-                    }
-                }
-            } else {
-                double d;
+            if (signed) {
                 try {
-                    d = Double.parseDouble(tok);
+                    v = Long.parseLong(tok);
                 } catch (NumberFormatException e) {
-                    bad = true;
-                    return 0;
+                    rep.refuse("out_of_range");
+                    return tok.charAt(0) == '-' ? min : max;
                 }
-                if (signed) {
-                    if (Double.isFinite(d) && d >= 9223372036854775808.0) {
-                        rep.refuse("out_of_range");
-                        return max;
-                    }
-                    if (!Double.isFinite(d) || d != (double) (long) d) {
-                        rep.refuse("kind_mismatch");
-                        rejected = true;
-                        return 0;
-                    }
-                    v = (long) d;
-                } else {
-                    if (!Double.isFinite(d) || Math.rint(d) != d) {
-                        rep.refuse("kind_mismatch");
-                        rejected = true;
-                        return 0;
-                    }
-                    if (d < 0.0) {
-                        rep.refuse("out_of_range");
-                        return min;
-                    }
-                    if (d >= 18446744073709551616.0) {
-                        rep.refuse("out_of_range");
-                        return max;
-                    }
-                    v =
-                            d < 9223372036854775808.0
-                                    ? (long) d
-                                    : (long) (d - 9223372036854775808.0) + Long.MIN_VALUE;
+            } else if (tok.charAt(0) == '-') {
+                rep.refuse("out_of_range");
+                return min;
+            } else {
+                try {
+                    v = Long.parseUnsignedLong(tok);
+                } catch (NumberFormatException e) {
+                    rep.refuse("out_of_range"); // past what sixty-four bits hold
+                    // the largest unsigned magnitude; the range checks below add
+                    // a second clamp when the bound is narrower than uint64
+                    v = -1L;
                 }
             }
             if (signed) {
@@ -3808,7 +3884,9 @@ public final class TableJson {
                     skipContainer(']', depth);
                     return;
                 case '"':
-                    scanString();
+                    // A SKIPPED STRING IS HELD TO A PLACED STRING'S TEXT
+                    // RULE (§16.3): one that decodes to U+0000 refuses.
+                    scanStored();
                     return;
                 case 't':
                     lit("true");
@@ -3848,6 +3926,8 @@ public final class TableJson {
                     return;
                 }
                 if (closing == '}') {
+                    // EVERY OBJECT KEY IS HELD TO A PLACED STRING'S RULE
+                    // (§16.3): one that decodes to U+0000 refuses.
                     String key = scanName();
                     if (bad) {
                         return;
@@ -3945,8 +4025,9 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	if unitCarriesForm(u, "json") {
 		out["TableJson.java"] = javaFile(u, "the TEXT form's runtime (docs/SPEC-TABLES.md §16), JSON in and out", strings.TrimSuffix(tableJsonRuntime, "}\n")+variableWideJsonRuntime+"}\n")
 	}
+	fixed := fixedClosureOf(u)
 	for _, st := range tables {
-		src, err := generateTableVariable(u, st)
+		src, err := generateTableVariable(u, st, fixed)
 		if err != nil {
 			return nil, err
 		}
@@ -3957,7 +4038,7 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	for _, unions := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
 		for _, un := range unions {
 			if refuseVariableFormClosure(variableUnionStruct(un), map[string]bool{}) == nil {
-				out[un.Name+"Variable.java"] = javaFile(u, "the active union arm on the variable wire (§2.6, §3)", generateVariableUnion(u, un))
+				out[un.Name+"Variable.java"] = javaFile(u, "the active union arm on the variable wire (§2.6, §3)", generateVariableUnion(u, un, fixed))
 			}
 		}
 	}
@@ -4197,7 +4278,7 @@ func hasFixedFile(u *ir.Unit, st *ir.Struct) bool {
 	return false
 }
 
-func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
+func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (string, error) {
 	st = variableStruct(st)
 	tables := cardVariableTables(u)
 	graphTypes, graphIndex := variableGraphTypes(u)
@@ -4379,6 +4460,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		closeGuard(&b, open)
 	}
 	b.WriteString("    }\n\n")
+	writeVariableCheckWrite(&b, st, tables)
 
 	// Enum helpers
 	for _, f := range st.Fields {
@@ -4402,6 +4484,11 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    public static byte[] save(Value v, TableVariable.Saver saver) {\n")
 	fmt.Fprintf(&b, "        TableVariable.Writer w = saver.begin();\n")
 	fmt.Fprintf(&b, "        TableVariable.NodeGraph graph = saver.graph;\n")
+	// THE WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1), and it answers
+	// before the graph walk: under -ea a row 1-5 or 8 value asserts, whether or
+	// not buildGraph would also refuse it in every build, and it walks every
+	// table the value points to before the graph does.
+	fmt.Fprintf(&b, "        assert checkWrite(v);\n")
 	fmt.Fprintf(&b, "        graph.setOpen(v, true);\n")
 	fmt.Fprintf(&b, "        if (!buildGraph(graph, v)) { return null; }\n")
 	fmt.Fprintf(&b, "        graph.setOpen(v, false);\n")
@@ -4436,8 +4523,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        w.put8(0);\n")
 	fmt.Fprintf(&b, "        w.trailer();\n")
 	// A NaN OR AN INFINITY ANYWHERE IN THE VALUE REFUSES THE SAVE
-	// (docs/SPEC-TABLES.md §3.3): the writer marked it on the shared id table.
-	fmt.Fprintf(&b, "        if (w.ids.nonFinite) {\n")
+	// (docs/SPEC-TABLES.md §3.3), and so does a ranged float off its range
+	// (docs/SPEC.md §5.1 row 10): the writer marked it on the shared id table.
+	fmt.Fprintf(&b, "        if (w.ids.nonFinite || w.ids.offRange) {\n")
 	fmt.Fprintf(&b, "            return null;\n")
 	fmt.Fprintf(&b, "        }\n")
 	if st.Integrity != "" {
@@ -4544,6 +4632,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	writeLoadMeasure(&b, u, st)
 	if unitCarriesForm(u, "json") {
 		writeJsonCodec(&b, u, st)
+		if fixed.structs[st.Name] {
+			writeFixedToVariable(&b, u, st)
+		}
 	}
 
 	b.WriteString("}\n")
@@ -5269,20 +5360,20 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				if f.Type.Width <= 32 {
 					fmt.Fprintf(b, "                b.append(Integer.toString(v.%s.get(i)));\n", m)
 				} else {
-					fmt.Fprintf(b, "                b.append(Long.toString(v.%s.get(i)));\n", m)
+					fmt.Fprintf(b, "                b.append('\"'); b.append(Long.toString(v.%s.get(i))); b.append('\"');\n", m)
 				}
 			default:
 				if f.Type.Width <= 32 {
 					fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
 				} else {
-					fmt.Fprintf(b, "                b.append(Long.toUnsignedString(v.%s.get(i)));\n", m)
+					fmt.Fprintf(b, "                b.append('\"'); b.append(Long.toUnsignedString(v.%s.get(i))); b.append('\"');\n", m)
 				}
 			}
 		case ir.TBits:
 			if f.Type.Width <= 32 {
 				fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
 			} else {
-				fmt.Fprintf(b, "                b.append(Long.toUnsignedString(v.%s.get(i)));\n", m)
+				fmt.Fprintf(b, "                b.append('\"'); b.append(Long.toUnsignedString(v.%s.get(i))); b.append('\"');\n", m)
 			}
 		case ir.TFloat32:
 			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), true);\n", m)
@@ -5349,20 +5440,30 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 				b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 			} else {
 				min, max := jsonIntRange(f)
-				if f.Type.Width <= 32 {
-					fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
-				} else {
-					fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(%t, %s, %s)); }\n", m, f.Type.Signed, min, max)
+				wide := f.Type.Width > 32
+				peek := "ec == '-' || (ec >= '0' && ec <= '9')"
+				if wide {
+					peek = "ec == '\"' || " + peek
 				}
+				cast := ""
+				if !wide {
+					cast = "(int) "
+				}
+				fmt.Fprintf(b, "                        if (%s) { v.%s.add(%sin.integer(%t, %t, %s, %s)); }\n", peek, m, cast, f.Type.Signed, wide, min, max)
 				b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 			}
 		case ir.TBits:
 			min, max := jsonIntRange(f)
-			if f.Type.Width <= 32 {
-				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add((int) in.integer(false, %s, %s)); }\n", m, min, max)
-			} else {
-				fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.integer(false, %s, %s)); }\n", m, min, max)
+			wide := f.Type.Width > 32
+			peek := "ec == '-' || (ec >= '0' && ec <= '9')"
+			if wide {
+				peek = "ec == '\"' || " + peek
 			}
+			cast := ""
+			if !wide {
+				cast = "(int) "
+			}
+			fmt.Fprintf(b, "                        if (%s) { v.%s.add(%sin.integer(false, %t, %s, %s)); }\n", peek, m, cast, wide, min, max)
 			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TFloat32:
 			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
@@ -5483,6 +5584,37 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		b.WriteString("        }\n")
 	case f.IsTextList():
 		target := f.Type.Ref.(*ir.Struct)
+		// The text writer keeps its own count and length verdicts (docs/SPEC.md
+		// §5.1 rows 3 and 4): the save's graph walk does not refuse them in a
+		// release build, but toJson still answers null for a value its reader
+		// would refuse.
+		b.WriteString("        {\n")
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "            if (v.%s.size() > %d) { throw new TableJson.Refused(%q); }\n", m, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
+		}
+		elementBound := int64(-1)
+		if !ir.TextListUnbounded(f) {
+			elementBound = int64(ir.TextListValue(f).Type.Size)
+		}
+		if elementBound >= 0 || f.TextTotal > 0 {
+			b.WriteString("            long spent = 0L;\n")
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
+			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", target.Name, m)
+			if ir.TextListOptional(f) {
+				b.WriteString("                long elemBytes = (e == null || !e.valuePresent || e.value == null) ? 0L : TableVariable.utf8Len(e.value);\n")
+			} else {
+				b.WriteString("                long elemBytes = (e == null || e.value == null) ? 0L : TableVariable.utf8Len(e.value);\n")
+			}
+			if elementBound >= 0 {
+				fmt.Fprintf(b, "                if (elemBytes > %dL) { throw new TableJson.Refused(%q); }\n", elementBound, "length_over_bound: "+f.TextListElem().MapEntryOf)
+			}
+			if f.TextTotal > 0 {
+				b.WriteString("                spent += elemBytes;\n")
+				fmt.Fprintf(b, "                if (spent > %dL) { throw new TableJson.Refused(%q); }\n", f.TextTotal, "length_over_bound: "+f.TextListElem().MapEntryOf)
+			}
+			b.WriteString("            }\n")
+		}
+		b.WriteString("        }\n")
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
 		b.WriteString("            b.append('[');\n")
 		fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
@@ -5543,9 +5675,9 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		case f.Type.Timestamp:
 			fmt.Fprintf(b, "        TableJson.writeTimestamp(b, v.%s);\n", m)
 		case f.Type.Signed && f.Type.Kind == ir.TInt:
-			fmt.Fprintf(b, "        b.append(Long.toString(v.%s));\n", m)
+			fmt.Fprintf(b, "        b.append('\"'); b.append(Long.toString(v.%s)); b.append('\"');\n", m)
 		default:
-			fmt.Fprintf(b, "        b.append(Long.toUnsignedString(v.%s));\n", m)
+			fmt.Fprintf(b, "        b.append('\"'); b.append(Long.toUnsignedString(v.%s)); b.append('\"');\n", m)
 		}
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -5776,11 +5908,16 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		} else {
 			min, max := jsonIntRange(f)
 			signed := f.Type.Signed && f.Type.Kind == ir.TInt
-			if f.Type.Width <= 32 {
-				fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { long placed = in.integer(%t, %s, %s); if (!in.rejected) { v.%s = (int) placed; } }\n", signed, min, max, m)
-			} else {
-				fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { long placed = in.integer(%t, %s, %s); if (!in.rejected) { v.%s = placed; } }\n", signed, min, max, m)
+			wide := f.Type.Width > 32
+			peek := "in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')"
+			if wide {
+				peek = "in.peek() == '\"' || " + peek
 			}
+			store := fmt.Sprintf("v.%s = placed", m)
+			if !wide {
+				store = fmt.Sprintf("v.%s = (int) placed", m)
+			}
+			fmt.Fprintf(b, "                if (%s) { long placed = in.integer(%t, %t, %s, %s); if (!in.rejected) { %s; } }\n", peek, signed, wide, min, max, store)
 			b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		}
 	case f.Type.Kind == ir.TNamed:
@@ -5795,7 +5932,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			fmt.Fprintf(b, "{ v.%s = 0; in.rep.unknown++; }\n", m)
 			b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
-			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.integer(true, Long.MIN_VALUE, Long.MAX_VALUE); }\n", m)
+			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.integer(true, false, Long.MIN_VALUE, Long.MAX_VALUE); }\n", m)
 			b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		}
 	}
@@ -6312,9 +6449,9 @@ func writeArrayElemSave(b *strings.Builder, f *ir.Field, m string) {
 			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Long e = v.%s.get(i); w.put64(e); }\n", m, m)
 		}
 	case ir.TFloat32:
-		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Float e = v.%s.get(i); w.putF32(e); }\n", m, m)
+		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Float e = v.%s.get(i); %s }\n", m, m, variableFloatPut(f, "w", "e"))
 	case ir.TFloat64:
-		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Double e = v.%s.get(i); w.putF64(e); }\n", m, m)
+		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { Double e = v.%s.get(i); %s }\n", m, m, variableFloatPut(f, "w", "e"))
 	case ir.TString:
 		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) { String e = v.%s.get(i); w.putUtf8(e); }\n", m, m)
 	case ir.TNamed:
@@ -6582,52 +6719,18 @@ func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []vari
 	b.WriteString("    }\n\n")
 }
 
-// writeVariableGraphFieldOnce emits the checks and order a field answers once,
-// before its elements are numbered: the declared range, a map's key order, and
-// the text-list bounds.
+// writeVariableGraphFieldOnce emits what a field answers once, before its
+// elements are numbered: a required ranged float's range (row 10, every build
+// in Java, docs/SPEC.md §5.1) and a map's key order. Rows 1-5 and 8 (a ranged
+// integer, a text list's count, an element's length, the list's total) are
+// not here: Java is an assert leg, and checkWrite asserts them (debug only).
 func writeVariableGraphFieldOnce(b *strings.Builder, f *ir.Field, pad string) {
 	m := varMember(f)
-	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" {
-		if f.HasIntRange && !variableWide(f) {
-			min, max := jsonIntRange(f)
-			switch {
-			case f.Type.Signed && f.Type.Kind == ir.TInt:
-				fmt.Fprintf(b, "%sif ((long) v.%s < %s || (long) v.%s > %s) return false;\n", pad, m, min, m, max)
-			case f.Type.Width <= 32:
-				fmt.Fprintf(b, "%sif (Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) < 0 || Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) > 0) return false;\n", pad, m, min, m, max)
-			default:
-				fmt.Fprintf(b, "%sif (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) return false;\n", pad, m, min, m, max)
-			}
-		} else if f.HasFloatRange {
-			fmt.Fprintf(b, "%sif ((double) v.%s < %s || (double) v.%s > %s) return false;\n", pad, m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
-		}
+	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" && f.HasFloatRange {
+		fmt.Fprintf(b, "%sif ((double) v.%s < %s || (double) v.%s > %s) return false;\n", pad, m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
 	}
 	if f.IsMap() {
 		fmt.Fprintf(b, "%sv.%s = order_%s(v.%s);\n", pad, m, m, m)
-	}
-	if isStructArray(f) && f.IsTextList() {
-		target := f.Type.Ref.(*ir.Struct)
-		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "%sif (v.%s.size() > %d) return false;\n", pad, m, f.ArrayBound)
-		}
-		if f.TextTotal > 0 {
-			fmt.Fprintf(b, "%slong spent_%s = 0;\n", pad, m)
-		}
-		fmt.Fprintf(b, "%sfor (int ti = 0, tn = v.%s.size(); ti < tn; ti++) {\n", pad, m)
-		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(ti);\n", pad, target.Name, m)
-		if ir.TextListOptional(f) {
-			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || !elem.valuePresent || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
-		} else {
-			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
-		}
-		if !ir.TextListUnbounded(f) {
-			fmt.Fprintf(b, "%s    if (elemBytes > %dL) return false;\n", pad, ir.TextListValue(f).Type.Size)
-		}
-		if f.TextTotal > 0 {
-			fmt.Fprintf(b, "%s    spent_%s += elemBytes;\n", pad, m)
-			fmt.Fprintf(b, "%s    if (spent_%s > %dL) return false;\n", pad, m, f.TextTotal)
-		}
-		fmt.Fprintf(b, "%s}\n", pad)
 	}
 }
 
@@ -6720,6 +6823,20 @@ func writeVariableGraphFieldStep(b *strings.Builder, st *ir.Struct, f *ir.Field,
 	}
 }
 
+// jsonWideInteger reports an integer or fixed-point kind whose storage is
+// wider than 32 bits. JSON reads and writes a string of digits
+// (docs/SPEC-TABLES.md §16.2). A timestamp stays an RFC 3339 string.
+func jsonWideInteger(f *ir.Field) bool {
+	if f == nil || f.Type.Timestamp {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits, ir.TFixed:
+		return f.Type.Width > 32
+	}
+	return false
+}
+
 func variableJsonShape(f *ir.Field, peek string) string {
 	if f.IsMap() || f.KeyEnum != "" {
 		return peek + "=='{'"
@@ -6749,6 +6866,9 @@ func variableJsonShape(f *ir.Field, peek string) string {
 		case *ir.Flags:
 			return peek + "=='['"
 		}
+	}
+	if jsonWideInteger(f) {
+		return "(" + peek + "=='\"'||" + peek + "=='-'||(" + peek + ">='0'&&" + peek + "<='9'))"
 	}
 	return "(" + peek + "=='-'||(" + peek + ">='0'&&" + peek + "<='9'))"
 }

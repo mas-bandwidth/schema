@@ -2712,16 +2712,15 @@ final class TableMixedCookWire {
     assert(value.entities.length <= 8);
     out?.setInt32(at + 576, value.entities.length, order);
     for (var i = 0; i < 8; i++) {
-      final e = i < value.entities.length
-          ? value.entities[i]
-          : wire.TableEntity();
+      if (i >= value.entities.length) break;
+      final e = value.entities[i];
       if (!_cookTableEntity(e, c, at + 64 + i * 64)) return false;
     }
     assert(value.stats.length <= 80);
     out?.setInt32(at + 1220, value.stats.length, order);
     for (var i = 0; i < 80; i++) {
-      final e = i < value.stats.length ? value.stats[i] : wire.TableStat();
-      if (!_cookTableStat(e, c, at + 580 + i * 8)) return false;
+      if (i >= value.stats.length) break;
+      if (!_cookTableStat(value.stats[i], c, at + 580 + i * 8)) return false;
     }
     final gameEventArm = value.gameEvent.armTag;
     assert(gameEventArm >= 0);

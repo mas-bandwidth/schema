@@ -117,7 +117,7 @@ end
 `)
 	out := g.run(t, main.String(), inputs)
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		f := strings.Split(line, "\t")
 		if len(f) != 6 {
 			t.Fatalf("the probe printed %q", line)

@@ -271,7 +271,7 @@ namespace Tabledemo
 
         public static bool GunnerConfigCollectTyped(GunnerConfig v, ref TableWire.Ids ids)
         {
-            if (!float.IsFinite(v.Reaction)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Reaction));
             if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu && !ids.Add(0xb75aa3662201646aul)) return false;
             if (v.Tracking != false && !ids.Add(0xa6bf719a4602b0bcul)) return false;
             return true;
@@ -373,9 +373,9 @@ namespace Tabledemo
         public static bool TurretConfigCollectTyped(TurretConfig v, ref TableWire.Ids ids)
         {
             TableFieldInfo[] fields = TurretConfigTableType().Fields;
-            if (!float.IsFinite(v.Damage)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Damage));
             if (BitConverter.SingleToUInt32Bits(v.Damage) != 0x41200000u && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
-            if (!float.IsFinite(v.Cooldown)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Cooldown));
             if (BitConverter.SingleToUInt32Bits(v.Cooldown) != 0x3f000000u && !ids.Add(0xdc2cbe6953343d48ul)) return false;
             if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
             return true;
@@ -485,9 +485,9 @@ namespace Tabledemo
         public static bool HullConfigCollectTyped(HullConfig v, ref TableWire.Ids ids)
         {
             TableFieldInfo[] fields = HullConfigTableType().Fields;
-            if (!float.IsFinite(v.Health)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Health));
             if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u && !ids.Add(0x7f69d4b5288ba9cful)) return false;
-            if (!float.IsFinite(v.Mass)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Mass));
             if (BitConverter.SingleToUInt32Bits(v.Mass) != 0x3f800000u && !ids.Add(0x1f3757a2ce7b0ab1ul)) return false;
             if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
             return true;
@@ -2281,7 +2281,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = GunnerConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (GunnerConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GunnerConfigFixedFiniteBody(values[k]) == null); }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), GunnerConfigFixedHash);
@@ -2883,7 +2883,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = TurretConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (TurretConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(TurretConfigFixedFiniteBody(values[k]) == null); }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TurretConfigFixedHash);
@@ -3567,7 +3567,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = HullConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (HullConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(HullConfigFixedFiniteBody(values[k]) == null); }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), HullConfigFixedHash);
@@ -4541,7 +4541,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = KeyedConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (KeyedConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(KeyedConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(KeyedConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)

@@ -66,7 +66,7 @@ func wideSitesModel(t *testing.T) *tabletext.Model {
 // bits takes the STRING form only, and a bare number token there refuses
 // kind_mismatch. It reads every row of
 // testdata/wire/json-integers/NUMBER-TOKEN.tsv, refused as kind_mismatch with
-// its string twin read, then reaches each site and each wide kind the manifest
+// its string twin held to its own verdict, then reaches each site and each wide kind the manifest
 // cannot, and holds the 32-bit kinds to their number token.
 func TestTextWideIntegerRefusesNumberToken(t *testing.T) {
 	t.Parallel()
@@ -78,6 +78,17 @@ func TestTextWideIntegerRefusesNumberToken(t *testing.T) {
 		data, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
 		if err != nil {
 			t.Fatal(err)
+		}
+		twinManifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		twinVerdicts := map[string]string{}
+		for line := range strings.SplitSeq(string(twinManifest), "\n") {
+			fields := strings.Split(line, "\t")
+			if len(fields) == 5 && !strings.HasPrefix(line, "#") {
+				twinVerdicts[fields[2]] = fields[3]
+			}
 		}
 		rows := 0
 		for i, line := range strings.Split(string(data), "\n") {
@@ -108,8 +119,7 @@ func TestTextWideIntegerRefusesNumberToken(t *testing.T) {
 			if m.Read(m.New(st), body, &report) || !report.Refused || !strings.HasPrefix(report.Reason, "kind_mismatch") {
 				t.Errorf("%s: read = %+v, want a kind_mismatch refusal of a bare number in a wide field", name, report)
 			}
-			// the string twin the row names holds the same values as strings
-			// and reads to them
+			// The string twin has its own verdict: its value can still be invalid.
 			_, twin, found := strings.Cut(what, "string twin ")
 			if !found {
 				t.Errorf("%s: the description names no string twin: %q", name, what)
@@ -121,8 +131,14 @@ func TestTextWideIntegerRefusesNumberToken(t *testing.T) {
 				continue
 			}
 			var twinReport tabletext.Report
-			if !m.Read(m.New(st), twinBody, &twinReport) || twinReport.Refused {
-				t.Errorf("%s: string twin %s refused: %+v", name, twin, twinReport)
+			twinVerdict, exists := twinVerdicts[strings.TrimSpace(twin)]
+			if !exists || (twinVerdict != "read" && twinVerdict != "refused") {
+				t.Errorf("%s: string twin %s has no valid manifest verdict", name, twin)
+				continue
+			}
+			ok := m.Read(m.New(st), twinBody, &twinReport)
+			if (twinVerdict == "read" && (!ok || twinReport.Refused)) || (twinVerdict == "refused" && (ok || !twinReport.Refused)) {
+				t.Errorf("%s: string twin %s verdict %s: %+v", name, twin, twinVerdict, twinReport)
 			}
 			rows++
 		}
