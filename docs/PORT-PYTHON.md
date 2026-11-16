@@ -548,7 +548,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - types by value: carried
 
-  - unions: carried
+  - unions: carried ([the packet unions](port-python/packet-unions.md))
 
   - `if`/`else` branches: carried
 
@@ -561,9 +561,9 @@ the core stands against the P4 row; the rules of this page are unchanged.
   - `bits`: carried
     ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
-  - `string`: refused
+  - `string`: carried ([the packet text kinds](port-python/packet-text.md))
 
-  - `bytes`: refused
+  - `bytes`: carried ([the packet text kinds](port-python/packet-text.md))
 
   - fixed `[N]T` and counted `[A..B]T` arrays of a carried element kind:
     carried ([the packet arrays](port-python/packet-arrays.md)); an array of
@@ -571,11 +571,11 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - a keyed `[E]T` array and a list `[]T`: refused
 
-  - `const`: refused
+  - `const`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `reserved`: refused
+  - `reserved`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `align`: refused
+  - `align`: carried ([the packet layout](port-python/packet-layout.md))
 
   - raw `uint128` and ranged `int128`: carried
     ([the packet int128](port-python/packet-int128.md))

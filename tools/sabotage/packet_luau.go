@@ -4,6 +4,10 @@ package main
 // read or construction rule from the Luau generator, and the gate it controls
 // must fail its own marker.
 func init() {
+	sabotages["packet-write-cfloat-luau"] = []edit{{
+		old: `g.Pf("%sif %s ~= %s or %s < %s or %s > %s then return false end\n", indent, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))`,
+		new: `g.Pf("-- SABOTAGED %s %s %s %s %s %s %s\n", indent, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))`,
+	}}
 	sabotages["packet-utf8-luau-read"] = []edit{{
 		old: `if not utf8valid(%s, n) then return false end`,
 		new: `if false and not utf8valid(%s, n) then return false end -- SABOTAGED`,
@@ -19,5 +23,9 @@ func init() {
 	sabotages["packet-end-luau-read"] = []edit{{
 		old: `g.Pf("  return stream:serializeEnd()\n")`,
 		new: `g.Pf("  return true -- SABOTAGED: no end check\n")`,
+	}}
+	sabotages["packet-write-text-luau-write"] = []edit{{
+		old: `if t.Kind == ir.TString {`,
+		new: `if false && t.Kind == ir.TString { // SABOTAGED: the writer takes ill-formed text`,
 	}}
 }
