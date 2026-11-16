@@ -11,7 +11,29 @@ rows=$(mktemp)
 packages=$(mktemp)
 trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
 : > "$rows"
-make -s python-ci-support-list | while IFS= read -r target; do
+support=$(make -s python-ci-support-list)
+printf '%s\n' "$support" | while IFS= read -r target; do
+  if [ "$target" = python-ci-compiler ]; then
+    # Group matching compiler tests into deterministic namespace shards.
+    # Keep the local/nightly aggregate, but bound every per-commit row.
+    listed=$(go test -tags schema_leg_python -list Python ./compiler)
+    names=$(printf '%s\n' "$listed" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
+    [ -n "$names" ] || { echo "no Python compiler tests discovered" >&2; exit 1; }
+    selected=$(printf '%s\n' "$names" | while IFS= read -r test; do
+      if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$support" | grep -qx python-ci-required-shape-0; then
+        for part in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+          printf '%s\n' "$support" | grep -qx "python-ci-required-shape-$part" || { echo "missing required shape shard $part" >&2; exit 1; }
+        done
+        continue
+      fi
+      printf '%s\n' "$test"
+    done)
+    printf '%s\n' "$selected" | paste -d+ - - - - - | sed 's/+*$//' | while IFS= read -r group; do
+      [ -n "$group" ] || continue
+      jq -cn --arg name "python compiler $group" --arg target "python-ci-compiler-shard-$group" '{name:$name,target:$target,package:"",test:"",corpus:false}' >> "$rows"
+    done
+    continue
+  fi
   corpus=false
   case "$target" in python-fixed-*|python-retain|python-retain-negative-control|python-reflection-ci-corpus) corpus=true ;; esac
   jq -cn --arg name "$target" --arg target "$target" --argjson corpus "$corpus" '{name:$name,target:$target,package:"",test:"",corpus:$corpus}' >> "$rows"
@@ -26,7 +48,7 @@ while IFS= read -r package; do
   # Keeping a monolithic parent in an automatic package shard would
   # still hit the two-minute limit. New test names remain auto-discovered.
   case "$package" in */internal/codegen/pythontable)
-    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonReflectionStrictTypes$/d; /^TestPythonReflectionCorpus$/d; /^TestPythonReflectionLayout$/d') ;;
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonFixedProofSuite$/d; /^TestPythonReflectionStrictTypes$/d; /^TestPythonReflectionCorpus$/d; /^TestPythonReflectionLayout$/d') ;;
   esac
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
