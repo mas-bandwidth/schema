@@ -100,7 +100,7 @@ func TestPythonFixedProofValuesReadRules(t *testing.T) {
 			[]struct {
 				offset int
 				value  []byte
-			}{{0, []byte{6, 0, 0, 0}}, {4, []byte{0xf5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}, {20, []byte{9, 0}}},
+			}{{0, []byte{6, 0, 0, 0}}, {0, []byte{0xfa, 0xff, 0xff, 0xff}}, {4, []byte{0xf5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}, {4, []byte{0x0b, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}}, {20, []byte{9, 0}}, {20, []byte{0xe9, 3}}},
 			[]string{"if value < spec.get(\"lo\", 0) or value > spec.get(\"hi\", len(spec.get(\"variants\", []))):"}},
 		{"ordinals", "package probe\nenum Grade { Gold, Silver }\nunion Pick { a int32\n b int32\n}\nfixed table T { g Grade\n pick Pick\n}\n", 6,
 			[]struct {
@@ -124,6 +124,13 @@ func TestPythonFixedProofValuesReadRules(t *testing.T) {
 			files, err := pythontable.Generate(u)
 			if err != nil {
 				t.Fatal(err)
+			}
+			dir := pythonFixedTree(t, files)
+			if out, err := pyrun.Analyze(t, dir, "probe"); err != nil {
+				t.Fatalf("mypy generated package: %s", out)
+			}
+			if out, err := pyrun.Analyze(t, dir, "probe/_schema"); err != nil {
+				t.Fatalf("mypy runtime: %s", out)
 			}
 			setup := "from probe import T\nwith open('saved', 'wb') as f: f.write(T.fixed_save([T()]))\n"
 			_, python := pythonFixedRun(t, files, setup, nil)
@@ -168,31 +175,33 @@ else:
 			// The writer's bounds and ordinal counts also govern an older file
 			// read through a compiled plan, even when the reader admits more.
 			if tc.name == "scalar-bounds" || tc.name == "ordinals" {
-				newSchema := tc.schema
-				if tc.name == "scalar-bounds" {
-					newSchema = strings.ReplaceAll(newSchema, "max = 5", "max = 50")
-					newSchema = strings.ReplaceAll(newSchema, "max = 500", "max = 1000")
-					newSchema = strings.ReplaceAll(newSchema, "min = 10", "min = 0")
-				} else {
-					newSchema = strings.Replace(newSchema, "Gold, Silver }", "Gold, Silver, Bronze }", 1)
-					newSchema = strings.Replace(newSchema, " b int32\n}", " b int32\n c int32\n}", 1)
-				}
-				newer := fixedproof.ParseCheckUnit(t, newSchema)
-				entry, ok := fixedproof.LineageEntryOf(u, "T")
-				if !ok {
-					t.Fatal("old writer has no fixed lineage")
-				}
-				lineage := map[string][]fixedproof.LineageEntry{"T": {entry}}
-				if n, reason, _, _, _ := runner.LoadLineage(t, newer, "T", lineage, cpp, 1); n != 1 {
-					t.Fatalf("compiled plan refuses clean writer: %s", reason)
-				}
-				for _, c := range tc.corruptions {
-					wire := bytes.Clone(cpp)
-					copy(wire[len(wire)-int(tc.body)+c.offset:], c.value)
-					if n, _, _, _, _ := runner.LoadLineage(t, newer, "T", lineage, wire, 1); n >= 0 {
-						t.Errorf("compiled plan accepted invalid writer value at %d", c.offset)
+				t.Run("compiled-writer", func(t *testing.T) {
+					newSchema := tc.schema
+					if tc.name == "scalar-bounds" {
+						newSchema = strings.Replace(newSchema, "min = -5, max = 5", "min = -50, max = 50", 1)
+						newSchema = strings.Replace(newSchema, "min = -500, max = 500", "min = -1000, max = 1000", 1)
+						newSchema = strings.Replace(newSchema, "min = 10, max = 1000", "min = 0, max = 2000", 1)
+					} else {
+						newSchema = strings.Replace(newSchema, "Gold, Silver }", "Gold, Silver, Bronze }", 1)
+						newSchema = strings.Replace(newSchema, " b int32\n}", " b int32\n c int32\n}", 1)
 					}
-				}
+					newer := fixedproof.ParseCheckUnit(t, newSchema)
+					entry, ok := fixedproof.LineageEntryOf(u, "T")
+					if !ok {
+						t.Fatal("old writer has no fixed lineage")
+					}
+					lineage := map[string][]fixedproof.LineageEntry{"T": {entry}}
+					if n, reason, _, _, _ := runner.LoadLineage(t, newer, "T", lineage, cpp, 1); n != 1 {
+						t.Fatalf("compiled plan refuses clean writer: %s", reason)
+					}
+					for _, c := range tc.corruptions {
+						wire := bytes.Clone(cpp)
+						copy(wire[len(wire)-int(tc.body)+c.offset:], c.value)
+						if n, _, _, _, _ := runner.LoadLineage(t, newer, "T", lineage, wire, 1); n >= 0 {
+							t.Errorf("compiled plan accepted invalid writer value at %d", c.offset)
+						}
+					}
+				})
 			}
 			for _, c := range tc.corruptions {
 				wire := bytes.Clone(cpp)
