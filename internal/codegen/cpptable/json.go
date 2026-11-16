@@ -292,7 +292,13 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
         const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
-        if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
+        // A map entry cannot omit its value: an absent optional is null,
+        // while the key remains in the map (§2.8, §16.2).
+        if ( value->optional && TableJsonGetRaw( (const uint8_t *) entry + value->present_offset, 1 ) == 0 )
+        {
+            out.raw( "null", 4 );
+        }
+        else if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
     }
     out.line( depth );
     out.put( '}' );
@@ -494,6 +500,13 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         {
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
+        else if ( value->optional && got == 'z' )
+        {
+            // Place resets the value, including a replaced entry, so null
+            // leaves it absent at its defaults just as a field's null does.
+            if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 0 );
+        }
         else if ( value->kind == 17 && !value->is_array )
         {
             // A POINTER VALUE IS SHARED EXACTLY AS A POINTER FIELD IS (§2.8):
@@ -523,9 +536,10 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             in.report->refuse_reason = kind_mismatch;
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
-        else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
+        else
         {
-            return false;
+            if ( !TableJsonReadField( in, entry, value, depth + 1 ) ) { return false; }
+            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
         }
         c = TableJsonPeek( in );
         if ( c == ',' )
