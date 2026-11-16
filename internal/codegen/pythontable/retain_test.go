@@ -64,7 +64,9 @@ func TestPythonRetainResolvedPayload(t *testing.T) {
 		t.Fatalf("mypy: %v\n%s", err, out)
 	}
 	script := pyrun.ImportPrelude + `from probe._schema.retain import resolve_payload, measure_payload, emit_payload, Excluded, Capacity
-from probe import Refused
+from probe import Refused, Root
+from probe._schema.retain_known import KNOWN
+assert tuple(sorted(KNOWN))==KNOWN and Root.descriptor.fields[0].field_id in KNOWN
 ids=[0x111,0x222]
 def u64(v): return v.to_bytes(8,'little')
 def u32(v): return v.to_bytes(4,'little')
@@ -124,6 +126,10 @@ ctx=RetainCtx(keep); output=bytearray(); writer=Writer(output)
 assert emit_record(keep,field,kind,payload,frozenset(),ctx,writer)
 assert bytes(output)==bytes([1,30,2]) and ctx.ids==[]
 assert keep.id_used==2 and keep.retained_id(0xabc)==1 and keep.retained_id(ids[0])==2
+keep.begin_save(); ctx=RetainCtx(keep); output=bytearray()
+assert emit_record(keep,field,kind,payload,(ids[0],),ctx,Writer(output))
+assert ctx.ids==[ids[0]] and keep.retained_id(0xabc)==1 and keep.retained_id(ids[0])==0
+assert bytes(output)==bytes([1,30,2])
 short=TableRetain(bytearray(128), bytearray(24))
 assert short.capture(1, (), 0xabc, 30, memoryview(bytes([1])), ids)
 _,_,field,kind,payload=next(short.records())

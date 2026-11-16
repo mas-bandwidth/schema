@@ -712,7 +712,7 @@ class TableRetain:
                                 self._set_word(data, parent + 9 + parent_side * 4, branch + 1)
                 at = end
 
-    def write_tail(self, node: int, steps: tuple[tuple[int, int], ...], known: frozenset[int], ctx: Any, writer: Any) -> int:
+    def write_tail(self, node: int, steps: tuple[tuple[int, int], ...], known: frozenset[int] | tuple[int, ...], ctx: Any, writer: Any) -> int:
         """Write this body's records, returning the number lost to id capacity."""
         lost = 0
         for identity, kind, payload, record in self.records_at(node, steps):
@@ -897,7 +897,7 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: lis
     return counts[0], counts[1]
 
 
-def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryview, known: frozenset[int], ctx: Any, writer: Any) -> bool:
+def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryview, known: frozenset[int] | tuple[int, ...], ctx: Any, writer: Any) -> bool:
     """Place one record atomically, or return False when its ids do not fit.
 
     `ctx` is the normal save context. The caller initializes the fixed id
@@ -907,7 +907,16 @@ def emit_record(retain: TableRetain, identity: int, kind: int, resolved: memoryv
     previous_retained = retain.id_used
 
     def intern(value: int) -> int:
-        if value in known:
+        # The emitted tuple is sorted once at compile time; test callers may
+        # also supply a fixed set. Neither grows with retained input.
+        if isinstance(known, tuple):
+            from bisect import bisect_left
+
+            position = bisect_left(known, value)
+            nameable = position < len(known) and known[position] == value
+        else:
+            nameable = value in known
+        if nameable:
             existing = ctx.refs.get(value)
             if existing is not None:
                 return int(existing)

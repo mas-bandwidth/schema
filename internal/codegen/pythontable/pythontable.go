@@ -71,6 +71,17 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	for rel, data := range runtime {
 		out[path.Join(u.Package, rel)] = data
 	}
+	// The nameable set is fixed by the schema, not the retained input. It is
+	// the same set used to size the generated C++ ID table.
+	if len(ir.VariableTables(u)) != 0 {
+		var retainIDs strings.Builder
+		retainIDs.WriteString("\"\"\"Compile-time table IDs used by the retaining writer.\"\"\"\n\nKNOWN = (\n")
+		for _, id := range ir.TableWireIds(u) {
+			fmt.Fprintf(&retainIDs, "    0x%016x,\n", id)
+		}
+		retainIDs.WriteString(")\n")
+		out[path.Join(u.Package, RuntimeDir, "retain_known.py")] = []byte(retainIDs.String())
+	}
 	// The hosted packet classes carry the packet core's own codec, so the
 	// table package ships the packet runtime's serialize.py beside its table
 	// runtime. The table runtime's __init__ owns the errors and the shared
