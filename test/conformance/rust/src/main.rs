@@ -1190,6 +1190,16 @@ macro_rules! with_root {
                 use mapdemo::{text_from_json_bytes as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
                 Some($body)
             }
+            ("featurewitnesses", "Root") => {
+                #[allow(unused_imports)]
+                use featurewitnesses::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("featurewitnesses", "ArrayRoot") => {
+                #[allow(unused_imports)]
+                use featurewitnesses::{array_root_from_json_bytes as $from_json, array_root_load as $load, array_root_save_checked as $save, array_root_to_json_checked as $to_json};
+                Some($body)
+            }
             _ => None,
         }
     }};
@@ -1710,6 +1720,8 @@ macro_rules! with_cook_root {
             ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook}; Some($body) }
             ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook}; Some($body) }
             ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook}; Some($body) }
+            ("featurewitnesses", "Root") => { use featurewitnesses::{root_load as $load, root_cook_write as $cook}; Some($body) }
+            ("featurewitnesses", "ArrayRoot") => { use featurewitnesses::{array_root_load as $load, array_root_cook_write as $cook}; Some($body) }
             _ => None,
         }
     }};
@@ -2316,9 +2328,9 @@ fn surface_write_refusal_fixed(manifest: &Manifest, out: &str) {
 // is read into the vocabulary the `message` surface reads against; the one
 // value is measured and saved through MeasureMessages and SaveMessages as a
 // batch of one. The Rust message writer refuses with -1 (an enum ordinal or a
-// union tag outside its set, a NaN or an infinity, a count or length past its
-// storage, every build) or a debug_assert! panic (the write contract over the
-// whole batch, debug builds).
+// union tag outside its set, a NaN or an infinity) or a debug_assert! panic
+// (the write contract over the whole batch, the count or length past its
+// storage included, debug builds).
 fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("write-refusal-message") {
         if f.len() < 8 {

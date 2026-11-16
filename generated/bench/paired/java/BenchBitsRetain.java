@@ -584,6 +584,7 @@ public final class BenchBitsRetain {
             TableRetain retain,
             byte[] buf,
             TableVariable.Report report) {
+        assert BenchBitsVariable.checkWrite(v);
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -640,7 +641,7 @@ public final class BenchBitsRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow || ids.nonFinite ? -1 : w.off;
+        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;
     }
 
     static void writeFieldsRetain(

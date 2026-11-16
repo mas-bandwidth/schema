@@ -131,7 +131,7 @@ func TestMessageRefusesRepeatedFieldId(t *testing.T) {
 	var voc Vocabulary
 	var ann tabletext.Report
 	voc.AnnounceRead(Announce(m.Unit), &ann)
-	for _, pair := range [][2]string{{`{"bi":5}`, `{"bi":300}`}, {`{"f64":1.5}`, `{"f64":-2}`}, {`{"flag":true}`, `{"flag":true}`}, {`{"opt":1}`, `{"opt":2}`}} {
+	for _, pair := range [][2]string{{`{"bi":5}`, `{"bi":300}`}, {`{"f64":1.5}`, `{"f64":-2}`}, {`{"flag":true}`, `{"flag":true}`}, {`{"opt":"1"}`, `{"opt":"2"}`}} {
 		x, _ := EncodeMessage(m, covPlace(t, m, "Root", pair[0]))
 		y, _ := EncodeMessage(m, covPlace(t, m, "Root", pair[1]))
 		ex := messageBodyEnd(t, m, &voc, x)
