@@ -23,12 +23,15 @@ func TestCPPTextFormSharing(t *testing.T) {
 		t.Fatal(err)
 	}
 	schema := `package probe
- table GNode { id int32; next *GNode }
+ table GNode { id int32; next *GNode; inside Wrap }
  table Other { id int32 }
  table Wrap { target *GNode }
  union Choice { selected GNode }
  table Graph {
  items []*GNode
+ edges map[string(8)]*GNode
+ links [..3]*GNode
+ fixedLinks [2]*GNode
  lookup map[string(8)]?int32
  blob *bytes
  direct *GNode
@@ -43,6 +46,8 @@ func TestCPPTextFormSharing(t *testing.T) {
 	cases := []struct{ name, text, why string }{
 		{"shared", `(:items (("&node" 7 :id 6) ("&node" 7) null))`, ""},
 		{"tree", `(:items ((:id 6) (:id 6) null))`, ""},
+		{"collection-sites", `(:items (("&node" 7 :id 6)) :edges (("same" ("&node" 7))) :links (("&node" 7) null) :fixedLinks (("&node" 7) null))`, ""},
+		{"byvalue-descent", `(:items (("&node" 7 :id 6)) :values ((:next ("&node" 7))) :choice (:selected (:next ("&node" 7))))`, ""},
 		{"nested", `(:items (("&node" 7 :id 6)) :nested (:target ("&node" 7)) :direct ("&node" 7))`, ""},
 		{"completed-inner", `(:direct ("&node" 7 :id 1 :next ("&node" 9 :id 2)) :items (("&node" 9) ("&node" 7)))`, ""},
 		{"map-key", `(:lookup (("&node" 2)))`, ""},
@@ -50,6 +55,7 @@ func TestCPPTextFormSharing(t *testing.T) {
 		{"empty-blob", `(:blob "")`, ""},
 		{"forward", `(:items (("&node" 7) ("&node" 7 :id 6)))`, "text_reference"},
 		{"self-cycle", `(:direct ("&node" 7 :id 6 :next ("&node" 7)))`, "text_reference"},
+		{"byvalue-cycle", `(:direct ("&node" 7 :id 6 :inside (:target ("&node" 7))))`, "text_reference"},
 		{"deep-cycle", `(:direct ("&node" 7 :id 6 :next (:next ("&node" 7))))`, "text_reference"},
 		{"mismatch", `(:items (("&node" 7 :id 6)) :other ("&node" 7))`, "text_reference"},
 		{"duplicate", `(:items (("&node" 7 :id 6) ("&node" 7 :id 8)))`, "text_reference"},
