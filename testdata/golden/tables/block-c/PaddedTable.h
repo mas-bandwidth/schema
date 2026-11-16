@@ -4529,6 +4529,8 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==6 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4543,9 +4545,17 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
   }
   value->tag=(uint8_t)decoded;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->tag == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x7ce4fd9430e80cea): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==11 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4566,9 +4576,17 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  }
   if(finite){value->value=decoded;
   } }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(blockdemo_table_double_to_bits( value->value ) == blockdemo_table_double_to_bits( 0.0 ))))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xd5f2d079088c0b17): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==1 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4578,9 +4596,17 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  if(!blockdemo_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->flag=lo!=0;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->flag == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x08b72e07b55c3ac0): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==8 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4595,9 +4621,17 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
   }
   value->id=(uint32_t)decoded;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->id == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x39f7fcec8fcb623d): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==12 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4617,9 +4651,18 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
   if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   value->label_length=(int32_t)kept;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ schema_assert( 0 <= value->label_length && value->label_length <= 15 );
+ if(!(value->label_length != 0))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xe68c2e6bb1ee5646): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==7;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==14 && entry->elem_kind==7)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4646,9 +4689,22 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
    }
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
  }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ int rides=0;
+ { int32_t i;
+ for(i=0;i<4;i++) if(!(value->slots[i] == 0)) { rides=1;
+ break;
+ } }
+ if(!(rides))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xbaaeb048a5a8fa6d): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==16 && entry->elem_kind==6;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==16 && entry->elem_kind==6)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -4696,6 +4752,19 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
    value->teams[slot]=(uint8_t)decoded;
    }
  } }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ int rides=0;
+ { int32_t i;
+ for(i=0;i<4;i++) {
+  if(value->teams[i] == 0) continue;
+  rides=1;
+  break;
+  } }
+ if(!(rides))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x77976c7416517c63): {
@@ -5194,6 +5263,8 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xeddcb72b15486e77): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==6 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5208,9 +5279,17 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
   }
   value->marker=(uint8_t)decoded;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->marker == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xee7ba9ad45c64144): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==9 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5222,9 +5301,17 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
   (void)hi;
   value->stamp=(uint64_t)decoded;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->stamp == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xa3a7061ff10a8138): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==13;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5244,9 +5331,18 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
   }if(walk<n && !blockdemo_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->rows_count=(int32_t)kept;
  }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
+ if(!(value->rows_count>0))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xc573b39bc29148ca): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->kind==14 && entry->elem_kind==6;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==14 && entry->elem_kind==6)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,14)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!blockdemo_table_message_skip(r,entry))goto damaged;
@@ -5261,6 +5357,13 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
   if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   value->blob_length=(int32_t)kept;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ blockdemo_table_bit_writer_t default_writer=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ schema_assert( 0 <= value->blob_length && value->blob_length <= 12 );
+ if(!(value->blob_length != 0))goto damaged;
+ }
  break;
  }
  default:r->report->unknown++;

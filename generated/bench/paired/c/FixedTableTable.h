@@ -4006,12 +4006,26 @@ static SCHEMA_UNUSED int bench_fixed_table_load_message_body(bench_table_message
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x7ce4fd9430e80cea): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!bench_bench_mixed_load_message_body(r,&value->value))return 0;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ bench_table_bit_writer_t probe=*w;
+ probe.buffer=NULL;
+ probe.capacity=INT64_MAX;
+ probe.bits=0;
+ probe.check_default=1;
+ if(!bench_bench_mixed_save_message_body(&probe,&value->value)) return 0;
+ if(!(probe.bits>BENCH_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
+ }
  break;
  }
  default:r->report->unknown++;

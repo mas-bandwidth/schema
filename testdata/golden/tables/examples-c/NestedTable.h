@@ -5991,15 +5991,31 @@ static SCHEMA_UNUSED int tabledemo_archive_config_load_message_body(tabledemo_ta
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xa354fd1ff0c467c5): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE && entry->kind==13 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!tabledemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
  if(!tabledemo_root_config_load_message_body(r,&value->root))return 0;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ tabledemo_table_bit_writer_t default_writer=tabledemo_table_bit_writer(NULL,INT64_MAX);
+ tabledemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ tabledemo_table_bit_writer_t probe=*w;
+ probe.buffer=NULL;
+ probe.capacity=INT64_MAX;
+ probe.bits=0;
+ probe.check_default=1;
+ if(!tabledemo_root_config_save_message_body(&probe,&value->root)) return 0;
+ if(!(probe.bits>TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xb1e5e28e4479a274): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE && entry->kind==4 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!tabledemo_table_message_skip(r,entry))goto damaged;
@@ -6017,6 +6033,12 @@ static SCHEMA_UNUSED int tabledemo_archive_config_load_message_body(tabledemo_ta
   }
   value->count=(int32_t)decoded;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ tabledemo_table_bit_writer_t default_writer=tabledemo_table_bit_writer(NULL,INT64_MAX);
+ tabledemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->count == 1)))goto damaged;
+ }
  break;
  }
  default:r->report->unknown++;

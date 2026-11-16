@@ -6023,6 +6023,8 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_messa
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE && entry->kind==12 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!graphdemo_table_message_skip(r,entry))goto damaged;
@@ -6042,9 +6044,18 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_messa
   if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   value->tag_length=(int32_t)kept;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ graphdemo_table_bit_writer_t default_writer=graphdemo_table_bit_writer(NULL,INT64_MAX);
+ graphdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
+ if(!(value->tag_length != 0))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x823b8a195ce2133c): {
+ int same_shape=r->vocabulary->build_version==SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE && entry->kind==4 && entry->elem_kind==0;
+ int32_t unknown_before=r->report->unknown;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!graphdemo_table_message_skip(r,entry))goto damaged;
@@ -6062,6 +6073,12 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_messa
   }
   value->seq=(int32_t)decoded;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ graphdemo_table_bit_writer_t default_writer=graphdemo_table_bit_writer(NULL,INT64_MAX);
+ graphdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->seq == 0)))goto damaged;
+ }
  break;
  }
  default:r->report->unknown++;
