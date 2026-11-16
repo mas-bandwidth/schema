@@ -156,8 +156,8 @@ func TestDamageAwareBooleanAndText(t *testing.T) {
 		body   []byte
 		reason string
 	}{{"bad boolean", b(1, 1, 2, 0), "invalid boolean byte"}, {"valid boolean", b(1, 1, 1, 0), ""},
-        {"nan float", b(1, 10, 0, 0, 0xc0, 0x7f, 0), "non-finite float"},
-        {"finite float", b(1, 10, 0, 0, 0, 0x80, 0), ""}, {"zero text", b(1, 12, 2, 'a', 0, 0), "ill-formed text"}, {"bad utf8", b(1, 12, 1, 0xff, 0), "ill-formed text"}, {"valid utf8", b(1, 12, 2, 0xc3, 0xa9, 0), ""}} {
+		{"nan float", b(1, 10, 0, 0, 0xc0, 0x7f, 0), "non-finite float"},
+		{"finite float", b(1, 10, 0, 0, 0, 0x80, 0), ""}, {"zero text", b(1, 12, 2, 'a', 0, 0), "ill-formed text"}, {"bad utf8", b(1, 12, 1, 0xff, 0), "ill-formed text"}, {"valid utf8", b(1, 12, 2, 0xc3, 0xa9, 0), ""}} {
 		t.Run(tc.name, func(t *testing.T) {
 			wire, err := (framingVector{ids: []string{"future"}, body: tc.body}).scriptBytes(nil)
 			if err != nil {

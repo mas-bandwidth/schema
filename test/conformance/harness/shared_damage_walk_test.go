@@ -201,8 +201,20 @@ func (s *fixtureWalker) payload(k, off, end int, nodes bool) (int, bool) {
 			s.damage(off, "invalid boolean byte")
 			return off, false
 		}
-        if k == ir.TableKindF32 { v:=float64(math.Float32frombits(binary.LittleEndian.Uint32(s.data[off:off+4]))); if math.IsNaN(v)||math.IsInf(v,0){s.damage(off,"non-finite float");return off,false} }
-        if k == ir.TableKindF64 { v:=math.Float64frombits(binary.LittleEndian.Uint64(s.data[off:off+8])); if math.IsNaN(v)||math.IsInf(v,0){s.damage(off,"non-finite float");return off,false} }
+		if k == ir.TableKindF32 {
+			v := float64(math.Float32frombits(binary.LittleEndian.Uint32(s.data[off : off+4])))
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				s.damage(off, "non-finite float")
+				return off, false
+			}
+		}
+		if k == ir.TableKindF64 {
+			v := math.Float64frombits(binary.LittleEndian.Uint64(s.data[off : off+8]))
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				s.damage(off, "non-finite float")
+				return off, false
+			}
+		}
 		return off + w, true
 	}
 }

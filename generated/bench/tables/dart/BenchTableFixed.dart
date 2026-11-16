@@ -2530,8 +2530,12 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   var vocabularyLength = 0;
   var terminated = false;
   while (at < bodyEnd) {
-    final ref = bytes[at];
-    at += 1;
+    final reference = tableMessageLeb(bytes, at, bodyEnd);
+    if (!reference.$3 || reference.$1 < 0) {
+      break;
+    }
+    final ref = reference.$1;
+    at = reference.$2;
     if (ref == 0) {
       if (at != bodyEnd) {
         break;
