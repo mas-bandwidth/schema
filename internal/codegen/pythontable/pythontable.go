@@ -1428,7 +1428,7 @@ func codecOf(f *ir.Field) string {
 	}
 	if f.IsMap() {
 		if f.Type.Optional {
-			return "unsupported"
+			return "optional"
 		}
 		return "map"
 	}
