@@ -115,14 +115,9 @@ func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
 // carrying it (compiler/carries_python_optional.go).
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"[]float32"} {
-		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
-		_, err := New().Generate(u, "python", Options{})
-		if err == nil {
-			t.Errorf("python emitted an uncarried field values %s", field)
-		} else if !strings.Contains(err.Error(), "python") || !strings.Contains(err.Error(), "values") {
-			t.Errorf("the refusal does not name the target and field: %v", err)
-		}
+	list := unitFromSource(t, "package probe\ntable Root {\n values []float32\n}\n")
+	if _, err := New().Generate(list, "python", Options{}); err != nil {
+		t.Fatalf("the table frame refused its float list: %v", err)
 	}
 	// A plain map spends no §2 carry construct; the map carrier registry is
 	// what admits it (compiler/carries_python_maps.go).
