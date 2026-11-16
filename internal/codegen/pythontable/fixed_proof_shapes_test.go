@@ -10,9 +10,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func init() {
+	pythonFixedSetups["shape-text"] = "rows[0].s = 'é'"
+	pythonFixedSetups["bounds-old"] = "rows[0].a = [7, 9]"
 	pythonFixedSetups["utf8-values"] = "rows[1].s = 'hello'\n"
 	pythonFixedSetups["byte-buffers"] = "rows[1].blob = bytes([255, 0, 90, 1, 2, 3])\n"
 	pythonFixedSetups["nested-types"] = "rows[0].badge.title = 'hi'\n"
@@ -103,6 +106,44 @@ func TestPythonFixedProofShapes(t *testing.T) {
 	}
 }
 
+// shapeFixtureControls validates both artifacts and the strict generated package.
+func shapeFixtureControls(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, oracle []byte, verify func([]byte) error) {
+	t.Helper()
+	files, err := pythontable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := pythonFixedTree(t, files)
+	for _, path := range []string{u.Package, u.Package + "/_schema"} {
+		if out, err := pyrun.Analyze(t, dir, path); err != nil {
+			t.Fatalf("mypy %s: %v\n%s", path, err, out)
+		}
+	}
+	runner := pythonFixedProofRunner{}
+	saved := runner.Save(t, tc, u)
+	if !bytes.Equal(saved, oracle) {
+		t.Fatal("Python writer differs from C++ oracle")
+	}
+	if err := verify(saved); err != nil {
+		t.Fatalf("C++ rejected Python output: %v", err)
+	}
+	damaged := bytes.Clone(oracle)
+	damaged[0] ^= 1
+	if err := verify(damaged); err == nil {
+		t.Fatal("C++ accepted damaged file")
+	}
+	if _, err := runner.LoadAndResave(t, tc, u, damaged); err == nil {
+		t.Fatal("Python accepted damaged file")
+	}
+	mutated, err := runner.SaveMutated(t, tc, u)
+	if err != nil {
+		t.Fatalf("writer control: %v", err)
+	}
+	if bytes.Equal(mutated, oracle) || verify(mutated) == nil {
+		t.Fatal("C++ did not detect writer mutation")
+	}
+}
+
 // TestPythonFixedProofShapesText checks text bounds, UTF-8, zero bytes and dead
 // bytes against a file from the same live C++ reference.
 func TestPythonFixedProofShapesText(t *testing.T) {
@@ -111,6 +152,7 @@ func TestPythonFixedProofShapesText(t *testing.T) {
 	tc := fixedproof.RowCase{ID: "shape-text", Schema: "package probe\nfixed table T { s string(8) }\n", Root: "T", Body: 12, Count: 1, CppSetup: `memcpy(value[0].s, "\xc3\xa9", 2); value[0].s_length = 2;`}
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	clean, verify := fixedproof.CppOracle(t, tc, u)
+	shapeFixtureControls(t, tc, u, clean, verify)
 	runner := pythonFixedProofRunner{}
 	count, reason, fields, saved, _ := runner.LoadLineage(t, u, "T", nil, clean, 1)
 	if count != 1 || fields["r0.s"] != `"é"` || !bytes.Equal(saved, clean) {
@@ -167,13 +209,22 @@ func TestPythonFixedProofShapesArrayBounds(t *testing.T) {
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..4]uint16 }\n")
 	tc := fixedproof.RowCase{ID: "bounds-old", Schema: "package probe\nfixed table T { a [..2]uint16 }\n", Root: "T", Body: 8, Count: 1, CppSetup: `value[0].a_count=2; value[0].a[0]=7; value[0].a[1]=9;`}
 	clean, verify := fixedproof.CppOracle(t, tc, old)
+	shapeFixtureControls(t, tc, old, clean, verify)
 	entry, ok := fixedproof.LineageEntryOf(old, "T")
 	if !ok {
 		t.Fatal("missing writer lineage")
 	}
 	lineage := map[string][]fixedproof.LineageEntry{"T": {entry}}
 	runner := pythonFixedProofRunner{}
-	count, why, fields, _, _ := runner.LoadLineage(t, newer, "T", lineage, clean, 1)
+	count, why, fields, saved, _ := runner.LoadLineage(t, newer, "T", lineage, clean, 1)
+	newRow := fixedproof.RowCase{ID: "bounds-new", Root: "T", Body: 12, Count: 1, CppSetup: tc.CppSetup}
+	newOracle, verifyNew := fixedproof.CppOracle(t, newRow, newer)
+	if !bytes.Equal(saved, newOracle) {
+		t.Fatal("evolved Python bytes differ from C++")
+	}
+	if err := verifyNew(saved); err != nil {
+		t.Fatalf("C++ rejected evolved bytes: %v", err)
+	}
 	if count != 1 || fields["r0.a_count"] != "2" || fields["r0.a[1]"] != "9" {
 		t.Fatalf("writer bound: count=%d reason=%s fields=%v", count, why, fields)
 	}
