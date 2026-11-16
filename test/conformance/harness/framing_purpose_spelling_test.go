@@ -203,3 +203,96 @@ func TestExplicitNullPurposeAndPositive(t *testing.T) {
 	}
 
 }
+
+// noncanonicalPurposeShapes classifies this small corpus directly from the
+// wire and its declared Root field order. It does not decode the value.
+func noncanonicalPurposeShapes(data []byte) map[string]bool {
+	f := frameWire(data)
+	shapes := map[string]bool{}
+	fault := framingTableFault(framingVector{}, data)
+	if strings.Contains(fault, "unused slots") {
+		shapes["unused-id-entry"] = true
+	}
+	if strings.Contains(fault, "first uses slot") {
+		shapes["id-table-out-of-order"] = true
+	}
+	places := map[uint64]int{ir.TableWireId("mode"): 0, ir.TableWireId("count"): 1, ir.TableWireId("head"): 2, ir.TableWireId("pick"): 3}
+	last, nodePos, fields := -1, -1, 0
+	for i, sp := range f.spots {
+		if sp.kind == spotNodeCount && sp.value == 0 {
+			shapes["empty-node-table"] = true
+		}
+		if sp.kind != spotRef || len(sp.enclosing) != 0 || sp.value == 0 {
+			continue
+		}
+		id, ok := f.entryOf(sp.value)
+		if !ok {
+			continue
+		}
+		if id == ir.TableNodeWireId {
+			nodePos = fields
+		} else if at, ok := places[id]; ok {
+			if at < last {
+				shapes["fields-out-of-order"] = true
+			}
+			last = at
+		}
+		fields++
+		if i+1 >= len(f.spots) || f.spots[i+1].kind != spotKind {
+			continue
+		}
+		k := f.spots[i+1]
+		if id == ir.TableWireId("mode") && k.value == ir.TableKindU8 && k.off+1 < len(data) && data[k.off+1] == 7 {
+			shapes["field-at-default"] = true
+		}
+		if i+2 < len(f.spots) {
+			next := f.spots[i+2]
+			if k.value == ir.TableKindPointer && next.kind == spotIndex && next.value == 0 {
+				shapes["explicit-null-pointer"] = true
+			}
+			if k.value == ir.TableKindUnion && next.kind == spotArm && next.value == 0 {
+				shapes["union-arm-zero"] = true
+			}
+		}
+	}
+	if nodePos >= 0 && nodePos != fields-1 {
+		shapes["node-table-out-of-place"] = true
+	}
+	return shapes
+}
+
+// TestNoncanonicalVariablePurposeShapes requires every variable-form corpus
+// row to contain exactly its named spelling, and the canonical control none.
+func TestNoncanonicalVariablePurposeShapes(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(conformanceRoot(t), "testdata/wire/non-canonical")
+	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, line := range strings.Split(string(manifest), "\n") {
+		row := strings.Split(line, "\t")
+		if len(row) != 4 || row[1] != "variable" {
+			continue
+		}
+		seen++
+		data, err := os.ReadFile(filepath.Join(dir, row[0]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		shapes := noncanonicalPurposeShapes(data)
+		if row[2] == "canonical" {
+			if len(shapes) != 0 {
+				t.Errorf("%s: canonical vector has %v", row[0], shapes)
+			}
+			continue
+		}
+		if len(shapes) != 1 || !shapes[row[2]] {
+			t.Errorf("%s: got spellings %v, want only %s", row[0], shapes, row[2])
+		}
+	}
+	if seen != 9 {
+		t.Errorf("variable corpus has %d rows, want 9", seen)
+	}
+}
