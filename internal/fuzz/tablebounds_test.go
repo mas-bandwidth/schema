@@ -90,13 +90,39 @@ func uintEdges(f *genField) (lo, hi string) {
 	return impLo.String(), impHi.String()
 }
 
+// integerJSON spells an integer using its declaration's JSON representation.
+func integerJSON(f *genField, digits string) string {
+	if f.Bits > 32 {
+		return strconv.Quote(digits)
+	}
+	return digits
+}
+
+func integerSevenMode(f *genField) string {
+	if f.Bits <= 32 {
+		return "must_refuse"
+	}
+	if f.IMode == mExtreme || f.IMode == mExclDefault {
+		if f.Kind == gInt && (f.Imin > 7 || f.Imax < 7) {
+			return "must_refuse"
+		}
+		if f.Kind == gUint {
+			lo, hi, _, _ := uintBounds(f.Bits, f.IMode)
+			if lo > 7 || hi < 7 {
+				return "must_refuse"
+			}
+		}
+	}
+	return "must_accept"
+}
+
 func inRangeRawValue(f *genField) string {
 	switch f.Kind {
 	case gInt:
-		return strconv.FormatInt(f.Imin, 10)
+		return integerJSON(f, strconv.FormatInt(f.Imin, 10))
 	case gUint:
 		min, _, _, _ := uintBounds(f.Bits, f.IMode)
-		return strconv.FormatUint(min, 10)
+		return integerJSON(f, strconv.FormatUint(min, 10))
 	case gFloat32, gFloat64:
 		return "2.5"
 	case gBool:
@@ -163,21 +189,24 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 				minMinus1 := new(big.Int).Sub(big.NewInt(f.Imin), one).String()
 				maxPlus1 := new(big.Int).Add(big.NewInt(f.Imax), one).String()
 				cases = append(cases,
-					boundCase{name: fn + "_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, minMinus1), edge: singleFieldDoc(fn, strconv.FormatInt(f.Imin, 10))},
-					boundCase{name: fn + "_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, maxPlus1), edge: singleFieldDoc(fn, strconv.FormatInt(f.Imax, 10))},
+					boundCase{name: fn + "_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, minMinus1)), edge: singleFieldDoc(fn, integerJSON(f, strconv.FormatInt(f.Imin, 10)))},
+					boundCase{name: fn + "_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, maxPlus1)), edge: singleFieldDoc(fn, integerJSON(f, strconv.FormatInt(f.Imax, 10)))},
 				)
 			}
 			// An implied case refuses; its edge is the declared bound when a
 			// range is declared, else the storage-width implied bound.
 			edgeLo, edgeHi := intEdges(f)
 			cases = append(cases,
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, impLoMinus1), edge: singleFieldDoc(fn, edgeLo)},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, impHiPlus1), edge: singleFieldDoc(fn, edgeHi)},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, impLoMinus1)), edge: singleFieldDoc(fn, integerJSON(f, edgeLo))},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, impHiPlus1)), edge: singleFieldDoc(fn, integerJSON(f, edgeHi))},
 				boundCase{name: fn + "_1e400", mode: "must_refuse", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_refuse", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_refuse", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_str_7", mode: integerSevenMode(f), text: singleFieldDoc(fn, `"7"`)},
 				boundCase{name: fn + "_null", mode: "must_refuse", text: singleFieldDoc(fn, "null")},
 			)
+			if f.Bits > 32 {
+				cases = append(cases, boundCase{name: fn + "_bare_number", mode: "must_refuse", text: singleFieldDoc(fn, "7")})
+			}
 		case gUint:
 			impLo, impHi := impliedUintBounds(f.Bits)
 			impLoMinus1 := new(big.Int).Sub(impLo, one).String()
@@ -188,19 +217,22 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 				minMinus1 := new(big.Int).Sub(new(big.Int).SetUint64(umin), one).String()
 				maxPlus1 := new(big.Int).Add(new(big.Int).SetUint64(umax), one).String()
 				cases = append(cases,
-					boundCase{name: fn + "_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, minMinus1), edge: singleFieldDoc(fn, strconv.FormatUint(umin, 10))},
-					boundCase{name: fn + "_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, maxPlus1), edge: singleFieldDoc(fn, strconv.FormatUint(umax, 10))},
+					boundCase{name: fn + "_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, minMinus1)), edge: singleFieldDoc(fn, integerJSON(f, strconv.FormatUint(umin, 10)))},
+					boundCase{name: fn + "_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, maxPlus1)), edge: singleFieldDoc(fn, integerJSON(f, strconv.FormatUint(umax, 10)))},
 				)
 			}
 			edgeLo, edgeHi := uintEdges(f)
 			cases = append(cases,
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, impLoMinus1), edge: singleFieldDoc(fn, edgeLo)},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, impHiPlus1), edge: singleFieldDoc(fn, edgeHi)},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, impLoMinus1)), edge: singleFieldDoc(fn, integerJSON(f, edgeLo))},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse", text: singleFieldDoc(fn, integerJSON(f, impHiPlus1)), edge: singleFieldDoc(fn, integerJSON(f, edgeHi))},
 				boundCase{name: fn + "_1e400", mode: "must_refuse", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_refuse", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_refuse", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_str_7", mode: integerSevenMode(f), text: singleFieldDoc(fn, `"7"`)},
 				boundCase{name: fn + "_null", mode: "must_refuse", text: singleFieldDoc(fn, "null")},
 			)
+			if f.Bits > 32 {
+				cases = append(cases, boundCase{name: fn + "_bare_number", mode: "must_refuse", text: singleFieldDoc(fn, "7")})
+			}
 		case gFloat32:
 			cases = append(cases,
 				boundCase{name: fn + "_min_minus_1", mode: "must_refuse", text: singleFieldDoc(fn, "-3.5e38")},
@@ -312,8 +344,8 @@ func sabotageEdgeCase(u *genUnit) *boundCase {
 		return &boundCase{
 			name: "sabotage_edge_" + f.Name,
 			mode: "must_refuse",
-			text: singleFieldDoc(f.Name, belowMin),
-			edge: singleFieldDoc(f.Name, past),
+			text: singleFieldDoc(f.Name, integerJSON(f, belowMin)),
+			edge: singleFieldDoc(f.Name, integerJSON(f, past)),
 		}
 	}
 	return nil
@@ -566,3 +598,35 @@ func TestRandomTableBoundsPass(t *testing.T) {
 }
 
 var _ = math.MaxInt8
+
+func TestIntegerBoundsCasesUseDeclaredJSONShape(t *testing.T) {
+	t.Parallel()
+	unit := &genUnit{Root: &genTable{Fields: []*genField{
+		{Name: "wide", Kind: gInt, Bits: 64, IMode: mExclDefault, Imin: 8, Imax: 10},
+		{Name: "unsigned", Kind: gUint, Bits: 64, IMode: mNone},
+		{Name: "narrow", Kind: gInt, Bits: 32, IMode: mNone},
+	}}}
+	cases := map[string]boundCase{}
+	for _, c := range buildFieldBoundCases(unit, false) {
+		cases[c.name] = c
+	}
+	for _, want := range []boundCase{
+		{name: "wide_min_minus_1", mode: "must_refuse", text: `{"wide":"7"}`, edge: `{"wide":"8"}`},
+		{name: "wide_str_7", mode: "must_refuse", text: `{"wide":"7"}`},
+		{name: "wide_bare_number", mode: "must_refuse", text: `{"wide":7}`},
+		{name: "unsigned_str_7", mode: "must_accept", text: `{"unsigned":"7"}`},
+		{name: "unsigned_implied_max_plus_1", mode: "must_refuse", text: `{"unsigned":"18446744073709551616"}`, edge: `{"unsigned":"18446744073709551615"}`},
+		{name: "narrow_str_7", mode: "must_refuse", text: `{"narrow":"7"}`},
+		{name: "narrow_implied_max_plus_1", mode: "must_refuse", text: `{"narrow":2147483648}`, edge: `{"narrow":2147483647}`},
+	} {
+		if got, ok := cases[want.name]; !ok || got != want {
+			t.Errorf("%s: got %+v, want %+v", want.name, got, want)
+		}
+	}
+	if got := inRangeRawValue(unit.Root.Fields[0]); got != `"8"` {
+		t.Errorf("wide in-range value = %s", got)
+	}
+	if got := sabotageEdgeCase(unit); got == nil || got.edge != `{"wide":"7"}` {
+		t.Errorf("wide sabotage edge = %+v", got)
+	}
+}
