@@ -1128,6 +1128,9 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
+		b.WriteString("                from ._schema.kind_array import _widens\n")
+		fmt.Fprintf(b, "                if _widens(kind, fields[%d].kind):\n", i)
+		b.WriteString("                    return load_table(cls, data, report)\n")
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 	}

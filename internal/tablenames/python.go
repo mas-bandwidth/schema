@@ -60,6 +60,7 @@ func init() {
 		Name{Name: "write_body", What: "write one nested body over the descriptors", Scoped: true},
 		Name{Name: "_widens", What: "array element widening predicate", Scoped: true},
 		Name{Name: "_read_widened", What: "array element widening reader", Scoped: true},
+		Name{Name: "_widened_scalar", What: "form-1 scalar widening reader", Scoped: true},
 		Name{Name: "crc32c", What: "CRC-32C of a file body", Scoped: true},
 		Name{Name: "seal_crc", What: "append a root file checksum", Scoped: true},
 		Name{Name: "open_crc", What: "verify and remove a root file checksum", Scoped: true},
