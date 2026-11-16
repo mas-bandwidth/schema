@@ -78,7 +78,14 @@ func pythonGenerate(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string
 	if err := refuseTables(u, "python"); err != nil {
 		return nil, err
 	}
-	return python.Generate(u)
+	out, err := python.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	if err := pythontable.AddView(u, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Python's list codec currently carries only a subset of list element shapes.

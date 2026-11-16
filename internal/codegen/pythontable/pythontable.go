@@ -123,6 +123,9 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 		out[path.Join(u.Package, "_fixed.py")] = []byte(fixedData)
 	}
 
+	if err := AddView(u, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -925,6 +928,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	guards := structGuards(st)
 	fmt.Fprintf(b, "%s.descriptor = TableDesc(\n", name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
+	fmt.Fprintf(b, "    doc=%s, tags=%s,\n", strconv.Quote(st.Doc), pythonTags(st.Tags))
+	layout := ir.RecordLayout(u, st)
+	fmt.Fprintf(b, "    table=%s, size=%d, align=%d, region_align=%d, %s,\n", pyBool(st.IsTable), layout.Size, layout.Align, ir.TableRegionAlign(u), cookTableColumns(u, st, layout))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
 	fmt.Fprintf(b, "    json_array=%s,\n", pyBool(st.JsonArray))
@@ -963,24 +969,8 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
 		codec := codecOf(f)
-		at := int64(0)
-		var pieces []ir.BlockFieldPiece
-		if fl := layout.FieldByName(f.Name); fl != nil {
-			pieces = ir.FieldPieces(u, f, fl.Offset)
-			if len(pieces) > 0 {
-				at = pieces[0].Offset
-			}
-		}
 		fmt.Fprintf(b, "        FieldDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
-		fmt.Fprintf(b, "            json_key=%s,\n", strconv.Quote(ir.TableFieldJsonKey(f)))
-		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
-		fmt.Fprintf(b, "            frac_bits=%d,\n", f.Type.FracBits)
-		unbounded := f.Type.TextUnbounded()
-		if f.IsTextList() {
-			unbounded = ir.TextListValue(f).Type.TextUnbounded()
-		}
-		fmt.Fprintf(b, "            unbounded=%s,\n", pyBool(unbounded))
 		fmt.Fprintf(b, "            json_text_list=%s,\n", pyBool(f.IsTextList()))
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -991,6 +981,12 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		if f.KeyEnumRef != nil {
 			fmt.Fprintf(b, "            json_keys=%s,\n", pythonJSONNames(f.KeyEnumRef.Variants))
+		}
+		fmt.Fprintf(b, "            doc=%s, tags=%s,\n", strconv.Quote(f.Doc), pythonTags(f.Tags))
+		fmt.Fprintf(b, "            json_key=%s, type_name=%s,\n", strconv.Quote(ir.TableFieldJsonKey(f)), strconv.Quote(ir.TableTypeSpelling(f)))
+		fieldLayout := layout.FieldByName(f.Name)
+		if fieldLayout != nil {
+			fmt.Fprintf(b, "            at=%d, pieces=%s, elem_size=%d, elem_align=%d, %s,\n", fieldLayout.Offset, reflectionPieces(u, f, fieldLayout.Offset), reflectionElemSize(u, f), reflectionElemAlign(u, f), reflectionColumns(u, f, fieldLayout.Offset))
 		}
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
@@ -1027,14 +1023,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		if f.IsTextList() {
 			fmt.Fprintf(b, "            text_total=%d,\n", f.TextTotal)
 		}
-		if f.IsList() {
-			elemSize, elemAlign := ir.ListElementLayout(u, f)
-			fmt.Fprintf(b, "            elem_size=%d, elem_align=%d,\n", elemSize, elemAlign)
-		} else if f.IsMap() && f.MapEntry != nil {
-			entryLayout := ir.RecordLayout(u, f.MapEntry)
-			fmt.Fprintf(b, "            elem_size=%d, elem_align=%d,\n", entryLayout.Size, entryLayout.Align)
-		}
-		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
+		fmt.Fprintf(b, "            variant_ids=%s, %s,\n", viewVariantIds(f, true), reflectionVocabularyColumns(f))
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
@@ -1054,17 +1043,13 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 			fmt.Fprintf(b, "            fmax=%s,\n", floatBound(f, f.FMax))
 			fmt.Fprintf(b, "            float_range=%s,\n", pyBool(compressedFloat(f)))
 		}
-		fmt.Fprintf(b, "            at=%d,\n", at)
-		fmt.Fprintf(b, "            pieces=(")
-		for _, piece := range pieces {
-			fmt.Fprintf(b, "(%d, %d),", piece.Offset, piece.Size)
-		}
-		fmt.Fprintf(b, "),\n")
 		if innerCodecOf(f) == "array" {
 			emitOptionalArrayElem(b, f)
 		}
 		if codec == "keyed" {
 			emitKeyedDesc(b, f)
+		} else if f.KeyEnumRef != nil {
+			fmt.Fprintf(b, "            keys=%s,\n", viewKeys(f, true))
 		}
 		fmt.Fprintf(b, "        ),\n")
 	}
@@ -1498,7 +1483,7 @@ func emitUnionDescriptor(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 	size, _, tagSize, armOffset := ir.UnionLayout(u, un)
 	fmt.Fprintf(b, "%s.descriptor = UnionDesc(\n", un.Name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(un.Name))
-	fmt.Fprintf(b, "    size=%d, tag_size=%d, arm_offset=%d,\n", size, tagSize, armOffset)
+	fmt.Fprintf(b, "    size=%d, tag_size=%d, arm_offset=%d, doc=%s, tags=%s,\n", size, tagSize, armOffset, strconv.Quote(un.Doc), pythonTags(un.Tags))
 	b.WriteString("    arms=(\n")
 	for tag, v := range un.Variants {
 		wire := v.Name
@@ -1521,8 +1506,8 @@ func emitUnionDescriptor(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 		fmt.Fprintf(b, "            target=%s,\n", strconv.Quote(target))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(pointer))
 		armSize, _ := ir.ArmLayout(u, v)
-		fmt.Fprintf(b, "            size=%d,\n", armSize)
-		fmt.Fprintf(b, "            field=%s,\n", armFieldDesc(u, v, tag+1))
+		fmt.Fprintf(b, "            size=%d, doc=%s, tags=%s,\n", armSize, strconv.Quote(v.Doc), pythonTags(v.Tags))
+		fmt.Fprintf(b, "            field=%s,\n", armFieldDesc(u, un, v, tag+1))
 		fmt.Fprintf(b, "        ),\n")
 	}
 	b.WriteString("    ),\n")
@@ -1534,7 +1519,7 @@ func emitUnionDescriptor(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 // field id (docs/SPEC-TABLES.md §2.6, §3). A payload-free arm has no field
 // line. An arm whose codec needs a walk the union module does not run (a
 // keyed array, a byte buffer) refuses by name through kind_unsupported.py.
-func armFieldDesc(u *ir.Unit, v ir.UnionVariant, tag int) string {
+func armFieldDesc(u *ir.Unit, un *ir.Union, v ir.UnionVariant, tag int) string {
 	f := v.F
 	if f == nil {
 		return "None"
@@ -1553,6 +1538,7 @@ func armFieldDesc(u *ir.Unit, v ir.UnionVariant, tag int) string {
 		elemCodec = arrayElemCodec(f)
 	}
 	lo, hi := intRange(f)
+	offset := int64(0)
 	mapEntry := ""
 	if f.MapEntry != nil {
 		mapEntry = f.MapEntry.Name
@@ -1567,15 +1553,17 @@ func armFieldDesc(u *ir.Unit, v ir.UnionVariant, tag int) string {
 			", fmin=" + floatBound(f, f.FMin) + ", fmax=" + floatBound(f, f.FMax) +
 			", float_range=" + pyBool(compressedFloat(f))
 	}
-	var pieces strings.Builder
-	pieces.WriteString("(")
-	for _, piece := range ir.FieldPieces(u, f, 0) {
-		fmt.Fprintf(&pieces, "(%d, %d),", piece.Offset, piece.Size)
-	}
-	pieces.WriteString(")")
 	return "FieldDesc(" +
-		"pieces=" + pieces.String() +
-		", name=" + strconv.Quote(v.Name) +
+		"name=" + strconv.Quote(v.Name) +
+		", doc=" + strconv.Quote(v.Doc) +
+		", tags=" + pythonTags(v.Tags) +
+		", json_key=" + strconv.Quote(ir.TableFieldJsonKey(f)) +
+		", type_name=" + strconv.Quote(ir.FieldTypeSpelling(f)) +
+		", at=" + strconv.FormatInt(offset, 10) +
+		", pieces=" + reflectionPieces(u, f, offset) +
+		", elem_align=" + strconv.FormatInt(reflectionElemAlign(u, f), 10) +
+		", elem_size=" + strconv.FormatInt(reflectionElemSize(u, f), 10) +
+		", " + reflectionColumns(u, f, offset) +
 		", field_id=" + hex64(ir.TableWireId(wire)) +
 		", kind=" + strconv.Itoa(ir.TableWireFieldKind(f)) +
 		", codec=" + strconv.Quote(codec) +
@@ -1594,11 +1582,10 @@ func armFieldDesc(u *ir.Unit, v ir.UnionVariant, tag int) string {
 		", elem_kind=" + strconv.Itoa(ir.TableWireElemKind(f)) +
 		", elem_codec=" + strconv.Quote(elemCodec) +
 		", size=" + strconv.FormatInt(fieldSize(f), 10) +
-		", frac_bits=" + strconv.Itoa(f.Type.FracBits) +
-		", unbounded=" + pyBool(f.Type.TextUnbounded()) +
 		", json_variants=" + pythonJSONFieldVariants(f) +
 		", json_flags=" + pyBool(pythonJSONIsFlags(f)) +
-		", variant_ids=" + variantIds(f) +
+		", variant_ids=" + viewVariantIds(f, true) +
+		", " + reflectionVocabularyColumns(f) +
 		deprecated +
 		floatMeta +
 		", default=" + defaultFor(f, codec) +
@@ -1743,12 +1730,9 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
-	fmt.Fprintf(b, "                size=%d,\n", fieldSize(f))
-	fmt.Fprintf(b, "                frac_bits=%d,\n", f.Type.FracBits)
-	fmt.Fprintf(b, "                unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
 	fmt.Fprintf(b, "                json_variants=%s,\n", pythonJSONFieldVariants(f))
 	fmt.Fprintf(b, "                json_flags=%s,\n", pyBool(pythonJSONIsFlags(f)))
-	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+	fmt.Fprintf(b, "                %s,\n", reflectionElementColumns(f))
 	if dep := deprecatedOrdinals(f); dep != "" {
 		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
 	}
@@ -2074,12 +2058,9 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
-	fmt.Fprintf(b, "                size=%d,\n", fieldSize(f))
-	fmt.Fprintf(b, "                frac_bits=%d,\n", f.Type.FracBits)
-	fmt.Fprintf(b, "                unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
 	fmt.Fprintf(b, "                json_variants=%s,\n", pythonJSONFieldVariants(f))
 	fmt.Fprintf(b, "                json_flags=%s,\n", pyBool(pythonJSONIsFlags(f)))
-	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+	fmt.Fprintf(b, "                %s,\n", reflectionElementColumns(f))
 	if dep := deprecatedOrdinals(f); dep != "" {
 		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
 	}
@@ -2203,12 +2184,14 @@ func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 		if count <= 0 {
 			return "[]"
 		}
+		// Keep the source independent of the bound. Immutable zeros can be
+		// repeated; nested values must be constructed separately to avoid aliasing.
 		elem := elementDefault(owner, f)
-		values := make([]string, 0, count)
-		for i := int64(0); i < count; i++ {
-			values = append(values, elem)
+		switch elem {
+		case "0", "False", "0.0", `""`, `b""`, "None":
+			return fmt.Sprintf("[%s] * %d", elem, count)
 		}
-		return "[" + strings.Join(values, ", ") + "]"
+		return fmt.Sprintf("[%s for _s_i in range(%d)]", elem, count)
 	}
 	return valueDefault(f)
 }
@@ -2422,5 +2405,17 @@ func goBytesLiteral(data []byte) string {
 		fmt.Fprintf(&b, "\\x%02x", c)
 	}
 	b.WriteByte('"')
+	return b.String()
+}
+
+// pythonTags emits an immutable, ordered sequence of annotation tags.
+func pythonTags(tags []string) string {
+	var b strings.Builder
+	b.WriteString("(")
+	for _, tag := range tags {
+		b.WriteString(strconv.Quote(tag))
+		b.WriteString(", ")
+	}
+	b.WriteString(")")
 	return b.String()
 }
