@@ -1009,6 +1009,8 @@ func TestPythonVtEvolutionNegativeControlSkipCheck(t *testing.T) {
 	t.Parallel()
 	mutate := func(t *testing.T, files map[string][]byte) {
 		vtReplaceOnce(t, files, "probe/_schema/load.py", `_check_text(data, "ill-formed text")`, "pass")
+		// Isolate the skip check: this legacy fixture has unused trailer IDs.
+		vtReplaceOnce(t, files, "probe/_schema/load.py", "    _check_id_order(view, ids)\n", "    pass  # isolate the skip control\n")
 	}
 	var cases []vtWireCase
 	for _, c := range vtWireCases {
