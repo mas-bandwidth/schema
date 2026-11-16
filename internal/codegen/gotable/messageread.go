@@ -16,14 +16,15 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// its fields in the writer's declaration order, no union field at None, and
 	// no field at the default its writer elides where this reader knows that
 	// default exactly, under its own build version (exact).
+	g.pf("exact:=r.Vocabulary.BuildVersion==BuildVersion\n")
 	if len(st.Fields) > 0 {
-		g.pf("order:=-1;exact:=r.Vocabulary.BuildVersion==BuildVersion;_ = exact\n")
+		g.pf("order:=-1\n")
 	}
 	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if slices.Contains(seen,entry.ID){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seen=append(seen,entry.ID);switch entry.ID {\n")
 	for ordinal, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
-		g.pf("if order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d\n", ordinal, ordinal)
+		g.pf("if exact&&order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d\n", ordinal, ordinal)
 		g.emitMessageCompatibility(f, mine, "entry", "", "\t")
 		elides := !f.Type.Optional && !f.Required
 		g.elides = elides
@@ -42,7 +43,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf("}\n")
 	}
-	g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
+	g.pf("default:if exact{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
 	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): the
 	// batch is a fixed root's, and a variable table has no message form.
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
@@ -232,7 +233,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	if f.KeyEnum != "" {
 		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §3.2, §3.3)
 		g.pf("var seenKeys [64]uint64;seenKey:=seenKeys[:0];lastKey:=0\n")
-		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if slices.Contains(seenKey,id){%s};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
+		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if slices.Contains(seenKey,id){%s};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if exact&&int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
 		if sink != "" {
 			g.pf("%s:=true\n", sink)
 		}
