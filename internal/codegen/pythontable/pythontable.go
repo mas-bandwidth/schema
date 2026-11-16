@@ -1882,7 +1882,7 @@ func pythonJSONIsFlags(f *ir.Field) bool {
 
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
 // element the keyed kind does not carry yet: bool, the integer and
-// fixed-point kinds, enums, and tables by value.
+// fixed-point kinds, enums, flags masks, and tables by value.
 func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1897,6 +1897,8 @@ func keyedElemCodec(f *ir.Field) string {
 			}
 		case *ir.Enum:
 			return "enum"
+		case *ir.Flags:
+			return "int"
 		}
 	}
 	return ""
