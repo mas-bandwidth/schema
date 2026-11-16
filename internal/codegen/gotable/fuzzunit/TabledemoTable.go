@@ -28,13 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-<<<<<<< HEAD
-const _ = uint64(goruntime.Version - 0x1bd5b16bed89d84d)
-const _ = uint64(0x1bd5b16bed89d84d - goruntime.Version)
-=======
-const _ = uint64(goruntime.Version - 0xd4231158f15ca524)
-const _ = uint64(0xd4231158f15ca524 - goruntime.Version)
->>>>>>> f716061cced2e1fd5967add8725dbc9de5c58031
+const _ = uint64(goruntime.Version - 0x827e12cf06b6321d)
+const _ = uint64(0x827e12cf06b6321d - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -169,11 +164,6 @@ const tableFixedWiden = goruntime.TableFixedWiden
 const tableFixedConst = goruntime.TableFixedConst
 const tableFixedWidenF = goruntime.TableFixedWidenF
 const tableFixedBool = goruntime.TableFixedBool
-<<<<<<< HEAD
-=======
-const tableFixedTag = goruntime.TableFixedTag
-const tableFixedSlack = goruntime.TableFixedSlack
->>>>>>> f716061cced2e1fd5967add8725dbc9de5c58031
 
 const tableFixedSlack = goruntime.TableFixedSlack
 
@@ -247,17 +237,6 @@ func tableFixedTextRefusal(a0 []TableFixedEntry, a1 int32, a2 []byte) string {
 	return goruntime.TableFixedTextRefusal(a0, a1, a2)
 }
 
-<<<<<<< HEAD
-=======
-func tableFixedAllZero(a0 []byte) bool { return goruntime.TableFixedAllZero(a0) }
-
-func tableFixedDeadSpan(a0 []byte, a1, a2 uint32) ([2]uint32, bool) {
-	return goruntime.TableFixedDeadSpan(a0, a1, a2)
-}
-
-func tableFixedDead(a0 [][2]uint32, a1 uint32) bool { return goruntime.TableFixedDead(a0, a1) }
-
->>>>>>> f716061cced2e1fd5967add8725dbc9de5c58031
 type tableFixedLayoutEntry = goruntime.TableFixedLayoutEntry
 
 type tableFixedLayoutView = goruntime.TableFixedLayoutView

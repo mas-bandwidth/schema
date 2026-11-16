@@ -1359,11 +1359,7 @@ func TableFixedUTF8Ok(p []byte) bool {
 // absent optional's payload, a counted array's slots past its count, a text's
 // units past its used length, and an inactive union arm. A dead range is
 // checked here before anything lands, and a non-zero one is wire_damaged. Each
-<<<<<<< HEAD
-// dead range is added to dead, and an entry inside one is not asked.
-=======
 // count or optional range is added to dead, and an entry inside one is not asked.
->>>>>>> f716061cced2e1fd5967add8725dbc9de5c58031
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	var deadBuf [64][2]uint32
 	dead := deadBuf[:0]
@@ -1430,19 +1426,11 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case TableFixedSlack:
 			// an inactive union arm: the bytes under tag 0 to the widest arm's
 			// span, or those past a narrower taken arm
-<<<<<<< HEAD
-			span, zero := TableFixedDeadSpan(src, p.Src, p.Src+p.Size)
-			if !zero {
-				return TableRefuseWireDamaged.Error()
-			}
-			dead = append(dead, span)
-=======
 			if _, zero := TableFixedDeadSpan(src, p.Src, p.Src+p.Size); !zero {
 				return TableRefuseWireDamaged.Error()
 			}
 			// No active entry reads a union's dead tail: its arm guards
 			// already exclude it, so it needs no dead-span bookkeeping.
->>>>>>> f716061cced2e1fd5967add8725dbc9de5c58031
 		case TableFixedTag:
 			// a union tag past the reader's arm count names no arm (§4.6)
 			var tag uint64
@@ -2316,8 +2304,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-<<<<<<< HEAD
-const Version uint64 = 0x1bd5b16bed89d84d
-=======
-const Version uint64 = 0xd4231158f15ca524
->>>>>>> f716061cced2e1fd5967add8725dbc9de5c58031
+const Version uint64 = 0x827e12cf06b6321d
