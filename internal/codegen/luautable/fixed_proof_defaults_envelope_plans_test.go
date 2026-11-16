@@ -680,11 +680,10 @@ func TestLuauFixedProofGroupD(t *testing.T) {
 // TestLuauFixedProofGroupDNegativeControl breaks each row two ways and requires
 // the gates TestLuauFixedProofGroupD holds green to go red. The FILE: both a
 // corrupted form byte and a flipped first body byte on the last record of the
-// reference's file — the C++ verifier refuses both, and Luau's load either
-// refuses or lands a value the row's want lines and re-save byte gate reject.
-// The WRITER: schema_fixed.luau's save patched to flip the last byte of each
-// record body — Luau's file is no longer the reference's and the C++ verifier
-// refuses it.
+// reference's file — C++ rejects the corrupt form; the equality oracle detects
+// the body change, and Luau's load either refuses or lands a value the row's
+// want lines and re-save byte gate reject. The WRITER flips the last byte of
+// each record body, which the reference equality check must detect.
 func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
@@ -694,12 +693,12 @@ func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 		t.Run(c.id, func(t *testing.T) {
 			t.Parallel()
 			u, g := luauGroupDUnit(t, c)
-			cppBytes, verifyInCpp := fixedproof.CppOracle(t, c.toRowCase(), u)
+			cppBytes, verifyInCpp, loadInCpp := fixedproof.CppOracleWithLoadVerdict(t, c.toRowCase(), u)
 
 			corruptForm := bytes.Clone(cppBytes)
 			corruptForm[0] ^= 0x01
-			if err := verifyInCpp(corruptForm); err == nil {
-				t.Fatal("the C++ verifier accepted a corrupted form byte")
+			if err := loadInCpp(corruptForm); err == nil {
+				t.Fatal("the C++ loader accepted a corrupted form byte")
 			}
 			if p := runLuauGroupDProof(t, g, c, corruptForm); p.load != "refused" {
 				t.Fatalf("luau accepted a corrupted form byte: %s", p.load)
@@ -710,7 +709,7 @@ func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 			mutated := bytes.Clone(cppBytes)
 			mutated[at] ^= 0x01
 			if err := verifyInCpp(mutated); err == nil {
-				t.Fatal("the C++ verifier accepted a flipped body byte")
+				t.Fatal("the C++ equality verifier accepted a flipped body byte")
 			}
 			if p := runLuauGroupDProof(t, g, c, mutated); p.load == fmt.Sprintf("ok %d u0 k0 w0", c.count) && luauGroupDWantMismatch(c.want, p.dump) == "" && bytes.Equal(p.resaved, cppBytes) {
 				t.Fatalf("luau loaded a flipped body byte and every want line and re-save still hold: the row's values prove nothing")
@@ -731,7 +730,7 @@ func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
 				t.Fatal("the planted writer still saves the reference's bytes: the byte gate proves nothing")
 			}
 			if err := verifyInCpp(p.saved); err == nil {
-				t.Fatal("the C++ verifier accepted the planted writer's file")
+				t.Fatal("the C++ equality verifier accepted the planted writer's file")
 			}
 		})
 	}
