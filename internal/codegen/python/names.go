@@ -84,7 +84,7 @@ func CheckNamesWithTextSurfaces(u *ir.Unit, json, textform bool) error {
 				return err
 			}
 			for _, field := range t.Fields {
-				if generatedTableWireTextMembers[field.Name] || (json && t.CarriesForm("json") && generatedTableJSONMembers[field.Name]) || (textform && t.CarriesForm("json") && field.Name == "from_text_form") {
+				if generatedTableWireTextMembers[field.Name] || (json && t.CarriesForm("json") && generatedTableJSONMembers[field.Name]) || (textform && json && t.CarriesForm("json") && field.Name == "from_text_form") {
 					return fmt.Errorf("python: %s.schema: %s's field %s is the name of a generated table text method; rename the field", f.Base, t.Name, field.Name)
 				}
 			}

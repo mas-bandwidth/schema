@@ -159,6 +159,9 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 	if _, err := GenerateSurface(field, Surfaces{Wire: true}); err != nil {
 		t.Fatalf("unselected name refused: %v", err)
 	}
+	if _, err := GenerateSurface(field, Surfaces{Wire: true, TextForm: true}); err != nil {
+		t.Fatalf("name refused without JSON selection: %v", err)
+	}
 	if _, err := generateHandtext(field); err == nil || !strings.Contains(err.Error(), "from_text_form") {
 		t.Fatalf("selected name not refused: %v", err)
 	}
