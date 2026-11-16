@@ -7,10 +7,12 @@ package darttable
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -59,27 +61,60 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 	}
 	type row struct{ name, unit, little, big string }
 	units := map[string]string{}
+	noText := map[string]bool{}
+	var driverManifest strings.Builder
 	var rows []row
 	seen := map[string]bool{}
 	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[0] == "instance" {
+		if len(fields) >= 5 && fields[0] == "instance" {
 			units[fields[1]] = fields[2]
+			noText[fields[1]] = slices.Contains(fields[5:], "no-text")
 		}
 		if len(fields) == 0 || fields[0] != "cook-write" {
+			driverManifest.WriteString(line + "\n")
 			continue
 		}
-		if len(fields) != 4 || seen[fields[1]] {
+		if len(fields) < 4 || len(fields) > 6 || seen[fields[1]] {
 			t.Fatalf("bad or duplicate cook-write row: %q", line)
+		}
+		input, share := "", ""
+		for _, option := range fields[4:] {
+			switch {
+			case strings.HasPrefix(option, "input=") && input == "":
+				input = strings.TrimPrefix(option, "input=")
+			case strings.HasPrefix(option, "share=") && share == "":
+				share = strings.TrimPrefix(option, "share=")
+			default:
+				t.Fatalf("bad cook-write option %q: %q", option, line)
+			}
+		}
+		if share != "" && input == "" {
+			t.Fatalf("shared blob recipe has no input: %q", line)
 		}
 		seen[fields[1]] = true
 		rows = append(rows, row{name: fields[1], little: fields[2], big: fields[3]})
+		if input == "" && !noText[fields[1]] {
+			input = filepath.Join("testdata", "conformance", "tables", "json", fields[1]+".json")
+		}
+		if input == "" {
+			input = "-"
+		}
+		source, alias := "-", "-"
+		if share != "" {
+			source, alias, _ = strings.Cut(share, ":")
+		}
+		fmt.Fprintf(&driverManifest, "cook-write %s %s %s %s\n", fields[1], input, source, alias)
 	}
 	if len(rows) != 71 {
 		t.Fatalf("cook-write manifest has %d rows, want 71", len(rows))
 	}
 	outDir := t.TempDir()
-	cmd := exec.Command(dart, "--enable-asserts", "test/conformance/dart/main.dart", manifest, "cook-write", outDir)
+	driverPath := filepath.Join(outDir, "manifest.txt")
+	if err := os.WriteFile(driverPath, []byte(driverManifest.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(dart, "--enable-asserts", "test/conformance/dart/main.dart", driverPath, "cook-write", outDir)
 	cmd.Dir = repo
 	output, runErr := cmd.CombinedOutput()
 	if runErr != nil {

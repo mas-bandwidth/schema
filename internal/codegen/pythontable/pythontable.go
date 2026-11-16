@@ -2171,9 +2171,8 @@ func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// Fixed fields start at their born count; counted union arrays also
-		// start at their declared minimum in the variable form. Each nested
-		// value is independent.
+		// Fixed arrays and counted union arrays are born at their declared
+		// count, with each nested value constructed independently.
 		count := int64(0)
 		if fixed {
 			count = f.BornCount()
