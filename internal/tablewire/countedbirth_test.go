@@ -2,11 +2,13 @@ package tablewire_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestCountedBirthDefaultsElideAndKeepLiveData(t *testing.T) {
@@ -135,5 +137,72 @@ func TestPresentOptionalCountedBirthIsCarried(t *testing.T) {
 		if bytes.Equal(a, b) {
 			t.Fatalf("optional presence elided, fixed=%v", fixed)
 		}
+	}
+}
+
+// A valid optional sender supplies explicit defaults without depending on the
+// receiver's writer. Claiming the receiver build makes those spellings illegal
+// only where their original value is proved to be its birth default.
+func TestMessageReaderJudgesOriginalBirthSpelling(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, writer, reader, text string
+		ok                         bool
+		unknown                    int
+	}{
+		{"stored default", `package birth
+fixed table Root {items ?[2..3]int8}`, `package birth
+fixed table Root {items [2..3]int8}`, `{"items":[0,0]}`, false, 0},
+		{"live value", `package birth
+fixed table Root {items ?[2..3]int8}`, `package birth
+fixed table Root {items [2..3]int8}`, `{"items":[0,7]}`, true, 0},
+		{"optional presence", `package birth
+fixed table Root {items ?[2..3]int8}`, `package birth
+fixed table Root {items ?[2..3]int8}`, `{"items":[0,0]}`, true, 0},
+		{"sender minimum differs", `package birth
+fixed table Root {items [..3]int8}`, `package birth
+fixed table Root {items [2..3]int8}`, `{"items":[0,0]}`, true, 0},
+		{"unknown enum", `package birth
+enum E {Known,Newer}
+fixed table Root {items [2..3]E}`, `package birth
+enum E {Known}
+fixed table Root {items [2..3]E}`, `{"items":["Newer","Newer"]}`, true, 2},
+		{"nested unknown enum", `package birth
+enum E {Known,Newer}
+type Child {value E}
+fixed table Root {items [1..2]Child}`, `package birth
+enum E {Known}
+type Child {value E}
+fixed table Root {items [1..2]Child}`, `{"items":[{"value":"Newer"}]}`, true, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			writer := listModel(t, tc.writer)
+			reader := listModel(t, tc.reader)
+			wire, err := tablewire.EncodeMessages(writer, []*tabletext.Instance{place(t, writer, "Root", tc.text)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			announcement := tablewire.Announce(writer.Unit)
+			var before, after [8]byte
+			binary.LittleEndian.PutUint64(before[:], ir.BuildVersion(writer.Unit))
+			binary.LittleEndian.PutUint64(after[:], ir.BuildVersion(reader.Unit))
+			if bytes.Count(announcement, before[:]) != 1 {
+				t.Fatal("announcement build hook drift")
+			}
+			announcement = bytes.Replace(announcement, before[:], after[:], 1)
+			var vocab tablewire.Vocabulary
+			var report tabletext.Report
+			if err := vocab.AnnounceRead(announcement, &report); err != nil {
+				t.Fatal(err)
+			}
+			report = tabletext.Report{}
+			ok, err := tablewire.DecodeMessage(reader, reader.New(reader.Lookup("Root")), wire, &vocab, &report)
+			if ok != tc.ok || (ok && report.Unknown != tc.unknown) {
+				t.Fatalf("admitted=%v want=%v err=%v report=%+v", ok, tc.ok, err, report)
+			}
+			if !ok && (!report.Refused || !strings.Contains(report.Reason, "wire_damaged")) {
+				t.Fatalf("unnamed birth-default refusal: %v %+v", err, report)
+			}
+		})
 	}
 }
