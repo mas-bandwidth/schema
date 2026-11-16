@@ -7,7 +7,7 @@ python-handtext: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHandtext' ./internal/codegen/pythontable/
 
 python-handtext-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^TestPythonHandtextNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^TestPythonHandtext(NegativeControl|KindsNegativeControl)$$' ./internal/codegen/pythontable/
 
 .PHONY: table-base64-python
 build/table-base64/python/.stamp: build/schema-python test/table-base64/Bytes.schema
