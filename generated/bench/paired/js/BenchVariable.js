@@ -5256,9 +5256,6 @@ export const TableCookWrite = (() => {
     if (fd.presentAt !== undefined) {
       if (parent[fd.n] === null) {
         if (view !== null) { view.setUint8(base + fd.presentAt, 0); }
-        if (fd.k === "rec") {
-          return writeStruct(view, base + fd.at, layouts[fd.t], layouts[fd.t].make(), le, ctx);
-        }
         if (fd.k === "arr" && fd.countAt >= 0) {
           if (!putWidth(view, base + fd.countAt, 4, 0, true, le)) { return false; }
         }
