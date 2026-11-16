@@ -142,6 +142,9 @@ split ./internal/codegen/cpptable ^TestDamageDiscardsTheWholeLoadCPP$
 split ./internal/codegen/cpptable ^TestRefusedLoadsHandBackNothingCPP$
 split ./internal/codegen/cpptable ^TestPointerNamingAnOpenNodeIsRefusedCPP$
 split ./internal/codegen/cpptable ^TestDiamondChainLoadsLinearCPP$
+# The table front-end fuzz seed corpus grows with every checked-in schema.
+# Give it its own row; the complement still runs every other test and seed.
+split ./internal/fuzz ^FuzzTableFrontEnd$
 split ./internal/ci ^TestEveryRunPatternMatchesATest$
 split ./internal/codegen/goosetable ^TestGooseEveryPackageNameIsClaimed$
 split ./internal/codegen/goosetable ^TestGooseTableWireMatchesTheCorpus$
