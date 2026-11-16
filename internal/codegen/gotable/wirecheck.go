@@ -230,7 +230,8 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 // applies to a record it does name (docs/SPEC-TABLES.md §4, §6.5). nodes is the
 // table's record count, which bounds every pointer index; mark, when not nil,
 // names a record a pointer reaches so the graph walk starts there too.
-func tableWireRecordCheck(body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
+func tableWireRecordCheck(id uint64, body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
+ if id==tableWireBytesID || id==tableWireStringID { return TableRefuseOk }
  var c tableWireCheck
  c.ids=ids
  c.nodes=nodes

@@ -148,7 +148,7 @@ func TestImplementationRequiresActualFeatureValues(t *testing.T) {
 	// reachable declaration and the same claimed generator registration.
 	for _, tc := range []struct{ feature, schema, active, dormant string }{
 		{"required", "table Root\n{\n name string(32) | required\n}\n", "{\"name\":\"live\"}", "{\"name\":\"\"}"},
-		{"one-sided-range", "table Root\n{\n n int64 | min = 0\n}\n", "{\"n\":1}", "{}"},
+		{"one-sided-range", "table Root\n{\n n int64 | min = 0\n}\n", "{\"n\":\"1\"}", "{}"},
 		{"text-list", "table Root\n{\n names [..4]string(8)\n}\n", "{\"names\":[\"live\"]}", "{\"names\":[]}"},
 		{"text-list-total", "table Root\n{\n names [..4]string(8) | total = 12\n}\n", "{\"names\":[\"live\"]}", "{\"names\":[\"\"]}"},
 		{"array-root", "table Root | json = \"array\"\n{\n names [..4]string(8)\n}\n", "[\"live\"]", "[]"},
@@ -367,7 +367,7 @@ func TestImplementationIntegrityMatchesGeneratedGoGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inst := implementationInput(t, u, "Ledger", "{\"n\":1000,\"label\":\"ok\",\"count\":7}")
+	inst := implementationInput(t, u, "Ledger", "{\"n\":\"1000\",\"label\":\"ok\",\"count\":7}")
 	actual, err := os.ReadFile(inst.Wire)
 	if err != nil {
 		t.Fatal(err)

@@ -1764,6 +1764,29 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 	return true
 }
 
+<<<<<<< HEAD
+=======
+// tableWireRecordCheck walks one node record whose type this reader does not
+// name, so no LoadBody reaches it, with the same wire-alone rules the body read
+// applies to a record it does name (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5). nodes is the
+// table's record count, which bounds every pointer index; mark, when not nil,
+// names a record a pointer reaches so the graph walk starts there too.
+func tableWireRecordCheck(id uint64, body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
+	if id == tableWireBytesID || id == tableWireStringID {
+		return TableRefuseOk
+	}
+	var c tableWireCheck
+	c.ids = ids
+	c.nodes = nodes
+	c.mark = mark
+	end, ok := c.body(body, false)
+	if !ok || end != int64(len(body.Buffer)) {
+		return c.failed()
+	}
+	return c.reason
+}
+
+>>>>>>> 12486bef9e7a3c8341158d3a08349c987780a157
 // tableOpenChecked opens a form-1 file and answers the report as a refusal for
 // every verdict but TableOpenOk (mas-bandwidth/schema docs/SPEC-TABLES.md §3, §4, §6.5). The wire
 // conditions are the body read's one walk, as it decodes each field; there is
