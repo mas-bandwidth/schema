@@ -2,6 +2,15 @@
   "note": "Rulings that make a proof cell not applicable by design (tools/matrix proof). Each entry quotes the maintainer verbatim, with the date it was said and where the words came from; `applies` names the cells it covers (a conformance surface and a case-name pattern, or a porting-register row; no langs means every language). A ruling only ever covers an ABSENT answer: a leg that answers a covered case is still held to the expectation. Add a ruling only from the maintainer's own words.",
   "rulings": [
     {
+      "id": "message-flags-width-is-caller-error",
+      "date": "2026-11-16",
+      "quotes": [
+        "Assert or runtime error. The writer has made an error. stop!",
+        "(the caller of the library has made an error)"
+      ],
+      "source": "Glenn, live session on message flags held past the announced width, relayed by the coordinator. Write correctness is the caller's responsibility. The invalid value must stop through the language's write contract (SPEC.md §5.1): assertions where available, including C/C++ debug assertions, and runtime errors where assertions are unavailable. This write policy never relaxes reads: readers validate hostile input correctly in every build. This confirms SPEC-TABLES §3.3 and corrects the contradictory truncation sentence in §22.6. It makes no case not applicable."
+    },
+    {
       "id": "ruby-pure-ruby",
       "date": "2026-11-14",
       "quotes": [
