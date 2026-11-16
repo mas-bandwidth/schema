@@ -308,7 +308,7 @@ generated class per table and per map entry, each with its descriptor
   own field id before its body's ids, so a nested table's id table is the
   reference's first-use order and a read-then-write is its bytes.
 - **Optional fields are presence.** `?T` is carried over the base kinds (bool,
-  bits, the full-width integers and by-value tables), at every depth: `None` is
+  bits, the full-width integers, floats and by-value tables), at every depth: `None` is
   absent and writes no field, and an absent value owns no node, because the
   save's numbering follows an optional's edges only when its value is present.
   A present value ALWAYS rides, its default included, through the inner kind
@@ -321,7 +321,7 @@ generated class per table and per map entry, each with its descriptor
   once, and a T made absent while it still holds a pointer writes no stale
   node.
 - **Optional arrays are the array framing behind presence.** `?[N]T`,
-  `?[..N]T` and `?[Min..N]T` over bool, the integers, bits and by-value tables
+  `?[..N]T` and `?[Min..N]T` over bool, the integers, bits, floats and by-value tables
   (the by-value `?[N]T` of a T that holds a pointer included) are carried by
   `kind_optional.py`, with `inner` "array" and the element's own descriptor in
   `elem`: an absent array (`None`) writes no field; a present list ALWAYS rides
@@ -335,14 +335,24 @@ generated class per table and per map entry, each with its descriptor
   joins the optional-array carriers (`compiler/tablesoptionalarrays.go`). An
   optional array of an element kind this cut does not carry keeps
   `inner` "unsupported" and refuses by name.
-- **The shape is measured.** A table whose fields are all bools and integers
-  gets the straight-line generated save/load pair, unrolled with each field
-  descriptor bound to a local; every table, and every construct a later card
-  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
-  on the same table, under both pinned interpreters, in
-  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
-  straight-line pair is kept: its save is faster on both pins, and its load is
-  faster on the floor.
+- **The shape is measured.** A table whose fields are all carried kinds and
+  that holds no map gets the straight-line generated root save/load pair,
+  unrolled with each field descriptor and codec bound to a local and any
+  field-guard condition emitted inline; nested bodies, node records, a table
+  holding a map and a table holding an uncarried placeholder keep the
+  descriptor walk over `_schema/kinds.py`. The two shapes run on the same
+  table, under both pinned interpreters, in `TestPythonTableCoreShapeBench`
+  (internal/codegen/pythontable), and on pointer arrays and guards in
+  `TestPythonVtPointerArraysShapeBench`
+  ([the table pointer arrays](port-python/table-pointer-arrays.md)). The
+  straight-line save is kept: measured at the merge with the rest of the
+  Python leg, it saves in 45,397 ns/op against the descriptor walk's 46,859
+  under 3.15.2 and in 44,984 against 46,382 under 3.11.18. The generated load
+  for these tables is the runtime's whole-file read (`load_table`), the same
+  read the descriptor walk uses, because the merged reader owns the pointer
+  graph and the non-finite and unknown-record checks; the bench measures that
+  by construction (39,150 against 38,709 on 3.15.2, 44,369 against 43,513 on
+  3.11.18).
 - **Scope.** For both the fixed and the variable class, the runtime carries
   each construct marked carried below. One marked refused has a descriptor in
   this cut and refuses by name through `kind_unsupported.py` until its card
@@ -359,6 +369,12 @@ generated class per table and per map entry, each with its descriptor
   - by-value tables: carried
 
   - `*T` pointers to tables: carried
+
+  - pointer arrays `[]*T`, `[N]*T`, `[..N]*T` and `[Min..N]*T`: carried
+    ([the table pointer arrays](port-python/table-pointer-arrays.md))
+
+  - table field guards (`if`, `if !`, `else` and nested `if`): carried
+    ([the table pointer arrays](port-python/table-pointer-arrays.md))
 
   - `*bytes`: carried ([the table blobs](port-python/table-blobs.md))
 

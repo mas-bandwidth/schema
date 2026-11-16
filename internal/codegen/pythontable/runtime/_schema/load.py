@@ -12,7 +12,8 @@ against the id table, and its pointers, which join the one pointer graph that
 is judged over every slot, known or not.
 """
 
-from typing import Any, TypeVar
+from operator import index as index_of
+from typing import Any, SupportsIndex, TypeVar, overload
 
 from . import InvalidValue, LoadReport, Refused
 from . import descriptor, kinds
@@ -135,6 +136,37 @@ class Reader:
         return self.ids[reference - 1]
 
 
+class _FirstUseIds(list[int]):
+    """Check each ID's first reference against its position in the trailer."""
+
+    __slots__ = ("used",)
+
+    def __init__(self, ids: list[int]) -> None:
+        super().__init__(ids)
+        self.used: set[int] = set()
+
+    @overload
+    def __getitem__(self, index: SupportsIndex) -> int: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[int]: ...
+
+    def __getitem__(self, index: SupportsIndex | slice) -> int | list[int]:
+        value = super().__getitem__(index)
+        if not isinstance(index, slice):
+            position = index_of(index)
+            if position in self.used:
+                return value
+            if position != len(self.used):
+                raise Refused("wire_damaged", "the id table is not in first-use order")
+            self.used.add(position)
+        return value
+
+    def finish(self) -> None:
+        if len(self.used) != len(self):
+            raise Refused("wire_damaged", "the id table contains an unused id")
+
+
 class Ctx:
     __slots__ = (
         "ids",
@@ -190,6 +222,7 @@ class Ctx:
 def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T:
     view = buffer_view(data)
     ids = _id_table(view)
+    _check_id_order(view, ids)
     ctx = Ctx(ids)
     obj = cls()
     ctx.root = obj
@@ -493,13 +526,20 @@ def _resolve(ctx: Ctx) -> None:
     if len(ctx.children) > 1 or ctx.edges:
         _graph(ctx)
     for owner, slot, index in ctx.pending:
-        # a map's pointer value names its map and (key, field); any other
-        # slot names its table and its field
+        # a map's pointer value names its map and (key, field); a pointer
+        # array's entry names its list and (position, field); any other slot
+        # names its table and its field
         if isinstance(owner, dict):
             key, field = slot
+            position = None
             where = f"{field.name}[{key!r}]"
+        elif isinstance(owner, list):
+            position, field = slot
+            key = None
+            where = f"{field.name}[{position}]"
         else:
-            key, field = None, slot
+            key, position = None, None
+            field = slot
             where = f"{owner.descriptor.name}.{field.name}"
         value: Any = None
         if index != 0:
@@ -510,7 +550,7 @@ def _resolve(ctx: Ctx) -> None:
                 if descriptor.by_id(type_id) is not None:
                     raise Refused(
                         "wire_damaged",
-                        f"a pointer whose target is not the type its slot requires: {where}",
+                        "a pointer whose target is not the type its slot requires",
                     )
                 # a record of a type this reader does not declare reads null
             else:
@@ -518,11 +558,13 @@ def _resolve(ctx: Ctx) -> None:
                 if target is None or type(node) is not target:
                     raise Refused(
                         "wire_damaged",
-                        f"a pointer whose target is not the type its slot requires: {where}",
+                        "a pointer whose target is not the type its slot requires",
                     )
                 value = node
         if isinstance(owner, dict):
             owner[key] = value
+        elif isinstance(owner, list):
+            owner[slot[0]] = value
         else:
             setattr(owner, field.name, value)
     for owner, field, index in ctx.blob_pending:
@@ -610,6 +652,42 @@ def _check_file(view: memoryview, ids: list[int]) -> None:
         raise Refused("wire_damaged", "bytes between the root terminator and the id table")
 
 
+def _check_id_order(view: memoryview, ids: list[int], announcement: bool = False) -> None:
+    """Walk all wire references in first-use order, independent of the reader.
+
+    A node table's field reference is met in the root body, but its records are
+    walked only after that body ends, matching the writer's ID numbering.
+    """
+    tracked = _FirstUseIds(ids)
+    ctx = Ctx(tracked)
+    ctx.nonfinite = []
+    reader = Reader(view, 1, _body_end(view), tracked)
+    seen: set[int] = set()
+    nodes: memoryview | None = None
+    while True:
+        reference = reader.varint()
+        if reference == 0:
+            break
+        field_id = reader.id_at(reference)
+        if field_id in seen:
+            raise Refused("wire_damaged", "the same field id twice in one body")
+        seen.add(field_id)
+        kind = reader.byte()
+        if field_id in (_BUILD_VERSION_WIRE_ID, _MESSAGE_VOCABULARY_WIRE_ID) and not announcement:
+            raise Refused("wire_damaged", "a reserved announcement id out of place")
+        if field_id == NODE_WIRE_ID:
+            if kind != 12:
+                raise Refused("wire_damaged", "the node table has the wrong kind")
+            nodes = reader.take(reader.varint())
+        else:
+            _skip_payload(reader, kind, ctx, 0)
+    if reader.pos != reader.end:
+        raise Refused("wire_damaged", "bytes between the root terminator and the id table")
+    if nodes is not None:
+        _check_node_table(nodes, ctx)
+    tracked.finish()
+
+
 def _check_node_table(data: memoryview, ctx: Ctx) -> None:
     reader = Reader(data, 0, len(data), ctx.ids)
     count = reader.varint()
@@ -654,8 +732,9 @@ def _skip_payload(reader: Reader, kind: int, ctx: Ctx, depth: int) -> None:
         ctx.edges.append(reader.varint())
         return
     if kind == 30:
-        if reader.varint() > len(ctx.ids):
-            raise Refused("wire_damaged", "a variant reference past the id table")
+        reference = reader.varint()
+        if reference:
+            reader.id_at(reference)
         return
     if kind == 15:
         _skip_union(reader, ctx, depth)
@@ -755,6 +834,7 @@ def _skip_keyed(data: memoryview, ctx: Ctx, depth: int) -> None:
         key = reader.varint()
         if key == 0 or key > len(ctx.ids):
             raise Refused("wire_damaged", "a keyed slot whose key reference names no id")
+        reader.id_at(key)
         if key in seen:
             raise Refused("wire_damaged", "the same keyed slot twice in one keyed body")
         seen.add(key)
@@ -770,6 +850,7 @@ def _skip_union(reader: Reader, ctx: Ctx, depth: int) -> None:
         return
     if reference > len(ctx.ids):
         raise Refused("wire_damaged", "an arm reference past the id table")
+    reader.id_at(reference)
     kind = reader.byte()
     length = reader.varint()
     payload = reader.take(length)
