@@ -2605,8 +2605,9 @@ function TableVariableFromJson(c, text, report) {
   return v;
 }
 
-// a wide integer declares "N" and reads as a string OR a number; every other
-// JSON shape is exact (§16.2, tabletext read.go shapeMatches)
+// Shape N routes both strings and numbers to the scalar reader. The reader
+// accepts a wide value only from a string and counts a number as kind mismatch
+// (§16.2); every other JSON shape is exact.
 function TableVariableShapeMatches(want, got) {
   if (want === got) { return true; }
   return want === "N" && (got === "s" || got === "n");
