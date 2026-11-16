@@ -1025,7 +1025,7 @@ func TestPythonRetainManifestSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stripped strings.Builder
-	for _, line := range strings.Split(string(manifestBytes), "\n") {
+	for line := range strings.SplitSeq(string(manifestBytes), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 7 && fields[0] == "retain" {
 			stripped.WriteString(strings.Join(fields[:7], " ") + "\n")

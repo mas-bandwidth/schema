@@ -257,9 +257,9 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None, retai
     retained = 0
     lost = 0
     if retain is not None:
-        from .retain import _capture_file
+        from importlib import import_module
 
-        retained, lost = _capture_file(cls, view, retain, ids)
+        retained, lost = import_module(__package__ + ".retain")._capture_file(cls, view, retain, ids)
         retain.directory = ctx.nodes
         retain.loaded_root = obj
     if report is not None:
