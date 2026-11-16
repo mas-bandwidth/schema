@@ -1,6 +1,6 @@
 PYTHON_CI_SUPPORT_GROUPS += python-fixed-identity-negative-control
 # Python form 3, its live C++ byte oracle and both artifact controls.
-PYTHON_CI_SUPPORT_GROUPS += python-fixed-form python-fixed-form-negative-control python-fixed-form-proof \
+PYTHON_CI_SUPPORT_GROUPS += python-fixed-form python-fixed-form-negative-control \
     python-fixed-form-conformance python-fixed-form-conformance-negative-control \
     python-fixed-writer-lineage python-fixed-writer-lineage-negative-control \
     python-fixed-core-values python-fixed-core-values-negative-control \
@@ -12,10 +12,15 @@ python-fixed-form:
 python-fixed-form-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedFormNegativeControl$$' ./internal/codegen/pythontable/
 
-.PHONY: python-fixed-form-proof python-fixed-form-bench
-test-python: python-fixed-form-proof
-python-fixed-form-proof: build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofSuite$$' ./internal/codegen/pythontable/
+PYTHON_FIXED_SUITE_ROWS := fixed-file-roundtrip file-envelope batch-capacity plan-selection \
+    compiled-plans definition-hash fixed-closure live-extents writing
+PYTHON_FIXED_SUITE_TARGETS := $(addprefix python-fixed-form-proof-,$(PYTHON_FIXED_SUITE_ROWS))
+PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_FIXED_SUITE_TARGETS)
+.PHONY: python-fixed-form-proof python-fixed-form-bench $(PYTHON_FIXED_SUITE_TARGETS)
+test-python: $(PYTHON_FIXED_SUITE_TARGETS)
+python-fixed-form-proof: $(PYTHON_FIXED_SUITE_TARGETS)
+$(PYTHON_FIXED_SUITE_TARGETS): build/fixedform-corpus/.stamp
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofSuite$$/^$(@:python-fixed-form-proof-%=%)$$' ./internal/codegen/pythontable/
 python-fixed-form-bench:
 	SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedFormBenchFunctional$$' ./internal/codegen/pythontable/
 
