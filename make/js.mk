@@ -1167,34 +1167,31 @@ tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-retain.log
 	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-retain.log || { echo 'JavaScript retaining wire-fuzz roster incomplete'; exit 1; }
 
-# tables-js-wire-fuzz-negative-control is I15's control for this leg
-# (docs/PORTING.md): the twin of the reference's numbering-resolve control.
-# One statement of the GENERATED variable reader is removed in a COPY of the
-# generated tree: the enum reference's range check (a reference past the
-# unit's id table is damage, docs/SPEC-TABLES.md §3). Without it the reader
-# looks the reference up past the table, names no variant, and counts an
-# unknown where the oracle counts malformed, so the differential must go red
-# on the REPORT. --n 0 runs the enumerated pass alone, so the control does not
-# depend on the random stream. Nothing else in the js gate sees this: the
-# conformance harness's wire, report and hostile surfaces stay green over the
-# same sabotaged tree, so the red here is the fuzzer's own.
+# I15's generated-reader control removes only the final all-ID-entries-used
+# check (§3). Use the shared unused-entry framing vector against a variable
+# root: fixed roots correctly refuse form 1 before this check. Verify the
+# ordinary reader first, then require the copied reader's one-line sabotage
+# to change read acceptance on exactly the same wire.
 .PHONY: tables-js-wire-fuzz-negative-control
 tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@./build/conformance-harness wire-fuzz --mixed-builder --driver 'test/conformance/js/driver wire-fuzz' \
+		--replay testdata/wire/tables/framing/frame_unreferenced_entry.bin --unit graphdemo --root Scene --n 0
 	@rm -rf build/js-wire-fuzz-sabotage && mkdir -p build/js-wire-fuzz-sabotage
-	@cp -R build/tables-generated-js build/js-wire-fuzz-sabotage/generated
+	@cp -RL build/tables-generated-js build/js-wire-fuzz-sabotage/generated
 	@for f in build/js-wire-fuzz-sabotage/generated/*/*Variable.js; do \
-		sed 's|if (ref > table.length) { report.damaged = true; return undefined; }|/* SABOTAGED enum reference range */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed 's|return next - 1 === table.length;|return true; /* SABOTAGED unused ID entry */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
-	@grep -q 'SABOTAGED enum reference range' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
-		{ echo 'NEGATIVE CONTROL FAILED: the enum reference range sabotage patched nothing'; exit 1; }
+	@grep -q 'SABOTAGED unused ID entry' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
+		{ echo 'NEGATIVE CONTROL FAILED: the unused ID entry sabotage patched nothing'; exit 1; }
 	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --mixed-builder \
-			--driver 'test/conformance/js/driver wire-fuzz' --seed 1 --n 0 --failed build/js-wire-fuzz-sabotage/failed.bin \
+			--driver 'test/conformance/js/driver wire-fuzz' --replay testdata/wire/tables/framing/frame_unreferenced_entry.bin \
+			--unit graphdemo --root Scene --n 0 --failed build/js-wire-fuzz-sabotage/failed.bin \
 			> build/js-wire-fuzz-sabotage/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: an enum reference past the id table was read as unknown and the differential stayed green'; exit 1; \
+		echo 'NEGATIVE CONTROL FAILED: an unreferenced ID entry was accepted and the differential stayed green'; exit 1; \
 	fi
-	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' build/js-wire-fuzz-sabotage/log || \
-		{ echo 'NEGATIVE CONTROL FAILED: the differential went red, but not on the report'; cat build/js-wire-fuzz-sabotage/log; exit 1; }
-	@echo 'JavaScript wire negative control: an enum reference past the id table changes the read report'
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false' build/js-wire-fuzz-sabotage/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the differential went red, but not on read acceptance'; cat build/js-wire-fuzz-sabotage/log; exit 1; }
+	@echo 'JavaScript wire negative control: an unreferenced ID entry changes read acceptance'
 
 test-js: tables-js-wire-fuzz-negative-control
 
