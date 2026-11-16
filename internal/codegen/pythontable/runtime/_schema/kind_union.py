@@ -126,6 +126,12 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
         w.varint(0)
         return
     f = arm.field
+    if f.kind == 17 and value is None:
+        w.varint(ctx.idref(arm.arm_id))
+        w.byte(arm.kind)
+        w.varint(1)
+        w.byte(0)
+        return
     if f.kind in _LENGTH_KINDS:
         # The arm's field line IS the arm header: the field id is the arm id,
         # and the field's own L is the arm's L, so the codec writes in place.
