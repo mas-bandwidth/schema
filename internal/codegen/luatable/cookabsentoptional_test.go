@@ -64,7 +64,7 @@ func TestLuaCookWriteAbsentOptionalIsZero(t *testing.T) {
 	layout := ir.RecordLayout(u, u.Tables["Root"])
 	type span struct{ from, to int64 }
 	var absent []span
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		fl := layout.Fields[i]
 		pieces := ir.FieldPieces(u, fl.Field, 64+fl.Offset)
 		last := pieces[len(pieces)-1]

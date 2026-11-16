@@ -3559,6 +3559,8 @@ fixed table ShipConfig
 }
 ```
 
+New locks start with `schema-lock 8` and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+
 ```
 schema-lock 7
 package fleet
@@ -3781,14 +3783,16 @@ at all.
 
 **A lock written under rendering version 6 is SALVAGED, not deleted.** Its one
 layout becomes the first lineage entry, its field lines are carried forward
-unchanged, and `schema lock` writes the file as version 7; deleting this file
+unchanged, and `schema lock` writes the file as version 8. Rendering 7 is also SALVAGED with every existing lineage entry preserved; a missing writer snapshot stays unknown until explicitly imported. Deleting this file
 now means wiping a fleet's lineage. A lock older than the salvage floor holds
 nothing a lineage can start from, and is refused with the one remedy that
 works: write it again with `schema lock`. A lock written by a NEWER compiler
 than this one is refused in its own sentence: *"this lock is rendering version
-8 and this compiler writes version 7 — it was written by a NEWER compiler than
+9 and this compiler writes version 8 — it was written by a NEWER compiler than
 this one, and this one cannot know what it holds: build the compiler this tree
 pins, or relock with it"*.
+
+**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, digest, record-body size and hash must match. Different captured constraints under one legacy hash are refused, not overwritten. The caller establishes provenance; anonymous legacy digests cannot recover all historical bounds. Missing metadata never implies retirement. The complete migration and compatibility boundary are in `FIXED-FORM-ALGORITHM.md` §5.2.
 
 **`--retire` is the lock's ONE NON-APPEND EDIT.** `schema lock --retire Table@0x… --reason <text>` marks one lineage entry retired; the entry stays in
 the lineage forever, and a file carrying that layout is then answered
@@ -3834,7 +3838,7 @@ and then written by `schema lock`, with every line before them untouched; a
 field at the bottom of a nested `type` is refused twice, at the holder's width
 and at the nested record's own entry; a type dropped from the closure is
 refused in each of its four spellings; a hand-edited value list is caught by
-its hash; a lock from rendering version 6 is SALVAGED by both verbs into a v7
+its hash; a lock from rendering version 6 is SALVAGED by both verbs into a v8
 with one lineage entry, a lock older than the salvage floor is refused with the
 one remedy that works, a lock from a newer compiler is refused in its own
 sentence, and a retirement marks one lineage entry or a whole table while
@@ -5069,13 +5073,11 @@ one document rather than two.
     names the same ELEMENT kind, never the list's own kind (§3.3), so a
     declaration announces only a kind on this list.
   - **An arm id of `0` is the empty union** and carries nothing after it, not
-    even a kind byte. It rides in TWO places: a `None` element of an array of
-    unions (above), and the payload of a NESTED-UNION arm whose inner union
-    is `None`, which is `L = 1` and that one zero byte. An empty union FIELD
-    elides instead (below), and a reader REFUSES a union written with arm
-    reference `0` at a field — a `None` field that should have elided — while
-    it accepts the id where those two positions are the only lawful spelling
-    of `None` (§4).
+    even a kind byte. It rides as a `None` array element or the payload of
+    a NESTED-UNION arm whose inner union is `None` (`L = 1`, that zero byte).
+    A non-required empty union FIELD elides for this writer, but a Required
+    writer stores its header and reference `0` (§22.2). Required removal is
+    lawful, so a variable reader accepts that payload at a field too (§4).
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
   set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
@@ -5230,15 +5232,16 @@ twenty unnameable entries counts nothing at all if no body references them.
   refuses a longer element or key `length_over_bound` (§2.8). An element or key `L` past its
   body is `wire_damaged`, a count past what its bytes can hold is
   `wire_damaged`, and neither allocates from the claim.
-- **Field ORDER within a body is part of the WRITE contract, and a reader
-  enforces it.** This implementation writes fields in declaration order, and a
-  reader refuses a body whose fields arrive in any other order: every field is
-  found by its id, but a body out of declaration order is a spelling no
-  conforming writer of a lawful lineage produces, so the read refuses it (§4)
-  rather than decoding it. A body carrying an id more than once is damage
-  (§4): no writer emits it. **First-use order in the id table follows from the
-  write order**, so a writer that reorders fields writes a different table, and
-  a reader refuses that table too (§3, §4).
+- **Field ORDER within a body is part of the WRITE contract.** Each writer
+  emits its own declaration order (§22.2). A variable-form reader finds fields
+  by id: a file carries no writer build or declaration, so the reader cannot
+  judge that writer's field order against its own declaration. Reordering fields
+  remains lawful evolution (§4). **First-use order in the id table is observable
+  and is checked**: its entries must match the references' first uses in the
+  actual body, whatever that body's field order (§3, §4). A body carrying an id
+  more than once is damage (§4): no writer emits it. The message form separately
+  knows the writer's record order under the same announced shape and build
+  version, and enforces it there (§3.3(b)).
 - **Writers elide what readers default**: a field holding its default, an
   empty string or array, an all-default FIXED array, an empty union and an
   all-default nested table are not written at all (fixed arrays of tables
@@ -5248,12 +5251,15 @@ twenty unnameable entries counts nothing at all if no body references them.
   and save agree byte for byte (§7). **An elided field costs nothing in the
   id table either**, because an id no body references is never written.
   Elision makes the DECLARED DEFAULT part of the wire contract: see §4.
-  **The rule runs both ways: a field STORED at its declared default is refused
-  on read**, because a conforming writer elides it — a default change is
-  refused by the lineage check (docs/VERSIONING.md), so every lawful writer's
-  default for a field the reader names is the reader's own, and that is what
-  makes the case decidable. A field riding at its default is a spelling no
-  lawful writer produces, and the read refuses it (§4).
+  **Elision is the writer's rule, not a variable-file read predicate.** A
+  file carries neither the writer's build nor its Required/optional declaration.
+  Removing `required` or moving between `T` and `?T` is lawful (§2.3, §4),
+  so a field stored at its declared default may come from an older Required
+  writer or a present optional. It reads, including empty collections,
+  all-default fixed arrays and nested bodies. A current plain declaration
+  cannot prove the writer would have elided it. The reader enforces observable
+  framing, first-use ID order and duplicate refusal; the message form can
+  additionally judge elision under the same announced shape and build (§3.3).
   **A field under a FALSE GUARD is elided too**, whatever its storage holds:
   an `if` branch that does not run writes none of its fields, so a guarded
   group rides only when its guard is true. That is what makes a guard an
@@ -5661,11 +5667,9 @@ the payload opens with the count and then carries the records:
   thing an absence could mean. §3's presence rule is unchanged — a
   non-null pointer ALWAYS rides, even when its node's body is entirely
   default, because otherwise null and "points at an empty node" would be
-  one value on the wire. **A reader refuses an explicit null pointer at a
-  field**: a pointer field written with index `0` is a spelling no conforming
-  writer produces — null elides — so the read refuses it (§4) rather than
-  reading null. The two lawful index-`0` spellings stay: a null slot of an
-  array of pointers (below), and a `| required` null pointer (§22.2).
+  one value on the wire. An explicit null pointer at a field reads: a
+  lawful older `| required` writer stores index `0`, and removing Required
+  does not change the payload. A null array slot is likewise index `0`.
 - **`*T` and a by-value `T` are no longer one framing.** §3's
   three-spellings family becomes two: `T` and `?T` share kind `13`, and
   `*T` is kind `17`. An edit between a pointer and either of the others,
@@ -5770,6 +5774,20 @@ visit, so a node three parents name takes one index and writes one body,
 and a loader materializes one node and stores that index in all three
 slots. §2.1's own example — a large `*Palette` several parents share — is
 one node on the wire, in a builder and in a region alike (§6.3).
+
+**A leg without object identity loads a root plus a node directory.** A
+runtime that copies a value flat (into a message, a shared table or a log
+line) does not keep term sharing, so a node three slots hold would be copied
+three times, and a value this section requires to load would grow with its
+paths rather than its nodes. Such a leg returns a table that reaches a pointer
+to a table as the root beside a directory of the table nodes in index order,
+and every table-pointer field holds the index of the node it names (`2` and
+up, since no pointer names the root; null as the language's null). A field the
+root did not store reads its declared default. Its save numbers a node by that
+index, so two fields holding one index are one node. A `*string` or `*bytes`
+field holds its bytes, and the directory holds null at the node-table position
+that blob spent; a table that reaches no pointer to a table loads as a plain
+map. Elixir is the leg that does this today (USAGE.md, Per-language notes).
 
 **A data cycle is refused at SAVE FROM A BUILDER, and the refusal is
 free.** The numbering walk carries one entry per reachable node — that
@@ -5910,12 +5928,13 @@ element carries:
   at all (§3) and a slot must say which variant it keys, so a body carrying one
   is damaged rather than merely foreign. It is damage: the whole load refuses
   `wire_damaged` and nothing is kept (§4).
-- **Slots are written in ascending variant ordinal**, and a reader enforces
-  it — the field-order rule (§3) one level down. Every slot is
-  found by its key, but a body whose slots arrive out of ascending ordinal is
-  a spelling no conforming writer produces, so the read refuses it (§4); byte-identical
-  output against this implementation requires matching the ascending order
-  as well as the framing.
+- **Slots are written in ascending variant ordinal in the writer's enum.**
+  The variable file carries keys by identity and does not declare the writer's
+  enum order. A reader places each slot by its key and refuses a repeated key,
+  but cannot compare the wire order with its current enum ordinal: lawful
+  variant reordering changes that ordinal. Canonical first-use ID order still
+  applies. Byte-identical output from the same writer requires its ascending
+  order as well as the framing.
 - **Each element is a triple**: the `key reference`, then `L`, then `L`
   bytes of element. The key reference names the key variant's own name hash,
   the same `fnv1a64` a field id takes (§5), carried in the file's id table
@@ -6205,12 +6224,14 @@ union at `None` (§22.2, §22.6). A reader therefore refuses the whole batch
   sender default this reader cannot know — one it meets under a different build
   version — is read as today: an absent field takes this reader's declared
   default, which is lawful version evolution.
-- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.** The
-  order a writer emits is the sender's declaration order (§22.2, §22.6), which
-  is the order the announcement gives each record's fields: the cook projection
-  renders a record's fields in declaration order (§20.2). A reader refuses a
-  body whose field references do not follow that order, and a field this reader
-  cannot name still has its place in that order.
+- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.**
+  Under the same announced shape and build version, the reader checks a body's
+  field references against the record's declaration order, because field order
+  is digested into the build version (§20.1). It refuses a body out of that
+  order and a field the record does not declare. The announcement stores each
+  field once even when several records share it, so its slot order is no one
+  record's order. Under a different build version, order is not judged and the
+  body reads, which is lawful version evolution.
 - **(c) A UNION FIELD WRITTEN WITH THE NONE REFERENCE.** Reference `0` is the
   union's empty arm, and a conforming writer elides an empty union (§22.2), so
   an explicit arm `0` is not the one encoding a conforming writer emits.
@@ -6616,11 +6637,10 @@ plain float's NaN or infinity.
 
 **THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
 batch that decodes to a good value but that no conforming writer of a lawful
-lineage version would produce is refused: fields out of the writer's order; a
-field stored at its declared default; a union written with arm reference `0`;
-and a message body that omits a field its own announcement declares. Absent
-fields, unknown fields from a newer writer and widened fields stay lawful and
-read as today (§4).
+lineage version would produce is refused: fields out of the writer's order and a
+field stored at its declared default under the same announced shape and build;
+and a union written with arm reference `0` at a message field. Absent fields, unknown fields from a newer writer and widened fields stay
+lawful and read as today (§4).
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -6697,8 +6717,8 @@ The ways a batch is damaged, at bit granularity:
   the byte boundary is not zero, or BYTES REMAIN AFTER THE PAD, which is §3's
   rule for a file with bytes left over met on a batch.
 - **A BODY THAT IS NOT THE ONE A CONFORMING WRITER EMITS.** A field written at
-  the default the writer elides, fields out of the writer's declaration order,
-  the same field id twice in one body (last-wins is retired: a repeated field id
+  the default the writer elides or fields out of its declaration order, judged
+  under the same announced shape and build (§3.3(a),(b)); the same field id twice in one body (last-wins is retired: a repeated field id
   is damage in every body, this form's included), or a union written with the
   None reference (above): the body is damage, and the whole batch is discarded.
 
@@ -8816,18 +8836,27 @@ diagnostic name, which is not normative and is never compared:
 - **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
   to a value but that no conforming writer of a lawful lineage version would
   produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
-  docs/rulings.json reads-refuse-non-canonical). The seven shapes, on the
-  variable and message forms: fields out of the writer's order; a field stored
-  at its declared default (a default change is refused by the lineage check,
-  docs/VERSIONING.md, so every lawful writer's default for a field the reader
-  names is the reader's own, which is what makes the case decidable); an
-  explicit null pointer; an id-table entry that is unused, or out of first-use
-  order; an empty node table, or one out of its place; a union written with arm
-  reference `0`; and a message body that omits a field its own announcement
-  declares. Absent fields, unknown fields from a newer writer and widened
-  fields stay lawful and read as today. The JSON form is not changed here: a
-  JSON read accepts any field order (§16.2), and this rule is the binary
-  forms' alone.
+  docs/rulings.json reads-refuse-non-canonical). The observable file cases
+  are an id-table entry that is unused, or out of first-use order; and
+  an empty node table, or one out of its place. On the message form, fields out
+  of the writer's order and a field stored at its declared default refuse
+  under the same announced shape and build version (§3.3); a union written
+  with arm reference `0` at a message field also refuses, since message
+  closures prohibit Required and optional unions (§2.3).
+  **Variable files cannot establish the writer's elision policy.** Removing
+  `required` is free and moving between `T` and `?T` reads correctly in both
+  directions (§2.3). A current non-required declaration therefore does not
+  establish that an older lawful writer was non-required. An explicit null
+  pointer, a union written with arm reference `0`, or a field stored at its
+  declared default reads, including after widening. Unknown and deprecated
+  substitutions likewise remain evolution. Absent fields, unknown fields
+  from a newer writer and widened fields stay lawful and read as today.
+  a JSON read accepts any field order (§16.2).
+  **2026-11-15 compatibility correction:** the earlier ungated variable
+  default/null/None refusal rationale overlooked Required removal and present
+  optional values. It is superseded here; no new lineage ban is introduced to
+  justify a reader-relative check. Writer elision remains unchanged. The
+  wire-only framing, graph, first-use and duplicate checks apply to every field.
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
   FROM TWO SLOTS — `blob_shared`** (§2.5). Neither is a value a writer emits.
 - **A COUNT PAST THE STORAGE CAP — `count_over_extent_cap`** (§2.9).
@@ -9028,7 +9057,7 @@ the one the committed baseline (§18) exists to refuse:
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed, reordered and renamed under `was`; array bounds may move; a field may
-change between `T` and `?T` — all of it either invisible to the wire or
+change from `?T` to `T` — all of it either invisible to the wire or
 answered by the read: counted as evolution or refused by name. Moving a field
 to or from `*T` is a kind change and is refused `kind_mismatch` (§3.1).
 
@@ -9124,7 +9153,8 @@ only.
 | a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | refuses `kind_mismatch` | **refuses** | **moves** |
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, refuses `count_over_bound` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | refuses `kind_mismatch` | **refuses**, as any element kind changed | **moves** |
-| a field moved between `T` and `?T` | silent — no byte moves | passes | **moves** — the presence companion is storage |
+| a field moved from `T` to `?T` | silent — non-default content shares bytes; present defaults read | **passes** — both presence spellings share variable framing | **moves** — the presence companion is storage |
+| a field moved from `?T` to `T` | silent — no byte moves for non-default content | passes | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | refuses `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
@@ -10592,8 +10622,7 @@ nothing to walk.
 references means reading the field's inner structure, which the plain read did
 not do: the plain read skipped the whole field by its outer framing and was
 right to. So the walk can meet damage the read never looked at: a reference
-above the id table's entry count, a reference at an id-table entry of ZERO,
-which names no id at all, a reference at one of the three RESERVED ids (§3.1,
+above the id table's entry count, a reference at one of the three RESERVED ids (§3.1,
 §3.3), which would be re-emitted into a nested body where it is malformed, a
 non-canonical length, an inner body whose terminator falls short, and a nested
 `L` that runs past its parent. **Every one of those is
@@ -10605,6 +10634,14 @@ with retention on as with it off: retention can lose a field to its capacity
 or to an excluded class, and it can never change what a read refuses or
 accepts, which is the property that lets a caller switch it on without
 re-reading its own error handling.
+
+An id-table entry whose HASH VALUE is `0` is an ordinary id (§3, §19),
+including inside a retained field. A nonzero reference to that entry resolves
+and re-interns the hash `0` just like any other permitted hash. It is distinct
+from REFERENCE `0`, which names no id and spells a body terminator or an
+enum/union `None` where the grammar admits it. The reader-private retained
+representation must preserve that distinction; hash `0` is neither damage
+nor a reason to drop a retained record.
 
 **THE PATH NAMES THE BODY, and it is the REGION's own address.**
 
@@ -16064,7 +16101,9 @@ every other token.
 A wide integer — `int64`, `uint64`, `int128`, `uint128`, and a fixed kind
 whose storage is wider than 32 bits — is written as a STRING of decimal
 digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. A fixed field's
-token is the value in whole units; the reader scales it by 2^F and places the
+string is decoded as JSON first, then its entire content must be one RFC 8259
+number with no surrounding whitespace; an invalid numeric spelling refuses
+`kind_mismatch`. Its token is the value in whole units; the reader scales it by 2^F and places the
 result only if it is an integer — `0.1` in Q16.16 is `kind_mismatch`,
 `0.0000152587890625` is raw `1` — and the writer prints the raw value back as
 the shortest decimal that is exactly the value, which is finite because a
@@ -16210,12 +16249,16 @@ written as something else.
 - **A ranged integer, or a `fixed`/`ufixed` raw value, off its `min`/`max`** —
   `invalid_value` (docs/SPEC.md §5.1 row 1).
 - **A `bits(N)` value wider than `N` bits** — `invalid_value` (§5.1 row 2).
-- **A counted array's count past its `Max` or below its `Min`** —
-  `invalid_value` (§5.1 row 3).
-- **A `string(N)` or `bytes(N)` length past `N`** — `invalid_value` (§5.1
-  row 4).
-- **A compressed or ranged float off its range** — `invalid_value` (§5.1
-  row 10).
+- **A counted array's count past its `Max` or below its `Min` (or
+  negative)** — refused per leg as docs/SPEC.md §5.1 row 3 and
+  docs/rulings.json `write-refusal` list: the verdict is the contract, the
+  reason name per language.
+- **A `string(N)` or `bytes(N)` length past `N` or negative** — refused per
+  leg as docs/SPEC.md §5.1 row 4 and docs/rulings.json `write-refusal` list:
+  the verdict is the contract, the reason name per language.
+- **A compressed or ranged float off its range** — refused per leg as
+  docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
+  verdict is the contract, the reason name per language.
 - **A graph nested past 128** (§16.2): the writer carries the reader's depth
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
@@ -18176,12 +18219,13 @@ tightened total is a data edit exactly as a tightened range is. A list that
 declares none records no token, so every committed baseline regenerates
 byte-identically and the rendering version does not move.
 
-**Presence is RECORDED and judged on nothing.** An optional's presence
-companion is a fact in the file so a person reading a diff can see it, and a
-field moving between `T` and `?T` moves no byte (§3.1) and passes in silence.
-A field moved to or from `*T` is NOT this row: a pointer is kind 17, so that
-edit changes the `kind=` fact and is refused (§4.1). Recording a fact and
-judging it are two different things, and presence alone is only recorded.
+**Presence is RECORDED but is absorbed in both variable-wire directions.**
+A field moved between `T` and `?T` passes: a present optional default is a
+lawful payload for the plain reader, and an elided plain field reads as absent
+through the optional declaration (§2.3, §4). A field moved to or from `*T`
+is a kind change and is refused (§4.1). This restores the pre-existing
+presence evolution contract rather than adding a ban to justify read-side
+elision.
 
 It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
@@ -18270,9 +18314,8 @@ committed file whenever one is there, and:
   added anywhere or renamed under `was`; flags variants APPENDED at the end; bounds, capacities,
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array made fixed or the
-  reverse; a field moved
-  between `T` and `?T` (a field moved to or from `*T` is a kind change and is
-  refused above, because a pointer is kind 17).
+  reverse; a field moved between `T` and `?T` (a field moved to or from `*T` is a
+  kind change and is refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
 is refused: it records why a baseline MOVED, and a read has nothing for it to
@@ -18454,7 +18497,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
+optional field. The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain
@@ -20272,8 +20316,10 @@ an array element's, a map entry's, a union arm's table, and a node record's.
 Declaration order is the order the fields appear in the WRITING build's
 declaration, a field inside an `if` group at the place the group declares it.
 It is the order the reference has always written in (§3, "Field ORDER"), and
-the C++ writer writes in it too. A reader refuses any other order (§3); a
-writer writes this one.
+the C++ writer writes in it too. A file reader checks observable first-use
+ID order rather than comparing the writer's fields with its own declaration
+(§3). The message reader enforces declaration order only under the same
+announced shape and build version (§3.3(b)).
 
 **EACH FIELD IS WRITTEN OR ELIDED BY ONE TABLE, AND THE TABLE IS COMPLETE.** A
 written field is its header (the id reference, then the kind byte, §3) and its
@@ -20479,8 +20525,11 @@ index but is not the default still rides. Every align pad bit and the final
 flush's pad bits are zero. A value outside its domain refuses the whole batch
 `invalid_value` (§22.2), and the bit stream never keeps a value's low bits: a
 `flags` mask is the one payload written at a width narrower than its storage
-on purpose, its bits past the writer's own variant count dropped by width, the
-row §3.3 moves for this form. **THE INTEGRITY TRAILER IS PER BATCH** when the
+on purpose, but a held bit past the writer's own variant count is outside the
+message domain: the write refuses it rather than drop it (§3.3). The check
+follows the language's write contract (SPEC.md §5.1); the narrower width does
+not authorize masking a caller's value (docs/rulings.json,
+`message-flags-width-is-caller-error`, Glenn, 2026-11-16). **THE INTEGRITY TRAILER IS PER BATCH** when the
 root declares `integrity` (§2.14): the little-endian CRC-32C of every byte of
 the batch, form byte through the final pad, appended after it. **THE ANNOUNCEMENT IS A
 COMPILE-TIME CONSTANT** (§3.3): a form-`1` file whose body is the build version
@@ -20556,10 +20605,12 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 rewrite row: a blob named from two slots (`blob_shared`, §2.5) is refused at
 save by every writer, so its instances answer the named refusal on `wire` and
 it has no canonical bytes (and under the strict read it is refused on read as
-well). **The hand-built non-canonical spellings of this section — fields out
-of declaration order, an id table out of first-use order — are not rewrite
-rows either**: a read now refuses them (§4), not rewrites them, so they answer
-the refusal on `wire` and have no canonical bytes. **Form `3`'s bytes are not a harness surface**: they are held per leg
+well). **An id table out of first-use order and a repeated field are not rewrite
+rows either**: a read refuses them (§4), so they answer the refusal on `wire`
+and have no canonical bytes. **A reversed field sequence with a first-use
+ordered id table can come from a lawful older declaration** (§3, §4). It reads
+and is a rewrite row; the current writer emits its own declaration order.
+**Form `3`'s bytes are not a harness surface**: they are held per leg
 against the C++ reference's byte oracle, `make tables-fixedform-corpus`
 (test/tables/fixedform_dump.cpp, with the values each file holds in its
 manifest), by each leg's `tables-<lang>-fixedform` gate and the conformance

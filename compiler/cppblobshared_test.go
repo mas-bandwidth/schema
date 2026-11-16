@@ -130,7 +130,8 @@ int main()
         CHECK( RootLoad( region, (int64_t) sizeof region, damaged, n, &r ) == NULL );
         CHECK( r.refused && !r.damaged && r.refuse_reason == blob_shared );
         const int64_t size = RootLoadMeasure( damaged, n );
-        CHECK( size > 0 && size < (int64_t) sizeof region );
+        // Measurement may reject this graph before any region is allocated.
+        CHECK( size < 0 );
         TableReport load{};
         CHECK( RootLoad( region, (int64_t) sizeof region, damaged, n, &load ) == NULL );
     }

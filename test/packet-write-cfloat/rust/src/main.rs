@@ -35,7 +35,7 @@ fn main() {
         std::panic::set_hook(old_hook);
         let (data, bits) = match attempt {
             Ok(Ok(pair)) => pair,
-            Ok(Err(_)) | Err(_) if wanted == "refused" => continue,
+            Err(_) if wanted == "refused" => continue,
             Ok(Err(error)) => {
                 eprintln!("FAILED: {name} unexpectedly refused: {error:?}");
                 std::process::exit(1);
@@ -59,7 +59,7 @@ fn main() {
         } else {
             input
         };
-        if output.x != expected {
+        if output.x.to_bits() != expected.to_bits() {
             eprintln!("FAILED: {name} read back {}, expected {expected}", output.x);
             std::process::exit(1);
         }

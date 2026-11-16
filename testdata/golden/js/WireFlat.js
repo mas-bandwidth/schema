@@ -13,8 +13,8 @@ const SC = new DataView(new ArrayBuffer(8));
 export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
-// interior null (SPEC §4.7). Every string field's read calls it; nothing
-// allocates and nothing latches.
+// interior null (SPEC §4.7). Every string field's read and write calls it;
+// nothing allocates and nothing latches.
 function validText(bytes, length) {
   for (let utf8Index = 0; utf8Index < length;) {
     const utf8Lead = bytes[utf8Index++];
@@ -2216,6 +2216,9 @@ export function WriteChatFlat(view, value) {
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 256) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
+  if (!validText(value.text, value.textLength)) {
+    return -1;
+  }
   lo = (((value.textLength) & 0x1ff));
   sb = 16;
   {
@@ -2744,6 +2747,9 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!validText(value.text, value.textLength)) {
     return -1;
   }
   v = (((value.textLength) & 0xff)) >>> 0;

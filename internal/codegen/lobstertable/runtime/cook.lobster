@@ -460,10 +460,14 @@ def cw_str(c:CookWrite, at:int, value:string, used:int, bufsize:int, countoff:in
 def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
     if fd.present != "":
         // The presence slot is STORAGE like every other (§20.2): it is
-        // written whether it is set or not, and the value beside it keeps
-        // the storage the constructor gave it (Go's regionWriter.field).
+        // written whether it is set or not (Go's regionWriter.field).
         if cf.present >= 0:
             co_u8(c.o, at + cf.present, if sl.present: 1 else: 0)
+        // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (§7.2; docs/rulings.json
+        // fixed-dead-bytes-are-zero): it stays the buffer's zero whatever its
+        // declared default is, which stays a READ rule.
+        if not sl.present:
+            return
     let s = fd.s
     if s == "tab":
         let t = sl.cell.tab
@@ -545,7 +549,9 @@ def cw_array(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
     if fd.array == "list":
         return
     let e = elem_of(fd)
-    let n = length(sl.elems)
+    // A counted array's slot past its live count is DEAD BYTES and stays the
+    // buffer's zero (§7.2; docs/rulings.json fixed-dead-bytes-are-zero).
+    let n = min(save_live_count(fd, sl), length(sl.elems))
     var i = 0
     while i < n:
         cw_elem(c, at + i * cf.elem, e, sl.elems[i], cf.esize, cf.ecount, cf.tag, cf.arm)
@@ -632,7 +638,8 @@ def cc_field(c:CookCarve, at:int, sl:Slot, cf:CookField) -> void:
         return
     if fd.s == "arr":
         let e = elem_of(fd)
-        let n = length(sl.elems)
+        // a dead slot's value and any extent it names are ignored (extent.go)
+        let n = min(save_live_count(fd, sl), length(sl.elems))
         var i = 0
         while i < n:
             cc_elem(c, at + i * cf.elem, e, sl.elems[i], cf)

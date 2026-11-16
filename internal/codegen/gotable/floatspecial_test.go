@@ -494,21 +494,24 @@ func TestVar(t *testing.T) {
 // A HAND-BUILT WIRE: one float payload flipped to a special value, in every
 // float position of both classes — a float32 field, a float64 field, a
 // counted array's element, a fixed array's element and a union arm. A finite
-// value lands as its bits; a NaN or an infinity is refused by the tolerant
-// read, the strict read and the builder read alike, naming its own field, and
-// lands nothing.
+// value lands as its bits, except a +0 that leaves a field (or a whole fixed
+// array) at its declared default: that spelling no writer produces, so the
+// read refuses it. A NaN or an infinity is refused by the tolerant read, the
+// strict read and the builder read alike, naming its own field, and lands
+// nothing.
 func TestFlippedPayload(t *testing.T) {
 	half64, half32 := le64(f64(0.5)), le32(math.Float32bits(0.5))
 	sites := []struct {
-		field string
-		set   func(r *Root, v *Var)
-		bits  func(r *Root) uint64
-		wide  bool
+		field      string
+		set        func(r *Root, v *Var)
+		bits       func(r *Root) uint64
+		wide       bool
+		elidesZero bool // +0 leaves this site at its declared default
 	}{
-		{"a", func(r *Root, v *Var) { r.A, v.A = 0.5, 0.5 }, func(r *Root) uint64 { return uint64(math.Float32bits(r.A)) }, false},
-		{"b", func(r *Root, v *Var) { r.B, v.B = 0.5, 0.5 }, func(r *Root) uint64 { return f64(r.B) }, true},
-		{"xs", func(r *Root, v *Var) { r.Xs[1], r.XsCount, v.Xs[1], v.XsCount = 0.5, 2, 0.5, 2 }, func(r *Root) uint64 { return f64(r.Xs[1]) }, true},
-		{"ys", func(r *Root, v *Var) { r.Ys[0], v.Ys[0] = 0.5, 0.5 }, func(r *Root) uint64 { return f64(r.Ys[0]) }, true},
+		{"a", func(r *Root, v *Var) { r.A, v.A = 0.5, 0.5 }, func(r *Root) uint64 { return uint64(math.Float32bits(r.A)) }, false, true},
+		{"b", func(r *Root, v *Var) { r.B, v.B = 0.5, 0.5 }, func(r *Root) uint64 { return f64(r.B) }, true, true},
+		{"xs", func(r *Root, v *Var) { r.Xs[1], r.XsCount, v.Xs[1], v.XsCount = 0.5, 2, 0.5, 2 }, func(r *Root) uint64 { return f64(r.Xs[1]) }, true, false},
+		{"ys", func(r *Root, v *Var) { r.Ys[0], v.Ys[0] = 0.5, 0.5 }, func(r *Root) uint64 { return f64(r.Ys[0]) }, true, true},
 	}
 	for _, c := range fsCases {
 		for _, s := range sites {
@@ -538,6 +541,12 @@ func TestFlippedPayload(t *testing.T) {
 			bok := VarLoadBuilder(&b, vwire, &brep)
 			b.Shutdown()
 			if c.finite {
+				if c.b32 == 0 && c.b64 == 0 && s.elidesZero {
+					if ok || strictErr == nil || vErr == nil || bok {
+						t.Errorf("flip %s %s: ok %v strict %v var strict %v builder %v %+v; want the refusal at a field's declared default", s.field, c.name, ok, strictErr, vErr, bok, brep)
+					}
+					continue
+				}
 				want := uint64(c.b64)
 				if !s.wide {
 					want = uint64(c.b32)

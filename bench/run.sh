@@ -27,7 +27,7 @@
 #                 whose toolchain is missing prints as an ABSENT row with
 #                 the reason (#175).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
-#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel).
+#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python).
 #                 An --only run whose leg is skipped (missing toolchain)
 #                 exits non-zero with the reason — zero rows is a refusal,
 #                 never a quietly green empty CSV (#175). For shared boxes
@@ -143,8 +143,8 @@ if [ "$QUICK" = 1 ]; then
     RUNNER_ARGS="$RUNNER_ARGS --quick"
 fi
 case "$ONLY" in
-    ""|c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel) ;;
-    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel)" >&2; exit 1 ;;
+    ""|c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python) ;;
+    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python)" >&2; exit 1 ;;
 esac
 
 # §3.5 provenance mechanics: sets the SERIALIZE* defaults, materializes the
@@ -152,7 +152,7 @@ esac
 # provides verify_runtime (the fail-closed check used below)
 . bench/tools/runtime-paths.sh
 runtime_paths_init
-if [ "$ONLY" != squirrel ] && [ ! -f "$SERIALIZE/serialize.h" ]; then
+if [ "$ONLY" != squirrel ] && [ "$ONLY" != python ] && [ ! -f "$SERIALIZE/serialize.h" ]; then
     echo "serialize.h not found at $SERIALIZE — set SERIALIZE to the classic serialize checkout" >&2
     exit 1
 fi
@@ -741,6 +741,17 @@ if [ -z "$ONLY" ] || [ "$ONLY" = luau ]; then
     fi
 fi
 
+# ---- Python (generated packet codec and vendored serialize.py) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = python ]; then
+    PYTHON_BIN="${PYTHON:-$PWD/dist/python-3.15.2/bin/python3.15}"
+    if [ -x "$PYTHON_BIN" ] && [ -f generated/bench/python/bench/Bench.py ]; then
+        echo "== python: run ==" >&2
+        $PIN env PYTHON="$PYTHON_BIN" bench/python/run $RUNNER_ARGS >> "$OUT"
+    else
+        skip_leg python "pinned interpreter or generated benchmark missing (make dist-python generated/bench/python/.stamp)"
+    fi
+fi
+
 # ---- Squirrel (generated codec + its vendored serialize.nut; Squirrel 3.2 64-bit interpreter) ----
 if [ -z "$ONLY" ] || [ "$ONLY" = squirrel ]; then
     if [ -x "$SQ_BIN" ]; then
@@ -1067,7 +1078,7 @@ fi
 
 # ---- #175: an --only run that produced zero data rows is a failure, not a
 # quietly green empty CSV — the leg was skipped, not measured. Refuse. ----
-DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel),' "$OUT" 2>/dev/null || true)"
+DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python),' "$OUT" 2>/dev/null || true)"
 if [ -n "$ONLY" ] && [ "${DATA_ROWS:-0}" -eq 0 ]; then
     echo "REFUSED (#175): --only $ONLY produced ZERO rows — see the SKIP reason above; nothing was measured" >&2
     echo "results: $OUT (EMPTY — refused)" >&2

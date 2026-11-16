@@ -541,12 +541,12 @@ func t03GoR20(t *testing.T) {
 	t03GoHas(t, load, "defBytes := LineageFixedResetImage", "R20 the default image is the declared defaults, laid once")
 	t03GoHas(t, load, "holes = LineageFixedLineageHoles[pick]", "R20 a lineage plan's holes are laid once, never per call")
 	t03GoHas(t, load, "copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])", "R20 an added field lands the declared default")
-	// AN UNKNOWN (UNDECLARED) FIELD, counted ONCE per plan: the census is the lane's, and
-	// an array's element 0 is the only one that censuses.
-	t03GoHas(t, load, "report.Unknown += censusUnknown", "R20 the census lands once, after the loop")
-	t03GoHas(t, tableFixedRuntime, "if !named && census && c.report != nil {", "R20 an unknown field is counted")
-	t03GoHas(t, tableFixedRuntime, "census && i == 0)", "R20 once per FIELD per endpoint, not per element")
-	t03GoHasNot(t, load, "report.Unknown++", "R20 the census is never per record")
+	// An older writer's undeclared field makes the lineage unlawful; the
+	// compiler lays no plan and no Unknown census (§5.2 MATCH, §5.8 rule 6).
+	t03GoHas(t, tableFixedRuntime, "if !tableFixedChildrenNamed(theirs, ti, mine, mi) {", "R20 every writer field is retained")
+	t03GoHas(t, tableFixedRuntime, "if c.unlawful {", "R20 an unlawful lineage refuses instead of skipping fields")
+	t03GoHasNot(t, tableFixedRuntime, "c.report.Unknown++", "R20 no compile census is counted")
+	t03GoHasNot(t, load, "report.Unknown++", "R20 no census lands per record")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	t03GoHas(t, tableFixedRuntime, "report.Widened++", "R20 a widen counts")
 	// A SHORTER ARRAY OR STRING: the plan writes only the writer's live extent

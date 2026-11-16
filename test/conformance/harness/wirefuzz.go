@@ -43,6 +43,8 @@ type wireFuzzOptions struct {
 	driver string
 	seed   uint64
 	n      int
+	shard  int
+	shards int
 	replay string
 	unit   string
 	root   string
@@ -575,6 +577,11 @@ func wireVerdict(_ *wireRoot, reply legReply, ans oracleAnswer, _ int) string {
 // leave only pinned-vector roots live, and there is then nothing to mutate.
 // It answers the one line the run prints to stderr; no mutant is drawn.
 func randomPass(pool []*wireSeed, pinned int, seed uint64, n int, draw func(*wireMutant)) string {
+	return randomPassShard(pool, pinned, seed, n, 0, 1, draw)
+}
+
+// Shards select original random indices; they do not restart or reseed the pass.
+func randomPassShard(pool []*wireSeed, pinned int, seed uint64, n, shard, shards int, draw func(*wireMutant)) string {
 	if n <= 0 {
 		return ""
 	}
@@ -582,12 +589,37 @@ func randomPass(pool []*wireSeed, pinned int, seed uint64, n int, draw func(*wir
 		return fmt.Sprintf("wire-fuzz: random pass skipped: no manifest seed is live (%d pinned vectors only)", pinned)
 	}
 	for i := range n {
-		// randomMutant refuses an empty list; this caller never sends nil.
+		if i%shards != shard {
+			continue
+		}
 		if mut := randomMutant(pool, seed, i); mut != nil {
 			draw(mut)
 		}
 	}
 	return ""
+}
+
+// Every enumerated or pinned mutant has one stable global ordinal. Each shard
+// visits the same roster and emits only its own congruence class.
+func enumeratedShard(live []*wireSeed, shard, shards int, draw func(*wireMutant)) {
+	ordinal := 0
+	emit := func(m *wireMutant) {
+		if ordinal%shards == shard {
+			draw(m)
+		}
+		ordinal++
+	}
+	for _, s := range live {
+		if s.vector {
+			emit(&wireMutant{seed: s, pass: "vector", data: s.wire})
+			continue
+		}
+		pass := map[string]int{}
+		enumerated(s, func(name string, data []byte) {
+			emit(&wireMutant{seed: s, pass: name, index: pass[name], data: data})
+			pass[name]++
+		})
+	}
 }
 
 // buildWireFuzzRoster builds the wire-fuzz roster: every seed and every root
@@ -720,6 +752,16 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 }
 
 func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
+	// Zero-value options predate sharding; preserve that internal default.
+	if opts.shards == 0 && opts.shard == 0 {
+		opts.shards = 1
+	}
+	if opts.shards < 1 || opts.shard < 0 || opts.shard >= opts.shards {
+		return fmt.Errorf("invalid wire-fuzz shard")
+	}
+	if opts.shards > 1 && (opts.replay != "" || opts.relaxVectors != "") {
+		return fmt.Errorf("wire-fuzz sharding cannot be combined with replay or relaxed vectors")
+	}
 	if opts.finiteOwed != "" {
 		return fmt.Errorf("--finite-owed is retired: every mutant must be compared")
 	}
@@ -771,21 +813,10 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if opts.replay != "" {
 			produced <- item{m: &wireMutant{seed: live[0], pass: "replay", data: live[0].wire}}
 		} else {
-			for _, s := range live {
-				if s.vector {
-					// a pinned vector IS the mutant. Its bytes are hostile
-					// already, and mutating them would lose the exact input
-					// the vector exists to replay
-					produced <- item{m: &wireMutant{seed: s, pass: "vector", data: s.wire}}
-					continue
-				}
-				pass := map[string]int{}
-				enumerated(s, func(name string, data []byte) {
-					produced <- item{m: &wireMutant{seed: s, pass: name, index: pass[name], data: data}}
-					pass[name]++
-				})
-			}
-			if line := randomPass(pool, len(live)-len(pool), opts.seed, opts.n, func(mut *wireMutant) {
+			enumeratedShard(live, opts.shard, opts.shards, func(mut *wireMutant) {
+				produced <- item{m: mut}
+			})
+			if line := randomPassShard(pool, len(live)-len(pool), opts.seed, opts.n, opts.shard, opts.shards, func(mut *wireMutant) {
 				produced <- item{m: mut}
 			}); line != "" {
 				fmt.Fprintln(os.Stderr, line)
@@ -882,8 +913,11 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	}
 	rate := float64(total) / elapsed.Seconds()
 	absence := ""
+	if opts.shards > 1 {
+		absence = fmt.Sprintf(", shard %d/%d", opts.shard, opts.shards)
+	}
 	if absent > 0 {
-		absence = fmt.Sprintf(", %d seeds absent (roots the leg has no codec for)", absent)
+		absence += fmt.Sprintf(", %d seeds absent (roots the leg has no codec for)", absent)
 	}
 	if skipped > 0 {
 		// the seeds this ARM has nothing to say about: a fixed-class root gets

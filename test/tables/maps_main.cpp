@@ -652,12 +652,29 @@ static void test_reader()
         CHECK_EQ( v.past, 0 );
     }
     {
-        // CONTROL: an ELEMENT KIND that is not 13 is §4's ordinary array kind
-        // mismatch, and nothing about a map is special-cased: the strict read
-        // refuses the whole load as kind_mismatch.
+        // Kind12 cannot be an array element in the wire grammar. Framing
+        // refuses it before the declaration's map element kind is consulted.
         RowSpec spec = ascending_spec();
         spec.element_kind = 12;
-        const Verdict v = read_row( build_row( spec ) );
+        const RowWire bad = build_row( spec );
+        TableRefuseReason reason = ok;
+        CHECK_EQ( RowLoadMeasure( bad.bytes, bad.size, NULL, &reason ), -1 );
+        CHECK( reason == wire_damaged );
+    }
+    {
+        // A well-framed bool array is a different control: its legal element
+        // kind disagrees with the map's declared table element kind.
+        WireBuilder b;
+        b.field( "entries", 14 );
+        const int64_t body = b.open_len();
+        b.u8( 1 );
+        b.leb( 1 );
+        b.u8( 1 );
+        b.close_len( body );
+        b.end();
+        RowWire wrong;
+        wrong.size = b.finish( wrong.bytes );
+        const Verdict v = read_row( wrong );
         CHECK( !v.accepted );
         CHECK( v.reason == kind_mismatch );
         CHECK( !v.damaged );
@@ -742,8 +759,8 @@ static void test_key_kind()
         for ( uint32_t i = 1; i <= 3; i++ )
         {
             const int64_t entry = b.open_len();
-            b.field( "key", i == 2 ? 12 : 8 ); // kind 12 is an opaque byte payload (§3)
-            if ( i == 2 ) { b.leb( 4 ); b.u32( i ); } else { b.u32( i ); }
+            b.field( "key", i == 2 ? 12 : 8 ); // valid text, but the wrong key kind
+            if ( i == 2 ) { b.leb( 1 ); b.u8( '2' ); } else { b.u32( i ); }
             b.field( "value", 13 );
             const int64_t value = b.open_len();
             b.field( "count", 4 );
@@ -832,10 +849,9 @@ static void test_load_measure_depth()
 // golden: a count above the int32 cap, which no golden could carry because
 // the file would be two gigabytes, a count whose entries cannot fit the map's
 // own L, and a clean wire beside them, which must measure and load. The
-// REASON is asserted by name, because the cap is tested before the L: a count
-// past both answers count_over_extent_cap, and only a count under the cap
-// reaches the L check, so a dropped L check goes red on the 100000 row and
-// nowhere a count past the cap is used.
+// The count cap keeps its named refusal. A count below that cap whose body
+// cannot hold its entries is malformed wire, caught by the strict framing
+// walk before the schema-specific region extent calculation.
 
 struct Wire
 {
@@ -915,12 +931,12 @@ static void test_measure_refusals()
         CHECK_EQ( FleetLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
         CHECK( reason == count_over_extent_cap );
     }
-    // a count under the cap that the map's L cannot carry: the L answers
+    // A count under the cap that the map's L cannot carry is structural damage.
     {
         Wire w = build_fleet_wire( 100000, 1 );
         TableRefuseReason reason = count_over_extent_cap;
         CHECK_EQ( FleetLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
-        CHECK( reason == count_over_length );
+        CHECK( reason == wire_damaged );
     }
     // and a clean wire beside them, which must measure and load silently
     {
@@ -1035,9 +1051,8 @@ static void test_text()
         CHECK_EQ( rb.GetRoot()->entries.count, 0 );
     }
     {
-        // AN INTEGER KEY IS READ BY §16.2's RULE AND BY NOTHING ELSE: "2.0" is
-        // the integer 2 and "1e3" is 1000
-        const char * t = "{\"entries\":{\"2.0\":{\"count\":7},\"1e3\":{\"count\":8}}}";
+        // Integer keys use canonical decimal digits, without a fraction or exponent.
+        const char * t = "{\"entries\":{\"2\":{\"count\":7},\"1000\":{\"count\":8}}}";
         WideRowBuilder rb;
         TableReport r;
         CHECK( WideRowFromJson( rb, t, (int64_t) strlen( t ), &r ) );
@@ -1045,6 +1060,16 @@ static void test_text()
         CHECK( r.refuse_reason == ok );
         CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 2 ) != NULL );
         CHECK( WideRowEntriesFind( rb.arena, rb.GetRoot()->entries, (uint32_t) 1000 ) != NULL );
+    }
+    for ( const char * key : { "2.0", "1e3", "-0" } )
+    {
+        char integer_key_text[128];
+        snprintf( integer_key_text, sizeof( integer_key_text ), "{\"entries\":{\"%s\":{\"count\":7}}}", key );
+        WideRowBuilder rb;
+        TableReport r;
+        CHECK( !WideRowFromJson( rb, integer_key_text, (int64_t) strlen( integer_key_text ), &r ) );
+        CHECK( r.refuse_reason == kind_mismatch );
+        CHECK_EQ( rb.GetRoot()->entries.count, 0 );
     }
     {
         // and a value outside the kind's range refuses the whole text, never
@@ -1122,12 +1147,11 @@ static void test_text()
         CHECK_EQ( eb.GetRoot()->past, accepted ? 5 : 0 );
     }
     {
-        // A uint64 KEY is read by §16.2's integer rule and by nothing else, and
-        // its domain is established BEFORE any cast: 2.0 is 2, and 1e19 and
-        // 18446744073709551615 are magnitudes the kind holds, each exactly. Read
+        // A uint64 key is read as canonical decimal digits, and its domain is
+        // established BEFORE any cast. These high magnitudes are exact. Read
         // through a signed lane the two high ones collide, and a collision is a
         // repeat the strict read refuses, so the in-domain text is its own row.
-        const char * t = "{\"ids\":{\"2.0\":{\"count\":1},\"1e19\":{\"count\":2},"
+        const char * t = "{\"ids\":{\"2\":{\"count\":1},\"10000000000000000000\":{\"count\":2},"
                          "\"18446744073709551615\":{\"count\":3}}}";
         EdgeRowBuilder eb;
         TableReport r;
@@ -1139,11 +1163,11 @@ static void test_text()
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull ) != NULL );
     }
     {
-        // -1 and 1e30 are outside the uint64 domain: each REFUSES the whole
+        // -1 and 10^30 are outside the uint64 domain: each REFUSES the whole
         // text, never clamped and never dropped on its own (§6.5)
         const char * outside[] = {
-            "{\"ids\":{\"2.0\":{\"count\":1},\"-1\":{\"count\":4}}}",
-            "{\"ids\":{\"2.0\":{\"count\":1},\"1e30\":{\"count\":5}}}",
+            "{\"ids\":{\"2\":{\"count\":1},\"-1\":{\"count\":4}}}",
+            "{\"ids\":{\"2\":{\"count\":1},\"1000000000000000000000000000000\":{\"count\":5}}}",
         };
         for ( const char * t : outside )
         {
@@ -1177,13 +1201,13 @@ static void test_text()
         }
     }
     {
-        // AN INTEGER KEY SPELLED WITH A DECIMAL POINT IS PARSED AS AN INTEGER,
-        // never through a double (§16.2). A double carries 53 bits of mantissa,
+        // Integer digits are parsed exactly, never through a double (§16.2).
+        // A double carries 53 bits of mantissa,
         // so it cannot tell 9007199254740993 from its neighbour, and a key read
         // through one lands on the neighbour's identity: two keys the text
         // spells separately become one entry.
         const char * t = "{\"ids\":{\"9007199254740992\":{\"count\":1},"
-                         "\"9007199254740993.0\":{\"count\":2}}}";
+                         "\"9007199254740993\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
         // two keys through a double collide, and a collision is a repeat the
@@ -1195,26 +1219,19 @@ static void test_text()
         CHECK( EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 9007199254740993ull ) != NULL );
     }
     {
-        // THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (§16.2): 2 and 2.0
-        // are the integer 2 wherever an integer is read, and that holds at the
-        // top of the uint64 domain as well as at the bottom. Read through a
-        // double, 18446744073709551615.0 rounds UP to 2^64 and is outside the
-        // kind, where the digits alone are exactly the key the kind holds. So
-        // the decimal spelling ALONE is accepted under the top key ...
+        // Fractions and exponents are refused even when their mathematical
+        // value is integral and in range: no conforming writer emits them.
         {
             const char * t = "{\"ids\":{\"18446744073709551615.0\":{\"count\":2}}}";
             EdgeRowBuilder eb;
             TableReport r;
-            CHECK( EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
-            CHECK_EQ( eb.GetRoot()->ids.count, 1 );
-            const Item * item = EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull );
-            CHECK( item != NULL );
-            if ( item != NULL ) { CHECK_EQ( item->count, 2 ); }
+            CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
+            CHECK( r.refuse_reason == kind_mismatch );
+            CHECK_EQ( eb.GetRoot()->ids.count, 0 );
         }
-        // ... and beside the integer spelling it is a REPEAT of that key, which
-        // the strict read refuses whole (§6.5): nothing lands
+        // A repeated canonical key is independently refused whole.
         const char * t = "{\"ids\":{\"18446744073709551615\":{\"count\":1},"
-                         "\"18446744073709551615.0\":{\"count\":2}}}";
+                         "\"18446744073709551615\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
         CHECK( !EdgeRowFromJson( eb, t, (int64_t) strlen( t ), &r ) );
