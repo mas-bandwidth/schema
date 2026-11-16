@@ -790,6 +790,7 @@ _M.ReadChat <- function(stream, value) {
 // WriteChat writes value in declared order; false on a refused value.
 _M.WriteChat <- function(stream, value) {
   if (typeof value.Text != "blob" || typeof value.TextLength != "integer" || value.TextLength < 0 || value.TextLength > 256 || value.TextLength > value.Text.len()) return false;
+  if (!_validText(value.Text, value.TextLength)) return false;
   _h.value = value.TextLength;
   if (!stream.serializeBits(_h, 9)) return false;
   if (!stream.serializeBytes(_usedBytes(value.Text, value.TextLength))) return false;
@@ -1025,6 +1026,7 @@ _M.WriteTestData <- function(stream, value) {
     if (!stream.serializeBits(_h, 8)) return false;
   }
   if (typeof value.Text != "blob" || typeof value.TextLength != "integer" || value.TextLength < 0 || value.TextLength > 255 || value.TextLength > value.Text.len()) return false;
+  if (!_validText(value.Text, value.TextLength)) return false;
   _h.value = value.TextLength;
   if (!stream.serializeBits(_h, 8)) return false;
   if (!stream.serializeBytes(_usedBytes(value.Text, value.TextLength))) return false;

@@ -1143,14 +1143,17 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
         stream.serialize_bits(&mut offset_value, 5)?; // the length guards the slice (§6.3)
     }
     stream.write_bytes(&value.payload[..value.payload_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    debug_assert!(value.aim_x.is_finite() && value.aim_x >= -1.0_f32 && value.aim_x <= 1.0_f32, "aim_x out of range [-1.0_f32, 1.0_f32]");
     {
         let mut compressed_value = value.aim_x;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     }
+    debug_assert!(value.aim_y.is_finite() && value.aim_y >= -1.0_f32 && value.aim_y <= 1.0_f32, "aim_y out of range [-1.0_f32, 1.0_f32]");
     {
         let mut compressed_value = value.aim_y;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     }
+    debug_assert!(value.aim_z.is_finite() && value.aim_z >= -1.0_f32 && value.aim_z <= 1.0_f32, "aim_z out of range [-1.0_f32, 1.0_f32]");
     {
         let mut compressed_value = value.aim_z;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation

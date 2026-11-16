@@ -179,6 +179,11 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 		length := val + "Length"
 		m.Printf("%sif (typeof %s != \"blob\" || typeof %s != \"integer\" || %s < 0 || %s > %d || %s > %s.len()) return false;\n",
 			indent, val, length, length, length, size, length, val)
+		if t.Kind == ir.TString {
+			// the used bytes hold no zero byte and are well-formed UTF-8
+			// (SPEC §4.7, §5.1 row 8): refused before any bit moves
+			m.Printf("%sif (!%s(%s, %s)) return false;\n", indent, m.Helper(validText), val, length)
+		}
 		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "")
 		m.Printf("%sif (!stream.serializeBytes(%s(%s, %s))) return false;\n", indent, m.Helper(usedBytes), val, length)
 	case ir.TNamed:
