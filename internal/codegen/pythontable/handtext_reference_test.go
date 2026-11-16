@@ -99,7 +99,7 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "reference")
-	cmd = exec.Command("c++", "-std=c++17", "-O1", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd = exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
@@ -244,7 +244,7 @@ func TestPythonHandtextCppCorpusFunctional(t *testing.T) {
 			maps.Copy(files, tables)
 			dir := t.TempDir()
 			writeTree(t, dir, files)
-			docRead := `DocumentBuilder b; if (!DocumentLoadTextForm(text.data(), (int64_t)text.size(), b, &reason) || !b.Lock()) return 3; const Document *v = b.AsConst();`
+			docRead := `DocumentBuilder b; if (!DocumentLoadTextForm(text.data(), (int64_t)text.size(), b, &reason) || !b.Lock()) { return 3; } const Document *v = b.AsConst();`
 			if fixed {
 				docRead = `Document v; if (!DocumentLoadTextForm(text.data(), (int64_t)text.size(), v, &reason)) {std::fprintf(stderr,"%s",reason ? reason : "?"); return 3;}`
 			}
@@ -262,8 +262,8 @@ int main(int argc, char **argv) {
  if (std::string(argv[1]) == "variable") {
   GraphBuilder b; if (!GraphLoadTextForm(text.data(), (int64_t)text.size(), b, &reason)) {std::fprintf(stderr,"%s",reason ? reason : "?"); return 2;} if (!b.Lock()) {std::fprintf(stderr,"lock"); return 2;}
   const Graph *v = b.AsConst(); auto n = GraphToJsonMeasure(v); std::vector<char> out((size_t)n + 1);
-  if (GraphToJson(v, out.data(), (int64_t)out.size()) != n) return 4; std::fwrite(out.data(), 1, (size_t)n, stdout);
- } else {` + docRead + `auto n = DocumentToJsonMeasure(v); std::vector<char> out((size_t)n + 1); if (DocumentToJson(v, out.data(), (int64_t)out.size()) != n) return 4; std::fwrite(out.data(), 1, (size_t)n, stdout); }
+  if (GraphToJson(v, out.data(), (int64_t)out.size()) != n) { return 4; } std::fwrite(out.data(), 1, (size_t)n, stdout);
+ } else {` + docRead + `auto n = DocumentToJsonMeasure(v); std::vector<char> out((size_t)n + 1); if (DocumentToJson(v, out.data(), (int64_t)out.size()) != n) { return 4; } std::fwrite(out.data(), 1, (size_t)n, stdout); }
  return 0;
 }`
 			path := filepath.Join(dir, "main.cpp")
@@ -275,7 +275,7 @@ int main(int argc, char **argv) {
 				t.Fatal(err)
 			}
 			bin := filepath.Join(dir, "oracle")
-			cmd := exec.Command("c++", "-std=c++17", "-O1", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "CoreTable.cpp"), "-o", bin)
+			cmd := exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "CoreTable.cpp"), "-o", bin)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("compile: %v\n%s", err, out)
 			}
@@ -397,8 +397,8 @@ int main(int argc, char **argv) {
  std::ifstream f(argv[1],std::ios::binary); std::string text((std::istreambuf_iterator<char>(f)),{});
  TagsBuilder builder; const char *reason = nullptr;
  if (!TagsLoadTextForm(text.data(),(int64_t)text.size(),builder,&reason)) {std::fprintf(stderr,"%s",reason ? reason : "?"); return 2;}
- if (!builder.Lock()) return 3; const Tags *v = builder.AsConst(); auto n = TagsToJsonMeasure(v);
- if (n < 0) return 4; std::vector<char> out((size_t)n+1); if (TagsToJson(v,out.data(),(int64_t)out.size()) != n) return 5;
+ if (!builder.Lock()) { return 3; } const Tags *v = builder.AsConst(); auto n = TagsToJsonMeasure(v);
+ if (n < 0) { return 4; } std::vector<char> out((size_t)n+1); if (TagsToJson(v,out.data(),(int64_t)out.size()) != n) { return 5; }
  return std::fwrite(out.data(),1,(size_t)n,stdout) == (size_t)n ? 0 : 6;
 }`
 	path := filepath.Join(cppDir, "main.cpp")
@@ -414,7 +414,7 @@ int main(int argc, char **argv) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "oracle")
-	cmd = exec.Command("c++", "-std=c++17", "-O1", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd = exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
