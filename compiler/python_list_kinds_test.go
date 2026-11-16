@@ -19,6 +19,9 @@ table Root {
     values []float32
     grades []Grade
     perms []Perm
+    words []string(8)
+    options [..4]?string(8)
+    free []?string
 }
 `)
 	files, err := New().Generate(u, "python", nil)
@@ -38,7 +41,7 @@ table Root {
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
 	var report tabletext.Report
-	if !model.Read(value, []byte(`{"values":[1.5,-2.25,0],"grades":["A","C"],"perms":[["Read"],["Write","Own"]]}`), &report) || report.Refused || report.Unknown != 0 {
+	if !model.Read(value, []byte(`{"values":[1.5,-2.25,0],"grades":["A","C"],"perms":[["Read"],["Write","Own"]],"words":["", "hi", "é"],"options":[null,"", "ok"],"free":["longer text", null]}`), &report) || report.Refused || report.Unknown != 0 {
 		t.Fatalf("Go input: %+v", report)
 	}
 	wire, err := tablewire.Encode(model, value)
@@ -50,8 +53,11 @@ v = Root.load(open("wire", "rb").read())
 assert v.values == [1.5, -2.25, 0.0], "float values"
 assert v.grades == [1, 3], "enum values"
 assert v.perms == [1, 6], "flags values"
+assert v.words == ["", "hi", "é"], "plain text values"
+assert v.options == [None, "", "ok"], "optional text values"
+assert v.free == ["longer text", None], "unbounded text values"
 assert v.save() == open("wire", "rb").read(), "Go bytes"
-for field, bad in (("values", [float("nan")]), ("grades", [4]), ("perms", [-1])):
+for field, bad in (("values", [float("nan")]), ("grades", [4]), ("perms", [-1]), ("words", ["x" * 9]), ("options", ["nul\0"]), ("free", ["\ud800"])):
     original = getattr(v, field)
     setattr(v, field, bad)
     try:

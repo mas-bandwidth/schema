@@ -174,11 +174,3 @@ func TestPythonDriverRefusesPacketValueDefault(t *testing.T) {
 		t.Fatalf("packet value default was not refused by name: %v", err)
 	}
 }
-
-func TestPythonDriverRefusesTextList(t *testing.T) {
-	u := unitFromSource(t, "package p\ntable Root {\n names []string(8)\n}\n")
-	_, err := New().Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "text list") {
-		t.Fatalf("text list was not refused by name: %v", err)
-	}
-}
