@@ -1887,3 +1887,14 @@ packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@echo 'packet write compressed float JavaScript negative control: the runtime range check removal reds above-max'
 
 test-js: packet-write-cfloat-js packet-write-cfloat-js-negative-control
+
+# The retained walk keeps a lawful keyed/table chain at depth 128 and refuses
+# depth 129; a private emitter copy lowered to 127 must lose the 128 witness.
+.PHONY: tables-js-retain-depth tables-js-retain-depth-negative-control
+tables-js-retain-depth:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJsRetainKeepsDepth128$$'
+
+tables-js-retain-depth-negative-control: tables-js-retain-depth
+	$(call js_jstable_control,js-retain-depth-127,internal/codegen/jstable/retain.go,^TestJsRetainKeepsDepth128$$,./internal/codegen/jstable/,depth_keyed_scalar_128: retaining save refused or lost retention)
+
+test-js: tables-js-retain-depth-negative-control
