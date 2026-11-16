@@ -66,7 +66,7 @@ def supported(cls):
         for field in descriptor.fields:
             if field.codec == "unsupported":
                 return False
-            if field.codec in ("table", "pointer") and field.target:
+            if field.codec in ("table", "pointer", "pointer_array") and field.target:
                 from importlib import import_module
 
                 target = None
