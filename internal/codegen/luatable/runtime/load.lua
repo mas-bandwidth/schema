@@ -1967,6 +1967,7 @@ function L.NewState()
     wc = {
       bodies = {},
       slots = {},
+      used = {},
       edges = {},
       first = {},
       last = {},
@@ -2267,6 +2268,18 @@ local function wc_fail(c, reason)
   return nil
 end
 
+-- Each first use must name the next table entry. The table itself already
+-- rejects duplicate IDs; references in node bodies are visited after root.
+local function wc_use(c, ref)
+  if ref == 0 then return true end
+  if not c.used[ref] then
+    if ref ~= c.next_id then return wc_fail(c, "wire_damaged") end
+    c.used[ref] = true
+    c.next_id = c.next_id + 1
+  end
+  return true
+end
+
 -- canonical LEB128 at `at` inside lim: the value and the next offset, or nil
 local function wc_leb(b, at, lim)
   local v, s = 0, 0
@@ -2370,6 +2383,7 @@ local function wc_body(c, b, at, lim, root)
       return true
     end
     if above(ref, c.nids) then return wc_fail(c, "wire_damaged") end
+    if not wc_use(c, ref) then return nil end
     local id = ids[ref]
     if seen[id] then return wc_fail(c, "wire_damaged") end
     seen[id] = true
@@ -2424,6 +2438,7 @@ local function wc_keyed(c, b, at, lim)
   for _ = 1, count do
     local key, nx = wc_leb(b, off, lim)
     if key == nil or key == 0 or above(key, c.nids) then return wc_fail(c, "wire_damaged") end
+    if not wc_use(c, key) then return nil end
     if seen[key] then return wc_fail(c, "wire_damaged") end
     seen[key] = true
     local n, after = wc_leb(b, nx, lim)
@@ -2442,6 +2457,7 @@ local function wc_union(c, b, at, lim)
   if ref == nil then return wc_fail(c, "wire_damaged") end
   if ref == 0 then return nx end
   if above(ref, c.nids) or nx >= lim then return wc_fail(c, "wire_damaged") end
+  if not wc_use(c, ref) then return nil end
   local kind = string.byte(b, nx + 1)
   local n, after = wc_leb(b, nx + 1, lim)
   if n == nil or above(n, lim - after) then return wc_fail(c, "wire_damaged") end
@@ -2476,6 +2492,7 @@ wc_payload = function(c, b, at, lim, kind)
   elseif kind == 30 then
     local ref, nx = wc_leb(b, at, lim)
     if ref == nil or above(ref, c.nids) then return wc_fail(c, "wire_damaged") end
+    if not wc_use(c, ref) then return nil end
     return nx
   elseif kind == 15 then
     return wc_union(c, b, at, lim)
@@ -2580,6 +2597,10 @@ end
 local function wire_check(st, bytes, blen)
   local c = st.wc
   local nids = #st.ids
+  for k in pairs(c.used) do
+    c.used[k] = nil
+  end
+  c.next_id = 1
   c.ids, c.nids, c.fail, c.nonFinite, c.depth, c.ne, c.table = st.ids, nids, nil, false, 0, 0, nil
   local stop = blen - 8 - nids * 8
   local first, last, blob = c.first, c.last, c.blob
@@ -2594,6 +2615,7 @@ local function wire_check(st, bytes, blen)
     while off < lim do
       local ref, nx = wc_leb(b, off, lim)
       if ref == nil or ref == 0 or above(ref, nids) then return "wire_damaged" end
+      if not wc_use(c, ref) then return c.fail end
       local length, after = wc_leb(b, nx, lim)
       if length == nil or above(length, lim - after) then return "wire_damaged" end
       local recend = after + length
@@ -2613,6 +2635,7 @@ local function wire_check(st, bytes, blen)
     end
     if declared ~= n - 1 then return "wire_damaged" end
   end
+  if c.next_id ~= nids + 1 then return "wire_damaged" end
   if not wc_graph(c, n) then return c.fail end
   if c.nonFinite then return "non_finite_float" end
   return nil

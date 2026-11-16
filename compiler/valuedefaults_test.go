@@ -39,6 +39,12 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "python" {
+			if err != nil {
+				t.Fatalf("python refused scalar table defaults: %v", err)
+			}
+			continue // semantic read, write and negative controls: TestPythonDriverScalarValueDefaults
+		}
 		if target == "goose" {
 			gooseCarriesTableWire(t, out, err)
 			continue

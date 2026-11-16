@@ -32,9 +32,9 @@ type luauIntegerVector struct {
 	verdict string
 }
 
-func luauIntegerVectors(t *testing.T, dir string) []luauIntegerVector {
+func luauIntegerVectors(t *testing.T, dir, manifest string) []luauIntegerVector {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))
+	data, err := os.ReadFile(filepath.Join(dir, manifest))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,10 +48,10 @@ func luauIntegerVectors(t *testing.T, dir string) []luauIntegerVector {
 		}
 		fields := strings.Split(line, "\t")
 		if len(fields) != 5 {
-			t.Fatalf("%s/MANIFEST.tsv:%d: want five columns, got %d", dir, i, len(fields))
+			t.Fatalf("%s/%s:%d: want five columns, got %d", dir, manifest, i, len(fields))
 		}
 		if fields[0] == "" || fields[2] == "" || (fields[3] != "read" && fields[3] != "refused") {
-			t.Fatalf("%s/MANIFEST.tsv:%d: bad vector row %q", dir, i, line)
+			t.Fatalf("%s/%s:%d: bad vector row %q", dir, manifest, i, line)
 		}
 		rows = append(rows, luauIntegerVector{name: fields[0], json: fields[2], verdict: fields[3]})
 	}
@@ -126,9 +126,10 @@ local rows = {
 	}
 	b.WriteString(`}
 for _, key in rows do
-	local v = json.FromJson("Integers", inputs[key], nil)
+	local report = {}
+	local v = json.FromJson("Integers", inputs[key], report)
 	if v == nil then
-		print(key .. "|refused")
+		print(key .. "|refused|" .. tostring(report.reason))
 	else
 		print(key .. "|ok|" .. check_value(v) .. "|" .. safe_to_json("Integers", v))
 	end
@@ -142,13 +143,24 @@ end
 // json-wide-integers-are-strings and json-integer-token-only) over the
 // committed vectors under testdata/wire/json-integers/ and across every
 // integer site: a wide integer is written as a JSON string of decimal digits
-// and reads as a string or a number; every integer field takes an integer
+// and reads as a string only; every integer field takes an integer
 // token only, never passing through a double.
 func TestLuauJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
 	dir := filepath.Join(root, "testdata", "wire", "json-integers")
-	rows := luauIntegerVectors(t, dir)
+	rows := luauIntegerVectors(t, dir, "MANIFEST.tsv")
+	ordinaryRows := len(rows)
+	numberRows := luauIntegerVectors(t, dir, "NUMBER-TOKEN.tsv")
+	if len(numberRows) != 13 {
+		t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", len(numberRows))
+	}
+	for _, row := range numberRows {
+		if row.verdict != "refused" {
+			t.Fatalf("%s: numeric-token verdict %q, want refused", row.name, row.verdict)
+		}
+	}
+	rows = append(rows, numberRows...)
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -184,8 +196,11 @@ func TestLuauJsonWideIntegersAreStrings(t *testing.T) {
 		key := fmt.Sprintf("row%d", i)
 		line := byKey[key]
 		if row.verdict == "refused" {
-			if line != "refused" {
+			if !strings.HasPrefix(line, "refused|") {
 				t.Errorf("%s: read accepted refused vector: %s", row.name, line)
+			}
+			if i >= ordinaryRows && line != "refused|kind_mismatch" {
+				t.Errorf("%s: got %s, want kind_mismatch", row.name, line)
 			}
 			continue
 		}
@@ -348,6 +363,20 @@ const luauJsonSitesNumbers = `{
   }
 }`
 
+var luauJsonSitesNumberTokens = map[string]string{
+	"plain-number":    `{"wide": 42}`,
+	"array-number":    `{"list": [42, "0", "0"]}`,
+	"optional-number": `{"opt": 42}`,
+	"union-number":    `{"pick": {"wide": 42}}`,
+	"map-number":      `{"counts": {"1": 42}}`,
+	"keyed-number":    `{"keyed": {"A": 42}}`,
+	"bits33-number":   `{"bits33": 42}`,
+	"bits64-number":   `{"bits64": 42}`,
+	"uint128-number":  `{"uwide128": 42}`,
+	"fixed64-number":  `{"fixed64": 1.5}`,
+	"fixed128-number": `{"fixed128": 0.5}`,
+}
+
 var luauJsonSitesRefused = map[string]string{
 	"list-fraction":           `{"list": [-1.5, "0", "9007199254740993"]}`,
 	"list-exponent":           `{"list": [1e3, "0", "9007199254740993"]}`,
@@ -431,9 +460,10 @@ local keys = {
 	b.WriteString(`}
 local desc = St.lookup("Sites")
 for _, key in keys do
-	local v = json.FromJson("Sites", inputs[key], nil)
+	local report = {}
+	local v = json.FromJson("Sites", inputs[key], report)
 	if v == nil then
-		print(key .. "|refused")
+		print(key .. "|refused|" .. tostring(report.reason))
 	else
 		local wire = save.save(desc, v)
 		print(key .. "|ok|" .. hex(wire) .. "|" .. safe_to_json("Sites", v))
@@ -451,6 +481,10 @@ func luauJsonIntegerSites(t *testing.T) {
 		"numbers":   []byte(luauJsonSitesNumbers),
 	}
 	keys := []string{"canonical", "numbers"}
+	for key, body := range luauJsonSitesNumberTokens {
+		inputs[key] = []byte(body)
+		keys = append(keys, key)
+	}
 	for key, body := range luauJsonSitesRefused {
 		inputs[key] = []byte(body)
 		keys = append(keys, key)
@@ -469,7 +503,7 @@ func luauJsonIntegerSites(t *testing.T) {
 	}
 	wantTextHex := hexBytes(append([]byte(luauJsonSitesCanonical), '\n'))
 	var canonicalWire string
-	for _, key := range []string{"canonical", "numbers"} {
+	for _, key := range []string{"canonical"} {
 		parts := strings.Split(byRow[key], "|")
 		if len(parts) != 3 || parts[0] != "ok" {
 			t.Errorf("%s: expected ok read, got %q", key, byRow[key])
@@ -484,8 +518,16 @@ func luauJsonIntegerSites(t *testing.T) {
 			t.Errorf("%s: ToJson mismatch:\n got: %s\nwant: %s", key, parts[2], wantTextHex)
 		}
 	}
+	if byRow["numbers"] != "refused|kind_mismatch" {
+		t.Errorf("numbers: got %s, want kind_mismatch", byRow["numbers"])
+	}
+	for key := range luauJsonSitesNumberTokens {
+		if byRow[key] != "refused|kind_mismatch" {
+			t.Errorf("%s: got %s, want kind_mismatch", key, byRow[key])
+		}
+	}
 	for key := range luauJsonSitesRefused {
-		if byRow[key] != "refused" {
+		if !strings.HasPrefix(byRow[key], "refused|") {
 			t.Errorf("%s: read accepted refused row: %s", key, byRow[key])
 		}
 	}

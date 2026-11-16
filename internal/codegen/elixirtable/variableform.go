@@ -2101,6 +2101,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
           if not node_ok, do: throw(:wire_damaged)
 
+          value = Map.merge(defaults(node_desc), value)
+
           {Map.put(records, idx, value), merge_report(report, own_report),
            Map.put(node_fields, idx, fields_of_node)}
 
@@ -3230,7 +3232,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         if status == :halt or ends_early?(sub, ids),
           do: {:cont, %{}, throw(:wire_damaged)},
-          else: {:cont, value, report}
+          else: {:cont, Map.merge(defaults(desc), value), report}
 
       {:stop, fields, [], _remaining} ->
         # the element's body is damaged mid-walk or runs off its own end: the
@@ -3388,10 +3390,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # defaults is a field's declared default: what an absent field reads (§4). The
   # descriptor's own default column carries it, declared default first, so an
-  # int32 = 1 reads 1 and a text renders 1.
+  # int32 = 1 reads 1 and a text renders 1. A table nested by value reads the
+  # member's own defaults, as the reference's prefill does, so every body takes
+  # one shape whether the wire named its fields or not.
   defp defaults(desc) do
     Map.new(desc.fields, fn f ->
-      {f.name, Map.get(f, :default)}
+      value =
+        case f do
+          %{optional: true} -> Map.get(f, :default)
+          %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
+          _ -> Map.get(f, :default)
+        end
+
+      {f.name, value}
     end)
   end
 
@@ -3829,6 +3840,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {:out_of_range, name} ->
         {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :json_kind_mismatch ->
+        {:error, :kind_mismatch, Map.put(empty_report(), :reason, "kind_mismatch")}
 
       :wire_damaged ->
         {:error, :malformed, empty_report()}
@@ -4671,10 +4685,24 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # Wide integer fields admit the decimal string form only (§16.2). Keep
+  # flags and timestamps on their own named representations.
+  defp json_read_field(%{t: :int, width: width} = f, raw, _report)
+       when width > 4 and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) and
+              (is_integer(raw) or is_float(raw)) do
+    throw(:json_kind_mismatch)
+  end
+
+  defp json_read_field(%{t: :int, width: width} = f, {tag, _}, _report)
+       when width > 4 and not is_map_key(f, :timestamp) and not is_map_key(f, :flags) and
+              tag in [:decimal, :bigint] do
+    throw(:json_kind_mismatch)
+  end
+
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
   # §4.12), every other field reads it as the double it spells (§16.2).
-  # A wide integer reads its STRING form with the same rule as its number form
+  # A wide integer reads its STRING form with the integer-token rule
   # (docs/SPEC-TABLES.md §16.2): the digits and an optional minus, no fraction,
   # no exponent, not -0. A narrow integer is a number only, so a string there
   # is the wrong shape. A fixed kind wider than 32 bits reads its exact decimal
@@ -5288,6 +5316,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     json_skip_value(raw)
     value = if f.text_optional, do: nil, else: ""
     {%{"value" => value}, throw(:wire_damaged)}
+  end
+
+  # The same string-only rule applies to every array and keyed element.
+  defp json_read_list_elem(%{elem_kind: kind} = f, raw, _report)
+       when kind in [5, 9, 18, 19, 23, 24, 28, 29] and
+              not is_map_key(f, :elem_flags) and (is_integer(raw) or is_float(raw)) do
+    throw(:json_kind_mismatch)
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, {tag, _}, _report)
+       when kind in [5, 9, 18, 19, 23, 24, 28, 29] and
+              not is_map_key(f, :elem_flags) and tag in [:decimal, :bigint] do
+    throw(:json_kind_mismatch)
   end
 
   # an integer element takes an INTEGER token only: a fraction, an exponent or
@@ -7256,7 +7297,7 @@ const variableRetainSource = `
         # as the plain read's read_element holds it
         if status == :halt or ends_early?(body, ids),
           do: {:cont, %{}, throw(:wire_damaged), retain},
-          else: {:cont, value, report, retain}
+          else: {:cont, Map.merge(defaults(desc), value), report, retain}
 
       {:stop, fields, [], _} ->
         {_status, _value, _report, retain} =
@@ -7629,6 +7670,8 @@ const variableRetainSource = `
             end)
 
           if not node_ok, do: throw(:wire_damaged)
+
+          value = Map.merge(defaults(node_desc), value)
 
           {Map.put(records, idx, value), report, retain,
            Map.put(node_fields, idx, fields_of_node)}

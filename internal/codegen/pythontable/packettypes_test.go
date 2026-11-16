@@ -41,6 +41,22 @@ table Field
 }
 `
 
+// packetKeyedSchema exercises the packet wire's positional lowering of [E]T.
+const packetKeyedSchema = `package packetkeyed
+
+enum Slot { Alpha, Beta }
+
+type Board
+{
+    per_slot [Slot]int32
+}
+
+table Holder
+{
+    board Board
+}
+`
+
 // loadPaths builds one compilation unit from schema paths, a directory
 // contributing its *.schema files (the table emitter's manifest units are
 // multi-file).
@@ -156,37 +172,18 @@ print("OK")
 	}
 }
 
-// TestPythonTablePacketTypesRefusals holds the other edge: the blanket refusal
-// is gone, and only a packet kind the packet wire still lacks is refused, by
-// name, naming the kind and the packet card. graphdemo's packet type uses
-// carried kinds only; tblw1's Badge uses string, tabledemo's ScoreBoard uses a
-// keyed array (its float32 Attachment is carried since the packet floats
-// landed), and neither may be refused as "a packet type".
-func TestPythonTablePacketTypesRefusals(t *testing.T) {
+// Mixed units retain every packet declaration, including a keyed array whose
+// packet wire is positional. The runtime integration test imports the real
+// tabledemo package and checks both packet and table keyed APIs.
+func TestPythonTablePacketTypesKeyed(t *testing.T) {
 	t.Parallel()
-	if _, err := Generate(loadPaths(t, filepath.Join("..", "..", "..", "tables", "pointers"))); err != nil {
-		t.Fatalf("graphdemo was refused for its packet type: %v", err)
-	}
-	for _, c := range []struct {
-		path string
-		kind string
-	}{
-		{filepath.Join("..", "..", "..", "test", "tables", "W1.schema"), "string"},
-		{filepath.Join("..", "..", "..", "tables", "examples"), "array"},
+	for _, u := range []*ir.Unit{
+		loadPaths(t, filepath.Join("..", "..", "..", "tables", "pointers")),
+		loadPaths(t, filepath.Join("..", "..", "..", "tables", "examples")),
+		loadUnit(t, packetKeyedSchema),
 	} {
-		_, err := Generate(loadPaths(t, c.path))
-		if err == nil {
-			t.Errorf("%s was accepted, but its packet type uses %s, which the packet wire does not carry", c.path, c.kind)
-			continue
-		}
-		if !strings.Contains(err.Error(), c.kind) {
-			t.Errorf("%s: the refusal does not name the kind %q: %v", c.path, c.kind, err)
-		}
-		if !strings.Contains(err.Error(), "P4 the packet wire") {
-			t.Errorf("%s: the refusal does not name the packet card: %v", c.path, err)
-		}
-		if strings.Contains(err.Error(), "does not carry packet types yet") {
-			t.Errorf("%s: the blanket packet-type refusal is still there: %v", c.path, err)
+		if files, err := Generate(u); err != nil || len(files) == 0 {
+			t.Fatalf("packet kinds in %s refused: files=%d err=%v", u.Package, len(files), err)
 		}
 	}
 }
@@ -394,14 +391,8 @@ table Reading
 
 const packetFloatText = `{"sample":{"f32":1.5,"f64":-2.25,"cf":1.25,"q":-90.5}}`
 
-// TestPythonTablePacketTypesFloatKinds holds what a packet type of float and
-// fixed fields does in a table field now that the packet wire carries those
-// kinds and the table runtime does not yet: Generate accepts it, the generated
-// package imports (the hosted packet codec's float checks resolve in the table
-// runtime) and is mypy --strict clean, the packet class's own wire round-trips,
-// and the table read and write refuse the float field by name through
-// kind_unsupported.py, the whole value or nothing, under both pinned
-// interpreters.
+// TestPythonTablePacketTypesFloatKinds holds packet and table wire round trips
+// for a hosted packet type with float and fixed-point fields.
 func TestPythonTablePacketTypesFloatKinds(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, packetFloatSchema)
@@ -433,16 +424,9 @@ print("packet", again.f32, again.f64, again.write() == packet)
 
 with open("wire.bin", "rb") as handle:
     data = handle.read()
-try:
-    Reading.load(data)
-    print("table read")
-except packetfloats.Refused as err:
-    print("table read refused", err.reason)
-try:
-    Reading().save()
-    print("table written")
-except packetfloats.InvalidValue:
-    print("table write refused")
+loaded = Reading.load(data)
+print("table", loaded.sample.f32, loaded.sample.f64, loaded.sample.cf, loaded.sample.q, loaded.save() == data)
+print("table default", bool(Reading().save()))
 print("OK")
 `
 	inputs := map[string][]byte{"main.py": []byte(probe), "wire.bin": wire}
@@ -453,8 +437,8 @@ print("OK")
 	}
 	for _, line := range []string{
 		"packet 1.5 -2.25 True",
-		"table read refused unsupported_kind",
-		"table write refused",
+		"table 1.5 -2.25 1.25 -5931008 True",
+		"table default True",
 		"OK",
 	} {
 		if !strings.Contains(got, line+"\n") {

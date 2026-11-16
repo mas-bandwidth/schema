@@ -884,7 +884,7 @@ public final class TableJson {
         }
 
         // integer reads one integer token into a long. A wide kind (storage
-        // past 32 bits) takes a string of those digits or a number; a narrower
+        // past 32 bits) takes a string of those digits; a narrower
         // kind takes a number. The token is digits and an optional minus — no
         // fraction, no exponent, not -0 — parsed exactly, never through a
         // double. A value past the declared range refuses (§16.2).
@@ -897,6 +897,12 @@ public final class TableJson {
                     return 0;
                 }
             } else {
+                if (wide) {
+                    skipValue();
+                    rep.refuse("kind_mismatch");
+                    rejected = true;
+                    return 0;
+                }
                 boolean[] integral = new boolean[1];
                 tok = scanNumber(integral);
                 if (bad || tok == null) {
@@ -1187,6 +1193,11 @@ public final class TableJson {
                 token = scanned;
             }
         } else if (c == '-' || (c >= '0' && c <= '9')) {
+            if (stringOk) {
+                in.skipValue();
+                in.rep.refuse("kind_mismatch");
+                return null;
+            }
             token = in.scanNumber(new boolean[1]);
             if (in.bad || token == null) return null;
             if (integerOnly && !integerToken(token)) {

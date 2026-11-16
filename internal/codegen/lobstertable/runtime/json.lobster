@@ -246,11 +246,11 @@ def j_element_shape(f:FieldDescriptor) -> int:
 
 // j_shape_matches reports whether a value of the given shape satisfies the
 // shape a declaration takes. A wide integer declares 'N' and reads a string
-// OR a number; every other shape is exact (docs/SPEC-TABLES.md §16.2).
+// only; every other shape is exact (docs/SPEC-TABLES.md §16.2).
 def j_shape_matches(want:int, got:int) -> bool:
     if want == got:
         return true
-    return want == 'N' and (got == 's' or got == 'n')
+    return want == 'N' and got == 's'
 
 def j_enum_value(vs:[EnumVariant], name:string) -> int:
     if name == "None":
@@ -1921,20 +1921,12 @@ def j_read_scalar(r:JsonReader, cell:Value, f:FieldDescriptor, depth:int, elem:b
         j_place_float(r, cell, f, token, kind == 10)
         return not r.bad
     if j_wide_integer_kind(kind):
-        // a wide integer reads as a STRING of digits OR a number, the same
-        // digits (docs/SPEC-TABLES.md §16.2)
-        var token = ""
-        if j_value_shape(r) == 's':
-            let text, _, ok = j_scan_string(r, -1)
-            if not ok:
-                return false
-            token = text
-        else:
-            let scanned, _, ok = j_scan_number(r)
-            if not ok:
-                r.bad = true
-                return false
-            token = scanned
+        // A wide integer reads as a string (docs/SPEC-TABLES.md §16.2).
+        if j_value_shape(r) != 's':
+            return j_refuse(r, "kind_mismatch")
+        let token, _, ok = j_scan_string(r, -1)
+        if not ok:
+            return false
         if kind == 5 or kind == 9:
             j_place_integer(r, cell, f, token, true, kind)
         else:

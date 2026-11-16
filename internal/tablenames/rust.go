@@ -107,6 +107,8 @@ func init() {
 		Name{Name: "TableNodeGraph", What: "the save's node numbering: first-visit order over pointer edges (§3.1)"},
 		Name{Name: "TableNodeRecord", What: "one record of the save's numbering: a table node or a blob (§3.1, §2.5)"},
 		Name{Name: "TableNodeReader", What: "the node table a load gathers before any body (§3.1)"},
+		Name{Name: "TableIdsAllUsed", What: "a complete declaration-free census of file transport IDs (§3)", Scoped: true},
+		Name{Name: "TableIdUse", What: "the private bounded state of the file ID census (§3)", Scoped: true},
 		Name{Name: "TableRefuseReason", What: "the variable form's refused-by-name result (§5), using the Go reference's names"},
 		Name{Name: "TableNodeSlot", What: "one record's state in a load's numbering (§3.1)"},
 		// the iterative Drop of a table that reaches its own type through a
