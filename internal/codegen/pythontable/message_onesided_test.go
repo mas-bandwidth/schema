@@ -58,6 +58,14 @@ x=Root();assert (x.low,x.high)==(5,0)
 x.low=6;x.high=9
 assert save_messages(Root,[x])==good
 r=load_messages(Root,v,good)[0];assert (r.low,r.high)==(6,9)
+from msgoneside._schema._message_unit import _local, FIELD_KEYS
+from msgoneside._schema.message import BitWriter
+slot=_local.slots[FIELD_KEYS[('Root','high')]]; shape=_local.entries[slot-1].shape
+w=BitWriter();w.put(2,8);w.put(0,8);w.put(slot,_local.ref_bits)
+w.put(10-shape.base,shape.bits);w.put(0,_local.ref_bits);forged=w.finish()
+try:load_messages(Root,v,forged)
+except Refused as e:assert e.reason=='out_of_range'
+else:raise AssertionError('one_sided_read')
 for field,value in (('low',4),('high',10)):
  x=Root();setattr(x,field,value)
  try:save_messages(Root,[x])
