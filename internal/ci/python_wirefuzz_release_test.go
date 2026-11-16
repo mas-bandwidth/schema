@@ -26,6 +26,7 @@ func TestPythonWireFuzzReleaseRoster(t *testing.T) {
 	for _, tc := range []struct{ summary, want string }{
 		{"wire-fuzz: 1 seeds over 1 roots, 1 enumerated + 1 random = 2 mutants, 0 divergences", "pass (2 mutants"},
 		{"wire-fuzz: 1 seeds over 1 roots, 1 seeds absent, 1 enumerated + 1 random = 2 mutants, 0 divergences", "RED: incomplete Python wire-fuzz roster"},
+		{"wire-fuzz: 1 seeds over 1 roots, 0 mutants, 0 divergences", "RED: missing or empty Python wire-fuzz mutation count"},
 	} {
 		cmd := exec.Command("sh", filepath.Join(root, "make/checks/wire-fuzz-release-run.sh"), "python", "plain", "1", "1", "out")
 		cmd.Dir = dir

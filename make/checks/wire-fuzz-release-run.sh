@@ -54,9 +54,15 @@ status=$?
 secs=$(( $(date +%s) - start ))
 
 # Python's release row must not hide an absent generated corpus entry.
-if [ "$leg" = python ] && grep -qE '[0-9]+ seeds absent' "$log"; then
-    emit 'RED: incomplete Python wire-fuzz roster'
-    exit 0
+if [ "$leg" = python ]; then
+    if grep -qE '[0-9]+ seeds absent' "$log"; then
+        emit 'RED: incomplete Python wire-fuzz roster'
+        exit 0
+    fi
+    if [ "$status" -eq 0 ] && ! grep -qE '[1-9][0-9]* mutants' "$log"; then
+        emit 'RED: missing or empty Python wire-fuzz mutation count'
+        exit 0
+    fi
 fi
 
 if [ $status -eq 0 ] && grep -qE '(^|[^0-9])0 divergences' "$log" && grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' "$log"; then
