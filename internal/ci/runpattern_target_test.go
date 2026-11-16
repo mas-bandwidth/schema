@@ -151,7 +151,7 @@ func TestPythonDynamicRunPatternBindingsAndCoverageWiring(t *testing.T) {
 		}
 		for _, prefix := range []string{"test-python:", "PYTHON_CI_SUPPORT_GROUPS +="} {
 			found := false
-			for _, line := range strings.Split(s, "\n") {
+			for line := range strings.SplitSeq(s, "\n") {
 				if strings.HasPrefix(line, prefix) {
 					for _, field := range strings.Fields(line[len(prefix):]) {
 						if field == tc.target {
