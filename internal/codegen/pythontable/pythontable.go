@@ -47,6 +47,10 @@ var runtimeFS embed.FS
 // own fields use a packet kind the packet wire does not carry yet is refused
 // by name, naming the kind and the packet card, never the whole unit silently.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return generatePythonTables(u, nil)
+}
+
+func generatePythonTables(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -84,6 +88,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[path.Join(u.Package, rel)] = data
 	}
+	fixedData, err := emitPythonFixedData(u, lineage)
+	if err != nil {
+		return nil, err
+	}
+	out[path.Join(u.Package, "_fixed.py")] = []byte(fixedData)
 	return out, nil
 }
 
@@ -435,6 +444,7 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
+	b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _validate as _validate_value, measure_table, save_table\n\n\n")
@@ -600,8 +610,16 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		}
 		fmt.Fprintf(b, "        return f\"%s(%s)\"\n", name, strings.Join(parts, ", "))
 	}
+	if fixedRootAdmitted(u, st) {
+		b.WriteString("\n    fixed_plan_max: ClassVar[int] = 0\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load(cls, data: bytes | bytearray | memoryview, capacity: int = 4096, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[Self]:\n        return _s_fixed_load(cls, data, capacity, report, plan_capacity)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_save(cls, values: list[Self]) -> bytes:\n        return _s_fixed_save(cls, values)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_measure(cls, count: int) -> int:\n        return _s_fixed_measure(cls, count)\n")
+	}
 	b.WriteString("\n    @classmethod\n")
-	if scalarOnly(st) {
+	if st.FixedDeclared {
+		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n        return _s_fixed_load(cls, data, 1, report)[0]\n")
+	} else if scalarOnly(st) {
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
 		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
 	} else {
@@ -609,13 +627,19 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        return load_table(cls, data, report)\n")
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
-	if scalarOnly(st) {
+	if st.FixedDeclared {
+		b.WriteString("        return _s_fixed_save(type(self), [self])\n")
+	} else if scalarOnly(st) {
 		fmt.Fprintf(b, "        return _s_save_%s(self)\n", name)
 	} else {
 		b.WriteString("        return save_table(self)\n")
 	}
 	b.WriteString("\n    def measure(self) -> int:\n")
-	b.WriteString("        return measure_table(self)\n\n\n")
+	if st.FixedDeclared {
+		b.WriteString("        return _s_fixed_measure(type(self), 1)\n\n\n")
+	} else {
+		b.WriteString("        return measure_table(self)\n\n\n")
+	}
 	emitTableDescriptor(b, u, st, false)
 	if scalarOnly(st) {
 		emitStraightLine(b, st)
@@ -980,7 +1004,8 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	names := []string{"InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	b.WriteString("from ._schema.fixedform import FixedLoadReport\n")
+	names := []string{"InvalidValue", "LoadReport", "FixedLoadReport", "PROTOCOL_ID", "Refused"}
 	for _, plan := range plans {
 		fmt.Fprintf(&b, "from . import %s\n", plan.base)
 		names = append(names, plan.base)
@@ -1014,6 +1039,7 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(unions, ", "))
 		}
 	}
+	b.WriteString("from . import _fixed as _s_fixed\n")
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n\n", u.ProtocolId)
 	sort.Strings(names)
 	b.WriteString("__all__ = [\n")
@@ -1304,12 +1330,9 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A fixed array is born with every slot; a counted array is born
-		// empty whatever its minimum, as the engine's reset builds it
-		// (internal/tabletext/value.go), so an absent counted field reads as
-		// the engine reads it. The minimum binds the writer, which refuses
-		// an array below it.
-		count := int64(0)
+		// A fresh counted array has its declared minimum, and a fixed
+		// array every slot (SPEC §4.6). Every nested value is distinct.
+		count := f.BornCount()
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
 		}
@@ -1346,7 +1369,11 @@ func valueDefault(f *ir.Field) string {
 		return "0"
 	case ir.TFloat32, ir.TFloat64:
 		if f.HasDefault {
-			return strconv.FormatFloat(f.DefFloat, 'g', -1, 64)
+			value := f.DefFloat
+			if f.Type.Kind == ir.TFloat32 {
+				value = float64(float32(value))
+			}
+			return fixedLiteralOf(value)
 		}
 		return "0.0"
 	case ir.TString:
