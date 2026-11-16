@@ -339,8 +339,8 @@ var unionCases = []unionCase{
 	{"element-truncated", "refused wire_damaged", func(w *unionWire) []byte {
 		return w.file(w.array("many", 15, 2, unionLeb(0)), w.least())
 	}},
-	{"below-minimum", "read", func(w *unionWire) []byte {
-		// Read as it stands; the engine's writer then refuses it.
+	{"below-minimum", "refused count_over_bound", func(w *unionWire) []byte {
+		// A present counted array must meet the reader minimum.
 		return w.file(w.array("least", 15, 0))
 	}},
 	{"absent-minimum", "read", func(w *unionWire) []byte {
@@ -361,6 +361,68 @@ var unionCases = []unionCase{
 	{"nested-table-union", "read", func(w *unionWire) []byte {
 		return w.file(w.table("holder", w.union("pick", w.arm("number", 4, unionI32(3)))), w.least())
 	}},
+}
+
+// unionCaseWire interns references in the order they occur on the wire. Go
+// evaluates nested builder arguments first, so predeclare each outer header
+// before its payload and leave the intentionally malformed payload unchanged.
+func unionCaseWire(c unionCase) []byte {
+	var names []string
+	switch c.name {
+	case "arm-zero-field":
+		names = []string{"pick", "least", "toggle"}
+	case "zero-scalar-arm", "arm-kind-mismatch", "arm-short-width", "arm-long-width", "arm-past-body":
+		names = []string{"pick", "number", "least", "toggle"}
+	case "table-arm-default":
+		names = []string{"pick", "leaf", "least", "toggle"}
+	case "nested-none", "nested-trailing":
+		names = []string{"inner", "pick", "least", "toggle"}
+	case "unknown-arm", "unknown-arm-kind32-nonzero-l", "unknown-arm-kind99", "unknown-arm-bad-bool", "unknown-arm-bad-body":
+		names = []string{"pick", "ghost", "least", "toggle"}
+	case "unknown-arm-element":
+		names = []string{"many", "ghost", "number", "least", "toggle"}
+	case "unknown-arm-nested-table":
+		names = []string{"holder", "pick", "ghost", "least", "toggle"}
+	case "unknown-field-kind32-nonzero-l":
+		names = []string{"ghost_field", "least", "toggle"}
+	case "unknown-field-bad-union":
+		names = []string{"ghost_field", "ghost", "least", "toggle"}
+	case "arm-kind-mismatch-then-damage":
+		names = []string{"pick", "number", "least", "toggle", "ghost_field"}
+	case "arm-nonfinite-then-damage":
+		names = []string{"pick", "ghost", "least", "toggle", "ghost_field"}
+	case "arm-kind-mismatch-then-reserved-node-type":
+		names = []string{"pick", "number", "least", "toggle"}
+	case "void-arm-nonzero-l":
+		names = []string{"pick", "ping", "least", "toggle"}
+	case "bool-arm-two":
+		names = []string{"pick", "toggle", "least"}
+	case "table-arm-trailing":
+		names = []string{"pick", "other", "least", "toggle"}
+	case "count-over-bound", "count-over-extent-cap", "element-kind-mismatch", "element-kind-closed", "element-truncated":
+		names = []string{"many", "least", "toggle"}
+	case "below-minimum", "counted-one-none":
+		names = []string{"least"}
+	case "absent-minimum":
+		names = []string{"pick", "number"}
+	case "fixed-all-none":
+		names = []string{"trail", "least", "toggle"}
+	case "fixed-short":
+		names = []string{"trail", "ping", "least", "toggle"}
+	case "nested-table-union":
+		names = []string{"holder", "pick", "number", "least", "toggle"}
+	default:
+		panic("no physical ID order for union case " + c.name)
+	}
+	var w unionWire
+	for _, name := range names {
+		w.ref(name)
+	}
+	if c.name == "arm-kind-mismatch-then-reserved-node-type" {
+		w.refID(ir.TableNodeWireId)
+		w.refID(ir.TableBuildVersionWireId)
+	}
+	return c.build(&w)
 }
 
 // unionsProbe prints one line per check, and a check that raises prints its
@@ -552,8 +614,7 @@ func unionTree(t *testing.T, u *ir.Unit, mutate func(map[string][]byte) error) (
 	put("trail_elided.bin", unionEngineWire(t, u, unionTrailElidedText))
 	var names []string
 	for _, c := range unionCases {
-		var w unionWire
-		put("case_"+c.name+".bin", c.build(&w))
+		put("case_"+c.name+".bin", unionCaseWire(c))
 		names = append(names, c.name)
 	}
 	put("cases.txt", []byte(strings.Join(names, "\n")+"\n"))
@@ -585,8 +646,7 @@ func unionWant(t *testing.T, u *ir.Unit) []string {
 		"OK",
 	}
 	for _, c := range unionCases {
-		var w unionWire
-		verdict := unionEngineVerdict(t, u, c.build(&w))
+		verdict := unionEngineVerdict(t, u, unionCaseWire(c))
 		if !strings.HasPrefix(verdict, c.engine) {
 			t.Errorf("case %s: the engine now answers %q, written for %q", c.name, verdict, c.engine)
 		}
@@ -671,6 +731,7 @@ var unionControls = []struct {
 	{"arm-kind-check", "kind_union.py", "    if kind != arm.kind:\n", "    if False:\n", "case arm-kind-mismatch "},
 	{"void-arm-length", "kind_union.py", "        if length != 0:\n", "        if False:\n", "case void-arm-nonzero-l "},
 	{"arm-trailing", "kind_union.py", "    if sub.pos != sub.end:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "    if False:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "case arm-long-width "},
+	{"count-minimum", "kind_union.py", "elif count > fd.bound or (fd.array_kind == 2 and count < fd.array_min):", "elif count > fd.bound:", "case below-minimum "},
 	{"count-bound-reason", "kind_union.py", "raise Refused(\"count_over_bound\"", "raise Refused(\"out_of_range\"", "case count-over-bound "},
 	{"count-extent-cap", "load.py", "    if count > _COUNT_CAP:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "    if False:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "case count-over-extent-cap "},
 	{"counted-elision", "descriptor.py", "                return len(value) == 0\n", "                return len(value) <= 1 and all(element.type == 0 for element in value)\n", "case counted-one-none "},
@@ -705,6 +766,17 @@ func TestPythonVtUnionsNegativeControl(t *testing.T) {
 					return fmt.Errorf("%s carries %q %d times, want 1: the control would be vacuous", path, ctl.from, strings.Count(src, ctl.from))
 				}
 				files[path] = []byte(strings.Replace(src, ctl.from, ctl.to, 1))
+				if ctl.name == "unknown-field-check" {
+					// The tracker shares this walk; isolate the decoder fault while
+					// its own first-use controls exercise the tracker separately.
+					p := "unions/_schema/load.py"
+					body := string(files[p])
+					const call = "    _check_id_order(view, ids)\n"
+					if strings.Count(body, call) != 1 {
+						return fmt.Errorf("ID order call missing from %s", p)
+					}
+					files[p] = []byte(strings.Replace(body, call, "    pass  # isolate the decoder control\n", 1))
+				}
 				return nil
 			}
 			var named []string

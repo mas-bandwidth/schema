@@ -78,7 +78,7 @@ def supported(cls):
     def carried(field):
         if field.codec == "unsupported":
             return False
-        if field.codec in ("table", "pointer") and field.target:
+        if field.codec in ("table", "pointer", "pointer_array") and field.target:
             target = None
             for module_name, module in list(sys.modules.items()):
                 if module is None:

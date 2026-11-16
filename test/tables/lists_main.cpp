@@ -652,14 +652,14 @@ static void test_reader()
     }
     {
         // A COUNT THE BODY CANNOT COVER (§2.9): into a REGION, LoadMeasure
-        // answers -1 with the reason count_over_length and no Load runs. Into a
+        // answers -1 with wire_damaged before schema-specific sizing. Into a
         // BUILDER, the same damage refuses the whole load.
         IntsSpec spec = ints_spec();
         spec.declared_n = 1000;
         Wire w = build_ints( spec );
         TableRefuseReason reason = count_over_extent_cap;
         CHECK_EQ( IntsLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
-        CHECK( reason == count_over_length );
+        CHECK( reason == wire_damaged );
         IntsBuilder into;
         TableReport t;
         CHECK( !IntsLoadBuilder( into, w.bytes, w.size, &t ) );
@@ -667,14 +667,17 @@ static void test_reader()
         CHECK( t.refuse_reason == wire_damaged );
     }
     {
-        // A BODY TOO SHORT TO CARRY ITS OWN HEADER IS INERT (§4): no element,
-        // no counter, the field keeps the value it has
+        // A body too short for its own header is malformed, not an empty list.
         IntsSpec spec = ints_spec();
         spec.body_len = 1;
-        const Verdict v = read_ints( build_ints( spec ) );
-        CHECK_EQ( v.count, 0 );
-        report_silent( v.report, "an inert list body" );
-        CHECK_EQ( v.past, 777 );
+        const Wire w = build_ints( spec );
+        CHECK_EQ( IntsLoadMeasure( w.bytes, w.size ), -1 );
+        IntsBuilder into;
+        TableReport report;
+        CHECK( !IntsLoadBuilder( into, w.bytes, w.size, &report ) );
+        CHECK( report.damaged && report.refuse_reason == wire_damaged );
+        CHECK_EQ( into.GetRoot()->values.count, 0 );
+        CHECK_EQ( into.GetRoot()->past, 0 );
     }
     {
         // an EMPTY list on the wire: a header and a zero count
@@ -710,11 +713,12 @@ static void test_reader()
         Wire w;
         w.size = b.finish( w.bytes );
         const int64_t need = RowLoadMeasure( w.bytes, w.size );
-        CHECK( need > 0 );
-        uint8_t * region = (uint8_t *) MEASURED_CALLOC( need, 0 );
+        CHECK( need == -1 );
+        const int64_t scratch = (int64_t) sizeof( Row ) + 16;
+        uint8_t * region = (uint8_t *) MEASURED_CALLOC( scratch, 0 );
         if ( region == NULL ) { return; }
         TableReport r;
-        const Row * row = RowLoad( region, need, w.bytes, w.size, &r );
+        const Row * row = RowLoad( region, scratch, w.bytes, w.size, &r );
         CHECK( row == NULL );
         CHECK( r.damaged );
         CHECK( r.refuse_reason == wire_damaged );
@@ -893,7 +897,7 @@ static void test_measure_refusals()
         Wire w = build_ints( spec );
         TableRefuseReason reason = count_over_extent_cap;
         CHECK_EQ( IntsLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
-        CHECK( reason == count_over_length );
+        CHECK( reason == wire_damaged );
     }
     // the same two at DEPTH, inside an element's own list
     {
@@ -910,7 +914,7 @@ static void test_measure_refusals()
         Wire w = build_sheet( 1, 100000, 1 );
         TableRefuseReason reason = count_over_extent_cap;
         CHECK_EQ( SheetLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
-        CHECK( reason == count_over_length );
+        CHECK( reason == wire_damaged );
     }
     // the same two at DEPTH, inside an element's MAP (§2.8): a map's term
     // answers the reasons a list's does, the int32 cap first, one rule for
@@ -925,7 +929,7 @@ static void test_measure_refusals()
         Wire w = build_army( 1, 100000, 1 );
         TableRefuseReason reason = count_over_extent_cap;
         CHECK_EQ( ArmyLoadMeasure( w.bytes, w.size, NULL, &reason ), -1 );
-        CHECK( reason == count_over_length );
+        CHECK( reason == wire_damaged );
     }
     // and a clean map-holding wire beside them, which must measure and load silently
     {
