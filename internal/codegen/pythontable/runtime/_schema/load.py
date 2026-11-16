@@ -313,6 +313,8 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
         reference = reader.varint()
         if reference == 0:
             break
+        if root and ctx.saw_node:
+            raise Refused("wire_damaged", "the node table is not the root body's last field")
         field_id = reader.id_at(reference)
         kind = reader.byte()
         if field_id in seen:
@@ -635,10 +637,13 @@ def _check_file(view: memoryview, ids: list[int]) -> None:
     ctx.nonfinite = []
     reader = Reader(view, 1, _body_end(view), ids)
     seen: set[int] = set()
+    saw_node = False
     while True:
         reference = reader.varint()
         if reference == 0:
             break
+        if saw_node:
+            raise Refused("wire_damaged", "the node table is not the root body's last field")
         field_id = reader.id_at(reference)
         if field_id in seen:
             raise Refused("wire_damaged", "the same field id twice in one body")
@@ -650,6 +655,7 @@ def _check_file(view: memoryview, ids: list[int]) -> None:
             if kind != 12:
                 raise Refused("wire_damaged", "the node table under a kind other than 12")
             _check_node_table(reader.take(reader.varint()), ctx)
+            saw_node = True
             continue
         _skip_payload(reader, kind, ctx, 0)
     if reader.pos != reader.end:
