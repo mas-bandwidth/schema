@@ -2,6 +2,7 @@ package pythontable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"testing"
@@ -817,6 +818,28 @@ except Refused as e:
 				t.Fatalf("array evolution %s to %s: %v\n%s\n%s", tc.writer, tc.reader, err, out, stderr)
 			}
 		}
+		if tc.writer == "[..4]int32" {
+			// Form-5 projection gave both declarations this same version.
+			// Recreate that historical peer even after form 6 fixes the hash.
+			const legacy = uint64(0x83c01f94234296fd)
+			unit := "msgarrayevo/_schema/_message_unit.py"
+			before := fmt.Sprintf("BUILD_VERSION = %d\n", ir.BuildVersion(reader))
+			if strings.Count(string(files[unit]), before) != 1 {
+				t.Fatal("historical build-version fixture lost its anchor")
+			}
+			files[unit] = []byte(strings.Replace(string(files[unit]), before, fmt.Sprintf("BUILD_VERSION = %d\n", legacy), 1))
+			legacyDir := t.TempDir()
+			writeTree(t, legacyDir, files)
+			peer := append([]byte(nil), tablewire.Announce(writer)...)
+			binary.LittleEndian.PutUint64(peer[3:11], legacy)
+			inputs["peer"] = peer
+			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+				out, stderr, err := pyrun.Try(t, pin, legacyDir, "main.py", inputs)
+				if err != nil || string(bytes.TrimSpace([]byte(out))) != tc.expected {
+					t.Fatalf("historical equal-build array shape: %v\n%s\n%s", err, out, stderr)
+				}
+			}
+		}
 	}
 }
 
@@ -1004,6 +1027,47 @@ print('ok')
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
 		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {
 			t.Fatalf("zero-width skip: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+// TestPythonMessageUnionArray holds the distinction between absent fields and None elements.
+func TestPythonMessageUnionArray(t *testing.T) {
+	t.Parallel()
+	const schema = `package msgunionarray
+union Choice { number int32
+ ping
+}
+fixed table Probe { trail [2]Choice }
+`
+	u := loadUnit(t, schema)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Probe"))
+	var report tabletext.Report
+	if !m.Read(inst, []byte(`{"trail":[{},{"ping":null}]}`), &report) || report.Refused {
+		t.Fatalf("engine JSON fixture: %+v", report)
+	}
+	want, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from msgunionarray import Probe, MessageVocabulary, ANNOUNCEMENT, announce_read, save_messages, load_messages
+v=MessageVocabulary();announce_read(v,ANNOUNCEMENT)
+p=Probe();p.trail[1].type=2
+w=save_messages(Probe,[p]);q=load_messages(Probe,v,w)[0]
+assert q.trail[0].type==0 and q.trail[1].type==2
+print(w.hex())
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err != nil || string(bytes.TrimSpace([]byte(out))) != fmt.Sprintf("%x", want) {
+			t.Fatalf("union array: %v\n%s\n%s\nwant %x", err, out, stderr, want)
 		}
 	}
 }

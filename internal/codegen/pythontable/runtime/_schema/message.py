@@ -660,8 +660,10 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
             _skip_value(reader, entry.shape, vocab, depth + 1)
             stats[0] += 1
             return result
-        if entry.kind != arm.kind and not _widens(entry.kind, arm.kind):
-            raise Refused("kind_mismatch", "message union arm kind changed")
+        if entry.kind != arm.kind:
+            if not _widens(entry.kind, arm.kind):
+                raise Refused("kind_mismatch", "message union arm kind changed")
+            stats[1] += 1
         result.type = arm.tag
         if arm.field is not None:
             setattr(result, arm.name, _read_value(reader, arm.field, entry.shape, vocab, own_version, keys, stats, depth + 1))
@@ -669,6 +671,8 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
     if shape.kind == 16:
         if shape.inner is None or fd.elem is None or existing is None:
             raise Refused("wire_damaged", "message keyed element is missing")
+        if shape.element != fd.elem.kind:
+            raise Refused("kind_mismatch", "message keyed element kind changed")
         count = reader.get(shape.maximum.bit_length())
         if count > shape.maximum:
             raise Refused("wire_damaged", "message keyed count exceeds its bound")
@@ -727,8 +731,8 @@ def resolve_vocabulary(vocab: MessageVocabulary, local: MessageVocabulary) -> No
         def compatible(candidate: Entry) -> bool:
             if entry.kind != candidate.kind:
                 return _widens(entry.kind, candidate.kind)
-            if entry.kind == 14 and entry.shape.element != candidate.shape.element:
-                return _widens(entry.shape.element, candidate.shape.element)
+            if entry.kind in (14, 16) and entry.shape.element != candidate.shape.element:
+                return entry.kind == 14 and _widens(entry.shape.element, candidate.shape.element)
             return True
         if not any(compatible(candidate) for candidate in known):
             vocab.entries = []
