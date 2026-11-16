@@ -292,23 +292,25 @@ def _id_table(view: memoryview) -> list[int]:
     return ids
 
 
-def read_body(data: Any, obj: Any, ctx: Ctx) -> None:
+def read_body(data: Any, obj: Any, ctx: Ctx, map_key: FieldDesc | None = None) -> bool:
     """Read one nested body whose bytes are exactly data."""
     reader = Reader(data, 0, len(data), ctx.ids)
     if ctx.depth >= _MAX_DEPTH:
         raise Refused("wire_damaged", "a framed payload nested past the binary bound")
     ctx.depth += 1
-    _read_body(reader, obj, ctx, False)
+    widened = _read_body(reader, obj, ctx, False, map_key)
     ctx.depth -= 1
     if reader.pos != reader.end:
         raise Refused("wire_damaged", "bytes left inside a body")
+    return widened
 
 
-def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
+def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool, map_key: FieldDesc | None = None) -> bool:
     descriptor_: TableDesc = obj.descriptor
     previous = ctx.current
     ctx.current = obj
     seen: set[int] = set()
+    widened_key = False
     while True:
         reference = reader.varint()
         if reference == 0:
@@ -323,13 +325,25 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
             _unknown_field(reader, field_id, kind, ctx, root)
             continue
         if kind != field.kind:
-            raise Refused(
-                "kind_mismatch",
-                f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
-            )
-        value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
+            # A map key widens exactly on its own signedness ladder (§2.8).
+            # Keys are compared after decoding; widening preserves their order.
+            signed = 2 <= kind < field.kind <= 5
+            unsigned = 6 <= kind < field.kind <= 9
+            if field is not map_key or field.codec != "int" or not (signed or unsigned):
+                raise Refused(
+                    "kind_mismatch",
+                    f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
+                )
+            width = 1 << (kind - (2 if signed else 6))
+            value = int.from_bytes(reader.take(width), "little", signed=signed)
+            if value < field.lo or value > field.hi:
+                raise Refused("out_of_range", f"{value} is outside [{field.lo}, {field.hi}]")
+            widened_key = True
+        else:
+            value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
     ctx.current = previous
+    return widened_key
 
 
 def _unknown_field(reader: Reader, field_id: int, kind: int, ctx: Ctx, root: bool) -> None:
