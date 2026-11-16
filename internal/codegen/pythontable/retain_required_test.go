@@ -49,3 +49,44 @@ print('retain-required')
 		}
 	}
 }
+
+func TestPythonRetainRequiredContainers(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and C++/Go oracles")
+	const schema = `package probe
+enum Slot { A }
+table Child { n int32 | required }
+table Root {
+ keyed [Slot]int32 | required
+ child Child
+}
+`
+	u := loadUnit(t, schema)
+	text := `{"keyed":{},"child":{"n":0}}`
+	wire := wideEngineWire(t, u, "Root", text)
+	cpp := cppWideWire(t, u, wideVTConstruct{root: "Root", json: text})
+	if string(wire) != string(cpp) {
+		t.Fatalf("C++/Go required fixture differs: %x != %x", cpp, wire)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert value.measure_retain(keep)==len(wire)
+assert value.save_retain(keep,report)==wire
+assert report.retain_lost==0
+print('required-containers')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "required-containers" {
+			t.Fatalf("required retaining containers: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
