@@ -312,14 +312,14 @@ table Save
 
 const cookConstructsJSON = `{
   "rows": [
-    {"items": [{"v": 1, "wide": 340282366920938463463374607431768211455, "fx": 2.5, "tag": "Write"}, {"v": -2, "fx": -999.25}], "label": 11, "names": ["a", "bcd"], "lines": ["", "an unbounded line"], "maybe": [null, "", "kept"]},
+    {"items": [{"v": 1, "wide": "340282366920938463463374607431768211455", "fx": "2.5", "tag": "Write"}, {"v": -2, "fx": "-999.25"}], "label": 11, "names": ["a", "bcd"], "lines": ["", "an unbounded line"], "maybe": [null, "", "kept"]},
     {"items": [], "label": 12, "names": []},
     {"items": [{"v": 3}], "label": 13, "names": ["eight888"]}
   ],
   "marks": [7, -7, 1048576],
   "modes": ["Write", "Read", "Write"],
-  "wides": [1, 2, 340282366920938463463374607431768211455],
-  "items": [{"sample": {"v": 5, "wide": 6}}, {"count": -9}, {"note": "hello"}, {"wrap": {"run": [{"v": 8}, {"v": 9, "fx": 1.5}], "n": 4}}, {"ack": null}, {}],
+  "wides": ["1", "2", "340282366920938463463374607431768211455"],
+  "items": [{"sample": {"v": 5, "wide": "6"}}, {"count": -9}, {"note": "hello"}, {"wrap": {"run": [{"v": 8}, {"v": 9, "fx": "1.5"}], "n": 4}}, {"ack": null}, {}],
   "linked": [{"items": [{"v": 21}], "label": 22, "names": ["z"]}, null],
   "pinned": {"items": [], "label": 31, "names": []},
   "one": {"wrap": {"run": [{"v": 41}], "n": 5}},
