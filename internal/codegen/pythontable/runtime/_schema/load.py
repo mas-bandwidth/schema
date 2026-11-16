@@ -304,6 +304,16 @@ def read_body(data: Any, obj: Any, ctx: Ctx) -> None:
         raise Refused("wire_damaged", "bytes left inside a body")
 
 
+def _widened_scalar(reader: Reader, kind: int, field: FieldDesc) -> Any:
+    """Read a permitted scalar kind at its original wire width."""
+    from .kind_array import _read_widened
+
+    value = _read_widened(reader, kind, field, 1)[0]
+    if field.float_range and (value < field.fmin or value > field.fmax):
+        raise Refused("out_of_range", field.name)
+    return value
+
+
 def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
     descriptor_: TableDesc = obj.descriptor
     previous = ctx.current
@@ -323,11 +333,18 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
             _unknown_field(reader, field_id, kind, ctx, root)
             continue
         if kind != field.kind:
-            raise Refused(
-                "kind_mismatch",
-                f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
-            )
-        value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
+            # Decode a permitted widening at the writer's own width (§4).
+            from .kind_array import _widens
+
+            if not _widens(kind, field.kind):
+                raise Refused(
+                    "kind_mismatch",
+                    f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
+                )
+            value = _widened_scalar(reader, kind, field)
+            ctx.widened += 1
+        else:
+            value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
     ctx.current = previous
 
