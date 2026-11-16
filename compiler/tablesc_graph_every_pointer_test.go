@@ -41,8 +41,9 @@ func TestCTableGraphCheckedOverEveryPointer(t *testing.T) {
 		{"graph_reach_unknown_field", "Scene", true},
 		{"graph_reach_unknown_nested", "Scene", true},
 		{"graph_reach_unknown_union_arm", "Scene", true},
-		// The keyed body carries element kind 17, which the closed list forbids.
-		{"graph_reach_unknown_keyed_slot", "Scene", false},
+		// A legal keyed table element carries the pointer. Direct kind17
+		// keyed elements remain covered by TestCTableReachThroughUnknownUnionAndKeyed.
+		{"graph_reach_unknown_keyed_slot", "Scene", true},
 		{"node_chain_two", "ListNode", true},
 	}
 	var decls, checks strings.Builder
