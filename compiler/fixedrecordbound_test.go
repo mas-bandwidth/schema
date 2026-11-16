@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -171,15 +172,19 @@ func TestFixedRecordBoundLockKeepsHistoryPastTheCeiling(t *testing.T) {
 	if errs := lockfile.Check(u, paths); len(errs) != 0 {
 		t.Fatalf("the committed lock does not check: %v", errs)
 	}
-	if _, rewrote, err := lockfile.Update(u, paths); err != nil || rewrote {
+	expected := before
+	if held.Version < lockfile.Version {
+		expected = bytes.Replace(before, []byte(fmt.Sprintf("schema-lock %d\n", held.Version)), []byte(fmt.Sprintf("schema-lock %d\n", lockfile.Version)), 1)
+	}
+	if _, rewrote, err := lockfile.Update(u, paths); err != nil || rewrote != !bytes.Equal(before, expected) {
 		t.Fatalf("schema lock over the committed lock: rewrote %v, err %v", rewrote, err)
 	}
 	after, err := os.ReadFile(filepath.Join(dir, lockfile.FileName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(before, after) {
-		t.Fatal("schema lock changed the committed lock: its historical entries must stand")
+	if !bytes.Equal(expected, after) {
+		t.Fatal("schema lock changed more than the rendering header: historical entries must stand")
 	}
 
 	// Crossing from 65536 (at the ceiling) to 65544 (past the ceiling) is refused by lockfile.Check.
