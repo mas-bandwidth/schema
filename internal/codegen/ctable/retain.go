@@ -172,10 +172,15 @@ static SCHEMA_UNUSED int table_retain_raw(TableRetainIn * s,const void * data,in
 {if(s->failed||bytes<0||s->used>s->capacity||bytes>s->capacity-s->used){s->failed=1;return 0;}if(bytes)memcpy(s->out+s->used,data,(size_t)bytes);s->used+=bytes;return 1;}
 static SCHEMA_UNUSED int table_retain_leb(TableRetainIn * s,uint64_t v)
 {uint8_t b[10];int n=0;do{b[n++]=(uint8_t)((v&127)|(v>=128?128:0));v>>=7;}while(v);return table_retain_raw(s,b,n);}
+/* The node-table ID is forbidden inside a retained payload. Use it only
+   in this private representation to distinguish hash zero from the zero
+   reference (None or a body terminator), without increasing record size. */
 static SCHEMA_UNUSED int table_retain_id(TableRetainIn * s,uint64_t id)
-{uint8_t b[8];table_retain_put64(b,id);return table_retain_raw(s,b,8);}
+{uint8_t b[8];table_retain_put64(b,id==0?UINT64_MAX:id);return table_retain_raw(s,b,8);}
+static SCHEMA_UNUSED int table_retain_none(TableRetainIn * s)
+{uint8_t b[8]={0};return table_retain_raw(s,b,8);}
 static SCHEMA_UNUSED int table_retain_in_ref(TableRetainIn * s,int zero)
-{uint64_t ref,id;if(!table_reader_leb(&s->input,&ref))return 0;if(!ref)return zero&&table_retain_id(s,0);if(ref>s->input.id_count)return 0;id=table_reader_id_at(&s->input,ref);return id&&!table_retain_reserved(id)&&table_retain_id(s,id);}
+{uint64_t ref,id;if(!table_reader_leb(&s->input,&ref))return 0;if(!ref)return zero&&table_retain_none(s);if(ref>s->input.id_count)return 0;id=table_reader_id_at(&s->input,ref);return !table_retain_reserved(id)&&table_retain_id(s,id);}
 static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn *,uint8_t,int32_t);
 static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn *,uint8_t,int64_t,int32_t);
 static SCHEMA_UNUSED int table_retain_in_frame(TableRetainIn * s,uint8_t kind,int64_t length,int32_t depth)
@@ -185,7 +190,7 @@ static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn * s,uint8_t kind,
  int64_t end;TableReader * r=&s->input;if(!table_reader_has(r,length))return 0;end=r->offset+length;
  if(kind==13||kind==14||kind==16){if(depth>=SCHEMA_TABLE_RETAIN_WALK_MAX){return 0;}depth++;}
  switch(kind){
- case 13:for(;;){uint64_t ref;int64_t mark=r->offset;uint8_t k;if(!table_reader_leb(r,&ref))return 0;if(!ref){if(!table_retain_id(s,0))return 0;break;}r->offset=mark;if(!table_retain_in_ref(s,0)||r->offset>=end)return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_retain_in_payload(s,k,depth)||r->offset>end)return 0;}break;
+ case 13:for(;;){uint64_t ref;int64_t mark=r->offset;uint8_t k;if(!table_reader_leb(r,&ref))return 0;if(!ref){if(!table_retain_none(s))return 0;break;}r->offset=mark;if(!table_retain_in_ref(s,0)||r->offset>=end)return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_retain_in_payload(s,k,depth)||r->offset>end)return 0;}break;
  case 14:case 16:{uint8_t elem;uint64_t n,i;if(r->offset>=end)return 0;elem=table_reader_get8(r);if(!table_retain_raw(s,&elem,1)||!table_reader_leb(r,&n)||!table_retain_leb(s,n))return 0;
  for(i=0;i<n;i++){if(kind==16){uint64_t bytes;if(!table_retain_in_ref(s,0)||!table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!table_retain_in_frame(s,elem,(int64_t)bytes,depth))return 0;}else if(!table_retain_in_payload(s,elem,depth))return 0;if(r->offset>end)return 0;}break;}
  case 15:case 30:if(!table_retain_in_payload(s,kind,depth))return 0;break;

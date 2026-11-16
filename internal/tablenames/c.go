@@ -40,6 +40,7 @@ func init() {
 		Name{Name: "table_retain_leb", What: "the C retention runtime"},
 		Name{Name: "table_retain_leb_bytes", What: "the C retention runtime"},
 		Name{Name: "table_retain_nameable", What: "the C retention runtime"},
+		Name{Name: "table_retain_none", What: "the C retention runtime"},
 		Name{Name: "table_retain_out_content", What: "the C retention runtime"},
 		Name{Name: "table_retain_out_frame", What: "the C retention runtime"},
 		Name{Name: "table_retain_out_leb", What: "the C retention runtime"},

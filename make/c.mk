@@ -2352,3 +2352,18 @@ packet-write-text-c-negative-control: packet-write-text-c
 	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
 
 test-c: packet-write-text-c packet-write-text-c-negative-control
+
+# Hash-zero IDs are ordinary retained identities, distinct from wire None.
+.PHONY: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
+tables-c-retain-hashzero:
+	@mkdir -p build/c-retain-hashzero
+	@SCHEMA_SLOW=1 go test -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZero$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/positive.log 2>&1 || { cat build/c-retain-hashzero/positive.log; exit 1; }
+	@grep -q -- '--- PASS: TestCRetainNestedHashZero ' build/c-retain-hashzero/positive.log || { cat build/c-retain-hashzero/positive.log; exit 1; }
+	@echo 'C retention: hash-zero identities and None round-trip'
+
+tables-c-retain-hashzero-negative-control: tables-c-retain-hashzero
+	@SCHEMA_SLOW=1 go test -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZeroNegativeControl$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/control.log 2>&1 || { cat build/c-retain-hashzero/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestCRetainNestedHashZeroNegativeControl ' build/c-retain-hashzero/control.log || { cat build/c-retain-hashzero/control.log; exit 1; }
+	@echo 'C retention: removing the hash-zero escape breaks each zero-ID vector'
+
+test-c tables-c: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
