@@ -31,7 +31,7 @@ func TestPythonRetainRoundTrip(t *testing.T) {
 	script := pyrun.ImportPrelude + `from tblrt1 import Node, TableRetain, LoadReport
 with open('input','rb') as f: data=f.read()
 with open('expected','rb') as f: expected=f.read()
-keep=TableRetain(bytearray(65536), 8192)
+keep=TableRetain(bytearray(65536), [None]*8192)
 report=LoadReport()
 value=Node.load_retain(data, keep, report)
 assert report.unknown > 0 and report.retained > 0
@@ -103,6 +103,18 @@ else: raise AssertionError('capacity ignored')
 try: resolved(30,bytes([3]))
 except Refused: pass
 else: raise AssertionError('invalid id reference accepted')
+from probe._schema.retain import TableRetain
+keep=TableRetain(bytearray(256), [None]*2)
+assert keep.capture(1, ((3,2),), 0xabc, 13, memoryview(bytes([4,1,30,2,0])), ids)
+used=keep.used
+entries=list(keep.records())
+assert len(entries)==1 and entries[0][:4] == (1,((3,2),),0xabc,13)
+assert not keep.capture(1, (), 0xdef, 17, memoryview(bytes([0])), ids)
+assert keep.used==used and len(list(keep.records()))==1
+small=TableRetain(bytearray(22), [])
+assert not small.capture(1, (), 0xabc, 13, memoryview(bytes([4,1,30,2,0])), ids)
+assert small.used==0 and list(small.records())==[]
+keep.reset(); assert keep.used==0 and keep.id_used==0 and list(keep.records())==[]
 print('resolved')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -142,6 +154,56 @@ else:
 		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
 		if err == nil || !strings.Contains(stderr, "retain_node_exclusion_control") {
 			t.Fatalf("node exclusion sabotage not detected by name: %v\n%s", err, stderr)
+		}
+	}
+}
+
+func TestPythonRetainCapture(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and the C++ retain corpus")
+	root := filepath.Join("..", "..", "..")
+	u := loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt2.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string][]byte{"wire": wire}
+	for _, name := range []string{"retain_excluded_0", "retain_excluded_1", "retain_excluded_2", "retain_excluded_3", "retain_excluded_4", "retain_excluded_5", "retain_rt3"} {
+		data, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[name] = data
+	}
+	script := pyrun.ImportPrelude + `from tblrt1 import Node, LoadReport
+from tblrt1._schema.retain import TableRetain, capture_file
+with open('wire','rb') as f: data=f.read()
+report=LoadReport()
+value=Node.load(data,report)
+assert report.unknown==11, report.unknown
+keep=TableRetain(bytearray(65536),[None]*8192)
+retained,lost=capture_file(Node,memoryview(data),keep)
+assert (retained,lost)==(9,2), (retained,lost)
+assert len(list(keep.records()))==9
+small=TableRetain(bytearray(), [])
+assert capture_file(Node,memoryview(data),small)==(0,11)
+for name in ('retain_excluded_0','retain_excluded_1','retain_excluded_2','retain_excluded_3','retain_excluded_4','retain_excluded_5','retain_rt3'):
+    with open(name,'rb') as f: sample=f.read()
+    Node.load(sample)
+    assert capture_file(Node,memoryview(sample),keep)==(0,1), name
+print('captured')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		inputs["main.py"] = []byte(script)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
+		if err != nil || strings.TrimSpace(out) != "captured" {
+			t.Fatalf("capture: %v\n%s\n%s", err, out, stderr)
 		}
 	}
 }
