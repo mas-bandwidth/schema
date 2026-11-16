@@ -14,8 +14,18 @@
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
 .PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
+test-python: python-ci-support python-ci-packages python-ci-compiler
+
+.PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
+PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
+python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
+.PHONY: python-ci-support-list
+python-ci-support-list:
+	@printf '%s\n' $(PYTHON_CI_SUPPORT_GROUPS) python-ci-compiler
+python-ci-core: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
+python-ci-packages:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
+python-ci-compiler:
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
 
@@ -43,7 +53,7 @@ python-packet-core-negative-control: python-toolchain-check
 # and cuts the fixed point read's raw span check from a copy of the bit layer
 # and requires the probe to name exactly the headroom reads.
 .PHONY: packet-finite-python packet-finite-python-negative-control
-test-python: packet-finite-python
+python-ci-finite: packet-finite-python
 packet-finite-python: build/schema-python python-toolchain-check
 	@rm -rf build/packet-finite/python && mkdir -p build/packet-finite/python
 	./build/schema-python generate --lang python --out build/packet-finite/python/generated test/packet-finite/python/Finite.schema
@@ -110,14 +120,14 @@ python-packet-analyzer: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzer$$' ./internal/codegen/python/
 python-packet-analyzer-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzerNegativeControl$$' ./internal/codegen/python/
-test-python: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
+python-ci-close: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
 
 .PHONY: packet-defaults-python packet-defaults-python-negative-control
 packet-defaults-python: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaults$$' ./internal/codegen/python/
 packet-defaults-python-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaultsNegativeControl$$' ./internal/codegen/python/
-test-python: packet-defaults-python packet-defaults-python-negative-control
+python-ci-defaults: packet-defaults-python packet-defaults-python-negative-control
 
 generated/bench/python/.stamp: bin/schema $(SCHEMAS_BENCH)
 	@mkdir -p generated/bench/python
@@ -145,4 +155,4 @@ python-hosted-packet-text: python-toolchain-check
 	sh test/slowgate/proof python-hosted-packet-text 'TestPythonHostedPacketText/current TestPythonHostedPacketText/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketText$$' ./internal/codegen/pythontable/
 python-hosted-packet-text-negative-control: python-toolchain-check
 	sh test/slowgate/proof python-hosted-packet-text-negative-control 'TestPythonHostedPacketTextNegativeControl/current TestPythonHostedPacketTextNegativeControl/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketTextNegativeControl$$' ./internal/codegen/pythontable/
-test-python: python-hosted-packet-text python-hosted-packet-text-negative-control
+python-ci-hosted: python-hosted-packet-text python-hosted-packet-text-negative-control

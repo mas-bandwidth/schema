@@ -9,7 +9,8 @@
 # core's control is; the probe runs beside the Go reference writer, which
 # needs serialize.go (deps-go).
 .PHONY: python-packet-text-negative-control packet-utf8-python packet-utf8-python-negative-control
-test-python: deps-go packet-utf8-python python-packet-text-negative-control packet-utf8-python-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-packet-text
+python-ci-packet-text: deps-go packet-utf8-python python-packet-text-negative-control packet-utf8-python-negative-control
 python-packet-text-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketTextNegativeControl ./internal/codegen/python/
 
