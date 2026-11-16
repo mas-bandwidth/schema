@@ -37,6 +37,10 @@ func (g *tableGen) emitReadUnboundedText(f *ir.Field, expr, ind string) {
 	holder := g.unboundedHolder(f)
 	bad := refuse("TableRefuseWireDamaged", holder, "return false")
 	g.pf("%ssub, ok := r.Body(); if !ok || !tableUTF8Valid(sub.Buffer) { %s }\n", ind, bad)
+	if g.takeElides() {
+		// empty unbounded text is elided by its writer (§2.13.1, §3)
+		g.pf("%sif len(sub.Buffer) == 0 { %s }\n", ind, bad)
+	}
 	g.pf("%sif !tableTextPlace(&r.Nodes.Carve, &%s, sub.Buffer) { if r.Nodes.Carve.Refused { return false }; %s }\n", ind, expr, bad)
 }
 

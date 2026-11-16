@@ -3507,6 +3507,7 @@ static SCHEMA_UNUSED int benchtable_table_message_skip_body(benchtable_table_mes
  int64_t ref;
   if(!benchtable_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
      reference is bounded where the file form bounds it, so the bitset fits. */
   ref=entry-r->vocabulary->entries+1;
@@ -3543,7 +3544,7 @@ static SCHEMA_UNUSED int benchtable_table_message_skip(benchtable_table_message_
  /* a node reference: no fixed body holds one */
  case 15:
   if(!benchtable_table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && benchtable_table_message_skip_deeper(r,entry));
+  return entry==NULL || (entry->id<UINT64_C(0xfffffffffffffffd) && entry->kind!=0 && benchtable_table_message_skip_deeper(r,entry));
  case 12:
   /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
      is inside the announced bound and its bytes are well-formed UTF-8 with no
@@ -4084,7 +4085,10 @@ static SCHEMA_UNUSED int schema_benchtable_table_event_wire_load_( benchtable_ta
             value->type = BENCHTABLE_TABLE_EVENT_TYPE_PICKUP;
             break;
         }
-        default: r->report->unknown++; break;
+        default:
+            r->report->unknown++;
+            if ( !benchtable_table_skip_framed( arm, kind, 0, kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            break;
     }
     return 1;
 }
@@ -5079,11 +5083,18 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_save_messages(const benchta
 }
 static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_table_message_reader_t * r,benchtable_table_entity_t * value)
 {
+ uint8_t seen[512];
  benchtable_table_entity_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const benchtable_table_message_entry_t * entry;
+ int64_t ref;
  if(!benchtable_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x23fcfd6678e36712): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
@@ -5635,11 +5646,18 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_save_messages(const benchtabl
 }
 static SCHEMA_UNUSED int benchtable_table_stat_load_message_body(benchtable_table_message_reader_t * r,benchtable_table_stat_t * value)
 {
+ uint8_t seen[512];
  benchtable_table_stat_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const benchtable_table_message_entry_t * entry;
+ int64_t ref;
  if(!benchtable_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x80ab75f0866dbf65): {
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,6)){r->report->widened++;
@@ -7581,11 +7599,18 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_save_messages(const benchtab
 }
 static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_table_message_reader_t * r,benchtable_table_mixed_t * value)
 {
+ uint8_t seen[512];
  benchtable_table_mixed_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const benchtable_table_message_entry_t * entry;
+ int64_t ref;
  if(!benchtable_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x6a5a70d91aa115fd): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
@@ -8552,11 +8577,18 @@ static SCHEMA_UNUSED int64_t benchtable_table_hit_event_save_messages(const benc
 }
 static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable_table_message_reader_t * r,benchtable_table_hit_event_t * value)
 {
+ uint8_t seen[512];
  benchtable_table_hit_event_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const benchtable_table_message_entry_t * entry;
+ int64_t ref;
  if(!benchtable_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xb7bc9ac015a25050): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;
@@ -8921,11 +8953,18 @@ static SCHEMA_UNUSED int64_t benchtable_table_chat_event_save_messages(const ben
 }
 static SCHEMA_UNUSED int benchtable_table_chat_event_load_message_body(benchtable_table_message_reader_t * r,benchtable_table_chat_event_t * value)
 {
+ uint8_t seen[512];
  benchtable_table_chat_event_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const benchtable_table_message_entry_t * entry;
+ int64_t ref;
  if(!benchtable_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xa5013e9ad5caeda4): {
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,4)){r->report->widened++;
@@ -9258,11 +9297,18 @@ static SCHEMA_UNUSED int64_t benchtable_table_pickup_event_save_messages(const b
 }
 static SCHEMA_UNUSED int benchtable_table_pickup_event_load_message_body(benchtable_table_message_reader_t * r,benchtable_table_pickup_event_t * value)
 {
+ uint8_t seen[512];
  benchtable_table_pickup_event_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const benchtable_table_message_entry_t * entry;
+ int64_t ref;
  if(!benchtable_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x9e7fd06d864fbd56): {
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && benchtable_table_kind_widens(entry->kind,7)){r->report->widened++;

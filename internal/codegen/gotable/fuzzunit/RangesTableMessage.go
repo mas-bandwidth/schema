@@ -11,6 +11,7 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
 	"unsafe"
 )
@@ -228,6 +229,14 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedSignedReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -249,6 +258,11 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 		switch entry.ID {
 		case 0x48121511bf702eb5:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -260,7 +274,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -128 || wide > 127 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -279,12 +304,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I8Span = int8(v)
 					}
 				}
+				if exact && !(value.I8Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x942bfe3168090f7d:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -296,7 +330,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -128 || wide > 126 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -315,12 +360,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I8Low = int8(v)
 					}
 				}
+				if exact && !(value.I8Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xd182acd105b55dd1:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -332,7 +386,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -127 || wide > 127 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -351,12 +416,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I8High = int8(v)
 					}
 				}
+				if exact && !(value.I8High != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xef9ded23c8912a81:
 			{
+				if order >= 3 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 3
 				widened := false
 				if entry.Shape.Kind != 2 || entry.Element.Kind != 0 {
 					if false {
@@ -368,7 +442,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -127 || wide > 126 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i8_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -387,12 +472,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I8Inside = int8(v)
 					}
 				}
+				if exact && !(value.I8Inside != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xb655574ea23760b4:
 			{
+				if order >= 4 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 4
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -404,7 +498,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32768 || wide > 32767 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -423,12 +528,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I16Span = int16(v)
 					}
 				}
+				if exact && !(value.I16Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xd217b3af8d7a2bde:
 			{
+				if order >= 5 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 5
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -440,7 +554,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32768 || wide > 32766 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -459,12 +584,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I16Low = int16(v)
 					}
 				}
+				if exact && !(value.I16Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x90652f70c9127900:
 			{
+				if order >= 6 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 6
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -476,7 +610,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32767 || wide > 32767 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -495,12 +640,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I16High = int16(v)
 					}
 				}
+				if exact && !(value.I16High != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x6a659d7c354db158:
 			{
+				if order >= 7 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 7
 				widened := false
 				if entry.Shape.Kind != 3 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 3) {
@@ -512,7 +666,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32767 || wide > 32766 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i16_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -531,12 +696,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I16Inside = int16(v)
 					}
 				}
+				if exact && !(value.I16Inside != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xe693bd88532c91d6:
 			{
+				if order >= 8 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 8
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -548,7 +722,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483648 || wide > 2147483647 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -567,12 +752,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I32Span = int32(v)
 					}
 				}
+				if exact && !(value.I32Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x065ee827cf99fbb4:
 			{
+				if order >= 9 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 9
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -584,7 +778,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483648 || wide > 2147483646 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -603,12 +808,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I32Low = int32(v)
 					}
 				}
+				if exact && !(value.I32Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xc9b121c4c2a186ee:
 			{
+				if order >= 10 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 10
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -620,7 +834,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483647 || wide > 2147483647 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -639,12 +864,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I32High = int32(v)
 					}
 				}
+				if exact && !(value.I32High != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xd363dfa465acf27a:
 			{
+				if order >= 11 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 11
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -656,7 +890,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2147483647 || wide > 2147483646 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i32_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -675,12 +920,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I32Inside = int32(v)
 					}
 				}
+				if exact && !(value.I32Inside != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x7549c70700c49d6f:
 			{
+				if order >= 12 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 12
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -692,7 +946,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < (-9223372036854775807-1) || wide > 9223372036854775807 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -711,12 +976,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I64Span = int64(v)
 					}
 				}
+				if exact && !(value.I64Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x1cce6617419771db:
 			{
+				if order >= 13 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 13
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -728,7 +1002,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < (-9223372036854775807-1) || wide > 9223372036854775806 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -747,12 +1032,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I64Low = int64(v)
 					}
 				}
+				if exact && !(value.I64Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x3b54fa60620b5597:
 			{
+				if order >= 14 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 14
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -764,7 +1058,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -9223372036854775807 || wide > 9223372036854775807 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -783,12 +1088,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I64High = int64(v)
 					}
 				}
+				if exact && !(value.I64High != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xd308fcb98ece5d23:
 			{
+				if order >= 15 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 15
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -800,7 +1114,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -9223372036854775807 || wide > 9223372036854775806 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.i64_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -819,12 +1144,21 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						value.I64Inside = int64(v)
 					}
 				}
+				if exact && !(value.I64Inside != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xc70cde6b85b6197d:
 			{
+				if order >= 16 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 16
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 3 {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 3) {
@@ -855,7 +1189,18 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						p := &base[i]
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -32768 || wide > 32767 {
+								r.Report.Refuse(TableRefuseOutOfRange, "RangedSigned.edges")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -876,6 +1221,10 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						}
 					}
 					value.EdgesCount = int32(n)
+				}
+				if exact && !(value.EdgesCount > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -1144,6 +1493,14 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedUnsignedReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1165,6 +1522,11 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 		switch entry.ID {
 		case 0x0f8897557f37c021:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1176,7 +1538,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1195,12 +1568,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U8Span = uint8(v)
 					}
 				}
+				if exact && !(value.U8Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x2e17553f8200a2a1:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1212,7 +1594,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 254 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1231,12 +1624,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U8Low = uint8(v)
 					}
 				}
+				if exact && !(value.U8Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xa0e5c60df9301b7d:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1248,7 +1650,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1267,12 +1680,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U8High = uint8(v)
 					}
 				}
+				if exact && !(value.U8High != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x1cb2c073a6f5844d:
 			{
+				if order >= 3 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 3
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1284,7 +1706,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 254 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u8_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1303,12 +1736,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U8Inside = uint8(v)
 					}
 				}
+				if exact && !(value.U8Inside != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x4ca0c150b1790960:
 			{
+				if order >= 4 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 4
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1320,7 +1762,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1339,12 +1792,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U16Span = uint16(v)
 					}
 				}
+				if exact && !(value.U16Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xf252136836b04cb2:
 			{
+				if order >= 5 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 5
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1356,7 +1818,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65534 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1375,12 +1848,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U16Low = uint16(v)
 					}
 				}
+				if exact && !(value.U16Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x4f37e1f216e7610c:
 			{
+				if order >= 6 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 6
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1392,7 +1874,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1411,12 +1904,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U16High = uint16(v)
 					}
 				}
+				if exact && !(value.U16High != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xd176b605978f3304:
 			{
+				if order >= 7 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 7
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1428,7 +1930,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 65534 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u16_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1447,12 +1960,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U16Inside = uint16(v)
 					}
 				}
+				if exact && !(value.U16Inside != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x200b924de7479cda:
 			{
+				if order >= 8 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 8
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -1464,7 +1986,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1483,12 +2016,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U32Span = uint32(v)
 					}
 				}
+				if exact && !(value.U32Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xa53d2f2a31b5acb0:
 			{
+				if order >= 9 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 9
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -1500,7 +2042,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967294 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1519,12 +2072,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U32Low = uint32(v)
 					}
 				}
+				if exact && !(value.U32Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x9759be8ea1a4e3d2:
 			{
+				if order >= 10 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 10
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -1536,7 +2098,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1555,12 +2128,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U32High = uint32(v)
 					}
 				}
+				if exact && !(value.U32High != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x8dc515fc082e3c0e:
 			{
+				if order >= 11 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 11
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -1572,7 +2154,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 4294967294 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u32_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1591,12 +2184,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U32Inside = uint32(v)
 					}
 				}
+				if exact && !(value.U32Inside != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xbeecef11dbdf8973:
 			{
+				if order >= 12 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 12
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -1608,7 +2210,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_span")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1627,12 +2240,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U64Span = uint64(v)
 					}
 				}
+				if exact && !(value.U64Span != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x0117ad66e0fff227:
 			{
+				if order >= 13 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 13
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -1644,7 +2266,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551614 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_low")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1663,12 +2296,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U64Low = uint64(v)
 					}
 				}
+				if exact && !(value.U64Low != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xf2b45af3b50689db:
 			{
+				if order >= 14 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 14
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -1680,7 +2322,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_high")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1699,12 +2352,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U64High = uint64(v)
 					}
 				}
+				if exact && !(value.U64High != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x713e12017eebcaf7:
 			{
+				if order >= 15 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 15
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -1716,7 +2378,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 1 || wide > 18446744073709551614 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.u64_inside")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1735,12 +2408,21 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						value.U64Inside = uint64(v)
 					}
 				}
+				if exact && !(value.U64Inside != 1) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xc341febe5aae51e5:
 			{
+				if order >= 16 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 16
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 9 {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 9) {
@@ -1771,7 +2453,18 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						p := &base[i]
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := binary.LittleEndian.Uint64(raw[:8])
+							if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+								r.Report.Refuse(TableRefuseOutOfRange, "RangedUnsigned.counts")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1792,6 +2485,10 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						}
 					}
 					value.CountsCount = int32(n)
+				}
+				if exact && !(value.CountsCount > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -1961,6 +2658,14 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	RangedWidthsReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1982,6 +2687,11 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 		switch entry.ID {
 		case 0x08a60c07b54d8dc7:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1993,7 +2703,18 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b8")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2012,12 +2733,21 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 						value.B8 = uint32(v)
 					}
 				}
+				if exact && !(value.B8 != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xff95701912ad97be:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2029,7 +2759,18 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b16")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2048,12 +2789,21 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 						value.B16 = uint32(v)
 					}
 				}
+				if exact && !(value.B16 != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xff9c5c1912b39470:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2065,7 +2815,18 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b32")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2084,12 +2845,21 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 						value.B32 = uint32(v)
 					}
 				}
+				if exact && !(value.B32 != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xff92701912ab61e7:
 			{
+				if order >= 3 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 3
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2101,7 +2871,18 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b64")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2115,12 +2896,21 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 						value.B64 = uint64(v)
 					}
 				}
+				if exact && !(value.B64 != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xff95741912ad9e8a:
 			{
+				if order >= 4 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 4
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2132,7 +2922,18 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b12")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2151,12 +2952,21 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 						value.B12 = uint32(v)
 					}
 				}
+				if exact && !(value.B12 != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xff8b681912a535a1:
 			{
+				if order >= 5 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 5
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2168,7 +2978,18 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 281474976710655 {
+						r.Report.Refuse(TableRefuseOutOfRange, "RangedWidths.b48")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2186,6 +3007,10 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 						}
 						value.B48 = uint64(v)
 					}
+				}
+				if exact && !(value.B48 != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++

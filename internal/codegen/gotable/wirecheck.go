@@ -100,6 +100,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
  case 30:
   ref,ok:=r.Leb()
   if !ok || ref>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
+  if ref!=0 { r.meetFirstUse(ref) }
  case 15:
   return c.union(r)
  case 12, 13, 14, 16, 31, 32:
@@ -174,7 +175,8 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
   if _,ok:=probe.Body(); !ok { return 0,c.fail(TableRefuseWireDamaged) }
  }
  for range count {
-  sub.Leb()
+  key,_:=sub.Leb()
+  sub.meetFirstUse(key)
   elem,_:=sub.Body()
   if !c.framed(elem,kind) { return 0,false }
  }
@@ -187,6 +189,7 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
  ref,ok:=r.Leb()
  if !ok || ref>c.ids { return 0,c.fail(TableRefuseWireDamaged) }
  if ref==0 { return r.Offset,true }
+ r.meetFirstUse(ref)
  if !r.Has(1) { return 0,c.fail(TableRefuseWireDamaged) }
  kind:=r.Get8()
  arm,ok:=r.Body()
@@ -227,7 +230,8 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 // applies to a record it does name (docs/SPEC-TABLES.md §4, §6.5). nodes is the
 // table's record count, which bounds every pointer index; mark, when not nil,
 // names a record a pointer reaches so the graph walk starts there too.
-func tableWireRecordCheck(body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
+func tableWireRecordCheck(id uint64, body TableReader, ids uint64, nodes uint64, mark func(uint64)) TableRefuseReason {
+ if id==tableWireBytesID || id==tableWireStringID { return TableRefuseOk }
  var c tableWireCheck
  c.ids=ids
  c.nodes=nodes
@@ -275,5 +279,6 @@ func tableRefused(r *TableReport) {
  if r==nil { return }
  if r.Err()==nil { r.Refuse(TableRefuseWireDamaged,"") }
  r.Unknown,r.Widened,r.Retained,r.RetainLost=0,0,0,0
+ r.firstUse=tableFirstUse{}
 }
 `

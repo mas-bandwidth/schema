@@ -11,6 +11,7 @@
 package tabledemo
 
 import (
+	"encoding/binary"
 	"math"
 	"slices"
 	"unsafe"
@@ -137,6 +138,14 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TeamConfigReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -158,6 +167,11 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -169,7 +183,18 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 64 {
+						r.Report.Refuse(TableRefuseOutOfRange, "TeamConfig.spawn_count")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -188,12 +213,21 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 						value.SpawnCount = int32(v)
 					}
 				}
+				if exact && !(value.SpawnCount != 4) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xbca0dab1c7a00ccf:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
 					if false {
@@ -226,6 +260,10 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 					clear(value.Banner[:])
 					copy(value.Banner[:], text)
 					value.BannerLength = int32(n)
+				}
+				if exact && !(value.BannerLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -369,6 +407,14 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	GunnerConfigReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -390,6 +436,11 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -401,8 +452,13 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload2 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -422,12 +478,21 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Reaction) != math.Float32bits(0.2)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xa6bf719a4602b0bc:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -439,8 +504,13 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload3 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -456,6 +526,10 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 						}
 						value.Tracking = b != 0
 					}
+				}
+				if exact && !(value.Tracking != false) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -611,6 +685,14 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	TurretConfigReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -632,6 +714,11 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -643,8 +730,13 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload4 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -664,12 +756,21 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Damage) != math.Float32bits(10.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xdc2cbe6953343d48:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -681,8 +782,13 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload5 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -702,12 +808,21 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Cooldown) != math.Float32bits(0.5)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x40dbb648c0cd44aa:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -918,6 +1033,14 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	HullConfigReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -939,6 +1062,11 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -950,8 +1078,13 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload12 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -971,12 +1104,21 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Health) != math.Float32bits(100.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x1f3757a2ce7b0ab1:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -988,8 +1130,13 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload13 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1009,12 +1156,21 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Mass) != math.Float32bits(1.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x84f8260bc283608c:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 13 {
 					if false {
@@ -1031,10 +1187,15 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if exact && n == 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1057,10 +1218,30 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
+<<<<<<< HEAD
 						if !tableMessageBodyTurretConfig(r, &(*p), starts, depth+1) {
+=======
+						slotDefault := true
+						{
+							start := r.Bits.Offset
+							if !TurretConfigLoadMessageBody(r, &(*p)) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 							return false
 						}
 					}
@@ -1305,6 +1486,14 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	KeyedConfigReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1326,6 +1515,11 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 13 {
 					if false {
@@ -1342,10 +1536,15 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if exact && n == 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1368,10 +1567,30 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
+<<<<<<< HEAD
 						if !tableMessageBodyTeamConfig(r, &(*p), starts, depth+1) {
+=======
+						slotDefault := true
+						{
+							start := r.Bits.Offset
+							if !TeamConfigLoadMessageBody(r, &(*p)) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 							return false
 						}
 					}
@@ -1382,6 +1601,11 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 			}
 		case 0xce0ac3c25694d8ff:
 			{
+				if order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 13 {
 					if false {
@@ -1398,10 +1622,15 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if exact && n == 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1424,10 +1653,30 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
+<<<<<<< HEAD
 						if !tableMessageBodyHullConfig(r, &(*p), starts, depth+1) {
+=======
+						slotDefault := true
+						{
+							start := r.Bits.Offset
+							if !HullConfigLoadMessageBody(r, &(*p)) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 							return false
 						}
 					}
@@ -1438,6 +1687,11 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 			}
 		case 0x01986b0b27400fb2:
 			{
+				if order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -1447,8 +1701,20 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						return false
 					}
 				}
+<<<<<<< HEAD
 				if !tableMessageBodyScoreBoard(r, &value.Scores, starts, depth+1) {
 					return false
+=======
+				{
+					start := r.Bits.Offset
+					if !ScoreBoardLoadMessageBody(r, &value.Scores) {
+						return false
+					}
+					if exact && r.Bits.Offset-start == r.Vocabulary.RefBits {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 				}
 				if widened {
 					r.Report.Widened++
@@ -1551,6 +1817,14 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	ScoreBoardReset(value)
+<<<<<<< HEAD
+=======
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
+	order := -1
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	_ = exact
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1572,6 +1846,11 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
+				if order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 16 || entry.Element.Kind != 4 {
 					if false {
@@ -1588,10 +1867,15 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if exact && n == 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					var seenKeys [64]uint64
 					seenKey := seenKeys[:0]
+					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -1614,12 +1898,29 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 						p := &scratch
 						if known {
 							p = &base[int(key)-1]
+							if int(key) <= lastKey {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							lastKey = int(key)
 						} else {
 							r.Report.Unknown++
 						}
+						slotDefault := true
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+							if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 100000 {
+								r.Report.Refuse(TableRefuseOutOfRange, "ScoreBoard.per_team")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -1637,6 +1938,13 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 								}
 								(*p) = int32(v)
 							}
+							if (*p) != 0 {
+								slotDefault = false
+							}
+						}
+						if exact && known && slotDefault {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 					}
 				}

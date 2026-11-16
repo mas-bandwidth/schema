@@ -50,6 +50,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	firstUse    TableFirstUse // the form-1 load's first-use count (canonical.go)
 	// LayoutHash is THE FILE'S hash, set by the layout refusals
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
 	// layout.
@@ -62,7 +63,11 @@ type TableReport struct {
 // meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
 // OneVerdict).
 func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
-	if r == nil || r.Refusal != TableRefuseOk {
+	if r == nil {
+		return
+	}
+	r.firstUse = TableFirstUse{}
+	if r.Refusal != TableRefuseOk {
 		return
 	}
 	r.Refusal, r.Field = reason, field
@@ -122,6 +127,49 @@ func TableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
 		}
 	}
 	return int64(raw)
+}
+
+type TableFirstUse struct {
+	usePhase          uint8 // 0 not counting, 1 the node records, 2 the root body
+	useNodes, useRoot TableFirstUseRun
+}
+
+type TableFirstUseRun struct{ useHigh, useJump uint64 }
+
+func (u *TableFirstUseRun) useMeet(ref uint64) {
+	if ref > u.useHigh {
+		if ref != u.useHigh+1 {
+			u.useJump = ref
+		}
+		u.useHigh = ref
+	}
+}
+
+// tableFirstUseCount starts counting one part of a load's walk: 1 the node
+// records, which starts the count afresh, and 2 the root body; 0 stops it.
+func TableFirstUseCount(r *TableReport, phase uint8) {
+	if phase != 2 {
+		r.firstUse = TableFirstUse{}
+	}
+	r.firstUse.usePhase = phase
+}
+
+func TableFirstUseMeet(r *TableReport, ref uint64) {
+	switch r.firstUse.usePhase {
+	case 1:
+		r.firstUse.useNodes.useMeet(ref)
+	case 2:
+		r.firstUse.useRoot.useMeet(ref)
+	}
+}
+
+// tableFirstUseWhole answers the count's verdict over an id table of n
+// entries, and stops it.
+func TableFirstUseWhole(r *TableReport, n uint64) bool {
+	u := r.firstUse
+	r.firstUse = TableFirstUse{}
+	root, nodes := u.useRoot, u.useNodes
+	return root.useJump <= 1 && (nodes.useHigh <= root.useHigh || nodes.useJump <= root.useHigh+1) && max(root.useHigh, nodes.useHigh) == n
 }
 
 // TableRefuseReason is the typed error shared by file and accelerator failures.
@@ -583,6 +631,7 @@ func TableRefused(r *TableReport) {
 		r.Refuse(TableRefuseWireDamaged, "")
 	}
 	r.Unknown, r.Widened, r.Retained, r.RetainLost = 0, 0, 0, 0
+	r.firstUse = TableFirstUse{}
 }
 
 // TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
@@ -2071,26 +2120,84 @@ func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 
 // Numeric values are reconstructed at the announced storage width. Typed
 // readers then hold these lanes to the declared ranges, as the file read does.
-func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
+// The reconstruction is canonical: a signed kind is sign-extended to 128 bits,
+// an unsigned kind zero-extended, and a ranged offset carries into the high
+// lane. A timestamp (kind 36) is a signed sixty-four bit count. A value past
+// the 128-bit domain of an integer kind is reported so the reader refuses it
+// before it narrows.
+func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) (bool, bool) {
+	integer := s.Kind >= 2 && s.Kind <= 9 || s.Kind >= 18 && s.Kind <= 29 || s.Kind == 36
+	signed := integer && (s.Kind <= 5 || s.Kind == 18 || s.Kind >= 20 && s.Kind <= 24 || s.Kind == 36)
 	lo, ok := r.Get(min(s.Bits, 64))
 	if !ok || s.Packing == 2 && lo > uint64(s.QCount) {
-		return false
+		return false, false
 	}
 	hi := uint64(0)
 	if s.Bits > 64 {
 		hi, ok = r.Get(s.Bits - 64)
 		if !ok {
-			return false
+			return false, false
 		}
 	}
 	if s.Packing == 1 {
-		sum := lo + s.Base[0]
+		baseHi := s.Base[1]
+		if signed && s.Kind < 18 {
+			baseHi = uint64(int64(s.Base[0]) >> 63)
+		}
+		loSum := lo + s.Base[0]
 		carry := uint64(0)
-		if sum < lo {
+		if loSum < lo {
 			carry = 1
 		}
-		lo = sum
-		hi += s.Base[1] + carry
+		hiSum := hi + baseHi
+		carryHi := uint64(0)
+		if hiSum < hi {
+			carryHi = 1
+		}
+		hiSum += carry
+		if hiSum < carry {
+			carryHi = 1
+		}
+		if integer {
+			if signed {
+				if baseHi>>63 == 0 {
+					if carryHi != 0 || hiSum>>63 != 0 {
+						return true, true
+					}
+				} else {
+					mLo := ^s.Base[0] + 1
+					mHi := ^baseHi
+					if mLo == 0 {
+						mHi++
+					}
+					borrow := uint64(0)
+					if lo < mLo {
+						borrow = 1
+					}
+					dHi := hi - mHi - borrow
+					if !(hi < mHi || hi == mHi && borrow != 0) && dHi>>63 != 0 {
+						return true, true
+					}
+				}
+			} else if carryHi != 0 {
+				return true, true
+			}
+		}
+		lo = loSum
+		hi = hiSum
+	} else if signed {
+		if s.Bits < 64 {
+			if s.Bits > 0 {
+				shift := uint(64 - s.Bits)
+				lo = uint64(int64(lo<<shift) >> shift)
+			}
+			hi = uint64(int64(lo) >> 63)
+		} else if s.Bits == 64 {
+			hi = uint64(int64(lo) >> 63)
+		} else if s.Bits < 128 {
+			shift := uint(64 - (s.Bits - 64))
+			hi = uint64(int64(hi<<shift) >> shift)
+		}
 	}
 	if s.Packing == 2 {
 		index := uint32(lo)
@@ -2100,7 +2207,7 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 	}
 	binary.LittleEndian.PutUint64(out[:], lo)
 	binary.LittleEndian.PutUint64(out[8:], hi)
-	return true
+	return true, false
 }
 
 // A quantized float outside its range is a value the writer refuses
@@ -2174,4 +2281,8 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
+<<<<<<< HEAD
 const Version uint64 = 0x11536863a144e917
+=======
+const Version uint64 = 0xaf3c2a0488047dc2
+>>>>>>> 6c8bb9881131eb352b9feaad64c61e0bc844d83b
