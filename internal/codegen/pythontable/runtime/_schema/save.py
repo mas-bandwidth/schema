@@ -169,6 +169,8 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
                     _validate(item, item.descriptor, cell, seen)
                 else:
                     kinds._REGISTRY[element.codec].validate(element, item, cell)
+            if field.text_total and sum(len(item.encode("utf-8")) for item in current if item is not None) > field.text_total:
+                raise InvalidValue(where, "text total exceeded")
         elif field.codec == "map":
             _validate_map(field, current, where, seen)
         else:

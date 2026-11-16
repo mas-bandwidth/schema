@@ -687,6 +687,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
 		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
+		if f.IsTextList() {
+			fmt.Fprintf(b, "            text_total=%d,\n", f.TextTotal)
+		}
 		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
