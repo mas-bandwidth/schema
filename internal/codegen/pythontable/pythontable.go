@@ -751,7 +751,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
-		codec := descriptorCodec(f, valueClass)
+		codec := codecOf(f)
 		fmt.Fprintf(b, "        FieldDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
 		fmt.Fprintf(b, "            json_key=%s,\n", strconv.Quote(ir.TableFieldJsonKey(f)))
@@ -1658,18 +1658,6 @@ func arrayElemCodec(f *ir.Field) string {
 	return "unsupported"
 }
 
-// descriptorCodec is the codec a field's descriptor names. A packet type by
-// value is the packet-types card's construct: its float fields stay refused by
-// name in the table runtime (kind_unsupported.py) until that card carries them,
-// so only a table's own fields ride the float kinds.
-func descriptorCodec(f *ir.Field, valueClass bool) string {
-	codec := codecOf(f)
-	if valueClass && isFloat(f) && codec != "unsupported" {
-		return "unsupported"
-	}
-	return codec
-}
-
 // isFloat reports a float32 or float64 field, or an array of them.
 func isFloat(f *ir.Field) bool {
 	return f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64
@@ -1737,7 +1725,7 @@ func innerCodecOf(f *ir.Field) string {
 	}
 	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		switch optionalElemCodecOf(f) {
-		case "bool", "int", "table":
+		case "bool", "int", "table", "float32", "float64":
 			return "array"
 		}
 		return "unsupported"
@@ -1771,6 +1759,8 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 		def = "False"
 	case "int":
 		def = "0"
+	case "float32", "float64":
+		def = "0.0"
 	}
 	fmt.Fprintf(b, "            elem=FieldDesc(\n")
 	fmt.Fprintf(b, "                name=%s,\n", strconv.Quote(f.Name))
@@ -1790,6 +1780,12 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
 	}
 	fmt.Fprintf(b, "                default=%s,\n", def)
+	if isFloat(f) {
+		fmt.Fprintf(b, "                f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
+		fmt.Fprintf(b, "                fmin=%s,\n", floatBound(f, f.FMin))
+		fmt.Fprintf(b, "                fmax=%s,\n", floatBound(f, f.FMax))
+		fmt.Fprintf(b, "                float_range=%s,\n", pyBool(compressedFloat(f)))
+	}
 	fmt.Fprintf(b, "            ),\n")
 }
 
