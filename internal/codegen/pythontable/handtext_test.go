@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
 // TestPythonHandtextSyntax exercises the grammar independently of the value walk.
@@ -496,6 +498,15 @@ print('ok')
 		if got := string(run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})); got != "ok\n" {
 			t.Fatalf("array root: %s", got)
 		}
+	}
+	invalid := []byte(schema + "\ntable Pointer { target *Root }\n")
+	parsed, parseErrors := parser.Parse("Core.schema", invalid)
+	if len(parseErrors) != 0 {
+		t.Fatal(parseErrors)
+	}
+	_, errors := check.Unit([]check.SourceFile{{Path: "Core.schema", Name: "Core.schema", Base: "Core", Bytes: invalid, AST: parsed}})
+	if len(errors) == 0 || !strings.Contains(fmt.Sprint(errors), `json = "array" refuses a table any pointer targets`) {
+		t.Fatalf("array-root pointer was not refused by name: %v", errors)
 	}
 }
 
