@@ -93,7 +93,7 @@ func ValidateAvailableSurfaces(s Surfaces) error {
 		name    string
 		enabled bool
 	}{
-		{"json", s.JSON}, {"view", s.View},
+		{"json", s.JSON},
 		{"message", s.Message}, {"retain", s.Retain}, {"textform", s.TextForm},
 	} {
 		if item.enabled {

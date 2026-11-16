@@ -93,6 +93,9 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 		if !unitHasCook(u, surfaces) && (rel == "_schema/cook.py" || rel == "_schema/cookwrite.py") {
 			continue
 		}
+		if !surfaces.View && rel == "_schema/view.py" {
+			continue
+		}
 		if !surfaces.Fixed && rel == "_schema/fixedform.py" {
 			continue
 		}
@@ -120,8 +123,10 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 		out[path.Join(u.Package, "_fixed.py")] = []byte(fixedData)
 	}
 
-	if err := AddView(u, out); err != nil {
-		return nil, err
+	if surfaces.View {
+		if err := AddView(u, out); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }

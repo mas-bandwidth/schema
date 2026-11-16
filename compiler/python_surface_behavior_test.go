@@ -114,3 +114,36 @@ else: raise AssertionError('fixed read fell back to variable wire')
 print('surface-ok')
 `
 }
+
+// The optional registry must follow the public surface selection for table and packet units.
+func TestPythonReflectionSurfaceSelection(t *testing.T) {
+	for _, src := range []string{"package surfaceprobe\ntable Root { value int32 }", "package surfaceprobe\ntype Root { value int32 }"} {
+		u := unitFromSource(t, src)
+		c := New()
+		for _, tc := range []struct {
+			selection string
+			view      bool
+		}{{"wire", false}, {"wire,view", true}, {"", true}} {
+			files, err := c.Generate(u, "python", Options{"surface": tc.selection})
+			if err != nil {
+				t.Fatalf("%s: %v", tc.selection, err)
+			}
+			for _, name := range []string{"surfaceprobe/_schema/unit_view.py", "surfaceprobe/_schema/view.py"} {
+				if _, ok := files[name]; ok != tc.view {
+					t.Fatalf("%s: %s present=%t, want %t", tc.selection, name, ok, tc.view)
+				}
+			}
+			if got := strings.Contains(string(files["surfaceprobe/__init__.py"]), "def UnitView("); got != tc.view {
+				t.Fatalf("%s: UnitView export=%t", tc.selection, got)
+			}
+		}
+	}
+	// A declaration can use the registry entry's name when the registry is omitted.
+	u := unitFromSource(t, "package surfaceprobe\ntype UnitView { value int32 }")
+	if _, err := New().Generate(u, "python", Options{"surface": "wire"}); err != nil {
+		t.Fatalf("wire-only name: %v", err)
+	}
+	if _, err := New().Generate(u, "python", Options{"surface": "wire,view"}); err == nil || !strings.Contains(err.Error(), "UnitView") {
+		t.Fatalf("view collision: %v", err)
+	}
+}
