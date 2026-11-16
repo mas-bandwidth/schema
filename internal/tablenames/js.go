@@ -319,7 +319,6 @@ func init() {
 		Name{Name: "TableVariableFormatG", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableIntroduce", What: "the JavaScript variable-form canonical graph walk"},
 		Name{Name: "TableVariableFirstUseOk", What: "the JavaScript variable-form canonical graph walk"},
-		Name{Name: "TableVariableStoredDefault", What: "the JavaScript variable-form canonical graph walk"},
 		Name{Name: "TableVariableFreeze", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableFromJson", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableFromJsonBytes", What: "the JavaScript variable-form runtime module"},
