@@ -50,6 +50,18 @@ func TestWidelistExtentAlign16C(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Restore the original first field reference for the legal alignment
+	// witness. The retained reference mutant begins at slot 5 and leaves slot
+	// 1 unused, which the strict file reader must refuse.
+	clean := append([]byte(nil), refMutant...)
+	clean[1] = 1
+	var cClean strings.Builder
+	for i, b := range clean {
+		if i > 0 {
+			cClean.WriteString(",")
+		}
+		fmt.Fprintf(&cClean, "0x%02x", b)
+	}
 	var cRef, cWiden strings.Builder
 	for i, b := range refMutant {
 		if i > 0 {
@@ -69,6 +81,7 @@ func TestWidelistExtentAlign16C(t *testing.T) {
 #include <string.h>
 %s
 static const uint8_t ref_mutant[] = { %s };
+static const uint8_t clean[] = { %s };
 static const uint8_t widen_mutant[] = { %s };
 
 int main(void)
@@ -81,12 +94,15 @@ int main(void)
     const Wide * root;
     const serialize_uint128_t * elem;
 
-    /* 1. Reference #1 mutant: framing commands exactly 224 region bytes. */
-    CHECK(wide_load_measure(ref_mutant, (int64_t)sizeof(ref_mutant)) == 224);
+    /* 1. Reference #1 mutant: strict first-use order refuses the file. */
+    CHECK(wide_load_measure(ref_mutant, (int64_t)sizeof(ref_mutant)) < 0);
     memset(&report, 0, sizeof(report));
     root = wide_load(region, (int64_t)sizeof(region), ref_mutant, (int64_t)sizeof(ref_mutant), &report);
-    CHECK(root != NULL);
-    CHECK(!report.refused && report.unknown == 1);
+    CHECK(root == NULL && report.refused);
+    memset(&report, 0, sizeof(report));
+    CHECK(wide_load_measure(clean, (int64_t)sizeof(clean)) == 224);
+    root = wide_load(region, (int64_t)sizeof(region), clean, (int64_t)sizeof(clean), &report);
+    CHECK(root != NULL && !report.refused && report.unknown == 0);
     elem = wide_wides_at(&root->wides, 0);
     CHECK(elem != NULL && (((uintptr_t)elem) & 15u) == 0u);
 
@@ -96,9 +112,9 @@ int main(void)
     retain.capacity = (int64_t)sizeof(retain_bytes);
     retain.ids = retain_ids;
     retain.id_capacity = 64;
-    root = wide_load_retain(region, (int64_t)sizeof(region), ref_mutant, (int64_t)sizeof(ref_mutant), &retain, &report);
+    root = wide_load_retain(region, (int64_t)sizeof(region), clean, (int64_t)sizeof(clean), &retain, &report);
     CHECK(root != NULL);
-    CHECK(!report.refused && report.unknown == 1 && report.retain_lost == 1);
+    CHECK(!report.refused && report.unknown == 0 && report.retain_lost == 0);
 
     /* 2. Widen #0 mutant: uint8 -> uint128 list widening commands 224 bytes. */
     CHECK(wide_load_measure(widen_mutant, (int64_t)sizeof(widen_mutant)) == 224);
@@ -110,7 +126,7 @@ int main(void)
     CHECK(elem != NULL && elem->lo == 255u && elem->hi == 0u);
     return 0;
 }
-`, t09Check, cRef.String(), cWiden.String())
+`, t09Check, cRef.String(), cClean.String(), cWiden.String())
 	runCGenerated(t, string(schemaBytes), mainSrc, append(identityCCFlags(t), "-I", ser)...)
 }
 
