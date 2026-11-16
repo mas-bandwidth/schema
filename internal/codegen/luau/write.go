@@ -306,6 +306,7 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		}
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			g.Pf("%sif %s ~= %s or %s < %s or %s > %s then return false end\n", indent, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {
