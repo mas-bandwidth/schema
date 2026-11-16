@@ -19,7 +19,7 @@ test-python: python-ci-support
 	$(MAKE) --no-print-directory python-ci-compiler
 
 .PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
-PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
+PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-map-bench-current python-ci-map-bench-floor python-ci-map-bench-coverage
 python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
 .PHONY: python-ci-support-list
 python-ci-support-list:
@@ -158,3 +158,9 @@ python-hosted-packet-text: python-toolchain-check
 python-hosted-packet-text-negative-control: python-toolchain-check
 	sh test/slowgate/proof python-hosted-packet-text-negative-control 'TestPythonHostedPacketTextNegativeControl/current TestPythonHostedPacketTextNegativeControl/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketTextNegativeControl$$' ./internal/codegen/pythontable/
 python-ci-hosted: python-hosted-packet-text python-hosted-packet-text-negative-control
+
+.PHONY: python-ci-map-bench-current python-ci-map-bench-floor python-ci-map-bench-coverage
+python-ci-map-bench-current python-ci-map-bench-floor: python-ci-map-bench-%:
+	SCHEMA_SLOW=1 PYTHON_MAP_BENCH_PIN=$* go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMapShapeBench$$' ./internal/codegen/pythontable/
+python-ci-map-bench-coverage:
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestPythonMapBenchCIPlan$$' ./internal/ci/
