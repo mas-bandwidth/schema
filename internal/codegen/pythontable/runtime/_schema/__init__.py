@@ -39,6 +39,11 @@ class BlobRef:
     def value(self) -> str | bytes:
         return self._value
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, BlobRef):
+            other = other.value
+        return self._value == other
+
 
 class Refused(ValueError):
     """A read refused its input. It carries no value.
