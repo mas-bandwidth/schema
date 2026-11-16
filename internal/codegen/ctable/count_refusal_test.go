@@ -47,100 +47,139 @@ func cCountWire(t *testing.T, u *ir.Unit, shape string, count uint64, short bool
 		ids = append(ids, id)
 		return binary.AppendUvarint(nil, uint64(len(ids)))
 	}
-	length := func(body []byte) []byte {
-		return append(binary.AppendUvarint(nil, uint64(len(body))), body...)
+	length := func(body []byte) []byte { return append(binary.AppendUvarint(nil, uint64(len(body))), body...) }
+	// Payloads are closures so IDs are interned in the same order the wire is
+	// read: parent field, nested headers, then deferred node records.
+	type part func() []byte
+	field := func(id uint64, kind byte, payload part) []byte {
+		out := append(ref(id), kind)
+		return append(out, payload()...)
 	}
-	field := func(id uint64, kind byte, payload []byte) []byte {
-		return append(append(ref(id), kind), payload...)
+	named := func(name string, kind byte, payload part) []byte { return field(ir.TableWireId(name), kind, payload) }
+	leaf := func() []byte {
+		return append(named("entries", byte(ir.TableKindArray), func() []byte {
+			data := binary.AppendUvarint([]byte{byte(ir.TableKindTable)}, count)
+			if count != 0 && !short {
+				data = append(data, 1, 0)
+			}
+			return length(data)
+		}), 0)
 	}
-	named := func(name string, kind byte, payload []byte) []byte {
-		return field(ir.TableWireId(name), kind, payload)
-	}
-	collection := binary.AppendUvarint([]byte{byte(ir.TableKindTable)}, count)
-	if count != 0 && !short {
-		collection = append(collection, 1, 0)
-	}
-	leaf := append(named("entries", byte(ir.TableKindArray), length(collection)), 0)
-	arm := func(union string, kind byte, body []byte) []byte {
-		name := "leaf"
-		if union == "Wrapped" {
-			name = "choice"
-		}
-		return append(append(ref(ir.TableWireId(name)), kind), length(body)...)
+	arm := func(name string, kind byte, payload part) []byte {
+		out := append(ref(ir.TableWireId(name)), kind)
+		return append(out, length(payload())...)
 	}
 	root := "Holder"
-	var body []byte
+	var build part
 	switch shape {
 	case "map":
-		root, body = "Leaf", leaf[:len(leaf)-1]
+		root = "Leaf"
+		build = func() []byte { v := leaf(); return v[:len(v)-1] }
 	case "list":
-		list := binary.AppendUvarint([]byte{byte(ir.TableKindI32)}, count)
-		root, body = "Leaf", named("values", byte(ir.TableKindArray), length(list))
+		root = "Leaf"
+		build = func() []byte {
+			return named("values", byte(ir.TableKindArray), func() []byte { return length(binary.AppendUvarint([]byte{byte(ir.TableKindI32)}, count)) })
+		}
 	case "widened", "framing-tail":
-		list := binary.AppendUvarint([]byte{byte(ir.TableKindI16)}, count)
-		list = append(list, 0, 0)
-		leaf = append(named("values", byte(ir.TableKindArray), length(list)), 0)
-		body = named("inner", byte(ir.TableKindTable), length(leaf))
-		if shape == "framing-tail" {
-			body = append(body, named("damaged_tail", byte(ir.TableKindTable), []byte{127})...)
+		build = func() []byte {
+			v := named("inner", byte(ir.TableKindTable), func() []byte {
+				list := named("values", byte(ir.TableKindArray), func() []byte {
+					payload := binary.AppendUvarint([]byte{byte(ir.TableKindI16)}, count)
+					if count != 0 {
+						payload = append(payload, 0, 0)
+					}
+					return length(payload)
+				})
+				return length(append(list, 0))
+			})
+			if shape == "framing-tail" {
+				v = append(v, named("damaged_tail", byte(ir.TableKindTable), func() []byte { return []byte{127} })...)
+			}
+			return v
 		}
 	case "nested", "optional":
 		name := "inner"
 		if shape == "optional" {
 			name = "maybe"
 		}
-		body = named(name, byte(ir.TableKindTable), length(leaf))
+		build = func() []byte { return named(name, byte(ir.TableKindTable), func() []byte { return length(leaf()) }) }
 	case "array":
-		payload := append([]byte{byte(ir.TableKindTable), 1}, length(leaf)...)
-		body = named("leaves", byte(ir.TableKindArray), length(payload))
+		build = func() []byte {
+			return named("leaves", byte(ir.TableKindArray), func() []byte { return length(append([]byte{byte(ir.TableKindTable), 1}, length(leaf())...)) })
+		}
 	case "union":
-		body = named("choice", byte(ir.TableKindUnion), arm("Choice", byte(ir.TableKindTable), leaf))
+		build = func() []byte {
+			return named("choice", byte(ir.TableKindUnion), func() []byte { return arm("leaf", byte(ir.TableKindTable), leaf) })
+		}
 	case "union-array":
-		payload := append([]byte{byte(ir.TableKindUnion), 1}, arm("Choice", byte(ir.TableKindTable), leaf)...)
-		body = named("choices", byte(ir.TableKindArray), length(payload))
+		build = func() []byte {
+			return named("choices", byte(ir.TableKindArray), func() []byte {
+				return length(append([]byte{byte(ir.TableKindUnion), 1}, arm("leaf", byte(ir.TableKindTable), leaf)...))
+			})
+		}
 	case "nested-union":
 		root = "Wrapper"
-		body = named("value", byte(ir.TableKindUnion), arm("Wrapped", byte(ir.TableKindUnion), arm("Choice", byte(ir.TableKindTable), leaf)))
+		build = func() []byte {
+			return named("value", byte(ir.TableKindUnion), func() []byte {
+				return arm("choice", byte(ir.TableKindUnion), func() []byte { return arm("leaf", byte(ir.TableKindTable), leaf) })
+			})
+		}
 	case "map-value", "map-descending", "map-equal", "map-ascending":
 		root = "MapHolder"
 		entryType := u.Tables[root].Fields[0].MapEntry
-		entry := func(key byte, value []byte, keyLast bool) []byte {
-			k := field(ir.MapKeyWireId, byte(ir.TableKindI32), []byte{key, 0, 0, 0})
-			v := field(ir.TableFieldWireId(entryType.Fields[1]), byte(ir.TableKindTable), length(value))
+		entry := func(key byte, value part, keyLast bool) []byte {
+			keyPart := func() []byte {
+				return field(ir.MapKeyWireId, byte(ir.TableKindI32), func() []byte { return []byte{key, 0, 0, 0} })
+			}
+			valuePart := func() []byte {
+				return field(ir.TableFieldWireId(entryType.Fields[1]), byte(ir.TableKindTable), func() []byte { return length(value()) })
+			}
+			var out []byte
 			if keyLast {
-				return append(append(v, k...), 0)
+				out = append(valuePart(), keyPart()...)
+			} else {
+				out = append(keyPart(), valuePart()...)
 			}
-			return append(append(k, v...), 0)
+			return append(out, 0)
 		}
-		payload := append([]byte{byte(ir.TableKindTable), 1}, length(entry(1, leaf, false))...)
-		if shape != "map-value" {
-			key := byte(3)
-			if shape == "map-equal" {
-				key = 5
-			}
-			if shape == "map-ascending" {
-				key = 7
-			}
-			payload = append([]byte{byte(ir.TableKindTable), 2}, length(entry(5, []byte{0}, false))...)
-			payload = append(payload, length(entry(key, leaf, true))...)
+		build = func() []byte {
+			return named("entries", byte(ir.TableKindArray), func() []byte {
+				var data []byte
+				if shape == "map-value" {
+					data = append([]byte{byte(ir.TableKindTable), 1}, length(entry(1, leaf, false))...)
+				} else {
+					key := byte(3)
+					if shape == "map-equal" {
+						key = 5
+					}
+					if shape == "map-ascending" {
+						key = 7
+					}
+					data = append([]byte{byte(ir.TableKindTable), 2}, length(entry(5, func() []byte { return []byte{0} }, false))...)
+					data = append(data, length(entry(key, leaf, true))...)
+				}
+				return length(data)
+			})
 		}
-		body = named("entries", byte(ir.TableKindArray), length(payload))
 	case "node", "unreachable-node":
-		rootWidened := append([]byte{byte(ir.TableKindI16), 1}, 5, 0)
-		body = named("root_values", byte(ir.TableKindArray), length(rootWidened))
-		if shape == "node" {
-			body = append(body, named("head", byte(ir.TableKindPointer), []byte{2})...)
+		build = func() []byte {
+			body := named("root_values", byte(ir.TableKindArray), func() []byte { return length([]byte{byte(ir.TableKindI16), 1, 5, 0}) })
+			if shape == "node" {
+				body = append(body, named("head", byte(ir.TableKindPointer), func() []byte { return []byte{2} })...)
+			}
+			// The node-table field header precedes its type and body references.
+			body = append(body, field(math.MaxUint64, byte(ir.TableKindString), func() []byte {
+				nodes := append([]byte{1}, ref(ir.TableWireId(u.Tables["Leaf"].WireName()))...)
+				nodes = append(nodes, length(leaf())...)
+				return length(nodes)
+			})...)
+			return body
 		}
-		nodes := append([]byte{2}, ref(ir.TableWireId(u.Tables["Leaf"].WireName()))...)
-		nodes = append(nodes, length(leaf)...)
-		nodes = append(nodes, ref(ir.TableWireId("countcheck.UnknownNode"))...)
-		nodes = append(nodes, length([]byte{0})...)
-		body = append(body, field(math.MaxUint64, byte(ir.TableKindString), length(nodes))...)
 	default:
 		t.Fatalf("unknown shape %s", shape)
 	}
-	unknown := field(ir.TableWireId("unrecognized"), byte(ir.TableKindI32), []byte{17, 0, 0, 0})
-	body = append(unknown, body...)
+	body := field(ir.TableWireId("unrecognized"), byte(ir.TableKindI32), func() []byte { return []byte{17, 0, 0, 0} })
+	body = append(body, build()...)
 	body = append(body, 0)
 	wire := append([]byte{1}, body...)
 	for _, id := range ids {
@@ -206,7 +245,6 @@ int main(void) {
 }
 
 func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
-	t.Skip("layer 4 (c): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cCountRefusalSchema)
@@ -219,214 +257,129 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
     static TableRetainId retain_ids[64];
     #define CHECK(ok, name) do { if (!(ok)) { fprintf(stderr, "FAIL: %s (line %d)\n", (name), __LINE__); failures++; } } while (0)
 `)
-	shapes := []string{"map", "list", "nested", "optional", "array", "union", "union-array", "nested-union", "map-value", "map-equal", "map-ascending", "node", "unreachable-node"}
+	shapes := []string{"map", "list", "widened", "nested", "optional", "array", "union", "union-array", "nested-union", "map-value", "map-equal", "map-ascending", "node", "unreachable-node"}
 	for _, shape := range shapes {
 		for _, count := range []uint64{1 << 31, 1 << 32, 1<<32 + 1} {
 			root, wire := cCountWire(t, u, shape, count, false)
-			r := tabletext.Report{Unknown: 7, Widened: 13}
+			var r tabletext.Report
 			ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &r)
 			var refusal *tablewire.CountRefusal
-			if ok || !errors.As(err, &refusal) || r.Refused || r.Unknown < 7 {
-				t.Fatalf("%s/%d: oracle did not preserve storage refusal: %v %v %+v", shape, count, ok, err, r)
+			if ok || !errors.As(err, &refusal) || !r.Refused || tablewire.RefusalReason(err) != tablewire.ReasonCountOverExtentCap {
+				t.Fatalf("%s/%d: oracle count refusal: ok=%v err=%v report=%+v", shape, count, ok, err, r)
 			}
-			retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
+			var rr tabletext.Report
 			retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
-			ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-			if ok || !errors.As(err, &refusal) || retainingReport.Refused {
-				t.Fatalf("%s/%d: retaining oracle did not preserve storage refusal: %v %v %+v", shape, count, ok, err, retainingReport)
+			ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &rr)
+			if ok || !errors.As(err, &refusal) || !rr.Refused || retained.Used() != 0 {
+				t.Fatalf("%s/%d: retaining oracle count refusal: ok=%v err=%v report=%+v retained=%d", shape, count, ok, err, rr, retained.Used())
 			}
 			fn := ir.RustSnake(root)
 			fmt.Fprintf(&body, `
     {
         static const uint8_t wire[] = { %s };
-        int old_damage, retaining;
-        for (old_damage = 0; old_damage <= 1; old_damage++) {
-            for (retaining = 0; retaining <= 1; retaining++) {
-                TableReport report;
-                TableRetain store;
-                const void * loaded;
-                memset(&report, 0, sizeof(report));
-                report.unknown = 7; report.widened = 13;
-                report.retained = 23; report.retain_lost = 29; report.refused = old_damage;
-                report.refused = 1; report.reason = SCHEMA_TABLE_NON_FINITE_FLOAT; report.non_finite_floats = 3;
-                memset(&store, 0, sizeof(store));
-                store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.used = 12;
-                store.ids = retain_ids; store.id_capacity = 64; store.id_used = 1; store.count = 1;
-                loaded = retaining
-                    ? (const void *)%s_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                    : (const void *)%s_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-                CHECK(loaded == NULL, "%s/%d partial value");
-                CHECK(report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d named count refusal");
-                CHECK(report.refused == old_damage, "%s/%d damage history");
-                CHECK(report.unknown == %d && report.widened == %d &&
-                    report.unknown >= %d && report.non_finite_floats == 3 &&
-                    report.retained == (retaining ? %d : 23) &&
-                    report.retain_lost == (retaining ? %d : 29), "%s/%d counters");
-                CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "%s/%d retained partial state");
-            }
+        int retaining;
+        for (retaining = 0; retaining <= 1; retaining++) {
+            TableReport report; TableRetain store; const void *loaded;
+            memset(&report, 0, sizeof(report));
+            memset(&store, 0, sizeof(store));
+            store.bytes=retain_bytes; store.capacity=(int64_t)sizeof(retain_bytes); store.used=12;
+            store.ids=retain_ids; store.id_capacity=64; store.id_used=1; store.count=1;
+            memset(region, 0xa5, sizeof(region));
+            loaded = retaining ? (const void *)%s_load_retain(region, sizeof(region), wire, sizeof(wire), &store, &report)
+                               : (const void *)%s_load(region, sizeof(region), wire, sizeof(wire), &report);
+            if (report.refuse_reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP) fprintf(stderr, "VERDICT r=%%d reason=%%d rr=%%d\n", report.refused, report.reason, report.refuse_reason);
+            CHECK(loaded == NULL, "%s/%d partial region");
+            CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d count verdict");
+            CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "%s/%d discarded retain");
         }
         {
-            TableReport strict_report;
-            %sBuilder builder;
-            TableReport builder_report;
-            CHECK(%s_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &strict_report) == NULL, "%s/%d strict load");
-            CHECK(strict_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP && !strict_report.refused, "%s/%d strict reason");
+            %sBuilder builder; TableReport report; %s before; %s *value;
             CHECK(%s_builder_init(&builder), "%s/%d builder init");
-            memset(&builder_report, 0, sizeof(builder_report));
-            builder_report.unknown = 7; builder_report.widened = 13;
-            CHECK(!%s_load_builder(&builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
-            CHECK(builder_report.refused && builder_report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP &&
-                builder_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP &&
-                builder_report.unknown == %d && builder_report.widened == %d && builder_report.unknown >= %d, "%s/%d builder counters");
-            {
-                TableReport plain_report;
-                CHECK(!%s_load_builder(&builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.refused &&
-                    plain_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d plain builder reason");
-            }
+            value = %s_builder_root(&builder); CHECK(value != NULL, "%s/%d builder root");
+            before = *value;
+            memset(&report, 0, sizeof(report));
+            CHECK(!%s_load_builder(&builder, wire, sizeof(wire), &report), "%s/%d builder accepted");
+            CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d builder verdict");
+            value = %s_builder_root(&builder);
+            CHECK(value == NULL || memcmp(value, &before, sizeof(before)) == 0, "%s/%d builder discarded partial value");
             %s_builder_shutdown(&builder);
         }
     }
-`, cBytes(wire), fn, fn, shape, count, shape, count, shape, count, r.Unknown, r.Widened, r.Unknown, retainingReport.Retained, retainingReport.RetainLost, shape, count, shape, count,
-				root, fn, shape, count, shape, count, fn, shape, count, fn, shape, count, r.Unknown, r.Widened, r.Unknown, shape, count, fn, shape, count, fn)
+`, cBytes(wire), fn, fn, shape, count, shape, count, shape, count, root, root, root, fn, shape, count, fn, shape, count, fn, shape, count, shape, count, fn, shape, count, fn)
 		}
-		root, wire := cCountWire(t, u, shape, 0, false)
+		// Equal map keys and an unreachable node are deliberately invalid in
+		// their own right. Their valid twins use the corresponding ascending map
+		// and reachable-node shapes, preserving the count placement.
+		positiveShape := shape
+		if shape == "map-equal" {
+			positiveShape = "map-ascending"
+		}
+		if shape == "unreachable-node" {
+			positiveShape = "node"
+		}
+		root, wire := cCountWire(t, u, positiveShape, 0, false)
 		var rep tabletext.Report
 		if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &rep); !ok || err != nil || rep.Refused {
-			t.Fatalf("%s: valid twin rejected by oracle: %v %v %+v", shape, ok, err, rep)
+			t.Fatalf("%s: valid %s twin rejected: ok=%v err=%v report=%+v", shape, positiveShape, ok, err, rep)
 		}
 		fn := ir.RustSnake(root)
 		fmt.Fprintf(&body, `
     {
         static const uint8_t wire[] = { %s };
-        int retaining;
-        for (retaining = 0; retaining <= 1; retaining++) {
-            TableReport report;
-            TableRetain store;
-            const void * loaded;
-            memset(&report, 0, sizeof(report));
-            report.refused = 1; report.reason = SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report.refused = 1;
-            memset(&store, 0, sizeof(store));
-            store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes);
-            store.ids = retain_ids; store.id_capacity = 64;
-            loaded = retaining
-                ? (const void *)%s_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)%s_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded != NULL, "%s prior refusal is not current control state");
-            CHECK(report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP && report.refused, "%s history preserved after good read");
-        }
+        TableReport report; TableRetain store;
+        memset(&report, 0, sizeof(report));
+        memset(&store, 0, sizeof(store)); store.bytes=retain_bytes; store.capacity=sizeof(retain_bytes); store.ids=retain_ids; store.id_capacity=64;
+        CHECK(%s_load_retain(region, sizeof(region), wire, sizeof(wire), &store, &report) != NULL, "%s valid twin");
+        CHECK(!report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OK, "%s report reset on success");
     }
-`, cBytes(wire), fn, fn, shape, shape)
+`, cBytes(wire), fn, shape, shape)
 	}
+	// A descending key paired with an oversized nested count carries two
+	// independent faults; detection order may choose either refusal.
 	root, descending := cCountWire(t, u, "map-descending", 1<<31, false)
-	var descendingReport tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descendingReport); ok || err != nil || !descendingReport.Refused {
-		t.Fatalf("descending-map control is not damage: %v %v %+v", ok, err, descendingReport)
+	var descReport tabletext.Report
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descReport); ok || !descReport.Refused || !tablewire.ReadRefusal(err) {
+		t.Fatalf("descending map compound control: ok=%v err=%v report=%+v", ok, err, descReport)
 	}
 	fmt.Fprintf(&body, `
     {
-        static const uint8_t wire[] = { %s };
-        int retaining;
-        for (retaining = 0; retaining <= 1; retaining++) {
-            TableReport report;
-            TableRetain store;
-            const void * loaded;
-            memset(&report, 0, sizeof(report));
-            memset(&store, 0, sizeof(store));
-            store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes);
-            store.ids = retain_ids; store.id_capacity = 64;
-            loaded = retaining
-                ? (const void *)map_holder_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)map_holder_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded == NULL && report.refused && report.reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "descending key precedes nested value refusal");
-            CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "descending map retained state");
-        }
+        static const uint8_t wire[] = { %s }; TableReport report;
+        CHECK(map_holder_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused, "descending map compound refusal");
     }
 `, cBytes(descending))
-	_, short := cCountWire(t, u, "map", 1, true)
-	var rep tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup("Leaf")), short, &rep); ok || err != nil || !rep.Refused {
-		t.Fatalf("body-short control is not damage: %v %v %+v", ok, err, rep)
+	// A count cap followed by a malformed tail is also a compound refusal,
+	// not a single-fault reason precedence assertion.
+	root, trailing := cCountWire(t, u, "framing-tail", 1<<31, false)
+	var tailReport tabletext.Report
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), trailing, &tailReport); ok || !tailReport.Refused || !tablewire.ReadRefusal(err) {
+		t.Fatalf("framing tail compound control: ok=%v err=%v report=%+v", ok, err, tailReport)
 	}
 	fmt.Fprintf(&body, `
     {
-        static const uint8_t wire[] = { %s };
-        int retaining;
-        for (retaining = 0; retaining <= 1; retaining++) {
-            TableReport report;
-            TableRetain store;
-            const void * loaded;
-            memset(&report, 0, sizeof(report));
-            memset(&store, 0, sizeof(store));
-            store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes);
-            store.ids = retain_ids; store.id_capacity = 64;
-            loaded = retaining
-                ? (const void *)leaf_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)leaf_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded == NULL && report.refused && report.reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "body-short remains damage");
-            CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "body-short retained state");
-        }
+        static const uint8_t wire[] = { %s }; TableReport report;
+        CHECK(holder_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused, "count with damaged tail refuses");
+    }
+`, cBytes(trailing))
+	// The short collection is malformed, not a storage-cap refusal.
+	root, short := cCountWire(t, u, "map", 1, true)
+	var rep tabletext.Report
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), short, &rep); ok || !rep.Refused || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged {
+		t.Fatalf("short body: ok=%v err=%v report=%+v", ok, err, rep)
+	}
+	fmt.Fprintf(&body, `
+    {
+        static const uint8_t wire[] = { %s }; TableReport report;
+        CHECK(leaf_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED, "short body damage");
     }
     {
         uint8_t forms[2] = { 2, 255 };
         int reasons[2] = { SCHEMA_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_TABLE_NEWER_FORM };
-        int i;
-        for (i = 0; i < 2; i++) {
+        for (int i = 0; i < 2; i++) {
             TableReport report;
-            memset(&report, 0, sizeof(report));
-            report.refused = 1; report.unknown = 7;
-            CHECK(leaf_load(region, (int64_t)sizeof(region), &forms[i], 1, &report) == NULL && report.refused && report.reason == reasons[i], "form refusal name");
-            CHECK(report.refused && report.unknown == 7, "form preserves history");
+            CHECK(leaf_load(region, sizeof(region), &forms[i], 1, &report) == NULL && report.refused && report.reason == reasons[i], "form refusal");
         }
     }
 `, cBytes(short))
-	for _, shape := range []string{"widened", "framing-tail"} {
-		root, wire := cCountWire(t, u, shape, 1<<31, false)
-		report := tabletext.Report{Unknown: 7, Widened: 13}
-		ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &report)
-		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report.Refused || report.Unknown != 8 || report.Widened != 13 {
-			t.Fatalf("%s: unexpected oracle prefix: %v %v %+v", shape, ok, err, report)
-		}
-		retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
-		retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
-		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-		if ok || !errors.As(err, &refusal) || retainingReport.Refused || retainingReport.Unknown != 8 || retainingReport.Widened != 13 {
-			t.Fatalf("%s: unexpected retaining oracle prefix: %v %v %+v", shape, ok, err, retainingReport)
-		}
-		lostReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
-		lostRetain := tablewire.Retain{Capacity: 0, IdCapacity: 0}
-		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &lostRetain, &lostReport)
-		if ok || !errors.As(err, &refusal) || lostReport.Refused || lostReport.RetainLost != 30 {
-			t.Fatalf("%s: unexpected lost retaining oracle prefix: %v %v %+v", shape, ok, err, lostReport)
-		}
-		fmt.Fprintf(&body, `
-    {
-        static const uint8_t wire[] = { %s };
-        int mode;
-        for (mode = 0; mode < 3; mode++) {
-            TableReport report;
-            TableRetain store;
-            const void * loaded;
-            memset(&report, 0, sizeof(report));
-            report.unknown = 7; report.widened = 13; report.retained = 23; report.retain_lost = 29;
-            memset(&store, 0, sizeof(store));
-            if (mode == 1) {
-                store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes);
-                store.ids = retain_ids; store.id_capacity = 64;
-            }
-            loaded = mode > 0
-                ? (const void *)holder_load_retain(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &store, &report)
-                : (const void *)holder_load(region, (int64_t)sizeof(region), wire, (int64_t)sizeof(wire), &report);
-            CHECK(loaded == NULL && report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s reason");
-            CHECK(report.unknown == %d && report.widened == %d, "%s prefix counters");
-            CHECK(report.retained == (mode == 1 ? %d : 23) &&
-                report.retain_lost == (mode == 2 ? %d : (mode == 1 ? %d : 29)), "%s retention counters");
-            CHECK(store.used == 0 && store.id_used == 0 && store.count == 0, "%s partial retained state");
-        }
-        CHECK(holder_load_measure(wire, (int64_t)sizeof(wire)) < 0, "%s measure < 0");
-    }
-`, cBytes(wire), shape, report.Unknown, report.Widened, shape, retainingReport.Retained, lostReport.RetainLost, retainingReport.RetainLost, shape, shape, shape)
-	}
 	body.WriteString("    if (failures != 0) return 1;\n")
 	out, err := runCCountRefusalProbe(t, u, body.String())
 	if err != nil {
