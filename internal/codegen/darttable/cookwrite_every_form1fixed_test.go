@@ -33,6 +33,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+    "github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // form1FixedInstances is each instance this family cooks, its unit's schema
@@ -156,7 +157,7 @@ func form1Mutate(instance, root string, sources []string) func(*testing.T, *tabl
 			}
 			value := m.New(st)
 			var report tabletext.Report
-			ok, err := tablewire.Decode(m, value, data, &report)
+			ok, err := tablewire.DecodeVariable(m, value, data, &report)
 			if err != nil || !ok {
 				t.Fatalf("%s: the committed wire did not decode: ok=%v err=%v", instance, ok, err)
 			}
@@ -170,6 +171,9 @@ func form1Mutate(instance, root string, sources []string) func(*testing.T, *tabl
 		}
 		corpus := tabletext.NewModel(loadUnit(t, paths...))
 		value := decode(corpus)
+        if le == nil && (root != "WideBlob" || ir.RecordLayout(corpus.Unit, corpus.Unit.Tables[root]).Size <= 65536) {
+            t.Fatalf("%s: missing a cook-write golden for a file-form root", instance)
+        }
 		for _, order := range []struct {
 			big    bool
 			golden []byte
@@ -178,7 +182,7 @@ func form1Mutate(instance, root string, sources []string) func(*testing.T, *tabl
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(want, order.golden) {
+			if order.golden != nil && !bytes.Equal(want, order.golden) {
 				t.Fatalf("%s big=%v: schema cook no longer writes the committed golden", instance, order.big)
 			}
 			probe, err := tablecook.Cook(m, v, tablecook.Options{Big: order.big})
@@ -215,6 +219,12 @@ func form1Goldens(t *testing.T, instance string) ([]byte, []byte) {
 		}
 		return le, be
 	}
-	t.Fatalf("MANIFEST.txt has no cook-write row for %s", instance)
+	if instance == "wide_blob" {
+        // This fixed record exceeds the file-form ceiling, so the manifest
+        // has no cook golden; the caller still compares both Dart orders to
+        // the independently computed Go cook and checks the ceiling.
+        return nil, nil
+    }
+    t.Fatalf("MANIFEST.txt has no cook-write row for %s", instance)
 	return nil, nil
 }
