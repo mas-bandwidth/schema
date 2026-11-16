@@ -10748,7 +10748,6 @@ inline int64_t ArchiveConfigSave( const ArchiveConfig & value, uint8_t * buffer,
 TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfig & value )
 {
     ArchiveConfigReset( value ); // prefill declared defaults in place, then overlay
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10788,12 +10787,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
         {
             case 0xa354fd1ff0c467c5ull: // root
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -10813,11 +10806,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RootConfigLoadBody( sub, value.root );
@@ -10832,12 +10820,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
             }
             case 0xb1e5e28e4479a274ull: // count
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -10851,11 +10833,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -10889,11 +10866,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
@@ -11258,6 +11230,7 @@ inline bool ArchiveConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -12756,7 +12729,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
-    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12796,12 +12768,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
         {
             case 0xa354fd1ff0c467c5ull: // root
             {
-                if ( 1 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 1;
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
@@ -12822,11 +12788,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
                     r.report->damaged = true;
                     return false;
                 }
-                if ( body_len == 1 && r.buffer[r.offset] == 0 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 {
                     TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
                     RootConfigLoadBodyRetain( sub, value.root, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
@@ -12841,12 +12802,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
             }
             case 0xb1e5e28e4479a274ull: // count
             {
-                if ( 2 <= last_field_ord )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                last_field_ord = 2;
                 if ( kind != 4 )
                 {
                     if ( TableKindWidens( kind, 4 ) )
@@ -12860,11 +12815,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v == 1 )
-                        {
-                            r.report->damaged = true;
-                            return false;
-                        }
                         if ( decoded_v < 0 )
                         {
                             decoded_v = 0;
@@ -12898,11 +12848,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v == 1 )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
                 if ( decoded_v < 0 )
                 {
                     decoded_v = 0;
