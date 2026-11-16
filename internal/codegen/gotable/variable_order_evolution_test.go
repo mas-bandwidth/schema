@@ -40,7 +40,7 @@ func TestGoVariableFieldReordering(t *testing.T) {
 	duplicateID := &formOne{ids: []uint64{a, a}}
 	field(duplicateID, 1, 7)
 	field(duplicateID, 2, 9)
-	source := fmt.Sprintf(`package probe
+	sourceTemplate := `package probe
 import ("testing";"unsafe")
 func region(n int64) []byte { raw:=make([]byte,n+64);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;return raw[off:off+uintptr(n)] }
 func TestReordering(t *testing.T) {
@@ -56,6 +56,12 @@ func TestReordering(t *testing.T) {
  for _,c:=range []struct{name string;wire []byte}{ {"duplicate field",[]byte(%q)}, {"out of first use",[]byte(%q)}, {"unused ID",[]byte(%q)}, {"duplicate ID",[]byte(%q)} } {
    if _,err:=RootReadStrict(c.wire);err==nil {t.Errorf("%%s accepted",c.name)}
  }
-}`, string(wire), string(duplicate.done()), string(firstUse.done()), string(unused.done()), string(duplicateID.done()))
+}`
+	source := fmt.Sprintf(sourceTemplate, string(wire), string(duplicate.done()), string(firstUse.done()), string(unused.done()), string(duplicateID.done()))
 	runGenerated(t, newSchema, source)
+	newer := kindsUnit{t: t, u: unitFrom(t, newSchema)}
+	newer.m = tabletext.NewModel(newer.u)
+	reverse := newer.encode("Root", `{"a":7,"b":9}`)
+	reverseSource := fmt.Sprintf(sourceTemplate, string(reverse), string(duplicate.done()), string(firstUse.done()), string(unused.done()), string(duplicateID.done()))
+	runGenerated(t, oldSchema, reverseSource)
 }
