@@ -187,7 +187,7 @@ class Ctx:
         self.nonfinite: list[bool] | None = None
 
 
-def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T:
+def load_table(cls: type[_T], data: Any, report: LoadReport | None = None, retain: Any = None) -> _T:
     view = buffer_view(data)
     ids = _id_table(view)
     ctx = Ctx(ids)
@@ -213,11 +213,19 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
                     raise walked from None
         raise
     _resolve(ctx)
+    retained = 0
+    lost = 0
+    if retain is not None:
+        from .retain import capture_file
+
+        retained, lost = capture_file(cls, view, retain)
+        retain.directory = ctx.nodes
+        retain.loaded_root = obj
     if report is not None:
         report.unknown = ctx.unknown
         report.widened = 0
-        report.retained = 0
-        report.retain_lost = 0
+        report.retained = retained
+        report.retain_lost = lost
     return obj
 
 

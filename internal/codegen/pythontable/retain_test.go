@@ -206,6 +206,11 @@ report=LoadReport()
 value=Node.load(data,report)
 assert report.unknown==11, report.unknown
 keep=TableRetain(bytearray(65536),[None]*8192)
+from tblrt1._schema.load import load_table
+loaded_report=LoadReport()
+loaded=load_table(Node,data,loaded_report,keep)
+assert (loaded_report.unknown,loaded_report.retained,loaded_report.retain_lost)==(11,9,2)
+assert keep.loaded_root is loaded and isinstance(keep.directory,list)
 retained,lost=capture_file(Node,memoryview(data),keep)
 assert (retained,lost)==(9,2), (retained,lost)
 assert len(list(keep.records()))==9

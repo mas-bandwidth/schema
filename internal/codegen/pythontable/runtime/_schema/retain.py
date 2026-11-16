@@ -269,7 +269,7 @@ class TableRetain:
     data store grows with the number of records.
     """
 
-    __slots__ = ("storage", "ids", "used", "id_used", "root")
+    __slots__ = ("storage", "ids", "used", "id_used", "root", "directory", "loaded_root")
 
     def __init__(self, storage: bytearray, ids: list[tuple[int, int] | None]) -> None:
         if type(storage) is not bytearray or type(ids) is not list:
@@ -279,11 +279,15 @@ class TableRetain:
         self.used = 0
         self.id_used = 0
         self.root = 0  # offsets are stored plus one, so zero is null
+        self.directory: list[Any] = []
+        self.loaded_root: Any = None
 
     def reset(self) -> None:
         self.used = 0
         self.id_used = 0
         self.root = 0
+        self.directory = []
+        self.loaded_root = None
 
     @staticmethod
     def _word(data: memoryview, at: int) -> int:
