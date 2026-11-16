@@ -2433,7 +2433,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–3 and 8 debug; 4–7 every build
 
-  - packet `Write`: 1–5, 7 and 8 debug; 6 unrepresentable; 10 not yet held; 11 unrepresentable (the storage is `iN`/`uN`)
+  - packet `Write`: 1–5, 7, 8 and 10 debug; 6 unrepresentable; 11 unrepresentable (the storage is `iN`/`uN`)
 
 - **Java**
 
@@ -2489,7 +2489,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: no value encoder: it carries encoded bodies
 
-  - packet `Write`: 1–6, 10 and 11 every build; 7 raises; 8 not yet held
+  - packet `Write`: 1–6, 8, 10 and 11 every build; 7 raises
 
 - **Squirrel**
 
@@ -2497,7 +2497,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 10 every build, refusing with `false`; 8 not yet held
+  - packet `Write`: 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 every build, refusing with `false`
 
 - **MOO**
 
