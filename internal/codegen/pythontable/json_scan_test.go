@@ -947,6 +947,73 @@ print('ok')
 	}
 }
 
+func TestPythonJsonBlobRef(t *testing.T) {
+	t.Parallel()
+	const schema = `package jsonblobref
+ table Child { text *string }
+ union Reach { text *string }
+ table Root {
+ first *string
+ second *string
+ left *Child
+ right *Child
+ reach Reach
+ }`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from jsonblobref import Root, Child
+from jsonblobref._schema import BlobRef, InvalidValue
+value = Root()
+value.first = BlobRef('same')
+value.second = BlobRef('same')
+assert Root.from_json(value.to_json()).first == 'same'
+value.second = value.first
+try:
+    value.to_json()
+except InvalidValue as error:
+    assert error.rule == 'blob_shared'
+else: raise AssertionError('shared blob was written')
+value.first = 'same'
+value.second = 'same'
+assert Root.from_json(value.to_json()).second == 'same'
+shared = BlobRef('node')
+value.left = Child()
+value.left.text = shared
+value.right = value.left
+Root.from_json(value.to_json())
+value.right = Child()
+value.right.text = shared
+try:
+    value.to_json()
+except InvalidValue as error:
+    assert error.rule == 'blob_shared'
+else: raise AssertionError('nested shared blob was written')
+value.left = None
+value.right = None
+value.reach.type = 1
+value.reach.text = shared
+assert Root.from_json(value.to_json()).reach.text == 'node'
+value.first = shared
+try:
+    value.to_json()
+except InvalidValue as error:
+    assert error.rule == 'blob_shared'
+else: raise AssertionError('union-arm shared blob was written')
+print('ok')
+`
+	inputs := map[string][]byte{"main.py": []byte(probe)}
+	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("current: %q", got)
+	}
+	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+		t.Fatalf("floor: %q", got)
+	}
+}
+
 func TestPythonJsonPublicMethodsAndNames(t *testing.T) {
 	t.Parallel()
 	files, err := Generate(loadUnit(t, coreSchema))

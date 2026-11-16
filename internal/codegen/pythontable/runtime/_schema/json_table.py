@@ -11,7 +11,7 @@ import re
 import struct
 from typing import Any, Callable, TypeVar
 
-from . import InvalidValue, LoadReport, Refused
+from . import BlobRef, InvalidValue, LoadReport, Refused
 from .descriptor import FieldDesc, by_name, new_union_by_name
 from .json_scan import Number, parse
 from .kind_map import _entry_fields
@@ -525,6 +525,8 @@ def _write_field(field: FieldDesc, value: Any) -> str:
     if field.codec in ("string_blob", "bytes_blob"):
         if value is None:
             return "null"
+        if isinstance(value, BlobRef):
+            value = value.value
         blob = copy.copy(field)
         blob.codec = "string" if field.codec == "string_blob" else "bytes"
         blob.size = 0xFFFFFFFF
@@ -589,6 +591,12 @@ def _count(value: Any, counts: dict[int, int], opened: set[int], depth: int) -> 
 
 
 def _count_value(field: FieldDesc, item: Any, counts: dict[int, int], opened: set[int], depth: int) -> None:
+    if field.codec in ("string_blob", "bytes_blob") and isinstance(item, BlobRef):
+        identity = id(item)
+        if identity in counts:
+            raise InvalidValue(field.name, "blob_shared")
+        counts[identity] = 1
+        return
     if field.codec == "optional":
         if item is None:
             return
