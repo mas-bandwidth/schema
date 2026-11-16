@@ -22002,6 +22002,7 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
             case ToolBodyType::Caps:
             {
                 bits += kTableMessageRefBitsHere;
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // message flags domain, debug only (§5.1)
                 bits += 2;
                 break;
             }
@@ -22128,6 +22129,7 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
                     case ToolBodyType::Caps:
                     {
                         bits += kTableMessageRefBitsHere;
+                        schema_assert( ( uint64_t( value.history[i].caps ) >> 2 ) == 0 ); // message flags domain, debug only (§5.1)
                         bits += 2;
                         break;
                     }
@@ -22265,6 +22267,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
             case ToolBodyType::Caps:
             {
                 w.put( 43, kTableMessageRefBitsHere );
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // message flags domain, debug only (§5.1)
                 w.put( (uint64_t) ( value.body.caps ), 2 );
                 break;
             }
@@ -22370,6 +22373,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                     case ToolBodyType::Caps:
                     {
                         w.put( 43, kTableMessageRefBitsHere );
+                        schema_assert( ( uint64_t( value.history[i].caps ) >> 2 ) == 0 ); // message flags domain, debug only (§5.1)
                         w.put( (uint64_t) ( value.history[i].caps ), 2 );
                         break;
                     }
