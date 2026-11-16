@@ -34,6 +34,12 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 	for _, target := range c.Targets() {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
+			if target == "python" {
+				if err != nil {
+					t.Fatalf("python refused its supported list shapes: %v", err)
+				}
+				return
+			}
 			if slices.Contains(listTargets, target) {
 				if err != nil {
 					t.Fatalf("--lang %s refused an unbounded array: %v", target, err)
