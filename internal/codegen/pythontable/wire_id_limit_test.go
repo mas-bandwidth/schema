@@ -132,7 +132,7 @@ func TestPythonWireFastWriterIDLimit(t *testing.T) {
 	slowtest.Gate(t, "both pinned Python interpreters")
 	var schema strings.Builder
 	schema.WriteString("package probe\ntable Root {\n")
-	for i := 0; i < 4097; i++ {
+	for i := range 4097 {
 		fmt.Fprintf(&schema, " f%d int32\n", i)
 	}
 	schema.WriteString("}\n")
