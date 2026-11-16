@@ -13,7 +13,7 @@ element in place, a `None` element as the single zero reference.
 from typing import Any
 
 from . import InvalidValue, Refused
-from . import descriptor, kinds
+from . import descriptor, kind_blob, kinds
 # load and save import this module for its registration; binding them as
 # modules (not their names) resolves at call time, so the hot paths pay
 # no per-call import.
@@ -126,6 +126,12 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
         w.varint(0)
         return
     f = arm.field
+    if f.kind == 17 and value is None:
+        w.varint(ctx.idref(arm.arm_id))
+        w.byte(arm.kind)
+        w.varint(1)
+        w.byte(0)
+        return
     if f.kind in _LENGTH_KINDS:
         # The arm's field line IS the arm header: the field id is the arm id,
         # and the field's own L is the arm's L, so the codec writes in place.
@@ -246,6 +252,13 @@ def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any, blobs: list[int]) -> 
     """Number the nodes an arm's value reaches, as save._collect numbers a
     field's: a pointer's target in pre-order with its own blob slots, a table
     by value in place."""
+    if f.codec in ("string_blob", "bytes_blob"):
+        if value is None:
+            return
+        body = kind_blob._encode(f, value, f.name)
+        blobs.append(len(ctx.order) + 2)
+        ctx.order.append(kind_blob._BlobNode(f.codec == "string_blob", body))
+        return
     if f.codec == "pointer":
         if value is None:
             return
@@ -326,20 +339,13 @@ class _UnionArray:
                 f"{fd.name} carries element kind {element_kind}, not 15",
             )
         count = sub.varint()
-        # As the engine reads (internal/tablewire/decode.go, arrayBody): a
-        # count past a fixed or counted array's bound is count_over_bound; a
-        # counted array below its minimum and a fixed array short of its
-        # bound are read as they stand, the fixed one over its born slots.
-        # The minimum binds the writer (save refuses it). A count past the
-        # int32 storage cap is past every bound too; the refusal path's file
-        # walk (load._check_file) names it count_over_extent_cap, as the
-        # engine's wire check does. An unbounded array has no bound, so it
-        # names the cap here.
+        # Present counted arrays hold both bounds. Fixed arrays may be short
+        # when an older writer had fewer slots, and then grow with defaults.
         if fd.array_kind == 3:
             if count > _COUNT_CAP:
                 raise Refused("count_over_extent_cap", "a collection count above the int32 storage cap")
-        elif count > fd.bound:
-            raise Refused("count_over_bound", f"{fd.name} counts {count}, past its bound {fd.bound}")
+        elif count > fd.bound or (fd.array_kind == 2 and count < fd.array_min):
+            raise Refused("count_over_bound", f"{fd.name} counts {count}, outside its bound")
         if count > sub.end - sub.pos:
             raise Refused("wire_damaged", "a count the array body cannot cover")
         un = _union_class(fd.target)

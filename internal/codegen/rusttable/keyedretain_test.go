@@ -5,12 +5,9 @@ import (
 	"testing"
 )
 
-// A KEYED SLOT WRITTEN AGAIN DISCARDS WHAT WAS RETAINED UNDER IT
-// (docs/SPEC-TABLES.md §6.6; the fuzz vector keyed_slot_rewrite_discards_retained
-// holds the behaviour against the oracle). The oracle forgets a keyed table
-// slot's instance before refilling it, so records retained under the body the
-// slot loses go with it. This is the toolchain-free witness that the emitter
-// still spells it, with the REVERSED WITNESS taking the discard out.
+// A keyed slot's internal refill discards records retained under its old
+// value. This source-level control checks the refill mechanism; it does not
+// claim that a repeated keyed slot is accepted on the strict wire surface.
 func TestKeyedSlotRewriteDiscardsRetainedRust(t *testing.T) {
 	t.Parallel()
 	const probe = `package probe

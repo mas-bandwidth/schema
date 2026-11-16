@@ -14,12 +14,10 @@ from . import InvalidValue, Refused
 from . import kinds
 from .descriptor import FieldDesc
 
-_WIDTH = {"float32": 4, "float64": 8}
-
-
+# Kind 10 is float32 even when an optional descriptor owns the codec name.
 def _pack(fd: FieldDesc, value: float) -> bytes:
     try:
-        if fd.codec == "float32":
+        if fd.kind == 10:
             return struct.pack("<f", value)
         return struct.pack("<d", value)
     except (OverflowError, struct.error):
@@ -27,7 +25,7 @@ def _pack(fd: FieldDesc, value: float) -> bytes:
 
 
 def _unpack(fd: FieldDesc, raw: bytes) -> float:
-    if fd.codec == "float32":
+    if fd.kind == 10:
         return float(struct.unpack("<f", raw)[0])
     return float(struct.unpack("<d", raw)[0])
 
@@ -39,7 +37,7 @@ class _Float:
         if not math.isfinite(value):
             raise InvalidValue(path, "not a finite float")
         stored = value
-        if fd.codec == "float32":
+        if fd.kind == 10:
             # THE RANGE IS HELD ON THE VALUE THE WIRE CARRIES: a float32 is
             # rounded first, so a value inside the range whose float32 lies
             # outside it (0.1 under max = 0.1) is refused here rather than
@@ -52,7 +50,7 @@ class _Float:
         return self.read_element(r, fd, ctx)
 
     def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
-        value = _unpack(fd, r.take(_WIDTH[fd.codec]))
+        value = _unpack(fd, r.take(4 if fd.kind == 10 else 8))
         if not math.isfinite(value):
             raise Refused("non_finite_float", f"{fd.name} is not a finite float")
         if fd.float_range:
