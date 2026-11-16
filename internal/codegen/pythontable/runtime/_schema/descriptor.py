@@ -47,7 +47,6 @@ class FieldDesc:
         "json_flags",
         "unbounded",
         "json_text_list",
-        "json_text_total",
         "field_id",
         "kind",
         "codec",
@@ -93,7 +92,6 @@ class FieldDesc:
     json_flags: bool
     unbounded: bool
     json_text_list: bool
-    json_text_total: int
     field_id: int
     kind: int
     codec: str
@@ -143,7 +141,6 @@ class FieldDesc:
         json_flags: bool = False,
         unbounded: bool = False,
         json_text_list: bool = False,
-        json_text_total: int = 0,
         ordinal: int = 0,
         lo: int = 0,
         hi: int = 0,
@@ -184,7 +181,6 @@ class FieldDesc:
         self.json_flags = json_flags
         self.unbounded = unbounded
         self.json_text_list = json_text_list
-        self.json_text_total = json_text_total
         self.field_id = field_id
         self.kind = kind
         self.codec = codec

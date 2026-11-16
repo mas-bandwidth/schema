@@ -326,21 +326,17 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
         if field.array_kind == 2 and len(value) < field.array_min:
             raise Refused("count_over_bound", field.name)
         if field.json_text_list:
-            cls = by_name(element.target)
-            if cls is None:
-                raise Refused("unsupported", field.name)
+            inner = copy.copy(element)
+            inner.codec = "string"
             result = []
             spent = 0
             for item in value:
-                entry = cls()
-                inner = entry.descriptor.fields[0]
-                text = _read_field(inner, item, graph, unknown)
+                text = None if element.codec == "text_optional" and item is None else _read_field(inner, item, graph, unknown)
                 if text is not None:
                     spent += len(text.encode("utf-8"))
-                if field.json_text_total and spent > field.json_text_total:
+                if field.text_total and spent > field.text_total:
                     raise Refused("length_over_bound", field.name)
-                setattr(entry, inner.name, text)
-                result.append(entry)
+                result.append(text)
         else:
             result = [_read_field(element, item, graph, unknown) for item in value]
         if field.array_kind == 1:
@@ -620,8 +616,9 @@ def _count_value(field: FieldDesc, item: Any, counts: dict[int, int], opened: se
             raise InvalidValue(field.name, "not a list")
         if len(item) > 0x7FFFFFFF or (field.array_kind == 1 and len(item) != field.bound) or (field.array_kind == 2 and not field.array_min <= len(item) <= field.bound):
             raise InvalidValue(field.name, "array count outside its bounds")
-        for entry in item:
-            _count_value(element, entry, counts, opened, depth + 1)
+        if not field.json_text_list:
+            for entry in item:
+                _count_value(element, entry, counts, opened, depth + 1)
         return
     if field.codec not in ("pointer", "table"):
         return
@@ -703,13 +700,13 @@ def _render(field: FieldDesc, item: Any, depth: int, counts: dict[int, int], lab
         if field.json_text_list:
             parts = []
             spent = 0
-            for entry in item:
-                inner = entry.descriptor.fields[0]
-                text = getattr(entry, inner.name)
-                rendered_text = _render(inner, text, depth + 1, counts, labels)
+            inner = copy.copy(element)
+            inner.codec = "string"
+            for text in item:
+                rendered_text = "null" if element.codec == "text_optional" and text is None else _write_field(inner, text)
                 if text is not None:
                     spent += len(text.encode("utf-8"))
-                if field.json_text_total and spent > field.json_text_total:
+                if field.text_total and spent > field.text_total:
                     raise InvalidValue(field.name, "text total exceeds its bound")
                 parts.append("  " * (depth + 1) + rendered_text)
         else:
