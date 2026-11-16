@@ -1236,3 +1236,45 @@ print('guarded-body')
 		}
 	}
 }
+
+func TestPythonRetainPointerArrayIdentity(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+table Root { refs [..3]*Child }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	refs := w.array("refs", 17, 2, []byte{2}, []byte{2})
+	nodeRef := w.refID(ir.TableNodeWireId)
+	typeRef := w.ref("Child")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7), []byte{0})
+	record := nodeRecord(typeRef, ghost)
+	payload := unionCat(unionLeb(1), record)
+	nodes := unionCat(nodeRef, []byte{12}, unionLeb(uint64(len(payload))), payload)
+	wire := w.file(refs, nodes)
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert value.refs[0] is value.refs[1] and report.retained==1
+out=value.save_retain(keep,report)
+assert out==wire and report.retain_lost==0
+value.refs=[]
+out=value.save_retain(keep,report)
+assert report.retain_lost==1 and Root.load(out).refs==[]
+print('pointer-array-retain')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "pointer-array-retain" {
+			t.Fatalf("pointer array retain: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
