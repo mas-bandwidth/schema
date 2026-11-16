@@ -59,7 +59,7 @@ func TestPythonFixedProofShapes(t *testing.T) {
 			if body != tc.Body {
 				t.Fatalf("body %d, want %d", body, tc.Body)
 			}
-			oracle, verify := fixedproof.CppOracle(t, tc, u)
+			oracle, verify, load := fixedproof.CppOracleWithLoadVerdict(t, tc, u)
 			files, err := pythontable.Generate(u)
 			if err != nil {
 				t.Fatal(err)
@@ -86,7 +86,7 @@ func TestPythonFixedProofShapes(t *testing.T) {
 			}
 			damaged := bytes.Clone(oracle)
 			damaged[0] ^= 1
-			if err := verify(damaged); err == nil {
+			if err := load(damaged); err == nil {
 				t.Error("C++ accepted damaged form")
 			}
 			if _, err := runner.LoadAndResave(t, tc, u, damaged); err == nil {
@@ -100,14 +100,14 @@ func TestPythonFixedProofShapes(t *testing.T) {
 				t.Error("writer control produced unchanged bytes")
 			}
 			if err := verify(mutated); err == nil {
-				t.Error("C++ accepted mutated writer output")
+				t.Error("C++ equality oracle accepted mutated writer output")
 			}
 		})
 	}
 }
 
 // shapeFixtureControls validates both artifacts and the strict generated package.
-func shapeFixtureControls(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, oracle []byte, verify func([]byte) error) {
+func shapeFixtureControls(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, oracle []byte, verify, load func([]byte) error) {
 	t.Helper()
 	files, err := pythontable.Generate(u)
 	if err != nil {
@@ -129,7 +129,7 @@ func shapeFixtureControls(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, oracl
 	}
 	damaged := bytes.Clone(oracle)
 	damaged[0] ^= 1
-	if err := verify(damaged); err == nil {
+	if err := load(damaged); err == nil {
 		t.Fatal("C++ accepted damaged file")
 	}
 	if _, err := runner.LoadAndResave(t, tc, u, damaged); err == nil {
@@ -140,7 +140,7 @@ func shapeFixtureControls(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, oracl
 		t.Fatalf("writer control: %v", err)
 	}
 	if bytes.Equal(mutated, oracle) || verify(mutated) == nil {
-		t.Fatal("C++ did not detect writer mutation")
+		t.Fatal("C++ equality oracle did not detect writer mutation")
 	}
 }
 
@@ -151,8 +151,8 @@ func TestPythonFixedProofShapesText(t *testing.T) {
 	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form oracle")
 	tc := fixedproof.RowCase{ID: "shape-text", Schema: "package probe\nfixed table T { s string(8) }\n", Root: "T", Body: 12, Count: 1, CppSetup: `memcpy(value[0].s, "\xc3\xa9", 2); value[0].s_length = 2;`}
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
-	clean, verify := fixedproof.CppOracle(t, tc, u)
-	shapeFixtureControls(t, tc, u, clean, verify)
+	clean, verify, load := fixedproof.CppOracleWithLoadVerdict(t, tc, u)
+	shapeFixtureControls(t, tc, u, clean, verify, load)
 	runner := pythonFixedProofRunner{}
 	count, reason, fields, saved, _ := runner.LoadLineage(t, u, "T", nil, clean, 1)
 	if count != 1 || fields["r0.s"] != `"é"` || !bytes.Equal(saved, clean) {
@@ -208,8 +208,8 @@ func TestPythonFixedProofShapesArrayBounds(t *testing.T) {
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..2]uint16 }\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..4]uint16 }\n")
 	tc := fixedproof.RowCase{ID: "bounds-old", Schema: "package probe\nfixed table T { a [..2]uint16 }\n", Root: "T", Body: 8, Count: 1, CppSetup: `value[0].a_count=2; value[0].a[0]=7; value[0].a[1]=9;`}
-	clean, verify := fixedproof.CppOracle(t, tc, old)
-	shapeFixtureControls(t, tc, old, clean, verify)
+	clean, verify, load := fixedproof.CppOracleWithLoadVerdict(t, tc, old)
+	shapeFixtureControls(t, tc, old, clean, verify, load)
 	entry, ok := fixedproof.LineageEntryOf(old, "T")
 	if !ok {
 		t.Fatal("missing writer lineage")
@@ -234,7 +234,7 @@ func TestPythonFixedProofShapesArrayBounds(t *testing.T) {
 	for _, n := range []uint32{3, ^uint32(0)} {
 		bad := bytes.Clone(clean)
 		binary.LittleEndian.PutUint32(bad[len(bad)-8:], n)
-		if err := verify(bad); err == nil {
+		if err := load(bad); err == nil {
 			t.Errorf("C++ accepted writer count %d", n)
 		}
 		count, why, _, _, _ := runner.LoadLineage(t, newer, "T", lineage, bad, 1)

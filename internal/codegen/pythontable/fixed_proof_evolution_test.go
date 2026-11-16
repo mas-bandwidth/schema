@@ -2,6 +2,8 @@ package pythontable_test
 
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -136,6 +138,7 @@ func TestPythonFixedProofEvolutionHostile(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Python interpreters and live C++ oracle")
 	u, files, oracle, verify := pythonFixedMixed(t)
+	_, _, cppLoad := fixedproof.CppOracleWithLoadVerdict(t, fixedproof.RowCase{ID: "hostile-mixed-loader", Root: "T", Body: ir.TableFixedTypeBytes(u.Tables["T"]), Count: 2}, u)
 	dir := pythonFixedTree(t, files)
 	if out, err := pyrun.Analyze(t, dir, "probe"); err != nil {
 		t.Fatalf("hostile strict analyzer: %v\n%s", err, out)
@@ -155,8 +158,8 @@ func TestPythonFixedProofEvolutionHostile(t *testing.T) {
 		data := bytes.Clone(oracle)
 		data[tc.at] ^= tc.bit
 		inputs[tc.name] = data
-		if verify(data) == nil {
-			t.Fatalf("file control %s did not differ from C++ oracle", tc.name)
+		if cppLoad(data) == nil {
+			t.Fatalf("C++ accepted malformed %s", tc.name)
 		}
 	}
 	script := `from probe import T, Refused, LoadReport
@@ -213,6 +216,261 @@ with open('saved','wb') as f:
 			t.Fatalf("boolean guard control did not go red by name: %v\n%s", err, stderr)
 		}
 	}
+}
+
+// TestPythonFixedProofEvolutionHostileEnvelope compares actual C++ load
+// verdicts with Python across file framing and body validation boundaries.
+func TestPythonFixedProofEvolutionHostileEnvelope(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters and live C++ fixed reader")
+	schema := "package probe\nfixed table T {\n flag bool\n n int8 | min = 0, max = 10\n s string(4)\n}\n"
+	tc := fixedproof.RowCase{ID: "hostile-envelope", Schema: schema, Root: "T", Body: 10, Count: 1, CppSetup: "value[0].flag = true; value[0].n = 5; value[0].s_length = 1; value[0].s[0] = 'a';"}
+	u := fixedproof.ParseCheckUnit(t, schema)
+	oracle, verify, cppLoad := fixedproof.CppOracleWithLoadVerdict(t, tc, u)
+	files, err := pythontable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := pythonFixedTree(t, files)
+	for _, path := range []string{"probe", "probe/_schema"} {
+		if out, err := pyrun.Analyze(t, dir, path); err != nil {
+			t.Fatalf("mypy %s: %v\n%s", path, err, out)
+		}
+	}
+	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(u.Tables["T"]))
+	start := 20 + len(layout)
+	body := start + 8
+	type fileCase struct {
+		Name   string `json:"name"`
+		Reason string `json:"reason"`
+	}
+	cases := []fileCase{}
+	inputs := map[string][]byte{"oracle": oracle}
+	add := func(name, reason string, data []byte) {
+		t.Helper()
+		inputs[name] = data
+		cases = append(cases, fileCase{name, reason})
+		err := cppLoad(data)
+		if reason == "" && err != nil {
+			t.Fatalf("C++ refused valid %s: %v", name, err)
+		}
+		if reason != "" && err == nil {
+			t.Fatalf("C++ accepted malformed %s", name)
+		}
+	}
+	edit := func(at int, value byte) []byte { v := bytes.Clone(oracle); v[at] = value; return v }
+	add("valid-reference", "", bytes.Clone(oracle))
+	add("valid-other-bool", "", edit(body, 0))
+	add("valid-other-int", "", edit(body+1, 6))
+	add("valid-other-text", "", edit(body+6, 'b'))
+	// A valid changed value is accepted by C++ but fails exact-reference equality.
+	if verify(inputs["valid-other-int"]) == nil {
+		t.Fatal("equality oracle accepted different valid value")
+	}
+	add("empty", "truncated", nil)
+	add("previous", "previous_form", []byte{1})
+	add("message", "message_form_as_file", []byte{2})
+	add("future", "newer_form", []byte{4})
+	for n := 1; n < 20; n++ {
+		add(fmt.Sprintf("header-%d", n), "truncated", bytes.Clone(oracle[:n]))
+	}
+	for i := 1; i <= 7; i++ {
+		add(fmt.Sprintf("reserved-%d", i), "reserved_not_zero", edit(i, 1))
+	}
+	badLen := bytes.Clone(oracle)
+	binary.LittleEndian.PutUint32(badLen[16:20], uint32(len(oracle)))
+	add("layout-overrun", "layout_malformed", badLen)
+	add("layout-unknown", "layout_unknown", edit(8, oracle[8]^1))
+	add("layout-mismatch", "layout_malformed", edit(20, oracle[20]^1))
+	for n := 1; n < 18; n++ {
+		add(fmt.Sprintf("record-short-%d", n), "truncated", bytes.Clone(oracle[:start+n]))
+	}
+	add("tail", "truncated", append(bytes.Clone(oracle), 0))
+	add("record-hash", "no_layout", edit(start, oracle[start]^1))
+	add("bool", "wire_damaged", edit(body, 2))
+	add("integer-low", "out_of_range", edit(body+1, 0xff))
+	add("integer-high", "out_of_range", edit(body+1, 11))
+	badText := bytes.Clone(oracle)
+	binary.LittleEndian.PutUint32(badText[body+2:body+6], 5)
+	add("text-length", "length_over_bound", badText)
+	add("text-invalid-utf8", "text_ill_formed", edit(body+6, 0xff))
+	add("text-zero", "text_ill_formed", edit(body+6, 0))
+	add("text-dead-byte", "wire_damaged", edit(body+7, 1))
+	manifest, err := json.Marshal(cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := fmt.Sprintf(`from probe import T, Refused, LoadReport
+import json
+cases = json.loads(%s)
+with open("oracle", "rb") as f:
+    reference = f.read()
+kept = T.fixed_load(reference)
+for case in cases:
+    report = LoadReport()
+    report.widened = 19
+    with open(case["name"], "rb") as f:
+        data = f.read()
+    try:
+        rows = T.fixed_load(data, report=report)
+    except Refused as err:
+        if not case["reason"] or err.reason != case["reason"]:
+            raise AssertionError("hostile_case_" + case["name"] + " " + str(err))
+        if report.widened != 19:
+            raise AssertionError("hostile_transaction_" + case["name"])
+    else:
+        if case["reason"] or T.fixed_save(rows) != data:
+            raise AssertionError("hostile_case_" + case["name"])
+    if T.fixed_save(kept) != reference:
+        raise AssertionError("hostile_transaction_" + case["name"])
+print("hostile-envelope", len(cases))
+`, strconv.Quote(string(manifest)))
+	out, _ := pythonFixedRun(t, files, script, inputs)
+	if strings.TrimSpace(out) != fmt.Sprintf("hostile-envelope %d", len(cases)) {
+		t.Fatalf("unexpected result: %s", out)
+	}
+	source := string(files["probe/_schema/fixedform.py"])
+	const anchor = "if any(source[1:8]):"
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("reserved-byte control anchor changed")
+	}
+	mutated := maps.Clone(files)
+	mutated["probe/_schema/fixedform.py"] = []byte(strings.Replace(source, anchor, "if False:", 1))
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := pythonFixedTree(t, mutated)
+		in := maps.Clone(inputs)
+		in["main.py"] = []byte(pyrun.ImportPrelude + script)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", in)
+		if err == nil || !strings.Contains(stderr, "hostile_case_reserved-1") {
+			t.Fatalf("reserved-byte mutation did not fail by name: %v\n%s", err, stderr)
+		}
+	}
+	t.Logf("C++ and Python agreed on %d file verdicts, including four valid counterparts", len(cases))
+}
+
+// TestPythonFixedProofEvolutionHostileShapes checks live and dead bytes in
+// composite fixed records against independent C++ load verdicts.
+func TestPythonFixedProofEvolutionHostileShapes(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters and live C++ fixed reader")
+	schema := "package probe\nenum E { one, two }\nunion Choice { small uint8\n large int16 }\nfixed table T { a [..2]int16\n o ?int16\n e E\n u Choice\n f float32\n b bytes(3) }\n"
+	u := fixedproof.ParseCheckUnit(t, schema)
+	tc := fixedproof.RowCase{ID: "hostile-shapes", Schema: schema, Root: "T", Body: 26, Count: 1}
+	if got := ir.TableFixedTypeBytes(u.Tables["T"]); got != tc.Body {
+		t.Fatalf("unexpected body size %d", got)
+	}
+	oracle, verify, cppLoad := fixedproof.CppOracleWithLoadVerdict(t, tc, u)
+	files, err := pythontable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := pythonFixedTree(t, files)
+	for _, path := range []string{"probe", "probe/_schema"} {
+		if out, err := pyrun.Analyze(t, dir, path); err != nil {
+			t.Fatalf("mypy %s: %v\n%s", path, err, out)
+		}
+	}
+	body := 20 + len(ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(u.Tables["T"]))) + 8
+	type fileCase struct {
+		Name   string `json:"name"`
+		Reason string `json:"reason"`
+	}
+	cases := []fileCase{}
+	inputs := map[string][]byte{"oracle": oracle}
+	add := func(name, reason string, at int, val byte) {
+		t.Helper()
+		b := bytes.Clone(oracle)
+		b[body+at] = val
+		inputs[name] = b
+		cases = append(cases, fileCase{name, reason})
+		err := cppLoad(b)
+		if reason == "" && err != nil {
+			t.Fatalf("C++ refused valid %s: %v", name, err)
+		}
+		if reason != "" && err == nil {
+			t.Fatalf("C++ accepted malformed %s", name)
+		}
+	}
+	add("valid-array-count", "", 0, 1)
+	add("valid-optional", "", 8, 1)
+	add("valid-enum", "", 11, 2)
+	add("valid-union", "", 12, 1)
+	add("valid-bytes-length", "", 19, 1)
+	if verify(inputs["valid-array-count"]) == nil {
+		t.Fatal("equality oracle accepted a different valid record")
+	}
+	add("array-count", "count_over_bound", 0, 3)
+	add("array-negative", "count_over_bound", 3, 0xff)
+	add("array-dead", "wire_damaged", 4, 1)
+	add("optional-presence", "wire_damaged", 8, 2)
+	add("optional-dead", "wire_damaged", 9, 1)
+	add("enum-ordinal", "out_of_range", 11, 3)
+	add("union-tag", "out_of_range", 12, 3)
+	add("union-dead", "wire_damaged", 13, 1)
+	for _, badFloat := range []struct {
+		name string
+		bits uint32
+	}{{"float-positive-infinity", 0x7f800000}, {"float-negative-infinity", 0xff800000}, {"float-nan", 0x7fc00001}} {
+		data := bytes.Clone(oracle)
+		binary.LittleEndian.PutUint32(data[body+15:body+19], badFloat.bits)
+		inputs[badFloat.name] = data
+		cases = append(cases, fileCase{badFloat.name, "non_finite_float"})
+		if err := cppLoad(data); err == nil {
+			t.Fatalf("C++ accepted %s", badFloat.name)
+		}
+	}
+	add("bytes-length", "length_over_bound", 19, 4)
+	add("bytes-dead", "wire_damaged", 23, 1)
+	manifest, err := json.Marshal(cases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := fmt.Sprintf(`from probe import T, Refused, LoadReport
+import json
+cases = json.loads(%s)
+with open("oracle", "rb") as f:
+    original = f.read()
+kept = T.fixed_load(original)
+for case in cases:
+    with open(case["name"], "rb") as f:
+        data = f.read()
+    report = LoadReport()
+    report.widened = 19
+    try:
+        rows = T.fixed_load(data, report=report)
+    except Refused as err:
+        if not case["reason"] or err.reason != case["reason"]:
+            raise AssertionError("shapes_case_" + case["name"] + " " + str(err))
+        if report.widened != 19:
+            raise AssertionError("shapes_transaction_" + case["name"])
+    else:
+        if case["reason"] or T.fixed_save(rows) != data:
+            raise AssertionError("shapes_case_" + case["name"])
+    if T.fixed_save(kept) != original:
+        raise AssertionError("shapes_transaction_" + case["name"])
+print("hostile-shapes", len(cases))
+`, strconv.Quote(string(manifest)))
+	out, _ := pythonFixedRun(t, files, script, inputs)
+	if strings.TrimSpace(out) != fmt.Sprintf("hostile-shapes %d", len(cases)) {
+		t.Fatalf("unexpected result: %s", out)
+	}
+	source := string(files["probe/_schema/fixedform.py"])
+	const anchor = "if any(data[begin:end]):"
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("dead-byte control anchor changed")
+	}
+	mutated := maps.Clone(files)
+	mutated["probe/_schema/fixedform.py"] = []byte(strings.Replace(source, anchor, "if False:", 1))
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := pythonFixedTree(t, mutated)
+		in := maps.Clone(inputs)
+		in["main.py"] = []byte(pyrun.ImportPrelude + script)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", in)
+		if err == nil || !strings.Contains(stderr, "shapes_case_array-dead") {
+			t.Fatalf("dead-byte control did not fail by name: %v\n%s", err, stderr)
+		}
+	}
+	t.Logf("C++ and Python agreed on %d composite file verdicts", len(cases))
 }
 
 // TestPythonFixedProofEvolutionHostileSweep poisons every record byte and
@@ -490,7 +748,7 @@ func TestPythonFixedProofEvolutionRetirementControl(t *testing.T) {
 	old := fixedproof.ParseCheckUnit(t, oldSchema)
 	newer := fixedproof.ParseCheckUnit(t, newSchema)
 	oldWire, verifyOld := fixedproof.CppOracle(t, fixedproof.RowCase{ID: "retired-old", Root: "T", Body: 4, Count: 1, CppSetup: "value[0].x = 7;"}, old)
-	newWire, verifyNew := fixedproof.CppOracle(t, fixedproof.RowCase{ID: "retired-new", Root: "T", Body: 8, Count: 1, CppSetup: "value[0].x = 7;"}, newer)
+	newWire, verifyNew, loadNew := fixedproof.CppOracleWithLoadVerdict(t, fixedproof.RowCase{ID: "retired-new", Root: "T", Body: 8, Count: 1, CppSetup: "value[0].x = 7;"}, newer)
 	entry, ok := fixedproof.LineageEntryOf(old, "T")
 	if !ok {
 		t.Fatal("missing writer layout")
@@ -511,7 +769,7 @@ func TestPythonFixedProofEvolutionRetirementControl(t *testing.T) {
 	}
 	badFile := bytes.Clone(newWire)
 	badFile[len(badFile)-8-8] ^= 1
-	if verifyNew(badFile) == nil {
+	if loadNew(badFile) == nil {
 		t.Fatal("retirement file control was accepted by C++")
 	}
 	script := `from probe import T, Refused

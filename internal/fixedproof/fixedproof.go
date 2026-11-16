@@ -1339,6 +1339,15 @@ typedef unsigned __int128 uint128_t;
 // runs C++ FixedLoad + FixedSave to prove byte-for-byte agreement.
 func CppOracle(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error) {
 	t.Helper()
+	data, verify, _ := CppOracleWithLoadVerdict(t, tc, u)
+	return data, verify
+}
+
+// CppOracleWithLoadVerdict separates exact round-trip equality from the C++
+// reader's actual verdict. An unequal but valid candidate fails verify and
+// succeeds load; only a failing load proves the reference reader refused it.
+func CppOracleWithLoadVerdict(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error, func(candidate []byte) error) {
+	t.Helper()
 	slowtest.Gate(t, "the C++ compiler")
 	files, err := cpp.Generate(u)
 	if err != nil {
@@ -1417,6 +1426,21 @@ int main( int argc, char ** argv )
         fclose( f );
         return 0;
     }
+    if ( argc >= 3 && strcmp( argv[1], "load" ) == 0 ) {
+        FILE * f = fopen( argv[2], "rb" );
+        if ( !f ) return 2;
+        const int64_t clen = (int64_t) fread( cand_buf, 1, sizeof( cand_buf ), f );
+        fclose( f );
+        static %[1]s from_cand[%[2]d];
+        for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( from_cand[i] );
+        memset( &r, 0, sizeof( r ) );
+        const int64_t cn = %[1]sFixedLoad( from_cand, %[2]d, cand_buf, clen, plan, 4096, NULL, &r );
+        if ( cn < 0 || r.refused || r.damaged ) {
+            printf( "cpp load refused: n=%%lld reason=%%d\n", (long long) cn, (int) r.reason );
+            return 4;
+        }
+        return 0;
+    }
     if ( argc >= 3 && strcmp( argv[1], "verify" ) == 0 ) {
         FILE * f = fopen( argv[2], "rb" );
         if ( !f ) return 2;
@@ -1475,7 +1499,26 @@ int main( int argc, char ** argv )
 		}
 		return nil
 	}
-	return cppBytes, verify
+	load := func(cand []byte) error {
+		t.Helper()
+		if len(cand) > 1<<18 {
+			t.Fatal("C++ load probe buffer cannot hold the candidate")
+		}
+		candPath := filepath.Join(dir, "load.bin")
+		if err := os.WriteFile(candPath, cand, 0o600); err != nil {
+			t.Fatalf("write C++ load candidate: %v", err)
+		}
+		out, err := exec.Command(probeBin, "load", candPath).CombinedOutput()
+		if err != nil {
+			status, ok := err.(*exec.ExitError)
+			if !ok || status.ExitCode() != 4 {
+				t.Fatalf("C++ load probe failed without a refusal: %v\n%s", err, out)
+			}
+			return fmt.Errorf("C++ refused: %s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	return cppBytes, verify, load
 }
 
 // RunValueSuite drives all 49 rows of Cases() against runner:
@@ -1589,13 +1632,13 @@ func runNegativeControlRows(t *testing.T, runner LegRunner, selected map[string]
 			u := ParseCheckUnit(t, tc.Schema)
 			st := RootStruct(t, u, tc.Root)
 			layout, _, body := RootFacts(st)
-			cppBytes, verifyInCpp := CppOracle(t, tc, u)
+			cppBytes, verifyInCpp, loadInCpp := CppOracleWithLoadVerdict(t, tc, u)
 
 			// 1. File negative control (envelope damage): corrupting the form byte
 			// must be rejected by both C++ FixedLoad and the leg's reader.
 			corruptForm := bytes.Clone(cppBytes)
 			corruptForm[0] ^= 0x01
-			if err := verifyInCpp(corruptForm); err == nil {
+			if err := loadInCpp(corruptForm); err == nil {
 				t.Fatalf("%s: file negative control failed: C++ FixedLoad accepted corrupted form byte", tc.ID)
 			}
 			if _, err := runner.LoadAndResave(t, tc, u, corruptForm); err == nil {
@@ -1603,8 +1646,8 @@ func runNegativeControlRows(t *testing.T, runner LegRunner, selected map[string]
 			}
 
 			// 2. File negative control (record payload mutation): flipping a live
-			// byte in the last record body must be rejected by the C++ reference
-			// oracle and must not round-trip back to cppBytes in the leg.
+			// byte in the last record body must differ from the reference bytes
+			// and must not round-trip back to cppBytes in the leg. It may be valid.
 			mutatedPayload := bytes.Clone(cppBytes)
 			lastRecBodyStart := 20 + len(layout) + (tc.Count-1)*int(8+body) + 8
 			if lastRecBodyStart >= len(mutatedPayload) || body <= 0 {
@@ -1612,7 +1655,7 @@ func runNegativeControlRows(t *testing.T, runner LegRunner, selected map[string]
 			}
 			mutatedPayload[lastRecBodyStart] ^= 0x01
 			if err := verifyInCpp(mutatedPayload); err == nil {
-				t.Fatalf("%s: file negative control failed: C++ oracle accepted mutated payload byte", tc.ID)
+				t.Fatalf("%s: file negative control failed: C++ equality oracle accepted mutated payload byte", tc.ID)
 			}
 			if resaved, err := runner.LoadAndResave(t, tc, u, mutatedPayload); err == nil && bytes.Equal(resaved, cppBytes) {
 				t.Fatalf("%s: file negative control failed: %s LoadAndResave of mutated payload matched original cppBytes", tc.ID, runner.Name())
@@ -1627,7 +1670,7 @@ func runNegativeControlRows(t *testing.T, runner LegRunner, selected map[string]
 					t.Fatalf("%s: writer negative control failed: mutated %s writer still produced C++ oracle bytes", tc.ID, runner.Name())
 				}
 				if err := verifyInCpp(mutatedWrite); err == nil {
-					t.Fatalf("%s: writer negative control failed: C++ oracle accepted mutated %s writer output", tc.ID, runner.Name())
+					t.Fatalf("%s: writer negative control failed: C++ equality oracle accepted mutated %s writer output", tc.ID, runner.Name())
 				}
 			}
 		})
