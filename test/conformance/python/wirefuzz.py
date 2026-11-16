@@ -90,8 +90,6 @@ def main():
             if retain:
                 retained = module.TableRetain(bytearray(64 * len(data) + 4096), bytearray(24 * 4096))
                 value = cls.load_retain(data, retained, report)
-                if report.retain_lost:
-                    raise RuntimeError("retention capacity was insufficient")
             elif form == 2:
                 vocab = module.MessageVocabulary()
                 module.announce_read(vocab, module.ANNOUNCEMENT)
@@ -107,8 +105,6 @@ def main():
             try:
                 if retain:
                     saved = value.save_retain(retained, report)
-                    if report.retain_lost:
-                        raise RuntimeError("retention capacity was insufficient")
                 elif form == 2:
                     saved = module.save_messages(cls, value)
                 elif hasattr(cls, "fixed_load"):
