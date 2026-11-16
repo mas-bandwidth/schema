@@ -7,10 +7,10 @@
 PYTHON_CI_SUPPORT_GROUPS += python-message python-message-negative-control \
     python-message-write-negative-control python-message-crc-negative-control \
     python-message-onesided-negative-control python-message-substitution-negative-control \
-    python-fixed-message-conformance python-fixed-message-surface-negative-control
-.PHONY: python-fixed-message-conformance python-fixed-message-surface-negative-control
+    python-fixed-message-conformance python-fixed-message-surface-control
+.PHONY: python-fixed-message-conformance python-fixed-message-surface-control
 python-fixed-message-conformance: python-message-conformance
-python-fixed-message-surface-negative-control: python-message-surface-negative-control
+python-fixed-message-surface-control: python-message-surface-negative-control
 build/schema-python: $(shell find internal/codegen/pythontable/runtime/_schema -type f)
 .PHONY: python-message python-message-negative-control
 python-message: python-toolchain-check deps-go
