@@ -593,6 +593,7 @@ func init() {
 		Name{Name: "TableFixedFill", What: "the fixed form: one prefill range, the bytes a plan does not land"},
 		Name{Name: "table_fixed_entry_lands", What: "the fixed form: the storage bytes one plan entry writes"},
 		Name{Name: "table_fixed_fill_run", What: "the fixed form: copy the prefill's ranges from the default image"},
+		Name{Name: "table_fixed_fill_fits", What: "the fixed form: validate prefill spans against native object storage"},
 		Name{Name: "table_fixed_fills", What: "the fixed form: cover minus what this plan lands"},
 		Name{Name: "table_fixed_lay_fills", What: "the fixed form: reserve the prefill ranges in the plan pool"},
 		Name{Name: "table_fixed_signed_kind", What: "the fixed form's widening rungs"},

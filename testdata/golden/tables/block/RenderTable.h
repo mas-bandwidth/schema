@@ -9364,6 +9364,7 @@ inline int64_t RenderShipMeasureMessageBody( int64_t at, const RenderShip & valu
     if ( value.flags != 0 )
     {
         bits += kTableMessageRefBitsHere;
+        schema_assert( ( uint64_t( value.flags ) >> 4 ) == 0 ); // message flags domain, debug only (§5.1)
         bits += 4;
     }
     if ( value.object_id != 0 )
@@ -9440,6 +9441,7 @@ inline bool RenderShipSaveMessageBody( TableBitWriter & w, const RenderShip & va
     if ( value.flags != 0 )
     {
         w.put( 50, kTableMessageRefBitsHere );
+        schema_assert( ( uint64_t( value.flags ) >> 4 ) == 0 ); // message flags domain, debug only (§5.1)
         w.put( (uint64_t) ( value.flags ), 4 );
     }
     if ( value.object_id != 0 )

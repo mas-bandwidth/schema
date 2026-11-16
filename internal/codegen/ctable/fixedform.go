@@ -886,6 +886,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
+	g.pf("    /* THE SELECTED FILL LIST IS IMMUTABLE: validate every native span before\n")
+	g.pf("       landing any record, so an invalid plan leaves caller storage untouched. */\n")
+	g.pf("    if ( !table_fixed_fill_fits( fill, fill_count, sizeof( defaults ) ) )\n")
+	g.pf("    { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }\n")
 	// STEP 11.
 	g.pf("    /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before\n")
 	g.pf("       the prefill, so a refusal has written not one destination byte (§5.3,\n")
@@ -920,7 +924,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
 	g.pf("            return -1;\n        }\n")
 	g.fixedBoolDamagePass(st)
-	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
+	g.pf("        /* The immutable spans passed the whole-load preflight above. */\n")
+	g.pf("        if ( !table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )\n        {\n")
+	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED;\n")
+	g.pf("            return -1;\n        }\n")
 	runDefaults := "NULL"
 	if presentDefaults {
 		runDefaults = "(const uint8_t *) &defaults"

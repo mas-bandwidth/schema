@@ -3199,6 +3199,13 @@
       "dart": "3.13.2"
     },
     {
+      "name": "cpp-message-flags-domain",
+      "when": "pull-request",
+      "seconds": 57,
+      "why": "Native debug, optimized-debug and release legal/full-width controls plus debug writer assertion omission; measured pair56.145s on Intel Linux.",
+      "targets": ["tables-cpp-message-flags-domain-negative-control"]
+    },
+    {
       "name": "base-cpp-write-refusal",
       "when": "pull-request",
       "why": "the write contract's C++ controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated C++ tree, the conformance driver rebuilt against it, and the writer's surface required red with the surface beside it green. One driver compile and one leg run per control.",
