@@ -44,7 +44,7 @@ func TestPythonMessageCRC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cppWire := messageCRCCpp(t, u)
+	cppWire := messageCppWire(t, u, `Root v[3]{}; for (auto &x : v) RootReset(x); v[0].value=0; v[1].value=7; v[2].value=-2;`, 3)
 	if !bytes.Equal(wire, cppWire) {
 		t.Fatalf("C++ vs Go: %x vs %x", cppWire, wire)
 	}
@@ -109,7 +109,7 @@ print('ok')
 	}
 }
 
-func messageCRCCpp(t *testing.T, u *ir.Unit) []byte {
+func messageCppWire(t *testing.T, u *ir.Unit, setup string, count int) []byte {
 	t.Helper()
 	files, err := cpp.Generate(u)
 	if err != nil {
@@ -143,16 +143,15 @@ func messageCRCCpp(t *testing.T, u *ir.Unit) []byte {
 #include <cstdint>
 #include <vector>
 #include "%s"
-using namespace messagecrc;
+using namespace %s;
 int main() {
- Root v[3]{}; for (auto &x : v) RootReset(x);
- v[0].value=0; v[1].value=7; v[2].value=-2;
- TableReport report{}; auto n=RootMeasureMessages(v,3,&report);
+ %s
+ TableReport report{}; auto n=RootMeasureMessages(v,%d,&report);
  if (n<=0) return 2; std::vector<uint8_t> b((size_t)n);
- if (RootSaveMessages(v,3,b.data(),n,&report)!=n) return 3;
+ if (RootSaveMessages(v,%d,b.data(),n,&report)!=n) return 3;
  return std::fwrite(b.data(),1,b.size(),stdout)==b.size()?0:4;
 }
-`, header)
+`, header, u.Package, setup, count, count)
 	path := filepath.Join(d, "probe.cpp")
 	if err = os.WriteFile(path, []byte(code), 0600); err != nil {
 		t.Fatal(err)

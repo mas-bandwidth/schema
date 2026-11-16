@@ -28,3 +28,8 @@ test-python: python-message-surface-negative-control
 python-message-crc-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageCRC$$' ./internal/codegen/pythontable/
 test-python: python-message-crc-negative-control
+
+.PHONY: python-message-onesided-negative-control
+python-message-onesided-negative-control: python-toolchain-check deps-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageOneSided$$' ./internal/codegen/pythontable/
+test-python: python-message-onesided-negative-control
