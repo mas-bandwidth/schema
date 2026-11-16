@@ -2031,6 +2031,8 @@ final class TableWireReader {
         if (!_arrayElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
+        // Defer an unsupported count to the normal reader, which owns its refusal.
+        if (order != null && head.$1 > 0x7fffffff) return false;
         var off = head.$2;
         for (var i = 0; i < head.$1; i++) {
           off = _wirePayload(b, off, b[0], out, depth + 1, order);
@@ -2044,6 +2046,8 @@ final class TableWireReader {
         if (!_keyedElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
+        // Defer an unsupported count to the normal reader, which owns its refusal.
+        if (order != null && head.$1 > 0x7fffffff) return false;
         var off = head.$2;
         final seenKeys = <int>{};
         for (var i = 0; i < head.$1; i++) {
