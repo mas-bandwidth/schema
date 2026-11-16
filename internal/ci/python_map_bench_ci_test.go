@@ -8,7 +8,7 @@ import (
 )
 
 // The map benchmark pins must run in their own support rows,
-// while unrelated tests remain in the automatically discovered package rows.
+// while unrelated tests remain in their automatic or explicitly delegated rows.
 func TestPythonMapBenchCIPlan(t *testing.T) {
 	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
 	cmd.Dir = "../.."
@@ -43,14 +43,14 @@ func TestPythonMapBenchCIPlan(t *testing.T) {
 			}
 		}
 	}
-	for _, target := range []string{"python-ci-map-bench-current", "python-ci-map-bench-floor", "python-ci-map-bench-coverage"} {
+	for _, target := range []string{"python-ci-map-bench-current", "python-ci-map-bench-floor", "python-ci-map-bench-coverage", "python-ci-vt-evolution-values", "python-ci-vt-evolution-wire", "python-ci-vt-evolution-write"} {
 		if targets[target] != 1 {
 			t.Errorf("support target %s appears %d times, want one", target, targets[target])
 		}
 	}
 	for _, name := range wanted {
 		want := 1
-		if name == "TestPythonMapShapeBench" {
+		if name == "TestPythonMapShapeBench" || name == "TestPythonVtEvolution" {
 			want = 0
 		}
 		if auto[name] != want {
