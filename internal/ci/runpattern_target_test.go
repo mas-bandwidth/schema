@@ -108,3 +108,61 @@ endef
 		}
 	}
 }
+
+func TestPythonDynamicRunPatternBindingsAndCoverageWiring(t *testing.T) {
+	t.Parallel()
+	files := makefileFiles(t, repoRoot(t))
+	checks := []struct{ file, rule, pattern, changed string }{
+		{"make/python-fixed-proof-evolution.mk", "python-fixed-proof-evolution", "$(PYTHON_FIXED_EVOLUTION_AGGREGATE)", "$(UNKNOWN_EVOLUTION)"},
+		{"make/python-handtext.mk", "python-handtext-core", "$(PYTHON_HANDTEXT_CORE)", "$(UNKNOWN_HANDTEXT)"},
+	}
+	for _, tc := range checks {
+		original := files[tc.file]
+		key := tc.file + " " + tc.rule
+		changed := maps.Clone(files)
+		changed[tc.file] = strings.Replace(original, "-run '"+tc.pattern+"'", "-run '"+tc.changed+"'", 1)
+		if changed[tc.file] == original {
+			t.Fatalf("missing recipe for %s", key)
+		}
+		assertOneStaleException(t, changed, key, "changing the dynamic selector")
+		recipes, bound, _ := bindRunPatternExceptions(changed, runPatternExceptions)
+		found := false
+		for _, r := range recipes {
+			if r.where == key && r.pattern == tc.changed {
+				found = true
+				if bound[runRecipeBound{r.where, r.pattern}] {
+					t.Fatalf("unknown selector %s unexpectedly exempted", tc.changed)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("changed selector %s not discovered", tc.changed)
+		}
+	}
+	for _, tc := range []struct{ file, target, test string }{
+		{"make/python-fixed-proof-evolution.mk", "python-fixed-evolution-ci-coverage", "TestPythonFixedEvolutionCICoverage"},
+		{"make/python-handtext.mk", "python-handtext-ci-coverage", "TestPythonHandtextCISelection"},
+	} {
+		s := files[tc.file]
+		for _, want := range []string{tc.target + ":", "SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^" + tc.test + "$$' ./internal/ci/", "test-python:"} {
+			if !strings.Contains(s, want) {
+				t.Errorf("%s lacks %q", tc.file, want)
+			}
+		}
+		for _, prefix := range []string{"test-python:", "PYTHON_CI_SUPPORT_GROUPS +="} {
+			found := false
+			for _, line := range strings.Split(s, "\n") {
+				if strings.HasPrefix(line, prefix) {
+					for _, field := range strings.Fields(line[len(prefix):]) {
+						if field == tc.target {
+							found = true
+						}
+					}
+				}
+			}
+			if !found {
+				t.Errorf("%s lacks %s in %s", tc.file, tc.target, prefix)
+			}
+		}
+	}
+}

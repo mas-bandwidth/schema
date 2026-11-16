@@ -1,13 +1,13 @@
 # Hand-editable text grammar, strict resolution and lossless document edits.
-.PHONY: python-handtext python-handtext-core python-handtext-go-reference python-handtext-cpp-reference python-handtext-negative-control python-handtext-ci-patterns
+.PHONY: python-handtext python-handtext-core python-handtext-go-reference python-handtext-cpp-reference python-handtext-negative-control python-handtext-ci-coverage python-handtext-ci-patterns
 
 PYTHON_HANDTEXT_CORE = ^TestPythonHandtext(Syntax|Resolution|ReservedName|SurfaceSelection|Corpus|Unbounded|DottedKey|KindArrays|ArrayRoot|WireCarrier|WireCarrierCRC|UnionBlobs)$$
 PYTHON_HANDTEXT_GO_REFERENCE = ^TestPythonHandtext(ReferencesFunctional|GoCorpusFunctional|UnboundedReferencesFunctional)$$
 PYTHON_HANDTEXT_CPP_REFERENCE = ^TestPythonHandtext(CppCorpusFunctional|FixedCarrierCRCFunctional)$$
 PYTHON_HANDTEXT_CONTROLS = ^TestPythonHandtext(NegativeControl|KindsNegativeControl|ArrayRootNegativeControl|WireCarrierNegativeControl|WireCarrierCRCNegativeControl|UnionBlobsNegativeControl|EditPathNegativeControl|CombinedEditNegativeControl|SurfaceNegativeControl)$$
 
-test-python: python-handtext-core python-handtext-go-reference python-handtext-cpp-reference python-handtext-negative-control
-PYTHON_CI_SUPPORT_GROUPS += python-handtext-core python-handtext-go-reference python-handtext-cpp-reference python-handtext-negative-control
+test-python: python-handtext-core python-handtext-go-reference python-handtext-cpp-reference python-handtext-negative-control python-handtext-ci-coverage
+PYTHON_CI_SUPPORT_GROUPS += python-handtext-core python-handtext-go-reference python-handtext-cpp-reference python-handtext-negative-control python-handtext-ci-coverage
 
 python-handtext: python-handtext-core python-handtext-go-reference python-handtext-cpp-reference
 python-handtext-core: python-toolchain-check
@@ -19,6 +19,8 @@ python-handtext-cpp-reference: python-toolchain-check
 
 python-handtext-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '$(PYTHON_HANDTEXT_CONTROLS)' ./internal/codegen/pythontable/
+python-handtext-ci-coverage:
+	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^TestPythonHandtextCISelection$$' ./internal/ci/
 python-handtext-ci-patterns:
 	@printf '%s\n' '$(PYTHON_HANDTEXT_CORE)' '$(PYTHON_HANDTEXT_GO_REFERENCE)' '$(PYTHON_HANDTEXT_CPP_REFERENCE)' '$(PYTHON_HANDTEXT_CONTROLS)'
 
