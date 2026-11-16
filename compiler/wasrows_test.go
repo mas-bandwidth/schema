@@ -82,7 +82,7 @@ func TestWasRowsCarriers(t *testing.T) {
 			}
 			continue
 		}
-		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" || target == "lobster" || target == "lua" || target == "luau" || target == "moo" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" || target == "lobster" || target == "lua" || target == "luau" || target == "moo" || target == "python" {
 			if err != nil {
 				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}
