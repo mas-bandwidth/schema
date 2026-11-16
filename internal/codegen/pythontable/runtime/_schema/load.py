@@ -133,6 +133,8 @@ class Reader:
     def id_at(self, reference: int) -> int:
         if reference < 1 or reference > len(self.ids):
             raise Refused("wire_damaged", "a reference is past the id table")
+        if self.ids[reference - 1] == 0:
+            raise Refused("wire_damaged", "a reference names the zero id")
         return self.ids[reference - 1]
 
 

@@ -2041,3 +2041,62 @@ print('selected-retain')
 		}
 	}
 }
+
+const retainZeroIDProbe = `from probe import Root, TableRetain, LoadReport, Refused
+bad=bytes.fromhex('01010e0e04030300000011000000fbffffff0000000000000000000100000000000000')
+good=bad[:-16]+(0x123456789abcdef0).to_bytes(8,'little')+bad[-8:]
+for retained in (True, False):
+    report=LoadReport(); report.unknown=17; report.widened=18; report.retained=19; report.retain_lost=20
+    try:
+        if retained: Root.load_retain(bad,TableRetain(bytearray(1024),bytearray(24*16)),report)
+        else: Root.load(bad,report)
+    except Refused as error: assert error.reason=='wire_damaged', error.reason
+    except Exception as error: raise AssertionError('zero-id-wrong-exception') from error
+    else: raise AssertionError('zero-id-accepted')
+    assert (report.unknown,report.widened,report.retained,report.retain_lost)==(17,18,19,20)
+report=LoadReport(); keep=TableRetain(bytearray(1024),bytearray(24*16))
+value=Root.load_retain(good,keep,report)
+assert (report.unknown,report.retained,report.retain_lost)==(1,1,0)
+assert value.save_retain(keep,report)==good
+assert Root.load(good).n==0
+print('zero-id-refused')
+`
+
+func testRetainZeroID(t *testing.T, sabotage bool) {
+	t.Helper()
+	u := loadUnit(t, "package probe\ntable Root { n int32 }\n")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sabotage {
+		path := "probe/_schema/load.py"
+		old := "        if self.ids[reference - 1] == 0:\n"
+		source := string(files[path])
+		if strings.Count(source, old) != 1 {
+			t.Fatal("zero-ID sabotage anchor missing")
+		}
+		files[path] = []byte(strings.Replace(source, old, "        if False:\n", 1))
+	}
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + retainZeroIDProbe)})
+		if sabotage {
+			if err == nil || !strings.Contains(stderr, "zero-id-wrong-exception") {
+				t.Fatalf("zero-ID sabotage not detected: %v\n%s\n%s", err, out, stderr)
+			}
+		} else if err != nil || strings.TrimSpace(out) != "zero-id-refused" {
+			t.Fatalf("zero-ID read: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+func TestPythonRetainZeroIDField(t *testing.T) {
+	slowtest.Gate(t, "both pinned Python interpreters")
+	testRetainZeroID(t, false)
+}
+func TestPythonRetainZeroIDNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "both pinned Python interpreters")
+	testRetainZeroID(t, true)
+}
