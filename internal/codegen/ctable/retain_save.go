@@ -13,7 +13,7 @@ static SCHEMA_UNUSED int table_retain_out_leb(TableRetainOut * s,uint64_t v)
 static SCHEMA_UNUSED int table_retain_out_leb_read(TableRetainOut * s,uint64_t * v)
 {TableReader r=table_reader_make(s->input,s->size,NULL);r.offset=s->at;if(!table_reader_leb(&r,v))return 0;s->at=r.offset;return 1;}
 static SCHEMA_UNUSED int table_retain_out_ref(TableRetainOut * s)
-{uint64_t id,ref;if(s->size-s->at<8)return 0;id=table_retain_u64(s->input+s->at);s->at+=8;if(!id)return table_retain_out_leb(s,0);ref=table_retain_ref(s->ids,id,1,&s->overflow);return !s->ids->lost&&!s->overflow&&table_retain_out_leb(s,ref);}
+{uint64_t id,ref;if(s->size-s->at<8)return 0;id=table_retain_u64(s->input+s->at);s->at+=8;if(!id)return table_retain_out_leb(s,0);if(id==UINT64_MAX)id=0;ref=table_retain_ref(s->ids,id,1,&s->overflow);return !s->ids->lost&&!s->overflow&&table_retain_out_leb(s,ref);}
 static SCHEMA_UNUSED int table_retain_out_payload(TableRetainOut *,uint8_t,int32_t);
 static SCHEMA_UNUSED int table_retain_out_content(TableRetainOut *,uint8_t,int64_t,int32_t);
 static SCHEMA_UNUSED int table_retain_out_frame(TableRetainOut * s,uint8_t kind,int32_t depth)

@@ -82,10 +82,22 @@ def _read_union_payload(r: Any, un: type[Any], ctx: Any) -> Any:
         ctx.unknown += 1
         return un()
     if kind != arm.kind:
-        raise Refused(
-            "kind_mismatch",
-            f"{un.descriptor.name}.{arm.name} rides under kind {kind}, not {arm.kind}",
-        )
+        from .kind_array import _widens
+
+        if arm.field is None or not _widens(kind, arm.kind):
+            raise Refused(
+                "kind_mismatch",
+                f"{un.descriptor.name}.{arm.name} rides under kind {kind}, not {arm.kind}",
+            )
+        sub = _load.Reader(r.data, start, r.pos, r.ids)
+        loaded = _load._widened_scalar(sub, kind, arm.field)
+        if sub.pos != sub.end:
+            raise Refused("wire_damaged", "bytes left inside an arm's L after its payload")
+        value = un()
+        value.type = arm.tag
+        setattr(value, arm.name, loaded)
+        ctx.widened += 1
+        return value
     value = un()
     value.type = arm.tag
     if arm.field is None:

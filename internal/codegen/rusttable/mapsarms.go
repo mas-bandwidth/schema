@@ -1008,7 +1008,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		g.emitUnionDecode(b, f, "inner", aend, ordinal, in+"    ", true)
 		fmt.Fprintf(b, "%s    true\n%s})();\n", in, in)
 		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
-		fmt.Fprintf(b, "%sif inner_ok { %s = %s::%s(inner); } else { %s = %s::None; }\n", in, field, un.Name, rustVariant(v.Name), field, un.Name)
+		fmt.Fprintf(b, "%sif inner_ok && *off == %s { %s = %s::%s(inner); } else { report.damaged = true; %s = %s::None; }\n", in, aend, field, un.Name, rustVariant(v.Name), field, un.Name)
 	case f.Array == ir.ArrayNone && classOf(f) == vEnum:
 		emitEnumDecode(b, f, "let slot", aend, "return false;", in)
 		fmt.Fprintf(b, "%sif *off != %s { report.damaged = true; %s = %s::None; } else { %s = %s::%s(slot); }\n", in, aend, field, un.Name, field, un.Name, rustVariant(v.Name))

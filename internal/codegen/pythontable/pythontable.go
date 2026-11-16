@@ -743,6 +743,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            map_entry=%s,\n", strconv.Quote(mapEntry))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
+		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
@@ -917,7 +918,7 @@ func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guar
 				ind = "        "
 			}
 			fmt.Fprintf(b, "%scurrent = value.%s\n", ind, f.Name)
-			fmt.Fprintf(b, "%sif not f%d.is_default(current):\n", ind, i)
+			fmt.Fprintf(b, "%sif f%d.required or not f%d.is_default(current):\n", ind, i, i)
 			fmt.Fprintf(b, "%s    w%d(writer, f%d, current, ctx)\n", ind, i, i)
 		}
 	}
@@ -1067,7 +1068,7 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    current: object\n")
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "    current = value.%s\n", f.Name)
-		fmt.Fprintf(b, "    if not fields[%d].is_default(current):\n", i)
+		fmt.Fprintf(b, "    if fields[%d].required or not fields[%d].is_default(current):\n", i, i)
 		fmt.Fprintf(b, "        _s_kinds._REGISTRY[%q].write(writer, fields[%d], current, ctx)\n", codecOf(f), i)
 	}
 	b.WriteString("    writer.byte(0)\n")
@@ -1101,6 +1102,9 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
+		b.WriteString("                from ._schema.kind_array import _widens\n")
+		fmt.Fprintf(b, "                if _widens(kind, fields[%d].kind):\n", i)
+		b.WriteString("                    return load_table(cls, data, report)\n")
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 	}
@@ -1112,7 +1116,10 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	}
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
+	b.WriteString("    missing = [f.name for f in fields if f.required and f.field_id not in seen]\n")
 	b.WriteString("    _resolve(ctx)\n")
+	b.WriteString("    if missing:\n")
+	b.WriteString("        raise Refused(\"missing_required\", \", \".join(missing))\n")
 	b.WriteString("    if report is not None:\n")
 	b.WriteString("        report.unknown = ctx.unknown\n")
 	b.WriteString("        report.widened = 0\n")
@@ -1820,14 +1827,13 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A fixed array is born with every slot; a counted array is born
-		// empty whatever its minimum, as the engine's reset builds it
-		// (internal/tabletext/value.go), so an absent counted field reads as
-		// the engine reads it. The minimum binds the writer, which refuses
-		// an array below it.
+		// A union array is born at its declared minimum, with independent
+		// None-valued elements; fixed arrays are born at their full bound.
 		count := int64(0)
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
+		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
+			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"
