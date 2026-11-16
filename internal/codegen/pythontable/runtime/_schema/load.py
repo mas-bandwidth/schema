@@ -200,7 +200,7 @@ class Ctx:
         # map's pointer value is rewritten to the map, (its key, the field)
         self.pending: list[tuple[Any, Any, int]] = []
         # every known byte buffer slot: its owner, its field and its node index
-        self.blob_pending: list[tuple[Any, FieldDesc, int]] = []
+        self.blob_pending: list[tuple[Any, Any, int]] = []
         self.current: Any = None
         self.root: Any = None
         # one entry per node record: the decoded table, or None for a blob or
@@ -304,23 +304,25 @@ def _id_table(view: memoryview) -> list[int]:
     return ids
 
 
-def read_body(data: Any, obj: Any, ctx: Ctx) -> None:
+def read_body(data: Any, obj: Any, ctx: Ctx, map_key: FieldDesc | None = None) -> bool:
     """Read one nested body whose bytes are exactly data."""
     reader = Reader(data, 0, len(data), ctx.ids)
     if ctx.depth >= _MAX_DEPTH:
         raise Refused("wire_damaged", "a framed payload nested past the binary bound")
     ctx.depth += 1
-    _read_body(reader, obj, ctx, False)
+    widened = _read_body(reader, obj, ctx, False, map_key)
     ctx.depth -= 1
     if reader.pos != reader.end:
         raise Refused("wire_damaged", "bytes left inside a body")
+    return widened
 
 
-def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
+def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool, map_key: FieldDesc | None = None) -> bool:
     descriptor_: TableDesc = obj.descriptor
     previous = ctx.current
     ctx.current = obj
     seen: set[int] = set()
+    widened_key = False
     while True:
         reference = reader.varint()
         if reference == 0:
@@ -335,15 +337,27 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
             _unknown_field(reader, field_id, kind, ctx, root)
             continue
         if kind != field.kind:
-            raise Refused(
-                "kind_mismatch",
-                f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
-            )
-        value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
+            # A map key widens exactly on its own signedness ladder (§2.8).
+            # Keys are compared after decoding; widening preserves their order.
+            signed = 2 <= kind < field.kind <= 5
+            unsigned = 6 <= kind < field.kind <= 9
+            if field is not map_key or field.codec != "int" or not (signed or unsigned):
+                raise Refused(
+                    "kind_mismatch",
+                    f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
+                )
+            width = 1 << (kind - (2 if signed else 6))
+            value = int.from_bytes(reader.take(width), "little", signed=signed)
+            if value < field.lo or value > field.hi:
+                raise Refused("out_of_range", f"{value} is outside [{field.lo}, {field.hi}]")
+            widened_key = True
+        else:
+            value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
     missing = [field.name for field in descriptor_.fields if field.required and field.guard_holds(obj) and field.field_id not in seen]
     ctx.missing.extend(missing)
     ctx.current = previous
+    return widened_key
 
 
 def _unknown_field(reader: Reader, field_id: int, kind: int, ctx: Ctx, root: bool) -> None:
@@ -371,7 +385,7 @@ def _placeable(root: type[Any]) -> frozenset[int]:
     """THE TYPE IDS THIS ROOT CAN PLACE (§3.1): every table a pointer below
     the root targets, through by-value tables and pointers alike, and the
     reserved id of each byte buffer kind a *bytes or *string slot below it
-    names (§2.5). A map's buffer value is not carried, so it places nothing."""
+    names (§2.5), including map value slots."""
     cached: frozenset[int] | None = getattr(root, "_s_placeable", None)
     if cached is not None:
         return cached
@@ -385,9 +399,9 @@ def _placeable(root: type[Any]) -> frozenset[int]:
             continue
         visited.add(desc.name)
         for field in _reached_fields(desc.fields):
-            if field.codec == "bytes_blob" and not entry:
+            if field.codec == "bytes_blob":
                 out.add(_BYTES_WIRE_TYPE_ID)
-            elif field.codec == "string_blob" and not entry:
+            elif field.codec == "string_blob":
                 out.add(_STRING_WIRE_TYPE_ID)
             if not field.target:
                 continue
@@ -585,22 +599,29 @@ def _resolve(ctx: Ctx) -> None:
             owner[slot[0]] = value
         else:
             setattr(owner, field.name, value)
-    for owner, field, index in ctx.blob_pending:
-        if index == 0:
-            setattr(owner, field.name, None)
-            continue
-        # the graph admitted the index and refused a record named twice
-        buffer = ctx.nodes[index - 2]
-        if not isinstance(buffer, kind_blob._BlobValue):
-            if descriptor.by_id(ctx.types[index - 2]) is not None:
-                raise Refused("wire_damaged", "a byte buffer slot names a table record")
-            # a record of a type this reader does not declare reads null; it
-            # counted once when the node table was read
-            setattr(owner, field.name, None)
-            continue
-        if buffer.string != (field.codec == "string_blob"):
-            raise Refused("wire_damaged", "a byte buffer slot names the other buffer kind")
-        setattr(owner, field.name, buffer.value)
+    for owner, slot, index in ctx.blob_pending:
+        # A map entry's temporary table has gone away: place its deferred
+        # buffer into the dictionary slot, just as a table pointer value does.
+        if isinstance(owner, dict):
+            key, field = slot
+        else:
+            key, field = None, slot
+        value = None
+        if index != 0:
+            # The graph admitted the index and refused a record named twice.
+            buffer = ctx.nodes[index - 2]
+            if not isinstance(buffer, kind_blob._BlobValue):
+                if descriptor.by_id(ctx.types[index - 2]) is not None:
+                    raise Refused("wire_damaged", "a byte buffer slot names a table record")
+                # An undeclared node type substitutes null, as for table slots.
+            elif buffer.string != (field.codec == "string_blob"):
+                raise Refused("wire_damaged", "a byte buffer slot names the other buffer kind")
+            else:
+                value = buffer.value
+        if isinstance(owner, dict):
+            owner[key] = value
+        else:
+            setattr(owner, field.name, value)
 
 
 # THE SKIP WALK: the engine's declaration-free wire check (wirecheck.go) over

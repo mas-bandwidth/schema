@@ -10,7 +10,7 @@ from typing import Any, Iterator
 
 from . import BlobRef, InvalidValue
 from . import descriptor, kinds
-from . import kind_array, kind_blob, kind_map, kind_optional, kind_union, kind_unsupported
+from . import kind_array, kind_blob, kind_map, kind_optional, kind_union
 from .descriptor import FieldDesc, TableDesc
 
 FORM = 1
@@ -438,11 +438,6 @@ def _validate_map_entries(
     for key, current in value.items():
         where = f"{path}[{key!r}]"
         kinds._REGISTRY[key_field.codec].validate(key_field, key, where)
-        if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
-            # A map whose VALUE is a byte buffer, `map[K]*bytes` or
-            # `map[K]*string`, is not carried yet: an entry refuses by name,
-            # as kind_unsupported.py refused it before the buffers landed.
-            raise InvalidValue(where, kind_unsupported._RULE)
         if value_field.codec == "pointer":
             kinds._REGISTRY["pointer"].validate(value_field, current, where)
             if current is not None:
@@ -625,7 +620,18 @@ def _collect_map_edges(
     for key in kind_map._sorted_keys(field, value):
         current = value[key]
         where = (path, "", key)
-        if value_field.codec == "pointer":
+        if value_field.codec in ("string_blob", "bytes_blob"):
+            if current is not None:
+                if isinstance(current, BlobRef):
+                    identity = id(current)
+                    if identity in ctx.blob_refs:
+                        raise InvalidValue(_render(where), "blob_shared")
+                    ctx.blob_refs.add(identity)
+                body = kind_blob._encode(value_field, current, _render(where))
+                index = len(ctx.order) + 2
+                ctx.order.append(kind_blob._BlobNode(value_field.codec == "string_blob", body))
+                blobs.append(index)
+        elif value_field.codec == "pointer":
             if current is not None:
                 yield current, where, True, blobs
         elif value_field.codec == "table":

@@ -79,22 +79,17 @@ class _Map:
         out: dict[Any, Any] = {}
         last: Any = None
         landed = False
+        widened = False
         for _ in range(count):
             n = sub.varint()
             body = sub.take(n)
             entry = entry_cls()
             before = len(ctx.pending)
             blobs_before = len(ctx.blob_pending)
-            read_body(body, entry, ctx)
-            if value_field.codec == "string_blob" or value_field.codec == "bytes_blob":
-                # `map[K]*bytes` and `map[K]*string` are not carried yet: an
-                # entry that holds its value refuses by name, as
-                # kind_unsupported.py refused it before the buffers landed.
-                for owner, _, _ in ctx.blob_pending[blobs_before:]:
-                    if owner is entry:
-                        from .kind_unsupported import _RULE
-
-                        raise Refused("unsupported_kind", _RULE)
+            if read_body(body, entry, ctx, key_field) and not widened:
+                # The map counts once, regardless of how many keys widened.
+                ctx.widened += 1
+                widened = True
             key = getattr(entry, key_field.name)
             if landed and _compare(fd, last, key) >= 0:
                 raise Refused(
@@ -108,6 +103,11 @@ class _Map:
                     owner, slot, index = ctx.pending[i]
                     if owner is entry and slot.name == value_field.name:
                         ctx.pending[i] = (out, (key, slot), index)
+            if value_field.codec in ("string_blob", "bytes_blob"):
+                for i in range(blobs_before, len(ctx.blob_pending)):
+                    owner, slot, index = ctx.blob_pending[i]
+                    if owner is entry and slot.name == value_field.name:
+                        ctx.blob_pending[i] = (out, (key, slot), index)
             out[key] = getattr(entry, value_field.name)
         if sub.pos != sub.end:
             raise Refused(
