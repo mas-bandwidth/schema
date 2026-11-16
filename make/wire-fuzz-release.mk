@@ -35,8 +35,8 @@ WFR_DRIVER_c     = ./build/wire-fuzz-c
 
 WFR_DEPS_cpp     = build/wire-fuzz-cpp
 WFR_DRIVER_cpp   = ./build/wire-fuzz-cpp
-# RELAXED 2026-11-14 (maintainer: get main green); re-enable: relax/unknown-arm-text-cpp
-WFR_FLAGS_cpp    = $(CPP_RELAX_VECTORS)
+# C++ compares every vector, including malformed unknown-arm text.
+WFR_FLAGS_cpp    =
 
 WFR_DEPS_cs      = build-conformance-cs
 WFR_DRIVER_cs    = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz

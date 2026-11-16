@@ -31,11 +31,6 @@ relaxed cell whose slug has no entry here.
   `make/cs.mk`. Real fix: the engine and every reader refuse nonzero dead
   bytes (the maintainer's ruling: absent-optional dead bytes are refused);
   then drop the flag. WIP: `fix/main-red/dead-bytes`.
-- `relax/unknown-arm-text-cpp`: the same vector and the same skip on the C++
-  wire fuzz (`make tables-wire-fuzz`, `tables-wire-fuzz-retain`, and the
-  release gate's C++ runs), through `CPP_RELAX_VECTORS` in the `Makefile`.
-  Real fix: the C++ read walks an unknown arm's payload by its framing; then
-  drop `CPP_RELAX_VECTORS`. WIP: none.
 
 ## Conformance cases and rows
 

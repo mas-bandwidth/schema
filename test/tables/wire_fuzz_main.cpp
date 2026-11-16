@@ -137,30 +137,54 @@ struct Codec
     Run run;
 };
 
-// one FIXED-class root: Load into a value, Measure, Save
-template <typename T, typename Report>
+// one FIXED-class root: a fixed table's file is FORM 3 (docs/SPEC-TABLES.md
+// §3.4), so the codec reads it through <T>FixedLoad — the plain strict read of
+// that form, one record — and writes it back through FixedMeasure and
+// FixedSave. The plan storage is the caller's (§3.4), roomy enough for any
+// writer's layout the corpus carries; no cache is shared.
+static const int32_t kFixedPlanCapacity = 4096;
+
+template <typename T, typename Report, typename Entry, typename Cache>
 struct Fixed
 {
-    template <bool ( *load )( T &, const uint8_t *, int64_t, Report * ),
-              int64_t ( *measure )( const T & ),
-              int64_t ( *save )( const T &, uint8_t *, int64_t )>
+    template <int64_t ( *load )( T *, int64_t, const uint8_t *, int64_t, Entry *, int32_t, Cache *, Report * ),
+              int64_t ( *measure )( int64_t ),
+              int64_t ( *save )( const T *, int64_t, uint8_t *, int64_t )>
     static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
     {
         static T * value = new T();
         new ( value ) T();
+        static Entry * plan = new Entry[ kFixedPlanCapacity ];
         Report report;
-        bool ok = load( *value, wire, bytes, &report );
+        const int64_t n = load( value, 1, wire, bytes, plan, kFixedPlanCapacity, NULL, &report );
         copy_report( report, reply );
         // A REFUSAL IS NOT DAMAGE (§3): a form byte this reader does not carry
-        // moves no counter and reports nothing, so it must not fold into the flag
-        reply.malformed = reply.malformed || ( !ok && !reply.refused );
-        reply.loaded = true;
+        // moves no counter and reports nothing, so it must not fold into the
+        // flag; a read that returned no record without a named refusal is
+        // damage, folded into malformed from the read's own false.
+        reply.malformed = reply.malformed || ( n < 0 && !reply.refused );
+        reply.loaded = n == 1;
         reply.measure = -1;
-        int64_t size = measure( *value );
+        if ( n != 1 ) { reply.saved = -1; return; }
+        int64_t size = measure( 1 );
         if ( size < 0 ) { reply.saved = -1; return; }
         reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
-        if ( save( *value, reply.bytes, size ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
+        if ( save( value, 1, reply.bytes, size ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
         reply.saved = size;
+    }
+};
+
+// A FIXED root past §3.4's 65536-byte record bound HAS NO FILE FORM: no form 3
+// carries it, and a reader that expects a fixed table refuses every other form,
+// so every file read of it refuses and nothing is saved.
+struct NoFile
+{
+    static void run( const uint8_t *, int64_t, Reply & reply )
+    {
+        reply.loaded = false;
+        reply.refused = true;
+        reply.measure = -1;
+        reply.saved = -1;
     }
 };
 
@@ -185,6 +209,11 @@ struct Variable
         Report report;
         const T * root = load( region, need, wire, bytes, &report );
         copy_report( report, reply );
+        // A REFUSAL IS NOT DAMAGE (§3): a form byte this reader does not
+        // carry moves no counter and reports nothing, so it must not fold into
+        // the flag; a read that returned no root without a named refusal is
+        // damage, folded into malformed from the read's own false.
+        reply.malformed = reply.malformed || ( root == NULL && !reply.refused );
         reply.loaded = root != NULL;
         reply.saved = -1;
         if ( root != NULL )
@@ -257,12 +286,17 @@ struct VariableRetain
         // the report is copied AFTER the save, which is where retain_lost's
         // save half lands (§6.6)
         copy_report( report, reply );
+        // a read that returned no root without a named refusal is damage,
+        // folded into malformed from the read's own false (§3, §6.5)
+        reply.malformed = reply.malformed || ( root == NULL && !reply.refused );
         free( region );
     }
 };
 
 #define FIXED( unit_key, ns, type ) \
-    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport>::run<ns::type##Load, ns::type##Measure, ns::type##Save> }
+    { unit_key, #type, 1, 0, Fixed<ns::type, ns::TableReport, ns::TableFixedEntry, ns::TableFixedPlanCache>::run<ns::type##FixedLoad, ns::type##FixedMeasure, ns::type##FixedSave> }
+#define NOFILE( unit_key, ns, type ) \
+    { unit_key, #type, 1, 0, NoFile::run }
 #define VARIABLE( unit_key, ns, type ) \
     { unit_key, #type, 1, 0, Variable<ns::type, ns::TableReport, ns::TableAllocator, ns::TableRefuseReason>::run<ns::type##LoadMeasure, ns::type##Load, ns::type##Measure, ns::type##Save, ns::TableDefaultAllocator> }
 #define RETAIN( unit_key, ns, type ) \
@@ -343,7 +377,7 @@ static const Codec codecs[] = {
     FIXED( "tabledemo", tabledemo, RootConfig ),
     FIXED( "tabledemo", tabledemo, ProfileConfig ),
     FIXED( "tabledemo", tabledemo, LoadoutConfig ),
-    FIXED( "tabledemo", tabledemo, WideBlob ),
+    NOFILE( "tabledemo", tabledemo, WideBlob ),
     FIXED( "tabledemo", tabledemo, ArchiveConfig ),
     FIXED( "tabledemo", tabledemo, KeyedConfig ),
     FIXED( "tabledemo", tabledemo, PackConfig ),
@@ -449,6 +483,53 @@ static const Codec codecs[] = {
     RETAIN( "featurewitnesses", featurewitnesses, ArrayRoot ),
 };
 
+// The file-form dispatch and refusal transport are exercised independently of
+// the mutant generator. These bytes are the same corpus inputs the pipe reads.
+static int regression_vectors()
+{
+    struct Case { const char * unit; const char * root; const char * path; bool reads; };
+    static const Case cases[] = {
+        { "featurewitnesses", "ArrayRoot", "testdata/conformance/tables/wire/array_root_body_short.bin", false },
+        { "tabledemo", "KeyedConfig", "testdata/conformance/tables/wire/keyed_default.bin", true },
+        { "streamdemo", "Feed", "testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin", false },
+        { "graphdemo", "Scene", "testdata/conformance/tables/wire/graph_widened_default.bin", false },
+    };
+    for ( const Case & test : cases )
+    {
+        FILE * file = fopen( test.path, "rb" );
+        if ( file == NULL ) { fprintf( stderr, "wire-fuzz regression: missing %s\n", test.path ); return 1; }
+        fseek( file, 0, SEEK_END );
+        const long bytes = ftell( file );
+        rewind( file );
+        uint8_t * wire = (uint8_t *) malloc( bytes > 0 ? (size_t) bytes : 1 );
+        if ( bytes < 0 || wire == NULL || fread( wire, 1, (size_t) bytes, file ) != (size_t) bytes )
+        {
+            fclose( file ); free( wire );
+            fprintf( stderr, "wire-fuzz regression: cannot read %s\n", test.path ); return 1;
+        }
+        fclose( file );
+        const Codec * codec = NULL;
+        for ( const Codec & candidate : codecs )
+        {
+            if ( candidate.form == 1 && candidate.retain == 0 && strcmp( candidate.unit, test.unit ) == 0 && strcmp( candidate.root, test.root ) == 0 )
+            { codec = &candidate; break; }
+        }
+        if ( codec == NULL ) { free( wire ); fprintf( stderr, "wire-fuzz regression: missing codec %s.%s\n", test.unit, test.root ); return 1; }
+        Reply reply = {};
+        reply.saved = -1;
+        codec->run( wire, bytes, reply );
+        const bool reads = reply.loaded && !reply.refused && !reply.malformed;
+        const bool saved = !reads || ( reply.saved == bytes && reply.bytes != NULL && memcmp( reply.bytes, wire, (size_t) bytes ) == 0 );
+        free( reply.bytes ); free( wire );
+        if ( reads != test.reads || !saved )
+        {
+            fprintf( stderr, "wire-fuzz regression: %s.%s verdict or canonical write-back differs\n", test.unit, test.root ); return 1;
+        }
+    }
+    printf( "wire-fuzz regressions: four file verdicts and fixed-form write-back pass\n" );
+    return 0;
+}
+
 static bool read_exact( void * to, size_t n )
 {
     return n == 0 || fread( to, 1, n, stdin ) == n;
@@ -485,8 +566,9 @@ static void write_i64( int64_t v )
     fwrite( b, 1, 8, stdout );
 }
 
-int main()
+int main( int argc, char ** argv )
 {
+    if ( argc == 2 && strcmp( argv[1], "--regressions" ) == 0 ) { return regression_vectors(); }
     // the roster
     uint32_t count = read_u32();
     if ( count == 0xFFFFFFFFu || count > 4096 ) { fprintf( stderr, "wire-fuzz leg: no roster\n" ); return 1; }
