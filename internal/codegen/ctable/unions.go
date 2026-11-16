@@ -180,9 +180,7 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 			g.wireReadArm(v, armValue("(*value)", v), "            ")
 			g.wireRefusalCheck("            ")
 		}
-		if k != tkUnion {
-			g.pf("            if ( arm.offset != arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
-		}
+		g.pf("            if ( arm.offset != arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 		g.pf("            if ( kind != %d ) { r->report->widened++; }\n", k)
 		g.pf("            value->type = %s;\n", enumConst(un.Name+"Type", v.Name))
 		if !v.Void() && ir.ArmWireFixedWidth(v.F) > 0 {
