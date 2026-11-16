@@ -82,8 +82,10 @@ func pythonGenerate(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string
 	if err != nil {
 		return nil, err
 	}
-	if err := pythontable.AddView(u, out); err != nil {
-		return nil, err
+	if surfaces.View {
+		if err := pythontable.AddView(u, out); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
