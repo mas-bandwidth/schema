@@ -45,6 +45,16 @@ func surfaceForms(s Surfaces, st *ir.Struct) []string {
 	return out
 }
 
+// unitHasCook reports whether any table exposes cook for this selection.
+func unitHasCook(u *ir.Unit, s Surfaces) bool {
+	for _, st := range u.Tables {
+		if st != nil && surfaceCarries(s, st, "cook") {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidateSurfaces applies the shared explicit-list rule. The default
 // set, including an explicit full set, is exempt. Synthetic entries never name
 // the refusal, even though their owner declaration also governs them.
@@ -83,7 +93,7 @@ func ValidateAvailableSurfaces(s Surfaces) error {
 		name    string
 		enabled bool
 	}{
-		{"json", s.JSON}, {"cook", s.Cook}, {"view", s.View},
+		{"json", s.JSON}, {"view", s.View},
 		{"message", s.Message}, {"retain", s.Retain}, {"textform", s.TextForm},
 	} {
 		if item.enabled {

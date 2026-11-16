@@ -38,6 +38,10 @@ class FieldDesc:
     """
 
     __slots__ = (
+        "at",
+        "pieces",
+        "elem_size",
+        "elem_align",
         "name",
         "json_key",
         "required",
@@ -58,7 +62,6 @@ class FieldDesc:
         "map_entry",
         "pointer",
         "optional",
-        "required",
         "array",
         "bound",
         "size",
@@ -84,6 +87,10 @@ class FieldDesc:
         "float_range",
     )
 
+    at: int
+    pieces: tuple[tuple[int, int], ...]
+    elem_size: int
+    elem_align: int
     name: str
     json_key: str
     required: bool
@@ -104,7 +111,6 @@ class FieldDesc:
     map_entry: str
     pointer: bool
     optional: bool
-    required: bool
     array: bool
     bound: int
     size: int
@@ -150,7 +156,6 @@ class FieldDesc:
         map_entry: str = "",
         pointer: bool = False,
         optional: bool = False,
-        required: bool = False,
         array: bool = False,
         bound: int = 0,
         size: int = 0,
@@ -174,7 +179,15 @@ class FieldDesc:
         fmax: float = 0.0,
         float_range: bool = False,
         keyed_list: bool = False,
+        at: int = 0,
+        pieces: tuple[tuple[int, int], ...] = (),
+        elem_size: int = 0,
+        elem_align: int = 1,
     ) -> None:
+        self.at = at
+        self.pieces = pieces
+        self.elem_size = elem_size
+        self.elem_align = elem_align
         self.name = name
         self.json_key = json_key or name
         self.required = required
@@ -195,7 +208,6 @@ class FieldDesc:
         self.map_entry = map_entry
         self.pointer = pointer
         self.optional = optional
-        self.required = required
         self.array = array
         self.bound = bound
         self.size = size
@@ -366,7 +378,7 @@ def _as_bytes(value: Any) -> bytes | None:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "json_array", "forms")
+    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "json_array", "forms", "size", "align", "cook_align", "build_version", "region_align", "bytes_blob_type_id", "string_blob_type_id", "padding", "extent_start")
 
     name: str
     type_id: int
@@ -375,6 +387,16 @@ class TableDesc:
     by_id: dict[int, FieldDesc]
     json_array: bool
     forms: tuple[str, ...]
+    size: int
+    align: int
+    cook_align: int
+    build_version: int
+    region_align: int
+    bytes_blob_type_id: int
+    string_blob_type_id: int
+    padding: tuple[tuple[int, int], ...]
+    extent_start: int
+
 
     def __init__(
         self,
@@ -384,6 +406,16 @@ class TableDesc:
         fields: tuple[FieldDesc, ...],
         json_array: bool = False,
         forms: tuple[str, ...] = ("wire", "json", "block", "cook"),
+        size: int = 0,
+        align: int = 1,
+        cook_align: int = 1,
+        build_version: int = 0,
+        region_align: int = 8,
+        bytes_blob_type_id: int = 0,
+        string_blob_type_id: int = 0,
+        padding: tuple[tuple[int, int], ...] = (),
+        extent_start: int = 0,
+
     ) -> None:
         self.forms = forms
         self.name = name
@@ -392,6 +424,15 @@ class TableDesc:
         self.fields = fields
         self.json_array = json_array
         self.by_id = {field.field_id: field for field in fields}
+        self.size = size
+        self.align = align
+        self.cook_align = cook_align
+        self.build_version = build_version
+        self.region_align = region_align
+        self.bytes_blob_type_id = bytes_blob_type_id
+        self.string_blob_type_id = string_blob_type_id
+        self.padding = padding
+        self.extent_start = extent_start
 
     def field(self, name: str) -> FieldDesc | None:
         for field in self.fields:
@@ -403,7 +444,7 @@ class TableDesc:
 class ArmDesc:
     """One arm of a table-side union."""
 
-    __slots__ = ("name", "tag", "arm_id", "kind", "target", "pointer", "field")
+    __slots__ = ("name", "tag", "arm_id", "kind", "target", "pointer", "field", "size")
 
     name: str
     tag: int
@@ -412,6 +453,7 @@ class ArmDesc:
     target: str
     pointer: bool
     field: FieldDesc | None
+    size: int
 
     def __init__(
         self,
@@ -422,6 +464,7 @@ class ArmDesc:
         pointer: bool = False,
         tag: int = 0,
         field: FieldDesc | None = None,
+        size: int = 0,
     ) -> None:
         self.name = name
         self.tag = tag
@@ -430,21 +473,28 @@ class ArmDesc:
         self.target = target
         self.pointer = pointer
         self.field = field
+        self.size = size
 
 
 class UnionDesc:
     """One generated table-side union: its arms, in declaration order."""
 
-    __slots__ = ("name", "arms", "by_id")
+    __slots__ = ("name", "arms", "by_id", "size", "tag_size", "arm_offset")
 
     name: str
     arms: tuple[ArmDesc, ...]
     by_id: dict[int, ArmDesc]
+    size: int
+    tag_size: int
+    arm_offset: int
 
-    def __init__(self, name: str, arms: tuple[ArmDesc, ...]) -> None:
+    def __init__(self, name: str, arms: tuple[ArmDesc, ...], size: int = 0, tag_size: int = 1, arm_offset: int = 0) -> None:
         self.name = name
         self.arms = arms
         self.by_id = {arm.arm_id: arm for arm in arms}
+        self.size = size
+        self.tag_size = tag_size
+        self.arm_offset = arm_offset
 
 
 _REGISTRY_BY_ID: dict[int, type[Any]] = {}
