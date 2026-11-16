@@ -363,6 +363,68 @@ var unionCases = []unionCase{
 	}},
 }
 
+// unionCaseWire interns references in the order they occur on the wire. Go
+// evaluates nested builder arguments first, so predeclare each outer header
+// before its payload and leave the intentionally malformed payload unchanged.
+func unionCaseWire(c unionCase) []byte {
+	var names []string
+	switch c.name {
+	case "arm-zero-field":
+		names = []string{"pick", "least", "toggle"}
+	case "zero-scalar-arm", "arm-kind-mismatch", "arm-short-width", "arm-long-width", "arm-past-body":
+		names = []string{"pick", "number", "least", "toggle"}
+	case "table-arm-default":
+		names = []string{"pick", "leaf", "least", "toggle"}
+	case "nested-none", "nested-trailing":
+		names = []string{"inner", "pick", "least", "toggle"}
+	case "unknown-arm", "unknown-arm-kind32-nonzero-l", "unknown-arm-kind99", "unknown-arm-bad-bool", "unknown-arm-bad-body":
+		names = []string{"pick", "ghost", "least", "toggle"}
+	case "unknown-arm-element":
+		names = []string{"many", "ghost", "number", "least", "toggle"}
+	case "unknown-arm-nested-table":
+		names = []string{"holder", "pick", "ghost", "least", "toggle"}
+	case "unknown-field-kind32-nonzero-l":
+		names = []string{"ghost_field", "least", "toggle"}
+	case "unknown-field-bad-union":
+		names = []string{"ghost_field", "ghost", "least", "toggle"}
+	case "arm-kind-mismatch-then-damage":
+		names = []string{"pick", "number", "least", "toggle", "ghost_field"}
+	case "arm-nonfinite-then-damage":
+		names = []string{"pick", "ghost", "least", "toggle", "ghost_field"}
+	case "arm-kind-mismatch-then-reserved-node-type":
+		names = []string{"pick", "number", "least", "toggle"}
+	case "void-arm-nonzero-l":
+		names = []string{"pick", "ping", "least", "toggle"}
+	case "bool-arm-two":
+		names = []string{"pick", "toggle", "least"}
+	case "table-arm-trailing":
+		names = []string{"pick", "other", "least", "toggle"}
+	case "count-over-bound", "count-over-extent-cap", "element-kind-mismatch", "element-kind-closed", "element-truncated":
+		names = []string{"many", "least", "toggle"}
+	case "below-minimum", "counted-one-none":
+		names = []string{"least"}
+	case "absent-minimum":
+		names = []string{"pick", "number"}
+	case "fixed-all-none":
+		names = []string{"trail", "least", "toggle"}
+	case "fixed-short":
+		names = []string{"trail", "ping", "least", "toggle"}
+	case "nested-table-union":
+		names = []string{"holder", "pick", "number", "least", "toggle"}
+	default:
+		panic("no physical ID order for union case " + c.name)
+	}
+	var w unionWire
+	for _, name := range names {
+		w.ref(name)
+	}
+	if c.name == "arm-kind-mismatch-then-reserved-node-type" {
+		w.refID(ir.TableNodeWireId)
+		w.refID(ir.TableBuildVersionWireId)
+	}
+	return c.build(&w)
+}
+
 // unionsProbe prints one line per check, and a check that raises prints its
 // error on its own line instead of stopping the probe, so a planted fault
 // takes out the lines of the check it breaks and leaves the others standing.
@@ -552,8 +614,7 @@ func unionTree(t *testing.T, u *ir.Unit, mutate func(map[string][]byte) error) (
 	put("trail_elided.bin", unionEngineWire(t, u, unionTrailElidedText))
 	var names []string
 	for _, c := range unionCases {
-		var w unionWire
-		put("case_"+c.name+".bin", c.build(&w))
+		put("case_"+c.name+".bin", unionCaseWire(c))
 		names = append(names, c.name)
 	}
 	put("cases.txt", []byte(strings.Join(names, "\n")+"\n"))
@@ -585,8 +646,7 @@ func unionWant(t *testing.T, u *ir.Unit) []string {
 		"OK",
 	}
 	for _, c := range unionCases {
-		var w unionWire
-		verdict := unionEngineVerdict(t, u, c.build(&w))
+		verdict := unionEngineVerdict(t, u, unionCaseWire(c))
 		if !strings.HasPrefix(verdict, c.engine) {
 			t.Errorf("case %s: the engine now answers %q, written for %q", c.name, verdict, c.engine)
 		}
