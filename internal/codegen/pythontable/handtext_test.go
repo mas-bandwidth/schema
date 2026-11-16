@@ -89,6 +89,12 @@ else:
 doc = Counters.from_text_form(b'(:small 7 :enabled true)')
 edited = doc.edit([('small', b'8'), ('enabled', b'false')])
 assert edited.write() == b'(:small 8 :enabled false)' and doc.write() == b'(:small 7 :enabled true)'
+try:
+    doc.edit([('small', b'7'), ('small', b'8')])
+except TextError as e:
+    assert e.reason == 'text_edit_conflict'
+else:
+    raise AssertionError('overlapping no-op edit')
 nested = Root.from_text_form(b'(:counter (:small 7))')
 assert nested.edit([('counter.small', b'8')]).write() == b'(:counter (:small 8))'
 assert nested.edit([(('counter', 'small'), b'9')]).write() == b'(:counter (:small 9))'
