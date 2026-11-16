@@ -10,8 +10,9 @@ name. Form-2 message retention is refused by name under SPEC-TABLES §3.3 and
 §6.6.
 
 Each record stores its original and current node index, body path, resolved
-field ID, kind and payload. A Patricia index and its links occupy the same
-record buffer. Each retained-ID entry stores the ID, its merged output slot,
+field ID, kind and payload. A reserved node-table ID marks a null reference
+inside resolved payloads; the legal hash-zero ID remains distinct. A Patricia
+index and its links occupy the same record buffer. Each retained-ID entry stores the ID, its merged output slot,
 and an AVL index in the caller's ID buffer. Known IDs use the schema's fixed
 ID inventory and the ordinary writer's own table. An unknown record is placed
 whole or lost whole. The writer reserves IDs required by the known-value walk
