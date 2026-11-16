@@ -126,6 +126,13 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
         w.varint(0)
         return
     f = arm.field
+    if isinstance(ctx, _save._RetainCtx) and f.codec == "union":
+        w.varint(ctx.idref(arm.arm_id))
+        w.byte(f.kind)
+        frame = w.begin_frame()
+        _write_union_element(w, _union_class(f.target), value, ctx)
+        w.finish_frame(frame)
+        return
     if f.kind in _LENGTH_KINDS:
         # The arm's field line IS the arm header: the field id is the arm id,
         # and the field's own L is the arm's L, so the codec writes in place.
@@ -369,25 +376,32 @@ class _UnionArray:
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         reference = ctx.idref(fd.field_id)
-        body = bytearray()
-        bw = _writer(body)
-        bw.byte(15)
-        bw.varint(len(value))
-        un = _union_class(fd.target)
         if isinstance(ctx, _save._RetainCtx):
+            w.varint(reference)
+            w.byte(fd.kind)
+            frame = w.begin_frame()
+            w.byte(15)
+            w.varint(len(value))
+            un = _union_class(fd.target)
             parent = ctx.steps
             ordinal = ctx.ordinal
             for index, element in enumerate(value):
                 ctx.steps = parent + ((ordinal, index),)
-                _write_union_element(bw, un, element, ctx)
+                _write_union_element(w, un, element, ctx)
             ctx.steps = parent
+            w.finish_frame(frame)
         else:
+            body = bytearray()
+            bw = _writer(body)
+            bw.byte(15)
+            bw.varint(len(value))
+            un = _union_class(fd.target)
             for element in value:
                 _write_union_element(bw, un, element, ctx)
-        w.varint(reference)
-        w.byte(fd.kind)
-        w.varint(len(body))
-        w.raw(body)
+            w.varint(reference)
+            w.byte(fd.kind)
+            w.varint(len(body))
+            w.raw(body)
 
 
 kinds.register("union", _Union())

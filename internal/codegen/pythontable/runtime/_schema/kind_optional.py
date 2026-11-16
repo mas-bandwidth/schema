@@ -72,12 +72,17 @@ def _write_element(w: Any, elem: FieldDesc, item: Any, ctx: Any) -> None:
     if elem.codec == "int":
         w.raw(int(item).to_bytes(kind_int._width(elem), "little", signed=elem.lo < 0))
         return
-    from .save import write_body
+    from .save import _RetainCtx, write_body
 
-    body = bytearray()
-    write_body(_writer(body), item, ctx, False)
-    w.varint(len(body))
-    w.raw(body)
+    if isinstance(ctx, _RetainCtx):
+        frame = w.begin_frame()
+        write_body(w, item, ctx, False)
+        w.finish_frame(frame)
+    else:
+        body = bytearray()
+        write_body(_writer(body), item, ctx, False)
+        w.varint(len(body))
+        w.raw(body)
 
 
 def _writer(buf: bytearray) -> Any:
@@ -118,12 +123,13 @@ def _write_array(w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
     elem = _elem(fd)
     w.varint(ctx.idref(fd.field_id))
     w.byte(fd.kind)
-    body = bytearray()
-    bw = _writer(body)
-    bw.byte(elem.kind)
-    bw.varint(len(value))
     from .save import _RetainCtx
 
+    frame = w.begin_frame() if isinstance(ctx, _RetainCtx) else None
+    body = bytearray() if frame is None else None
+    bw = _writer(body) if body is not None else w
+    bw.byte(elem.kind)
+    bw.varint(len(value))
     if isinstance(ctx, _RetainCtx) and elem.codec == "table":
         parent = ctx.steps
         ordinal = ctx.ordinal
@@ -134,8 +140,12 @@ def _write_array(w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
     else:
         for item in value:
             _write_element(bw, elem, item, ctx)
-    w.varint(len(body))
-    w.raw(body)
+    if frame is None:
+        assert body is not None
+        w.varint(len(body))
+        w.raw(body)
+    else:
+        w.finish_frame(frame)
 
 
 class _Optional:

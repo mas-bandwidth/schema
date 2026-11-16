@@ -34,6 +34,34 @@ class Writer:
         if self.buf is not None:
             self.buf.extend(data)
 
+    def begin_frame(self) -> int:
+        mark = self.count
+        for _ in range(10):
+            self.byte(0)
+        return mark
+
+    def finish_frame(self, mark: int) -> None:
+        self.finish_varint(mark, self.count - mark - 10)
+
+    def finish_varint(self, mark: int, value: int) -> None:
+        prefix = bytearray()
+        while value >= 128:
+            prefix.append((value & 127) | 128)
+            value >>= 7
+        prefix.append(value)
+        shift = 10 - len(prefix)
+        if self.buf is not None:
+            self.buf[mark:mark + len(prefix)] = prefix
+            for source in range(mark + 10, self.count):
+                self.buf[source - shift] = self.buf[source]
+            del self.buf[self.count - shift:self.count]
+        self.count -= shift
+
+    def truncate(self, mark: int) -> None:
+        if self.buf is not None:
+            del self.buf[mark:]
+        self.count = mark
+
     def varint(self, value: int) -> None:
         if value < 0:
             raise InvalidValue("", "a reference is negative")
@@ -194,27 +222,24 @@ def _write_retain_body(writer: Writer, value: Any, ctx: _RetainCtx, root: bool) 
     if root and ctx.order:
         writer.varint(ctx.idref(NODE_WIRE_ID))
         writer.byte(12)
-        payload = bytearray()
-        nodes = Writer(payload)
-        nodes.varint(len(ctx.order))
+        nodes_frame = writer.begin_frame()
+        writer.varint(len(ctx.order))
         for index, node in enumerate(ctx.order):
             if isinstance(node, kind_blob._BlobNode):
                 type_id = kind_blob._STRING_BLOB_ID if node.string else kind_blob._BYTES_BLOB_ID
-                nodes.varint(ctx.idref(type_id))
-                nodes.varint(len(node.body))
-                nodes.raw(node.body)
+                writer.varint(ctx.idref(type_id))
+                writer.varint(len(node.body))
+                writer.raw(node.body)
                 continue
-            nodes.varint(ctx.idref(node.descriptor.type_id))
-            body = bytearray()
+            writer.varint(ctx.idref(node.descriptor.type_id))
+            node_frame = writer.begin_frame()
             ctx.node = index + 2
             ctx.steps = ()
-            _write_retain_body(Writer(body), node, ctx, False)
-            nodes.varint(len(body))
-            nodes.raw(body)
+            _write_retain_body(writer, node, ctx, False)
+            writer.finish_frame(node_frame)
         ctx.node = 1
         ctx.steps = parent_steps
-        writer.varint(len(payload))
-        writer.raw(payload)
+        writer.finish_frame(nodes_frame)
     writer.byte(0)
     ctx.current = previous
 

@@ -909,3 +909,35 @@ print('fixed-refusal')
 		}
 	}
 }
+
+func TestPythonRetainDirectFrameBoundaries(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe._schema.save import Writer
+def leb(n):
+    out=bytearray()
+    while n>=128: out.append((n&127)|128); n >>= 7
+    out.append(n); return bytes(out)
+for n in (0,1,126,127,128,129,16383,16384):
+    payload=bytes([91])*n
+    output=bytearray(); w=Writer(output)
+    a=w.begin_frame(); b=w.begin_frame(); w.raw(payload); w.finish_frame(b); w.finish_frame(a)
+    expected=leb(len(leb(n))+n)+leb(n)+payload
+    assert output==expected and w.count==len(expected), n
+    count=Writer(None); a=count.begin_frame(); b=count.begin_frame(); count.raw(payload); count.finish_frame(b); count.finish_frame(a)
+    assert count.count==len(expected), n
+print('frames')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "frames" {
+			t.Fatalf("direct frame: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}

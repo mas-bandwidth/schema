@@ -44,13 +44,18 @@ class _Table:
         self.write_element(w, fd, value, ctx)
 
     def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        from .save import write_body
+        from .save import _RetainCtx, write_body
 
-        body = bytearray()
-        bw = _body_writer(body)
-        write_body(bw, value, ctx, False)
-        w.varint(len(body))
-        w.raw(body)
+        if isinstance(ctx, _RetainCtx):
+            frame = w.begin_frame()
+            write_body(w, value, ctx, False)
+            w.finish_frame(frame)
+        else:
+            body = bytearray()
+            bw = _body_writer(body)
+            write_body(bw, value, ctx, False)
+            w.varint(len(body))
+            w.raw(body)
 
 
 def _body_writer(buf: bytearray) -> Any:

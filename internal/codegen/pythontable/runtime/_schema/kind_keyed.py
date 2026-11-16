@@ -133,6 +133,9 @@ class _Keyed:
 
         elem = _elem(fd)
         values = value if fd.keyed_list else value._values
+        if isinstance(ctx, _RetainCtx):
+            _write_retain(w, fd, elem, values, ctx)
+            return
         # THE FIELD'S ID IS USED FIRST, then each present slot's key and its
         # element's ids, in the order the bytes ride (§3)
         mark = len(ctx.ids)
@@ -177,6 +180,46 @@ class _Keyed:
         w.byte(fd.kind)
         w.varint(len(inner))
         w.raw(inner)
+
+
+def _write_retain(w: Any, fd: FieldDesc, elem: FieldDesc, values: list[Any], ctx: Any) -> None:
+    from .save import write_body
+
+    start = w.count
+    ids_start = len(ctx.ids)
+    w.varint(ctx.idref(fd.field_id))
+    w.byte(fd.kind)
+    frame = w.begin_frame()
+    w.byte(elem.kind)
+    count_mark = w.begin_frame()
+    present = 0
+    for slot in range(len(fd.keys)):
+        current = values[slot]
+        if elem.codec != "table" and elem.is_default(current):
+            continue
+        start_slot = w.count
+        ids_slot = len(ctx.ids)
+        w.varint(ctx.idref(fd.keys[slot]))
+        element_frame = w.begin_frame()
+        if elem.codec == "table":
+            parent = ctx.steps
+            ctx.steps = parent + ((fd.ordinal, slot),)
+            write_body(w, current, ctx, False)
+            ctx.steps = parent
+            if w.count == element_frame + 11:
+                _rollback(ctx, ids_slot)
+                w.truncate(start_slot)
+                continue
+        else:
+            _write_scalar(w, elem, current)
+        w.finish_frame(element_frame)
+        present += 1
+    if not present:
+        _rollback(ctx, ids_start)
+        w.truncate(start)
+        return
+    w.finish_varint(count_mark, present)
+    w.finish_frame(frame)
 
 
 def _write_scalar(w: Any, elem: FieldDesc, value: Any) -> None:

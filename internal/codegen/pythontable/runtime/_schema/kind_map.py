@@ -130,14 +130,19 @@ class _Map:
         value_default = value_field.is_default
         field_ref = ctx.idref(fd.field_id)
         keys = _sorted_keys(fd, value)
-        body = bytearray()
-        body_writer = Writer(body)
+        if isinstance(ctx, _RetainCtx):
+            w.varint(field_ref)
+            w.byte(fd.kind)
+        frame = w.begin_frame() if isinstance(ctx, _RetainCtx) else None
+        body = bytearray() if frame is None else None
+        body_writer = Writer(body) if body is not None else w
         body_writer.byte(13)
         body_writer.varint(len(keys))
         for index, key in enumerate(keys):
             item = value[key]
-            entry_body = bytearray()
-            entry_writer = Writer(entry_body)
+            entry_frame = body_writer.begin_frame() if isinstance(ctx, _RetainCtx) else None
+            entry_body = bytearray() if entry_frame is None else None
+            entry_writer = Writer(entry_body) if entry_body is not None else body_writer
             if not key_default(key):
                 key_codec.write(entry_writer, key_field, key, ctx)
             if isinstance(ctx, _RetainCtx):
@@ -156,12 +161,20 @@ class _Map:
             elif not value_default(item):
                 value_codec.write(entry_writer, value_field, item, ctx)
             entry_writer.byte(0)
-            body_writer.varint(len(entry_body))
-            body_writer.raw(entry_body)
-        w.varint(field_ref)
-        w.byte(fd.kind)
-        w.varint(len(body))
-        w.raw(body)
+            if entry_frame is None:
+                assert entry_body is not None
+                body_writer.varint(len(entry_body))
+                body_writer.raw(entry_body)
+            else:
+                body_writer.finish_frame(entry_frame)
+        if frame is None:
+            assert body is not None
+            w.varint(field_ref)
+            w.byte(fd.kind)
+            w.varint(len(body))
+            w.raw(body)
+        else:
+            w.finish_frame(frame)
 
 
 kinds.register("map", _Map())
