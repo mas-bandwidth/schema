@@ -34,6 +34,7 @@
 package lockfile
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -470,6 +471,29 @@ func salvageLineage(locked, live *Unit) {
 	}
 }
 
+// checkLineageWireFacts closes the same-key shortcut as well as append's
+// duplicate-key guard. Hash equality never permits different stored wire facts,
+// even when historical writer metadata was not captured.
+func checkLineageWireFacts(table string, old, next LineageEntry) error {
+	if old.Wire != next.Wire {
+		return nil
+	}
+	var changed []string
+	if !bytes.Equal(old.Layout, next.Layout) {
+		changed = append(changed, "layout bytes")
+	}
+	if !bytes.Equal(old.Digest, next.Digest) {
+		changed = append(changed, "definitions digest")
+	}
+	if old.Record != next.Record {
+		changed = append(changed, "record-body size")
+	}
+	if len(changed) != 0 {
+		return fmt.Errorf("fixed table %s: wire identity collision wire=0x%016x: equal keys carry different %s; historical facts cannot be replaced or treated as unchanged", table, old.Wire, strings.Join(changed, ", "))
+	}
+	return nil
+}
+
 // mergeLineage carries the committed history forward onto the rendering that is
 // about to be written, and appends the live layout when the hash has MOVED —
 // "one entry per layout-hash change AT COMMIT, judged by the check that runs
@@ -493,6 +517,9 @@ func mergeLineage(locked, live *Unit) error {
 		cur := lv.Lineage[0]
 		history := append([]LineageEntry(nil), lk.Lineage...)
 		last := history[len(history)-1]
+		if err := checkLineageWireFacts(lv.Name, last, cur); err != nil {
+			return err
+		}
 		if last.Wire == cur.Wire {
 			if last.Writer != nil && !sameWriterConstraints(last.Writer, cur.Writer) {
 				return fmt.Errorf("fixed table %s: distinct captured writer constraints share legacy wire=0x%016x; preserving the old snapshot requires a separate wire-identity correction, not an overwrite", lv.Name, cur.Wire)
@@ -575,11 +602,14 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 			}
 		}
 	}
-	if policy != Current || len(lv.Lineage) != 1 {
+	if lv == nil || len(lv.Lineage) != 1 {
 		return nil
 	}
 	last, cur := lk.Lineage[len(lk.Lineage)-1], lv.Lineage[0]
-	if last.Wire == cur.Wire {
+	if err := checkLineageWireFacts(lk.Name, last, cur); err != nil {
+		return err
+	}
+	if policy != Current || last.Wire == cur.Wire {
 		return nil
 	}
 	return lineageDrift{stale(lk.Decl, lk.Name,
