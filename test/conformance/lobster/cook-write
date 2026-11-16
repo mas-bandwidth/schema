@@ -1,0 +1,85 @@
+#!/bin/sh
+# THE LOBSTER LEG's cook-write surface held whole (test/conformance/README.md;
+# docs/SPEC-TABLES.md §7.2, §7.6; docs/rulings.json fixed-dead-bytes-are-zero).
+# The leg's other surfaces belong to their own targets, so the harness run's
+# own exit status is not this verdict: the log's cook-write line must read
+# `pass N/N` with the same N twice and no `+Ka` absence suffix, and the log
+# must carry no RELAXED line for `lobster / cook-write`.
+#
+#   check             runs the harness over build/conformance-lobster
+#   negative-control  re-emits the leg's cook writer with the counted array's
+#                     dead-slot zeroing removed (a sed over a copy of
+#                     runtime/cook.lobster, `go build -overlay` into a private
+#                     compiler, the units regenerated) and requires the check
+#                     red, on the root_full row
+#
+# Nothing tracked is written; everything lands under build/.
+# usage: test/conformance/lobster/cook-write <check|negative-control>
+set -eu
+
+mode=$1
+root=$(pwd)
+
+# holds reports whether a harness log holds the cook-write surface whole
+holds() {
+    grep -Eq '^cook-write +pass ([0-9]+)/\1 *$' "$1" || return 1
+    if grep -Fq 'RELAXED' "$1" && grep 'RELAXED' "$1" | grep -Fq 'lobster / cook-write'; then
+        return 1
+    fi
+    return 0
+}
+
+case "$mode" in
+check)
+    out=build/conformance-lobster-cook-write
+    rm -rf "$out" && mkdir -p "$out"
+    build/conformance-harness run --only lobster > "$out/log" 2>&1 || true
+    if ! holds "$out/log"; then
+        grep -E '^cook-write |lobster / cook-write' "$out/log" >&2 || cat "$out/log" >&2
+        echo "conformance-lobster-cook-write FAILED: lobster / cook-write is not pass N/N, unrelaxed" >&2
+        exit 1
+    fi
+    echo "conformance-lobster-cook-write: $(grep -E '^cook-write ' "$out/log" | tr -s ' ')"
+    ;;
+negative-control)
+    out=build/conformance-lobster-cook-write-negative-control
+    rm -rf "$out" && mkdir -p "$out"
+    source=internal/codegen/lobstertable/runtime/cook.lobster
+    sed 's/^    let n = min(save_live_count(fd, sl), length(sl\.elems))$/    let n = length(sl.elems)/' "$source" > "$out/cook.lobster"
+    if cmp -s "$source" "$out/cook.lobster"; then
+        echo "NEGATIVE CONTROL: the cook-write sabotage patched nothing in $source" >&2
+        exit 1
+    fi
+    printf '{"Replace":{"%s/%s":"%s/%s/cook.lobster"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+    go build -overlay "$root/$out/overlay.json" -o "$out/schema-lobster" ./cmd/schema
+    # the units exactly as make/lobster.mk's build/conformance-lobster generates them
+    mkdir -p "$out/generated"
+    grep '^unit ' testdata/conformance/tables/MANIFEST.txt |
+    while read -r _ key paths; do
+        # shellcheck disable=SC2086
+        if ! "$out/schema-lobster" generate --lang lobster --out "$out/generated/$key" $paths > "$out/generated/$key.log" 2>&1; then
+            rm -rf "$out/generated/$key"
+            mv "$out/generated/$key.log" "$out/generated/$key.refused"
+        else
+            rm -f "$out/generated/$key.log"
+        fi
+    done
+    lobster="${LOBSTER:-$root/dist/lobster-v2026.8/bin/lobster}"
+    printf '#!/bin/sh\nexec env LOBSTER_CONFORMANCE_UNITS=%s/%s/generated LOBSTER=%s %s/test/conformance/lobster/driver "$@"\n' \
+        "$root" "$out" "$lobster" "$root" > "$out/driver"
+    chmod +x "$out/driver"
+    printf 'lobster %s/driver\n' "$out" > "$out/drivers.txt"
+    build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || true
+    if holds "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED: the dead-slot zeroing was removed and lobster / cook-write still holds" >&2
+        exit 1
+    fi
+    if ! grep -Eq 'lobster / cook-write: root_full: ' "$out/log"; then
+        grep -E '^cook-write |lobster / cook-write' "$out/log" >&2 || cat "$out/log" >&2
+        echo "NEGATIVE CONTROL FAILED: the sabotage did not turn the root_full row red" >&2
+        exit 1
+    fi
+    echo "conformance-lobster-cook-write negative control: dead counted slots written turn lobster / cook-write red ($(grep -E '^cook-write ' "$out/log" | tr -s ' '))"
+    ;;
+*) echo "unknown mode: $mode" >&2; exit 1 ;;
+esac
