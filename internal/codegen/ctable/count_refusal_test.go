@@ -274,6 +274,13 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 				t.Fatalf("%s/%d: retaining oracle count refusal: ok=%v err=%v report=%+v retained=%d", shape, count, ok, err, rr, retained.Used())
 			}
 			fn := ir.RustSnake(root)
+			// An unreachable record or repeated map key is a second fault; its
+			// refusal may precede the oversized count. The reachable node and
+			// ascending map cases separately pin the count reason.
+			reasonCheck := "report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP"
+			if shape == "unreachable-node" || shape == "map-equal" {
+				reasonCheck = "report.refused"
+			}
 			fmt.Fprintf(&body, `
     {
         static const uint8_t wire[] = { %s };
@@ -287,9 +294,8 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             memset(region, 0xa5, sizeof(region));
             loaded = retaining ? (const void *)%s_load_retain(region, sizeof(region), wire, sizeof(wire), &store, &report)
                                : (const void *)%s_load(region, sizeof(region), wire, sizeof(wire), &report);
-            if (report.refuse_reason != SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP) fprintf(stderr, "VERDICT r=%%d reason=%%d rr=%%d\n", report.refused, report.reason, report.refuse_reason);
             CHECK(loaded == NULL, "%s/%d partial region");
-            CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d count verdict");
+            CHECK(%s, "%s/%d count verdict");
             CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "%s/%d discarded retain");
         }
         {
@@ -299,13 +305,13 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             before = *value;
             memset(&report, 0, sizeof(report));
             CHECK(!%s_load_builder(&builder, wire, sizeof(wire), &report), "%s/%d builder accepted");
-            CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d builder verdict");
+            CHECK(%s, "%s/%d builder verdict");
             value = %s_builder_root(&builder);
             CHECK(value == NULL || memcmp(value, &before, sizeof(before)) == 0, "%s/%d builder discarded partial value");
             %s_builder_shutdown(&builder);
         }
     }
-`, cBytes(wire), fn, fn, shape, count, shape, count, shape, count, root, root, root, fn, shape, count, fn, shape, count, fn, shape, count, shape, count, fn, shape, count, fn)
+`, cBytes(wire), fn, fn, shape, count, reasonCheck, shape, count, shape, count, root, root, root, fn, shape, count, fn, shape, count, fn, shape, count, reasonCheck, shape, count, fn, shape, count, fn)
 		}
 		// Equal map keys and an unreachable node are deliberately invalid in
 		// their own right. Their valid twins use the corresponding ascending map
