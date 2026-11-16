@@ -446,6 +446,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
 	b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
+	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
@@ -616,19 +617,32 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("\n    @classmethod\n")
 	if straight {
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
-		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
 	} else {
 		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
+	}
+	if st.Integrity == "crc32c" {
+		b.WriteString("        data = _s_open_crc(data)\n")
+	}
+	if straight {
+		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
+	} else {
 		b.WriteString("        return load_table(cls, data, report)\n")
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
+	call := "save_table(self)"
 	if straight {
-		fmt.Fprintf(b, "        return _s_save_%s(self)\n", name)
-	} else {
-		b.WriteString("        return save_table(self)\n")
+		call = fmt.Sprintf("_s_save_%s(self)", name)
 	}
+	if st.Integrity == "crc32c" {
+		call = "_s_seal_crc(" + call + ")"
+	}
+	fmt.Fprintf(b, "        return %s\n", call)
 	b.WriteString("\n    def measure(self) -> int:\n")
-	b.WriteString("        return measure_table(self)\n")
+	if st.Integrity == "crc32c" {
+		b.WriteString("        return measure_table(self) + 4\n")
+	} else {
+		b.WriteString("        return measure_table(self)\n")
+	}
 	if st.CarriesForm("json") {
 		b.WriteString("\n    @classmethod\n")
 		b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
