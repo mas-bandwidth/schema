@@ -185,18 +185,27 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			continue
 		}
 		if target == "python" {
-			// the optional kind carries the form (compiler/
-			// carries_python_optional.go): an element kind the Python
-			// runtime carries rides the array framing, and one a later card
-			// owns (float32, an enum) keeps a descriptor that refuses by name
-			// at the runtime (internal/codegen/pythontable)
+			// Each optional array names the array framing and its own carried
+			// element codec, including table, float32 and enum elements.
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang python refused the supported shape: %v", err)
 			}
 			module := string(files["probe/Probe.py"])
-			if !strings.Contains(module, `inner="array",`) || !strings.Contains(module, `inner="unsupported",`) {
-				t.Fatalf("--lang python: the optional arrays' descriptors do not name their inner codecs:\n%s", module)
+			for field, element := range map[string]string{"entries": "table", "weights": "float32", "grades": "enum"} {
+				i := strings.Index(module, `name="`+field+`",`)
+				if i < 0 {
+					t.Fatalf("--lang python: no descriptor for %s", field)
+				}
+				row, _, _ := strings.Cut(module[i:], "\n        ),")
+				for _, want := range []string{`codec="optional",`, `inner="array",`, `elem=FieldDesc(`, `codec="` + element + `",`} {
+					if !strings.Contains(row, want) {
+						t.Errorf("--lang python: %s descriptor lacks %s:\n%s", field, want, row)
+					}
+				}
+				if strings.Contains(row, `"unsupported"`) {
+					t.Errorf("--lang python: %s descriptor contains unsupported codec:\n%s", field, row)
+				}
 			}
 			continue
 		}
