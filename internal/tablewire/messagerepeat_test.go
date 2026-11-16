@@ -75,6 +75,53 @@ func messageSplice(src []byte, from, to int, w *bitWriter) {
 	}
 }
 
+// messageRepeatWriterUnit is messageRepeatUnit with one field the reader does
+// not declare: a repeated UNKNOWN field id is the id-twice rule's own case,
+// since the writer-order check cannot place a field it cannot name.
+const messageRepeatWriterUnit = `package messagerepeat
+
+enum Mode { Idle, Run, Fly }
+
+flags Cap { Trace, Verbose }
+
+fixed table Child
+{
+    n int32 | min = -50, max = 50
+    s string(3)
+}
+
+union Arm
+{
+    c   Child
+    k   uint8
+    t   string(4)
+}
+
+fixed table Root
+{
+    flag   bool
+    mode   Mode
+    cap    Cap
+    ratio  float32 | min = 0, max = 1, resolution = 0.01
+    f64    float64
+    counts [..4]uint8
+    fixedc [3]int16
+    by     [Mode]int32
+    arm    Arm
+    arms   [..2]Arm
+    wtext  string(16)
+    bi     bits(9)
+    wide   int128 | min = -1000000000000000000000, max = 1000000000000000000000
+    q      fixed(8, 8) | min = -100, max = 100
+    at     timestamp
+    kid    Child
+    okid   ?Child
+    opt    ?int64
+    raw    bytes(5)
+    zzz    uint8
+}
+`
+
 // TestMessageRefusesRepeatedFieldId holds docs/SPEC-TABLES.md §3.3: a field id
 // twice in one message body (the first body's fields, then a second body's,
 // under one terminator) is damage, and the batch refuses wire_damaged.
@@ -104,6 +151,32 @@ func TestMessageRefusesRepeatedFieldId(t *testing.T) {
 		if ok || RefusalReason(err) != ReasonWireDamaged {
 			t.Errorf("%s then %s: a repeated field id answered ok=%v err=%v: %s", pair[0], pair[1], ok, err, hex.EncodeToString(data))
 		}
+	}
+
+	// A repeated UNKNOWN field id is the id-twice rule's own case: the reader
+	// cannot place the field, so the writer-order check does not see it and the
+	// id-twice check is what refuses it.
+	writer := covModel(t, messageRepeatWriterUnit)
+	var wvoc Vocabulary
+	wvoc.AnnounceRead(Announce(writer.Unit), &ann)
+	x, _ := EncodeMessage(writer, covPlace(t, writer, "Root", `{"zzz":5}`))
+	y, _ := EncodeMessage(writer, covPlace(t, writer, "Root", `{"zzz":6}`))
+	ex := messageBodyEnd(t, writer, &wvoc, x)
+	ey := messageBodyEnd(t, writer, &wvoc, y)
+	rb := wvoc.RefBits()
+	w := &bitWriter{}
+	w.put(2, 8)
+	w.put(0, 8)
+	messageSplice(x[1:], 8, ex-rb, w)
+	messageSplice(y[1:], 8, ey, w)
+	w.align()
+	data := w.b
+	inst := m.New(root)
+	v := wvoc
+	var rep tabletext.Report
+	ok, err := DecodeMessage(m, inst, data, &v, &rep)
+	if ok || RefusalReason(err) != ReasonWireDamaged {
+		t.Errorf("an unknown field twice: a repeated field id answered ok=%v err=%v: %s", ok, err, hex.EncodeToString(data))
 	}
 }
 
