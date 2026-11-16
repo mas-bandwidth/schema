@@ -12,7 +12,7 @@ body's closed list, a slot whose element does not fill its L exactly, and a
 byte left inside the body's L each refuse the whole load.
 """
 
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 from . import InvalidValue, Refused
 from . import descriptor, kinds
@@ -154,7 +154,11 @@ class _Keyed:
                 if elem.is_default(current):
                     _rollback(ctx, slot_mark)  # a default slot elides
                     continue
-                _write_scalar(Writer(element), elem, current)
+                if elem.codec == "enum":
+                    codec = cast(kinds._ElementKind, kinds._REGISTRY[elem.codec])
+                    codec.write_element(Writer(element), elem, current, ctx)
+                else:
+                    _write_scalar(Writer(element), elem, current)
             sw.varint(key)
             sw.varint(len(element))
             sw.raw(element)
