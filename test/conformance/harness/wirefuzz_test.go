@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
+	"encoding/binary"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The root name moves to an unknown field; its default replaces only that
@@ -23,19 +24,61 @@ func TestFileFuzzUnknownFieldPreservesBlobGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire, err := hex.DecodeString("010c0c03617274021102031106041107050c43060618010c05627269636b0708070000000811030911040a1105000b030102030c036361700608010c047461696c000b05deadbeef7f0c0b68656c6c6f20626c6f627300861b638ebaadbcc4030c9a5fcc128f0a03b2f40f72193b61dd7c58d1bafbf83bfffffffffffffffffb645ffecc6d4e8e43326721d7969cef054aa33067555b85a5024c86eb28aa5d28f025a0ba6c31e5e44f1c4f47c02e2f58fcaffad8e04b700c00000000000000")
+	pin := wireBytes(t, "testdata/wire/tables/blob_small.bin")
+	wire := bytes.Clone(pin)
+	frame := frameWire(wire)
+	if len(frame.entries) == 0 || len(wire) < 2 || wire[1] != 1 {
+		t.Fatal("pinned graph no longer names Catalog.name in the first slot")
+	}
+	// Keep reference 1 in its original position; changing its entry makes the
+	// field unknown without leaving an unused entry or changing first-use order.
+	const unknownID uint64 = 0x123456789abcdef0
+	for _, field := range root.def.Fields {
+		if ir.TableFieldWireId(field) == unknownID {
+			t.Fatal("unknown field ID names a Catalog field")
+		}
+	}
+	for _, id := range frame.entries {
+		if id == unknownID {
+			t.Fatal("unknown field ID already appears in the pinned table")
+		}
+	}
+	// The name ID is also used by nested records. Preserve those occurrences
+	// by moving them to a new slot, then number the table in first-use order.
+	nameID := frame.entries[0]
+	newSlot := uint64(len(frame.entries) + 1)
+	if newSlot >= 128 {
+		t.Fatal("pinned graph needs a wider reference")
+	}
+	for _, spot := range frame.spots {
+		if spot.off == 1 || spot.value != 1 {
+			continue
+		}
+		switch spot.kind {
+		case spotRef, spotArm, spotKey, spotVariant, spotRecordType:
+			if spot.width != 1 {
+				t.Fatal("pinned name reference is not one byte")
+			}
+			wire[spot.off] = byte(newSlot)
+		}
+	}
+	binary.LittleEndian.PutUint64(wire[frame.entriesAt:], unknownID)
+	var entry [8]byte
+	binary.LittleEndian.PutUint64(entry[:], nameID)
+	wire = append(wire[:len(wire)-8], entry[:]...)
+	var count [8]byte
+	binary.LittleEndian.PutUint64(count[:], newSlot)
+	wire = append(wire, count[:]...)
+	wire, err = firstUseOrder(wire)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if fault := framingTableFault(framingVector{}, wire); fault != "" {
+		t.Fatalf("unknown-field mutant has non-canonical id table: %s", fault)
 	}
 	answer, err := root.oracle(wire)
 	if err != nil {
 		t.Fatal(err)
-	}
-	pin := wireBytes(t, "testdata/wire/tables/blob_small.bin")
-	mutated := bytes.Clone(pin)
-	mutated[1] = 12 // original first field reference 1 names Catalog.name
-	if !bytes.Equal(mutated, wire) {
-		t.Fatal("fixture changed beyond the root field identity")
 	}
 	want := root.model.New(root.def)
 	if ok, err := tablewire.Decode(root.model, want, pin, &tabletext.Report{}); err != nil || !ok {
