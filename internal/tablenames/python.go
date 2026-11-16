@@ -15,6 +15,7 @@ const Python Backend = 1 << 13
 
 func init() {
 	define(Python,
+		Name{Name: "BlobRef", What: "an explicit shared byte or string blob node", Scoped: true},
 		Name{Name: "Refused", What: "the read refusal every generated package re-exports", Scoped: true},
 		Name{Name: "InvalidValue", What: "the write refusal every generated package re-exports", Scoped: true},
 		Name{Name: "LoadReport", What: "the counters a successful load fills", Scoped: true},
