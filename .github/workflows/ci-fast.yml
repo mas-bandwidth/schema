@@ -60,7 +60,7 @@ name: CI fast
 # minutes is reachable; twenty seconds is not, without a self-hosted warm pool.
 #
 # THE MERGE GATE RUNS ON THE FLEET, like every Linux job in .github/workflows:
-# we run our own GitHub runners on the fleet. `plan`, `lint-fast`,
+# we run our own GitHub runners on the fleet. `plan`, `lint-fast`, `ci-policy`,
 # `block-gate` and `go-test-touched` are the checks a pull request must pass,
 # and each is `runs-on: [self-hosted, Linux, X64, fleet, schema]` behind the
 # fork guard below. The hosted queue was the failure mode that moved them: jobs
@@ -536,6 +536,44 @@ jobs:
             exit 1
           fi
           modernize ./...
+
+  # Keep policy checks in a separate two-minute job: on loaded runners the
+  # whole-tree modernizer and these checks exceed the combined budget.
+  ci-policy:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the gate runs hosted, so setup-go always runs here; the guard keeps the
+      # step correct on a fleet runner too
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — ci-full.yml's `go-test` is the one
+      # Linux writer. The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      # On a self-hosted runner the build cache is the runner dir's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
       # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
       # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
       # test exits 0 — so a make target running a bare `go test` on such a
