@@ -671,6 +671,9 @@ func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, l
 	return true
 }
 func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	if !live {
+		return true
+	}
 	p := unsafe.Add(base, f.Offset)
 	dest := at + int64(f.CookOffset)
 	if f.Optional {
@@ -714,6 +717,9 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	return true
 }
 func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	if !live {
+		return true
+	}
 	if f.Pointer {
 		return w.reference((*int64)(p), at)
 	}
