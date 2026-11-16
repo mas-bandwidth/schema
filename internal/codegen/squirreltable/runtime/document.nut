@@ -872,7 +872,7 @@ local integer = function(r, v, d) {
   v.canon = svDecimal(value);
   // The document keeps a numeric token; the JSON walk takes wide integers
   // and fixed-point values as strings (§16.2), preserving their exact digits.
-  local token = d.kind >= 18 ? v.text : v.canon;
+  local token = d.kind >= 20 ? v.text : v.canon;
   if (d.kind == 5 || d.kind == 9 || d.kind == 18 || d.kind == 19 ||
       d.kind == 23 || d.kind == 24 || d.kind == 28 || d.kind == 29) jsonString(r, token);
   else raw(r, token);
