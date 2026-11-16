@@ -114,12 +114,12 @@ print(w.hex())
 			t.Parallel()
 			planted := maps.Clone(files)
 			const path = "armdemo/_schema/kind_union.py"
-			const anchor = `if f.kind == 17 and value is None:`
+			const anchor = "        w.varint(1)\n        w.byte(0)\n        return"
 			body := string(planted[path])
 			if !strings.Contains(body, anchor) {
 				t.Fatal("null control anchor absent")
 			}
-			planted[path] = []byte(strings.Replace(body, anchor, "if False:", 1))
+			planted[path] = []byte(strings.Replace(body, anchor, "        w.varint(1)\n        w.byte(2)\n        return", 1))
 			dir := t.TempDir()
 			writeTree(t, dir, planted)
 			for _, pin := range []struct {
@@ -127,7 +127,7 @@ print(w.hex())
 				path func(testing.TB) string
 			}{{"current", pyrun.Interpreter}, {"floor", pyrun.Floor}} {
 				_, stderr, err := pyrun.Try(t, pin.path(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
-				if err == nil || !strings.Contains(stderr, "node index") {
+				if err == nil || !strings.Contains(stderr, "pointer index past the node table") {
 					t.Errorf("%s null control: %v %s", pin.name, err, stderr)
 				}
 			}
