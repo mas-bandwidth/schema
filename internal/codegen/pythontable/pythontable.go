@@ -804,6 +804,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
 		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
+		if f.IsTextList() {
+			fmt.Fprintf(b, "            text_total=%d,\n", f.TextTotal)
+		}
 		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
@@ -1549,7 +1552,7 @@ func codecOf(f *ir.Field) string {
 		// a fixed or counted array of a fixed-class scalar: the same kind-14
 		// body, each element through its own kind module
 		switch element {
-		case "bool", "int", "float32", "float64", "string", "enum":
+		case "bool", "int", "float32", "float64", "string", "enum", "text_optional":
 			return "array"
 		}
 		return "unsupported"
@@ -1625,10 +1628,18 @@ func elementCodecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
 	case ir.TNamed:
-		if _, ok := f.Type.Ref.(*ir.Struct); ok {
-			// a table or a packet type by value: both ride a kind-13 body
+		switch f.Type.Ref.(type) {
+		case *ir.Struct:
 			return "table"
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			return "int"
 		}
 	}
 	return "unsupported"
@@ -1638,6 +1649,12 @@ func elementCodecOf(f *ir.Field) string {
 // unbounded array's is elementCodecOf's, and a fixed [N]T or counted [..N]T
 // array also carries the fixed class's floats, strings, enums and flags masks.
 func arrayElemCodec(f *ir.Field) string {
+	if f.IsTextList() {
+		if ir.TextListOptional(f) {
+			return "text_optional"
+		}
+		return "string"
+	}
 	element := elementCodecOf(f)
 	if f.Array == ir.ArrayList || element != "unsupported" || f.Type.Pointer {
 		return element
@@ -2011,6 +2028,9 @@ func deprecatedOrdinals(f *ir.Field) string {
 // fieldSize is a string or bytes field's declared byte bound, and 0 for every
 // field that declares none or is not a byte buffer.
 func fieldSize(f *ir.Field) int64 {
+	if f.IsTextList() {
+		return ir.TextListValue(f).Type.Size
+	}
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		return f.Type.Size

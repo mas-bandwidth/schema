@@ -4,7 +4,6 @@ package compiler
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -19,8 +18,8 @@ func writeDriverSchema(t *testing.T, name, src string) []string {
 
 // TestPythonVtPointerArraysThroughDriver checks that the public compiler
 // driver accepts []*T, [N]*T, [..N]*T, [A..N]*T, and guarded table fields on
-// the python target, while still refusing uncarried []T value lists and
-// pointer lists targeting packet types.
+// the python target, alongside scalar and by-value lists, while refusing pointer lists targeting
+// packet types.
 func TestPythonVtPointerArraysThroughDriver(t *testing.T) {
 	t.Parallel()
 
@@ -80,8 +79,8 @@ table Bag
 	if err != nil {
 		t.Fatalf("load scalar list schema: %v", err)
 	}
-	if _, err := c.Generate(uScalar, "python", nil); err == nil || !strings.Contains(err.Error(), "values") || !strings.Contains(err.Error(), "python") {
-		t.Fatalf("driver did not refuse []int32 by name: %v", err)
+	if files, err := c.Generate(uScalar, "python", nil); err != nil || len(files) == 0 {
+		t.Fatalf("driver did not generate []int32: %v", err)
 	}
 
 	const tableValueList = `package badtbllist
@@ -100,7 +99,7 @@ table Bag
 	if err != nil {
 		t.Fatalf("load value-table list schema: %v", err)
 	}
-	if _, err := c.Generate(uTbl, "python", nil); err == nil || !strings.Contains(err.Error(), "items") {
-		t.Fatalf("driver did not refuse []Item by name: %v", err)
+	if files, err := c.Generate(uTbl, "python", nil); err != nil || len(files) == 0 {
+		t.Fatalf("driver did not generate []Item: %v", err)
 	}
 }

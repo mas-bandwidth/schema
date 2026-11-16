@@ -62,6 +62,7 @@ class FieldDesc:
         "array",
         "bound",
         "size",
+        "text_total",
         "key_enum",
         "keyed_list",
         "array_kind",
@@ -107,6 +108,7 @@ class FieldDesc:
     array: bool
     bound: int
     size: int
+    text_total: int
     key_enum: str
     keyed_list: bool
     array_kind: int
@@ -152,6 +154,7 @@ class FieldDesc:
         array: bool = False,
         bound: int = 0,
         size: int = 0,
+        text_total: int = 0,
         key_enum: str = "",
         array_kind: int = 0,
         array_min: int = 0,
@@ -196,6 +199,7 @@ class FieldDesc:
         self.array = array
         self.bound = bound
         self.size = size
+        self.text_total = text_total
         self.key_enum = key_enum
         self.keyed_list = keyed_list
         self.array_kind = array_kind
