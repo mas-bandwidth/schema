@@ -154,13 +154,7 @@ class _Keyed:
             key = ctx.idref(fd.keys[slot])
             element = bytearray()
             if elem.codec == "table":
-                if isinstance(ctx, _RetainCtx):
-                    parent = ctx.steps
-                    ctx.steps = parent + ((fd.ordinal, slot),)
-                    write_body(Writer(element), current, ctx, False)
-                    ctx.steps = parent
-                else:
-                    write_body(Writer(element), current, ctx, False)
+                write_body(Writer(element), current, ctx, False)
                 if len(element) <= 1:
                     _rollback(ctx, slot_mark)  # an all-default slot elides
                     continue
