@@ -1582,6 +1582,13 @@ table Guarded
 	)
 	controls := []pointerArraysControl{
 		{
+			name: "counted-pointer-birth", path: "ptrarr/_schema/descriptor.py",
+			target: `return len(value) == self.min_count and all(elem is None for elem in value)`, repl: `return False`,
+			probe: fmt.Sprintf(`v = RangedHolder()
+assert v.save() == bytes.fromhex(%q), "counted-pointer-birth: birth was not elided"
+`, hex.EncodeToString(encodeOracleJSON(t, m, "RangedHolder", `{"window":[null,null]}`))),
+		},
+		{
 			name: "count-over-bound", path: pa,
 			target: `if fd.array_mode != "list" and count > fd.bound:`, repl: `if False:`,
 			probe: `bounded_id = [f.field_id for f in Root.descriptor.fields if f.name == "bounded_nodes"][0]

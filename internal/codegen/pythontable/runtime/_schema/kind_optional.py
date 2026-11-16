@@ -90,7 +90,8 @@ def _writer(buf: bytearray) -> Any:
 
 
 def _read_array(r: Any, fd: FieldDesc, ctx: Any) -> Any:
-    from .load import Reader
+    from .kind_array import _widens
+    from .load import Reader, _widened_scalar
 
     elem = _elem(fd)
     body = r.take(r.varint())
@@ -100,14 +101,17 @@ def _read_array(r: Any, fd: FieldDesc, ctx: Any) -> Any:
     elem_kind = sub.byte()
     if elem_kind not in _ELEMENT_KINDS:
         raise Refused("wire_damaged", f"element kind {elem_kind} is not in the closed set")
-    if elem_kind != elem.kind:
+    widened = elem_kind != elem.kind
+    if widened and not _widens(elem_kind, elem.kind):
         raise Refused("kind_mismatch", f"{fd.name} rides element kind {elem_kind}, not {elem.kind}")
+    if widened:
+        ctx.widened += 1
     count = sub.varint()
     if count > fd.bound or (fd.array_kind == 2 and count < fd.array_min):
         raise Refused("count_over_bound", f"{count} elements is outside [{fd.array_min}, {fd.bound}]")
     values: list[Any] = []
     for _ in range(count):
-        values.append(_read_element(sub, elem, ctx))
+        values.append(_widened_scalar(sub, elem_kind, elem) if widened else _read_element(sub, elem, ctx))
     if sub.pos != sub.end:
         raise Refused("wire_damaged", "bytes left inside an array body")
     if fd.array_kind == 1:  # [N]T

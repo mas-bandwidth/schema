@@ -460,6 +460,9 @@ typedef struct blockdemo_table_reader_t
     const uint8_t * ids;
 
     uint64_t id_count;
+    /* Only the declaration-free prepass tracks trailer first-use order.
+       Semantic decoders may revisit the same bytes in several phases. */
+    uint64_t * next_ref;
     int nested;
 } blockdemo_table_reader_t;
 
@@ -582,6 +585,15 @@ static SCHEMA_UNUSED int blockdemo_table_skip_utf8( const uint8_t * p, uint64_t 
 static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
 static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth );
+/* A successfully read payload must claim its whole frame. During the
+   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   semantic failures that stopped the walk earlier still take their own path. */
+static SCHEMA_UNUSED int blockdemo_table_skip_whole( blockdemo_table_reader_t sub, const blockdemo_table_reader_t * read )
+{
+    if ( read->offset == sub.size ) { return 1; }
+    if ( sub.next_ref != NULL ) { *sub.next_ref = UINT64_MAX; }
+    return 0;
+}
 static SCHEMA_UNUSED int blockdemo_table_skip_framed( blockdemo_table_reader_t sub, uint8_t kind, int64_t nodes, int depth )
 {
     switch ( kind )
@@ -599,13 +611,13 @@ static SCHEMA_UNUSED int blockdemo_table_skip_framed( blockdemo_table_reader_t s
         {
             blockdemo_table_reader_t rr = sub;
             if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return blockdemo_table_skip_whole( sub, &rr );
         }
         default:
         {
             blockdemo_table_reader_t rr = sub;
             if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return blockdemo_table_skip_whole( sub, &rr );
         }
     }
 }
@@ -619,6 +631,10 @@ static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t
         if ( !blockdemo_table_reader_leb( &r, &ref ) ) { return -1; }
         if ( ref == 0 ) { return r.offset; }
         if ( ref > r.id_count || ref > 4096 || !blockdemo_table_reader_has( &r, 1 ) ) { return -1; }
+        if ( r.next_ref != NULL ) {
+            if ( ref > *r.next_ref ) { *r.next_ref = UINT64_MAX; return -1; }
+            if ( ref == *r.next_ref ) { (*r.next_ref)++; }
+        }
         if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
         seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
         id = blockdemo_table_reader_id_at( &r, ref ); kind = blockdemo_table_reader_get8( &r );
@@ -627,6 +643,22 @@ static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t
         {
             blockdemo_table_reader_t payload;
             if ( !root || kind != 12 || !blockdemo_table_reader_span( &r, &payload ) ) { return -1; }
+            if ( r.next_ref != NULL ) {
+                uint64_t count, records = 0;
+                if ( !blockdemo_table_reader_leb( &payload, &count ) ) { return -1; }
+                while ( payload.offset < payload.size ) {
+                    uint64_t type_ref, type_id; blockdemo_table_reader_t body;
+                    if ( !blockdemo_table_reader_leb( &payload, &type_ref ) || type_ref == 0 || type_ref > payload.id_count ) { return -1; }
+                    if ( type_ref > *r.next_ref ) { *r.next_ref = UINT64_MAX; return -1; }
+                    if ( type_ref == *r.next_ref ) { (*r.next_ref)++; }
+                    type_id = blockdemo_table_reader_id_at( &payload, type_ref );
+                    if ( !blockdemo_table_reader_span( &payload, &body ) ) { return -1; }
+                    if ( type_id != UINT64_C(0x2f2ec0474f1c4fe4) && type_id != UINT64_C(0x704be0d8faaffc58) &&
+                         blockdemo_table_skip_body( body, nodes, 0, 0 ) != body.size ) { return -1; }
+                    records++;
+                }
+                if ( records != count ) { return -1; }
+            }
             continue;
         }
         if ( !blockdemo_table_skip_value( &r, kind, nodes, depth ) ) { return -1; }
@@ -653,6 +685,10 @@ static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * 
         {
             uint64_t key; blockdemo_table_reader_t elem;
             if ( !blockdemo_table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
+            if ( sub->next_ref != NULL ) {
+                if ( key > *sub->next_ref ) { *sub->next_ref = UINT64_MAX; return 0; }
+                if ( key == *sub->next_ref ) { (*sub->next_ref)++; }
+            }
             if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
             seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
             if ( !blockdemo_table_reader_span( sub, &elem ) ) { return 0; }
@@ -675,12 +711,21 @@ static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * 
             return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
         case 30:
             if ( !blockdemo_table_reader_leb( r, &n ) ) { return 0; }
-            return n <= r->id_count;
+            if ( n > r->id_count ) { return 0; }
+            if ( n && r->next_ref != NULL ) {
+                if ( n > *r->next_ref ) { *r->next_ref = UINT64_MAX; return 0; }
+                if ( n == *r->next_ref ) { (*r->next_ref)++; }
+            }
+            return 1;
         case 15:
         {
             uint64_t ref; uint8_t arm_kind; blockdemo_table_reader_t arm;
             if ( !blockdemo_table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
             if ( ref == 0 ) { return 1; }
+            if ( r->next_ref != NULL ) {
+                if ( ref > *r->next_ref ) { *r->next_ref = UINT64_MAX; return 0; }
+                if ( ref == *r->next_ref ) { (*r->next_ref)++; }
+            }
             if ( !blockdemo_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = blockdemo_table_reader_get8( r );
             if ( !blockdemo_table_reader_span( r, &arm ) ) { return 0; }
@@ -768,6 +813,23 @@ static SCHEMA_UNUSED int blockdemo_table_wire_open( blockdemo_table_reader_t * r
                 if ( seen[slot] == id ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 slot = (slot + 1) & 8191u;
             }
+        }
+    }
+    /* Every trailer identity occurs, in first-use order, over the whole
+       file: unknown fields, enum values, keyed slots, union arms and node
+       records included (SPEC-TABLES section 3). Keep this prepass local so
+       repeated semantic reads never advance its cursor. */
+    {
+        uint64_t next_ref = 1;
+        blockdemo_table_reader_t order = *r;
+        int64_t end;
+        order.next_ref = &next_ref;
+        end = blockdemo_table_skip_body( order, INT64_MAX - 1, 0, 1 );
+        /* Payloads that stopped early still take the semantic reader's
+           refusal. Judge identity order, unused entries after a complete
+           walk, and unclaimed tails of successfully read frames here. */
+        if ( next_ref == UINT64_MAX || (end == order.size && next_ref - 1 != r->id_count) ) {
+            report->refused=1; report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
         }
     }
     /* Root slack invalidates the whole file before any overlay. A stopped
