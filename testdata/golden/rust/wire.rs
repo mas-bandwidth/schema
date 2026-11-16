@@ -326,6 +326,7 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
         let mut bool_value = value.active;
         stream.serialize_bool(&mut bool_value)?;
     }
+    debug_assert!(value.orientation.is_finite() && value.orientation >= -180.0_f32 && value.orientation <= 180.0_f32, "orientation out of range [-180.0_f32, 180.0_f32]");
     {
         let mut compressed_value = value.orientation;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
@@ -1134,6 +1135,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut float_value = value.float_value;
         stream.serialize_f32(&mut float_value)?;
     }
+    debug_assert!(value.compressed_float_value.is_finite() && value.compressed_float_value >= 0.0_f32 && value.compressed_float_value <= 10.0_f32, "compressed_float_value out of range [0.0_f32, 10.0_f32]");
     {
         let mut compressed_value = value.compressed_float_value;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
@@ -1320,10 +1322,12 @@ pub const COMPRESSED_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_compressed_probe(stream: &mut WriteStream<'_>, value: &CompressedProbe) -> Result {
+    debug_assert!(value.boundary.is_finite() && value.boundary >= 0.0_f32 && value.boundary <= 10.0_f32, "boundary out of range [0.0_f32, 10.0_f32]");
     {
         let mut compressed_value = value.boundary;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     }
+    debug_assert!(value.offset.is_finite() && value.offset >= -5.0_f32 && value.offset <= 5.0_f32, "offset out of range [-5.0_f32, 5.0_f32]");
     {
         let mut compressed_value = value.offset;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 10000, 14, 10.0_f32, -5.0_f32)?; // compressed float [-5.0, 5.0] @ 0.001, constants folded at generation

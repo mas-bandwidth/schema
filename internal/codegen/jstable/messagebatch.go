@@ -163,8 +163,76 @@ export function tableMessageEntry(v, ref) {
   if (ref === 0n || ref > BigInt(v.Count)) { return null; }
   return v.Entries[Number(ref) - 1];
 }
+// ONE ARRAY ELEMENT'S FIXED WIDTH, or -1 where the element has to be walked
+// one at a time. A name, a payload-free arm and a ranged value whose min equals
+// its max ride no bits and are arithmetic; a nested body, a union, an enum and
+// a pointer resolve something and are walked; so is a float and a ranged or
+// quantized value, whose finiteness, index and range are conditions the wire
+// decides (§3.3, §4).
+export function tableMessageElementRunBits(kind, elem) {
+  if (kind !== 14) { return -1; }
+  switch (elem.Kind) {
+    case 13: case 15: case 17: case 30: return -1;
+    case 0: case 32: return 0;
+  }
+  if (elem.Bits > 0) {
+    if (elem.Kind === 10 || elem.Kind === 11) { return -1; }
+    if (elem.Packing === 1 || elem.Packing === 2) { return -1; }
+  }
+  return elem.Bits;
+}
+// A RANGED VALUE'S KIND DOMAIN: the widest range a declaration of that kind
+// can announce, which is what a skipped offset is held to when its bits spell a
+// value past the sender's maximum (§3.3, §4).
+function tableMessageKindWidth(kind) {
+  switch (kind) {
+    case 1: case 2: case 6: case 20: case 25: return 8;
+    case 3: case 7: case 21: case 26: return 16;
+    case 4: case 8: case 10: case 22: case 27: return 32;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 64;
+    case 18: case 19: case 24: case 29: return 128;
+  }
+  return 0;
+}
+function tableMessageKindSigned(kind) {
+  switch (kind) {
+    case 2: case 3: case 4: case 5: case 18:
+    case 20: case 21: case 22: case 23: case 24: return true;
+  }
+  return false;
+}
+function tableMessageKindHolds(kind, value) {
+  const width = tableMessageKindWidth(kind);
+  if (width === 0) { return true; }
+  if (tableMessageKindSigned(kind)) {
+    const half = 1n << BigInt(width - 1);
+    return value >= -half && value <= half - 1n;
+  }
+  return value >= 0n && value <= (1n << BigInt(width)) - 1n;
+}
+function tableMessageSkipRanged(r, kind, s, width) {
+  let offset = 0n;
+  if (width <= 64) {
+    const [v, ok] = r.Get(width);
+    if (!ok) { return false; }
+    offset = v;
+  } else {
+    const [lo, ok] = r.Get(64);
+    if (!ok) { return false; }
+    const [hi, ok2] = r.Get(width - 64);
+    if (!ok2) { return false; }
+    offset = lo | (hi << 64n);
+  }
+  const wide = kind >= 18 && kind <= 29;
+  const rawBase = wide ? (s.Base[0] | (s.Base[1] << 64n)) : s.Base[0];
+  const bits = wide ? 128 : 64;
+  const base = tableMessageKindSigned(kind) ? BigInt.asIntN(bits, rawBase) : BigInt.asUintN(bits, rawBase);
+  return tableMessageKindHolds(kind, offset + base);
+}
 // THE SKIP WALK: a reader that cannot name a field still steps over it exactly,
-// by the announced shape, so the position after it is known (§3.3).
+// by the announced shape, so the position after it is known (§3.3). SKIPPED IS
+// NOT UNREAD (§4): every condition the wire and the announcement decide is held
+// here as a read of a named field of the same shape holds it.
 export function tableMessageSkip(r, v, indexBits, e, depth) {
   if (depth > 128) { return false; }
   const s = e.Shape;
@@ -182,8 +250,10 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       const [ref, ok] = r.Get(v.RefBits);
       if (!ok || ref === 0n) { return ok; }
       const arm = tableMessageEntry(v, ref);
-      return arm !== null && arm.Id < 0xfffffffffffffffdn && arm.Shape.Kind !== 0 &&
-        tableMessageSkip(r, v, indexBits, arm, depth + 1);
+      if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { return false; }
+      const structural = arm.Shape.Kind === 13 || arm.Shape.Kind === 14 ||
+        arm.Shape.Kind === 15 || arm.Shape.Kind === 16;
+      return tableMessageSkip(r, v, indexBits, arm, structural ? depth + 1 : depth);
     }
     case 12: {
       const [n, ok] = tableMessageCount(r, s);
@@ -199,32 +269,59 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       const [n, ok] = r.Get(32);
       return ok && r.Skip(Number(n) * 8);
     }
+    case 10: {
+      if (s.Packing === 2) {
+        const [v, ok] = tableMessageReadScalar(r, s);
+        if (!ok) { return false; }
+        return (Number(v[0] & 0xffffffffn) & 0x7f800000) !== 0x7f800000;
+      }
+      const [bits, ok] = r.Get(32);
+      return ok && (Number(bits) & 0x7f800000) !== 0x7f800000;
+    }
+    case 11: {
+      const [bits, ok] = r.Get(64);
+      return ok && (bits & 0x7ff0000000000000n) !== 0x7ff0000000000000n;
+    }
     case 14: case 16: {
       const [n, ok] = tableMessageCount(r, s);
-      if (!ok) { return false; }
+      if (!ok || n > BigInt(s.Max)) { return false; }
+      if (depth >= 128) { return false; }
       if (s.Kind === 14 && e.Element.Kind === 6 && !r.Align()) { return false; }
-      if (e.Element.Bits >= 0 || e.Element.Kind === 0 || e.Element.Kind === 32) {
-        let width = Math.max(0, e.Element.Bits);
-        if (s.Kind === 16) { width += v.RefBits; }
-        return r.Skip(Number(n) * width);
+      if (s.Kind === 14 && (e.Element.Kind === 0 || e.Element.Kind === 32)) { return true; }
+      const run = tableMessageElementRunBits(s.Kind, e.Element);
+      if (run >= 0) {
+        if (run === 0) { return true; }
+        const total = n * BigInt(run);
+        return total <= BigInt(Number.MAX_SAFE_INTEGER) && r.Skip(Number(total));
       }
+      const seen = s.Kind === 16 ? new Set() : null;
       for (let i = 0n; i < n; i++) {
         const before = r.Offset;
-        if (s.Kind === 16 && !r.Skip(v.RefBits)) { return false; }
+        if (s.Kind === 16) {
+          const [kref, kok] = r.Get(v.RefBits);
+          if (!kok) { return false; }
+          const ken = tableMessageEntry(v, kref);
+          if (ken === null || ken.Shape.Kind !== 0 || ken.Id >= 0xfffffffffffffffdn || seen.has(ken.Id)) { return false; }
+          seen.add(ken.Id);
+        }
         if (!tableMessageSkip(r, v, indexBits, { Shape: e.Element, Element: { Kind: 0, Bits: 0 } }, depth + 1) || r.Offset === before) { return false; }
       }
       return true;
     }
   }
+  if (s.Packing === 1) { return tableMessageSkipRanged(r, s.Kind, s, Number(s.Bits)); }
   return s.Bits >= 0 && r.Skip(s.Bits);
 }
 export function tableMessageSkipBody(r, v, indexBits, depth) {
   if (depth > 128) { return false; }
+  const seen = new Set();
   for (;;) {
     const [ref, ok] = r.Get(v.RefBits);
     if (!ok || ref === 0n) { return ok; }
     const e = tableMessageEntry(v, ref);
-    if (e === null || !tableMessageSkip(r, v, indexBits, e, depth)) { return false; }
+    if (e === null || e.Id >= 0xfffffffffffffffdn || seen.has(e.Id)) { return false; }
+    seen.add(e.Id);
+    if (!tableMessageSkip(r, v, indexBits, e, depth)) { return false; }
   }
 }
 // A scalar reconstructs at the announced storage width. A ranged value is the
@@ -764,16 +861,38 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 	if !st.IsTable && g.gen.need != nil {
 		g.need(fixedDeclaringFile(g.unit, st.Name), "Init"+st.Name)
 	}
-	g.pf("export function %sLoadMessageBody(r, value) {\n", st.Name)
+	g.pf("export function %sLoadMessageBody(r, value, elideEmpty) {\n", st.Name)
 	g.pf("  Init%s(value);\n", st.Name)
 	g.pf("  const seen = [];\n")
+	g.pf("  let lastRef = 0n;\n")
+	g.pf("  let any = false;\n")
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
 	g.pf("    if (!ok) { r.Report.Damaged = true; return false; }\n")
-	g.pf("    if (ref === 0n) { return true; }\n")
+	g.pf("    if (ref === 0n) {\n")
+	g.pf("      if (elideEmpty && !any && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", jsId(ir.BuildVersion(g.unit)))
+	g.pf("      return true;\n")
+	g.pf("    }\n")
 	g.pf("    const entry = tableMessageEntry(r.Vocabulary, ref);\n")
 	g.pf("    if (entry === null || entry.Id >= 0xfffffffffffffffdn || seen.includes(entry.Id)) { r.Report.Damaged = true; return false; }\n")
 	g.pf("    seen.push(entry.Id);\n")
+	// Known fields keep the writer's declaration order, which is the
+	// announcement's slot order. An unknown field keeps its place without
+	// moving that cursor: a newer field before an older one still reads.
+	if len(st.Fields) > 0 {
+		g.pf("    if (")
+		for i, f := range st.Fields {
+			if i > 0 {
+				g.pf(" || ")
+			}
+			g.pf("entry.Id === 0x%016xn", ir.TableFieldEntry(f).Id)
+		}
+		g.pf(") {\n")
+		g.pf("      if (ref <= lastRef) { r.Report.Damaged = true; return false; }\n")
+		g.pf("      lastRef = ref;\n")
+		g.pf("    }\n")
+	}
+	g.pf("    any = true;\n")
 	g.pf("    switch (entry.Id) {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -788,17 +907,52 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyEntry, ind string) {
 	mem := "value." + js.MemberName(f.Name)
 	g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
-	g.emitMessageReadValue(f, mem, ind, "entry.Shape")
+	atField := !f.Type.Optional
+	if enumRefOf(f) != nil && atField {
+		g.pf("%sconst unknownBefore = r.Report.Unknown;\n", ind)
+	}
+	g.emitMessageReadValue(f, mem, ind, "entry.Shape", atField)
+	if cond := messageStoredDefaultCond(f, mem); cond != "" {
+		extra := ""
+		if enumRefOf(f) != nil {
+			extra = " && r.Report.Unknown === unknownBefore"
+		}
+		g.pf("%sif (r.Vocabulary.BuildVersion === %s && (%s)%s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), cond, extra)
+	}
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
 	}
+}
+
+// messageStoredDefaultCond is the value a conforming writer of this build
+// elides. Empty means this shape is not itself a stored default: a nested
+// body, an array and a union ride only when a child or an arm does, and an
+// optional rides because it is present.
+func messageStoredDefaultCond(f *ir.Field, mem string) string {
+	if f.Type.Optional {
+		return ""
+	}
+	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		if len(f.DefBytes) == 0 {
+			return mem + "Length === 0"
+		}
+		return fmt.Sprintf("(function(){if(%sLength!==%d)return false;const d=%s;for(let i=0;i<d.length;i++){if(%s[i]!==d[i])return false;}return true;})()", mem, len(f.DefBytes), jsByteList(f.DefBytes), mem)
+	case f.KeyEnum != "" || f.Array != ir.ArrayNone || isStructRef(f.Type) || isUnionRef(f.Type):
+		return ""
+	}
+	def := fixedZeroFor(f)
+	if fixedIsFloat(f.Type) {
+		return "Object.is(" + mem + ", " + def + ")"
+	}
+	return mem + " === " + def
 }
 
 // shape is the JS expression naming the SHAPE this value rides at: a top-level
 // field reads at `entry.Shape`, an array element at `entry.Element` and a union
 // arm at `arm.Shape`, so a scalar element is read at its own width and never at
 // the array's count width (§3.2).
-func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) {
+func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, atField bool) {
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
@@ -821,11 +975,16 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
-		g.emitMessageReadArray(f, mem, ind)
+		elide := atField && !(f.Array == ir.ArrayFixed && isStructRef(f.Type) && !f.Type.Pointer && f.KeyEnum == "")
+		g.emitMessageReadArray(f, mem, ind, elide)
 	case isStructRef(f.Type):
-		g.pf("%sif (!%sLoadMessageBody(r, %s)) { return false; }\n", ind, f.Type.Name, mem)
+		elideEmpty := "false"
+		if atField {
+			elideEmpty = "true"
+		}
+		g.pf("%sif (!%sLoadMessageBody(r, %s, %s)) { return false; }\n", ind, f.Type.Name, mem, elideEmpty)
 	case isUnionRef(f.Type):
-		g.emitMessageReadUnion(f, mem, ind)
+		g.emitMessageReadUnion(f, mem, ind, atField)
 	case enumRefOf(f) != nil:
 		g.emitMessageReadEnum(f, mem, ind)
 	default:
@@ -833,7 +992,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 	}
 }
 
-func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
+func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEmpty bool) {
 	bad := "r.Report.Damaged = true; return false"
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
@@ -847,6 +1006,9 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string) {
 		g.pf("%s  if (entry.Element.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, bad)
 	}
 	g.pf("%s  let keep = Number(n);\n", ind)
+	if elideEmpty {
+		g.pf("%s  if (n === 0n && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)))
+	}
 	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
@@ -897,7 +1059,7 @@ func (g *fixedModule) emitMessageReadElement(f *ir.Field, mem, ind, shape string
 		g.pf("%sif (!%sLoadMessageBody(r, %s)) { return false; }\n", ind, f.Type.Name, mem)
 		return
 	}
-	g.emitMessageReadValue(f, mem, ind, shape)
+	g.emitMessageReadValue(f, mem, ind, shape, false)
 }
 
 func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string) {
@@ -994,10 +1156,14 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
 	g.pf("%s  }\n%s}\n", ind, ind)
 }
 
-func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
+func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string, atField bool) {
 	un := f.Type.Ref.(*ir.Union)
 	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Damaged = true; return false; }\n", ind)
-	g.pf("%s  if (ref === 0n) { %s.type = 0; }\n", ind, mem)
+	if atField {
+		g.pf("%s  if (ref === 0n) { r.Report.Damaged = true; return false; }\n", ind)
+	} else {
+		g.pf("%s  if (ref === 0n) { %s.type = 0; }\n", ind, mem)
+	}
 	g.pf("%s  else {\n", ind)
 	g.pf("%s    const arm = tableMessageEntry(r.Vocabulary, ref);\n", ind)
 	g.pf("%s    if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { r.Report.Damaged = true; return false; }\n", ind)
@@ -1008,7 +1174,7 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 		g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, arm.Kind, arm.Shape.Elem, mem)
 		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
-			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape")
+			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape", false)
 		}
 		g.pf("%s        break;\n%s      }\n", ind, ind)
 	}

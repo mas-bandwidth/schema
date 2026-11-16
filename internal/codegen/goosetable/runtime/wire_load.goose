@@ -87,6 +87,7 @@ let LoadRefuseKindMismatch: i64 = 19;
 let LoadRefuseIntegrityMismatch: i64 = 22;
 let LoadRefuseNonFiniteFloat: i64 = 23;
 let LoadRefuseBlobShared: i64 = 24;
+let LoadRefusePreviousForm: i64 = 25;
 let LoadRefuseNewerForm: i64 = 26;
 let LoadRefuseMessageFormAsFile: i64 = 27;
 
@@ -102,6 +103,7 @@ fn load_refusal_name(code: i64) -> const u8[:] {
         LoadRefuseIntegrityMismatch => "integrity_mismatch",
         LoadRefuseNonFiniteFloat => "non_finite_float",
         LoadRefuseBlobShared => "blob_shared",
+        LoadRefusePreviousForm => "previous_form",
         LoadRefuseNewerForm => "newer_form",
         LoadRefuseMessageFormAsFile => "message_form_as_file",
         _ => "",
@@ -112,7 +114,8 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 // `report` and whose answer was `root` (docs/SPEC-TABLES.md §6.5; gotable's
 // TableReport.Err and <T>ReadStrict, in their order): a non-finite float,
 // then a form byte this reader does not carry (unknown_form, whose report
-// names which), a failed integrity trailer, damage the verdict names
+// names which), a form-1 file at a fixed root with no file form
+// (previous_form, §3.4), a failed integrity trailer, damage the verdict names
 // (wire_damaged) apart from a malformed body (malformed), then a builder's
 // count past the int32 storage cap (count_over_extent_cap, §2.9), then
 // blob_shared, oor and kind_mismatch. A load that read nothing whole (no
@@ -123,6 +126,7 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 fn load_error(report: const LoadReport&, root: i64) -> i64 {
     if report.non_finite { return LoadRefuseNonFiniteFloat; }
     if report.reason == LoadRefuseNewerForm || report.reason == LoadRefuseMessageFormAsFile { return LoadRefuseUnknownForm; }
+    if report.reason == LoadRefusePreviousForm { return LoadRefusePreviousForm; }
     if report.reason == LoadRefuseIntegrityMismatch { return LoadRefuseIntegrityMismatch; }
     if report.damaged { return LoadRefuseWireDamaged; }
     if report.body_damaged { return LoadRefuseMalformed; }
@@ -2223,6 +2227,14 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     }
     let t = table_index(c, root);
     if t < 0 { report.refused = true; return -1; }
+    // A DECLARED FIXED TABLE PAST THE RECORD CEILING HAS NO FILE FORM
+    // (docs/SPEC-TABLES.md §1, §3.4): its read refuses form 1 as
+    // previous_form, decoding nothing and moving no counter
+    if unit.tables[t].no_file_form {
+        report.refused = true;
+        report.reason = LoadRefusePreviousForm;
+        return -1;
+    }
     var file = data;
     if unit.tables[t].integrity {
         if !integrity_holds(data, 1) {
