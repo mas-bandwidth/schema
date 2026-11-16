@@ -413,15 +413,30 @@ func encodeArray(e *encoder, w *buf, fv *tabletext.Field, id uint64, kind, count
 	if fv.Def.Type.Pointer {
 		elemKind = ir.TableKindPointer
 	}
+	mark, wireMark := e.ids.mark(), len(w.b)
+	allBirth := fv.Def.BornCount() > 0 && int64(count) == fv.Def.BornCount() && !fv.Def.Required && !fv.Def.Type.Optional
 	w.leb(e.ids.ref(id))
 	w.u8(uint8(ir.TableKindArray))
 	body := &buf{}
 	body.u8(uint8(elemKind))
 	body.leb(uint64(count))
 	for i := range count {
+		at := len(body.b)
 		if err := encodeElement(e, body, fv.Def, elemKind, &fv.Elems[i]); err != nil {
 			return err
 		}
+		if allBirth {
+			if elemKind == ir.TableKindTable {
+				allBirth = len(body.b)-at == 2 && body.b[at] == 1 && body.b[at+1] == 0
+			} else {
+				allBirth = cellIsDefault(e, fv.Def, &fv.Elems[i])
+			}
+		}
+	}
+	if allBirth {
+		e.ids.rollback(mark)
+		w.b = w.b[:wireMark]
+		return nil
 	}
 	w.leb(uint64(len(body.b)))
 	w.raw(body.b)

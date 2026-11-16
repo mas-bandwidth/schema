@@ -105,6 +105,9 @@ func skipAnnounce(t *testing.T) *TableVocabulary {
 	if !AnnounceRead(vocabulary, announcement, &report) {
 		t.Fatalf("the reader refused the lawful announcement: %+v", report)
 	}
+	// This low-level skip probe is deliberately synthetic foreign metadata.
+	// An own-build unknown record member must refuse before reaching skip.
+	vocabulary.BuildVersion ^= 1
 	return vocabulary
 }
 
