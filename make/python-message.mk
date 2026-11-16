@@ -23,3 +23,8 @@ test-python: python-message-conformance
 python-message-surface-negative-control: python-toolchain-check build/conformance-python tables-fixedform-corpus
 	test/conformance/python/message-negative-control
 test-python: python-message-surface-negative-control
+
+.PHONY: python-message-crc-negative-control
+python-message-crc-negative-control: python-toolchain-check deps-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageCRC$$' ./internal/codegen/pythontable/
+test-python: python-message-crc-negative-control
