@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestPythonSurfaceSelection(t *testing.T) {
@@ -125,13 +126,15 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 			t.Fatalf("retain selection omitted %s", name)
 		}
 	}
-	for _, schema := range []string{"package names\ntable Root { load_retain int32 }\n", "package names\ntable TableRetain { n int32 }\n"} {
-		named := loadUnit(t, schema)
+	fieldName := loadUnit(t, "package names\ntable Root { ordinary int32 }\n")
+	fieldName.Tables["Root"].Fields[0].Name = "load_retain" // exercise the emitter's own selection-aware name check
+	typeName := loadUnit(t, "package names\ntable TableRetain { n int32 }\n")
+	for _, named := range []*ir.Unit{fieldName, typeName} {
 		if _, err := GenerateSurface(named, wire); err != nil {
 			t.Fatalf("wire-only name refused: %v", err)
 		}
 		if _, err := GenerateSurface(named, selected); err == nil {
-			t.Fatalf("retain collision accepted: %s", schema)
+			t.Fatal("retain collision accepted")
 		}
 	}
 }
