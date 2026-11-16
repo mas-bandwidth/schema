@@ -146,7 +146,7 @@ w.%sWireLoad(wire,missing);check(!missing.refused&&missing.reason=='ok','reused 
 final retain=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();w.%sWireLoadRetain(bytes(%q),retain,rr);check(rr.refused&&rr.reason==r.reason&&retain.used==0,'nested retained refusal');}
 `, dartName(tc.root), hex.EncodeToString(wire), tc.root+" nested required wire", dartName(tc.root), hex.EncodeToString(wire))
 	}
-	populated := `{"enabled":true,"integer":9,"floating":1.25,"text":"hi","data":"AQI=","wide":"é","huge":17,"enumeration":"A","mask":["B"],"choice":{"n":23},"fixedValues":[1,2],"counted":[3],"list":[4,5],"mapping":{"6":7},"child":{"ver":8},"pointer":{"ver":9},"blob":"hi","at":"2000-01-01T00:00:00Z"}`
+	populated := `{"enabled":true,"integer":9,"floating":1.25,"text":"hi","data":"AQI=","wide":"é","huge":"17","enumeration":"A","mask":["B"],"choice":{"n":23},"fixedValues":[1,2],"counted":[3],"list":[4,5],"mapping":{"6":7},"child":{"ver":8},"pointer":{"ver":9},"blob":"hi","at":"2000-01-01T00:00:00Z"}`
 	pv := m.New(u.Tables["Shapes"])
 	pr := tabletext.Report{}
 	if !m.Read(pv, []byte(populated), &pr) || !pr.Silent() {

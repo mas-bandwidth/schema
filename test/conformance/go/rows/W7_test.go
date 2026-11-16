@@ -15,7 +15,8 @@
 // under the SECOND arm. That is UT1's own reason for putting the string under
 // arm 2: the flavour of a string(N) is 1 and the second arm's ordinal is 2,
 // so a shared lane does not merely lose a fact, it guards on the wrong arm. Msg's baked identity plan (tblm1.MsgFixedPlan,
-// emitted by internal/codegen/gotable/fixedform.go:510-515) is:
+// emitted by internal/codegen/gotable/fixedform.go) includes these entries,
+// alongside the dead-span zero checks:
 //
 //	entry 0: copy 5B  seq+tag      unguarded
 //	entry 1: text 16B open.path    Guard=4 Arg=1 ArgW=1 Meta=1
@@ -48,6 +49,7 @@ import (
 )
 
 const (
+	w7OpSlack    = 9          // tableFixedSlack
 	w7OpText     = 2          // tableFixedText
 	w7TextUtf8   = 1          // tableFixedTextUtf8
 	w7NoGuard    = 0xFFFFFFFF // tableFixedNoGuard
@@ -56,6 +58,7 @@ const (
 )
 
 func TestRowW7(t *testing.T) {
+	t.Parallel()
 	plan := tblm1.MsgFixedPlan.Entries[:tblm1.MsgFixedPlan.Count]
 
 	// ---- the plan half: the two facts ride two lanes ---------------------
@@ -85,16 +88,27 @@ func TestRowW7(t *testing.T) {
 	// carries the other's fact. open.path (Arg=1, Meta=1) is the SAME number
 	// for two facts, which is exactly why it cannot be the proof and save's
 	// path (2 against 1) is.
+	noneSpan := false
 	for i, e := range plan {
 		if e.Meta != 0 && e.Op != w7OpText {
 			t.Errorf("entry %d: Meta=%d on op %d — the flavour lane carries a non-text fact", i, e.Meta, e.Op)
 		}
-		if e.Guard != w7NoGuard && (e.Arg < 1 || e.Arg > 3) {
+		if e.Guard != w7NoGuard && e.Arg == 0 {
+			// Tag 0 selects no arm. Only its zero-check span uses ordinal 0.
+			if e.Op != w7OpSlack || e.Guard != w7BodyTagAt || e.ArgW != 1 || e.Src != w7BodyTagAt+1 || e.Size != tblm1.MsgFixedBodyBytes-w7BodyTagAt-1 || e.Meta != 0 {
+				t.Errorf("entry %d: invalid inactive-arm span: %+v", i, e)
+			}
+			noneSpan = true
+		} else if e.Guard != w7NoGuard && (e.Arg < 1 || e.Arg > 3) {
 			t.Errorf("entry %d: guarded entry's Arg=%d is no arm ordinal of Body — the ordinal lane carries something else", i, e.Arg)
 		}
 		if e.Guard == w7NoGuard && e.Arg != 0 {
 			t.Errorf("entry %d: unguarded entry's Arg=%d — the guard's ordinal leaked onto an entry with no guard", i, e.Arg)
 		}
+	}
+
+	if !noneSpan {
+		t.Error("the plan has no zero-check span for tag 0")
 	}
 
 	// ---- the record half: the runner spends the lanes independently ------
