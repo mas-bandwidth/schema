@@ -598,3 +598,35 @@ func TestRandomTableBoundsPass(t *testing.T) {
 }
 
 var _ = math.MaxInt8
+
+func TestIntegerBoundsCasesUseDeclaredJSONShape(t *testing.T) {
+	t.Parallel()
+	unit := &genUnit{Root: &genTable{Fields: []*genField{
+		{Name: "wide", Kind: gInt, Bits: 64, IMode: mExclDefault, Imin: 8, Imax: 10},
+		{Name: "unsigned", Kind: gUint, Bits: 64, IMode: mNone},
+		{Name: "narrow", Kind: gInt, Bits: 32, IMode: mNone},
+	}}}
+	cases := map[string]boundCase{}
+	for _, c := range buildFieldBoundCases(unit, false) {
+		cases[c.name] = c
+	}
+	for _, want := range []boundCase{
+		{name: "wide_min_minus_1", mode: "must_refuse", text: `{"wide":"7"}`, edge: `{"wide":"8"}`},
+		{name: "wide_str_7", mode: "must_refuse", text: `{"wide":"7"}`},
+		{name: "wide_bare_number", mode: "must_refuse", text: `{"wide":7}`},
+		{name: "unsigned_str_7", mode: "must_accept", text: `{"unsigned":"7"}`},
+		{name: "unsigned_implied_max_plus_1", mode: "must_refuse", text: `{"unsigned":"18446744073709551616"}`, edge: `{"unsigned":"18446744073709551615"}`},
+		{name: "narrow_str_7", mode: "must_refuse", text: `{"narrow":"7"}`},
+		{name: "narrow_implied_max_plus_1", mode: "must_refuse", text: `{"narrow":2147483648}`, edge: `{"narrow":2147483647}`},
+	} {
+		if got, ok := cases[want.name]; !ok || got != want {
+			t.Errorf("%s: got %+v, want %+v", want.name, got, want)
+		}
+	}
+	if got := inRangeRawValue(unit.Root.Fields[0]); got != `"8"` {
+		t.Errorf("wide in-range value = %s", got)
+	}
+	if got := sabotageEdgeCase(unit); got == nil || got.edge != `{"wide":"7"}` {
+		t.Errorf("wide sabotage edge = %+v", got)
+	}
+}
