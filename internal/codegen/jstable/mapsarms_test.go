@@ -264,7 +264,7 @@ var mapsArmsProbeTexts = []struct{ name, text string }{
 	{"arms_leaf_default", `{"pick": {"leaf": {}}}`},
 	{"arms_num", `{"pick": {"number": -5}}`},
 	{"arms_num_zero", `{"pick": {"number": 0}}`},
-	{"arms_wide", `{"pick": {"wide": 18446744073709551615}}`},
+	{"arms_wide", `{"pick": {"wide": "18446744073709551615"}}`},
 	{"arms_label", `{"pick": {"label": "héllo"}}`},
 	{"arms_grade", `{"pick": {"grade": "Gold"}}`},
 	{"arms_grade_none", `{"pick": {"grade": "None"}}`},
