@@ -57,6 +57,9 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 }
 
 func (g *tableGen) emitMessageRides(f *ir.Field, expr, ind string) string {
+	if f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Required {
+		return g.emitCountedBirthRides(f, expr, ind, true)
+	}
 	if f.KeyEnum != "" {
 		g.emitMessageKeyedCount(f, expr, ind)
 		return "pairs>0"
