@@ -1,8 +1,8 @@
 // Command gen writes the non-canonical spelling vectors
 // (docs/SPEC-TABLES.md §3, §3.1, §3.3, §22; docs/rulings.json
 // reads-refuse-non-canonical): the canonical variable-form file and the
-// message-form batch the engine writes, then one file per spelling a
-// conforming writer cannot emit, each re-encoded from the canonical bytes with
+// message-form batch the engine writes, then deliberate non-canonical cases
+// and a variable-order evolution positive, re-encoded from canonical bytes with
 // every LEB128, length, count and id reference recomputed.
 //
 // The canonical bytes are the engine's own Encode. Each variant is parsed back
