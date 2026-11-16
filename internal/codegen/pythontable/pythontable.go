@@ -1039,7 +1039,7 @@ func moduleNameOverwritten(plan *filePlan) bool {
 			return true
 		}
 		for _, f := range st.Fields {
-			if f.KeyEnum != "" && keyedClassName(st.Name, f) == plan.base {
+			if st.IsTable && f.KeyEnum != "" && keyedClassName(st.Name, f) == plan.base {
 				return true
 			}
 		}

@@ -1,6 +1,8 @@
 package pythontable
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -136,6 +138,64 @@ raise AssertionError('keyed representation sabotage was not detected')
 		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
 		if err == nil || !strings.Contains(stderr, "hosted_keyed_table_control") {
 			t.Fatalf("keyed representation sabotage did not fail by name: %v\n%s", err, stderr)
+		}
+	}
+}
+
+func pythonHostedPacketKeyedModuleFiles(t *testing.T) map[string][]byte {
+	t.Helper()
+	dir := t.TempDir()
+	for name, source := range map[string]string{"Core.schema": packetKeyedSchema, "BoardPerSlot.schema": "package packetkeyed\ntype Extra { x uint8 }\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := Generate(loadUnitPaths(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func TestPythonHostedPacketKeyedModule(t *testing.T) {
+	t.Parallel()
+	files := pythonHostedPacketKeyedModuleFiles(t)
+	probe := pyrun.ImportPrelude + `import types, packetkeyed
+from packetkeyed import BoardPerSlot, Extra
+assert isinstance(BoardPerSlot,types.ModuleType) and BoardPerSlot.Extra is Extra
+assert 'BoardPerSlot' in packetkeyed.__all__
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err != nil {
+			t.Fatalf("packet module export: %v\n%s\n%s", err, out, stderr)
+		}
+		if output, err := pyrun.Analyze(t, dir, "packetkeyed"); err != nil {
+			t.Fatalf("packet module strict mypy: %v\n%s", err, output)
+		}
+	}
+}
+
+func TestPythonHostedPacketKeyedModuleNegativeControl(t *testing.T) {
+	t.Parallel()
+	files := pythonHostedPacketKeyedModuleFiles(t)
+	name := "packetkeyed/__init__.py"
+	const anchor = "    \"BoardPerSlot\",\n"
+	if strings.Count(string(files[name]), anchor) != 1 {
+		t.Fatal("packet module export control lost its anchor")
+	}
+	files[name] = []byte(strings.Replace(string(files[name]), anchor, "", 1))
+	probe := pyrun.ImportPrelude + `import packetkeyed
+if 'BoardPerSlot' not in packetkeyed.__all__: raise SystemExit('hosted_keyed_module_control')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "hosted_keyed_module_control") {
+			t.Fatalf("packet module sabotage did not fail by name: %v\n%s", err, stderr)
 		}
 	}
 }
