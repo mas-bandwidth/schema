@@ -179,7 +179,7 @@ const r=new m.TableVariableReport();missing(m.GuardFromJson('{"on":true}',r),r,"
 expect(m.GuardFromJson('{}',r)!==null,"reused JSON report");
 expect(m.AllLoad(new Uint8Array(Buffer.from(cases[0].wire,"hex")),r)!==null,"reused wire report");
 const rr=new m.TableVariableReport();const wrongShape=m.GuardFromJson('{"on":true,"needed":"wrong"}',rr);
-expect(wrongShape!==null && rr.mismatch===1 && rr.missingRequired===0,"JSON key presence");
+expect(wrongShape===null && rr.mismatch===1 && rr.missingRequired===0 && rr.err()==="kind_mismatch", "present wrong-kind JSON must refuse by kind");
 `
 
 // Required is a variable-table declaration. Its fixed positional accelerator

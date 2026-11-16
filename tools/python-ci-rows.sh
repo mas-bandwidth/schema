@@ -50,6 +50,11 @@ while IFS= read -r package; do
   case "$package" in */internal/codegen/pythontable)
     names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonFixedProofSuite$/d') ;;
   esac
+  # Complete array-widening cases and pointer-array proof phases have their
+  # own support rows; keeping either parent here would rerun the monolith.
+  case "$package" in */internal/codegen/pythontable)
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonArrayWidening$/d; /^TestPythonVtPointerArrays$/d') ;;
+  esac
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }

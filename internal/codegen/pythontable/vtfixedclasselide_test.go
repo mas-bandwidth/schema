@@ -384,7 +384,7 @@ func TestPythonVtFixedClassElision(t *testing.T) {
 // (descriptor.py, FieldDesc.is_default): every field of the table elided,
 // judged field by field, as the engine elides a body that is its terminator
 // alone.
-const tableElision = "return all(field.is_default(getattr(value, field.name)) for field in fields)"
+const tableElision = "return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)"
 
 // TestPythonVtFixedClassElisionNegativeControl plants one fault per case in a
 // copy of the runtime or the generated module, and requires the probe red
