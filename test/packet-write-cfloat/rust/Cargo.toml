@@ -1,0 +1,8 @@
+[package]
+name = "packet-write-cfloat-test"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+packetcfloat = { path = "../../../build/packet-write-cfloat/rust/cfloat" }
+serialize = { package = "serialize-official", path = "../../../../serialize.rs" }
