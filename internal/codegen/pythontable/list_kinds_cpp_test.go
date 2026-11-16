@@ -86,3 +86,38 @@ print("ok")
 		}
 	}
 }
+
+func TestPythonOptionalEnumArrayCppOracle(t *testing.T) {
+	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
+	c := wideVTConstruct{root: "Root", schema: `package optionenumcpp
+enum Mode { A, B, C }
+table Root {
+ marks ?[2]Mode
+ counted ?[..2]Mode
+}
+`, json: `{"marks":["A","C"],"counted":[]}`}
+	u := loadUnit(t, c.schema)
+	wire := cppWideWire(t, u, c)
+	if goWire := wideEngineWire(t, u, c.root, c.json); !bytes.Equal(wire, goWire) {
+		t.Fatalf("C++ and Go differ: %x vs %x", wire, goWire)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from optionenumcpp import Root
+wire = open("wire", "rb").read()
+v = Root.load(wire)
+assert v.marks == [1, 3] and v.counted == []
+assert v.save() == wire
+print("ok")
+`
+	for _, pin := range []func(testing.TB) string{pyrun.Interpreter, pyrun.Floor} {
+		out, stderr, err := pyrun.Try(t, pin(t), dir, "main.py", map[string][]byte{"main.py": []byte(probe), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "ok" {
+			t.Fatalf("probe: %v stdout=%s stderr=%s", err, out, stderr)
+		}
+	}
+}

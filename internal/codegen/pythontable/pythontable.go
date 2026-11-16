@@ -1814,7 +1814,7 @@ func innerCodecOf(f *ir.Field) string {
 	}
 	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		switch optionalElemCodecOf(f) {
-		case "bool", "int", "table", "float32", "float64":
+		case "bool", "int", "table", "enum", "float32", "float64":
 			return "array"
 		}
 		return "unsupported"
@@ -1846,7 +1846,7 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	switch codec {
 	case "bool":
 		def = "False"
-	case "int":
+	case "int", "enum":
 		def = "0"
 	case "float32", "float64":
 		def = "0.0"
