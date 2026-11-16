@@ -142,7 +142,9 @@ func reflectionLayoutWant(u *ir.Unit) string {
 				presentAt = pieces[len(pieces)-1].Offset
 			}
 			size := int64(0)
-			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+			if f.IsTextList() {
+				size = ir.TextListValue(f).Type.Size
+			} else if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 				size = f.Type.Size
 			}
 			_, isStruct := f.Type.Ref.(*ir.Struct)
