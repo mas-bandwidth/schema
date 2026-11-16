@@ -282,6 +282,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// saveInto: the variable save, with the retained tail appended at the end
 	// of the body, before the node table (§6.6), ids interned in first-use order.
 	fmt.Fprintf(&b, "    static int saveInto(%sVariable.Value v, TableRetain retain, byte[] buf, TableVariable.Report report) {\n", st.Name)
+	// THE WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1 rows 1-5 and 8),
+	// asserted before the graph walk exactly as the variable save asserts it
+	fmt.Fprintf(&b, "        assert %sVariable.checkWrite(v);\n", st.Name)
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
@@ -331,11 +334,12 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        }\n")
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
-	// a NaN or an infinity refuses the save (docs/SPEC-TABLES.md §3.3)
+	// a NaN or an infinity, or a ranged float off its range, refuses the save
+	// (docs/SPEC-TABLES.md §3.3, docs/SPEC.md §5.1 row 10)
 	if st.Integrity != "" {
-		b.WriteString("        if (!w.overflow && !ids.nonFinite) { w.put32(TableVariable.crc32c(w.buf, w.off)); }\n")
+		b.WriteString("        if (!w.overflow && !ids.nonFinite && !ids.offRange) { w.put32(TableVariable.crc32c(w.buf, w.off)); }\n")
 	}
-	b.WriteString("        return w.overflow || ids.nonFinite ? -1 : w.off;\n")
+	b.WriteString("        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;\n")
 	b.WriteString("    }\n\n")
 
 	// writeFieldsRetain: the canonical write, threading the path into list
