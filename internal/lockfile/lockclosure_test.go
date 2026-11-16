@@ -799,7 +799,8 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 // under the current rendering with nothing lost. A lock OLDER than that holds
 // nothing a lineage can be made of, and it still takes the delete-and-rewrite
 // sentence (TestALockFromAnOlderRenderingSaysWhatToDo).
-func TestALockFromTheRenderingJustBeforeThisOneSalvages(t *testing.T) {
+func TestALockFromThePreLineageRenderingSalvages(t *testing.T) {
+	t.Parallel()
 	dir, paths := fixture(t, closureBase)
 	path := filepath.Join(dir, lockfile.FileName)
 	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
@@ -813,15 +814,15 @@ func TestALockFromTheRenderingJustBeforeThisOneSalvages(t *testing.T) {
 	if !bytes.HasPrefix(current, []byte(head)) {
 		t.Fatalf("the lock opens with %q:\n%s", head, current)
 	}
-	// the same file one rendering back: its body without the lineage this
-	// rendering added
+	// Rendering 6 predates lineage. Pin that historical format rather than
+	// Version-1, which can already require lineage.
 	var body []string
 	for line := range strings.SplitSeq(string(current[len(head):]), "\n") {
 		if !strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
 			body = append(body, line)
 		}
 	}
-	previous := []byte(fmt.Sprintf("schema-lock %d\n", lockfile.Version-1) + strings.Join(body, "\n"))
+	previous := []byte("schema-lock 6\n" + strings.Join(body, "\n"))
 	if err := os.WriteFile(path, previous, 0o644); err != nil {
 		t.Fatal(err)
 	}
