@@ -15,6 +15,11 @@ const Python Backend = 1 << 13
 
 func init() {
 	define(Python,
+		Name{Name: "FixedLoadReport", What: "the fixed load counters and selected layout hash", Scoped: true},
+		Name{Name: "fixed_register", What: "bind the generated fixed-form schema and plans", Scoped: true},
+		Name{Name: "fixed_load", What: "load a whole fixed-form batch", Scoped: true},
+		Name{Name: "fixed_save", What: "save a fixed-form batch", Scoped: true},
+		Name{Name: "fixed_measure", What: "measure a fixed-form batch from its count", Scoped: true},
 		Name{Name: "Refused", What: "the read refusal every generated package re-exports", Scoped: true},
 		Name{Name: "InvalidValue", What: "the write refusal every generated package re-exports", Scoped: true},
 		Name{Name: "LoadReport", What: "the counters a successful load fills", Scoped: true},
