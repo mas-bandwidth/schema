@@ -12,11 +12,13 @@ import (
 // are allowed when the text is verbatim in docs/SPEC-TABLES.md, dead code
 // named by deadcode -test, and merges of emitters that write the same text,
 // so the original reached budget was the BASE count itself: 4763 lines.
-// Runtime pruning and schema API generation raise the measured core to 4774
-// lines; this cap reconciles that integration without changing emitted code.
+// Counted-array birth adds default-aware array elision using the existing
+// scalar comparisons and composite body measurements. At main ebf105319 the
+// measured core grows from 4774 to 4808 lines; this cap includes all of that
+// new helper logic. This feature cost is separate from the contraction goal.
 func TestGoLegSizeCore(t *testing.T) {
 	t.Parallel()
-	const budget = 4774
+	const budget = 4808
 	files := []string{"gotable.go", "read.go", "write.go", "wire.go", "view.go"}
 	total := 0
 	for _, name := range files {
