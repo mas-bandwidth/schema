@@ -14,11 +14,10 @@
   the table runtime so that class's `read`/`write` still work. The table
   descriptor is the one the table walk reads; it is registered by name only,
   because a packet type by value never rides the node table's type ids.
-  A packet type whose fields are float or fixed-point kinds, which the packet
-  wire carries, is generated, imports and passes the analyzer, and its own
-  `read`/`write` work; on the table wire its body walk refuses those fields by
-  name through `kind_unsupported.py`, the whole value or nothing, until the
-  table runtime carries floats (`TestPythonTablePacketTypesFloatKinds`).
+  Hosted float and fixed-point fields use the same form-1 codecs as table
+  fields. Scalar, bounded-array and compressed float values are checked
+  against Go and C++ bytes under both pinned interpreters
+  (`TestPythonHostedFloatFunctional`, `TestPythonTablePacketTypesFloatKinds`).
 - **Nothing the unit declares is dropped.** In a unit with tables, every
   packet type and packet union is generated, reached by a table or not,
   through the same `python.Host`: the class and codec the packet leg emits
