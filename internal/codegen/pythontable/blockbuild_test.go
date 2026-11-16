@@ -66,11 +66,7 @@ else:
 	if err := os.WriteFile(filepath.Join(dir, probeFile), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-<<<<<<< HEAD
-	out := string(pyrun.Run(t, dir, probeFile, nil))
-=======
 	out := pyBlockRunBoth(t, dir, probeFile, nil)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != len(roots)+1 {
 		t.Fatalf("the Python probe returned %d lines, want %d:\n%s", len(lines), len(roots)+1, out)
@@ -135,11 +131,7 @@ func TestPythonBlockBuilderNegativeControls(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	u := loadUnitFiles(t, filepath.Join(repo, "tables", "block"))
-<<<<<<< HEAD
-	runProbe := func(t *testing.T, patch func(map[string][]byte)) (string, error) {
-=======
 	runProbe := func(t *testing.T, path func(testing.TB) string, patch func(map[string][]byte)) (string, error) {
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		t.Helper()
 		files, err := Generate(u)
 		if err != nil {
@@ -152,10 +144,7 @@ func TestPythonBlockBuilderNegativeControls(t *testing.T) {
 		writeTree(t, dir, files)
 		probe := pyrun.ImportPrelude + `import blockdemo
 from blockdemo._schema import block as B, blockbuild as BB
-<<<<<<< HEAD
-=======
 from blockdemo import InvalidValue
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 
 T = blockdemo
 b1 = BB.Begin(T, "PaddedFrame", {"rows": 3})
@@ -166,14 +155,9 @@ if b1.arrays[0].offset % 64 != 0:
 h = B.BlockOpen(T, "PaddedFrame", b1.bytes, T.BUILD_VERSION)
 try:
     BB.Begin(T, "RenderFrame", {"ships": 4097})
-<<<<<<< HEAD
-except Exception:
-    pass
-=======
 except InvalidValue as err:
     if err.path != "ships":
         raise SystemExit("wrong invalid path")
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 else:
     raise SystemExit("over-count accepted")
 print("ok")
@@ -181,33 +165,6 @@ print("ok")
 		if err := os.WriteFile(filepath.Join(dir, "main.py"), []byte(probe), 0o644); err != nil {
 			t.Fatal(err)
 		}
-<<<<<<< HEAD
-		out, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", nil)
-		return strings.TrimSpace(out + stderr), err
-	}
-	if out, err := runProbe(t, nil); err != nil || out != "ok" {
-		t.Fatalf("unsabotaged blockbuild probe failed: %q %v", out, err)
-	}
-	for _, tc := range []struct {
-		name   string
-		anchor string
-		repl   string
-	}{
-		{
-			name:   "align",
-			anchor: "        offset = _align_up(offset, align)",
-			repl:   "        offset = _align_up(offset, 1)",
-		},
-		{
-			name:   "count",
-			anchor: "if type(count) is not int or count < 0 or count > a.maximum:",
-			repl:   "if type(count) is not int or count < 0:",
-		},
-		{
-			name:   "extent",
-			anchor: "used = _align_up(offset, _block.BLOCK_ALIGN)",
-			repl:   "used = offset + 1",
-=======
 		out, stderr, err := pyrun.Try(t, path(t), dir, "main.py", nil)
 		return strings.TrimSpace(out + stderr), err
 	}
@@ -239,7 +196,6 @@ print("ok")
 			anchor:   "used = _align_up(offset, _block.BLOCK_ALIGN)",
 			repl:     "used = offset + 1",
 			expected: "extent not 64-byte aligned",
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -247,17 +203,11 @@ print("ok")
 			patch := func(files map[string][]byte) {
 				pyBlockPatchOnce(t, files, u.Package+"/_schema/blockbuild.py", tc.anchor, tc.repl)
 			}
-<<<<<<< HEAD
-			out, err := runProbe(t, patch)
-			if err == nil && strings.TrimSpace(out) == "ok" {
-				t.Fatalf("NEGATIVE CONTROL FAILED: %s left the blockbuild probe green", tc.name)
-=======
 			for _, pin := range []func(testing.TB) string{pyrun.Interpreter, pyrun.Floor} {
 				out, err := runProbe(t, pin, patch)
 				if err == nil || !strings.Contains(out, tc.expected) {
 					t.Fatalf("NEGATIVE CONTROL FAILED: %s did not fail on %q: %q %v", tc.name, tc.expected, out, err)
 				}
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 			}
 		})
 	}

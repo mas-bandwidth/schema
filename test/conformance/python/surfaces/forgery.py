@@ -1,10 +1,6 @@
 """The block forgery battery (testdata/conformance/tables/FORMAT.md)."""
 
-<<<<<<< HEAD
-from _common import entries, read_bytes, unit_package, write_bytes
-=======
 from _common import absent, entries, read_bytes, unit_package, write_bytes
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 
 from _blocks import block_root, open_block, place
 
@@ -25,11 +21,7 @@ def run(manifest, outdir):
         unit, root = roots[subject]
         package = unit_package(unit)
         if package is None:
-<<<<<<< HEAD
-            write_bytes(outdir, name, b"refuse\n")
-=======
             absent(outdir, name, "unit not generated for python")
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
             continue
         data = read_bytes(row[4])
         extent = int(row[5])
