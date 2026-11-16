@@ -1195,3 +1195,43 @@ print('dropped-default-slot')
 		}
 	}
 }
+
+func TestPythonRetainGuardedBody(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+table Root {
+ enabled bool
+ if enabled { child Child }
+}
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	enabled := unionCat(w.ref("enabled"), []byte{1, 1})
+	w.ref("child")
+	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7))
+	wire := w.file(enabled, w.table("child", ghost))
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+with open('wire','rb') as f: wire=f.read()
+retain=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
+value=Root.load_retain(wire,retain,report)
+assert report.retained==1 and value.enabled
+value.enabled=False
+out=value.save_retain(retain,report)
+assert report.retain_lost==1 and not Root.load(out).enabled
+assert out==value.save(), (out,value.save())
+print('guarded-body')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "guarded-body" {
+			t.Fatalf("guarded retention: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}

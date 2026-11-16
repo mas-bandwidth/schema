@@ -206,27 +206,22 @@ def _collect_root(value: Any, ctx: Ctx) -> None:
 
 
 def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
-    """Experimental retaining walk; the public entry points are not emitted yet."""
+    """Write one retaining form-1 file or count the same walk."""
+    _check_root(value)
     if retain.loaded_root is not value:
         raise InvalidValue("", "retention belongs to a different loaded root")
     _validate(value, value.descriptor, "", set())
     ctx = _RetainCtx(retain)
     ctx.indices[id(value)] = 1
     ctx.onstack.add(id(value))
-    root_blobs: list[int] = []
-    ctx.node_blobs[1] = root_blobs
-    _collect(value, ctx, root_blobs)
-    ctx.blob_slots = list(root_blobs)
-    for position, node in enumerate(ctx.order):
-        if not isinstance(node, kind_blob._BlobNode):
-            ctx.blob_slots.extend(ctx.node_blobs[position + 2])
+    _collect_root(value, ctx)
     # Reserve the IDs the ordinary known-value walk must write before using
     # any of the wire's 4096 slots for retained-only fields. Default containers
     # forced solely by retention are decided when their bodies are reached.
     retain.begin_save(ctx, retain.directory)
     ctx.preview = True
     counter = Writer(None)
-    counter.byte(FORM)
+    _write_form(counter)
     write_body(counter, value, ctx, True)
     reserved = frozenset(ctx.ids)
     ctx.ids.clear()
@@ -238,7 +233,7 @@ def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
     ctx.lost = 0
     ctx.emitted = 0
     retain.begin_save(ctx, retain.directory)
-    writer.byte(FORM)
+    _write_form(writer)
     write_body(writer, value, ctx, True)
     ctx.write_ids(writer)
     return writer.count, ctx.lost + retain.unplaced()
@@ -251,6 +246,8 @@ def _write_retain_body(writer: Writer, value: Any, ctx: _RetainCtx, root: bool) 
     parent_ordinal = ctx.ordinal
     ctx.current = value
     for field in desc.fields:
+        if not field.guard_holds(value):
+            continue
         current = getattr(value, field.name)
         codec = field.inner if field.codec == "optional" else field.codec
         child = parent_steps + ((field.ordinal, 0),)
