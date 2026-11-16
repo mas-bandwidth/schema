@@ -241,15 +241,16 @@ func TestPythonFixedProofEvolutionHostileEnvelope(t *testing.T) {
 	start := 20 + len(layout)
 	body := start + 8
 	type fileCase struct {
-		Name   string `json:"name"`
-		Reason string `json:"reason"`
+		Name     string `json:"name"`
+		Reason   string `json:"reason"`
+		Capacity int    `json:"capacity"`
 	}
 	cases := []fileCase{}
 	inputs := map[string][]byte{"oracle": oracle}
 	add := func(name, reason string, data []byte) {
 		t.Helper()
 		inputs[name] = data
-		cases = append(cases, fileCase{name, reason})
+		cases = append(cases, fileCase{name, reason, 0})
 		err := cppLoad(data)
 		if reason == "" && err != nil {
 			t.Fatalf("C++ refused valid %s: %v", name, err)
@@ -286,6 +287,12 @@ func TestPythonFixedProofEvolutionHostileEnvelope(t *testing.T) {
 		add(fmt.Sprintf("record-short-%d", n), "truncated", bytes.Clone(oracle[:start+n]))
 	}
 	add("tail", "truncated", append(bytes.Clone(oracle), 0))
+	tooMany := append(bytes.Clone(oracle), oracle[start:]...)
+	inputs["batch-capacity"] = tooMany
+	cases = append(cases, fileCase{"batch-capacity", "batch_too_large", 1})
+	if err := cppLoad(tooMany); err == nil {
+		t.Fatal("C++ accepted a batch beyond capacity")
+	}
 	add("record-hash", "no_layout", edit(start, oracle[start]^1))
 	add("bool", "wire_damaged", edit(body, 2))
 	add("integer-low", "out_of_range", edit(body+1, 0xff))
@@ -312,7 +319,7 @@ for case in cases:
     with open(case["name"], "rb") as f:
         data = f.read()
     try:
-        rows = T.fixed_load(data, report=report)
+        rows = T.fixed_load(data, capacity=case["capacity"] or 4096, report=report)
     except Refused as err:
         if not case["reason"] or err.reason != case["reason"]:
             raise AssertionError("hostile_case_" + case["name"] + " " + str(err))
