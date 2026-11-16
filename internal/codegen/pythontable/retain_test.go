@@ -1099,22 +1099,7 @@ print('allocation-shape')
 	}
 }
 
-func TestPythonRetainTotalIDKnownLast(t *testing.T) {
-	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
-	const schema = `package probe
-table Child { n int32 }
-table Root {
- child Child
- z int32
-}
-`
-	u := loadUnit(t, schema)
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+const retainKnownLastScript = `from probe import Root, TableRetain, LoadReport
 def leb(n):
     b=bytearray()
     while n>=128: b.append((n&127)|128); n >>= 7
@@ -1145,6 +1130,23 @@ assert int.from_bytes(saved[-8:],'little')==4096
 with open('saved','wb') as f: f.write(saved)
 print('known-last')
 `
+
+func TestPythonRetainTotalIDKnownLast(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+table Root {
+ child Child
+ z int32
+}
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + retainKnownLastScript
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
@@ -1333,6 +1335,37 @@ print('depth-128')
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
 		if err != nil || strings.TrimSpace(out) != "depth-128" {
 			t.Fatalf("depth 128: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+func TestPythonRetainKnownIDNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+ table Child { n int32 }
+ table Root {
+  child Child
+  z int32
+ }
+ `
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const path = "probe/_schema/save.py"
+	const anchor = "    ctx.remaining = len(reserved)\n"
+	if strings.Count(string(files[path]), anchor) != 1 {
+		t.Fatal("known ID control anchor changed")
+	}
+	files[path] = []byte(strings.Replace(string(files[path]), anchor, "    ctx.remaining = 0\n", 1))
+	script := strings.Replace(retainKnownLastScript, "assert report.retain_lost==1, report.retain_lost", "if report.retain_lost!=1: raise SystemExit('retain_known_id_control')", 1)
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + script)})
+		if err == nil || !strings.Contains(stderr, "retain_known_id_control") {
+			t.Fatalf("known ID sabotage not detected: %v\n%s", err, stderr)
 		}
 	}
 }
