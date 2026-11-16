@@ -90,6 +90,16 @@ func elemKeyedTriple(keyRef uint64, payload []byte) []byte {
 	return elemCat(elemLeb(keyRef), elemLeb(uint64(len(payload))), payload)
 }
 
+// elemKeyedIDs is the id table a keyed body needs: the field's own id, and the
+// key enum's slot id only where a triple references it. First-use order (§3)
+// refuses a slot id no body references.
+func elemKeyedIDs(field uint64, triples [][]byte) []uint64 {
+	if len(triples) == 0 {
+		return []uint64{field}
+	}
+	return []uint64{field, ir.TableWireId("A")}
+}
+
 // elemArrayPayload is one array element under the element kind's own framing,
 // or ok=false where that kind has no payload a reader could follow.
 func elemArrayPayload(kind int) ([]byte, bool) {
@@ -145,7 +155,6 @@ func TestArrayElementKindsClosed(t *testing.T) {
 	nums := ir.TableWireId("nums")
 	by := ir.TableWireId("by")
 	unknown := ir.TableWireId("zzz")
-	slotA := ir.TableWireId("A")
 
 	read := func(data []byte) (bool, error) {
 		inst := m.New(root)
@@ -186,7 +195,7 @@ func TestArrayElementKindsClosed(t *testing.T) {
 					triples = append(triples, elemKeyedTriple(2, p))
 				}
 			}
-			ok, err = read(elemKeyedWire([]uint64{unknown, slotA}, 1, kind, count, triples...))
+			ok, err = read(elemKeyedWire(elemKeyedIDs(unknown, triples), 1, kind, count, triples...))
 			if ok != keyedOn {
 				t.Errorf("unknown keyed element kind %d count %d: accepted=%t want=%t (%v)", kind, count, ok, keyedOn, err)
 			}
@@ -218,7 +227,7 @@ func TestArrayElementKindsClosed(t *testing.T) {
 				}
 			}
 			if !keyedOn {
-				ok, err := read(elemKeyedWire([]uint64{by, slotA}, 1, kind, count, triples...))
+				ok, err := read(elemKeyedWire(elemKeyedIDs(by, triples), 1, kind, count, triples...))
 				if ok || RefusalReason(err) != ReasonWireDamaged {
 					t.Errorf("declared keyed element kind %d count %d: accepted=%t reason=%q, want refusal %q", kind, count, ok, RefusalReason(err), ReasonWireDamaged)
 				}
@@ -226,22 +235,20 @@ func TestArrayElementKindsClosed(t *testing.T) {
 		}
 	}
 
-	// READ CONTROLS: the declared array and keyed body at their own element
-	// kind, count 0 and count 1.
+	// At its own element kind a count-one body reads; the count-zero
+	// spelling stores a field at its default and must refuse (§3).
 	for _, count := range []uint64{0, 1} {
-		var elems [][]byte
+		var elems, triples [][]byte
 		if count == 1 {
 			elems = [][]byte{make([]byte, ir.TableKindWidth(ir.TableKindI32))}
-		}
-		if ok, err := read(elemArrayWire([]uint64{nums}, 1, ir.TableKindI32, count, elems...)); !ok {
-			t.Errorf("declared array control count %d: %v", count, err)
-		}
-		var triples [][]byte
-		if count == 1 {
 			triples = [][]byte{elemKeyedTriple(2, make([]byte, ir.TableKindWidth(ir.TableKindI32)))}
 		}
-		if ok, err := read(elemKeyedWire([]uint64{by, slotA}, 1, ir.TableKindI32, count, triples...)); !ok {
-			t.Errorf("declared keyed control count %d: %v", count, err)
+		want := count != 0
+		if ok, err := read(elemArrayWire([]uint64{nums}, 1, ir.TableKindI32, count, elems...)); ok != want {
+			t.Errorf("declared array control count %d: accepted=%v want=%v (%v)", count, ok, want, err)
+		}
+		if ok, err := read(elemKeyedWire(elemKeyedIDs(by, triples), 1, ir.TableKindI32, count, triples...)); ok != want {
+			t.Errorf("declared keyed control count %d: accepted=%v want=%v (%v)", count, ok, want, err)
 		}
 	}
 }

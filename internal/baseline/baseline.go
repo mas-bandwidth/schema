@@ -373,8 +373,8 @@ func renderField(f *ir.Field) Field {
 			add("type", f.Type.Name)
 		}
 	}
-	// Presence is recorded and judged one way (§18.1): adding optional to a
-	// shipped field refuses, while removing it passes.
+	// Presence is recorded for the build; the variable wire absorbs additions
+	// and removals of optional (§2.3, §18.1).
 	if f.Type.Optional {
 		add("optional", "true")
 	}
