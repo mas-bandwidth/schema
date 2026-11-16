@@ -100,4 +100,29 @@ func reportReason(err error) string {
 
 // readFail is the first condition one read met, shared by every sub-reader of
 // that read: once set, every walk stops and the read refuses.
-type readFail struct{ err error }
+//
+// substituted counts the values the read put in place of what the wire named:
+// an enum variant or a union arm this reader cannot name (read as None), an
+// unknown node type (read as null), and a deprecated variant (read as default). Such a value is lawful evolution,
+// not a stored default, so a field whose read substituted one is not judged
+// against the writer's elision rule.
+type readFail struct {
+	err         error
+	substituted int
+}
+
+// substitutedCount is the count of values a read substituted so far (zero for
+// a read with no shared state).
+func substitutedCount(f *readFail) int {
+	if f == nil {
+		return 0
+	}
+	return f.substituted
+}
+
+// substitute records one substituted value.
+func substitute(f *readFail) {
+	if f != nil {
+		f.substituted++
+	}
+}

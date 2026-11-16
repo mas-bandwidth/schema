@@ -269,7 +269,6 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 	rootSt := u.Tables["Root"]
 	nodeSt := u.Tables["Node"]
 	otherSt := u.Tables["Other"]
-	leafSt := u.Tables["Leaf"]
 	shelfSt := u.Tables["Shelf"]
 
 	fieldID := func(st *ir.Struct, name string) uint64 {
@@ -292,7 +291,6 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 
 	nodeTypeID := typeID(nodeSt)
 	otherTypeID := typeID(otherSt)
-	leafTypeID := typeID(leafSt)
 	listNodesID := fieldID(rootSt, "list_nodes")
 	fixedNodesID := fieldID(rootSt, "fixed_nodes")
 	boundedNodesID := fieldID(rootSt, "bounded_nodes")
@@ -594,7 +592,7 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 				root = append(root, 1, 13, byte(len(nested)))
 				root = append(root, nested...)
 				root = append(root, 0)
-				return buildForm1File(root, []uint64{shelfFieldID, shelfItemsID, leafTypeID})
+				return buildForm1File(root, []uint64{shelfFieldID, shelfItemsID})
 			}(),
 		},
 	}
@@ -810,12 +808,12 @@ table Root
 	evoUnknownTargetWire := func() []byte {
 		// leaf_list = [node 2 (undeclared), node 3 (Leaf id=55)]
 		var leafBody []byte
-		leafBody = append(leafBody, 4, 4, 55, 0, 0, 0, 0)
+		leafBody = append(leafBody, 5, 4, 55, 0, 0, 0, 0)
 		var nt []byte
 		nt = append(nt, 2)           // 2 records
 		nt = append(nt, 3, 1, 0)     // rec 2: typeRef=3 (undeclared), empty body [0]
-		nt = append(nt, 5, 7)        // rec 3: typeRef=5 (Leaf), len=7
-		nt = append(nt, leafBody...) // field ref=4 (Leaf.id), kind=4, 55, term=0
+		nt = append(nt, 4, 7)        // rec 3: typeRef=4 (Leaf), len=7
+		nt = append(nt, leafBody...) // field ref=5 (Leaf.id), kind=4, 55, term=0
 		var root []byte
 		root = append(root, 1, 14, 4, 17, 2, 2, 3) // leaf_list: [2, 3]
 		root = append(root, 2, 12, byte(len(nt)))
@@ -825,8 +823,8 @@ table Root
 			evoLeafListID,
 			^uint64(0),
 			undeclaredNodeTypeID,
-			ir.TableFieldWireId(fieldByName(evoLeafSt, "id")),
 			evoLeafTypeID,
+			ir.TableFieldWireId(fieldByName(evoLeafSt, "id")),
 		})
 	}()
 	{
