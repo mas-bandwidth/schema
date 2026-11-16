@@ -148,6 +148,16 @@ func TestCPPTextFormSharing(t *testing.T) {
 			}
 		})
 	}
+	// JSON's tolerant map walk retains optional presence for a non-null
+	// wrong-kind value, just as the ordinary optional-field walk does.
+	wrongShape, err := exec.Command(bin, "json-kind", `{"lookup":{"east":false}}`).CombinedOutput()
+	var refused map[string]any
+	if err != nil || json.Unmarshal(wrongShape, &refused) != nil {
+		t.Fatalf("optional map JSON refusal: %v\n%s", err, wrongShape)
+	}
+	if got := refused["lookup"].(map[string]any)["east"]; got != float64(0) {
+		t.Fatalf("wrong-kind optional map value lost presence: %v", got)
+	}
 	// Source labels are identities, not storage indices: a positive spelling
 	// beyond uint64 still maps to the same internal node.
 	large := `(:items (("&node" 184467440737095516160000000 :id 6) ("&node" 184467440737095516160000000)))`
@@ -182,6 +192,13 @@ using namespace probe;
 int main(int argc,char **argv) {
  if(argc<2)return 2;
  const char *doc=NULL,*why=NULL;int64_t bytes=0;GraphBuilder b;
+ if(argc==3 && strcmp(argv[1],"json-kind")==0){
+  TableReport report;
+  if(!GraphFromJson(b,argv[2],(int64_t)strlen(argv[2]),&report) || !report.refused || report.refuse_reason!=kind_mismatch || !b.Lock())return 6;
+  const Graph *g=b.AsConst();std::vector<char> out((size_t)GraphToJsonMeasure(g)+1);
+  int64_t n=GraphToJson(g,out.data(),(int64_t)out.size());if(n<0)return 4;
+  fwrite(out.data(),1,(size_t)n,stdout);return 0;
+ }
  if(!GraphLoadTextForm(argv[1],(int64_t)strlen(argv[1]),&doc,&bytes,b,&why)){printf("%s",why?why:"?");return 0;}
  std::vector<char> saved((size_t)bytes+1);
  if(GraphSaveTextForm(doc,bytes,saved.data(),(int64_t)saved.size())!=bytes || memcmp(saved.data(),argv[1],(size_t)bytes)!=0)return 5;
