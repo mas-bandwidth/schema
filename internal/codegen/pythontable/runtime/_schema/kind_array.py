@@ -194,11 +194,6 @@ class _Array:
             items = _read_walk(sub, element, count, ctx)
         if sub.pos != length:
             raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
-        if count == 0 and not fd.optional and not fd.required:
-            raise Refused(
-                "non_canonical",
-                f"{fd.name} rides present and empty, its declared default, which the writer elides",
-            )
         return items
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
