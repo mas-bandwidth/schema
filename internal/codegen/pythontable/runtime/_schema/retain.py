@@ -345,10 +345,15 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain) -> tuple
     read first, so this walk cannot weaken any framing or value refusal.
     """
     from . import descriptor
-    from .load import Ctx, NODE_WIRE_ID, _BYTES_WIRE_TYPE_ID, _STRING_WIRE_TYPE_ID, _body_end, _id_table, _skip_payload
+    from .load import Ctx, NODE_WIRE_ID, _BYTES_WIRE_TYPE_ID, _STRING_WIRE_TYPE_ID, _body_end, _id_table, _placeable, _skip_payload
 
     ids = _id_table(wire)
     skip = Ctx(ids)
+    class _DiscardEdges(list[int]):
+        def append(self, value: int) -> None:
+            pass
+    skip.edges = _DiscardEdges()
+    placeable = _placeable(cls)
     counts = [0, 0]
     retain.reset()
 
@@ -447,7 +452,7 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain) -> tuple
             payload = r.take(r.varint())
             if identity in (_BYTES_WIRE_TYPE_ID, _STRING_WIRE_TYPE_ID):
                 continue
-            target = descriptor.by_id(identity)
+            target = descriptor.by_id(identity) if identity in placeable else None
             if target is None:
                 counts[1] += 1
             else:
