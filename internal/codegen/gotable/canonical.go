@@ -163,6 +163,11 @@ func (g *tableGen) emitElidedRefusalWhen(f *ir.Field, expr, ind, when string) {
 	case enumRef(f) != nil || isUnionRef(f.Type) || isStructRef(f.Type):
 		return
 	}
+	// A born-count array's message default is judged by the original spelling
+	// in emitMessageReadArray, before unknown values project to defaults.
+	if f.Array == ir.ArrayCounted && f.BornCount() > 0 {
+		return
+	}
 	rides := g.emitFieldRides(f, expr, ind)
 	g.pf("%sif %s!(%s) { %s; return false }\n", ind, when, rides, damaged)
 }

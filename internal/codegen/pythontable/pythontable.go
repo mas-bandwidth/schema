@@ -1872,16 +1872,16 @@ func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// Fixed files carry every field, so their fresh counted arrays
-		// start at the declared minimum. Preserve the form-1 empty reset
-		// for an absent counted field; that separate wire behavior is held
-		// by the form-1 read/write oracle. Every nested value is distinct.
+		// Fixed values start counted arrays at their declared minimum; form-1
+		// union arrays also use their independently allocated birth values.
 		count := int64(0)
 		if fixed {
 			count = f.BornCount()
 		}
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
+		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
+			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"
