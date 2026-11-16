@@ -2,6 +2,7 @@ package squirreltable_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const (
@@ -102,10 +104,7 @@ func TestSquirrelPointerOrphanCycleIsDamage(t *testing.T) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: restoring the root-only cycle walk left pointer_orphan_cycle answering %q", got)
 	}
 
-	twin := bytes.Replace(bytes.Replace(wire, []byte{0x04, 0x11, 0x02, 0x00}, []byte{0x04, 0x11, 0x03, 0x00}, 1), []byte{0x01, 0x11, 0x00}, []byte{0x01, 0x11, 0x02}, 1)
-	if bytes.Equal(twin, wire) {
-		t.Fatal("pointer_orphan_cycle.bin did not contain expected ListNode 2 self-edge 04 11 02 00")
-	}
+	twin := orphanAcyclicTwin(t, wire)
 	var twinRep tabletext.Report
 	twinOK, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), twin, &twinRep)
 	if err != nil && !tablewire.ReadRefusal(err) {
@@ -117,4 +116,18 @@ func TestSquirrelPointerOrphanCycleIsDamage(t *testing.T) {
 	if got := runSquirrelOrphanCycleProbe(t, twin, false); got != "loaded|ok" {
 		t.Fatalf("graphdemo.Scene(acyclic orphan twin): Squirrel SceneLoad answered %q, want \"loaded|ok\"", got)
 	}
+}
+
+// orphanAcyclicTwin adds a root edge and points the first node at the second.
+// Its trailer is renumbered into first-use order after adding the head ID.
+func orphanAcyclicTwin(t *testing.T, wire []byte) []byte {
+	t.Helper()
+	oldBody := []byte{1, 1, 12, 10, 2, 2, 4, 3, 17, 2, 0, 2, 1, 0, 0}
+	if len(wire) != len(oldBody)+32 || !bytes.Equal(wire[:len(oldBody)], oldBody) {
+		t.Fatal("orphan cycle body or trailer moved")
+	}
+	out := []byte{1, 1, 17, 2, 2, 12, 10, 2, 3, 4, 4, 17, 3, 0, 3, 1, 0, 0}
+	out = binary.LittleEndian.AppendUint64(out, ir.TableWireId("head"))
+	out = append(out, wire[len(oldBody):len(wire)-8]...)
+	return binary.LittleEndian.AppendUint64(out, 4)
 }

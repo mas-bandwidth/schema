@@ -45,6 +45,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 		// a value-only root places no node: every index the wire check
 		// admitted reads null here, because no record has a type this root
 		// can name
+		substitute(r.fail)
 		return true
 	}
 	blob := f.Type.Blob()
@@ -70,6 +71,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 				if named {
 					return wrong()
 				}
+				substitute(r.fail)
 				return true // a record of a type this reader cannot name reads null
 			}
 			if node.Blob == nil {
@@ -86,6 +88,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 			if named {
 				return wrong()
 			}
+			substitute(r.fail)
 			return true // a record of a type this reader cannot name reads null
 		}
 		if node.Inst == nil || node.Inst.Def.Name != target {
