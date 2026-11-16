@@ -128,7 +128,11 @@ func TestPythonRetainSurfaceSelection(t *testing.T) {
 	}
 	fieldName := loadUnit(t, "package names\ntable Root { ordinary int32 }\n")
 	fieldName.Tables["Root"].Fields[0].Name = "load_retain" // exercise the emitter's own selection-aware name check
-	typeName := loadUnit(t, "package names\ntable TableRetain { n int32 }\n")
+	typeName := loadUnit(t, "package names\ntable Alias { n int32 }\n")
+	alias := typeName.Tables["Alias"]
+	delete(typeName.Tables, "Alias")
+	alias.Name = "TableRetain"
+	typeName.Tables["TableRetain"] = alias
 	for _, named := range []*ir.Unit{fieldName, typeName} {
 		if _, err := GenerateSurface(named, wire); err != nil {
 			t.Fatalf("wire-only name refused: %v", err)
