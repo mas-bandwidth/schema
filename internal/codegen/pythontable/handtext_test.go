@@ -812,3 +812,37 @@ assert changed.value.items[0].value == 2, 'HANDTEXT_EDIT_PATH_CONTROL'
 		}
 	}
 }
+
+func TestPythonHandtextCombinedEditNegativeControl(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+table Root { values map[string]int32 }
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "probe/_schema/textform.py"
+	source := string(files[path])
+	const anchor = "except TextError:\n                # A disjoint edit"
+	if strings.Count(source, anchor) != 1 {
+		t.Fatal("combined edit control anchor missing")
+	}
+	files[path] = []byte(strings.Replace(source, anchor, "except TextError:\n                raise\n                # A disjoint edit", 1))
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `from probe import Root, Refused
+v = Root.from_text_form(b'(:values (("a" 1) ("b" 2)))')
+try:
+    changed = v.edit([('values[0][0]', b'"b"'), ('values[1][0]', b'"a"')])
+except Refused:
+    raise AssertionError('HANDTEXT_COMBINED_EDIT_CONTROL') from None
+assert changed.value.values == {'b': 1, 'a': 2}, 'HANDTEXT_COMBINED_EDIT_CONTROL'
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		_, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
+		if err == nil || !strings.Contains(stderr, "HANDTEXT_COMBINED_EDIT_CONTROL") {
+			t.Fatalf("combined edit control: %v %s", err, stderr)
+		}
+	}
+}
