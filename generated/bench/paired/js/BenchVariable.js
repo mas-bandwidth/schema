@@ -422,14 +422,15 @@ function tableRetainNameable(id) {
   while (lo <= hi) { const m = (lo + hi) >> 1; if (TableRetainKnown[m] === id) { return true; } if (TableRetainKnown[m] < id) { lo = m + 1; } else { hi = m - 1; } }
   return false;
 }
-function tableRetainReserved(id) { return id === 0n || id === TableNodeTableId || id === TableBuildVersionId || id === TableMessageVocabularyId; }
+function tableRetainReserved(id) { return id === TableNodeTableId || id === TableBuildVersionId || id === TableMessageVocabularyId; }
 
 // THE RESOLVING WALK, capture half (§6.6): read a field's payload by kind and
 // write its RESOLVED form — every reference widened to a 64-bit id, every
 // framing length recomputed. Kinds 13 and 14 store a resolved body as
 // [u32 len][content]; kind 30 a variant reference as [u64 id]; a scalar and a
-// string copy verbatim. Kind 17 (a node index) is an excluded class and returns
-// false, as does any framing the walk cannot take.
+// string copy verbatim. The forbidden node-table ID is the private sentinel
+// for reference zero; hash zero itself remains a nameable ID. Kind 17 (a node
+// index) is an excluded class and returns false, as does invalid framing.
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
   if (depth > out.depthLimit) { return false; }
   // THE BODY IS ITS OWN CURSOR: a reference or length must not read past the
@@ -439,7 +440,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
   while (true) {
     if (rd.at > end) { return false; }
     const ref = rd.leb(); if (rd.bad) { return false; }
-    if (ref === 0) { out.u64(0n); if (rd.at !== end) { return false; } r.at = rd.at; return true; }
+    if (ref === 0) { out.u64(TableNodeTableId); if (rd.at !== end) { return false; } r.at = rd.at; return true; }
     if (ref > table.length || rd.at >= end) { return false; }
     const id = table[ref - 1];
     if (tableRetainReserved(id)) { return false; }
@@ -526,7 +527,7 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
     }
     case 30: {
       const ref = r.leb(); if (r.bad) { return false; }
-      if (ref === 0) { out.u64(0n); return true; }
+      if (ref === 0) { out.u64(TableNodeTableId); return true; }
       if (ref > table.length) { return false; }
       const id = table[ref - 1];
       if (tableRetainReserved(id)) { return false; }
@@ -551,7 +552,7 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
       // a union whose arm carries a payload (§6.6): the arm's resolved id, the
       // arm's kind byte, then the arm's framed content.
       const ref = r.leb(); if (r.bad) { return false; }
-      if (ref === 0) { out.u64(0n); return true; }
+      if (ref === 0) { out.u64(TableNodeTableId); return true; }
       if (ref > table.length || r.at >= r.end) { return false; }
       const id = table[ref - 1];
       if (tableRetainReserved(id)) { return false; }
@@ -606,7 +607,7 @@ function TableVariableRetainEmitBody(r, ids, w) {
   while (true) {
     if (r.at + 8 > r.end) { return false; }
     const id = r.u64();
-    if (id === 0n) { w.u8(0); return true; }
+    if (id === TableNodeTableId) { w.u8(0); return true; }
     if (r.at + 1 > r.end) { return false; }
     const kind = r.u8();
     const ref = ids.ref(id, true);
@@ -671,7 +672,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
       if (r.at + 8 > r.end) { return false; }
       const id = r.u64();
       // a None variant is the one zero reference (§3): it names no id at all
-      if (id === 0n) { w.leb(0); return true; }
+      if (id === TableNodeTableId) { w.leb(0); return true; }
       const ref = ids.ref(id, true);
       if (ref === -1) { return false; }
       w.leb(ref); return true;
@@ -694,7 +695,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
       if (r.at + 8 > r.end) { return false; }
       const id = r.u64();
       // None is the one zero reference and carries no kind byte or length
-      if (id === 0n) { w.leb(0); return true; }
+      if (id === TableNodeTableId) { w.leb(0); return true; }
       if (r.at + 1 > r.end) { return false; }
       const ref = ids.ref(id, true);
       if (ref === -1) { return false; }
@@ -1445,16 +1446,6 @@ function TableVariableFirstUseOk(table, st) {
     next++;
   }
   return next - 1 === table.length;
-}
-
-// The value a non-optional, non-required field holds when the writer elides it.
-// A map key has no declared default: the entry's identity is the key, zero included.
-function TableVariableStoredDefault(fd, x) {
-  if (fd.opt || fd.req || fd.keep) { return false; }
-  if (fd.s === "float") { return TableVariableSameFloat(fd.f32, x, fd.def); }
-  if (fd.s === "bytes") { return TableVariableSameBytes(x, fd.def); }
-  if (fd.s === "str" || fd.s === "bool" || fd.s === "int" || fd.s === "flags" || fd.s === "enum") { return x === fd.def; }
-  return false;
 }
 
 function TableVariableLoad(c, bytes, report, retain) {
@@ -4030,7 +4021,7 @@ function TableVariableFromJson(c, text, report) {
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
   if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
-  if (inp.bad || !ok || report.damaged) { report.damaged = true; return null; }
+  if (inp.bad || report.damaged || (!ok && TableVariableStrictMark(report) === strictBefore)) { report.damaged = true; return null; }
   // the one read refuses the whole text, as the wire load does (§4, §16.2)
   if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
   report.damaged = carried;
