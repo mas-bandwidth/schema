@@ -766,6 +766,17 @@ func TestPythonVtUnionsNegativeControl(t *testing.T) {
 					return fmt.Errorf("%s carries %q %d times, want 1: the control would be vacuous", path, ctl.from, strings.Count(src, ctl.from))
 				}
 				files[path] = []byte(strings.Replace(src, ctl.from, ctl.to, 1))
+				if ctl.name == "unknown-field-check" {
+					// The tracker shares this walk; isolate the decoder fault while
+					// its own first-use controls exercise the tracker separately.
+					p := "unions/_schema/load.py"
+					body := string(files[p])
+					const call = "    _check_id_order(view, ids)\n"
+					if strings.Count(body, call) != 1 {
+						return fmt.Errorf("ID order call missing from %s", p)
+					}
+					files[p] = []byte(strings.Replace(body, call, "    pass  # isolate the decoder control\n", 1))
+				}
 				return nil
 			}
 			var named []string

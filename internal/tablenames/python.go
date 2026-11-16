@@ -66,6 +66,8 @@ func init() {
 		Name{Name: "save_table", What: "form-1 save", Scoped: true},
 		Name{Name: "measure_table", What: "the measured size of a form-1 save", Scoped: true},
 		Name{Name: "write_body", What: "write one nested body over the descriptors", Scoped: true},
+		Name{Name: "_widens", What: "array element widening predicate", Scoped: true},
+		Name{Name: "_read_widened", What: "array element widening reader", Scoped: true},
 		Name{Name: "kinds", What: "the field-kind dispatch table", Scoped: true},
 		Name{Name: "FieldKind", What: "the field codec protocol", Scoped: true},
 		Name{Name: "FORM", What: "the variable form's form byte (1)", Scoped: true},

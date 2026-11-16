@@ -450,7 +450,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _collect_root, _validate as _validate_value, _check_root as _s_check_root, _write_form, _write_node_table, measure_table, save_table\n\n\n")
 
 	if body := host.Body(); body != "" {
@@ -1140,6 +1140,7 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "def _s_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
 	b.WriteString("    view = buffer_view(data)\n")
 	b.WriteString("    ids = _id_table(view)\n")
+	b.WriteString("    _check_id_order(view, ids)\n")
 	b.WriteString("    ctx = _LoadCtx(ids)\n")
 	b.WriteString("    obj = cls()\n")
 	b.WriteString("    ctx.root = obj\n")
@@ -1309,7 +1310,7 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 	}
 	codec := codecOf(f)
 	switch codec {
-	case "keyed", "string_blob", "bytes_blob":
+	case "keyed":
 		codec = "unsupported"
 	}
 	elemCodec := ""
@@ -1473,9 +1474,11 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
 	fmt.Fprintf(b, "                json_variants=%s,\n", pythonJSONFieldVariants(f))
 	fmt.Fprintf(b, "                json_flags=%s,\n", pyBool(pythonJSONIsFlags(f)))
-	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
-	if dep := deprecatedOrdinals(f); dep != "" {
-		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
+	if codec == "enum" {
+		fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+		if dep := deprecatedOrdinals(f); dep != "" {
+			fmt.Fprintf(b, "                deprecated=%s,\n", dep)
+		}
 	}
 	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
 	fmt.Fprintf(b, "            ),\n")
@@ -1512,7 +1515,7 @@ func pythonJSONIsFlags(f *ir.Field) bool {
 
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
 // element the keyed kind does not carry yet: bool, the integer and
-// fixed-point kinds, and tables by value.
+// fixed-point kinds, enums, and tables by value.
 func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1520,8 +1523,13 @@ func keyedElemCodec(f *ir.Field) string {
 	case ir.TInt, ir.TFixed:
 		return "int"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-			return "table"
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref.IsTable {
+				return "table"
+			}
+		case *ir.Enum:
+			return "enum"
 		}
 	}
 	return ""
