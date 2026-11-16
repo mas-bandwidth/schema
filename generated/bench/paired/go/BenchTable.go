@@ -7349,6 +7349,10 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "BenchMixed.entities")
 					return false
 				}
+				if count < 1 {
+					r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.entities")
+					return false
+				}
 				if count > 8 {
 					r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.entities")
 					return false

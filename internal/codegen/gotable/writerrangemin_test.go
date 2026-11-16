@@ -146,4 +146,5 @@ func TestReadersHoldCountMin(t *testing.T){
 	sealedProbe := probe[:strings.Index(probe, "func TestReadersHoldCountMin")]
 	sealedProbe = strings.Replace(sealedProbe, `"encoding/binary";`, "", 1)
 	runGenerated(t, strings.Replace(writerRangeMinSchema, "fixed table Root {", `fixed table Root | integrity = "crc32c" {`, 1), sealedProbe)
+	goWriterVariableCountMin(t)
 }

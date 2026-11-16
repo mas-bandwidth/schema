@@ -6541,6 +6541,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.entities")
 					return false
 				}
+				if count < 1 {
+					r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
+					return false
+				}
 				if count > 8 {
 					r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
 					return false

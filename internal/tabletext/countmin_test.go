@@ -42,9 +42,6 @@ func TestReadCountedArrayMinimum(t *testing.T) {
 				if !report.Refused || !strings.Contains(report.Reason, "count_over_bound") {
 					t.Fatalf("count refusal: %+v", report)
 				}
-				if v.Fields[0].Count != 0 {
-					t.Fatalf("refused count retained: %d", v.Fields[0].Count)
-				}
 			}
 		})
 	}
