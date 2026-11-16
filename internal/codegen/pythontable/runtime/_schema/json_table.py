@@ -315,7 +315,15 @@ def _read_field(field: FieldDesc, value: Any, graph: dict[int, tuple[Any, bool]]
                 raise Refused("unsupported", field.name)
             if parsed_key in mapping:
                 raise Refused("malformed", field.name)
-            mapping[parsed_key] = _read_field(value_field, item, graph, unknown)
+            if value_field.codec == "keyed":
+                entry_cls = by_name(field.target)
+                if entry_cls is None:
+                    raise Refused("unsupported", field.name)
+                container = getattr(entry_cls(), value_field.name)
+                _read_keyed(value_field, item, container, graph, unknown)
+                mapping[parsed_key] = container
+            else:
+                mapping[parsed_key] = _read_field(value_field, item, graph, unknown)
         return mapping
     if field.codec in ("array", "pointer_array", "union_array"):
         if type(value) is not list:
@@ -458,6 +466,21 @@ def from_json(cls: type[_T], text: str, report: LoadReport | None = None, fill: 
     return value
 
 
+def _read_keyed(field: FieldDesc, item: Any, container: Any, graph: dict[int, tuple[Any, bool]] | None, unknown: list[int]) -> None:
+    if type(item) is not dict or field.elem is None:
+        raise Refused("kind_mismatch", field.name)
+    slots = container if getattr(field, "keyed_list", False) else container._values
+    for slot, current in item.items():
+        if "\x00" in slot or len(slot.encode("utf-8")) > 255:
+            raise Refused("malformed", field.name)
+        if slot in field.json_keys:
+            index = field.json_keys.index(slot)
+            slots[index] = _read_field(field.elem, current, graph, unknown)
+        else:
+            unknown[0] += 1
+            _skip(current, graph)
+
+
 def _fill(value: Any, data: dict[str, Any], graph: dict[int, tuple[Any, bool]] | None, unknown: list[int]) -> None:
     fields = {field.json_key: field for field in value.descriptor.fields}
     for key, item in data.items():
@@ -466,19 +489,7 @@ def _fill(value: Any, data: dict[str, Any], graph: dict[int, tuple[Any, bool]] |
         field = fields.get(key)
         if field is not None:
             if field.codec == "keyed":
-                if type(item) is not dict or field.elem is None:
-                    raise Refused("kind_mismatch", field.name)
-                container = getattr(value, field.name)
-                slots = container if getattr(field, "keyed_list", False) else container._values
-                for slot, current in item.items():
-                    if "\x00" in slot or len(slot.encode("utf-8")) > 255:
-                        raise Refused("malformed", field.name)
-                    if slot in field.json_keys:
-                        index = field.json_keys.index(slot)
-                        slots[index] = _read_field(field.elem, current, graph, unknown)
-                    else:
-                        unknown[0] += 1
-                        _skip(current, graph)
+                _read_keyed(field, item, getattr(value, field.name), graph, unknown)
             else:
                 setattr(value, field.name, _read_field(field, item, graph, unknown))
         else:
