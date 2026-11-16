@@ -563,7 +563,7 @@ A cell becomes ✅ when the layer that carries it lands with its proof.
 | P10 | the conformance driver, every surface | `port/python/p10-conformance` |
 | P11 | the wire-fuzz differential | `port/python/p11-wirefuzz` |
 | P12 | the hostile corpus runner and resource bounds | `port/python/p12-hostile` |
-| P13 | cards | `port/python/p13-cards` |
+| P13 | [cards](port-python/table-cards.md) | `port/python/p13-cards` |
 | P14 | the strict analyzer gate and every negative control | `port/python/p14-lint-controls` |
 | P15 | CI, nightly fuzz, readiness, bench legs, release tier | `port/python/p15-ci` |
 | P16 | USAGE fragments, per-language prose, the register complete | `port/python/p16-docs` |
