@@ -69,6 +69,8 @@ class Ctx:
     def idref(self, value: int) -> int:
         reference = self.refs.get(value)
         if reference is None:
+            if len(self.ids) >= 4096:
+                raise InvalidValue("", "known values need more than 4096 wire IDs")
             self.ids.append(value)
             reference = len(self.ids)
             self.refs[value] = reference
