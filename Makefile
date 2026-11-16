@@ -5799,8 +5799,8 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 
 # ---- THE RETENTION LEG (docs/SPEC-TABLES.md §6.6, §4.2) ---------------------
 #
-# The same mutants through both engines' RETAINING paths, comparing the two
-# retention counters beside the six and the saved bytes beside them. The arm's
+# The same mutants through both engines' RETAINING paths, comparing the read
+# outcome and saved bytes (§4.2); diagnostic counters are not compared. The arm's
 # roster is the VARIABLE-CLASS FILE ROOTS and nothing else: a fixed-class
 # root's LoadRetain is refused by name, and a form-2 SaveRetain refuses by
 # name (§3.3).
@@ -5815,21 +5815,20 @@ tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wir
 # removes ONE check — through `go build -overlay`, so no tracked file moves —
 # and requires the leg to go red on the verdict that check guards.
 #
-# THE ORACLE'S DROP RULE. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
-# STATED (§6.6): a reference above the entry count, a reference at an entry of
-# zero, a reference at one of the three reserved ids, a non-canonical length,
-# an inner body whose terminator falls short, a nested `L` past its parent, and
-# a kind 17 at any depth all DROP THE RECORD. Without the verdict the oracle
-# keeps a record the reference drops, and the two retention reports differ on
-# the mutant that carried it.
+# THE ORACLE'S EXCLUDED-CLASS RULE (§6.6). Malformed wire is refused by the
+# strict read before retention; a valid payload in an excluded class, such as
+# a node reference, is dropped from the retained bytes. Hash zero is an
+# ordinary identity and must survive; reference zero alone means None or a
+# terminator. Ignoring the retaining walk's verdict keeps bytes for an
+# excluded class that the native reference drops, so saved values differ.
 RETAIN_ORACLE_NC := build/wire-fuzz-nc-retain-oracle
 .PHONY: tables-wire-fuzz-retain-oracle-negative-control
 tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(RETAIN_ORACLE_NC) && mkdir -p $(RETAIN_ORACLE_NC)
 	@sed -e 's|if rs.bad \|\| c.off != len(c.buf) {|if c.off != len(c.buf) { // NEGATIVE CONTROL: the walk'"'"'s verdict is ignored|' \
 		internal/tablewire/retain.go > $(RETAIN_ORACLE_NC)/retain.go.txt
-	@cmp -s internal/tablewire/retain.go $(RETAIN_ORACLE_NC)/retain.go.txt && \
-		{ echo "NEGATIVE CONTROL: the retain-oracle sabotage patched nothing"; exit 1; } || true
+	@! cmp -s internal/tablewire/retain.go $(RETAIN_ORACLE_NC)/retain.go.txt || \
+		{ echo "NEGATIVE CONTROL: the retain-oracle sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablewire/retain.go":"%s/$(RETAIN_ORACLE_NC)/retain.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_ORACLE_NC)/overlay.json
 	go build -overlay $(RETAIN_ORACLE_NC)/overlay.json -o $(RETAIN_ORACLE_NC)/harness ./test/conformance/harness
@@ -5838,29 +5837,27 @@ tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build
 		echo "NEGATIVE CONTROL FAILED: the oracle's drop rule is gone and the retention leg stayed green"; \
 		cat $(RETAIN_ORACLE_NC)/log; exit 1; \
 	fi
-	@grep -q "the retention report differs" $(RETAIN_ORACLE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the two counters"; \
+	@grep -q "the decoded value differs" $(RETAIN_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on retained bytes"; \
 		  cat $(RETAIN_ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(RETAIN_ORACLE_NC)/log
 	@echo "negative control: removing the oracle's drop rule turns the retention leg RED"
 
-# THE REFERENCE'S `retain_lost` ON AN EXCLUDED CLASS. EVERY EXCLUSION COUNTS
-# (§6.6), so a caller that needs to know retention held reads ONE NUMBER and
-# never has to reason about the list. `retainLostInline` is the count the
-# emitter puts beside `unknown` at every class a wire can carry to the unknown
-# arm — an unknown enum variant, an unknown union arm, an unknown keyed slot —
-# and without it the reference under-reports every one of them.
+# THE REFERENCE'S CAPTURE PATH. Disabling capture while still consuming the
+# unknown field drops bytes the retaining save must keep (§6.6). The original
+# class-control target name remains compatible, but its former counter-only
+# mutation cannot exercise §4.2's outcome-and-value differential contract.
 .PHONY: tables-wire-fuzz-retain-class-negative-control
 tables-wire-fuzz-retain-class-negative-control: build/conformance-harness
-	$(call retain_fuzz_control,retain-class,internal/codegen/cpptable/codecs.go,s|return " r.report->retain_lost++;"|return "" // NEGATIVE CONTROL: the class is not counted|,the retention report differs)
+	$(call retain_fuzz_control,retain-class,internal/codegen/cpptable/codecs.go,s|TableRetainCapture( retain, r, path, field_id, kind )|TableRetainCapture( NULL, r, path, field_id, kind )|,the decoded value differs)
 
 # $(1) the control's name  $(2) the emitter file  $(3) the sed program
 # $(4) the verdict the leg must print
 define retain_fuzz_control
 	@rm -rf build/wire-fuzz-nc-$(1) && mkdir -p build/wire-fuzz-nc-$(1)
 	@sed -e '$(3)' $(2) > build/wire-fuzz-nc-$(1)/emitter.go.txt
-	@cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt && \
-		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@! cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt || \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/$(2)":"%s/build/wire-fuzz-nc-$(1)/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
 	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
