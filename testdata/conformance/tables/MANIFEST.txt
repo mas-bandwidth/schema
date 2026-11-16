@@ -246,8 +246,10 @@ report form_ff        tblv1 Cfg   testdata/wire/tables/form_ff.bin
 # byte is read FIRST.
 report message_as_file tblv1 Cfg  testdata/wire/tables/login_full_message.bin
 
-# THE POINTER SPELLING IS ITS OWN FRAMING (§3.1). T and ?T are wire-identical
-# and read each other as instances above; *T rides as a u32 NODE INDEX under
+# THE POINTER SPELLING IS ITS OWN FRAMING (§3.1). The four T/?T report rows
+# above (p1_as_p3, p3_as_p1, p1_empty_as_p3, p3_empty_as_p1) refuse
+# previous_form: the fixed readers receive variable-form files. A lineage moving
+# T to ?T is refused by the baseline (§4.1). *T rides as a u32 NODE INDEX under
 # kind 17 with the body in the node table, so a reader of either other spelling
 # meets a kind mismatch and a node table it cannot name. These two are the
 # evolution cases that edit says exist, and the counters are the expectation.
