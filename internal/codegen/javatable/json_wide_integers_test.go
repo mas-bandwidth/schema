@@ -39,7 +39,7 @@ table Keys
 
 // TestJavaJsonWideIntegersAreStrings holds testdata/wire/json-integers/
 // through the Java writer and reader. A kind wider than 32 bits is written as
-// a JSON string of decimal digits and reads as a string or a number. Every
+// a JSON string of decimal digits and reads only as a string. Every
 // integer takes an integer token only — no fraction, no exponent, no negative
 // zero — and a value past the range refuses. The verdict is the contract; no
 // reason is compared.
@@ -52,6 +52,11 @@ func TestJavaJsonWideIntegersAreStrings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the vectors' manifest: %v", err)
 	}
+	numberTokens, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest = append(append(manifest, '\n'), numberTokens...)
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
 	if err != nil {
 		t.Fatalf("the canonical text: %v", err)
