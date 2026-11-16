@@ -1,6 +1,13 @@
 {
   "groups": [
     {
+      "name": "js-text-list-strict",
+      "when": "pull-request",
+      "why": "The strict text-list positive probes and planted out-of-range verdict bypass, including generated Go and Node oracles; measured under ten seconds on the shared Linux bench.",
+      "targets": [],
+      "node": "26"
+    },
+    {
       "name": "java-transport-id",
       "when": "pull-request",
       "why": "The Java variable-file first-use gate and its planted bypass cover the plain and retaining readers against the Go oracle. Two focused generated-unit compilations, measured about 11 seconds together on the shared Linux bench.",
