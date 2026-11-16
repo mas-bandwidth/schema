@@ -81,7 +81,7 @@ func (g *gen) fixedValuesModule() []byte {
 	}
 	out.WriteByte('\n')
 	out.WriteString(body.String())
-	return []byte(out.String())
+	return []byte(strings.TrimRight(out.String(), "\n") + "\n")
 }
 
 // emitFixedValues connects the fixed reader's records to the same values the

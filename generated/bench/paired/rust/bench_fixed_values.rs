@@ -128,4 +128,3 @@ impl From<&MixedStat> for super::MixedStatRow {
         }
     }
 }
-
