@@ -498,7 +498,7 @@ func emitModule(u *ir.Unit, plan *filePlan) string {
 // check the hosted packet codec calls by its packet-runtime name.
 func hostedAlias(name string) (string, bool) {
 	switch name {
-	case "validate_int", "validate_bool", "validate_float32", "validate_float64", "validate_compressed_float", "wire_input", "float32_bits_eq", "float64_bits_eq":
+	case "validate_int", "validate_bool", "validate_array", "validate_string", "validate_bytes", "validate_float32", "validate_float64", "validate_compressed_float", "wire_input", "float32_bits_eq", "float64_bits_eq":
 		return "_" + name, true
 	}
 	return "", false

@@ -272,7 +272,7 @@ per unit, named for the unit's package:
 
 | file | what it is |
 |---|---|
-| `compiler/target_python.go` | the target, behind the `schema_leg_python` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
+| `compiler/target_python.go` | the built-in target; the shared refusal chain, then the emitters |
 | `compiler/carries_python.go` | the carried constructs, registered once from `pythonCarried`; a later layer adds `var _ = carryPython(<construct>)` in its own file |
 | `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
@@ -552,7 +552,7 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - types by value: carried
 
-  - unions: carried
+  - unions: carried ([the packet unions](port-python/packet-unions.md))
 
   - `if`/`else` branches: carried
 
@@ -565,9 +565,9 @@ the core stands against the P4 row; the rules of this page are unchanged.
   - `bits`: carried
     ([the packet ranged integers and bits](port-python/packet-ranged-bits.md))
 
-  - `string`: refused
+  - `string`: carried ([the packet text kinds](port-python/packet-text.md))
 
-  - `bytes`: refused
+  - `bytes`: carried ([the packet text kinds](port-python/packet-text.md))
 
   - fixed `[N]T` and counted `[A..B]T` arrays of a carried element kind:
     carried ([the packet arrays](port-python/packet-arrays.md)); an array of
@@ -575,11 +575,11 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - a keyed `[E]T` array and a list `[]T`: refused
 
-  - `const`: refused
+  - `const`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `reserved`: refused
+  - `reserved`: carried ([the packet layout](port-python/packet-layout.md))
 
-  - `align`: refused
+  - `align`: carried ([the packet layout](port-python/packet-layout.md))
 
   - raw `uint128` and ranged `int128`: carried
     ([the packet int128](port-python/packet-int128.md))
@@ -593,12 +593,15 @@ the core stands against the P4 row; the rules of this page are unchanged.
   attribute; a union arm may not be named `type`, `read`, `write`, `load`,
   `save` or `descriptor`, the members the generated class defines, or export
   `None_`, `Max` or `NAMES` on `<Union>Type`.
-- **The golden harness reads single-root pins.** A C++-pinned packet golden
-  that is one value with one root type is read and written back; the
-  multi-root concatenations (`clauses`, `joins`, `degenerate`) and the table
-  wire's pins are listed as skipped with the reason. Every packet root whose
-  kinds are all carried is read from its pin and must write back byte for
-  byte; a root blocked by an uncarried kind names that kind.
+- **The golden harness covers the packet corpus pins.** `TestPythonPacketClose`
+  inventories and reads and writes back the single-root and default pins and the multi-root
+  `clauses`, `joins`, and `degenerate` pins under both pinned interpreters.
+  The framed concatenations are checked slice by slice, and `degenerate` is
+  checked through one shared bit stream. The table-wire pin belongs to the
+  table gates. `python-packet-analyzer` checks the complete example,
+  ludicrous, benchmark and defaults generated packages and their runtimes
+  with strict mypy. Each gate has a planted-fault control.
+
 
 ## THE PACKET CORE BENCH
 
