@@ -150,6 +150,8 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 	// AN EXPLICIT NULL POINTER: the head field written with index 0.
 	f = mustParse(canonical)
 	findField(f.root, headID).index = 0
+	// Null is the only edge to the node, so omit its otherwise orphaned table.
+	removeField(f.root, ir.TableNodeWireId)
 	cases["variable-explicit-null-pointer.bin"] = encodeFile(f)
 
 	// AN UNUSED ID-TABLE ENTRY: one entry no body references.
@@ -175,6 +177,9 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 
 	// AN EMPTY NODE TABLE: the node-table field present with a count of 0.
 	f = mustParse(canonical)
+	// An empty directory cannot satisfy head's old node index. Omit head so
+	// the empty table is the sole non-canonical graph spelling.
+	removeField(f.root, headID)
 	findField(f.root, ir.TableNodeWireId).nodes = &wireNodes{}
 	cases["variable-empty-node-table.bin"] = encodeFile(f)
 

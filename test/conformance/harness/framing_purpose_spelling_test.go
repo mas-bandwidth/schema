@@ -100,3 +100,45 @@ func TestFramingPurposeSpellingsRemain(t *testing.T) {
 		t.Error("field order purpose missing")
 	}
 }
+
+// TestNoncanonicalGraphPurposesAreIsolated requires the null-pointer and
+// empty-node-table vectors not to carry an orphan or a dangling node index.
+func TestNoncanonicalGraphPurposesAreIsolated(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	for _, tc := range []struct {
+		name          string
+		nulls, tables int
+	}{
+		{"variable-explicit-null-pointer.bin", 1, 0},
+		{"variable-empty-node-table.bin", 0, 1},
+	} {
+		data, err := os.ReadFile(filepath.Join(root, "testdata/wire/non-canonical", tc.name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f := frameWire(data)
+		nulls, tables, nonNulls := 0, 0, 0
+		for _, sp := range f.spots {
+			if sp.kind == spotIndex {
+				if sp.value == 0 {
+					nulls++
+				} else {
+					nonNulls++
+				}
+			}
+			if sp.kind == spotNodeCount {
+				tables++
+				if sp.value != 0 {
+					t.Errorf("%s: node table is not empty", tc.name)
+				}
+			}
+		}
+		if nulls != tc.nulls || tables != tc.tables || nonNulls != 0 {
+			t.Errorf("%s: nulls=%d node tables=%d nonnull indexes=%d", tc.name, nulls, tables, nonNulls)
+		}
+		if fault := framingTableFault(framingVector{}, data); fault != "" {
+			t.Errorf("%s: id table %s", tc.name, fault)
+		}
+	}
+}
