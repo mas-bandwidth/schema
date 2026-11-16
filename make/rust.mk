@@ -1821,38 +1821,41 @@ tables-rust-bool-byte-negative-control:
 		  cat $(RUST_BOOL_NC)/log; exit 1; }
 	@echo "negative control: a Rust fixed read that lands a bool byte of 2 turns TestFixedBoolByteIsDamageRust RED"
 
-# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
-# storage it indexes is refused in EVERY build, so this gate runs the generated
-# writer in --release, where every debug_assert! is gone, and requires the
-# message writer to refuse before the first byte. The control strips the
-# generated guard and requires the same release gate to go red.
-STORAGE_RELEASE_RUST := build/storage-release-rust
-.PHONY: write-refusal-storage-release-rust write-refusal-storage-release-rust-negative-control
-write-refusal-storage-release-rust: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/rust/storage_release.rs
-	@rm -rf $(STORAGE_RELEASE_RUST) && mkdir -p $(STORAGE_RELEASE_RUST)/src
-	./bin/schema generate --lang rust --out $(STORAGE_RELEASE_RUST)/src $(STORAGE_RELEASE_SCHEMA)
-	@cp test/conformance/rust/storage_release.rs $(STORAGE_RELEASE_RUST)/src/main.rs
-	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)/Cargo.toml
+# THE RUST MESSAGE STORAGE CHECK IS A DEBUG ASSERT (docs/SPEC.md §5.1). A
+# string(N) length or a counted-array count past the storage it indexes is a
+# write check, so it is a debug_assert! and nothing else: a debug build panics
+# before the first byte and a release build carries no write-side check.
+# TestMessageStorageDebugAssertRust builds and runs the probe in both profiles.
+# The control strips the generated debug_assert! through a `go test -overlay`
+# of internal/codegen/rusttable/messagebatch.go (no tracked file is edited) and
+# requires the test red. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a
+# failure, so neither target passes on a SKIP.
+.PHONY: tables-rust-message-storage-assert tables-rust-message-storage-assert-negative-control
+tables-rust-message-storage-assert:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMessageStorageDebugAssertRust$$' -v
+	@echo 'tables Rust message storage assert: a count or length past its storage hits a debug_assert!'
 
-write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/rust/storage_release.rs
-	@rm -rf $(STORAGE_RELEASE_RUST)-negative && mkdir -p $(STORAGE_RELEASE_RUST)-negative/src
-	./bin/schema generate --lang rust --out $(STORAGE_RELEASE_RUST)-negative/src $(STORAGE_RELEASE_SCHEMA)
-	@cp test/conformance/rust/storage_release.rs $(STORAGE_RELEASE_RUST)-negative/src/main.rs
-	@sed -i.bak 's/if value.wide_length < 0 || value.wide_length > 8 { return false; }/if false { return false; } \/\/ SABOTAGED/g' \
-		$(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs
-	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs || \
-		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
-	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)-negative/Cargo.toml
-	@if PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)-negative/Cargo.toml > $(STORAGE_RELEASE_RUST)-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
-		cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; \
+tables-rust-message-storage-assert-negative-control:
+	@rm -rf build/rust-message-storage-assert-control && mkdir -p build/rust-message-storage-assert-control
+	@sed 's#debug_assert!(%s_#debug_assert!(true || %s_#g' \
+		internal/codegen/rusttable/messagebatch.go > build/rust-message-storage-assert-control/messagebatch.go.txt
+	@cmp -s internal/codegen/rusttable/messagebatch.go build/rust-message-storage-assert-control/messagebatch.go.txt && \
+		{ echo "NEGATIVE CONTROL: the storage-assert sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/messagebatch.go":"%s/build/rust-message-storage-assert-control/messagebatch.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-message-storage-assert-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-message-storage-assert-control/overlay.json \
+			-run '^TestMessageStorageDebugAssertRust$$' ./internal/codegen/rusttable/ > build/rust-message-storage-assert-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the message storage assert stayed green with its debug_assert! turned off"; \
+		exit 1; \
 	fi
-	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
-		  cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; }
-	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log
-	@echo "negative control: removing the Rust storage guard turns the release gate RED"
+	@grep -q 'ASSERT length BAD' build/rust-message-storage-assert-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the length assert"; \
+		  cat build/rust-message-storage-assert-control/log; exit 1; }
+	@grep -m1 'ASSERT length BAD' build/rust-message-storage-assert-control/log
+	@echo "negative control: a message writer without its storage debug_assert! turns TestMessageStorageDebugAssertRust RED"
+
+test-rust: tables-rust-message-storage-assert
 
 # THE RUST LEG's WRITE-REFUSAL NEGATIVE CONTROLS (docs/SPEC.md §5.1): one
 # check is removed from a copy of the generated crates, the conformance driver
