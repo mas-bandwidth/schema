@@ -154,3 +154,42 @@ func TestWide(t *testing.T) {
 `, strconv.Quote(string(canonical)), rows.String())
 	runGenerated(t, jsonIntegersSchema, source)
 }
+
+func TestGoWideJSONShapes(t *testing.T) {
+	t.Parallel()
+	runGeneratedTables(t, `package probe
+enum Color { Red, Blue }
+union Choice { wide int64 }
+table Root {
+    value int64
+    values [2]int64
+    option ?uint64
+    choice Choice
+    entries map[string(8)]uint64
+    keyed [Color]int64
+    small int32
+}
+`, `package probe
+import "testing"
+func TestWideShapes(t *testing.T) {
+  cases := []struct {name, invalid, valid string}{
+    {"field", `+"`"+`{"value":7}`+"`"+`, `+"`"+`{"value":"7"}`+"`"+`},
+    {"array", `+"`"+`{"values":[7,"8"]}`+"`"+`, `+"`"+`{"values":["7","8"]}`+"`"+`},
+    {"optional", `+"`"+`{"option":7}`+"`"+`, `+"`"+`{"option":"7"}`+"`"+`},
+    {"union", `+"`"+`{"choice":{"wide":7}}`+"`"+`, `+"`"+`{"choice":{"wide":"7"}}`+"`"+`},
+    {"map", `+"`"+`{"entries":{"x":7}}`+"`"+`, `+"`"+`{"entries":{"x":"7"}}`+"`"+`},
+    {"keyed", `+"`"+`{"keyed":{"Red":7}}`+"`"+`, `+"`"+`{"keyed":{"Red":"7"}}`+"`"+`},
+  }
+  for _,c:=range cases {
+    for _,v:=range []struct{body string;valid bool}{{c.invalid,false},{c.valid,true}} {
+      var b RootBuilder; if !b.Init(){t.Fatal("init")}; var r TableReport
+      ok:=RootFromJSON(&b,[]byte(v.body),&r); b.Shutdown()
+      if v.valid && (!ok || r.Refused()) {t.Errorf("%s valid: %v %v",c.name,ok,r.Err())}
+      if !v.valid && (ok || r.Err()!=error(TableRefuseKindMismatch)) {t.Errorf("%s invalid: %v %v",c.name,ok,r.Err())}
+    }
+  }
+  var b RootBuilder; if !b.Init(){t.Fatal("init")}; defer b.Shutdown(); var r TableReport
+  if !RootFromJSON(&b,[]byte(`+"`"+`{"small":7}`+"`"+`),&r) || r.Refused(){t.Fatalf("narrow number: %v",r.Err())}
+}
+`)
+}

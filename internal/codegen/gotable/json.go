@@ -553,7 +553,7 @@ func tableJSONIsEnum(f *TableFieldInfo) bool { return f.VariantID != nil && f.Ar
 // tableJSONWideIntegerKind is an integer or fixed-point kind whose storage is
 // wider than 32 bits (docs/SPEC-TABLES.md §16.2): int64, uint64, int128,
 // uint128, and the 64- and 128-bit fixed-point kinds. The writer spells one
-// as a string of decimal digits; the reader takes that string or a number.
+// as a string of decimal digits; the reader takes that string only.
 func tableJSONWideIntegerKind(kind uint8) bool {
 	switch kind {
 	case 5, 9, 18, 19, 23, 24, 28, 29:
@@ -590,12 +590,12 @@ func tableJSONIntegerToken(token []byte) bool {
 }
 
 // tableJSONShapeMatches reports whether got satisfies want. A wide integer
-// declares 'N' and takes a string or a number; every other shape is exact.
+// declares 'N' and takes a string; every other shape is exact.
 func tableJSONShapeMatches(want, got byte) bool {
 	if want == got {
 		return true
 	}
-	return want == 'N' && (got == 's' || got == 'n')
+	return want == 'N' && got == 's'
 }
 
 func tableJSONShape(f *TableFieldInfo) byte {
