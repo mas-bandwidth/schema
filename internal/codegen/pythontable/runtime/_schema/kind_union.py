@@ -126,6 +126,12 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
         w.varint(0)
         return
     f = arm.field
+    if f.kind == 17 and value is None:
+        w.varint(ctx.idref(arm.arm_id))
+        w.byte(arm.kind)
+        w.varint(1)
+        w.byte(0)
+        return
     if f.kind in _LENGTH_KINDS:
         # The arm's field line IS the arm header: the field id is the arm id,
         # and the field's own L is the arm's L, so the codec writes in place.
@@ -196,6 +202,13 @@ def _collect_arm_value(value: Any, f: FieldDesc, ctx: Any, blobs: list[int]) -> 
     """Number the nodes an arm's value reaches, as save._collect numbers a
     field's: a pointer's target in pre-order with its own blob slots, a table
     by value in place."""
+    if f.codec in ("string_blob", "bytes_blob"):
+        if value is None:
+            return
+        body = kind_blob._encode(f, value, f.name)
+        blobs.append(len(ctx.order) + 2)
+        ctx.order.append(kind_blob._BlobNode(f.codec == "string_blob", body))
+        return
     if f.codec == "pointer":
         if value is None:
             return
