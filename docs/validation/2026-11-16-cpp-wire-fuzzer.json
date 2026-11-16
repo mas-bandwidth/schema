@@ -327,5 +327,6 @@
       ]
     }
   ],
-  "rebuild_note": "The separate ASan rebuild was deliberately stopped before completion after source/generated equality was established; the verified frozen C++ normal and ASan binaries and harness were reused for controls. The interrupted build was not counted as a pass."
+  "rebuild_note": "The separate ASan rebuild was deliberately stopped before completion after source/generated equality was established; the verified frozen C++ normal and ASan binaries and harness were reused for controls. The interrupted build was not counted as a pass.",
+  "generated_cpp_inventory_sha256": "b8e6d5845b9f21cbdaf1a1b6e0a0c53c05941fd1c38278bd97b94b121e4bdc36"
 }
