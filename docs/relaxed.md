@@ -69,21 +69,11 @@ listed case that passes fails the leg until its line is removed.
   - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
   - `relax/hostile-rows-js`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried finding); jref_zero_byte and str-zero-escape-unknown-key are gated again: the JS text writer refuses a zero byte, and the JS reader validates a skipped value. The js text-boundary control does not count its leg's relaxed json-hostile cases.
   - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
-  - `relax/hostile-rows-lua`: str-zero-escape-unknown-key only (its JSON read refuses unpadded Base64 and set pad bits; jref_zero_byte is gated again).
+  - `relax/hostile-rows-lua`: gated again (str-zero-escape-unknown-key and jref_zero_byte); the JSON read validates skipped values and refuses invalid Base64.
   - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
   - `relax/hostile-rows-moo`: gated again (both hostile rows).
   - `relax/hostile-rows-rust`: str-zero-escape-unknown-key, in the conformance leg and in the port's hostile-corpus run (carried findings); base64-unpadded is gated again.
   - `relax/hostile-rows-squirrel`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run, `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
-- `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
-  (`TestRowR20DroppedFieldUnknown`). The header is restored to the
-  maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
-  carried: "if it's supplied, use the value there, otherwise, use the
-  default"; docs/FIXED-FORM-ALGORITHM.md §5.1; the C++ R20), and the one
-  assertion that the stored value lands (`B == 2`) is commented out, because
-  Go's fixed reader still yields the declared default. Real fix: the ruling's
-  rollout across Go's emitter (`fixedDeprecatedDefault`), the engine
-  (tablewire), Lobster, Go's TestFixedDeprecatedSlotIsTheDeclaredDefault, and
-  docs/SPEC-TABLES.md §3.4, §21.2 and §22.6. WIP: none.
 
 ## Negative controls
 
