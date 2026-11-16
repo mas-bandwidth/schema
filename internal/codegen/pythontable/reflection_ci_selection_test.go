@@ -68,10 +68,10 @@ func TestPythonReflectionCISelection(t *testing.T) {
 		t.Fatalf("list reflection tests: %v\n%s", err, allOut)
 	}
 	selected := map[string]int{}
-	for _, name := range strings.Fields(string(selectedOut)) {
+	for name := range strings.FieldsSeq(string(selectedOut)) {
 		selected[name]++
 	}
-	for _, name := range strings.Fields(string(allOut)) {
+	for name := range strings.FieldsSeq(string(allOut)) {
 		if !strings.HasPrefix(name, "TestPythonReflection") {
 			continue
 		}
