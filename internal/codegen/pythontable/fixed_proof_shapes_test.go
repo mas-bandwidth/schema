@@ -227,7 +227,18 @@ func TestPythonFixedProofShapesNegativeControl(t *testing.T) {
 			u := fixedproof.ParseCheckUnit(t, tc.schema)
 			wire, _ := fixedproof.CppOracle(t, fixedproof.RowCase{Schema: tc.schema, Root: "T", Body: int64(tc.body), Count: 1, CppSetup: tc.setup}, u)
 			wire[len(wire)-tc.body+tc.offset] = tc.value
-			files, err := pythontable.Generate(u)
+			var files map[string][]byte
+			var err error
+			if tc.name == "array" {
+				reader := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..4]uint16 }\n")
+				entry, ok := fixedproof.LineageEntryOf(u, "T")
+				if !ok {
+					t.Fatal("missing writer lineage")
+				}
+				files, err = pythontable.GenerateLineage(reader, pythonFixedLineage(map[string][]fixedproof.LineageEntry{"T": {entry}}))
+			} else {
+				files, err = pythontable.Generate(u)
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
