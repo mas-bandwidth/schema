@@ -96,3 +96,67 @@ print("ok")
 		t.Fatalf("float negative control did not fail: %v\n%s", err, stderr)
 	}
 }
+
+// A reader with a tighter total must refuse a valid wider writer, including
+// nullable slots and multibyte UTF-8. Removing the read check must go red.
+func TestPythonTextListTotalRead(t *testing.T) {
+	const schema = `package totalprobe
+table Root { words []?string(8) | total = 3 }
+`
+	u := unitFromSource(t, schema)
+	files, err := New().Generate(u, "python", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wider := unitFromSource(t, strings.Replace(schema, " | total = 3", "", 1))
+	model := tabletext.NewModel(wider)
+	value := model.New(wider.Tables["Root"])
+	var report tabletext.Report
+	if !model.Read(value, []byte(`{"words":[null,"éé"]}`), &report) || report.Refused {
+		t.Fatalf("Go input: %+v", report)
+	}
+	wire, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := pyrun.ImportPrelude + `from totalprobe import Root, Refused
+try:
+    Root.load(open("wire", "rb").read())
+    raise AssertionError("accepted total")
+except Refused as error:
+    assert error.reason == "length_over_bound", str(error)
+print("ok")
+`
+	inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", inputs)); got != "ok\n" {
+			t.Fatalf("probe: %s", got)
+		}
+	}
+	path := filepath.Join(dir, "totalprobe", "_schema", "kind_array.py")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := "        if fd.text_total and sum(len(item.encode(\"utf-8\")) for item in items if item is not None) > fd.text_total:\n"
+	if !strings.Contains(string(src), before) {
+		t.Fatal("total negative control target missing")
+	}
+	if err := os.WriteFile(path, []byte(strings.Replace(string(src), before, "        if False:\n", 1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)
+	if err == nil || !strings.Contains(stderr, "accepted total") {
+		t.Fatalf("total negative control did not fail: %v\n%s", err, stderr)
+	}
+}
