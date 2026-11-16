@@ -235,17 +235,20 @@ func TestArrayElementKindsClosed(t *testing.T) {
 		}
 	}
 
-	// READ CONTROLS: the declared array and keyed body at their own element
-	// kind, count 1 (a count-0 body rides its default and is refused, §3).
-	{
-		count := uint64(1)
-		elems := [][]byte{make([]byte, ir.TableKindWidth(ir.TableKindI32))}
-		if ok, err := read(elemArrayWire([]uint64{nums}, 1, ir.TableKindI32, count, elems...)); !ok {
-			t.Errorf("declared array control count %d: %v", count, err)
+	// At its own element kind a count-one body reads; the count-zero
+	// spelling stores a field at its default and must refuse (§3).
+	for _, count := range []uint64{0, 1} {
+		var elems, triples [][]byte
+		if count == 1 {
+			elems = [][]byte{make([]byte, ir.TableKindWidth(ir.TableKindI32))}
+			triples = [][]byte{elemKeyedTriple(2, make([]byte, ir.TableKindWidth(ir.TableKindI32)))}
 		}
-		triples := [][]byte{elemKeyedTriple(2, make([]byte, ir.TableKindWidth(ir.TableKindI32)))}
-		if ok, err := read(elemKeyedWire(elemKeyedIDs(by, triples), 1, ir.TableKindI32, count, triples...)); !ok {
-			t.Errorf("declared keyed control count %d: %v", count, err)
+		want := count != 0
+		if ok, err := read(elemArrayWire([]uint64{nums}, 1, ir.TableKindI32, count, elems...)); ok != want {
+			t.Errorf("declared array control count %d: accepted=%v want=%v (%v)", count, ok, want, err)
+		}
+		if ok, err := read(elemKeyedWire(elemKeyedIDs(by, triples), 1, ir.TableKindI32, count, triples...)); ok != want {
+			t.Errorf("declared keyed control count %d: accepted=%v want=%v (%v)", count, ok, want, err)
 		}
 	}
 }
