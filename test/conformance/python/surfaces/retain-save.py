@@ -5,9 +5,7 @@ from _common import absent, entries, read_bytes, root_class, unit_package, write
 
 def run(manifest, outdir):
     for row in entries(manifest, "retain"):
-        case, unit, root, wire, capacity, ids, save = row[1:8]
-        if save == "-":
-            continue
+        case, unit, root, wire, capacity, ids = row[1:7]
         try:
             package = unit_package(unit)
             cls = root_class(unit, root)
