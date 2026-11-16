@@ -742,6 +742,8 @@ function _M.WriteArmAlign(stream, v)
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
     if type(v.S) ~= "string" or #v.S > 4 then return false end
+    if not utf8valid(v.S) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)
+    if string.find(v.S, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)
     if not stream:serializeBits({ value = #v.S }, 3) then return false end -- the length
     -- align, then the used bytes (SPEC §4.7)
     if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end
@@ -840,6 +842,8 @@ function _M.WriteRegainAfterAlign(stream, v)
     if not stream:serializeBits({ value = v.Items[_i] - 0 }, 13) then return false end -- the offset from min
   end
   if type(v.S) ~= "string" or #v.S > 4 then return false end
+  if not utf8valid(v.S) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)
+  if string.find(v.S, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)
   if not stream:serializeBits({ value = #v.S }, 3) then return false end -- the length
   -- align, then the used bytes (SPEC §4.7)
   if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end
