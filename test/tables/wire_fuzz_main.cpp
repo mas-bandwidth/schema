@@ -485,6 +485,7 @@ static const Codec codecs[] = {
 
 // The file-form dispatch and refusal transport are exercised independently of
 // the mutant generator. These bytes are the same corpus inputs the pipe reads.
+#ifndef SCHEMA_WIRE_FUZZ_CONTROL
 static int regression_vectors()
 {
     struct Case { const char * unit; const char * root; const char * path; bool reads; const char * canonical; };
@@ -558,6 +559,7 @@ static int regression_vectors()
     printf( "wire-fuzz regressions: four file verdicts, fixed-form write-back and historical rewrite pass\n" );
     return 0;
 }
+#endif
 
 static bool read_exact( void * to, size_t n )
 {
@@ -597,7 +599,14 @@ static void write_i64( int64_t v )
 
 int main( int argc, char ** argv )
 {
+#ifndef SCHEMA_WIRE_FUZZ_CONTROL
     if ( argc == 2 && strcmp( argv[1], "--regressions" ) == 0 ) { return regression_vectors(); }
+#else
+    // The planted-control driver compiles only its selected fixture unit.
+    // Its healthy counterpart above is the complete regression-tested driver.
+    (void) argc;
+    (void) argv;
+#endif
     // the roster
     uint32_t count = read_u32();
     if ( count == 0xFFFFFFFFu || count > 4096 ) { fprintf( stderr, "wire-fuzz leg: no roster\n" ); return 1; }

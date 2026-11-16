@@ -90,7 +90,7 @@ def main():
     driver_source = scratch / "main.cpp"
     driver_source.write_text("\n".join(lines) + "\n")
     driver = scratch / "leg"
-    run([*shlex.split(cxx), *shlex.split(flags), "-O1", "-I" + str(generated),
+    run([*shlex.split(cxx), *shlex.split(flags), "-O1", "-DSCHEMA_WIRE_FUZZ_CONTROL", "-I" + str(generated),
          "-Itest/tables", "-I" + serialize, str(driver_source),
          str(generated / "FeaturesTable.cpp"), "-o", str(driver)])
     broken = run([*harness, "--driver", str(driver)], expect=None)
