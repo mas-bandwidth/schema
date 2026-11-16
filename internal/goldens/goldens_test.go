@@ -205,6 +205,13 @@ func TestGoldenSourceLuau(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "luau"), files)
 }
 
+// TestGoldenSourcePython pins the Python packet source and its runtime.
+func TestGoldenSourcePython(t *testing.T) {
+	t.Parallel()
+	u := loadCorpus(t)
+	pinDir(t, filepath.Join(goldenDir, "python"), generate(t, u, "python", nil))
+}
+
 // The enum `Count` export moves NEITHER WIRE. Count is generated-code
 // surface: it enters no wire-shape projection and no cook projection, so the
 // packet wire's protocol id and the table wire's build version must both
@@ -290,6 +297,9 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 	for _, n := range names {
 		path := filepath.Join(dir, n)
 		if *update {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(path, files[n], 0o644); err != nil {
 				t.Fatal(err)
 			}

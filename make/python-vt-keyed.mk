@@ -7,7 +7,8 @@
 # construct whose every slot is present. Its control row is
 # make/negative-controls.d/python-vt-keyed-negative-control.json.
 .PHONY: python-vt-keyed-negative-control
-test-python: python-vt-keyed-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-keyed
+python-ci-vt-keyed: python-vt-keyed-negative-control
 
 python-vt-keyed-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtKeyedNegativeControl' ./internal/codegen/pythontable/ -count=1

@@ -326,6 +326,21 @@ EOF
         echo "$got"
         ;;
 
+    python)
+        got="$PWD/generated/bench/python/bench/_schema/serialize"
+        if [ ! -f "$got/_core.py" ]; then
+            echo "python: generated benchmark runtime is absent" >&2
+            return 2
+        fi
+        for file in __init__.py _core.py; do
+            if ! cmp -s "$got/$file" "$PWD/third_party/serialize.py/src/serialize/$file"; then
+                echo "python: generated runtime $file differs from vendored source" >&2
+                return 1
+            fi
+        done
+        echo "$got"
+        ;;
+
     java|dart|elixir|goose|lobster|luau)
         # The codegen-only legs (goose: its runtime, serialize.goose, is
         # vendored into the generated unit at the pin docs/PORT-GOOSE.md names;
