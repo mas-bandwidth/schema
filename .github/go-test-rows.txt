@@ -153,4 +153,10 @@ split ./compiler ^TestRefusalUnchangedCatchesConstructKeyedLeak$
 split ./compiler ^TestJavaGeneratesEveryManifestUnit$
 split ./compiler ^TestRefusalUnchangedIgnoresTrivialEmitterChange$
 split ./compiler ^(TestUnboundedTextRefusedOffGo|TestStringArraysRefusedOffGo)$
+# The compiler complement measured 89 s with -short (2026-11-15), above
+# the 60 s test budget before job setup. Keep the name-registry sweeps,
+# fixed depth/record bounds and capability matrix in separate rows.
+split ./compiler ^Test.*(RuntimeName|ModuleScopeName|ModuleKeys)
+split ./compiler ^TestFixed(Depth|Record)
+split ./compiler ^Test.*(Carries|Carriers|IsShipped)
 split ./internal/goldens ^TestGeneratedTextNamesNoMachine$
