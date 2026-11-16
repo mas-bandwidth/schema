@@ -56,7 +56,7 @@ func TestLobsterSingleReadVariable(t *testing.T) {
 		"map_repeated_key":      "01010e1a0d020b020c0161030401000000000b020c0161030402000000000038810af11f06a7a3ec105b36194ac93dea0ce83094fde47c0300000000000000",
 		"map_descending_key":    "01010e1a0d020b020c0162030401000000000b020c0161030402000000000038810af11f06a7a3ec105b36194ac93dea0ce83094fde47c0300000000000000",
 		"map_long_key":          "01010e120d010f020c056c6f6e6721030401000000000038810af11f06a7a3ec105b36194ac93dea0ce83094fde47c0300000000000000",
-		"map_missing_key":       "01010e0a0d0107030401000000000038810af11f06a7a3ec105b36194ac93dea0ce83094fde47c0300000000000000",
+		"map_missing_key":       "01010e0a0d0107020401000000000038810af11f06a7a3ea0ce83094fde47c0200000000000000",
 		"text_total":            "01010e0a0c0203616263036465660017d69b78483fac6b0100000000000000",
 		"text_element":          "01010e080c010561626364650017d69b78483fac6b0100000000000000",
 		"widened":               "0101020700f524f6e7fb630ec10100000000000000",
@@ -73,7 +73,8 @@ func TestLobsterSingleReadVariable(t *testing.T) {
 		inputs[name] = data
 	}
 	// A map entry whose key field is absent is evolution, not damage: the
-	// entry lands the key's declared default, as the reference reads it
+	// entry lands the key's declared default, as the reference reads it; its id
+	// table contains only the two names actually used, in first-use order
 	// (internal/tablewire Decode), so the one read accepts it.
 	if verdict, _ := goLoad(g.u, "Probe", inputs["map_missing_key"]); verdict != "read" {
 		t.Fatalf("map_missing_key: the reference %s it; this test's acceptance rests on the reference reading it", verdict)
@@ -253,6 +254,10 @@ for(["widened", "unknown_valid", "unknown_node_valid", "empty", "map_missing_key
     assert evolution_loaded
     if name == "widened":
         assert evolution_loaded.fields[1].cell.i == 7
+    if name == "map_missing_key":
+        assert length(evolution_loaded.fields[6].entries) == 1
+        let e = evolution_loaded.fields[6].entries[0].tab
+        assert e and e.fields[0].cell.s == "" and e.fields[1].cell.i == 1
     schema_rt.release(evolution_loaded)
 let empty = read_file("empty")
 assert empty
