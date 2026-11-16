@@ -292,7 +292,7 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
             )
         value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
-    missing = [field.name for field in descriptor_.fields if field.required and field.field_id not in seen]
+    missing = [field.name for field in descriptor_.fields if field.required and field.guard_holds(obj) and field.field_id not in seen]
     if missing:
         raise Refused("missing_required", ", ".join(missing))
     ctx.current = previous
@@ -496,13 +496,20 @@ def _resolve(ctx: Ctx) -> None:
     if len(ctx.children) > 1 or ctx.edges:
         _graph(ctx)
     for owner, slot, index in ctx.pending:
-        # a map's pointer value names its map and (key, field); any other
-        # slot names its table and its field
+        # a map's pointer value names its map and (key, field); a pointer
+        # array's entry names its list and (position, field); any other slot
+        # names its table and its field
         if isinstance(owner, dict):
             key, field = slot
+            position = None
             where = f"{field.name}[{key!r}]"
+        elif isinstance(owner, list):
+            position, field = slot
+            key = None
+            where = f"{field.name}[{position}]"
         else:
-            key, field = None, slot
+            key, position = None, None
+            field = slot
             where = f"{owner.descriptor.name}.{field.name}"
         value: Any = None
         if index != 0:
@@ -513,7 +520,7 @@ def _resolve(ctx: Ctx) -> None:
                 if descriptor.by_id(type_id) is not None:
                     raise Refused(
                         "wire_damaged",
-                        f"a pointer whose target is not the type its slot requires: {where}",
+                        "a pointer whose target is not the type its slot requires",
                     )
                 # a record of a type this reader does not declare reads null
             else:
@@ -521,11 +528,13 @@ def _resolve(ctx: Ctx) -> None:
                 if target is None or type(node) is not target:
                     raise Refused(
                         "wire_damaged",
-                        f"a pointer whose target is not the type its slot requires: {where}",
+                        "a pointer whose target is not the type its slot requires",
                     )
                 value = node
         if isinstance(owner, dict):
             owner[key] = value
+        elif isinstance(owner, list):
+            owner[slot[0]] = value
         else:
             setattr(owner, field.name, value)
     for owner, field, index in ctx.blob_pending:
