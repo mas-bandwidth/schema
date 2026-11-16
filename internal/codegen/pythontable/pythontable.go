@@ -68,7 +68,7 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := python.CheckNames(u); err != nil {
+	if err := python.CheckNamesWithTextSurfaces(u, surfaces.JSON, surfaces.TextForm); err != nil {
 		return nil, err
 	}
 	if err := checkBlobRefName(u); err != nil {
@@ -91,6 +91,12 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]
 	}
 	for rel, data := range runtime {
 		if !surfaces.Fixed && rel == "_schema/fixedform.py" {
+			continue
+		}
+		if !unitHasJSON(u, surfaces) && (rel == "_schema/json_scan.py" || rel == "_schema/json_table.py") {
+			continue
+		}
+		if (!surfaces.TextForm || !unitHasJSON(u, surfaces)) && (rel == "_schema/textform.py" || rel == "_schema/textform_scan.py") {
 			continue
 		}
 		out[path.Join(u.Package, rel)] = data
@@ -519,8 +525,14 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 	if surfaces.Fixed {
 		b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
 	}
-	b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
-	b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
+	if unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
+		b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
+	}
+	if surfaces.TextForm && unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.textform import Document as _s_TextDocument, Limits as _s_TextLimits, read as _s_read_text_form\n")
+	}
+	b.WriteString("from ._schema.text_carrier import decode_text as _s_decode_text, encode_text as _s_encode_text\n")
 	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
@@ -750,7 +762,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 	} else {
 		b.WriteString("        return measure_table(self)\n")
 	}
-	if st.CarriesForm("json") {
+	if surfaceCarries(surfaces, st, "json") {
 		b.WriteString("\n    @classmethod\n")
 		b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
 		if scalarOnly(st) {
@@ -765,12 +777,16 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 			b.WriteString("        return _s_to_json(self)\n\n\n")
 		}
 	}
+	fmt.Fprintf(b, "    @classmethod\n    def load_text(cls, text: str, report: LoadReport | None = None) -> %s:\n        return cls.load(_s_decode_text(text), report)\n\n    def save_text(self) -> str:\n        return _s_encode_text(self.save())\n\n", name)
+	if surfaces.TextForm && surfaceCarries(surfaces, st, "json") {
+		b.WriteString("    @classmethod\n    def from_text_form(cls, text: bytes, *, max_bytes: int = 0, max_tokens: int = 0, max_nodes: int = 0, max_allocation: int = 0, max_depth: int = 0) -> _s_TextDocument:\n        return _s_read_text_form(cls, text, _s_TextLimits(max_bytes, max_tokens, max_nodes, max_allocation, max_depth))\n\n\n")
+	}
 	emitTableDescriptor(b, u, st, false, surfaces)
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
 		emitStraightLine(b, st)
-		if st.CarriesForm("json") {
+		if surfaceCarries(surfaces, st, "json") {
 			emitStraightLineJSON(b, st)
 		}
 	}
