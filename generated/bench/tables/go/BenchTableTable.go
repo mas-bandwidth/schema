@@ -4213,7 +4213,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 	TableEntityReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -4258,11 +4257,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 		}
 		switch fieldID {
 		case 0x23fcfd6678e36712: // entity_id
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4277,10 +4271,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.EntityID = uint32(v)
-					}
-					if !(value.EntityID != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4301,16 +4291,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.EntityID = uint32(v)
 			}
-			if !(value.EntityID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xcb4b37357667310e: // pos_x
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4325,10 +4306,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.PosX = int32(v)
-					}
-					if !(value.PosX != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4349,16 +4326,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.PosX = int32(v)
 			}
-			if !(value.PosX != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xcb4b3835766732c1: // pos_y
-			if order >= 2 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 2
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4373,10 +4341,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.PosY = int32(v)
-					}
-					if !(value.PosY != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4397,16 +4361,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.PosY = int32(v)
 			}
-			if !(value.PosY != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xcb4b353576672da8: // pos_z
-			if order >= 3 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 3
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4421,10 +4376,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.PosZ = int32(v)
-					}
-					if !(value.PosZ != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4445,16 +4396,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.PosZ = int32(v)
 			}
-			if !(value.PosZ != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb54d8e19798e16e8: // yaw
-			if order >= 4 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 4
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4469,10 +4411,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.Yaw = uint32(v)
-					}
-					if !(value.Yaw != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4493,16 +4431,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.Yaw = uint32(v)
 			}
-			if !(value.Yaw != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x53a9f665a90cc1b1: // pitch
-			if order >= 5 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 5
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4517,10 +4446,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.Pitch = uint32(v)
-					}
-					if !(value.Pitch != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4541,16 +4466,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.Pitch = uint32(v)
 			}
-			if !(value.Pitch != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x6cede6b6eb60ee67: // vel_x
-			if order >= 6 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 6
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4565,10 +4481,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.VelX = int32(v)
-					}
-					if !(value.VelX != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4589,16 +4501,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.VelX = int32(v)
 			}
-			if !(value.VelX != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x6cede5b6eb60ecb4: // vel_y
-			if order >= 7 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 7
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4613,10 +4516,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.VelY = int32(v)
-					}
-					if !(value.VelY != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4637,16 +4536,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.VelY = int32(v)
 			}
-			if !(value.VelY != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x6cede8b6eb60f1cd: // vel_z
-			if order >= 8 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 8
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4661,10 +4551,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.VelZ = int32(v)
-					}
-					if !(value.VelZ != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4685,16 +4571,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.VelZ = int32(v)
 			}
-			if !(value.VelZ != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x7f69d4b5288ba9cf: // health
-			if order >= 9 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 9
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4709,10 +4586,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 							return false
 						}
 						value.Health = int32(v)
-					}
-					if !(value.Health != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4733,16 +4606,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.Health = int32(v)
 			}
-			if !(value.Health != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xa0b610205f2c6e01: // weapon
-			if order >= 10 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 10
 			if kind != 30 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableEntity.weapon")
 				return false
@@ -4754,8 +4618,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 					return false
 				}
 				if variantRef == 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+					value.Weapon = TableWeaponNone
 				} else {
 					id, ok := r.Resolve(variantRef)
 					if !ok {
@@ -4768,11 +4631,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 			}
 		case 0x7f6308be8ab37fc0: // damage
-			if order >= 11 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 11
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -4782,10 +4640,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 					{
 						v := r.Unsigned(kind)
 						value.Damage = TableDamage(v)
-					}
-					if !(value.Damage != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -4801,16 +4655,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				v := r.Get64()
 				value.Damage = TableDamage(v)
 			}
-			if !(value.Damage != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x11a44fc1d1243da7: // moving
-			if order >= 12 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 12
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableEntity.moving")
 				return false
@@ -4827,16 +4672,7 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 				}
 				value.Moving = b != 0
 			}
-			if !(value.Moving != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x7674cfd19b9031ca: // firing
-			if order >= 13 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 13
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableEntity.firing")
 				return false
@@ -4852,10 +4688,6 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 					return false
 				}
 				value.Firing = b != 0
-			}
-			if !(value.Firing != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -5001,7 +4833,6 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 	TableStatReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -5046,11 +4877,6 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 		}
 		switch fieldID {
 		case 0x80ab75f0866dbf65: // stat_id
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 6 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableStat.stat_id")
 				return false
@@ -5068,16 +4894,7 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 				}
 				value.StatID = uint32(v)
 			}
-			if !(value.StatID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x52076675ec13a0c1: // delta
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -5092,10 +4909,6 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 							return false
 						}
 						value.Delta = int32(v)
-					}
-					if !(value.Delta != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -5115,10 +4928,6 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 					return false
 				}
 				value.Delta = int32(v)
-			}
-			if !(value.Delta != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -5352,14 +5161,14 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 			return false
 		}
 		if value.EntitiesCount > 0 {
 			if ref := w.Ids.refAtHit(46, 0x935d0fb07bb3822a); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
-			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+			if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 				return false
 			}
 			{
@@ -5815,7 +5624,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 	TableMixedReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -5860,11 +5668,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 		}
 		switch fieldID {
 		case 0x6a5a70d91aa115fd: // protocol_magic
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -5874,10 +5677,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					{
 						v := r.Unsigned(kind)
 						value.ProtocolMagic = uint16(v)
-					}
-					if !(value.ProtocolMagic != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -5893,16 +5692,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				v := r.Get16()
 				value.ProtocolMagic = uint16(v)
 			}
-			if !(value.ProtocolMagic != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xaa38aca481f528a8: // sequence
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -5917,10 +5707,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.Sequence = uint32(v)
-					}
-					if !(value.Sequence != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -5941,16 +5727,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.Sequence = uint32(v)
 			}
-			if !(value.Sequence != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x0dbe005c56697c3e: // ack_sequence
-			if order >= 2 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 2
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -5965,10 +5742,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.AckSequence = int32(v)
-					}
-					if !(value.AckSequence != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -5989,16 +5762,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.AckSequence = int32(v)
 			}
-			if !(value.AckSequence != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x9bae0da8b829ee03: // ack_bits
-			if order >= 3 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 3
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6013,10 +5777,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.AckBits = uint32(v)
-					}
-					if !(value.AckBits != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6037,16 +5797,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.AckBits = uint32(v)
 			}
-			if !(value.AckBits != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xb7d7b5650a590b05: // session_id
-			if order >= 4 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 4
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6056,10 +5807,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					{
 						v := r.Unsigned(kind)
 						value.SessionID = uint64(v)
-					}
-					if !(value.SessionID != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6075,16 +5822,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				v := r.Get64()
 				value.SessionID = uint64(v)
 			}
-			if !(value.SessionID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x6d7b98e2d095967e: // client_id
-			if order >= 5 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 5
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6094,10 +5832,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					{
 						v := r.Unsigned(kind)
 						value.ClientID = uint32(v)
-					}
-					if !(value.ClientID != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6113,16 +5847,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				v := r.Get32()
 				value.ClientID = uint32(v)
 			}
-			if !(value.ClientID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x73a94c71d60dc0d8: // nonce
-			if order >= 6 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 6
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6137,10 +5862,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.Nonce = uint64(v)
-					}
-					if !(value.Nonce != 1) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6161,16 +5882,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.Nonce = uint64(v)
 			}
-			if !(value.Nonce != 1) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x3eee6b51be54fc85: // world_time
-			if order >= 7 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 7
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6185,10 +5897,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.WorldTime = int64(v)
-					}
-					if !(value.WorldTime != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6209,16 +5917,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.WorldTime = int64(v)
 			}
-			if !(value.WorldTime != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x7bbc035f7b6d0112: // frame_tick
-			if order >= 8 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 8
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6233,10 +5932,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.FrameTick = uint64(v)
-					}
-					if !(value.FrameTick != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6257,16 +5952,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.FrameTick = uint64(v)
 			}
-			if !(value.FrameTick != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x3c460475f9be69c6: // server_time
-			if order >= 9 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 9
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.server_time")
 				return false
@@ -6293,16 +5979,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					value.ServerTime = v
 				}
 			}
-			if !(value.ServerTime != 0.0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x935d0fb07bb3822a: // entities
-			if order >= 10 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 10
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.entities")
 				return false
@@ -6326,6 +6003,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				if elemKind != 13 {
 					r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.entities")
+					return false
+				}
+				if count < 1 {
+					r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
 					return false
 				}
 				if count > 8 {
@@ -6357,16 +6038,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					return false
 				}
 			}
-			if !(value.EntitiesCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xee639cad45b1994c: // stats
-			if order >= 11 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 11
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.stats")
 				return false
@@ -6421,16 +6093,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					return false
 				}
 			}
-			if !(value.StatsCount > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x2e35dc5321aa5790: // game_event
-			if order >= 12 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 12
 			if kind != 15 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.game_event")
 				return false
@@ -6439,10 +6102,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				payload30 := &value.GameEvent
 				armRef, ok := r.Leb()
 				if !ok {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
-				if armRef == 0 {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
@@ -6517,11 +6176,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 			}
 		case 0x5759ce7586bbb5a3: // loadout
-			if order >= 13 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 13
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.loadout")
 				return false
@@ -6566,23 +6220,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					return false
 				}
 			}
-			allDefault := true
-			for i := range value.Loadout {
-				if value.Loadout[i] != 0 {
-					allDefault = false
-					break
-				}
-			}
-			if !(!allDefault) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x13a62f542cf8e86e: // player_name
-			if order >= 14 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 14
 			if kind != 12 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.player_name")
 				return false
@@ -6599,16 +6237,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 			clear(value.PlayerName[:])
 			copy(value.PlayerName[:], sub.Buffer)
 			value.PlayerNameLength = int32(len(sub.Buffer))
-			if !(value.PlayerNameLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xcfb8a9d063b5e9e5: // payload
-			if order >= 15 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 15
 			if kind != 14 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.payload")
 				return false
@@ -6654,16 +6283,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					return false
 				}
 			}
-			if !(value.PayloadLength > 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xdbaf7be5e24296c9: // aim_x
-			if order >= 16 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 16
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.aim_x")
 				return false
@@ -6690,16 +6310,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					value.AimX = v
 				}
 			}
-			if !(value.AimX != 0.0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xdbaf7ae5e2429516: // aim_y
-			if order >= 17 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 17
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.aim_y")
 				return false
@@ -6726,16 +6337,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					value.AimY = v
 				}
 			}
-			if !(value.AimY != 0.0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xdbaf79e5e2429363: // aim_z
-			if order >= 18 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 18
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.aim_z")
 				return false
@@ -6762,16 +6364,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					value.AimZ = v
 				}
 			}
-			if !(value.AimZ != 0.0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x9cef31fff7e2e457: // recoil
-			if order >= 19 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 19
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.recoil")
 				return false
@@ -6791,16 +6384,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					value.Recoil = v
 				}
 			}
-			if !(math.Float32bits(value.Recoil) != math.Float32bits(0.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x5ab3f9c9341f6c04: // drift
-			if order >= 20 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 20
 			if kind != 11 {
 				if tableKindWidens(kind, 11) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6824,10 +6408,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							value.Drift = v
 						}
 					}
-					if !(math.Float64bits(value.Drift) != math.Float64bits(0.0)) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
-					}
 					r.Report.Widened++
 					break
 				}
@@ -6849,16 +6429,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					value.Drift = v
 				}
 			}
-			if !(math.Float64bits(value.Drift) != math.Float64bits(0.0)) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xa3348580461faf16: // wide_key
-			if order >= 21 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 21
 			if kind != 9 {
 				if tableKindWidens(kind, 9) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6868,10 +6439,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					{
 						v := r.Unsigned(kind)
 						value.WideKey = uint64(v)
-					}
-					if !(value.WideKey != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6887,16 +6454,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				v := r.Get64()
 				value.WideKey = uint64(v)
 			}
-			if !(value.WideKey != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xd61bdd7908af2642: // flux
-			if order >= 22 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 22
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6911,10 +6469,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.Flux = int64(v)
-					}
-					if !(value.Flux != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -6935,16 +6489,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.Flux = int64(v)
 			}
-			if !(value.Flux != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xbf30e00dc53307a9: // ping
-			if order >= 23 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 23
 			if kind != 10 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.ping")
 				return false
@@ -6971,16 +6516,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					value.Ping = v
 				}
 			}
-			if !(value.Ping != 0.0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x560d6527ccd8515f: // crc_hint
-			if order >= 24 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 24
 			if kind != 8 {
 				if tableKindWidens(kind, 8) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -6995,10 +6531,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.CrcHint = uint32(v)
-					}
-					if !(value.CrcHint != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7019,16 +6551,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.CrcHint = uint32(v)
 			}
-			if !(value.CrcHint != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xc08292176cfd8672: // has_extra
-			if order >= 25 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 25
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.has_extra")
 				return false
@@ -7045,16 +6568,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.HasExtra = b != 0
 			}
-			if !(value.HasExtra != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xfd29ee12a979cb69: // extra
-			if order >= 26 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 26
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -7069,10 +6583,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.Extra = int32(v)
-					}
-					if !(value.Extra != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7093,16 +6603,7 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				}
 				value.Extra = int32(v)
 			}
-			if !(value.Extra != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x78101ac0aa8cbcfe: // idle_ticks
-			if order >= 27 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 27
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -7117,10 +6618,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 							return false
 						}
 						value.IdleTicks = int32(v)
-					}
-					if !(value.IdleTicks != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7140,10 +6637,6 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					return false
 				}
 				value.IdleTicks = int32(v)
-			}
-			if !(value.IdleTicks != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -7336,7 +6829,6 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 	TableHitEventReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -7381,11 +6873,6 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 		}
 		switch fieldID {
 		case 0xb7bc9ac015a25050: // target_id
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -7400,10 +6887,6 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 							return false
 						}
 						value.TargetID = uint32(v)
-					}
-					if !(value.TargetID != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7424,16 +6907,7 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				}
 				value.TargetID = uint32(v)
 			}
-			if !(value.TargetID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x7f6308be8ab37fc0: // damage
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -7448,10 +6922,6 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 							return false
 						}
 						value.Damage = int32(v)
-					}
-					if !(value.Damage != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7472,16 +6942,7 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				}
 				value.Damage = int32(v)
 			}
-			if !(value.Damage != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x01fbc365b059b925: // hit_kind
-			if order >= 2 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 2
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -7496,10 +6957,6 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 							return false
 						}
 						value.HitKind = int32(v)
-					}
-					if !(value.HitKind != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7520,16 +6977,7 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 				}
 				value.HitKind = int32(v)
 			}
-			if !(value.HitKind != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x126167908c9aa52d: // crit
-			if order >= 3 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 3
 			if kind != 1 {
 				r.Report.Refuse(TableRefuseKindMismatch, "TableHitEvent.crit")
 				return false
@@ -7545,10 +6993,6 @@ func TableHitEventLoadBody(r *TableReader, value *TableHitEvent) bool {
 					return false
 				}
 				value.Crit = b != 0
-			}
-			if !(value.Crit != false) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -7683,7 +7127,6 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 	TableChatEventReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -7728,11 +7171,6 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 		}
 		switch fieldID {
 		case 0xa5013e9ad5caeda4: // channel
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -7747,10 +7185,6 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 							return false
 						}
 						value.Channel = int32(v)
-					}
-					if !(value.Channel != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7771,16 +7205,7 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 				}
 				value.Channel = int32(v)
 			}
-			if !(value.Channel != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0xfbf1ac4d96ebd022: // speaker
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -7795,10 +7220,6 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 							return false
 						}
 						value.Speaker = uint32(v)
-					}
-					if !(value.Speaker != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -7818,10 +7239,6 @@ func TableChatEventLoadBody(r *TableReader, value *TableChatEvent) bool {
 					return false
 				}
 				value.Speaker = uint32(v)
-			}
-			if !(value.Speaker != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++
@@ -7956,7 +7373,6 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 	TablePickupEventReset(value)
 	var seen [64]byte
 	var seenHigh map[uint64]struct{}
-	order := -1
 	for {
 		ref, ok := r.lebPair()
 		if !ok {
@@ -8001,11 +7417,6 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 		}
 		switch fieldID {
 		case 0x9e7fd06d864fbd56: // item_id
-			if order >= 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 0
 			if kind != 7 {
 				if tableKindWidens(kind, 7) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -8020,10 +7431,6 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 							return false
 						}
 						value.ItemID = uint32(v)
-					}
-					if !(value.ItemID != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -8044,16 +7451,7 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 				}
 				value.ItemID = uint32(v)
 			}
-			if !(value.ItemID != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
 		case 0x8113fe7ea2b16969: // amount
-			if order >= 1 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			order = 1
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
@@ -8068,10 +7466,6 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 							return false
 						}
 						value.Amount = int32(v)
-					}
-					if !(value.Amount != 0) {
-						r.Report.Refuse(TableRefuseWireDamaged, "")
-						return false
 					}
 					r.Report.Widened++
 					break
@@ -8091,10 +7485,6 @@ func TablePickupEventLoadBody(r *TableReader, value *TablePickupEvent) bool {
 					return false
 				}
 				value.Amount = int32(v)
-			}
-			if !(value.Amount != 0) {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
 			}
 		default:
 			r.Report.Unknown++

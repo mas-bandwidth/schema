@@ -8,10 +8,11 @@
 // already canonical, so reading and writing one is the identity. A rewrite row
 // is an input that is NOT canonical, or not written by the reader's own build,
 // or an edge vector of §22: an evolution wire (a field this reader cannot name,
-// a widened value), a framing vector that reads, the hand-built non-canonical
-// spellings of §22 (fields out of declaration order, an id table out of
-// first-use order), and the §22.7 edge vectors. Each leg's answer is its own
-// Save, and the canonical bytes are the one byte string §22's write algorithm
+// a widened value), a framing vector that reads, a lawful field reordering
+// whose ID table remains in first-use order, and the §22.7 edge vectors.
+// Non-first-use ID tables and repeated fields refuse and have no rewrite row.
+// Each leg's answer is its own Save, and the canonical bytes are the one byte
+// string §22's write algorithm
 // owes for the value the read leaves, so two legs that pass write identical
 // bytes.
 package main
