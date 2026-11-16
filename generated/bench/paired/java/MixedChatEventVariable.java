@@ -981,4 +981,15 @@ public final class MixedChatEventVariable {
             return;
         }
     }
+
+    /**
+     * carry a MixedChatEventFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(MixedChatEventFixed.Value fixed) {
+        Value v = new Value();
+        v.channel = fixed.channel;
+        v.speaker = fixed.speaker;
+        return v;
+    }
 }

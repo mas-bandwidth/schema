@@ -32,8 +32,6 @@ WIRE_FUZZ_RELEASE_LEGS  := c cpp cs dart elixir go goose java js lobster lua lua
 
 WFR_DEPS_c       = build/wire-fuzz-c
 WFR_DRIVER_c     = ./build/wire-fuzz-c
-# RELAXED 2026-11-14 (maintainer: get main green); re-enable: relax/unknown-arm-text-c
-WFR_FLAGS_c      = $(C_RELAX_VECTORS)
 
 WFR_DEPS_cpp     = build/wire-fuzz-cpp
 WFR_DRIVER_cpp   = ./build/wire-fuzz-cpp

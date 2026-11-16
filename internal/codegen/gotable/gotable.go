@@ -111,6 +111,8 @@ type tableGen struct {
 	retainIndex   string
 	retainArm     bool
 	regional      bool
+	elides        bool   // the field read being emitted is one its writer elides at its default
+	sink          string // the element read's not-at-default flag (canonical.go)
 	armOffset     *int64
 	viewPacket    map[string]int
 	viewUnions    map[string]int
@@ -991,6 +993,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	firstUse    tableFirstUse // the form-1 load's first-use count (canonical.go)
 	// LayoutHash is THE FILE'S hash, set by the layout refusals
 	// (docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
 	// layout.
@@ -1003,7 +1006,7 @@ type TableReport struct {
 // meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
 // OneVerdict).
 func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
-	if r == nil || r.Refusal != TableRefuseOk { return }
+	if r == nil { return }; r.firstUse = tableFirstUse{}; if r.Refusal != TableRefuseOk { return }
 	r.Refusal, r.Field = reason, field
 	if r.Reason == "" { r.Reason = reason.Error(); if field != "" { r.Reason += ": " + field } }
 }
@@ -1275,7 +1278,7 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 		}
 	}
 }
-`
+` + tableFirstUseSource
 }
 
 // tableKeyedAccessor is the enum-keyed array's one indexing helper

@@ -3349,6 +3349,10 @@
       "reason": "the moo leg's constructor-bytes control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
+      "target": "packet-write-cfloat-moo-negative-control",
+      "reason": "Runs with test-moo on runners that build the moo toolchain."
+    },
+    {
       "target": "packet-finite-moo-negative-control",
       "reason": "the moo leg's finite-float (read and write) control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },

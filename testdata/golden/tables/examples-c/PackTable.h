@@ -4775,6 +4775,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip_body(tabledemo_table_messa
  int64_t ref;
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
      reference is bounded where the file form bounds it, so the bitset fits. */
   ref=entry-r->vocabulary->entries+1;
@@ -4811,7 +4812,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
  /* a node reference: no fixed body holds one */
  case 15:
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && tabledemo_table_message_skip_deeper(r,entry));
+  return entry==NULL || (entry->id<UINT64_C(0xfffffffffffffffd) && entry->kind!=0 && tabledemo_table_message_skip_deeper(r,entry));
  case 12:
   /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
      is inside the announced bound and its bytes are well-formed UTF-8 with no
@@ -6018,11 +6019,18 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_save_messages(const table
 }
 static SCHEMA_UNUSED int tabledemo_gunner_settings_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_gunner_settings_t * value)
 {
+ uint8_t seen[512];
  tabledemo_gunner_settings_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xb75aa3662201646a): {
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,10)){r->report->widened++;
@@ -6543,11 +6551,18 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_save_messages(const tabledemo_
 }
 static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_ship_entry_t * value)
 {
+ uint8_t seen[512];
  tabledemo_ship_entry_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x2d21d7cd66bd5a5d): {
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,12)){r->report->widened++;
@@ -7118,11 +7133,18 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_save_messages(const table
 }
 static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_global_settings_t * value)
 {
+ uint8_t seen[512];
  tabledemo_global_settings_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xa65f859b617deaf3): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,8)){r->report->widened++;
@@ -7952,11 +7974,18 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_save_messages(const tabledemo
 }
 static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table_message_reader_t * r,tabledemo_pack_config_t * value)
 {
+ uint8_t seen[512];
  tabledemo_pack_config_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xbb62c62c9808ea37): {
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && tabledemo_table_kind_widens(entry->kind,8)){r->report->widened++;
