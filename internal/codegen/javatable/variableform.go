@@ -3993,8 +3993,9 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	if unitCarriesForm(u, "json") {
 		out["TableJson.java"] = javaFile(u, "the TEXT form's runtime (docs/SPEC-TABLES.md §16), JSON in and out", strings.TrimSuffix(tableJsonRuntime, "}\n")+variableWideJsonRuntime+"}\n")
 	}
+	fixed := fixedClosureOf(u)
 	for _, st := range tables {
-		src, err := generateTableVariable(u, st)
+		src, err := generateTableVariable(u, st, fixed)
 		if err != nil {
 			return nil, err
 		}
@@ -4005,7 +4006,7 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	for _, unions := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
 		for _, un := range unions {
 			if refuseVariableFormClosure(variableUnionStruct(un), map[string]bool{}) == nil {
-				out[un.Name+"Variable.java"] = javaFile(u, "the active union arm on the variable wire (§2.6, §3)", generateVariableUnion(u, un))
+				out[un.Name+"Variable.java"] = javaFile(u, "the active union arm on the variable wire (§2.6, §3)", generateVariableUnion(u, un, fixed))
 			}
 		}
 	}
@@ -4245,7 +4246,7 @@ func hasFixedFile(u *ir.Unit, st *ir.Struct) bool {
 	return false
 }
 
-func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
+func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (string, error) {
 	st = variableStruct(st)
 	tables := cardVariableTables(u)
 	graphTypes, graphIndex := variableGraphTypes(u)
@@ -4599,6 +4600,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	writeLoadMeasure(&b, u, st)
 	if unitCarriesForm(u, "json") {
 		writeJsonCodec(&b, u, st)
+		if fixed.structs[st.Name] {
+			writeFixedToVariable(&b, u, st)
+		}
 	}
 
 	b.WriteString("}\n")

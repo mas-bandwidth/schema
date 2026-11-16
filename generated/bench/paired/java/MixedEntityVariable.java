@@ -2101,4 +2101,27 @@ public final class MixedEntityVariable {
             return;
         }
     }
+
+    /**
+     * carry a MixedEntityFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(MixedEntityFixed.Value fixed) {
+        Value v = new Value();
+        v.entityId = fixed.entityId;
+        v.posX = fixed.posX;
+        v.posY = fixed.posY;
+        v.posZ = fixed.posZ;
+        v.yaw = fixed.yaw;
+        v.pitch = fixed.pitch;
+        v.velX = fixed.velX;
+        v.velY = fixed.velY;
+        v.velZ = fixed.velZ;
+        v.health = fixed.health;
+        v.weapon = (fixed.weapon & 0xFF);
+        v.damage = fixed.damage;
+        v.moving = fixed.moving;
+        v.firing = fixed.firing;
+        return v;
+    }
 }

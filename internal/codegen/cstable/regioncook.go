@@ -36,6 +36,7 @@ const tableRegionCookSource = `
     { foreach (TableFieldInfo f in type.Fields) { if (!RegionExtentSize(value, f, ref at)) { return false; } } return true; }
     static bool RegionExtentSize(NativeValue value, TableFieldInfo f, ref long at)
     {
+        if (f.Optional && !value.Present(f)) { return true; }
         if (f.Unbounded) { int length = value.Count(f); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
         int n = f.IsArray ? RegionCount(value, f) : 1;
         if (n < 0 || f.IsArray && n > f.ArrayBound) { return false; }
@@ -59,6 +60,7 @@ const tableRegionCookSource = `
     {
         long at = record + f.NativeOffset;
         if (f.Optional) { w.Put(record + f.NativePresentOffset, value.Present(f) ? 1u : 0u, 1); }
+        if (f.Optional && !value.Present(f)) { return true; }
         int live = f.Counted ? value.Count(f) : f.IsArray ? f.ArrayBound : 1;
         if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
@@ -70,7 +72,7 @@ const tableRegionCookSource = `
         }
         if (f.Kind == 12 && !f.TextList) { w.Raw(at, value.Buffer(f).Slice(0, live)); return true; }
         if (f.GetBuffer != null) { w.Raw(at, value.Buffer(f).Slice(0, live)); return true; }
-        int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
+        int count = f.IsArray ? live : 1;
         if (f.Dynamic)
         {
             extent = Align(extent, f.StorageAlign); long start = extentAt + extent;

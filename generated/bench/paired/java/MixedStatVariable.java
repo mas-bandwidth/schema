@@ -1025,4 +1025,15 @@ public final class MixedStatVariable {
             return;
         }
     }
+
+    /**
+     * carry a MixedStatFixed value into this value (the text form's reader of a fixed root's value;
+     * docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(MixedStatFixed.Value fixed) {
+        Value v = new Value();
+        v.statId = fixed.statId;
+        v.delta = fixed.delta;
+        return v;
+    }
 }

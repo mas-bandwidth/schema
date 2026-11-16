@@ -152,6 +152,7 @@ class Ctx:
         "blobs",
         "placeable",
         "variable",
+        "nonfinite",
     )
 
     def __init__(self, ids: list[int]) -> None:
@@ -181,6 +182,9 @@ class Ctx:
         self.blobs: list[bool] = []
         self.placeable: frozenset[int] = frozenset()
         self.variable = False
+        # None in the decode, which refuses a non-finite float at once; the
+        # refusal path's file walk (_check_file) records one here and reads on
+        self.nonfinite: list[bool] | None = None
 
 
 def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T:
@@ -190,9 +194,24 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None) -> _T
     obj = cls()
     ctx.root = obj
     reader = Reader(view, 1, _body_end(view), ids)
-    _read_body(reader, obj, ctx, True)
-    if reader.pos != reader.end:
-        raise Refused("wire_damaged", "bytes between the root terminator and the id table")
+    try:
+        _read_body(reader, obj, ctx, True)
+        if reader.pos != reader.end:
+            raise Refused("wire_damaged", "bytes between the root terminator and the id table")
+    except Refused as err:
+        if err.reason != "wire_damaged":
+            # The engine judges the whole file's framing before its decode
+            # compares a byte with a declaration (internal/tablewire/
+            # wirecheck.go, checkFile), so damage anywhere outranks a kind
+            # mismatch or a range met first; the walk runs only on this
+            # refusal path. A walk that names the decode's own reason keeps
+            # the decode's refusal, which names the field.
+            try:
+                _check_file(view, ids)
+            except Refused as walked:
+                if walked.reason != err.reason:
+                    raise walked from None
+        raise
     _resolve(ctx)
     if report is not None:
         report.unknown = ctx.unknown
@@ -299,20 +318,26 @@ def _unknown_field(reader: Reader, field_id: int, kind: int, ctx: Ctx, root: boo
 
 def _placeable(root: type[Any]) -> frozenset[int]:
     """THE TYPE IDS THIS ROOT CAN PLACE (§3.1): every table a pointer below
-    the root targets, through by-value tables and pointers alike."""
+    the root targets, through by-value tables and pointers alike, and the
+    reserved id of each byte buffer kind a *bytes or *string slot below it
+    names (§2.5). A map's buffer value is not carried, so it places nothing."""
     cached: frozenset[int] | None = getattr(root, "_s_placeable", None)
     if cached is not None:
         return cached
     out: set[int] = set()
     visited: set[str] = set()
-    stack = [root]
+    stack: list[tuple[type[Any], bool]] = [(root, False)]
     while stack:
-        cls = stack.pop()
+        cls, entry = stack.pop()
         desc: TableDesc = cls.descriptor
         if desc.name in visited:
             continue
         visited.add(desc.name)
-        for field in desc.fields:
+        for field in _reached_fields(desc.fields):
+            if field.codec == "bytes_blob" and not entry:
+                out.add(_BYTES_WIRE_TYPE_ID)
+            elif field.codec == "string_blob" and not entry:
+                out.add(_STRING_WIRE_TYPE_ID)
             if not field.target:
                 continue
             target = descriptor.by_name(field.target)
@@ -320,10 +345,37 @@ def _placeable(root: type[Any]) -> frozenset[int]:
                 continue
             if field.pointer or field.codec == "pointer":
                 out.add(target.descriptor.type_id)
-            stack.append(target)
+            stack.append((target, field.codec == "map"))
     answer = frozenset(out)
     setattr(root, "_s_placeable", answer)
     return answer
+
+
+def _reached_fields(fields: tuple[FieldDesc, ...]) -> list[FieldDesc]:
+    """A table's fields, with each union's arm field lines in its place, so a
+    pointer in an arm (at any union depth) is a pointer below the root."""
+    out: list[FieldDesc] = []
+    unions: list[str] = []
+    for field in fields:
+        out.append(field)
+        if field.codec == "union" or field.codec == "union_array":
+            unions.append(field.target)
+    seen: set[str] = set()
+    while unions:
+        name = unions.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        cls = descriptor._union_by_name(name)
+        if cls is None:
+            continue
+        for arm in cls.descriptor.arms:
+            if arm.field is None:
+                continue
+            out.append(arm.field)
+            if arm.field.codec == "union" or arm.field.codec == "union_array":
+                unions.append(arm.field.target)
+    return out
 
 
 def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
@@ -352,8 +404,12 @@ def _read_node_table(payload: memoryview, ctx: Ctx) -> None:
         types.append(type_id)
         if blob:
             # A BLOB RECORD IS ITS BYTES (§2.5, §3.1): a known *bytes or
-            # *string slot places it (_resolve); one no known slot names is
-            # counted there as a record this reader does not place
+            # *string slot places it (_resolve). A record of a kind no slot
+            # below the root can place is one this reader cannot name, and
+            # counts once; one of a placeable kind that no known slot names
+            # belongs to a skipped field, which counted it already.
+            if type_id not in ctx.placeable and ctx.variable:
+                ctx.unknown += 1
             if type_id == _STRING_WIRE_TYPE_ID:
                 _check_text(body, "a string blob record that is not well-formed text")
                 nodes.append(kind_blob._BlobValue(True, bytes(body).decode("utf-8")))
@@ -469,7 +525,6 @@ def _resolve(ctx: Ctx) -> None:
             owner[key] = value
         else:
             setattr(owner, field.name, value)
-    placed: set[int] = set()
     for owner, field, index in ctx.blob_pending:
         if index == 0:
             setattr(owner, field.name, None)
@@ -477,16 +532,15 @@ def _resolve(ctx: Ctx) -> None:
         # the graph admitted the index and refused a record named twice
         buffer = ctx.nodes[index - 2]
         if not isinstance(buffer, kind_blob._BlobValue):
-            raise Refused("wire_damaged", "a byte buffer slot names a table record")
+            if descriptor.by_id(ctx.types[index - 2]) is not None:
+                raise Refused("wire_damaged", "a byte buffer slot names a table record")
+            # a record of a type this reader does not declare reads null; it
+            # counted once when the node table was read
+            setattr(owner, field.name, None)
+            continue
         if buffer.string != (field.codec == "string_blob"):
             raise Refused("wire_damaged", "a byte buffer slot names the other buffer kind")
-        placed.add(index)
         setattr(owner, field.name, buffer.value)
-    if ctx.variable:
-        # a blob record no known slot places is one this reader does not place
-        for k, blob in enumerate(ctx.blobs):
-            if blob and k + 2 not in placed:
-                ctx.unknown += 1
 
 
 # THE SKIP WALK: the engine's declaration-free wire check (wirecheck.go) over
@@ -503,16 +557,84 @@ def _check_text(data: memoryview, why: str) -> None:
         raise Refused("wire_damaged", why) from None
 
 
-def _scalar(data: memoryview, kind: int) -> None:
+def _scalar(data: memoryview, kind: int, ctx: Ctx) -> None:
     if kind == 1:
         if data[0] > 1:
             raise Refused("wire_damaged", "a bool byte other than 0 or 1")
     elif kind == 10:
         if (int.from_bytes(data, "little") >> 23) & 0xFF == 0xFF:
-            raise Refused("non_finite_float", "a float the wire carries")
+            _not_finite(ctx)
     elif kind == 11:
         if (int.from_bytes(data, "little") >> 52) & 0x7FF == 0x7FF:
-            raise Refused("non_finite_float", "a float the wire carries")
+            _not_finite(ctx)
+
+
+def _not_finite(ctx: Ctx) -> None:
+    """Refuse a non-finite float in the decode, or record it on the file walk."""
+    if ctx.nonfinite is None:
+        raise Refused("non_finite_float", "a float the wire carries")
+    ctx.nonfinite.append(True)
+
+
+def _check_file(view: memoryview, ids: list[int]) -> None:
+    """Raise the wire check's damage over the whole root body, if any.
+
+    The root body is walked as a nested one is, except that it may hold the
+    node table, whose records are each a body (a blob record is its bytes). A
+    non-finite float is recorded and the walk reads on, as the engine's wire
+    check does, so damage later in the file outranks it; with no damage the
+    decode's own refusal stands (internal/tablewire/wirecheck.go, checkFile).
+    """
+    ctx = Ctx(ids)
+    ctx.nonfinite = []
+    reader = Reader(view, 1, _body_end(view), ids)
+    seen: set[int] = set()
+    while True:
+        reference = reader.varint()
+        if reference == 0:
+            break
+        field_id = reader.id_at(reference)
+        if field_id in seen:
+            raise Refused("wire_damaged", "the same field id twice in one body")
+        seen.add(field_id)
+        kind = reader.byte()
+        if field_id == _BUILD_VERSION_WIRE_ID or field_id == _MESSAGE_VOCABULARY_WIRE_ID:
+            raise Refused("wire_damaged", "a reserved announcement id out of place")
+        if field_id == NODE_WIRE_ID:
+            if kind != 12:
+                raise Refused("wire_damaged", "the node table under a kind other than 12")
+            _check_node_table(reader.take(reader.varint()), ctx)
+            continue
+        _skip_payload(reader, kind, ctx, 0)
+    if reader.pos != reader.end:
+        raise Refused("wire_damaged", "bytes between the root terminator and the id table")
+
+
+def _check_node_table(data: memoryview, ctx: Ctx) -> None:
+    reader = Reader(data, 0, len(data), ctx.ids)
+    count = reader.varint()
+    if count > _COUNT_CAP:
+        raise Refused("count_over_extent_cap", "a node count above the int32 storage cap")
+    for _ in range(count):
+        type_id = reader.id_at(reader.varint())
+        body = reader.take(reader.varint())
+        if type_id == _STRING_WIRE_TYPE_ID:
+            _check_text(body, "a string blob record that is not well-formed text")
+            continue
+        if type_id == _BYTES_WIRE_TYPE_ID:
+            continue
+        if (
+            type_id == NODE_WIRE_ID
+            or type_id == _BUILD_VERSION_WIRE_ID
+            or type_id == _MESSAGE_VOCABULARY_WIRE_ID
+        ):
+            # A reserved id is damage anywhere but the body whose transport it
+            # is, so it cannot be a record's type (internal/tablewire/
+            # nodetable.go, scanNodeRecords).
+            raise Refused("wire_damaged", "a reserved id in a record's type position")
+        _skip_body(body, ctx, 0)
+    if reader.pos != reader.end:
+        raise Refused("wire_damaged", "bytes left inside the node table")
 
 
 def _skip(reader: Reader, kind: int, ctx: Ctx) -> None:
@@ -526,7 +648,7 @@ def _skip_payload(reader: Reader, kind: int, ctx: Ctx, depth: int) -> None:
     if width is not None:
         if width > reader.end - reader.pos:
             raise Refused("wire_damaged", "a fixed-width payload cut short")
-        _scalar(reader.take(width), kind)
+        _scalar(reader.take(width), kind, ctx)
         return
     if kind == 17:
         ctx.edges.append(reader.varint())
@@ -551,7 +673,7 @@ def _skip_content(data: memoryview, kind: int, ctx: Ctx, depth: int) -> None:
     if width is not None:
         if len(data) != width:
             raise Refused("wire_damaged", "an L that is not its kind's width")
-        _scalar(data, kind)
+        _scalar(data, kind, ctx)
         return
     if kind == 12:
         _check_text(data, "ill-formed text")
@@ -617,7 +739,7 @@ def _array_header(data: memoryview, ctx: Ctx) -> tuple[int, int, Reader]:
 def _skip_array(data: memoryview, ctx: Ctx, depth: int) -> None:
     element, count, reader = _array_header(data, ctx)
     if element not in _ARRAY_ELEMENT_KINDS:
-        raise Refused("wire_damaged", "an array element kind outside the closed list")
+        raise Refused("wire_damaged", "a walked array's element kind outside the closed list")
     for _ in range(count):
         _skip_payload(reader, element, ctx, depth)
     if reader.pos != reader.end:

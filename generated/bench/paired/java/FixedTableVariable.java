@@ -932,4 +932,14 @@ public final class FixedTableVariable {
             return;
         }
     }
+
+    /**
+     * carry a FixedTableFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(FixedTableFixed.Value fixed) {
+        Value v = new Value();
+        v.value = BenchMixedVariable.fromFixed(fixed.value);
+        return v;
+    }
 }

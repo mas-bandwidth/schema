@@ -1170,4 +1170,17 @@ public final class MixedHitEventVariable {
             return;
         }
     }
+
+    /**
+     * carry a MixedHitEventFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(MixedHitEventFixed.Value fixed) {
+        Value v = new Value();
+        v.targetId = fixed.targetId;
+        v.damage = fixed.damage;
+        v.hitKind = fixed.hitKind;
+        v.crit = fixed.crit;
+        return v;
+    }
 }
