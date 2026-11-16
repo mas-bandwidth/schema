@@ -115,7 +115,7 @@ func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
 // carrying it (compiler/carries_python_optional.go).
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"[]int32"} {
+	for _, field := range []string{"[]float32"} {
 		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
 		_, err := New().Generate(u, "python", Options{})
 		if err == nil {

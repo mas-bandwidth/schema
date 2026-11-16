@@ -143,6 +143,18 @@ static const SiteCase kSites[] = {
     { "bits64 string", "{\"b64\":\"18446744073709551615\"}", 1 },
     { "fixed128 number", "{\"f128\":0.5}", 0 },
     { "fixed128 string", "{\"f128\":\"0.5\"}", 1 },
+    { "fixed plus", "{\"f128\":\"+1\"}", 0 },
+    { "fixed leading zero", "{\"f128\":\"01\"}", 0 },
+    { "fixed missing integer", "{\"f128\":\".5\"}", 0 },
+    { "fixed exponent", "{\"f128\":\"1e0\"}", 1 },
+    { "fixed nan", "{\"f128\":\"nan\"}", 0 },
+    { "fixed trailing", "{\"f128\":\"1x\"}", 0 },
+    { "fixed empty", "{\"f128\":\"\"}", 0 },
+    { "fixed decimal", "{\"f128\":\"1.0\"}", 1 },
+    { "fixed escaped digit", "{\"f128\":\"\\u0031\"}", 1 },
+    { "integer escaped digit", "{\"plain\":\"\\u0031\"}", 1 },
+    { "fixed exact quantum", "{\"f128\":\"0.0000000000000000000542101086242752217003726400434970855712890625\"}", 1 },
+    { "fixed finer quantum", "{\"f128\":\"0.00000000000000000001\"}", 0 },
     { "int32 number", "{\"narrow\":-7}", 1 },
     { "fixed32 exponent", "{\"fixed32\":15e-1}", 1 },
 };
@@ -160,6 +172,45 @@ static int check_sites()
             std::fprintf( stderr, "FAIL site %%s: ok=%%d refused=%%d reason=%%d\n", c.name, (int) ok, (int) report.refused, (int) report.refuse_reason );
             failures++;
         }
+    }
+    // Escaping and a long, exact spelling must place the same value, not
+    // merely produce a successful verdict.
+    const char * one = "{\"f128\":\"1.0\"}";
+    const char * escaped = "{\"f128\":\"\\u0031\"}";
+    std::string long_one = "{\"f128\":\"1." + std::string( 600, '0' ) + "\"}";
+    const char * equal[] = { one, escaped, long_one.c_str() };
+    std::vector<uint8_t> expected;
+    for ( int i = 0; i < 3; i++ )
+    {
+        SitesBuilder builder;
+        TableReport report;
+        if ( !SitesFromJson( builder, equal[i], (int64_t) std::strlen( equal[i] ), &report ) )
+        { std::fprintf( stderr, "FAIL equal site %%d refused\n", i ); failures++; continue; }
+        int64_t n = SitesMeasure( builder );
+        if ( n < 0 ) { failures++; continue; }
+        std::vector<uint8_t> wire( (size_t) n );
+        if ( SitesSave( builder, wire.data(), n ) != n ) { failures++; continue; }
+        if ( i == 0 ) { expected = wire; }
+        else if ( wire != expected ) { std::fprintf( stderr, "FAIL equal site %%d value\n", i ); failures++; }
+    }
+    const char * q[] = {
+        "{\"f128\":\"0.0\"}",
+        "{\"f128\":\"0.0000000000000000000542101086242752217003726400434970855712890625\"}",
+        "{\"f128\":\"5.42101086242752217003726400434970855712890625e-20\"}"
+    };
+    std::vector<uint8_t> zero, quantum;
+    for ( int i = 0; i < 3; i++ )
+    {
+        SitesBuilder builder;
+        TableReport report;
+        if ( !SitesFromJson( builder, q[i], (int64_t) std::strlen( q[i] ), &report ) ) { failures++; continue; }
+        int64_t n = SitesMeasure( builder );
+        if ( n < 0 ) { failures++; continue; }
+        std::vector<uint8_t> wire( (size_t) n );
+        if ( SitesSave( builder, wire.data(), n ) != n ) { failures++; continue; }
+        if ( i == 0 ) { zero = wire; }
+        if ( i == 1 ) { quantum = wire; if ( quantum == zero ) { failures++; } }
+        if ( i == 2 && wire != quantum ) { failures++; }
     }
     return failures;
 }

@@ -325,6 +325,9 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%sif elem.Offset != int64(len(elem.Buffer)) { %s }\n", j, stop)
 		g.pf("%s}\n", i)
 	} else {
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			g.pf("%sif count < %d { %s }\n", i, f.ArrayMin, refuse(over, owner, "return false"))
+		}
 		g.pf("%sif count > %d { %s }\n", i, bound, refuse(over, owner, "return false"))
 		if f.TextTotal > 0 {
 			g.pf("%sspent := int64(0)\n", i)
@@ -493,7 +496,11 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind string) {
 	} else {
 		g.pf("%s %s\n", ind, refuse("TableRefuseKindMismatch", owner, "return false"))
 	}
-	g.pf("%s}\n%sif count > %d { %s }\n", ind, ind, bound, refuse(over, owner, "return false"))
+	g.pf("%s}\n", ind)
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		g.pf("%sif count < %d { %s }\n", ind, f.ArrayMin, refuse(over, owner, "return false"))
+	}
+	g.pf("%sif count > %d { %s }\n", ind, bound, refuse(over, owner, "return false"))
 	g.pf("%sfor i:=uint64(0); i<count; i++ {\n", ind)
 	j := ind + "\t"
 	switch {
