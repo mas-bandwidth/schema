@@ -75,17 +75,14 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 	row11 := regexp.MustCompile(`11 (every build|debug|unrepresentable|not yet held)`)
 	for _, leg := range []string{"C++", "C", "C#", "Rust", "Java", "Dart", "Go", "JavaScript", "Elixir", "Lua", "Luau", "Squirrel", "MOO", "Goose", "Lobster"} {
 		marker := "- **" + leg + "**"
-		start := strings.Index(writeSection, marker)
-		if start < 0 {
+		_, cell, found := strings.Cut(writeSection, marker)
+		if !found {
 			t.Errorf("packet column missing %s", leg)
 			continue
 		}
-		cell := writeSection[start+len(marker):]
-		if end := strings.Index(cell, "\n- **"); end >= 0 {
-			cell = cell[:end]
-		}
+		cell, _, _ = strings.Cut(cell, "\n- **")
 		packet := ""
-		for _, line := range strings.Split(cell, "\n") {
+		for line := range strings.SplitSeq(cell, "\n") {
 			if strings.Contains(line, "packet `Write`:") {
 				packet = line
 				break
