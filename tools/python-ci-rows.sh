@@ -22,11 +22,13 @@ while IFS= read -r package; do
   case "$package" in */internal/codegen/pythontable|*/internal/codegen/pythontable/*) corpus=true ;; esac
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
   names=$(printf '%s\n' "$tests" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
-  # These fixed proof tests are delegated to the support row shards above.
+  # These fixed proofs and the wire-fuzz omnibus are delegated to their
+  # complete support-row partitions above. The focused pipe and fault-control
+  # tests remain in package shards.
   # Keeping a monolithic parent in an automatic package shard would
   # still hit the two-minute limit. New test names remain auto-discovered.
   case "$package" in */internal/codegen/pythontable)
-    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d') ;;
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonWireFuzzVerdictPipe$/d') ;;
   esac
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
