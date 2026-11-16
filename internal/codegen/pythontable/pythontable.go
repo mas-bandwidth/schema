@@ -444,6 +444,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
+	b.WriteString("from ._schema.textform import Document as _s_TextDocument, read as _s_read_text_form\n")
 	b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
@@ -643,6 +644,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	} else {
 		b.WriteString("        return _s_to_json(self)\n\n\n")
 	}
+	b.WriteString("    @classmethod\n    def from_text_form(cls, text: bytes) -> _s_TextDocument:\n        return _s_read_text_form(cls, text)\n\n\n")
 	emitTableDescriptor(b, u, st, false)
 	if scalarOnly(st) {
 		emitStraightLine(b, st)

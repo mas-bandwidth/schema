@@ -19,7 +19,7 @@ const HelperPrefix = "_s_"
 var generatedMembers = wordSet(`read write load save descriptor`)
 
 // These methods are emitted on table classes, not packet classes.
-var generatedTableJSONMembers = wordSet(`from_json to_json`)
+var generatedTableJSONMembers = wordSet(`from_json to_json from_text_form`)
 
 // moduleNames are the names a generated module binds itself: the imports it
 // spells unqualified and the constants it writes beside the declarations. A
