@@ -2,9 +2,16 @@ package pythontable
 
 import (
 	"encoding/binary"
+	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"hash/crc32"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,7 +22,8 @@ func TestPythonRetainCRC(t *testing.T) {
 	const schema = `package probe
  table Root | integrity = "crc32c" { n int32 }
  `
-	files, err := Generate(loadUnit(t, schema))
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,6 +32,74 @@ func TestPythonRetainCRC(t *testing.T) {
 	unknown := unionCat(w.ref("future"), []byte{4}, unionI32(12))
 	body := w.file(known, unknown)
 	wire := binary.LittleEndian.AppendUint32(body, crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)))
+	reference, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := cpptable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(reference, tables)
+	cppdir := t.TempDir()
+	writeTree(t, cppdir, reference)
+	header := ""
+	var sources []string
+	for name := range reference {
+		if !strings.Contains(name, "/") && strings.HasSuffix(name, "Table.h") {
+			header = name
+		}
+		if !strings.Contains(name, "/") && strings.HasSuffix(name, "Table.cpp") {
+			sources = append(sources, filepath.Join(cppdir, name))
+		}
+	}
+	if header == "" {
+		t.Fatal("C++ header absent")
+	}
+	ser, err := filepath.Abs("../../../../serialize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := fmt.Sprintf(`#include <cstdio>
+#include <cstdint>
+#include <vector>
+#include "%s"
+using namespace probe;
+int main(int argc,char **argv) {
+  FILE *f=std::fopen(argv[1],"rb"); if(!f) return 1;
+  std::fseek(f,0,SEEK_END); long n=std::ftell(f); std::rewind(f);
+  std::vector<uint8_t> wire((size_t)n); if(std::fread(wire.data(),1,wire.size(),f)!=wire.size()) return 2;
+  alignas(64) uint8_t region[65536],store[4096]; TableRetain::Id ids[32]; TableRetain keep;
+  keep.bytes=store; keep.capacity=sizeof(store); keep.ids=ids; keep.id_capacity=32;
+  TableReport report{}; const Root *value=RootLoadRetain(region,sizeof(region),wire.data(),wire.size(),&keep,&report);
+  if(!value || report.retained!=1 || report.retain_lost!=0) return 3;
+  auto size=RootMeasureRetain(value,&keep); if(size<0) return 4;
+  std::vector<uint8_t> output((size_t)size);
+  if(RootSaveRetain(value,&keep,output.data(),size,&report)!=size) return 5;
+  return std::fwrite(output.data(),1,output.size(),stdout)==output.size()?0:6;
+}
+`, header)
+	src := filepath.Join(cppdir, "retain_crc.cpp")
+	if err := os.WriteFile(src, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(cppdir, "retain_crc")
+	args := append([]string{"-std=c++17", "-O1", "-I" + cppdir, "-I" + ser, src}, sources...)
+	args = append(args, "-o", bin)
+	if output, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+		t.Fatalf("C++ retain CRC compile: %v\n%s", err, output)
+	}
+	input := filepath.Join(cppdir, "wire")
+	if err := os.WriteFile(input, wire, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cppwire, err := exec.Command(bin, input).Output()
+	if err != nil {
+		t.Fatalf("C++ retain CRC: %v", err)
+	}
+	if string(cppwire) != string(wire) {
+		t.Fatalf("C++ retain CRC rewrite differs: %x != %x", cppwire, wire)
+	}
 	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport, Refused
 with open('wire','rb') as f: wire=f.read()
 keep=TableRetain(bytearray(1024),bytearray(24*8)); report=LoadReport()
