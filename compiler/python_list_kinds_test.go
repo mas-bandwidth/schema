@@ -27,6 +27,7 @@ table Root {
     lookup map[string]int32
     series map[uint8][]float32
     items map[uint8][]Item
+    links map[uint8][]*Node
 }
 `)
 	files, err := New().Generate(u, "python", nil)
@@ -46,7 +47,7 @@ table Root {
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
 	var report tabletext.Report
-	if !model.Read(value, []byte(`{"values":[1.5,-2.25,0],"grades":["A","C"],"perms":[["Read"],["Write","Own"]],"words":["", "hi", "é"],"options":[null,"", "ok"],"free":["longer text", null],"lookup":{"long key":3,"é":5},"series":{"1":[1.5,-2.25]},"items":{"2":[{"child":{"value":7}}]}}`), &report) || report.Refused || report.Unknown != 0 {
+	if !model.Read(value, []byte(`{"values":[1.5,-2.25,0],"grades":["A","C"],"perms":[["Read"],["Write","Own"]],"words":["", "hi", "é"],"options":[null,"", "ok"],"free":["longer text", null],"lookup":{"long key":3,"é":5},"series":{"1":[1.5,-2.25]},"items":{"2":[{"child":{"value":7}}]},"links":{"4":[{"value":9},null,{"value":8}]}}`), &report) || report.Refused || report.Unknown != 0 {
 		t.Fatalf("Go input: %+v", report)
 	}
 	wire, err := tablewire.Encode(model, value)
@@ -64,6 +65,7 @@ assert v.free == ["longer text", None], "unbounded text values"
 assert v.lookup == {"long key": 3, "é": 5}, "unbounded key"
 assert v.series == {1: [1.5, -2.25]}, "map float list"
 assert v.items[2][0].child.value == 7, "map list edge"
+assert [x.value if x is not None else None for x in v.links[4]] == [9, None, 8], "map pointer list"
 assert v.save() == open("wire", "rb").read(), "Go bytes"
 for field, bad in (("values", [float("nan")]), ("grades", [4]), ("perms", [-1]), ("words", ["x" * 9]), ("words", ["ééé"]), ("options", [None, "éé"]), ("options", ["nul\0"]), ("free", ["\ud800"])):
     original = getattr(v, field)
@@ -74,6 +76,9 @@ for field, bad in (("values", [float("nan")]), ("grades", [4]), ("perms", [-1]),
     except InvalidValue:
         pass
     setattr(v, field, original)
+v.links[4][2] = v.links[4][0]
+again = Root.load(v.save())
+assert again.links[4][0] is again.links[4][2], "map pointer alias"
 v.series = {1: [float("nan")]}
 try:
     v.save()

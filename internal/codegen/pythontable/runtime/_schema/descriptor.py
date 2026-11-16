@@ -66,6 +66,9 @@ class FieldDesc:
         "element",
         "elem",
         "keys",
+        "array_mode",
+        "min_count",
+        "guards",
         "f32",
         "fmin",
         "fmax",
@@ -100,6 +103,9 @@ class FieldDesc:
     element: FieldDesc | None
     elem: "FieldDesc | None"
     keys: tuple[int, ...]
+    array_mode: str
+    min_count: int
+    guards: tuple[tuple[str, bool], ...]
     f32: bool
     fmin: float
     fmax: float
@@ -133,6 +139,9 @@ class FieldDesc:
         elem_codec: str = "",
         elem: "FieldDesc | None" = None,
         keys: tuple[int, ...] = (),
+        array_mode: str = "",
+        min_count: int = 0,
+        guards: tuple[tuple[str, bool], ...] = (),
         f32: bool = False,
         fmin: float = 0.0,
         fmax: float = 0.0,
@@ -193,9 +202,27 @@ class FieldDesc:
         )
         self.elem = elem
         self.keys = keys
+        self.array_mode = array_mode
+        self.min_count = min_count
+        self.guards = guards
+
+    def guard_holds(self, owner: Any) -> bool:
+        """Whether every enclosing field guard holds on owner (docs/SPEC-TABLES.md §4)."""
+        for cond_name, want in self.guards:
+            if (getattr(owner, cond_name) is True) != want:
+                return False
+        return True
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
+        if self.codec == "pointer_array":
+            if type(value) is not list:
+                return False
+            if len(value) == 0:
+                return True
+            if self.array_mode != "fixed":
+                return False
+            return all(elem is None for elem in value)
         if self.pointer or self.optional:
             return value is None
         if self.codec in ("bool", "int", "enum", "string", "unsupported"):
@@ -217,7 +244,9 @@ class FieldDesc:
             # elided: judged field by field through the descriptors, never by
             # the generated __eq__, so a union inside it elides by its
             # selected arm and a user __eq__ cannot move a byte.
-            fields: tuple[FieldDesc, ...] = value.descriptor.fields
+            fields: tuple[FieldDesc, ...] = tuple(
+                field for field in value.descriptor.fields if field.guard_holds(value)
+            )
             return all(field.is_default(getattr(value, field.name)) for field in fields)
         if self.codec == "union":
             # None is the absence of the field, and a union whose arm is None

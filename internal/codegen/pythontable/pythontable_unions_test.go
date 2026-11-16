@@ -339,8 +339,8 @@ var unionCases = []unionCase{
 	{"element-truncated", "refused wire_damaged", func(w *unionWire) []byte {
 		return w.file(w.array("many", 15, 2, unionLeb(0)), w.least())
 	}},
-	{"below-minimum", "read", func(w *unionWire) []byte {
-		// Read as it stands; the engine's writer then refuses it.
+	{"below-minimum", "refused count_over_bound", func(w *unionWire) []byte {
+		// A present counted array must meet the reader minimum.
 		return w.file(w.array("least", 15, 0))
 	}},
 	{"absent-minimum", "read", func(w *unionWire) []byte {
@@ -671,6 +671,7 @@ var unionControls = []struct {
 	{"arm-kind-check", "kind_union.py", "    if kind != arm.kind:\n", "    if False:\n", "case arm-kind-mismatch "},
 	{"void-arm-length", "kind_union.py", "        if length != 0:\n", "        if False:\n", "case void-arm-nonzero-l "},
 	{"arm-trailing", "kind_union.py", "    if sub.pos != sub.end:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "    if False:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "case arm-long-width "},
+	{"count-minimum", "kind_union.py", "elif count > fd.bound or (fd.array_kind == 2 and count < fd.array_min):", "elif count > fd.bound:", "case below-minimum "},
 	{"count-bound-reason", "kind_union.py", "raise Refused(\"count_over_bound\"", "raise Refused(\"out_of_range\"", "case count-over-bound "},
 	{"count-extent-cap", "load.py", "    if count > _COUNT_CAP:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "    if False:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "case count-over-extent-cap "},
 	{"counted-elision", "descriptor.py", "                return len(value) == 0\n", "                return len(value) <= 1 and all(element.type == 0 for element in value)\n", "case counted-one-none "},

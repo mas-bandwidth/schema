@@ -19,6 +19,7 @@ table Root {
     scores []int32
     flags []bool
     items []Item
+    nodes []*Item
 }
 `)
 	files, err := c.Generate(u, "python", nil)
@@ -38,7 +39,7 @@ table Root {
 	m := tabletext.NewModel(u)
 	value := m.New(u.Tables["Root"])
 	var rep tabletext.Report
-	if !m.Read(value, []byte(`{"scores":[5,-7,0],"flags":[true,false],"items":[{"value":9},{"value":2}]}`), &rep) || rep.Refused {
+	if !m.Read(value, []byte(`{"scores":[5,-7,0],"flags":[true,false],"items":[{"value":9},{"value":2}],"nodes":[{"value":11},null]}`), &rep) || rep.Refused {
 		t.Fatalf("engine input: %+v", rep)
 	}
 	wire, err := tablewire.Encode(m, value)
@@ -51,6 +52,7 @@ value = Root.load(data)
 assert value.scores == [5, -7, 0], "scores"
 assert value.flags == [True, False], "flags"
 assert [item.value for item in value.items] == [9, 2], "items"
+assert value.nodes[0].value == 11 and value.nodes[1] is None, "nodes"
 assert value.save() == data, "wire"
 print("ok")
 `
@@ -78,17 +80,6 @@ print("ok")
 	_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)
 	if err == nil || !strings.Contains(stderr, "AssertionError: scores") {
 		t.Fatalf("array negative control did not fail scores: %v\n%s", err, stderr)
-	}
-}
-
-func TestPythonDriverRefusesUnsupportedListElements(t *testing.T) {
-	for _, src := range []string{
-		"package p\ntable Node { value int32 }\ntable Root { nodes []*Node }\n",
-	} {
-		_, err := New().Generate(unitFromSource(t, src), "python", nil)
-		if err == nil || !strings.Contains(err.Error(), "unbounded array element") {
-			t.Errorf("unsupported list was not refused by name: %v", err)
-		}
 	}
 }
 
