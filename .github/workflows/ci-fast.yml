@@ -702,9 +702,44 @@ jobs:
   # (tools/gotestrows) cuts the selection into rows by measured seconds; each
   # row runs the same `go test` over its share, with the same flags, and the
   # two make targets below are rows of their own.
-  go-test-touched:
+  # The full Go fixed-form gate used ~35s producing its reference, then
+  # >80s in tests on vision. Keep the same corpus and test recipe in distinct
+  # per-commit jobs; artifacts are run-scoped and bound to checkout + bytes.
+  go-fixed-corpus:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"')
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the pinned C++ reference runtime
+        run: |
+          rm -rf ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+      - name: produce the complete fixed corpus
+        run: sh tools/go-ci-corpus.sh produce
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}
+          path: |
+            build/fixedform-corpus/
+            build/go-fixed-corpus.revision
+            build/go-fixed-corpus.runtime
+            build/go-fixed-corpus.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  go-test-touched:
+    needs: [plan, go-fixed-corpus]
+    if: always() && needs.plan.result == 'success' && (needs.go-fixed-corpus.result == 'success' || (needs.go-fixed-corpus.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"'))) && startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: go-test-touched (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -862,6 +897,15 @@ jobs:
       # hyphenated tables-go-fixed-form is the binary byte gate and does
       # not. conformance-go-rows rides beside it as it always has. When the
       # packages include gotable, `plan` adds one row for each.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: matrix.make == 'tables-go-fixedform'
+        with:
+          name: go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}
+          path: build
+      - name: the fixed reference belongs to this checkout
+        if: matrix.make == 'tables-go-fixedform'
+        run: sh tools/go-ci-corpus.sh verify
+
       - name: the gotable make rows
         if: matrix.make != ''
         env:
@@ -869,7 +913,10 @@ jobs:
         run: |
           set -euo pipefail
           case "$TARGET" in
-            tables-go-fixedform) make tables-go-fixedform ;;
+            tables-go-fixedform)
+              # The verified artifact stages this exact producer prerequisite;
+              # keep the full original slow-gate test recipe, not a subset.
+              make -o tables-fixedform-corpus tables-go-fixedform ;;
             conformance-go-rows-a) make conformance-go-rows-a ;;
             conformance-go-rows-b) make conformance-go-rows-b ;;
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;

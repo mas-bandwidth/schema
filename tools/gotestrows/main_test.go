@@ -217,3 +217,40 @@ func selects(t *testing.T, r Row, name string) bool {
 	}
 	return true
 }
+
+// This is the old namespace's exact partition, including future names that
+// cannot be discovered from today's declarations. The generic declared-test
+// proof above separately holds every current case to one execution.
+func TestGoNamespaceSplitPreservesOldBoundary(t *testing.T) {
+	tb, err := readTable(filepath.Join("..", "..", tablePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patterns := []string{"^TestGo[A-M]", "^TestGo[N-R]", "^TestGo[^A-S]"}
+	for _, pattern := range patterns {
+		found := false
+		for _, got := range tb.splits["./internal/codegen/gotable"] {
+			found = found || got == pattern
+		}
+		if !found {
+			t.Fatalf("missing namespace bucket %s", pattern)
+		}
+	}
+	old := regexp.MustCompile("^TestGo[^S]")
+	for _, char := range []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789λ") {
+		name := "TestGo" + string(char) + "FutureCase"
+		count := 0
+		for _, pattern := range patterns {
+			if regexp.MustCompile(pattern).MatchString(name) {
+				count++
+			}
+		}
+		want := 0
+		if old.MatchString(name) {
+			want = 1
+		}
+		if count != want {
+			t.Errorf("%s selected %d times, old boundary requires %d", name, count, want)
+		}
+	}
+}
