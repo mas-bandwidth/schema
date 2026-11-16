@@ -296,23 +296,35 @@ def _id_table(view: memoryview) -> list[int]:
     return ids
 
 
-def read_body(data: Any, obj: Any, ctx: Ctx) -> None:
+def read_body(data: Any, obj: Any, ctx: Ctx, map_key: FieldDesc | None = None) -> bool:
     """Read one nested body whose bytes are exactly data."""
     reader = Reader(data, 0, len(data), ctx.ids)
     if ctx.depth >= _MAX_DEPTH:
         raise Refused("wire_damaged", "a framed payload nested past the binary bound")
     ctx.depth += 1
-    _read_body(reader, obj, ctx, False)
+    widened = _read_body(reader, obj, ctx, False, map_key)
     ctx.depth -= 1
     if reader.pos != reader.end:
         raise Refused("wire_damaged", "bytes left inside a body")
+    return widened
 
 
-def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
+def _widened_scalar(reader: Reader, kind: int, field: FieldDesc) -> Any:
+    """Read a permitted scalar kind at its original wire width."""
+    from .kind_array import _read_widened
+
+    value = _read_widened(reader, kind, field, 1)[0]
+    if field.float_range and (value < field.fmin or value > field.fmax):
+        raise Refused("out_of_range", field.name)
+    return value
+
+
+def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool, map_key: FieldDesc | None = None) -> bool:
     descriptor_: TableDesc = obj.descriptor
     previous = ctx.current
     ctx.current = obj
     seen: set[int] = set()
+    widened_key = False
     while True:
         reference = reader.varint()
         if reference == 0:
@@ -327,15 +339,26 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
             _unknown_field(reader, field_id, kind, ctx, root)
             continue
         if kind != field.kind:
-            raise Refused(
-                "kind_mismatch",
-                f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
-            )
-        value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
+            # Decode permitted scalar widening at the writer's width (§4).
+            from .kind_array import _widens
+
+            if not _widens(kind, field.kind):
+                raise Refused(
+                    "kind_mismatch",
+                    f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
+                )
+            value = _widened_scalar(reader, kind, field)
+            if field is map_key:
+                widened_key = True  # the map counts once across its entries
+            else:
+                ctx.widened += 1
+        else:
+            value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
     missing = [field.name for field in descriptor_.fields if field.required and field.guard_holds(obj) and field.field_id not in seen]
     ctx.missing.extend(missing)
     ctx.current = previous
+    return widened_key
 
 
 def _unknown_field(reader: Reader, field_id: int, kind: int, ctx: Ctx, root: bool) -> None:
