@@ -87,3 +87,14 @@ func TestPythonCarriesThePacketCoreThroughTheDriver(t *testing.T) {
 		t.Fatalf("got %v, want the keyed array field refused by name", err)
 	}
 }
+
+func TestPythonTableTargetIsAdvertised(t *testing.T) {
+	t.Parallel()
+	if !slices.Contains(tableTargets, "python") {
+		t.Error("the Python table backend is absent from the table carrier registry")
+	}
+	err := refuseTables(unitFromSource(t, tableSrc), "probe")
+	if err == nil || !strings.Contains(err.Error(), "--lang python") {
+		t.Errorf("table refusal does not name the Python carrier: %v", err)
+	}
+}

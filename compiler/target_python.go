@@ -94,5 +94,5 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 }
 
 func init() {
-	registerBuiltin(pythonTarget{}, false, true, false, false)
+	registerBuiltin(pythonTarget{}, true, true, false, false)
 }
