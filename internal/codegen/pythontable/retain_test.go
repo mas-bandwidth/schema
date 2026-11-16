@@ -527,3 +527,44 @@ print('union-array')
 		}
 	}
 }
+
+func TestPythonRetainEnumArrayCapture(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+enum Grade { A, B }
+table Root { grades [2]Grade }
+`
+	u := loadUnit(t, schema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &unionWire{}
+	known, unknown := w.ref("A"), w.ref("new_grade")
+	wire := w.file(w.array("grades", 30, 2, known, unknown))
+	if verdict := unionEngineVerdict(t, u, wire); !strings.HasPrefix(verdict, "read 1 ") {
+		t.Fatalf("engine rejected enum fixture: %s", verdict)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root
+from probe._schema.descriptor import FieldDesc
+from probe._schema.retain import TableRetain, capture_file
+with open('wire','rb') as f: wire=f.read()
+# The older base refuses this codec; provide the descriptor the list-kind
+# prerequisite generates so this isolated scan is tested against Go-validated wire.
+field=Root.descriptor.field('grades')
+field.codec='array'
+field.element=FieldDesc('grades',0,30,'enum',variant_ids=field.variant_ids)
+retain=TableRetain(bytearray(4096),bytearray(240))
+assert capture_file(Root,memoryview(wire),retain)==(0,1)
+print('enum-array')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil || strings.TrimSpace(out) != "enum-array" {
+			t.Fatalf("enum array capture: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}

@@ -845,11 +845,20 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: lis
                     continue
                 if element is not None and element.codec == "table":
                     nested(content, element.target, node, steps + ((field.ordinal, field.keys.index(key)),))
+                elif element is not None and element.codec == "enum":
+                    item = Reader(content, 0, len(content), ids)
+                    ref = item.varint()
+                    if ref and item.id_at(ref) not in element.variant_ids:
+                        counts[1] += 1
             return
         element = field.elem if field.codec == "optional" else field.element
         for index in range(count):
             if element is not None and element.codec == "table":
                 nested(r.take(r.varint()), element.target, node, steps + ((field.ordinal, index),))
+            elif element is not None and element.codec == "enum":
+                ref = r.varint()
+                if ref and r.id_at(ref) not in element.variant_ids:
+                    counts[1] += 1
             else:
                 _skip_payload(r, kind, skip, 0)
 
