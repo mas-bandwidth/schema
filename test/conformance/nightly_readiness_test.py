@@ -433,26 +433,26 @@ class Contracts(unittest.TestCase):
             self.assertEqual(runner.env["SCHEMA_C_COLLECTIONS_DRIVER"],str(runner.root/"build/c-collections-fuzz"))
             self.assertEqual(runner.env["SCHEMA_CPP_COLLECTIONS_DRIVER"],str(runner.root/"build/cpp-collections-fuzz"))
 
-    def test_go_packet_overlay_only_removes_outer_suite_limit(self):
-        runner=FakeRunner(ROOT,"go")
-        original=(ROOT/"make/go.mk").read_text()
-        before="go test -count=1 ."
-        after="go test -timeout=0 -count=1 -v ."
-        path=m.go_packet_makefile(runner)
-        self.assertIsNotNone(path)
-        text=path.read_text()
-        self.assertTrue(text.startswith("include Makefile\npacket-wide-go:\n"))
-        recipe=m.re.search(r"^packet-wide-go:[^\n]*\n((?:\t[^\n]*\n)+)",original,m.re.MULTILINE)[1]
-        self.assertEqual(text,"include Makefile\npacket-wide-go:\n"+recipe.replace(before,after))
-        runner.temporary.cleanup()
-        with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);(root/"make").mkdir()
-            (root/"make/go.mk").write_text(original.replace(before,"changed"))
-            runner=FakeRunner(root,"go")
-            with contextlib.redirect_stdout(io.StringIO()):
-                self.assertIsNone(m.go_packet_makefile(runner))
-            self.assertTrue(runner.results[-1]["errors"])
+    def test_packet_features_keep_current_controls_after_wstring_retirement(self):
+        for lang in m.LANGUAGES:
+            runner=FakeRunner(ROOT,lang)
+            m.run_packets(runner,lang)
+            calls={name:argv for name,argv,_ in runner.calls}
+            features=calls["packet-features"]
+            if lang=="cpp":
+                self.assertIn("packet-defaults-cpp",features)
+                self.assertNotIn("build/schema_test_wide",calls["packet-build"])
+                self.assertNotIn("packet-schema_test_wide",m.required_phases(lang))
+            else:
+                expected=["packet-"+feature+"-"+lang+tail
+                          for feature in ("defaults","utf8")
+                          for tail in ("","-negative-control")]
+                if lang in ("go","java","dart","elixir","goose","moo"):
+                    expected += ["packet-finite-"+lang,"packet-finite-"+lang+"-negative-control"]
+                self.assertEqual(features[features.index("-j2")+1:],expected)
+            self.assertFalse(any("packet-wide-" in word or word.startswith("wide-") for word in features))
             runner.temporary.cleanup()
+        self.assertEqual(len(m.required_phases("js")),23)
 
     def test_existing_target_catalog_and_outer_go_mappings(self):
         files=[ROOT/"Makefile"]+list((ROOT/"make").rglob("*.mk"))
@@ -479,7 +479,7 @@ class Contracts(unittest.TestCase):
                         "packet-finite-moo","packet-finite-moo-negative-control"))
         for lang in m.LANGUAGES:
             if lang!="cpp":
-                for feature in ("defaults","utf8","wide"):
+                for feature in ("defaults","utf8"):
                     for tail in ("","-negative-control"):
                         targets.add("packet-"+feature+"-"+lang+tail)
         self.assertFalse(targets-set(blocks),sorted(targets-set(blocks)))
@@ -492,7 +492,7 @@ class Contracts(unittest.TestCase):
         goose_outer={name for name in outer if name.startswith("tables-goose-")}
         # MOO's likewise, through moo_uncapped_makefile.
         moo_outer={name for name in outer if name.startswith("tables-moo-")}
-        self.assertEqual(outer-goose_outer-moo_outer,{"tables-view","tables-fixed-twin","packet-wide-go"})
+        self.assertEqual(outer-goose_outer-moo_outer,{"tables-view","tables-fixed-twin"})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
         runner=FakeRunner(ROOT,"goose")
@@ -613,7 +613,7 @@ class Contracts(unittest.TestCase):
                 argv=calls["packet-"+label+"-0"][0]
                 self.assertEqual(argv[-1],"./internal/codegen/moo")
                 self.assertEqual(argv[argv.index("-run")+1],"^("+"|".join(tests)+")$")
-            for feature in ("defaults","utf8","wide","finite"):
+            for feature in ("defaults","utf8","finite"):
                 self.assertIn("packet-"+feature+"-moo-negative-control",calls["packet-features"][0])
             self.assertIn("-f",calls["external-table-gates"][0])
             for name in ("retain-moo-save","retain-moo-refusal"):
