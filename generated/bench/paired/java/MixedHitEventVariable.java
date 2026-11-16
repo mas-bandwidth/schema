@@ -549,6 +549,58 @@ public final class MixedHitEventVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert (v.targetId & 0xffffffffL) <= 0xfffL : "MixedHitEvent.target_id";
+        assert v.damage >= 0 && v.damage <= 4095 : "MixedHitEvent.damage";
+        assert v.hitKind >= 0 && v.hitKind <= 7 : "MixedHitEvent.hit_kind";
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -558,6 +610,7 @@ public final class MixedHitEventVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -593,7 +646,7 @@ public final class MixedHitEventVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);

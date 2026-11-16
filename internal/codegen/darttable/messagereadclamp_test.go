@@ -244,7 +244,7 @@ func matchReadClampMutant(t *testing.T, m *tabletext.Model) []byte {
 	root := m.Lookup("MatchResult")
 	inst := m.New(root)
 	var r tabletext.Report
-	if !m.Read(inst, []byte(`{"match_id":7,"players":[{"player_id":3,"score":40,"placement":10}]}`), &r) {
+	if !m.Read(inst, []byte(`{"match_id":"7","players":[{"player_id":"3","score":40,"placement":10}]}`), &r) {
 		t.Fatalf("the MatchResult mutant's text was refused: %s", r.Reason)
 	}
 	out, err := tablewire.EncodeMessage(m, inst)

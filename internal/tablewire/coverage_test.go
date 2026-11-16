@@ -522,7 +522,7 @@ fixed table Scalars
 }
 `
 
-const covScalarText = `{"a":-1,"b":-2,"c":-3,"d":-4,"e":255,"f":65000,"g":70000,"h":9000000000,"i":1.5,"j":2.5,"k":true,"l":5,"m":"B","wide":-12345678901234567890,"uwide":123456789012345678901234567890}`
+const covScalarText = `{"a":-1,"b":-2,"c":-3,"d":"-4","e":255,"f":65000,"g":70000,"h":"9000000000","i":1.5,"j":2.5,"k":true,"l":5,"m":"B","wide":"-12345678901234567890","uwide":"123456789012345678901234567890"}`
 
 // EVERY SCALAR KIND rides both forms at its own width: the signed and unsigned
 // ladders, both floats, a bool, a bits mask, an enum, flags, the 128-bit
