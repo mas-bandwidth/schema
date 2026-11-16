@@ -63,7 +63,7 @@ table Root
 const vtFixedClassJSON = `{
   "live": true,
   "small": -7,
-  "wide": 18446744073709551615,
+  "wide": "18446744073709551615",
   "bits12": 4095,
   "ranged": 99,
   "f32": 1.5,
