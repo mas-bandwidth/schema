@@ -772,7 +772,7 @@ class TableRetain:
             at = end
 
 
-def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain) -> tuple[int, int]:
+def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: list[int] | None = None) -> tuple[int, int]:
     """Capture unknown fields from a file already accepted by the plain reader.
 
     The count pair is (retained, lost). The caller must run the ordinary file
@@ -781,7 +781,8 @@ def capture_file(cls: type[Any], wire: memoryview, retain: TableRetain) -> tuple
     from . import descriptor
     from .load import Ctx, NODE_WIRE_ID, _BYTES_WIRE_TYPE_ID, _STRING_WIRE_TYPE_ID, _body_end, _id_table, _placeable, _skip_payload
 
-    ids = _id_table(wire)
+    if ids is None:
+        ids = _id_table(wire)
     skip = Ctx(ids)
     class _DiscardEdges(list[int]):
         def append(self, value: int) -> None:
