@@ -49,7 +49,7 @@ func rootStructuralSpellings(st *ir.Struct, data []byte) map[string]bool {
 		}
 		k, next := f.spots[i+1], f.spots[i+2]
 		fd := declared[id]
-		if k.kind != spotKind || k.role != roleField || fd == nil || fd.Required || fd.Type.Optional || ir.TableWireFieldKind(fd) != int(k.value) {
+		if k.kind != spotKind || k.role != roleField || fd == nil || fd.Required || fd.Deprecated || fd.Type.Optional || ir.TableWireFieldKind(fd) != int(k.value) {
 			continue
 		}
 		if k.value == ir.TableKindPointer && next.kind == spotIndex && next.value == 0 {
@@ -249,7 +249,7 @@ func TestRootStructuralScannerKnownCases(t *testing.T) {
 // and unknown-field evolution cases beside the known non-required refusals.
 func TestRootStructuralRequiredAndUnknownControls(t *testing.T) {
 	t.Parallel()
-	schema := []byte("package requiredcontrol\ntable Node { value uint8 }\nunion Pick { plain int32 }\ntable Required { p *Node | required\n u Pick | required }\ntable Ordinary { p *Node\n u Pick }\ntable Old { x uint8 }\n")
+	schema := []byte("package requiredcontrol\ntable Node { value uint8 }\nunion Pick { plain int32 }\ntable Required { p *Node | required\n u Pick | required }\ntable Ordinary { p *Node\n u Pick }\ntable Old { x uint8 }\ntable Deprecated { p *Node | deprecated\n u Pick | deprecated }\n")
 	path := filepath.Join(t.TempDir(), "Required.schema")
 	if err := os.WriteFile(path, schema, 0o644); err != nil {
 		t.Fatal(err)
@@ -263,7 +263,7 @@ func TestRootStructuralRequiredAndUnknownControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"Required", "Old"} {
+	for _, name := range []string{"Required", "Old", "Deprecated"} {
 		if got := rootStructuralSpellings(u.Tables[name], wire); len(got) != 0 {
 			t.Errorf("%s: lawful shapes classified %v", name, got)
 		}
