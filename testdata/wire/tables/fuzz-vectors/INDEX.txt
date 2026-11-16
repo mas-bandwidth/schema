@@ -69,9 +69,8 @@ pointer_orphan_cycle graphdemo Scene  testdata/wire/tables/fuzz-vectors/pointer_
 # engine, each of which parts the leg from the oracle on this vector's name.
 message_ill_formed_text backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin message
 
-# A list's wire elements widen while its region uses the declared width.
-# Before schema#713, C++ LoadMeasure omitted this extent, then Load reported
-# a valid widening as malformed. The shared report row also checks counters.
+# A mutated list element kind leaves bytes past its element count. The strict
+# reader refuses this damaged frame; separate clean controls exercise widening.
 list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
 
 # placements count 2147483648: both storage paths refuse without a malformed event.
@@ -90,32 +89,30 @@ map_repeat_mismatch mapdemo Crews testdata/wire/tables/fuzz-vectors/map_repeat_m
 # empties photos and marks damage. The builder path refuses its partial value.
 list_count_cross_length listdemo Album testdata/wire/tables/fuzz-vectors/list_count_cross_length.bin
 
-# Flags accept unsigned scalar widening in positional collections (#717).
+# The mutated flags-array element kind leaves trailing payload bytes and is
+# refused as damage; clean flags widening is a separate control.
 list_flags_widen listdemo Mixed testdata/wire/tables/fuzz-vectors/list_flags_widen.bin
 
 # A truncated message bytes payload fails before any length clamp is counted.
 message_bytes_truncated backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_bytes_truncated.bin message
+# Isolated 33-byte count, truncated payload: framing damage wins before bound refusal.
+message_bytes_truncated_isolated backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_bytes_truncated_isolated.bin message
 
-# The key scan reads through an incompatible occurrence; the final key kind wins.
+# The map entry repeats a field ID; the strict read refuses wire_damaged.
 map_key_repeat_kind mapdemo Slots testdata/wire/tables/fuzz-vectors/map_key_repeat_kind.bin
 
 # A damaged framed pointer arm cannot produce a pointee-kind mismatch.
 pointer_arm_trailing streamdemo Feed testdata/wire/tables/fuzz-vectors/pointer_arm_trailing.bin
 
-# A later map occurrence supersedes retained bodies even after a damaged key cleared its value.
+# This mutated map wire contains ill-formed text; the strict read refuses it.
 map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin
 
-# BYTES INSIDE AN ENVELOPE ARE SKIPPED, BYTES AFTER THE MESSAGE ARE NOT (§3).
-# A nested-union arm whose L runs one byte past the whole inner union it
-# frames is the append rule's case: a newer writer may add at the end, and an
-# older reader steps over the rest of the envelope with the arm, counting
-# nothing. The C++ leg once called it malformed against the oracle (mutant
-# 72054 of seed 24845619678, messagedemo.ToolMessage); this is that shape
-# built clean. The twin puts the same byte after the ROOT's terminator,
-# outside every envelope, where it is malformed (serialize 2.0's end rule).
-# Both are the reference leg's bytes, pinned by test/tables/main.cpp.
-nested_arm_trailing     messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
-nested_arm_trailing_top messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing_top.bin
+# Bytes after a complete inner union within its arm length are damage (§3),
+# as are bytes after the root terminator. The exact-length twin reads.
+# All three use the variable ToolEnvelope root and declaration-ordered fields.
+nested_arm_trailing     messagedemo ToolEnvelope testdata/wire/tables/nested_arm_trailing.bin
+nested_arm_trailing_top messagedemo ToolEnvelope testdata/wire/tables/nested_arm_trailing_top.bin
+nested_arm_exact messagedemo ToolEnvelope testdata/wire/tables/nested_arm_exact.bin
 
 # A REGION READ WHOSE LIST COUNT THE FRAMED STORAGE CANNOT HOLD reports damage
 # and RESUMES after the array's L (§3, §6.5; the oracle's collectionCap): the
@@ -149,23 +146,13 @@ region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/regio
 # the plain arm refuses it the same way.
 root_scan_passes_damage_to_body listdemo Mixed testdata/wire/tables/fuzz-vectors/root_scan_passes_damage_to_body.bin
 
-# A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). The C# writer's default
-# elision compared a float32 or float64 as a VALUE, under which -0 == +0, so a
-# list element's x of -0 was left off the wire and the saved bytes were 57 where
-# the oracle saved 71. Elision compares bit patterns. Found by the random pass
-# at mutant 237037 of seed 24845619678 (corpus seed list_scalar_widen,
-# listdemo.Save), on the Certify wire fuzz.
+# A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). A Placement
+# array element stores x = -0; the reader and writer preserve its bit pattern.
+# This clean frame preserves the signed-zero elision premise of the fuzz finding.
 list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
 
-# A KEYED SLOT WRITTEN AGAIN DISCARDS WHAT WAS RETAINED UNDER IT (§6.6). Depth's
-# keyed field rides twice; the first occurrence's Squad carries a roster entry
-# whose value arrives under the wrong kind, so the retaining read keeps it.
-# The second occurrence rewrites the same slot, and the oracle forgets the
-# slot's instance, records and all, before refilling it. The Rust retaining
-# reader refilled the slot and kept the first occurrence's record, so it saved
-# 194 bytes where the oracle saved 174. Found by the random pass of the
-# retention arm at mutant 745809 of seed 68719476731 (corpus seed map_depth),
-# on tables-rust-release run on vision.
+# A keyed slot mutation has a length beyond its enclosing body. The strict
+# read refuses wire_damaged before any replacement semantics.
 keyed_slot_rewrite_discards_retained mapdemo Depth testdata/wire/tables/fuzz-vectors/keyed_slot_rewrite_discards_retained.bin
 
 # A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
@@ -239,15 +226,15 @@ retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain
 # Dart saved the right bytes but omitted the unvisited retained-record count.
 retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
 
-# Replaced map entries discard their retained bodies without reporting loss.
-# The discarded body and an unreachable pointer node have different ownership.
+# This retained map mutant shares a blob across slots and refuses blob_shared.
 retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin
-# Final widened key occurrence replaces an earlier incompatible key kind.
-# The neutral oracle and C++ previously retained the earlier mismatch flag.
+# The map entry repeats a field ID; the strict read refuses wire_damaged.
 map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
-# A malformed child ends there, and its list reads on to a later element
-# carrying a non-finite float, which refuses the read (§4).
+# A duplicate ID in a table-array child refuses wire_damaged; an independent
+# later valid sibling is framed in the same array. The paired NaN child uses
+# a valid earlier sibling and refuses non_finite_float.
 list_damaged_child_reads_on listdemo Save testdata/wire/tables/fuzz-vectors/list_damaged_child_reads_on.bin
+list_nan_child listdemo Save testdata/wire/tables/fuzz-vectors/list_nan_child.bin
 
 # Reserved node-table transport has exactly kind12; a different kind is damage.
 node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin
@@ -272,15 +259,19 @@ retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vector
 # A known numeric union arm widens identically in plain and retaining reads.
 retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin
 
-# A keyed scalar element kind widens once and preserves every named slot.
+# This keyed element mutation leaves bytes inside a framed payload and is
+# refused as damage; clean keyed widening is a separate control.
 keyed_element_widen tabledemo KeyedConfig testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin
 inert_byte_array_header streamdemo Feed testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin
 blob_field_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_field_replaced.bin
+# Repeated pointer field IDs refuse the whole load; the values are non-null.
 blob_table_owner_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_table_owner_replaced.bin
 union_array_element_kind messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin
 
-# Replacing a table array supersedes retained inline records without save loss.
+# A repeated array field refuses wire_damaged; its unique-field twin retains
+# the future field in the array element and round-trips it.
 retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin
+retain_array_unique mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_unique.bin
 retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
 retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain_list_maps_replaced.bin
 
@@ -354,3 +345,9 @@ map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vector
 # counted two unknowns and loaded. From streamdemo.Feed (stream_header),
 # random #3851 of seed 24845619678.
 unknown_arm_text_nul streamdemo Feed testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin
+
+# Known uint32 union arm under foreign kinds or a short fixed-width frame.
+stream_tag_enum_mismatch streamdemo Feed testdata/wire/tables/stream_tag_enum_mismatch.bin
+stream_tag_pointer_mismatch streamdemo Feed testdata/wire/tables/stream_tag_pointer_mismatch.bin
+stream_tag_bytes_mismatch streamdemo Feed testdata/wire/tables/stream_tag_bytes_mismatch.bin
+stream_tag_short_width streamdemo Feed testdata/wire/tables/stream_tag_short_width.bin
