@@ -132,12 +132,25 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
 			wirePath := filepath.Join(vectorDir, row.file)
 			switch row.form {
 			case "variable":
+				expected := "const uint8_t *expected = buf; const int64_t expected_n = n;"
+				if row.verdict == "read" {
+					switch row.spelling {
+					case "field-at-default", "explicit-null-pointer", "union-arm-zero":
+						path := filepath.Join(vectorDir, "canonical", filepath.Base(row.file))
+						canonical, err := os.ReadFile(path)
+						if err != nil {
+							t.Fatalf("canonical rewrite %s: %v", path, err)
+						}
+						expected = fmt.Sprintf("const uint8_t expected[] = { %s }; const int64_t expected_n = sizeof(expected);", cppBytes(canonical))
+					}
+				}
 				fmt.Fprintf(&probe, `
     {
         std::vector<uint8_t> wire;
         if ( !slurp( %q, wire ) ) { printf( "ERR %d slurp\n" ); return 2; }
         const uint8_t * buf = wire.data();
         const int64_t n = (int64_t) wire.size();
+        %s
 
         int64_t attr = 0;
         const int64_t need = %sLoadMeasure( buf, n, &attr, NULL );
@@ -155,7 +168,7 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
         {
             std::vector<uint8_t> saved( (size_t) n + 256, 0 );
             const int64_t sn = %sSave( r1, saved.data(), (int64_t) saved.size() );
-            plain_same = ( sn == n && memcmp( saved.data(), buf, (size_t) n ) == 0 );
+            plain_same = ( sn == expected_n && memcmp( saved.data(), expected, (size_t) expected_n ) == 0 );
         }
 
         // 2. Builder load (%sLoadBuilder)
@@ -167,7 +180,7 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
         {
             std::vector<uint8_t> saved( (size_t) n + 256, 0 );
             const int64_t sn = %sSave( builder, saved.data(), (int64_t) saved.size() );
-            builder_same = ( sn == n && memcmp( saved.data(), buf, (size_t) n ) == 0 );
+            builder_same = ( sn == expected_n && memcmp( saved.data(), expected, (size_t) expected_n ) == 0 );
         }
 
         // 3. Strict allocating read (%sReadStrict)
@@ -178,7 +191,7 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
         {
             std::vector<uint8_t> saved( (size_t) n + 256, 0 );
             const int64_t sn = %sSave( rs, saved.data(), (int64_t) saved.size() );
-            strict_same = ( sn == n && memcmp( saved.data(), buf, (size_t) n ) == 0 );
+            strict_same = ( sn == expected_n && memcmp( saved.data(), expected, (size_t) expected_n ) == 0 );
             table_release( TableDefaultAllocator(), (void *) rs );
         }
 
@@ -202,7 +215,7 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
             std::vector<uint8_t> saved( (size_t) n + 256, 0 );
             TableReport srep;
             const int64_t sn = %sSaveRetain( r4, &retain, saved.data(), (int64_t) saved.size(), &srep );
-            retain_same = ( sn == n && memcmp( saved.data(), buf, (size_t) n ) == 0 );
+            retain_same = ( sn == expected_n && memcmp( saved.data(), expected, (size_t) expected_n ) == 0 );
         }
 
         printf( "ROW %d measure=%%lld plain=%%d plain_same=%%d builder=%%d builder_same=%%d strict=%%d strict_same=%%d retain=%%d retain_same=%%d\n",
@@ -212,7 +225,7 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
             strict_ok ? 1 : 0, strict_same ? 1 : 0,
             retain_ok ? 1 : 0, retain_same ? 1 : 0 );
     }
-`, wirePath, i,
+`, wirePath, i, expected,
 					row.root,
 					row.root, row.root, row.root, row.root,
 					row.root, row.root, row.root, row.root,
@@ -317,7 +330,7 @@ func TestCppReadsRefuseNonCanonical(t *testing.T) {
 						if kv[entry] != "1" {
 							t.Errorf("%s (%s): %s refused canonical input", row.file, row.spelling, entry)
 						} else if kv[entry+"_same"] != "1" {
-							t.Errorf("%s (%s): %s did not re-save byte-identically", row.file, row.spelling, entry)
+							t.Errorf("%s (%s): %s did not re-save to the pinned canonical wire", row.file, row.spelling, entry)
 						}
 					}
 				} else {
