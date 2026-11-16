@@ -59,6 +59,11 @@ while IFS= read -r package; do
   case "$package" in */internal/codegen/pythontable)
     names=$(printf '%s\n' "$names" | sed '/^TestPythonArrayWidening$/d; /^TestPythonVtPointerArrays$/d') ;;
   esac
+  # The full fuzz omnibus is covered by all 24 explicit shard rows; keep
+  # its focused pipe and fault controls in automatically discovered shards.
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonWireFuzzVerdictPipe$/d')
+  fi
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
