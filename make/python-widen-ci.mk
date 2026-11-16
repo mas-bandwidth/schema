@@ -13,4 +13,4 @@ $(PYTHON_WIDEN_SCALAR_SHARDS): python-ci-widen-scalar-%:
 PYTHON_CI_SUPPORT_GROUPS += python-ci-widen-coverage
 .PHONY: python-ci-widen-coverage
 python-ci-widen-coverage:
-	go test -count=1 -run '^TestPythonWidenCIPlan$$' ./internal/ci/
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestPythonWidenCIPlan$$' ./internal/ci/
