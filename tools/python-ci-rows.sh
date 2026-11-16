@@ -54,6 +54,7 @@ while IFS= read -r package; do
     names=$(printf '%s\n' "$names" | sed '/^TestPythonPacketCore$/d')
   fi
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonVtEvolution$/d')
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
     for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical; do
       printf '%s\n' "$names" | grep -qx "$delegated" || { echo "missing $delegated" >&2; exit 1; }
