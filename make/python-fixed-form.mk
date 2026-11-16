@@ -1,3 +1,4 @@
+PYTHON_CI_SUPPORT_GROUPS += python-fixed-identity-negative-control
 # Python form 3, its live C++ byte oracle and both artifact controls.
 PYTHON_CI_SUPPORT_GROUPS += python-fixed-form python-fixed-form-negative-control \
     python-fixed-form-conformance python-fixed-form-conformance-negative-control \
