@@ -39,8 +39,13 @@ def _slots(fd: FieldDesc, value: Any, path: str) -> list[Any]:
 
 def _rollback(ctx: Any, mark: int) -> None:
     """Forget the ids first used after mark: an elided slot leaves no id."""
+    from .save import _RetainCtx
+
     for table_id in ctx.ids[mark:]:
-        del ctx.refs[table_id]
+        if isinstance(ctx, _RetainCtx):
+            ctx.forget_id(table_id)
+        else:
+            del ctx.refs[table_id]
     del ctx.ids[mark:]
 
 
@@ -199,6 +204,8 @@ def _write_retain(w: Any, fd: FieldDesc, elem: FieldDesc, values: list[Any], ctx
             continue
         start_slot = w.count
         ids_slot = len(ctx.ids)
+        if not ctx.can_id(fd.keys[slot]):
+            continue
         w.varint(ctx.idref(fd.keys[slot]))
         element_frame = w.begin_frame()
         if elem.codec == "table":

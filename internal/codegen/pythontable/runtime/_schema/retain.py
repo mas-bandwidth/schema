@@ -949,13 +949,13 @@ def _emit_record(retain: TableRetain, identity: int, kind: int, resolved: memory
             existing = ctx.refs.get(value)
             if existing is not None:
                 return int(existing)
-            if len(ctx.ids) + retain.id_used >= 4096:
+            if len(ctx.ids) + retain.id_used + ctx.remaining >= 4096 and value not in ctx.reserved:
                 raise _Capacity()
             return int(ctx.idref(value))
         existing = retain.retained_id(value)
         if existing:
             return existing
-        if len(ctx.ids) + retain.id_used >= 4096:
+        if len(ctx.ids) + retain.id_used + ctx.remaining >= 4096:
             raise _Capacity()
         slot = len(ctx.ids) + retain.id_used + 1
         retain.add_retained_id(value, slot)
@@ -967,7 +967,7 @@ def _emit_record(retain: TableRetain, identity: int, kind: int, resolved: memory
     except _Capacity:
         while len(ctx.ids) > previous_ids:
             value = ctx.ids.pop()
-            del ctx.refs[value]
+            ctx.forget_id(value)
         retain.truncate_ids(previous_retained)
         return False
     writer.varint(field_ref)

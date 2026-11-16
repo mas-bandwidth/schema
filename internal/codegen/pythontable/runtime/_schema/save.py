@@ -105,7 +105,7 @@ class Ctx:
 class _RetainCtx(Ctx):
     """Use the caller's id slots without growing the generated id map."""
 
-    __slots__ = ("retain", "node", "steps", "lost", "known", "ordinal")
+    __slots__ = ("retain", "node", "steps", "lost", "known", "ordinal", "preview", "reserved", "remaining", "emitted")
 
     def __init__(self, retain: Any) -> None:
         from importlib import import_module
@@ -117,6 +117,13 @@ class _RetainCtx(Ctx):
         self.lost = 0
         self.known = import_module(__package__ + ".retain_known").KNOWN
         self.ordinal = 0
+        self.preview = False
+        self.reserved: frozenset[int] = frozenset()
+        self.remaining = 0
+        self.emitted = 0
+
+    def can_id(self, value: int) -> bool:
+        return value in self.refs or value in self.reserved or len(self.ids) + self.retain.id_used + self.remaining < 4096
 
     def idref(self, value: int) -> int:
         reference = self.refs.get(value)
@@ -124,7 +131,14 @@ class _RetainCtx(Ctx):
             reference = len(self.ids) + self.retain.id_used + 1
             self.ids.append(value)
             self.refs[value] = reference
+            if value in self.reserved:
+                self.remaining -= 1
         return reference
+
+    def forget_id(self, value: int) -> None:
+        del self.refs[value]
+        if value in self.reserved:
+            self.remaining += 1
 
     def write_ids(self, writer: Writer) -> None:
         known = 0
@@ -186,6 +200,23 @@ def _encode_retain(value: Any, retain: Any, writer: Writer) -> tuple[int, int]:
     for position, node in enumerate(ctx.order):
         if not isinstance(node, kind_blob._BlobNode):
             ctx.blob_slots.extend(ctx.node_blobs[position + 2])
+    # Reserve the IDs the ordinary known-value walk must write before using
+    # any of the wire's 4096 slots for retained-only fields. Default containers
+    # forced solely by retention are decided when their bodies are reached.
+    retain.begin_save(ctx, retain.directory)
+    ctx.preview = True
+    counter = Writer(None)
+    counter.byte(FORM)
+    write_body(counter, value, ctx, True)
+    reserved = frozenset(ctx.ids)
+    ctx.ids.clear()
+    ctx.refs.clear()
+    ctx.reserved = reserved
+    ctx.remaining = len(reserved)
+    ctx.preview = False
+    ctx.blob_next = 0
+    ctx.lost = 0
+    ctx.emitted = 0
     retain.begin_save(ctx, retain.directory)
     writer.byte(FORM)
     write_body(writer, value, ctx, True)
@@ -210,15 +241,34 @@ def _write_retain_body(writer: Writer, value: Any, ctx: _RetainCtx, root: bool) 
         if codec == "keyed" and field.elem is not None and field.elem.codec == "table":
             slots = current if field.keyed_list else current._values
             has_child = any(ctx.retain.has_body(ctx.node, parent_steps + ((field.ordinal, index),)) for index in range(len(slots)))
-        if field.is_default(current) and not has_child:
+        default = field.is_default(current)
+        if ctx.preview:
+            has_child = False
+        if default and not has_child:
             continue
+        forced = default and has_child
+        if forced and not ctx.can_id(field.field_id):
+            continue
+        start = writer.count
+        id_mark = len(ctx.ids)
+        retained_mark = ctx.retain.id_used
+        emitted_mark = ctx.emitted
         ctx.ordinal = field.ordinal
         if codec == "table":
             ctx.steps = child
         kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
         ctx.steps = parent_steps
         ctx.ordinal = parent_ordinal
-    ctx.lost += ctx.retain.write_tail(ctx.node, parent_steps, ctx.known, ctx, writer)
+        if forced and ctx.emitted == emitted_mark:
+            while len(ctx.ids) > id_mark:
+                ctx.forget_id(ctx.ids.pop())
+            ctx.retain.truncate_ids(retained_mark)
+            writer.truncate(start)
+    if not ctx.preview:
+        tail_start = writer.count
+        ctx.lost += ctx.retain.write_tail(ctx.node, parent_steps, ctx.known, ctx, writer)
+        if writer.count != tail_start:
+            ctx.emitted += 1
     if root and ctx.order:
         writer.varint(ctx.idref(NODE_WIRE_ID))
         writer.byte(12)

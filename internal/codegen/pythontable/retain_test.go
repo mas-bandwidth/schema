@@ -1090,3 +1090,108 @@ print('allocation-shape')
 		}
 	}
 }
+
+func TestPythonRetainTotalIDKnownLast(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+table Child { n int32 }
+table Root {
+ child Child
+ z int32
+}
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+def leb(n):
+    b=bytearray()
+    while n>=128: b.append((n&127)|128); n >>= 7
+    b.append(n); return bytes(b)
+ids=[Root.descriptor.field('child').field_id]+list(range(1,4096))
+body=bytearray()
+for reference in range(2,4097):
+    body+=leb(reference)+(bytes([30,1]) if reference==2 else bytes([4,1,0,0,0]))
+body.append(0)
+wire=bytes([1,1,13])+leb(len(body))+body+bytes([0])+b''.join(x.to_bytes(8,'little') for x in ids)+len(ids).to_bytes(8,'little')
+keep=TableRetain(bytearray(500000),bytearray(24*4096)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert report.retained==4095 and report.retain_lost==0
+exact=value.save_retain(keep,report)
+assert report.retain_lost==0 and int.from_bytes(exact[-8:],'little')==4096
+assert Root.load(exact).z==0
+past=exact[:-8]+(0xeffffffffffffffe).to_bytes(8,'little')+(4097).to_bytes(8,'little')
+unchanged=LoadReport(); unchanged.unknown=42
+try: Root.load_retain(past,keep,unchanged)
+except ValueError: pass
+else: raise AssertionError('4097-id input was accepted')
+assert unchanged.unknown==42
+value.z=1
+saved=value.save_retain(keep,report)
+assert report.retain_lost==1, report.retain_lost
+assert Root.load(saved).z==1
+assert int.from_bytes(saved[-8:],'little')==4096
+print('known-last')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "known-last" {
+			t.Fatalf("known-last ID limit: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
+
+func TestPythonRetainTotalIDDroppedDefaultSlot(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
+	const schema = `package probe
+enum Slot { A }
+table Child { n int32 }
+table Root {
+ child Child
+ keyed [Slot]Child
+ z int32
+}
+`
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `from probe import Root, TableRetain, LoadReport
+def leb(n):
+    b=bytearray()
+    while n>=128: b.append((n&127)|128); n >>= 7
+    b.append(n); return bytes(b)
+child=Root.descriptor.field('child'); keyed=Root.descriptor.field('keyed')
+ids=[child.field_id,keyed.field_id,keyed.keys[0]]+list(range(1,4094))
+body=bytearray()
+for ref in range(4,4097): body+=leb(ref)+bytes([4,1,0,0,0])
+body.append(0)
+child_field=bytes([1,13])+leb(len(body))+body
+slot=leb(4096)+bytes([4,2,0,0,0,0])
+keyed_payload=bytes([13,1,3])+leb(len(slot))+slot
+keyed_field=bytes([2,16])+leb(len(keyed_payload))+keyed_payload
+wire=bytes([1])+child_field+keyed_field+bytes([0])+b''.join(x.to_bytes(8,'little') for x in ids)+len(ids).to_bytes(8,'little')
+keep=TableRetain(bytearray(600000),bytearray(24*4093)); report=LoadReport()
+value=Root.load_retain(wire,keep,report)
+assert report.retained==4094 and report.retain_lost==0
+value.z=1
+saved=value.save_retain(keep,report)
+assert int.from_bytes(saved[-8:],'little')<=4096
+assert Root.load(saved).z==1
+assert report.retain_lost==1, report.retain_lost
+print('dropped-default-slot')
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script)})
+		if err != nil || strings.TrimSpace(out) != "dropped-default-slot" {
+			t.Fatalf("dropped default slot: %v\n%s\n%s", err, out, stderr)
+		}
+	}
+}
