@@ -196,7 +196,7 @@ func TestTableFixedDigestV2FloatAndFixedFacts(t *testing.T) {
 	before = digestV2Identity(r)
 	x.IntMax = new(big.Int).Lsh(big.NewInt(1), 91)
 	if digestV2Identity(r) == before {
-		t.Fatal("fixed raw bound truncated")
+		t.Fatal("fixed whole-unit bound truncated")
 	}
 	before = digestV2Identity(r)
 	x.Type.IntBits, x.Type.FracBits = 95, 33

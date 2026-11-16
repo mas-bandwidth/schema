@@ -768,7 +768,7 @@ The checked by-value closure is acyclic. Within a field emit these rows in order
 | fact | tag and payload |
 |---|---|
 | counted-array minimum, including zero | `C`: minimum as u64 LE |
-| integer or fixed raw range | `R`: fixed scalar kind u32 LE, signedness u8 (1 signed, 0 unsigned), fractional bits u32 LE, then canonical min and max |
+| integer range or fixed whole-unit range | `R`: fixed scalar kind u32 LE, signedness u8 (1 signed, 0 unsigned), fractional bits u32 LE, then canonical min and max |
 | float range | `D`: fixed scalar kind u32 LE, min and max IEEE-754 float64 bits as u64 LE |
 | float resolution, including absent/zero | `Q`: IEEE-754 float64 bits as u64 LE |
 | `bits(N)` | `B`: N u32 LE |
@@ -777,7 +777,9 @@ The checked by-value closure is acyclic. Within a field emit these rows in order
 
 A canonical integer is sign u8 (0 nonnegative, 1 negative), magnitude length
 u32 LE, and minimal big-endian magnitude bytes. Zero has an empty magnitude.
-This preserves the full signed/unsigned 128-bit domain and fixed raw scale.
+This preserves the full signed/unsigned 128-bit domain. Fixed bounds are the
+checked IR's whole-unit endpoints; the recorded fractional bits bind their raw
+scale without rounding or truncation.
 Marker 2 with zero length is reserved for an absent bound in unchecked IR;
 valid checked ranged fields have actual bounds. No reader-limit row exists
 until the language declares one. Defaults, annotations and the writer snapshot's
@@ -820,7 +822,7 @@ once — and append, per field:
 |---|---|
 | an INTEGER range | `'R'`, then min and max, each as an i64 LE |
 | a FLOAT range | `'R'`, then min and max, each as the **IEEE-754 bits of the `float64` bound**, u64 LE (`math.Float64bits`) — never the bound narrowed to an integer, which would hash `0.5` and `0.25` the same |
-| a FIXED-POINT range | `'R'`, then min and max, each as its RAW scaled i64 LE |
+| a FIXED-POINT range | `'R'`, then the checked whole-unit min and max as i64 LE; the separate `'X'` row binds the scale. The historical wording called these raw-scaled bounds, but the implementation has always used `Field.IntMin`/`IntMax` without scaling |
 | a FLOAT range's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, immediately after that range's `'R'` and bounds. This row is present for every float range, including an uncompressed range whose absent resolution is `0.0` (eight zero bytes). It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestLegacyTableFixedDefinitionsDigestResolutionMovesTheHash` |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |

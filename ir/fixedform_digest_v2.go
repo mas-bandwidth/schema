@@ -151,7 +151,8 @@ func tableFixedDigestBool(v bool) byte {
 }
 
 // Sign plus length-prefixed minimal big-endian magnitude is canonical and
-// lossless throughout signed/unsigned 128-bit domains and fixed raw scales.
+// lossless throughout signed/unsigned 128-bit domains. Fixed fields pass their
+// whole-unit bounds; the range row separately binds their fractional scale.
 // Nil has its own marker, so an invalid unchecked IR cannot alias zero.
 func tableFixedDigestInteger(dst []byte, n *big.Int) []byte {
 	if n == nil {
