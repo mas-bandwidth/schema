@@ -5081,7 +5081,13 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
         const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
-        if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
+        // A map entry cannot omit its value: an absent optional is null,
+        // while the key remains in the map (§2.8, §16.2).
+        if ( value->optional && TableJsonGetRaw( (const uint8_t *) entry + value->present_offset, 1 ) == 0 )
+        {
+            out.raw( "null", 4 );
+        }
+        else if ( !TableJsonWriteField( out, entry, value, depth + 1 ) ) { return false; }
     }
     out.line( depth );
     out.put( '}' );
@@ -5283,6 +5289,13 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         {
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
+        else if ( value->optional && got == 'z' )
+        {
+            // Place resets the value, including a replaced entry, so null
+            // leaves it absent at its defaults just as a field's null does.
+            if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 0 );
+        }
         else if ( value->kind == 17 && !value->is_array )
         {
             // A POINTER VALUE IS SHARED EXACTLY AS A POINTER FIELD IS (§2.8):
@@ -5310,11 +5323,15 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         {
             in.report->refused = true;
             in.report->refuse_reason = kind_mismatch;
+            // As for an optional field, a non-null key supplies presence
+            // even when its value is refused back to the declared defaults.
+            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
-        else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
+        else
         {
-            return false;
+            if ( !TableJsonReadField( in, entry, value, depth + 1 ) ) { return false; }
+            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
         }
         c = TableJsonPeek( in );
         if ( c == ',' )
@@ -5972,6 +5989,30 @@ inline std::string tableTextFormCanonDecimal( const std::string & token )
     return std::string( negative ? "-" : "" ) + digits + buffer;
 }
 
+// Convert a hand-text integer without binary floating point. The decimal
+// canon has no trailing zero in its coefficient, so a negative exponent is
+// fractional. No integer field can hold more than 39 decimal digits; bound
+// the expansion before allocating even for an enormous exponent.
+inline bool tableTextFormInteger( const std::string & token, std::string & integer, const char ** why )
+{
+    const std::string canon = tableTextFormCanonDecimal( token );
+    if ( canon == "0" ) { integer = "0"; return true; }
+    const size_t e = canon.find( 'e' );
+    if ( e == std::string::npos ) { *why = "text_kind_mismatch"; return false; }
+    const long long exponent = strtoll( canon.c_str() + e + 1, NULL, 10 );
+    if ( exponent < 0 ) { *why = "text_kind_mismatch"; return false; }
+    const size_t sign = canon[0] == '-' ? 1 : 0;
+    const size_t digits = e - sign;
+    if ( exponent > 39 || digits > 39 || digits + (size_t) exponent > 39 )
+    {
+        *why = "text_bound";
+        return false;
+    }
+    integer = canon.substr( 0, e );
+    integer.append( (size_t) exponent, '0' );
+    return true;
+}
+
 inline std::string tableTextFormCanonFloat( const std::string & token, bool wide )
 {
     char buffer[32];
@@ -6269,8 +6310,8 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
                 return false;
             }
             tableTextFormMark( spans, tableTextFormIndex( pp, 0 ), pair.items[0] );
-            tableTextFormCanon( spans, tableTextFormIndex( pp, 0 ), pair.items[0].text );
             if ( i > 0 ) { out += ','; }
+            std::string resolved_key;
             if ( key->kind == 12 )
             {
                 if ( pair.items[0].kind != '"' )
@@ -6283,22 +6324,37 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
                     *why = "text_bound";
                     return false;
                 }
-                TableTextFormJsonString( out, pair.items[0].text );
+                resolved_key = pair.items[0].text;
             }
             else
             {
-                TableTextFormJsonString( out, pair.items[0].text );
+                if ( pair.items[0].kind != '0' || !TableJsonKindInteger( key->kind ) )
+                {
+                    *why = "text_kind_mismatch";
+                    return false;
+                }
+                if ( !tableTextFormInteger( pair.items[0].text, resolved_key, why ) ) { return false; }
+                const TableJsonInteger number = TableJsonInterpretExact( resolved_key.c_str(), (int32_t) resolved_key.size() );
+                bool moved = false;
+                (void) TableJsonIntegerInDomain( number, key->kind >= 2 && key->kind <= 5, (int32_t) key->elem_size, moved );
+                if ( number.saturated || moved )
+                {
+                    *why = "text_bound";
+                    return false;
+                }
             }
+            tableTextFormCanon( spans, tableTextFormIndex( pp, 0 ), key->kind == 12 ? resolved_key : tableTextFormCanonDecimal( pair.items[0].text ) );
+            TableTextFormJsonString( out, resolved_key );
             out += ':';
             for ( size_t k = 0; k < seen.size(); k++ )
             {
-                if ( seen[k] == pair.items[0].text )
+                if ( seen[k] == resolved_key )
                 {
                     *why = "text_duplicate_key";
                     return false;
                 }
             }
-            seen.push_back( pair.items[0].text );
+            seen.push_back( resolved_key );
             if ( !TableTextFormField( pair.items[1], value, out, why, tableTextFormIndex( pp, 1 ), spans ) ) { return false; }
         }
         out += '}';
@@ -6610,6 +6666,15 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         *why = "text_kind_mismatch";
         return false;
     }
+    if ( TableJsonKindInteger( f->kind ) )
+    {
+        std::string integer;
+        if ( !tableTextFormInteger( n.text, integer, why ) ) { return false; }
+        tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) );
+        if ( TableJsonKindWideText( f ) ) { TableTextFormJsonString( out, integer ); }
+        else { out += integer; }
+        return true;
+    }
     double d = strtod( n.text.c_str(), NULL );
     if ( f->has_range )
     {
@@ -6636,7 +6701,8 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     {
         tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) );
     }
-    out += n.text;
+    if ( TableJsonKindWideText( f ) ) { TableTextFormJsonString( out, n.text ); }
+    else { out += n.text; }
     return true;
 }
 
