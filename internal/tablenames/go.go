@@ -100,6 +100,8 @@ func init() {
 		Name{Name: "tableMessageBits", What: "the announced message bit codec"},
 		Name{Name: "tableMessageCount", What: "the announced message bit codec"},
 		Name{Name: "tableMessageEntries", What: "the announced message bit codec"},
+		Name{Name: "tableMessageEntryKeys", What: "complete announced-entry byte matching"},
+		Name{Name: "tableMessageOwnSlot", What: "complete announced-entry byte matching"},
 		Name{Name: "tableMessageEntryRead", What: "the announced message bit codec"},
 		Name{Name: "tableMessageKindBits", What: "the announced message bit codec"},
 		Name{Name: "tableMessageKnownKind", What: "the announced message bit codec"},

@@ -2,11 +2,9 @@ package gotable
 
 import "testing"
 
-// TestCookRefusesADeadSlotPointer pins docs/SPEC-TABLES.md §7.6's refusal for a
-// non-null pointer in storage the numbering walk did not reach, in a unit that
-// also holds §2.3's `?T` over a variable closure: the writer's null-for-absent
-// gate keys on presence and does not swallow a dead counted-array slot.
-func TestCookRefusesADeadSlotPointer(t *testing.T) {
+// Dead counted slots are zero regardless of their stored pointers (§7.6).
+// The same rule applies when the unit also carries optional pointer closures.
+func TestCookIgnoresDeadSlotPointers(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, cookDeadSlotSchema, cookDeadSlotProbe)
 }
@@ -32,7 +30,7 @@ table Root
 
 const cookDeadSlotProbe = `package probe
 
-import "testing"
+import ("bytes";"testing")
 
 func TestDeadSlot(t *testing.T) {
 	t.Parallel()
@@ -56,20 +54,27 @@ func TestDeadSlot(t *testing.T) {
 		t.Fatal("the dead slot lost its pointer; the case proves nothing")
 	}
 
-	// §7.6: the walk did not reach slot 2, so the cook refuses it.
-	if RootCookFrom(v, make([]byte, 1<<12), TableByteOrderLittle, &b.Arena) {
-		t.Fatal("a dead counted slot holding a non-null pointer was cooked")
-	}
-	if n, err := RootCookMeasureReason(v, &b.Arena); n != -1 || err != TableRefuseInvalidValue {
-		t.Fatalf("CookMeasureReason = %d, %v; want -1, %v", n, err, TableRefuseInvalidValue)
-	}
-	if n := RootCookMeasure(v, &b.Arena); n != -1 {
-		t.Fatalf("CookMeasure = %d; want -1", n)
-	}
+	// A cook with stale dead storage is the same artifact as cleared storage.
+ deadRef:=v.Nodes[1]
+ v.Nodes[1]=0
+ size:=RootCookMeasure(v,&b.Arena)
+ if size<=0 {t.Fatal("live pointer baseline measure")}
+ for _,order:=range []TableByteOrder{TableByteOrderLittle,TableByteOrderBig} {
+  want:=make([]byte,size)
+  if !RootCookFrom(v,want,order,&b.Arena){t.Fatal("live pointer baseline cook")}
+  v.Nodes[1]=deadRef
+  if n,err:=RootCookMeasureReason(v,&b.Arena);n!=size||err!=nil{t.Fatalf("dead pointer changed measure: %d %v",n,err)}
+  got:=bytes.Repeat([]byte{0xa5},int(size))
+  if RootCookFrom(v,got[:len(got)-1],order,&b.Arena)||!bytes.Equal(got,bytes.Repeat([]byte{0xa5},len(got))){t.Fatal("short cook changed output")}
+  if !RootCookFrom(v,got,order,&b.Arena)||!bytes.Equal(got,want){t.Fatal("dead pointer changed cook bytes")}
+  v.Nodes[1]=0
+ }
+ v.Nodes[1]=deadRef
 
 	// §2.3: count 2 reaches both slots, so both pointers ride and it cooks.
 	v.NodesCount = 2
 	cooked := make([]byte, RootCookMeasure(v, &b.Arena))
+ if int64(len(cooked))<=size {t.Fatal("newly live node was not carried")}
 	if len(cooked) == 0 || !RootCookFrom(v, cooked, TableByteOrderLittle, &b.Arena) {
 		t.Fatal("count 2 with both pointers set was refused")
 	}

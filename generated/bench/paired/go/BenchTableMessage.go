@@ -24,77 +24,78 @@ const TableMessageEntriesHere = 70
 
 var tableAnnouncement = [...]byte{0x01, 0x01, 0x09, 0x52, 0xa8, 0xbf, 0x78, 0x93, 0x55, 0xd3, 0x41, 0x02, 0x0e, 0xcf, 0x06, 0x06, 0xcc, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b, 0x08, 0x01, 0x20, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7, 0xb7, 0x09, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98, 0x7b, 0x6d, 0x08, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71, 0x4c, 0xa9, 0x73, 0x09, 0x01, 0x40, 0x00, 0x85, 0xfc, 0x54, 0xbe, 0x51, 0x6b, 0xee, 0x3e, 0x05, 0x01, 0x29, 0xff, 0xbf, 0xa8, 0xca, 0x9a, 0x3a, 0x12, 0x01, 0x6d, 0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x01, 0x30, 0x00, 0xc6, 0x69, 0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x16, 0x01, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a, 0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x01, 0x08, 0x0d, 0x4c, 0x99, 0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x00, 0x50, 0x0d, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x04, 0x06, 0x00, 0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x0f, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x00, 0x10, 0x06, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3, 0x13, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6, 0x12, 0x01, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0xff, 0xff, 0xff, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0, 0x30, 0xbf, 0x1a, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27, 0x65, 0x0d, 0x56, 0x08, 0x01, 0x18, 0x00, 0x72, 0x86, 0xfd, 0x6c, 0x17, 0x92, 0x82, 0xc0, 0x01, 0x69, 0xcb, 0x79, 0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x01, 0x08, 0x00, 0xfe, 0xbc, 0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x01, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac, 0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x01, 0x0c, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x01, 0x09, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x01, 0x09, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x01, 0x0a, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x01, 0x08, 0x00, 0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x01, 0x0c, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x01, 0x0c, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x01, 0x03, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01, 0x56, 0xbd, 0x4f, 0x86, 0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x01, 0x0a, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x01, 0x08, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x01, 0x08, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x01, 0x0a, 0xff, 0x07, 0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2, 0x0d, 0x65, 0xb7, 0xec, 0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 var tableMessageEntries = [...]TableMessageEntry{
-	TableMessageEntry{ID: 0xaa38aca481f528a8, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x0dbe005c56697c3e, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x9bae0da8b829ee03, Shape: TableMessageShape{Kind: 8, Packing: 1, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xb7d7b5650a590b05, Shape: TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x6d7b98e2d095967e, Shape: TableMessageShape{Kind: 8, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x73a94c71d60dc0d8, Shape: TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x3eee6b51be54fc85, Shape: TableMessageShape{Kind: 5, Packing: 1, Bits: 41, Base: [2]uint64{0xffffff172b5af000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x7bbc035f7b6d0112, Shape: TableMessageShape{Kind: 9, Packing: 1, Bits: 48, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x3c460475f9be69c6, Shape: TableMessageShape{Kind: 22, Packing: 1, Bits: 24, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x935d0fb07bb3822a, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 1, Max: 8, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}},
-	TableMessageEntry{ID: 0xee639cad45b1994c, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 80, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}},
-	TableMessageEntry{ID: 0x2e35dc5321aa5790, Shape: TableMessageShape{Kind: 15, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x5759ce7586bbb5a3, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 4, Max: 4, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}},
-	TableMessageEntry{ID: 0x13a62f542cf8e86e, Shape: TableMessageShape{Kind: 12, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 15, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xcfb8a9d063b5e9e5, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 16, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}},
-	TableMessageEntry{ID: 0xdbaf7be5e24296c9, Shape: TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xdbaf7ae5e2429516, Shape: TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xdbaf79e5e2429363, Shape: TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x9cef31fff7e2e457, Shape: TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x5ab3f9c9341f6c04, Shape: TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xa3348580461faf16, Shape: TableMessageShape{Kind: 19, Packing: 0, Bits: 128, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xd61bdd7908af2642, Shape: TableMessageShape{Kind: 18, Packing: 1, Bits: 102, Base: [2]uint64{0x0, 0xfffffff000000000}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xbf30e00dc53307a9, Shape: TableMessageShape{Kind: 26, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x560d6527ccd8515f, Shape: TableMessageShape{Kind: 8, Packing: 1, Bits: 24, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xc08292176cfd8672, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xfd29ee12a979cb69, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x78101ac0aa8cbcfe, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x7ce4fd9430e80cea, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xa5013e9ad5caeda4, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 2, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xfbf1ac4d96ebd022, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x23fcfd6678e36712, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xcb4b37357667310e, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xcb4b3835766732c1, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xcb4b353576672da8, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xb54d8e19798e16e8, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 9, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x53a9f665a90cc1b1, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 9, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x6cede6b6eb60ee67, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x6cede5b6eb60ecb4, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x6cede8b6eb60f1cd, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x7f69d4b5288ba9cf, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xa0b610205f2c6e01, Shape: TableMessageShape{Kind: 30, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x7f6308be8ab37fc0, Shape: TableMessageShape{Kind: 9, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x11a44fc1d1243da7, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x7674cfd19b9031ca, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xb7bc9ac015a25050, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x7f6308be8ab37fc0, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x01fbc365b059b925, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 3, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x126167908c9aa52d, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x9e7fd06d864fbd56, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x8113fe7ea2b16969, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x80ab75f0866dbf65, Shape: TableMessageShape{Kind: 6, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x52076675ec13a0c1, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0xfffffffffffffe00, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xa790eee12766cf0c, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x9fbfefa835da8476, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x188bbb1783928a95, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x2c3667b9c2f272f1, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x0ca8b41b00d755f6, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x985fc819fab21a4e, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x229d0447c3086a55, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x011c7b49a7228f9d, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x89f7566e1123e15f, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x8d7f25318b3b4469, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xd9cd0dcc285b7816, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x04dc16aea8ff5276, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x35e53bc341129217, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x2cc8282fb0de8831, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x20bada21bc8cb334, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x33732819300680aa, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0xf2a38d910b5b348b, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
-	TableMessageEntry{ID: 0x9fa3a41c86ecb765, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
+	TableMessageEntry{ID: 0xaa38aca481f528a8, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 1},
+	TableMessageEntry{ID: 0x0dbe005c56697c3e, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 2},
+	TableMessageEntry{ID: 0x9bae0da8b829ee03, Shape: TableMessageShape{Kind: 8, Packing: 1, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 3},
+	TableMessageEntry{ID: 0xb7d7b5650a590b05, Shape: TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 4},
+	TableMessageEntry{ID: 0x6d7b98e2d095967e, Shape: TableMessageShape{Kind: 8, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 5},
+	TableMessageEntry{ID: 0x73a94c71d60dc0d8, Shape: TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 6},
+	TableMessageEntry{ID: 0x3eee6b51be54fc85, Shape: TableMessageShape{Kind: 5, Packing: 1, Bits: 41, Base: [2]uint64{0xffffff172b5af000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 7},
+	TableMessageEntry{ID: 0x7bbc035f7b6d0112, Shape: TableMessageShape{Kind: 9, Packing: 1, Bits: 48, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 8},
+	TableMessageEntry{ID: 0x3c460475f9be69c6, Shape: TableMessageShape{Kind: 22, Packing: 1, Bits: 24, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 9},
+	TableMessageEntry{ID: 0x935d0fb07bb3822a, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 1, Max: 8, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, ownSlot: 10},
+	TableMessageEntry{ID: 0xee639cad45b1994c, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 80, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, ownSlot: 11},
+	TableMessageEntry{ID: 0x2e35dc5321aa5790, Shape: TableMessageShape{Kind: 15, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 12},
+	TableMessageEntry{ID: 0x5759ce7586bbb5a3, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 4, Max: 4, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, ownSlot: 13},
+	TableMessageEntry{ID: 0x13a62f542cf8e86e, Shape: TableMessageShape{Kind: 12, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 15, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 14},
+	TableMessageEntry{ID: 0xcfb8a9d063b5e9e5, Shape: TableMessageShape{Kind: 14, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 16, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, ownSlot: 15},
+	TableMessageEntry{ID: 0xdbaf7be5e24296c9, Shape: TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, Element: TableMessageShape{}, ownSlot: 16},
+	TableMessageEntry{ID: 0xdbaf7ae5e2429516, Shape: TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, Element: TableMessageShape{}, ownSlot: 17},
+	TableMessageEntry{ID: 0xdbaf79e5e2429363, Shape: TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, Element: TableMessageShape{}, ownSlot: 18},
+	TableMessageEntry{ID: 0x9cef31fff7e2e457, Shape: TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 19},
+	TableMessageEntry{ID: 0x5ab3f9c9341f6c04, Shape: TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 20},
+	TableMessageEntry{ID: 0xa3348580461faf16, Shape: TableMessageShape{Kind: 19, Packing: 0, Bits: 128, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 21},
+	TableMessageEntry{ID: 0xd61bdd7908af2642, Shape: TableMessageShape{Kind: 18, Packing: 1, Bits: 102, Base: [2]uint64{0x0, 0xfffffff000000000}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 22},
+	TableMessageEntry{ID: 0xbf30e00dc53307a9, Shape: TableMessageShape{Kind: 26, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 23},
+	TableMessageEntry{ID: 0x560d6527ccd8515f, Shape: TableMessageShape{Kind: 8, Packing: 1, Bits: 24, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 24},
+	TableMessageEntry{ID: 0xc08292176cfd8672, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 25},
+	TableMessageEntry{ID: 0xfd29ee12a979cb69, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 26},
+	TableMessageEntry{ID: 0x78101ac0aa8cbcfe, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 27},
+	TableMessageEntry{ID: 0x7ce4fd9430e80cea, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 28},
+	TableMessageEntry{ID: 0xa5013e9ad5caeda4, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 2, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 29},
+	TableMessageEntry{ID: 0xfbf1ac4d96ebd022, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 30},
+	TableMessageEntry{ID: 0x23fcfd6678e36712, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 31},
+	TableMessageEntry{ID: 0xcb4b37357667310e, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 32},
+	TableMessageEntry{ID: 0xcb4b3835766732c1, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 33},
+	TableMessageEntry{ID: 0xcb4b353576672da8, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 34},
+	TableMessageEntry{ID: 0xb54d8e19798e16e8, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 9, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 35},
+	TableMessageEntry{ID: 0x53a9f665a90cc1b1, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 9, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 36},
+	TableMessageEntry{ID: 0x6cede6b6eb60ee67, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 37},
+	TableMessageEntry{ID: 0x6cede5b6eb60ecb4, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 38},
+	TableMessageEntry{ID: 0x6cede8b6eb60f1cd, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 39},
+	TableMessageEntry{ID: 0x7f69d4b5288ba9cf, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 40},
+	TableMessageEntry{ID: 0xa0b610205f2c6e01, Shape: TableMessageShape{Kind: 30, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 41},
+	TableMessageEntry{ID: 0x7f6308be8ab37fc0, Shape: TableMessageShape{Kind: 9, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 42},
+	TableMessageEntry{ID: 0x11a44fc1d1243da7, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 43},
+	TableMessageEntry{ID: 0x7674cfd19b9031ca, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 44},
+	TableMessageEntry{ID: 0xb7bc9ac015a25050, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 45},
+	TableMessageEntry{ID: 0x7f6308be8ab37fc0, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 46},
+	TableMessageEntry{ID: 0x01fbc365b059b925, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 3, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 47},
+	TableMessageEntry{ID: 0x126167908c9aa52d, Shape: TableMessageShape{Kind: 1, Packing: 0, Bits: 1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 48},
+	TableMessageEntry{ID: 0x9e7fd06d864fbd56, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 49},
+	TableMessageEntry{ID: 0x8113fe7ea2b16969, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 50},
+	TableMessageEntry{ID: 0x80ab75f0866dbf65, Shape: TableMessageShape{Kind: 6, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 51},
+	TableMessageEntry{ID: 0x52076675ec13a0c1, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0xfffffffffffffe00, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 52},
+	TableMessageEntry{ID: 0xa790eee12766cf0c, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 53},
+	TableMessageEntry{ID: 0x9fbfefa835da8476, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 54},
+	TableMessageEntry{ID: 0x188bbb1783928a95, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 55},
+	TableMessageEntry{ID: 0x2c3667b9c2f272f1, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 56},
+	TableMessageEntry{ID: 0x0ca8b41b00d755f6, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 57},
+	TableMessageEntry{ID: 0x985fc819fab21a4e, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 58},
+	TableMessageEntry{ID: 0x229d0447c3086a55, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 59},
+	TableMessageEntry{ID: 0x011c7b49a7228f9d, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 60},
+	TableMessageEntry{ID: 0x89f7566e1123e15f, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 61},
+	TableMessageEntry{ID: 0x8d7f25318b3b4469, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 62},
+	TableMessageEntry{ID: 0xd9cd0dcc285b7816, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 63},
+	TableMessageEntry{ID: 0x04dc16aea8ff5276, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 64},
+	TableMessageEntry{ID: 0x35e53bc341129217, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 65},
+	TableMessageEntry{ID: 0x2cc8282fb0de8831, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 66},
+	TableMessageEntry{ID: 0x20bada21bc8cb334, Shape: TableMessageShape{Kind: 0, Packing: 0, Bits: 0, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 67},
+	TableMessageEntry{ID: 0x33732819300680aa, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 68},
+	TableMessageEntry{ID: 0xf2a38d910b5b348b, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 69},
+	TableMessageEntry{ID: 0x9fa3a41c86ecb765, Shape: TableMessageShape{Kind: 13, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}, ownSlot: 70},
 }
+var tableMessageEntryKeys = [...]string{"\xa8(\xf5\x81\xa4\xac8\xaa\a\x01\x10\x00", ">|iV\\\x00\xbe\r\x04\x01\x10\x00", "\x03\xee)\xb8\xa8\r\xae\x9b\b\x01 \x00", "\x05\vY\ne\xb5\u05f7\t\x00", "~\x96\x95\xd0\xe2\x98{m\b\x00", "\xd8\xc0\r\xd6qL\xa9s\t\x01@\x00", "\x85\xfcT\xbeQk\xee>\x05\x01)\xff\xbf\xa8ʚ:", "\x12\x01m{_\x03\xbc{\t\x010\x00", "\xc6i\xbe\xf9u\x04F<\x16\x01\x18\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", "*\x82\xb3{\xb0\x0f]\x93\x0e\x01\b\r", "L\x99\xb1E\xad\x9cc\xee\x0e\x00P\r", "\x90W\xaa!S\xdc5.\x0f", "\xa3\xb5\xbb\x86u\xceYW\x0e\x04\x04\x06\x00", "n\xe8\xf8,T/\xa6\x13\f\x0f", "\xe5\xe9\xb5cЩ\xb8\xcf\x0e\x00\x10\x06\x00", "ɖB\xe2\xe5{\xaf\xdb\n\x02\x00\x00\x80\xbf\x00\x00\x80?\n\xd7#<", "\x16\x95B\xe2\xe5z\xaf\xdb\n\x02\x00\x00\x80\xbf\x00\x00\x80?\n\xd7#<", "c\x93B\xe2\xe5y\xaf\xdb\n\x02\x00\x00\x80\xbf\x00\x00\x80?\n\xd7#<", "W\xe4\xe2\xf7\xff1\xef\x9c\n\x00", "\x04l\x1f4\xc9\xf9\xb3Z\v", "\x16\xaf\x1fF\x80\x854\xa3\x13\x00", "B&\xaf\by\xdd\x1b\xd6\x12\x01f\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xf0\xff\xff\xff", "\xa9\a3\xc5\r\xe00\xbf\x1a\x01\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", "_Q\xd8\xcc'e\rV\b\x01\x18\x00", "r\x86\xfdl\x17\x92\x82\xc0\x01", "i\xcby\xa9\x12\xee)\xfd\x04\x01\b\x00", "\xfe\xbc\x8c\xaa\xc0\x1a\x10x\x04\x01\x04\x00", "\xea\f\xe80\x94\xfd\xe4|\r", "\xa4\xed\xca՚>\x01\xa5\x04\x01\x02\x00", "\"\xd0\xeb\x96M\xac\xf1\xfb\a\x01\f\x00", "\x12g\xe3xf\xfd\xfc#\a\x01\f\x00", "\x0e1gv57K\xcb\x04\x01\x0f\xfd\xff\x01", "\xc12gv58K\xcb\x04\x01\x0f\xfd\xff\x01", "\xa8-gv55K\xcb\x04\x01\x0f\xfd\xff\x01", "\xe8\x16\x8ey\x19\x8eM\xb5\a\x01\t\x00", "\xb1\xc1\f\xa9e\xf6\xa9S\a\x01\t\x00", "g\xee`\xeb\xb6\xe6\xedl\x04\x01\f\xff\x1f", "\xb4\xec`\xeb\xb6\xe5\xedl\x04\x01\f\xff\x1f", "\xcd\xf1`\xeb\xb6\xe8\xedl\x04\x01\f\xff\x1f", "ϩ\x8b(\xb5\xd4i\x7f\x04\x01\n\x00", "\x01n,_ \x10\xb6\xa0\x1e", "\xc0\x7f\xb3\x8a\xbe\bc\x7f\t\x01\b\x00", "\xa7=$\xd1\xc1O\xa4\x11\x01", "\xca1\x90\x9b\xd1\xcftv\x01", "PP\xa2\x15\xc0\x9a\xbc\xb7\a\x01\f\x00", "\xc0\x7f\xb3\x8a\xbe\bc\x7f\x04\x01\f\x00", "%\xb9Y\xb0e\xc3\xfb\x01\x04\x01\x03\x00", "-\xa5\x9a\x8c\x90ga\x12\x01", "V\xbdO\x86m\xd0\x7f\x9e\a\x01\n\x00", "ii\xb1\xa2~\xfe\x13\x81\x04\x01\b\x00", "e\xbfm\x86\xf0u\xab\x80\x06\x01\b\x00", "\xc1\xa0\x13\xecuf\aR\x04\x01\n\xff\a", "\f\xcff'\xe1\ue427\x00", "v\x84\xda5\xa8\uffdf\x00", "\x95\x8a\x92\x83\x17\xbb\x8b\x18\x00", "\xf1r\xf2¹g6,\x00", "\xf6U\xd7\x00\x1b\xb4\xa8\f\x00", "N\x1a\xb2\xfa\x19\xc8_\x98\x00", "Uj\b\xc3G\x04\x9d\"\x00", "\x9d\x8f\"\xa7I{\x1c\x01\x00", "_\xe1#\x11nV\xf7\x89\x00", "iD;\x8b1%\x7f\x8d\x00", "\x16x[(\xcc\r\xcd\xd9\x00", "vR\xff\xa8\xae\x16\xdc\x04\x00", "\x17\x92\x12A\xc3;\xe55\x00", "1\x88ް/(\xc8,\x00", "4\xb3\x8c\xbc!ں \x00", "\xaa\x80\x060\x19(s3\r", "\x8b4[\v\x91\x8d\xa3\xf2\r", "e\xb7\xec\x86\x1c\xa4\xa3\x9f\r"}
 
 func (w *TableBitWriter) Put(value uint64, n int64) {
 	if n < 0 || n > 64 {
@@ -199,6 +200,27 @@ func tableMessageBits(n uint64) int64 {
 	return count
 }
 
+// Match the complete encoded entry once, while reading the announcement.
+// Only the own slot is kept: no caller buffer is retained and no hash stands
+// in for byte equality. One ID may have several distinct declared shapes.
+func tableMessageOwnSlot(raw []byte) uint64 {
+	for i, key := range tableMessageEntryKeys {
+		if len(raw) != len(key) {
+			continue
+		}
+		same := true
+		for j := range raw {
+			if raw[j] != key[j] {
+				same = false
+				break
+			}
+		}
+		if same {
+			return uint64(i + 1)
+		}
+	}
+	return 0
+}
 func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
 }
@@ -432,11 +454,13 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	}
 	src.Offset = 0
 	for i := range count {
+		began := src.Offset
 		e, ok := tableMessageEntryRead(&src)
 		if !ok {
 			report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		e.ownSlot = tableMessageOwnSlot(words[began:src.Offset])
 		v.Entries[i] = e
 	}
 	v.Count = count
@@ -1051,7 +1075,7 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedEntityReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1074,11 +1098,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 		switch entry.ID {
 		case 0x23fcfd6678e36712:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 31
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1130,11 +1157,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0xcb4b37357667310e:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 32
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1186,11 +1216,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0xcb4b3835766732c1:
 			{
-				if exact && order >= 2 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 33
+				if exact {
+					if order >= 2 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 2
 				}
-				order = 2
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1242,11 +1275,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0xcb4b353576672da8:
 			{
-				if exact && order >= 3 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 34
+				if exact {
+					if order >= 3 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 3
 				}
-				order = 3
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1298,11 +1334,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0xb54d8e19798e16e8:
 			{
-				if exact && order >= 4 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 35
+				if exact {
+					if order >= 4 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 4
 				}
-				order = 4
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1354,11 +1393,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x53a9f665a90cc1b1:
 			{
-				if exact && order >= 5 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 36
+				if exact {
+					if order >= 5 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 5
 				}
-				order = 5
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1410,11 +1452,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x6cede6b6eb60ee67:
 			{
-				if exact && order >= 6 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 37
+				if exact {
+					if order >= 6 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 6
 				}
-				order = 6
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1466,11 +1511,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x6cede5b6eb60ecb4:
 			{
-				if exact && order >= 7 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 38
+				if exact {
+					if order >= 7 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 7
 				}
-				order = 7
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1522,11 +1570,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x6cede8b6eb60f1cd:
 			{
-				if exact && order >= 8 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 39
+				if exact {
+					if order >= 8 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 8
 				}
-				order = 8
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1578,11 +1629,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x7f69d4b5288ba9cf:
 			{
-				if exact && order >= 9 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 40
+				if exact {
+					if order >= 9 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 9
 				}
-				order = 9
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1634,11 +1688,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0xa0b610205f2c6e01:
 			{
-				if exact && order >= 10 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 41
+				if exact {
+					if order >= 10 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 10
 				}
-				order = 10
 				widened := false
 				if entry.Shape.Kind != 30 || entry.Element.Kind != 0 {
 					if false {
@@ -1677,11 +1734,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x7f6308be8ab37fc0:
 			{
-				if exact && order >= 11 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 42
+				if exact {
+					if order >= 11 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 11
 				}
-				order = 11
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -1722,11 +1782,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x11a44fc1d1243da7:
 			{
-				if exact && order >= 12 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 43
+				if exact {
+					if order >= 12 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 12
 				}
-				order = 12
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -1771,11 +1834,14 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 			}
 		case 0x7674cfd19b9031ca:
 			{
-				if exact && order >= 13 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 44
+				if exact {
+					if order >= 13 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 13
 				}
-				order = 13
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -1819,7 +1885,7 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, star
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1860,7 +1926,7 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedStatReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1883,11 +1949,14 @@ func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts [
 		switch entry.ID {
 		case 0x80ab75f0866dbf65:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 51
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1939,11 +2008,14 @@ func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts [
 			}
 		case 0x52076675ec13a0c1:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 52
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1994,7 +2066,7 @@ func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts [
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2054,7 +2126,7 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedHitEventReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2077,11 +2149,14 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 		switch entry.ID {
 		case 0xb7bc9ac015a25050:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 45
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2133,11 +2208,14 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 			}
 		case 0x7f6308be8ab37fc0:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 46
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -2189,11 +2267,14 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 			}
 		case 0x01fbc365b059b925:
 			{
-				if exact && order >= 2 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 47
+				if exact {
+					if order >= 2 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 2
 				}
-				order = 2
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -2245,11 +2326,14 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 			}
 		case 0x126167908c9aa52d:
 			{
-				if exact && order >= 3 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 48
+				if exact {
+					if order >= 3 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 3
 				}
-				order = 3
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -2293,7 +2377,7 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2334,7 +2418,7 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedChatEventReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2357,11 +2441,14 @@ func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent
 		switch entry.ID {
 		case 0xa5013e9ad5caeda4:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 29
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -2413,11 +2500,14 @@ func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent
 			}
 		case 0xfbf1ac4d96ebd022:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 30
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2468,7 +2558,7 @@ func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2509,7 +2599,7 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupEvent, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedPickupEventReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2532,11 +2622,14 @@ func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupE
 		switch entry.ID {
 		case 0x9e7fd06d864fbd56:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 49
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2588,11 +2681,14 @@ func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupE
 			}
 		case 0x8113fe7ea2b16969:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 50
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -2643,7 +2739,7 @@ func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupE
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -3008,7 +3104,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	BenchMixedReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -3031,11 +3127,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 		switch entry.ID {
 		case 0xaa38aca481f528a8:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 1
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -3087,11 +3186,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x0dbe005c56697c3e:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 2
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -3143,11 +3245,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x9bae0da8b829ee03:
 			{
-				if exact && order >= 2 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 3
+				if exact {
+					if order >= 2 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 2
 				}
-				order = 2
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -3199,11 +3304,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xb7d7b5650a590b05:
 			{
-				if exact && order >= 3 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 4
+				if exact {
+					if order >= 3 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 3
 				}
-				order = 3
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -3250,11 +3358,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x6d7b98e2d095967e:
 			{
-				if exact && order >= 4 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 5
+				if exact {
+					if order >= 4 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 4
 				}
-				order = 4
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -3301,11 +3412,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x73a94c71d60dc0d8:
 			{
-				if exact && order >= 5 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 6
+				if exact {
+					if order >= 5 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 5
 				}
-				order = 5
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -3357,11 +3471,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x3eee6b51be54fc85:
 			{
-				if exact && order >= 6 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 7
+				if exact {
+					if order >= 6 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 6
 				}
-				order = 6
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -3413,11 +3530,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x7bbc035f7b6d0112:
 			{
-				if exact && order >= 7 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 8
+				if exact {
+					if order >= 7 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 7
 				}
-				order = 7
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -3469,11 +3589,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x3c460475f9be69c6:
 			{
-				if exact && order >= 8 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 9
+				if exact {
+					if order >= 8 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 8
 				}
-				order = 8
 				widened := false
 				if entry.Shape.Kind != 22 || entry.Element.Kind != 0 {
 					if false {
@@ -3525,11 +3648,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x935d0fb07bb3822a:
 			{
-				if exact && order >= 9 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 10
+				if exact {
+					if order >= 9 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 9
 				}
-				order = 9
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
 					if false {
@@ -3585,11 +3711,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xee639cad45b1994c:
 			{
-				if exact && order >= 10 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 11
+				if exact {
+					if order >= 10 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 10
 				}
-				order = 10
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
 					if false {
@@ -3634,11 +3763,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x2e35dc5321aa5790:
 			{
-				if exact && order >= 11 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 12
+				if exact {
+					if order >= 11 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 11
 				}
-				order = 11
 				widened := false
 				if entry.Shape.Kind != 15 || entry.Element.Kind != 0 {
 					if false {
@@ -3755,11 +3887,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x5759ce7586bbb5a3:
 			{
-				if exact && order >= 12 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 13
+				if exact {
+					if order >= 12 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 12
 				}
-				order = 12
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
 					if false {
@@ -3834,11 +3969,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x13a62f542cf8e86e:
 			{
-				if exact && order >= 13 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 14
+				if exact {
+					if order >= 13 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 13
 				}
-				order = 13
 				widened := false
 				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
 					if false {
@@ -3882,11 +4020,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
-				if exact && order >= 14 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 15
+				if exact {
+					if order >= 14 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 14
 				}
-				order = 14
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
 					if false {
@@ -3925,11 +4066,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xdbaf7be5e24296c9:
 			{
-				if exact && order >= 15 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 16
+				if exact {
+					if order >= 15 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 15
 				}
-				order = 15
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -3980,11 +4124,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xdbaf7ae5e2429516:
 			{
-				if exact && order >= 16 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 17
+				if exact {
+					if order >= 16 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 16
 				}
-				order = 16
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -4035,11 +4182,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xdbaf79e5e2429363:
 			{
-				if exact && order >= 17 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 18
+				if exact {
+					if order >= 17 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 17
 				}
-				order = 17
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -4090,11 +4240,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x9cef31fff7e2e457:
 			{
-				if exact && order >= 18 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 19
+				if exact {
+					if order >= 18 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 18
 				}
-				order = 18
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -4142,11 +4295,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x5ab3f9c9341f6c04:
 			{
-				if exact && order >= 19 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 20
+				if exact {
+					if order >= 19 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 19
 				}
-				order = 19
 				widened := false
 				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
@@ -4200,11 +4356,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xa3348580461faf16:
 			{
-				if exact && order >= 20 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 21
+				if exact {
+					if order >= 20 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 20
 				}
-				order = 20
 				widened := false
 				if entry.Shape.Kind != 19 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 19) {
@@ -4251,11 +4410,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xd61bdd7908af2642:
 			{
-				if exact && order >= 21 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 22
+				if exact {
+					if order >= 21 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 21
 				}
-				order = 21
 				widened := false
 				if entry.Shape.Kind != 18 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 18) {
@@ -4307,11 +4469,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xbf30e00dc53307a9:
 			{
-				if exact && order >= 22 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 23
+				if exact {
+					if order >= 22 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 22
 				}
-				order = 22
 				widened := false
 				if entry.Shape.Kind != 26 || entry.Element.Kind != 0 {
 					if false {
@@ -4363,11 +4528,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x560d6527ccd8515f:
 			{
-				if exact && order >= 23 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 24
+				if exact {
+					if order >= 23 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 23
 				}
-				order = 23
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -4419,11 +4587,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xc08292176cfd8672:
 			{
-				if exact && order >= 24 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 25
+				if exact {
+					if order >= 24 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 24
 				}
-				order = 24
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -4468,11 +4639,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0xfd29ee12a979cb69:
 			{
-				if exact && order >= 25 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 26
+				if exact {
+					if order >= 25 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 25
 				}
-				order = 25
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -4524,11 +4698,14 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 			}
 		case 0x78101ac0aa8cbcfe:
 			{
-				if exact && order >= 26 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 27
+				if exact {
+					if order >= 26 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 26
 				}
-				order = 26
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -4579,7 +4756,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
