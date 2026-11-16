@@ -14,6 +14,7 @@ package luatable
 
 import (
 	"bufio"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"slices"
@@ -249,5 +250,47 @@ print(v == nil and r.reason or "read")
 	got := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"module": []byte(ModuleName(u)), "wire": wire})))
 	if got != "previous_form" {
 		t.Fatalf("fixed Cfg form 1: got %q, want previous_form", got)
+	}
+}
+
+// The wire-check's scratch belongs to the caller's reusable state. Both an
+// out-of-order first use and an unused ID must fail, while an ordered file
+// before and after them reads with that same state.
+func TestLuaIdFirstUseAndStateReuse(t *testing.T) {
+	t.Parallel()
+	u := luarun.LoadUnit(t, filepath.Join("..", "..", "..", "tables", "pointers"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	wire := func(refs ...byte) []byte {
+		out := []byte{1}
+		for _, ref := range refs {
+			out = append(out, ref, 4, 7, 0, 0, 0)
+		}
+		out = append(out, 0)
+		out = binary.LittleEndian.AppendUint64(out, 101)
+		out = binary.LittleEndian.AppendUint64(out, 102)
+		return binary.LittleEndian.AppendUint64(out, 2)
+	}
+	probe := `local i = require("inputs")
+local T, L = require(i.module), require("load")
+local state = L.NewState()
+for _, name in ipairs({"good", "reverse", "unused", "good"}) do
+  local r = {}
+  local v = L.Load(T, "Scene", i[name], r, state)
+  print(v and "read" or r.reason)
+end
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", map[string][]byte{
+		"module": []byte(ModuleName(u)), "good": wire(1, 2), "reverse": wire(2, 1), "unused": wire(1),
+	})))
+	if got != "read\nwire_damaged\nwire_damaged\nread" {
+		t.Fatalf("first-use and reusable state: %q", got)
 	}
 }
