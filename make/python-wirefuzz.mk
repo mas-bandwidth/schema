@@ -1,5 +1,5 @@
 # Python's generated-code verdict pipe and its planted refusal control.
-.PHONY: tables-python-wire-fuzz tables-python-wire-fuzz-negative-control python-array-widen-negative-control
+.PHONY: tables-python-wire-fuzz tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control python-array-widen-negative-control
 
 tables-python-wire-fuzz: build/conformance-harness build/conformance-python python-toolchain-check
 	@set -eu; \
@@ -20,7 +20,10 @@ tables-python-wire-fuzz: build/conformance-harness build/conformance-python pyth
 tables-python-wire-fuzz-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzVerdictPipeNegativeControl$$' ./internal/codegen/pythontable/
 
+tables-python-wire-fuzz-retain-negative-control:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonWireFuzzRetainNegativeControl$$' ./internal/codegen/pythontable/
+
 python-array-widen-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonArrayWideningNegativeControl$$' ./internal/codegen/pythontable/
-test-python: tables-python-wire-fuzz tables-python-wire-fuzz-negative-control python-array-widen-negative-control
-PYTHON_CI_SUPPORT_GROUPS += python-array-widen-negative-control tables-python-wire-fuzz tables-python-wire-fuzz-negative-control
+test-python: tables-python-wire-fuzz tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control python-array-widen-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-array-widen-negative-control tables-python-wire-fuzz tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control

@@ -239,3 +239,60 @@ func TestPythonWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		}
 	}
 }
+
+// TestPythonWireFuzzRetainNegativeControl plants a real retaining-save fault
+// in the driver and requires the shared oracle to observe the lost record.
+func TestPythonWireFuzzRetainNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "Python retaining verdict pipe negative control")
+	root, err := pyrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile(filepath.Join(root, "test/conformance/python/wirefuzz.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor := "saved = value.save_retain(retained, report)"
+	if strings.Count(string(src), anchor) != 1 {
+		t.Fatal("retain control anchor missing or repeated")
+	}
+	u, err := loadManifestUnit(root, []string{"tables/pointers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, filepath.Join(dir, "generated", "graphdemo"), files)
+	good, bad := filepath.Join(dir, "good.py"), filepath.Join(dir, "bad.py")
+	if err := os.WriteFile(good, src, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bad, []byte(strings.Replace(string(src), anchor, "saved = value.save()", 1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	harness := filepath.Join(dir, "harness")
+	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build.Dir = root
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build harness: %v: %s", err, out)
+	}
+	vector := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/retain_declared_default.bin")
+	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		for _, script := range []string{good, bad} {
+			driver := fmt.Sprintf("%s -W error -I -B %s %s", python, script, filepath.Join(dir, "generated"))
+			cmd := exec.Command(harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
+			cmd.Dir = root
+			out, err := cmd.CombinedOutput()
+			if script == good && err != nil {
+				t.Fatalf("clean retaining replay: %v\n%s", err, out)
+			}
+			if script == bad && (err == nil || !strings.Contains(string(out), "the decoded value differs")) {
+				t.Fatalf("retaining-save fault escaped: %v\n%s", err, out)
+			}
+		}
+	}
+}
