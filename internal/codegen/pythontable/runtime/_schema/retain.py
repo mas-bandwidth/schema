@@ -831,12 +831,13 @@ def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: li
         r = Reader(data, 0, len(data), ids)
         kind = r.byte()
         count = r.varint()
-        if field.codec == "map":
+        codec = field.inner if field.codec == "optional" else field.codec
+        if codec == "map":
             target = field.map_entry or field.target
             for index in range(count):
                 nested(r.take(r.varint()), target, node, steps + ((ordinal, index),))
             return
-        if field.codec == "keyed":
+        if codec == "keyed":
             element = field.elem
             for _ in range(count):
                 key = r.id_at(r.varint())
