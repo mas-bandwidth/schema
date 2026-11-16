@@ -3559,7 +3559,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 8` and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3781,18 +3781,11 @@ writes it down. It is idempotent — a
 lock that is already current is left untouched — and `--print` writes nothing
 at all.
 
-**A lock written under rendering version 6 is SALVAGED, not deleted.** Its one
-layout becomes the first lineage entry, its field lines are carried forward
-unchanged, and `schema lock` writes the file as version 8. Rendering 7 is also SALVAGED with every existing lineage entry preserved; a missing writer snapshot stays unknown until explicitly imported. Deleting this file
-now means wiping a fleet's lineage. A lock older than the salvage floor holds
-nothing a lineage can start from, and is refused with the one remedy that
-works: write it again with `schema lock`. A lock written by a NEWER compiler
-than this one is refused in its own sentence: *"this lock is rendering version
-9 and this compiler writes version 8 — it was written by a NEWER compiler than
-this one, and this one cannot know what it holds: build the compiler this tree
-pins, or relock with it"*.
+**Old lock renderings are SALVAGED, not deleted.** Rendering7/8 lineage entries keep their exact saved layout, digest, wire key, order and retirement. Rendering6 predates lineage: when the checked source still matches all saved declaration facts, its layout-only key becomes the first entry with unknown writer metadata. A changed rendering6 source must first be restored to its exact historical declaration, migrated, then evolved; the wider reader cannot reconstruct historical layout bytes. Relocking writes rendering9 and appends the prospective current identity. Missing snapshots stay unknown until explicitly imported. Deleting the lock wipes a fleet’s lineage. A lock older than the salvage floor is refused, as is a rendering from a newer compiler.
 
-**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, digest, record-body size and hash must match. Different captured constraints under one legacy hash are refused, not overwritten. The caller establishes provenance; anonymous legacy digests cannot recover all historical bounds. Missing metadata never implies retirement. The complete migration and compatibility boundary are in `FIXED-FORM-ALGORITHM.md` §5.2.
+**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, recorded-scheme digest, record-body size and raw hash must match. The default API remains strict: an empty historical digest cannot silently erase source constraints.
+
+For an old layout-only key, the additional `--legacy-layout-only` option explicitly trusts the supplied historical source’s provenance. It requires an empty saved digest and still validates checked-source closure, root, layout, body size and raw layout-only key. The complete snapshot and a `legacy-layout-only` marker are saved in rendering9 and bound by the lineage roll-up. The paired options must be repeated to validate an already imported layout-only entry. This operation does not authenticate old bounds from the hash or distinguish files from two historical writers that shared that key. Different captured constraints are refused rather than overwritten; missing metadata never implies retirement. See `FIXED-FORM-ALGORITHM.md` §5.2 for the compatibility boundary.
 
 **`--retire` is the lock's ONE NON-APPEND EDIT.** `schema lock --retire Table@0x… --reason <text>` marks one lineage entry retired; the entry stays in
 the lineage forever, and a file carrying that layout is then answered

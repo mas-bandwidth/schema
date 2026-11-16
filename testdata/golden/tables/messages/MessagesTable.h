@@ -33006,8 +33006,9 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
             default: break; // every byte outside the set arm stays zero
         }
     }
-    // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 2; i++ )
+    // 2 slots of storage, value.origins_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.origins_count; i++ )
     {
         {
             table_cook_put( at + 128 + i * 80, (uint64_t) value.origins[i].type, 1, order ); // the tag; None is the tag alone
@@ -33034,8 +33035,9 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
     table_cook_put( at + 300, (uint64_t) ( value.modes_present ? 1 : 0 ), 1, order ); // ?T's presence companion
     if ( value.modes_present )
     {
-        // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-        for ( int32_t i = 0; i < 2; i++ )
+        // 2 slots of storage, value.modes_count live: a slot past the count keeps the extent's zero (§7.2)
+        schema_assert( value.modes_count >= 0 && value.modes_count <= 2 ); // storage invariant, debug only (§5.1)
+        for ( int32_t i = 0; i < value.modes_count; i++ )
         {
             table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[i], 1, order );
         }
@@ -33066,8 +33068,9 @@ inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
             }
             case EditBodyType::Marks:
             {
-                // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-                for ( int32_t ia = 0; ia < 3; ia++ )
+                // 3 slots of storage, value.body.marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
+                schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
+                for ( int32_t ia = 0; ia < value.body.marks.value_count; ia++ )
                 {
                     table_cook_put( at + 4 + 4 + ia * 2, (uint64_t) value.body.marks.value[ia], 2, order );
                 }
@@ -33112,8 +33115,9 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
 {
     table_cook_bytes( at + 0, value.reason, value.reason_length, 17 );
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.reason_length, 4, order );
-    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 3; i++ )
+    // 3 slots of storage, value.edits_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.edits_count; i++ )
     {
         if ( !EditCookBody( at + 24 + i * 312, value.edits[i], order ) ) { return false; }
     }
@@ -33133,8 +33137,9 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
                 }
                 case EditBodyType::Marks:
                 {
-                    // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-                    for ( int32_t ia = 0; ia < 3; ia++ )
+                    // 3 slots of storage, value.pending[i].marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
+                    schema_assert( value.pending[i].marks.value_count >= 0 && value.pending[i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
+                    for ( int32_t ia = 0; ia < value.pending[i].marks.value_count; ia++ )
                     {
                         table_cook_put( at + 964 + i * 308 + 4 + ia * 2, (uint64_t) value.pending[i].marks.value[ia], 2, order );
                     }
@@ -33226,8 +33231,9 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
             default: break; // every byte outside the set arm stays zero
         }
     }
-    // all 2 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 2; i++ )
+    // 2 slots of storage, value.history_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.history_count; i++ )
     {
         {
             table_cook_put( at + 1648 + i * 1640, (uint64_t) value.history[i].type, 1, order ); // the tag; None is the tag alone
@@ -33282,8 +33288,9 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     table_cook_put( at + 5164, (uint64_t) ( value.trace_present ? 1 : 0 ), 1, order ); // ?T's presence companion
     if ( value.trace_present )
     {
-        // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-        for ( int32_t i = 0; i < 3; i++ )
+        // 3 slots of storage, value.trace_count live: a slot past the count keeps the extent's zero (§7.2)
+        schema_assert( value.trace_count >= 0 && value.trace_count <= 3 ); // storage invariant, debug only (§5.1)
+        for ( int32_t i = 0; i < value.trace_count; i++ )
         {
             if ( !ScriptCookBody( at + 4932 + i * 76, value.trace[i], order ) ) { return false; }
         }
