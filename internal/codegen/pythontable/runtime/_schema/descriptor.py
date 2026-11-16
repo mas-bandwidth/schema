@@ -39,6 +39,15 @@ class FieldDesc:
 
     __slots__ = (
         "name",
+        "json_key",
+        "required",
+        "frac_bits",
+        "json_variants",
+        "json_keys",
+        "json_flags",
+        "unbounded",
+        "json_text_list",
+        "json_text_total",
         "field_id",
         "kind",
         "codec",
@@ -72,6 +81,15 @@ class FieldDesc:
     )
 
     name: str
+    json_key: str
+    required: bool
+    frac_bits: int
+    json_variants: tuple[str, ...]
+    json_keys: tuple[str, ...]
+    json_flags: bool
+    unbounded: bool
+    json_text_list: bool
+    json_text_total: int
     field_id: int
     kind: int
     codec: str
@@ -109,6 +127,15 @@ class FieldDesc:
         field_id: int,
         kind: int,
         codec: str,
+        json_key: str = "",
+        required: bool = False,
+        frac_bits: int = 0,
+        json_variants: tuple[str, ...] = (),
+        json_keys: tuple[str, ...] = (),
+        json_flags: bool = False,
+        unbounded: bool = False,
+        json_text_list: bool = False,
+        json_text_total: int = 0,
         ordinal: int = 0,
         lo: int = 0,
         hi: int = 0,
@@ -137,6 +164,15 @@ class FieldDesc:
         keyed_list: bool = False,
     ) -> None:
         self.name = name
+        self.json_key = json_key or name
+        self.required = required
+        self.frac_bits = frac_bits
+        self.json_variants = json_variants
+        self.json_keys = json_keys
+        self.json_flags = json_flags
+        self.unbounded = unbounded
+        self.json_text_list = json_text_list
+        self.json_text_total = json_text_total
         self.field_id = field_id
         self.kind = kind
         self.codec = codec
@@ -183,6 +219,10 @@ class FieldDesc:
                 fmin=fmin,
                 fmax=fmax,
                 float_range=float_range,
+                frac_bits=frac_bits,
+                json_variants=json_variants,
+                json_flags=json_flags,
+                unbounded=unbounded,
             )
             if codec == "array" and elem_codec
             else None
@@ -293,13 +333,14 @@ def _as_bytes(value: Any) -> bytes | None:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id")
+    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "json_array")
 
     name: str
     type_id: int
     variable: bool
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
+    json_array: bool
 
     def __init__(
         self,
@@ -307,11 +348,13 @@ class TableDesc:
         type_id: int,
         variable: bool,
         fields: tuple[FieldDesc, ...],
+        json_array: bool = False,
     ) -> None:
         self.name = name
         self.type_id = type_id
         self.variable = variable
         self.fields = fields
+        self.json_array = json_array
         self.by_id = {field.field_id: field for field in fields}
 
     def field(self, name: str) -> FieldDesc | None:
