@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -13,17 +15,73 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
+var scalarWidenCases = []struct{ old, new, value, check string }{
+	{"int8", "int16", "-100", "-100"}, {"int16", "int32", "-1234", "-1234"},
+	{"int32", "int64", "-123456", "-123456"}, {"int64", "int128", `"-9007199254740993"`, "-9007199254740993"},
+	{"uint8", "uint16", "250", "250"}, {"uint8", "bits(9)", "250", "250"}, {"uint16", "uint32", "65000", "65000"},
+	{"uint32", "uint64", "4000000000", "4000000000"}, {"uint64", "uint128", `"18446744073709551615"`, "18446744073709551615"},
+	{"float32", "float64", "-1.5", "-1.5"},
+}
+
+const scalarWidenShards = 4
+
+func scalarWidenShard(value string) (int, error) {
+	if value == "" {
+		return -1, nil
+	}
+	shard, err := strconv.Atoi(value)
+	if err != nil || shard < 0 || shard >= scalarWidenShards || strconv.Itoa(shard) != value {
+		return 0, fmt.Errorf("invalid PYTHON_SCALAR_WIDEN_SHARD %q", value)
+	}
+	return shard, nil
+}
+
+func scalarWidenSelected(shard, genericIndex, caseIndex int) bool {
+	return shard < 0 || (genericIndex*len(scalarWidenCases)+caseIndex)%scalarWidenShards == shard
+}
+
+func TestPythonScalarWidenShardPlan(t *testing.T) {
+	seen := make(map[string]int)
+	for shard := range scalarWidenShards {
+		selected := 0
+		for genericIndex, generic := range []bool{false, true} {
+			for caseIndex, tc := range scalarWidenCases {
+				if scalarWidenSelected(shard, genericIndex, caseIndex) {
+					seen[fmt.Sprintf("%s_to_%s_generic_%t", tc.old, tc.new, generic)]++
+					selected++
+				}
+			}
+		}
+		if selected == 0 {
+			t.Fatalf("shard %d is empty", shard)
+		}
+	}
+	if len(seen) != 2*len(scalarWidenCases) {
+		t.Fatalf("partition covered %d cases, want %d", len(seen), 2*len(scalarWidenCases))
+	}
+	for name, count := range seen {
+		if count != 1 {
+			t.Errorf("case %s selected %d times", name, count)
+		}
+	}
+	for _, invalid := range []string{"-1", "4", "00", "x"} {
+		if _, err := scalarWidenShard(invalid); err == nil {
+			t.Errorf("accepted invalid shard %q", invalid)
+		}
+	}
+}
+
 func TestPythonScalarWidenHistorical(t *testing.T) {
 	slowtest.Gate(t, "historical scalar widening on both Python pins")
-	cases := []struct{ old, new, value, check string }{
-		{"int8", "int16", "-100", "-100"}, {"int16", "int32", "-1234", "-1234"},
-		{"int32", "int64", "-123456", "-123456"}, {"int64", "int128", `"-9007199254740993"`, "-9007199254740993"},
-		{"uint8", "uint16", "250", "250"}, {"uint8", "bits(9)", "250", "250"}, {"uint16", "uint32", "65000", "65000"},
-		{"uint32", "uint64", "4000000000", "4000000000"}, {"uint64", "uint128", `"18446744073709551615"`, "18446744073709551615"},
-		{"float32", "float64", "-1.5", "-1.5"},
+	shard, err := scalarWidenShard(os.Getenv("PYTHON_SCALAR_WIDEN_SHARD"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, generic := range []bool{false, true} {
-		for _, tc := range cases {
+	for genericIndex, generic := range []bool{false, true} {
+		for caseIndex, tc := range scalarWidenCases {
+			if !scalarWidenSelected(shard, genericIndex, caseIndex) {
+				continue
+			}
 			t.Run(fmt.Sprintf("%s_to_%s_generic_%t", tc.old, tc.new, generic), func(t *testing.T) {
 				extra := ""
 				if generic {
