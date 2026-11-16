@@ -587,3 +587,64 @@ func TestBlobDuplicateOwnerBoundary(t *testing.T) {
 		t.Fatalf("duplicate pointer: ok=%v err=%v report=%+v", ok, err, report)
 	}
 }
+
+// TestNegativeZeroListPin keeps the original signed-zero elision premise in a
+// complete canonical frame: -0 is distinct from Placement.x's +0 default.
+func TestNegativeZeroListPin(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	element := cat(b(2, 10), i32(-2147483648), b(0))
+	payload := cat(b(13, 1), leb(uint64(len(element))), element)
+	v := framingVector{ids: []string{"placements", "x"}, body: cat(b(1, 14), leb(uint64(len(payload))), payload, b(0))}
+	wire, err := v.bytes(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin")
+	if os.Getenv("FRAMING_WRITE") == "1" {
+		if err := os.WriteFile(path, wire, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, wire) {
+		t.Fatal("negative-zero vector differs from its builder")
+	}
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, p := range m.Units[i].Paths {
+			if !filepath.IsAbs(p) {
+				m.Units[i].Paths[j] = filepath.Join(root, p)
+			}
+		}
+	}
+	units := newUnits(m)
+	u, err := units.get("listdemo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := u.Tables["Save"]
+	if fault := framingTableFault(framingVector{}, wire); fault != "" {
+		t.Error(fault)
+	}
+	for _, shapes := range []map[string]bool{rootStructuralSpellings(st, wire), rootStoredDefaults(st, wire), nestedStructuralSpellings(u, st, wire), nestedStoredDefaults(u, st, wire)} {
+		if len(shapes) > 0 {
+			t.Errorf("negative-zero vector: %v", shapes)
+		}
+	}
+	wr, err := newWireRoot(units, "listdemo", "Save", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := wr.oracle(wire)
+	if err != nil || !answer.accepted || !bytes.Equal(answer.encoded, wire) {
+		t.Fatalf("negative-zero fixed point: accepted=%v err=%v got=%x", answer.accepted, err, answer.encoded)
+	}
+}

@@ -136,15 +136,15 @@ func defaultEnumWireID(fd *ir.Field) uint64 {
 // wireScalarDefault compares one directly encoded scalar to its declaration.
 func wireScalarDefault(fd *ir.Field, kind int, data []byte) bool {
 	if kind == ir.TableKindF32 && len(data) == 4 {
-		v := math.Float32frombits(uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24)
-		return v == float32(fd.DefFloat)
+		bits := uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24
+		return bits == math.Float32bits(float32(fd.DefFloat))
 	}
 	if kind == ir.TableKindF64 && len(data) == 8 {
 		var bits uint64
 		for j := 0; j < 8; j++ {
 			bits |= uint64(data[j]) << uint(8*j)
 		}
-		return math.Float64frombits(bits) == fd.DefFloat
+		return bits == math.Float64bits(fd.DefFloat)
 	}
 	switch fd.Type.Kind {
 	case ir.TBool, ir.TInt, ir.TBits, ir.TFixed, ir.TNamed:
@@ -411,6 +411,24 @@ func TestRootStoredDefaultsScalarAndCollectionControls(t *testing.T) {
 		}
 		if len(got) != 1 || !got[tc.defaultField] {
 			t.Errorf("%s: got %v, want %s", tc.name, got, tc.defaultField)
+		}
+	}
+}
+
+func TestFloatDefaultSpellingUsesBits(t *testing.T) {
+	t.Parallel()
+	fd := &ir.Field{DefFloat: 0}
+	for _, tc := range []struct {
+		kind               int
+		positive, negative []byte
+	}{{ir.TableKindF32, []byte{0, 0, 0, 0}, []byte{0, 0, 0, 0x80}}, {ir.TableKindF64, []byte{0, 0, 0, 0, 0, 0, 0, 0}, []byte{0, 0, 0, 0, 0, 0, 0, 0x80}}} {
+		if !wireScalarDefault(fd, tc.kind, tc.positive) || wireScalarDefault(fd, tc.kind, tc.negative) {
+			t.Errorf("kind %d: signed zero was compared by numeric value", tc.kind)
+		}
+		negative := *fd
+		negative.DefFloat = math.Copysign(0, -1)
+		if wireScalarDefault(&negative, tc.kind, tc.positive) || !wireScalarDefault(&negative, tc.kind, tc.negative) {
+			t.Errorf("kind %d: negative-zero default was not compared by bits", tc.kind)
 		}
 	}
 }

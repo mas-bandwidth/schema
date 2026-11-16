@@ -146,12 +146,9 @@ region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/regio
 # the plain arm refuses it the same way.
 root_scan_passes_damage_to_body listdemo Mixed testdata/wire/tables/fuzz-vectors/root_scan_passes_damage_to_body.bin
 
-# A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). The C# writer's default
-# elision compared a float32 or float64 as a VALUE, under which -0 == +0, so a
-# list element's x of -0 was left off the wire and the saved bytes were 57 where
-# the oracle saved 71. Elision compares bit patterns. Found by the random pass
-# at mutant 237037 of seed 24845619678 (corpus seed list_scalar_widen,
-# listdemo.Save), on the Certify wire fuzz.
+# A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). A Placement
+# array element stores x = -0; the reader and writer preserve its bit pattern.
+# This clean frame preserves the signed-zero elision premise of the fuzz finding.
 list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
 
 # A KEYED SLOT WRITTEN AGAIN DISCARDS WHAT WAS RETAINED UNDER IT (§6.6). Depth's
