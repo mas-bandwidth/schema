@@ -2559,7 +2559,7 @@ function TableVariableFromJson(c, text, report) {
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
   if (report.missingRequired !== missingBefore) { report.damaged = carried; return null; }
-  if (inp.bad || !ok || report.damaged) { report.damaged = true; return null; }
+  if (inp.bad || report.damaged || (!ok && TableVariableStrictMark(report) === strictBefore)) { report.damaged = true; return null; }
   // the one read refuses the whole text, as the wire load does (§4, §16.2)
   if (TableVariableStrictMark(report) !== strictBefore) { report.damaged = carried; return null; }
   report.damaged = carried;
