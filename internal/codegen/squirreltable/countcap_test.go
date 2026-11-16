@@ -182,8 +182,11 @@ func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 	var keys []string
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 6 || f[1] != "float" {
+		if len(f) != 6 || (f[1] != "float" && f[1] != "float_reversed") {
 			continue
+		}
+		if (f[0] == "over_cap_then_nan") != (f[1] == "float_reversed") {
+			t.Fatalf("%s has wrong schema %s", f[0], f[1])
 		}
 		wire, err := hex.DecodeString(f[2])
 		if err != nil {
@@ -195,7 +198,12 @@ func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 	if strings.Join(keys, " ") != "float_good nan_then_over_cap over_cap_then_nan" {
 		t.Fatalf("the pin's float rows are %v", keys)
 	}
-	got, out := runCountCapProbe(t, countCapFloatSchema, keys, inputs, mutate)
+	got, out := runCountCapProbe(t, countCapFloatSchema, keys[:2], inputs, mutate)
+	reversed, more := runCountCapProbe(t, "package probe\n table Root { values []int32\n f float32 }\n", keys[2:], inputs, mutate)
+	for key, value := range reversed {
+		got[key] = value
+	}
+	out += more
 	bad := map[string]string{}
 	for _, k := range keys {
 		for _, p := range countCapPaths {

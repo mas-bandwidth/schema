@@ -21,7 +21,7 @@ func TestLoadRefusalReasonPins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := map[string]*strings.Builder{"measure": {}, "fixed": {}, "float": {}}
+	rows := map[string]*strings.Builder{"measure": {}, "fixed": {}, "float": {}, "float_reversed": {}}
 	for line := range strings.SplitSeq(string(data), "\n") {
 		if line == "" || line[0] == '#' {
 			continue
@@ -46,6 +46,12 @@ func TestLoadRefusalReasonPins(t *testing.T) {
 				// the builder's count-cap refusal moves no counter and is not damage (§2.9)
 				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Unknown!=0||(rep.Refusal.Error() == \"wire_damaged\" || rep.Refusal.Error() == \"malformed\")){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
 		{"package probe\n table Root { f float32\n values []int32 }\n", "float",
+			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilder(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
+				// two refusals in one read: the first in read order names the
+				// builder load too (§2.9), and the count-cap refusal moves no counter
+				"first:=\"ok\";if strings.HasPrefix(rep.Reason,\"non_finite_float\"){first=\"non_finite_float\"}else if rep.Reason==\"count_over_extent_cap\"{first=rep.Reason};if first!=p.measure{t.Errorf(\"%s: the builder load names %s (%+v), the pin %s\",p.name,first,rep,p.measure)};" +
+				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Unknown!=0||(rep.Refusal.Error() == \"wire_damaged\" || rep.Refusal.Error() == \"malformed\")){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
+		{"package probe\n table Root { values []int32\n f float32 }\n", "float_reversed",
 			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilder(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
 				// two refusals in one read: the first in read order names the
 				// builder load too (§2.9), and the count-cap refusal moves no counter

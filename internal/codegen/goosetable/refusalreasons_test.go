@@ -28,9 +28,10 @@ type reasonRow struct{ name, schema, wire, strict, form string }
 
 // reasonSchemas are the pin table's two units, as its header states them.
 var reasonSchemas = map[string]string{
-	"measure": "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
-	"fixed":   "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
-	"float":   "package probe\n table Root { f float32\n values []int32 }\n",
+	"measure":        "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
+	"fixed":          "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
+	"float":          "package probe\n table Root { f float32\n values []int32 }\n",
+	"float_reversed": "package probe\n table Root { values []int32\n f float32 }\n",
 }
 
 func reasonRows(t *testing.T) []reasonRow {
@@ -72,7 +73,7 @@ func loadReasons(t *testing.T, override map[string][]byte) []string {
 	t.Helper()
 	rows := reasonRows(t)
 	var bad []string
-	for _, schema := range []string{"measure", "fixed", "float"} {
+	for _, schema := range []string{"measure", "fixed", "float", "float_reversed"} {
 		files := probeFiles(t, probeUnit(t, reasonSchemas[schema]), override)
 		var main strings.Builder
 		main.WriteString(probePrelude)
