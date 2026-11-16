@@ -83,8 +83,8 @@ table Root {
 import("testing";"bytes";"unsafe")
 func TestValues(t *testing.T){
  texts:=[]string{
- "{\"value\":{\"tally\":-170141183460469231731687303715884105728}}",
- "{\"value\":{\"scale\":12.25}}",
+ "{\"value\":{\"tally\":\"-170141183460469231731687303715884105728\"}}",
+ "{\"value\":{\"scale\":\"12.25\"}}",
  "{\"value\":{\"label\":\"hi\"}}",
  "{\"value\":{\"blob\":\"YWJj\"}}",
  "{\"value\":{\"samples\":[1.25,2.5]}}",

@@ -83,7 +83,7 @@ func TestExact(t *testing.T) {
 	}
 	var v Big
 	var r TableReport
-	text := []byte("{\"n\":9007199254740994,\"m\":-9223372036854775808,\"u\":18446744073709551615}")
+	text := []byte("{\"n\":\"9007199254740994\",\"m\":\"-9223372036854775808\",\"u\":\"18446744073709551615\"}")
 	if BigFromJSON(&v, text, &r) || !errors.Is(r.Err(), TableRefuseOutOfRange) {
 		t.Fatalf("a value one past each exact bound read %+v report %+v", v, r)
 	}

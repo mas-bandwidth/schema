@@ -2150,8 +2150,8 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		tableJSONSetRaw(storage, f.ElemSize, 0)
 		return true
 	}
-	// A wide integer reads as a string OR a number (§16.2). The string holds
-	// the same digits. A narrow integer is a number only; the shape check
+	// A wide integer reads as a string (§16.2). The string holds
+	// the decimal digits. A narrow integer is a number only; the shape check
 	// above already refused a string there. Neither path goes through a double.
 	var token []byte
 	if tableJSONWideIntegerKind(f.Kind) && in.valueShape() == 's' {

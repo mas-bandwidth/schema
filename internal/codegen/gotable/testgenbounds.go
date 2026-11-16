@@ -521,9 +521,9 @@ func tgIntPast(f *ir.Field) []tgVal {
 // tgIntJSON spells an integer-like raw value as its JSON token (§16.2).
 func tgIntJSON(f *ir.Field, raw *big.Int) string {
 	if f.Type.Kind == ir.TFixed {
-		return testgenFixedDecimal(raw, f.Type.FracBits)
+		return testgenWideQuote(f.Type.Width, testgenFixedDecimal(raw, f.Type.FracBits))
 	}
-	return raw.String()
+	return testgenWideQuote(f.Type.Width, raw.String())
 }
 
 // tgPutInt writes v at the kind's width, two's complement, little-endian (§3's
