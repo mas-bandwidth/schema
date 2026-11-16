@@ -567,15 +567,15 @@ local timestampParse = function(s) {
 
 local isKeyed = function(d) { return d.shape == "arr" && d.kind == 16; };
 
-// a wide integer reads as a string of digits or a number (docs/SPEC-TABLES.md
+// A wide integer reads and writes as a string of digits (docs/SPEC-TABLES.md
 // §16.2): int64, uint64, the 128-bit integers, and fixed-point storage wider
-// than 32 bits. The writer still spells one as a number.
+// than 32 bits.
 local jsonWideInteger = function(kind) {
   return kind == 5 || kind == 9 || kind == 18 || kind == 19 || kind == 23 || kind == 24 || kind == 28 || kind == 29;
 };
 local shapeMatches = function(want, got) {
   if (want == got) return true;
-  return want == 'N' && (got == 's' || got == 'n');
+  return want == 'N' && got == 's';
 };
 
 local shapeOf = function(T, d) {
@@ -2489,7 +2489,7 @@ readScalar = function(T, d, r, holder, key, depth, where) {
     holder[key] = ns;
     return true;
   }
-  // a wide integer reads as a string of digits or a number (§16.2)
+  // a wide integer reads as a string of digits (§16.2)
   local tok, integral;
   if (jsonWideInteger(d.kind) && peek(r) == '"') {
     local s = scanBytes(r, -1);

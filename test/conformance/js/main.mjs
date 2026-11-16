@@ -657,7 +657,7 @@ async function messageVerbs(unit, root) {
 // hold fixed-length arrays [N]T as map values, Text a wstring(N)), the scalar
 // corpus's SimState (scalars, tblscalars2: fixed/ufixed and 128-bit kinds),
 // the wide-text corpus's Caption and Stamp (widedemo) and the message corpus's
-// ToolMessage (messagedemo), each through its unit's
+// ToolMessage and variable ToolEnvelope (messagedemo), through their unit's
 // <Package>Variable.js, and the stream, list, backend, vocabulary and
 // evolution-pair units below. A case whose pair is not here is answered
 // `<case>.absent` beside where the answer would go, which the matrix counts as
@@ -706,6 +706,7 @@ const wireRows = [
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
+  ["messagedemo", "ToolEnvelope", "messages/MessagedemoVariable.js"],
   // the stream corpus (§2.6, §3): a union arm that is a table, the parts
   // array and the chain, and the report rows its forged counts owe
   ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],

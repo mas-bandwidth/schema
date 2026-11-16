@@ -155,7 +155,7 @@ func buildGooseVtWireVectors(t *testing.T, u *ir.Unit) ([]gooseVtWireVec, []byte
 	}
 	leafTID := ir.TableWireId(u.Tables["Leaf"].WireName())
 
-	validRichWire := encodeJSON("Root", `{"spot":{"x":1.5,"y":2.5,"tag":7},"cfg":{"scale":2,"name":"cfg","spot":{"x":3,"y":4,"tag":8},"keyed":{"alpha":10,"gamma":30}},"renamed":42,"wide":-12345678901234567890,"text":"hello","caption":"мир","mood":"gamma","keyed":{"alpha":1,"beta":2,"gamma":3},"xs":[5,6],"raw":"AAECAw==","bounded":[{"x":1,"y":2,"tag":1}],"ptrs":[{"id":1,"name":"a","next":null},null],"choice":{"spot":{"x":9,"y":10,"tag":3}},"choices":[{"xs":[1,2]},{"caption":"hi"}],"opt":[7,8],"lookup":{"3":30,"5":50},"head":{"id":9,"name":"h","next":{"id":10,"name":"n","next":null}},"blob":"AAEC","note_a":"same","note_b":"same"}`)
+	validRichWire := encodeJSON("Root", `{"spot":{"x":1.5,"y":2.5,"tag":7},"cfg":{"scale":2,"name":"cfg","spot":{"x":3,"y":4,"tag":8},"keyed":{"alpha":10,"gamma":30}},"renamed":42,"wide":"-12345678901234567890","text":"hello","caption":"мир","mood":"gamma","keyed":{"alpha":1,"beta":2,"gamma":3},"xs":[5,6],"raw":"AAECAw==","bounded":[{"x":1,"y":2,"tag":1}],"ptrs":[{"id":1,"name":"a","next":null},null],"choice":{"spot":{"x":9,"y":10,"tag":3}},"choices":[{"xs":[1,2]},{"caption":"hi"}],"opt":[7,8],"lookup":{"3":30,"5":50},"head":{"id":9,"name":"h","next":{"id":10,"name":"n","next":null}},"blob":"AAEC","note_a":"same","note_b":"same"}`)
 
 	vecs := []gooseVtWireVec{
 		{

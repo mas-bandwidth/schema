@@ -111,6 +111,8 @@ type tableGen struct {
 	retainIndex   string
 	retainArm     bool
 	regional      bool
+	elides        bool   // the field read being emitted is one its writer elides at its default
+	sink          string // the element read's not-at-default flag (canonical.go)
 	armOffset     *int64
 	viewPacket    map[string]int
 	viewUnions    map[string]int
@@ -420,6 +422,10 @@ func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 // generateForms is the whole output, and the optional form each file belongs
 // to (0 for the core).
 func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
+	return generateFormsMode(u, lineage, s, true)
+}
+
+func generateFormsMode(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, prune bool) (map[string][]byte, map[string]Form, error) {
 	// the Go escape (SPEC.md §4.6): a table named with a Go word is emitted
 	// under its escaped spelling; a unit without one is returned as it is
 	if esc := goEscapeTables(u); esc != u {
@@ -658,7 +664,17 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		}
 		maps.Copy(out, view)
 	}
-	return out, forms, goname.RespellFiles(out) // every identifier in Go's initialisms
+	if err := goname.RespellFiles(out); err != nil { // every identifier in Go's initialisms
+		return nil, nil, err
+	}
+	if prune {
+		pruned, err := pruneUnreferencedDeclarations(out, schemaAPIEntries(u, out))
+		if err != nil {
+			return nil, nil, err
+		}
+		return pruned, forms, nil
+	}
+	return out, forms, nil
 }
 
 // emitForm assembles one optional form's buffer into its own file, when the
@@ -991,6 +1007,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	firstUse    tableFirstUse // the form-1 load's first-use count (canonical.go)
 	// LayoutHash is THE FILE'S hash, set by the layout refusals
 	// (docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
 	// layout.
@@ -1003,7 +1020,7 @@ type TableReport struct {
 // meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
 // OneVerdict).
 func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
-	if r == nil || r.Refusal != TableRefuseOk { return }
+	if r == nil { return }; r.firstUse = tableFirstUse{}; if r.Refusal != TableRefuseOk { return }
 	r.Refusal, r.Field = reason, field
 	if r.Reason == "" { r.Reason = reason.Error(); if field != "" { r.Reason += ": " + field } }
 }
@@ -1275,7 +1292,7 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 		}
 	}
 }
-`
+` + tableFirstUseSource
 }
 
 // tableKeyedAccessor is the enum-keyed array's one indexing helper
@@ -1424,9 +1441,15 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 // RuntimeShared, §8.4's default, cuts the shared declarations and aliases them
 // to SharedRuntimeImport.
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
-	out, err := GenerateLineageSurface(u, lineage, s)
-	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
+	if err := refuseUndeclaredSurface(u, s); err != nil {
+		return nil, err
+	}
+	out, _, err := generateFormsMode(u, lineage, s, false)
+	if err != nil {
 		return out, err
+	}
+	if rt == RuntimeStandalone || len(out) == 0 {
+		return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 	}
 	sr, err := loadSharedRuntime()
 	if err != nil {
@@ -1467,7 +1490,7 @@ func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 		}
 		out[other] = formatted
 	}
-	return out, nil
+	return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 }
 
 // SharedRuntimeFiles is the shared package's source, keyed by file name.
@@ -1714,7 +1737,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}
-		files, err := GenerateLineage(u, nil)
+		files, _, err := generateFormsMode(u, nil, DefaultSurfaces(), false)
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}

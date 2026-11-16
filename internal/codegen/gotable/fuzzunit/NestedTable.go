@@ -237,7 +237,8 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -730,7 +731,7 @@ var ArchiveConfigFixedDst = []TableFixedDst{
 	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // count
 }
 
-var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 332)
+var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 352)
 
 var ArchiveConfigFixedKnown = []TableFixedKnownLayout{
 	{

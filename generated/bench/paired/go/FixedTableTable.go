@@ -188,7 +188,8 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !FixedTableLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !FixedTableLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -440,7 +441,7 @@ var FixedTableFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), 0, 0, 0, 0, 0, 0}, // idle_ticks
 }
 
-var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
+var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 313)
 
 var FixedTableFixedKnown = []TableFixedKnownLayout{
 	{

@@ -49,7 +49,7 @@ func TestUncoveredPathsPublic(t *testing.T) {
 		"timestamp skip":                   TestTimestampKindIsSkippedAtEightBytes,
 		"unknown field":                    TestUnknownFieldIsSkipped,
 		"unknown form":                     TestUnknownFormIsARefusal,
-		"unnameable entry":                 TestUnnameableEntryCountsNothing,
+		"unnameable entry":                 TestUnusedIdTableEntryIsRefused,
 		"unsigned widening clamp":          TestUnsignedWideningClampsAtDeclaredWidth,
 		"variable root":                    TestVariableRootRidesTheWire,
 		"worked save":                      TestWorkedSaveIsTheBytesOnThePage,

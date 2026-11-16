@@ -374,7 +374,8 @@ func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TeamConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TeamConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -794,7 +795,8 @@ func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) boo
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GunnerConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GunnerConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1208,7 +1210,8 @@ func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) boo
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TurretConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TurretConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1908,6 +1911,10 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !TurretConfigLoadBody(&elem, &value.Turrets[int(slot)-1]) {
 						return false
 					}
@@ -1961,7 +1968,8 @@ func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !HullConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !HullConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -2444,6 +2452,10 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 					elem.Path = r.Path.step(2, uint32(int(slot)-1))
 					elem.Depth += 1
 					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if len(elem.Buffer) == 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3083,6 +3095,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !TeamConfigLoadBody(&elem, &value.Teams[int(slot)-1]) {
 						return false
 					}
@@ -3169,6 +3185,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !HullConfigLoadBody(&elem, &value.Hulls[int(slot)-1]) {
 						return false
 					}
@@ -3244,7 +3264,8 @@ func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool 
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !KeyedConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !KeyedConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -3984,6 +4005,10 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !TeamConfigLoadBodyRetain(&elem, &value.Teams[int(slot)-1]) {
 						return false
 					}
@@ -4071,6 +4096,10 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 					elem.Path = r.Path.step(1, uint32(int(slot)-1))
 					elem.Depth += 1
 					if elem.Depth > tableBinaryMaxDepth {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if len(elem.Buffer) == 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -4515,6 +4544,7 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -4527,6 +4557,13 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 							return false
 						}
 						value.PerTeam[int(slot)-1] = int32(v)
+					}
+					if value.PerTeam[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4561,7 +4598,8 @@ func ScoreBoardLoad(value *ScoreBoardRow, data []byte, report *TableReport) bool
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !ScoreBoardLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !ScoreBoardLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -4943,6 +4981,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					elem.Path = r.Path.step(0, uint32(int(slot)-1))
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4956,6 +4995,13 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 							return false
 						}
 						value.PerTeam[int(slot)-1] = int32(v)
+					}
+					if value.PerTeam[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

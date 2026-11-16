@@ -527,20 +527,19 @@ public final class TableCookWrite {
     private static void store(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
         if (f.presentOffset >= 0) {
-            Object present = field(source, f.sourceName + "Present");
-            put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
+            boolean present = Boolean.TRUE.equals(field(source, f.sourceName + "Present"));
+            put(out, order, at + f.presentOffset, present ? 1 : 0, 1);
+            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (§7.2;
+            // docs/rulings.json fixed-dead-bytes-are-zero): it stays the zero
+            // write() laid down, whatever the field's declared default is,
+            // which stays a READ rule (internal/tablecook/region.go)
+            if (!present) { return; }
         }
         // a LIST's or a MAP's holder is written by the extent's carve, which
         // places the array it points at (§7.6)
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP || (f.storage == TableCookStorage.STRING && !f.isPointer && f.countOffset < 0)) { return; }
         Object v = field(source, f.sourceName);
         long dest = at + f.offset;
-        if (absentRecord(source, f)) {
-            if (f.countOffset >= 0) { put(out, order, at + f.countOffset, 0, 4); }
-            int slots = f.isArray ? f.arrayBound : 1;
-            for (int i = 0; i < slots; i++) { value(p, out, order, dest + (long) i * f.elemSize, source, null, f); }
-            return;
-        }
         if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
             byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
                     : (byte[]) v;
@@ -557,11 +556,15 @@ public final class TableCookWrite {
             int used = count(source, f, v);
             assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(v) >= used);
             if (f.countOffset >= 0) { put(out, order, at + f.countOffset, used, 4); }
-            // §7.2: ALL N slots are written, and a slot past the live elements
-            // holds the VALUE-INITIALIZED element — zero for a scalar, the
-            // element record's declared defaults for a record
+            // §7.2: a COUNTED array writes its live elements, and a slot past
+            // the count is DEAD BYTES that stay the zero write() laid down
+            // (docs/rulings.json fixed-dead-bytes-are-zero). A FIXED array
+            // writes all N slots, and a slot past the value's elements holds
+            // the VALUE-INITIALIZED element: zero for a scalar, the element
+            // record's declared defaults for a record
             int live = f.countOffset >= 0 ? used : Math.min(used, length(v));
-            for (int i = 0; i < f.arrayBound; i++) {
+            int slots = f.countOffset >= 0 ? used : f.arrayBound;
+            for (int i = 0; i < slots; i++) {
                 value(p, out, order, dest + (long) i * f.elemSize, source, i < live ? element(v, i) : null, f);
             }
         } else {

@@ -1925,6 +1925,111 @@ pub static KNOWN_IDS: &[u64] = &[
     0xffffffffffffffff,
 ];
 
+// A complete traversal can prove an unused transport ID (§3). An incomplete
+// traversal defers to the existing framing/value walk, which owns its named
+// refusal (including count caps and non-finite diagnostics).
+pub fn table_ids_all_used(body: &[u8], ids: &[u64]) -> Option<bool> {
+    if ids.len() > 4096 { return None; }
+    let mut walk = TableIdUse { ids, seen: [false; 4096] };
+    walk.body(body, true, 0)?;
+    Some(walk.seen[..ids.len()].iter().all(|used| *used))
+}
+
+struct TableIdUse<'a> { ids: &'a [u64], seen: [bool; 4096] }
+
+impl TableIdUse<'_> {
+    fn reference(&mut self, reference: u64) -> Option<u64> {
+        let index = usize::try_from(reference.checked_sub(1)?).ok()?;
+        let id = *self.ids.get(index)?;
+        self.seen[index] = true;
+        Some(id)
+    }
+
+    fn frame<'b>(bytes: &'b [u8], at: &mut usize) -> Option<&'b [u8]> {
+        let length = usize::try_from(leb_read(bytes, at)?).ok()?;
+        let end = at.checked_add(length)?;
+        let payload = bytes.get(*at..end)?;
+        *at = end;
+        Some(payload)
+    }
+
+    fn body(&mut self, bytes: &[u8], root: bool, depth: usize) -> Option<()> {
+        let mut at = 0;
+        loop {
+            let reference = leb_read(bytes, &mut at)?;
+            if reference == 0 { return (at == bytes.len()).then_some(()); }
+            let id = self.reference(reference)?;
+            let kind = *bytes.get(at)?; at += 1;
+            if id == NODE_TABLE_ID {
+                if !root || kind != 12 { return None; }
+                self.nodes(Self::frame(bytes, &mut at)?, depth)?;
+            } else {
+                self.payload(bytes, &mut at, kind, depth)?;
+            }
+        }
+    }
+
+    fn nodes(&mut self, bytes: &[u8], depth: usize) -> Option<()> {
+        let mut at = 0;
+        let count = leb_read(bytes, &mut at)?;
+        if count > bytes.len() as u64 { return None; }
+        for _ in 0..count {
+            let type_id = self.reference(leb_read(bytes, &mut at)?)?;
+            let body = Self::frame(bytes, &mut at)?;
+            if type_id != BYTES_TYPE_ID && type_id != STRING_TYPE_ID {
+                self.body(body, false, depth)?;
+            }
+        }
+        (at == bytes.len()).then_some(())
+    }
+
+    fn payload(&mut self, bytes: &[u8], at: &mut usize, kind: u8, depth: usize) -> Option<()> {
+        match kind {
+            30 => {
+                let reference = leb_read(bytes, at)?;
+                if reference != 0 { self.reference(reference)?; }
+            }
+            15 => {
+                let reference = leb_read(bytes, at)?;
+                if reference != 0 {
+                    self.reference(reference)?;
+                    let arm_kind = *bytes.get(*at)?; *at += 1;
+                    let structural = matches!(arm_kind, 13 | 14 | 15 | 16);
+                    if structural && depth >= BINARY_MAX_DEPTH { return None; }
+                    self.content(Self::frame(bytes, at)?, arm_kind, depth + usize::from(structural))?;
+                }
+            }
+            13 | 14 | 16 => self.content(Self::frame(bytes, at)?, kind, depth)?,
+            _ => { if !leb_skip(bytes, at, bytes.len(), kind) { return None; } }
+        }
+        Some(())
+    }
+
+    fn content(&mut self, bytes: &[u8], kind: u8, depth: usize) -> Option<()> {
+        if matches!(kind, 13 | 14 | 16) {
+            if depth >= BINARY_MAX_DEPTH { return None; }
+            if kind == 13 { return self.body(bytes, false, depth + 1); }
+            let element = *bytes.first()?;
+            let mut at = 1;
+            let count = leb_read(bytes, &mut at)?;
+            if count > bytes.len() as u64 { return None; }
+            for _ in 0..count {
+                if kind == 16 {
+                    self.reference(leb_read(bytes, &mut at)?)?;
+                    self.content(Self::frame(bytes, &mut at)?, element, depth + 1)?;
+                } else {
+                    self.payload(bytes, &mut at, element, depth + 1)?;
+                }
+            }
+            return (at == bytes.len()).then_some(());
+        }
+        if matches!(kind, 12 | 31 | 32) { return Some(()); }
+        let mut at = 0;
+        self.payload(bytes, &mut at, kind, depth)?;
+        (at == bytes.len()).then_some(())
+    }
+}
+
 #[allow(dead_code)]
 pub fn json_newline(out: &mut String, depth: usize) {
     out.push('\n');
@@ -2505,15 +2610,15 @@ impl<'a> Jr<'a> {
     }
     /// An integer field's value (docs/SPEC-TABLES.md §16.2, **Numbers**): an
     /// INTEGER TOKEN only — digits with an optional minus, no fraction, no
-    /// exponent, not -0 — and, for a kind wider than 32 bits, the same digits
-    /// as a JSON string. The value is exact and never passes through a double.
+    /// exponent, not -0 — as a JSON number at up to 32 bits, or a JSON
+    /// string for a wider kind. The value is exact and never passes through a double.
     /// A value of another JSON type, or a token that is not an integer token,
     /// is kind_mismatch, skipped.
-    pub fn read_int(&mut self, allow_string: bool) -> Option<i128> {
+    pub fn read_int(&mut self, string_only: bool) -> Option<i128> {
         let c = self.peek();
         let token: String;
         if c == b'"' {
-            if !allow_string {
+            if !string_only {
                 self.damaged = true;
                 self.skip_value();
                 return None;
@@ -2521,7 +2626,7 @@ impl<'a> Jr<'a> {
             let Some(s) = self.read_string() else { self.damaged = true; return None; };
             token = s;
         } else {
-            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+            if string_only || matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
                 self.damaged = true;
                 self.skip_value();
                 return None;
@@ -2542,19 +2647,19 @@ impl<'a> Jr<'a> {
     }
     /// A WIDE value (docs/SPEC-TABLES.md §16.2, §16.14): a 128-bit integer's
     /// exact value, or a fixed(I, F)'s raw integer. An INTEGER takes an
-    /// integer token only — from a number token, or, for a kind wider than 32
-    /// bits, from a JSON string of the same digits. A FIXED value is read
-    /// EXACTLY from a string or a number token whose value the Q I.F grid
+    /// integer token only — from a number token at up to 32 bits, or from a
+    /// JSON string for a wider kind. A FIXED value is read EXACTLY from the
+    /// corresponding number token or string whose value the Q I.F grid
     /// holds — `2`, `2.0` and `20e-1` are one value — with no binary
     /// float between, as two's complement in a u128. A digit the grid cannot
     /// hold is kind_mismatch, the wrong shape, never rounded; a magnitude past
     /// 128 bits saturates and counts held; a value of another JSON type is
     /// kind_mismatch, skipped. The caller clamps to the field's raw range.
-    pub fn read_wide(&mut self, signed: bool, frac: u32, integer: bool, allow_string: bool) -> Option<u128> {
+    pub fn read_wide(&mut self, signed: bool, frac: u32, integer: bool, string_only: bool) -> Option<u128> {
         let c = self.peek();
         let token: String;
         if c == b'"' {
-            if !allow_string {
+            if !string_only {
                 self.damaged = true;
                 self.skip_value();
                 return None;
@@ -2562,7 +2667,7 @@ impl<'a> Jr<'a> {
             let Some(s) = self.read_string() else { self.damaged = true; return None; };
             token = s;
         } else {
-            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+            if string_only || matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
                 self.damaged = true;
                 self.skip_value();
                 return None;

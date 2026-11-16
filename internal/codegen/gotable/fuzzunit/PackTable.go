@@ -351,7 +351,8 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1004,7 +1005,8 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1827,7 +1829,8 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -2951,6 +2954,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBody(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -3035,6 +3042,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3047,6 +3055,13 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 							return false
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
+					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -3153,7 +3168,8 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -4002,6 +4018,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBodyRetain(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -4089,6 +4109,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					elem.Path = r.Path.step(3, uint32(int(slot)-1))
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4102,6 +4123,13 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 							return false
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
+					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

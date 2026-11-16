@@ -2,7 +2,8 @@
 
 A fixed [N]T or counted [..N]T array of a declared type by value (a table or
 a packet type, docs/PORT-PYTHON.md) rides the same body with element kind 13,
-and its length is held to the declaration on write and on read.
+and the writer requires the declared length; a shorter historical array is
+padded on read, and a longer one is refused.
 
 An unbounded array is a counted array whose count the data decides: kind 14,
 the element kind, the count, then the elements. Nothing new rides the wire;
@@ -28,6 +29,7 @@ module one element at a time. Both shapes give the same value and the same
 bytes; TestPythonVtUnboundedShapeBench holds them to that and times them.
 """
 
+import math
 import struct
 from typing import Any, cast
 
@@ -125,6 +127,29 @@ def _read_bulk(sub: Any, element: FieldDesc, count: int, ctx: Any) -> list[Any] 
     return list(values)
 
 
+
+def _widens(wire: int, declared: int) -> bool:
+    signed = (2, 3, 4, 5, 18)
+    unsigned = (6, 7, 8, 9, 19)
+    return ((wire in signed and declared in signed and signed.index(wire) < signed.index(declared))
+            or (wire in unsigned and declared in unsigned and unsigned.index(wire) < unsigned.index(declared))
+            or (wire == 10 and declared == 11))
+
+
+def _read_widened(sub: Any, wire: int, element: FieldDesc, count: int) -> list[Any]:
+    if wire == 10:
+        floats = struct.unpack(f"<{count}f", sub.take(4 * count))
+        if any(not math.isfinite(value) for value in floats):
+            raise Refused("non_finite_float", element.name)
+        return list(floats)
+    width = {2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 2, 8: 4, 9: 8}[wire]
+    signed = wire in (2, 3, 4, 5)
+    code = _SIGNED_CODE[width] if signed else _UNSIGNED_CODE[width]
+    values = struct.unpack(f"<{count}{code}", sub.take(width * count))
+    if values and (min(values) < element.lo or max(values) > element.hi):
+        raise Refused("out_of_range", element.name)
+    return list(values)
+
 def _write_walk(w: Any, element: FieldDesc, value: list[Any], ctx: Any) -> None:
     """The per-element shape: each element through its own kind module."""
     codec = cast(kinds._ElementKind, kinds._REGISTRY[element.codec])
@@ -162,25 +187,28 @@ class _Array:
         ek = sub.byte()
         if not _element_kind_allowed(ek):
             raise Refused("wire_damaged", "an array element kind outside the closed list")
+        widened = False
         if ek != fd.elem_kind:
-            raise Refused(
-                "kind_mismatch",
-                f"{fd.name} rides as an array of kind {ek}, not {fd.elem_kind}",
-            )
+            if not _widens(ek, fd.elem_kind):
+                raise Refused(
+                    "kind_mismatch",
+                    f"{fd.name} rides as an array of kind {ek}, not {fd.elem_kind}",
+                )
+            widened = True
         count = sub.varint()
         if count > _MAX_COUNT:
             raise Refused(
                 "count_over_extent_cap",
                 f"an array count of {count} is past the int32 storage cap",
             )
-        if fd.array_kind == 1 and count != fd.bound:
+        if fd.array_kind == 1 and count > fd.bound:
             raise Refused(
-                "wire_damaged",
-                f"{fd.name} carries {count} elements where {fd.bound} are declared",
+                "count_over_bound",
+                f"{fd.name} carries {count} elements where at most {fd.bound} are declared",
             )
         if fd.array_kind == 2 and (count < fd.array_min or (fd.bound and count > fd.bound)):
             raise Refused(
-                "wire_damaged",
+                "count_over_bound",
                 f"{fd.name} carries {count} elements outside [{fd.array_min}, {fd.bound}]",
             )
         remaining = length - sub.pos
@@ -189,16 +217,22 @@ class _Array:
         element = fd.element
         if element is None:
             raise Refused("unsupported_kind", "an array carries no element descriptor")
-        items = _read_bulk(sub, element, count, ctx)
-        if items is None:
-            items = _read_walk(sub, element, count, ctx)
+        if widened:
+            items = _read_widened(sub, ek, element, count)
+            ctx.widened += 1
+        else:
+            bulk = _read_bulk(sub, element, count, ctx)
+            items = bulk if bulk is not None else _read_walk(sub, element, count, ctx)
         if sub.pos != length:
             raise Refused("wire_damaged", "bytes left inside an array's L after its elements")
-        if count == 0 and not fd.optional:
-            raise Refused(
-                "non_canonical",
-                f"{fd.name} rides present and empty, its declared default, which the writer elides",
-            )
+        if fd.text_total and sum(len(item.encode("utf-8")) for item in items if item is not None) > fd.text_total:
+            raise Refused("length_over_bound", f"{fd.name} exceeds its text total")
+        if fd.array_kind == 1 and count < fd.bound:
+            if element.codec == "table":
+                from .descriptor import new_by_name
+                items.extend(new_by_name(element.target) for _ in range(fd.bound - count))
+            else:
+                items.extend(element.default for _ in range(fd.bound - count))
         return items
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:

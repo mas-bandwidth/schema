@@ -427,11 +427,16 @@ static SCHEMA_UNUSED int table_node_scan_open( TableNodeScan * scan )
             scan->present = 1;
             if ( kind != 12 || !table_reader_span(fields,&scan->payload) )
             { scan->damaged = 1; return 0; }
+            /* The numbering is the root's final field (SPEC-TABLES §3.1).
+               Only the root terminator may follow its complete payload. */
+            if ( !table_reader_leb(fields,&ref) || ref != 0 || fields->offset != fields->size )
+            { scan->damaged = 1; return 0; }
+            break;
         }
         else if ( !table_reader_skip(fields,kind) ) { break; }
     }
     if ( !scan->present ) { return 0; }
-    if ( !table_reader_leb(&scan->payload,&scan->declared) ) { scan->damaged = 1; return 0; }
+    if ( !table_reader_leb(&scan->payload,&scan->declared) || scan->declared == 0 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -1091,6 +1096,7 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id;\n    int64_t data=%s(reader), records=0;\n    if(data<0) { return -1; }\n", g.sym(n, "wire_storage"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n", g.sym(n, "node_lookup"))
 	g.pf("        if (type!=NULL) { int64_t size=table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }\n        records++;\n    }\n")
+	g.pf("    if (!table_node_scan_whole(&scan)) { if(reader->report!=NULL) { reader->report->refused=1; reader->report->reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; } return -1; }\n")
 	g.pf("    if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }\n")
 	g.pf("    *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);\n}\n")
 	strictShared := ""
@@ -1160,7 +1166,9 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	}
 	// A RECORD'S TERMINATOR IS THE END OF ITS PAYLOAD (docs/SPEC-TABLES.md §3,
 	// §3.1): a body that ends before its record's L is damage, as an element's is.
-	recordWhole := "if(body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }"
+	// A storage-cap refusal intentionally stops that body early (§2.9); its
+	// named refusal must survive the record end check.
+	recordWhole := "if(!nodes->refused && body.offset!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }"
 	for _, t := range ir.PointerReachable(st) {
 		if g.retain {
 			g.pf("                    case UINT64_C(0x%016x):retention.path=table_retain_root(value,(uint32_t)k+2);%s(&body,(%s *)value);%sbreak;\n", ir.TableWireId(t.WireName()), g.api(t.Name, "load_body"), t.Name, recordWhole)
