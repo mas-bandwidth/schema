@@ -1,25 +1,27 @@
 package pythontable
 
 import (
-    "strings"
-    "fmt"
-    "maps"
-    "os"
-    "path/filepath"
-    "strconv"
-    "testing"
+	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
 
-    "github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 )
 
 // TestPythonHandtextSyntax exercises the grammar independently of the value walk.
 func TestPythonHandtextSyntax(t *testing.T) {
-    t.Parallel()
-    files, err := Generate(loadUnit(t, coreSchema))
-    if err != nil { t.Fatal(err) }
-    dir := t.TempDir()
-    writeTree(t, dir, files)
-    src := pyrun.ImportPrelude + `
+	t.Parallel()
+	files, err := Generate(loadUnit(t, coreSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	src := pyrun.ImportPrelude + `
 from core._schema.textform_scan import parse, TextError
 samples = [b'(:x 1 :s "a; b" :a (:V null))', b'; note\r\n() ;end', b'(:x 1e2)', b'(:x 1,)', b'() ()', b'(:x "\\ud800")', b';\x00\n()', b'(:x 1\r)']
 for s in samples:
@@ -35,20 +37,24 @@ for kw in ({"max_bytes": 2}, {"max_tokens": 1}, {"max_nodes": 1}, {"max_allocati
     else:
         raise AssertionError(kw)
 `
-    inputs := map[string][]byte{"main.py": []byte(src)}
-    want := "list\nlist\nlist\ntext_syntax\ntext_syntax\ntext_encoding\ntext_syntax\ntext_syntax\n"
-    for _, run := range []func(testing.TB,string,string,map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
-        if got := string(run(t, dir, "main.py", inputs)); got != want { t.Fatalf("syntax: got %s want %s", strings.TrimSpace(got), strings.TrimSpace(want)) }
-    }
+	inputs := map[string][]byte{"main.py": []byte(src)}
+	want := "list\nlist\nlist\ntext_syntax\ntext_syntax\ntext_encoding\ntext_syntax\ntext_syntax\n"
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", inputs)); got != want {
+			t.Fatalf("syntax: got %s want %s", strings.TrimSpace(got), strings.TrimSpace(want))
+		}
+	}
 }
 
 func TestPythonHandtextResolution(t *testing.T) {
-    t.Parallel()
-    files, err := Generate(loadUnit(t, coreSchema))
-    if err != nil { t.Fatal(err) }
-    dir := t.TempDir()
-    writeTree(t, dir, files)
-    src := pyrun.ImportPrelude + `
+	t.Parallel()
+	files, err := Generate(loadUnit(t, coreSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	src := pyrun.ImportPrelude + `
 from core import Counters
 from core._schema.textform import load
 from core._schema.textform_scan import TextError
@@ -59,19 +65,21 @@ for data in (b'(:small 1e1 :enabled true)', b'(:small 1.5)', b'(:small 128)', b'
     except TextError as e:
         print(e.reason)
 `
-    inputs := map[string][]byte{"main.py": []byte(src)}
-    want := "10 True\ntext_kind_mismatch\ntext_bound\ntext_unknown_key\ntext_duplicate_key\n"
-    for _, run := range []func(testing.TB,string,string,map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
-        if got := string(run(t, dir, "main.py", inputs)); got != want { t.Fatalf("resolution: got %s want %s", strings.TrimSpace(got), strings.TrimSpace(want)) }
-    }
+	inputs := map[string][]byte{"main.py": []byte(src)}
+	want := "10 True\ntext_kind_mismatch\ntext_bound\ntext_unknown_key\ntext_duplicate_key\n"
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", inputs)); got != want {
+			t.Fatalf("resolution: got %s want %s", strings.TrimSpace(got), strings.TrimSpace(want))
+		}
+	}
 }
 
 func TestPythonHandtextReservedName(t *testing.T) {
-    t.Parallel()
-    unit := loadUnit(t, "package probe\ntable Root { from_text_form int32 }\n")
-    if _, err := Generate(unit); err == nil || !strings.Contains(err.Error(), "from_text_form") {
-        t.Fatalf("generated method collision was not refused: %v", err)
-    }
+	t.Parallel()
+	unit := loadUnit(t, "package probe\ntable Root { from_text_form int32 }\n")
+	if _, err := Generate(unit); err == nil || !strings.Contains(err.Error(), "from_text_form") {
+		t.Fatalf("generated method collision was not refused: %v", err)
+	}
 }
 
 const handtextSchema = `package probe
@@ -117,46 +125,64 @@ table Graph {
 `
 
 func TestPythonHandtextCorpus(t *testing.T) {
-    t.Parallel()
-    for _, fixed := range []bool{false, true} {
-        t.Run(fmt.Sprintf("fixed=%t", fixed), func(t *testing.T) {
-            t.Parallel()
-            testPythonHandtextCorpus(t, fixed)
-        })
-    }
+	t.Parallel()
+	for _, fixed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fixed=%t", fixed), func(t *testing.T) {
+			t.Parallel()
+			testPythonHandtextCorpus(t, fixed)
+		})
+	}
 }
 
 func testPythonHandtextCorpus(t *testing.T, fixed bool) {
-    schema := handtextSchema
-    if fixed { schema = strings.Replace(schema, "table Document {", "fixed table Document {", 1) }
-    files, err := Generate(loadUnit(t, schema))
-    if err != nil { t.Fatal(err) }
-    dir := t.TempDir()
-    writeTree(t, dir, files)
-    root := filepath.Join("..", "..", "..", "test", "conformance", "textform")
-    inputs := map[string][]byte{}
-    for _, stem := range []string{"roadmap", "layout", "kinds", "variable"} {
-        for _, ext := range []string{"input.sexp", "rewrite.sexp"} {
-            b, err := os.ReadFile(filepath.Join(root, stem+"."+ext)); if err != nil { t.Fatal(err) }
-            inputs[stem+"."+ext] = b
-        }
-    }
-    for _, stem := range []string{"roadmap", "layout"} {
-        b, err := os.ReadFile(filepath.Join(root, stem+".edited.sexp")); if err != nil { t.Fatal(err) }
-        inputs[stem+".edited.sexp"] = b
-    }
-    paths, err := filepath.Glob(filepath.Join(root,"refusals", "*.sexp")); if err != nil { t.Fatal(err) }
-    if len(paths) != 24 { t.Fatalf("expected 24 refusal vectors, got %d", len(paths)) }
-    names := make([]string, 0, len(paths))
-    for _, path := range paths {
-        stem := strings.TrimSuffix(filepath.Base(path), ".sexp")
-        for _, ext := range []string{"sexp", "reason"} {
-            b, err := os.ReadFile(filepath.Join(root,"refusals",stem+"."+ext)); if err != nil { t.Fatal(err) }
-            inputs[stem+"."+ext] = b
-        }
-        names = append(names, stem)
-    }
-    src := pyrun.ImportPrelude + `
+	schema := handtextSchema
+	if fixed {
+		schema = strings.Replace(schema, "table Document {", "fixed table Document {", 1)
+	}
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	root := filepath.Join("..", "..", "..", "test", "conformance", "textform")
+	inputs := map[string][]byte{}
+	for _, stem := range []string{"roadmap", "layout", "kinds", "variable"} {
+		for _, ext := range []string{"input.sexp", "rewrite.sexp"} {
+			b, err := os.ReadFile(filepath.Join(root, stem+"."+ext))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inputs[stem+"."+ext] = b
+		}
+	}
+	for _, stem := range []string{"roadmap", "layout"} {
+		b, err := os.ReadFile(filepath.Join(root, stem+".edited.sexp"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[stem+".edited.sexp"] = b
+	}
+	paths, err := filepath.Glob(filepath.Join(root, "refusals", "*.sexp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 24 {
+		t.Fatalf("expected 24 refusal vectors, got %d", len(paths))
+	}
+	names := make([]string, 0, len(paths))
+	for _, path := range paths {
+		stem := strings.TrimSuffix(filepath.Base(path), ".sexp")
+		for _, ext := range []string{"sexp", "reason"} {
+			b, err := os.ReadFile(filepath.Join(root, "refusals", stem+"."+ext))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inputs[stem+"."+ext] = b
+		}
+		names = append(names, stem)
+	}
+	src := pyrun.ImportPrelude + `
 from probe import Document, Graph
 from pathlib import Path
 import struct
@@ -200,66 +226,87 @@ for stem in ` + fmt.Sprintf("%#v", names) + `:
         raise AssertionError((stem, "accepted", want))
 print("refusals", 24)
 `
-    // Use a Python tuple literal rather than Go's slice formatting.
-    src = strings.Replace(src, fmt.Sprintf("%#v", names), "("+strings.Join(quotePythonNames(names), ",")+",)", 1)
-    inputs["main.py"] = []byte(src)
-    for _, run := range []func(testing.TB,string,string,map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
-        if got := string(run(t,dir,"main.py",inputs)); got != "positive 4\nrefusals 24\n" { t.Fatalf("corpus: %s", got) }
-    }
-    if out, err := pyrun.Analyze(t, dir, "probe"); err != nil { t.Fatalf("mypy: %s", out) }
+	// Use a Python tuple literal rather than Go's slice formatting.
+	src = strings.Replace(src, fmt.Sprintf("%#v", names), "("+strings.Join(quotePythonNames(names), ",")+",)", 1)
+	inputs["main.py"] = []byte(src)
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", inputs)); got != "positive 4\nrefusals 24\n" {
+			t.Fatalf("corpus: %s", got)
+		}
+	}
+	if out, err := pyrun.Analyze(t, dir, "probe"); err != nil {
+		t.Fatalf("mypy: %s", out)
+	}
 }
 
 func quotePythonNames(names []string) []string {
-    out := make([]string, len(names))
-    for i, name := range names { out[i] = strconv.Quote(name) }
-    return out
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = strconv.Quote(name)
+	}
+	return out
 }
 
 func TestPythonHandtextNegativeControl(t *testing.T) {
-    t.Parallel()
-    files, err := Generate(loadUnit(t, coreSchema))
-    if err != nil { t.Fatal(err) }
-    for _, control := range []struct{name, original, replacement, script string}{
-        {"rewrite", "return self.source\n", "return self.source.strip()\n", `doc = Counters.from_text_form(b" ; keep\n(:small 7)\n")
+	t.Parallel()
+	files, err := Generate(loadUnit(t, coreSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, control := range []struct{ name, original, replacement, script string }{
+		{"rewrite", "return self.source\n", "return self.source.strip()\n", `doc = Counters.from_text_form(b" ; keep\n(:small 7)\n")
 assert doc.write() == b" ; keep\n(:small 7)\n", "HANDTEXT_REWRITE_CONTROL"`},
-        {"field", "field = fields.get(name)\n        if field is None:", "field = fields.get('sabotaged:' + name)\n        if field is None:", `doc = Counters.from_text_form(b"(:small 7)")
+		{"field", "field = fields.get(name)\n        if field is None:", "field = fields.get('sabotaged:' + name)\n        if field is None:", `doc = Counters.from_text_form(b"(:small 7)")
 assert doc.value.small == 7, "HANDTEXT_FIELD_CONTROL"`},
-    } {
-        copied := maps.Clone(files)
-        path := "core/_schema/textform.py"
-        source := string(copied[path])
-        if strings.Count(source, control.original) != 1 { t.Fatalf("%s anchor missing", control.name) }
-        copied[path] = []byte(strings.Replace(source, control.original, control.replacement, 1))
-        dir := t.TempDir()
-        writeTree(t, dir, copied)
-        probe := pyrun.ImportPrelude + "from core import Counters\n" + control.script + "\n"
-        inputs := map[string][]byte{"main.py": []byte(probe)}
-        for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
-            _, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
-            if err == nil || (control.name == "rewrite" && !strings.Contains(stderr, "HANDTEXT_REWRITE_CONTROL")) || (control.name == "field" && !strings.Contains(stderr, "text_unknown_key")) {
-                t.Fatalf("%s control did not fail by name: %v %s", control.name, err, stderr)
-            }
-        }
-    }
+		{"attachment", "result.append(Comment(start, end, inside[2]))", "result.append(Comment(start, end, ()))", `doc = Counters.from_text_form(b"(:small ; field\n 7)")
+assert doc.comments[0].path == ("small",), "HANDTEXT_ATTACHMENT_CONTROL"`},
+	} {
+		copied := maps.Clone(files)
+		path := "core/_schema/textform.py"
+		source := string(copied[path])
+		if strings.Count(source, control.original) != 1 {
+			t.Fatalf("%s anchor missing", control.name)
+		}
+		copied[path] = []byte(strings.Replace(source, control.original, control.replacement, 1))
+		dir := t.TempDir()
+		writeTree(t, dir, copied)
+		probe := pyrun.ImportPrelude + "from core import Counters\n" + control.script + "\n"
+		inputs := map[string][]byte{"main.py": []byte(probe)}
+		for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+			_, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
+			if err == nil || (control.name == "rewrite" && !strings.Contains(stderr, "HANDTEXT_REWRITE_CONTROL")) || (control.name == "field" && !strings.Contains(stderr, "text_unknown_key")) || (control.name == "attachment" && !strings.Contains(stderr, "HANDTEXT_ATTACHMENT_CONTROL")) {
+				t.Fatalf("%s control did not fail by name: %v %s", control.name, err, stderr)
+			}
+		}
+	}
 }
 
 func TestPythonHandtextUnbounded(t *testing.T) {
-    t.Parallel()
-    const schema = `package probe
+	t.Parallel()
+	const schema = `package probe
 table Tags {
  rules []string
  first [..4]?string
  capped [..2]string
  byname map[string]int32
+ extra [..4]?string(8) | total = 3
 }`
-    files, err := Generate(loadUnit(t,schema)); if err != nil {t.Fatal(err)}
-    dir := t.TempDir(); writeTree(t,dir,files)
-    vectors := filepath.Join("..","..","..","test","conformance","textform")
-    inputs := map[string][]byte{}
-    for _, name := range []string{"unbounded.input.sexp","unbounded.rewrite.sexp"} {
-        b, err := os.ReadFile(filepath.Join(vectors,name)); if err != nil {t.Fatal(err)}; inputs[name] = b
-    }
-    src := pyrun.ImportPrelude + `from pathlib import Path
+	files, err := Generate(loadUnit(t, schema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	vectors := filepath.Join("..", "..", "..", "test", "conformance", "textform")
+	inputs := map[string][]byte{}
+	for _, name := range []string{"unbounded.input.sexp", "unbounded.rewrite.sexp"} {
+		b, err := os.ReadFile(filepath.Join(vectors, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[name] = b
+	}
+	src := pyrun.ImportPrelude + `from pathlib import Path
 from probe import Tags
 from probe._schema.textform_scan import TextError
 text = Path('unbounded.input.sexp').read_bytes()
@@ -275,10 +322,18 @@ except TextError as e:
     assert e.reason == 'text_bound'
 else:
     raise AssertionError('count bound')
+try:
+    Tags.from_text_form(b'(:extra ("ab" null "cd"))')
+except TextError as e:
+    assert e.reason == 'text_bound'
+else:
+    raise AssertionError('text total')
 print('ok')
 `
-    inputs["main.py"] = []byte(src)
-    for _, run := range []func(testing.TB,string,string,map[string][]byte) []byte{pyrun.Run,pyrun.RunFloor} {
-        if got := string(run(t,dir,"main.py",inputs)); got != "ok\n" {t.Fatalf("unbounded: %s",got)}
-    }
+	inputs["main.py"] = []byte(src)
+	for _, run := range []func(testing.TB, string, string, map[string][]byte) []byte{pyrun.Run, pyrun.RunFloor} {
+		if got := string(run(t, dir, "main.py", inputs)); got != "ok\n" {
+			t.Fatalf("unbounded: %s", got)
+		}
+	}
 }
