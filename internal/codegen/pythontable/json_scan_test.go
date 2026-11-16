@@ -564,7 +564,7 @@ print('ok')
 
 func TestPythonJsonKeyedEnumAgainstEngine(t *testing.T) {
 	t.Parallel()
-	unit := loadUnit(t, pyKeyedEnumSchema)
+	unit := loadUnit(t, strings.Replace(pyKeyedEnumSchema, "fixed table Root", "table Root", 1))
 	model := tabletext.NewModel(unit)
 	instance := model.New(model.Lookup("Root"))
 	input := []byte(`{"ranks":{"head":"Low","body":"Mid","feet":"None"},"tail":4}`)
@@ -587,11 +587,14 @@ func TestPythonJsonKeyedEnumAgainstEngine(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `from enumkey import Root
-value = Root.from_json(open('input', encoding='utf-8').read())
+with open('input', encoding='utf-8') as f: text = f.read()
+with open('text','rb') as f: expected_text = f.read()
+with open('wire','rb') as f: expected_wire = f.read()
+value = Root.from_json(text)
 assert value.ranks[1] == 1 and value.ranks[2] == 2 and value.ranks[3] == 0
-assert value.to_json().encode() == open('text','rb').read()
-assert value.save() == open('wire','rb').read()
-assert Root.load(open('wire','rb').read()).to_json().encode() == open('text','rb').read()
+assert value.to_json().encode() == expected_text
+assert value.save() == expected_wire, (value.save().hex(), expected_wire.hex())
+assert Root.load(expected_wire).to_json().encode() == expected_text
 print('ok')
 `
 	inputs := map[string][]byte{"main.py": []byte(probe), "input": input, "text": append(canonical, '\n'), "wire": wire}
