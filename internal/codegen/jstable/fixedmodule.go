@@ -526,7 +526,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// prefill, loop and projection over the image. fixedform_test.go holds the
 	// door to exactly this shape and only while §3.4 lists javascript, and
 	// fixedform_inplace_test.go holds both paths' results equal.
-	g.pf("  // Step 10 checks EVERY record hash before any content or destination.\n")
+	g.pf("  // Check EVERY record hash before any content or destination.\n")
 	g.pf("  for (let at = layoutAt + layoutBytes; at < byteLength; at += recordBytes) {\n")
 	g.pf("    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {\n")
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n    }\n  }\n")
