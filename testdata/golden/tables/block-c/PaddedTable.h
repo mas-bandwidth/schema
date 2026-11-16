@@ -585,6 +585,15 @@ static SCHEMA_UNUSED int blockdemo_table_skip_utf8( const uint8_t * p, uint64_t 
 static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
 static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth );
+/* A successfully read payload must claim its whole frame. During the
+   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   semantic failures that stopped the walk earlier still take their own path. */
+static SCHEMA_UNUSED int blockdemo_table_skip_whole( blockdemo_table_reader_t sub, const blockdemo_table_reader_t * read )
+{
+    if ( read->offset == sub.size ) { return 1; }
+    if ( sub.next_ref != NULL ) { *sub.next_ref = UINT64_MAX; }
+    return 0;
+}
 static SCHEMA_UNUSED int blockdemo_table_skip_framed( blockdemo_table_reader_t sub, uint8_t kind, int64_t nodes, int depth )
 {
     switch ( kind )
@@ -602,13 +611,13 @@ static SCHEMA_UNUSED int blockdemo_table_skip_framed( blockdemo_table_reader_t s
         {
             blockdemo_table_reader_t rr = sub;
             if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return blockdemo_table_skip_whole( sub, &rr );
         }
         default:
         {
             blockdemo_table_reader_t rr = sub;
             if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return blockdemo_table_skip_whole( sub, &rr );
         }
     }
 }
@@ -816,9 +825,9 @@ static SCHEMA_UNUSED int blockdemo_table_wire_open( blockdemo_table_reader_t * r
         int64_t end;
         order.next_ref = &next_ref;
         end = blockdemo_table_skip_body( order, INT64_MAX - 1, 0, 1 );
-        /* Other damaged payloads still take the semantic reader's named
-           refusal; only identity order and a completely read trailer are
-           judged here. */
+        /* Payloads that stopped early still take the semantic reader's
+           refusal. Judge identity order, unused entries after a complete
+           walk, and unclaimed tails of successfully read frames here. */
         if ( next_ref == UINT64_MAX || (end == order.size && next_ref - 1 != r->id_count) ) {
             report->refused=1; report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
         }

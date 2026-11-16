@@ -1715,6 +1715,18 @@ test-js: tables-js-usage-negative-control
 test-js: tables-js-release-negative-control
 test-js: conformance-negative-control-js-absent
 
+# Retained nested references distinguish legal hash zero from None and body
+# terminators. The control compiles a copied emitter that confuses an enum's
+# hash zero with None, and requires the real native round-trip test to catch it.
+.PHONY: tables-js-retain-hashzero tables-js-retain-hashzero-negative-control
+tables-js-retain-hashzero:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJavaScriptRetainNestedHashZero$$'
+
+tables-js-retain-hashzero-negative-control: tables-js-retain-hashzero
+	$(call js_jstable_control,js-retain-hashzero-none,internal/codegen/jstable/retain.go,^TestJavaScriptRetainNestedHashZero$$,./internal/codegen/jstable/,FAIL: save 0-0.bin)
+
+test-js: tables-js-retain-hashzero-negative-control
+
 # ---- DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) ----
 #
 # The gate: TestDamageDiscardsTheWholeLoadJavaScript loads a fixed and a
@@ -1875,3 +1887,14 @@ packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@echo 'packet write compressed float JavaScript negative control: the runtime range check removal reds above-max'
 
 test-js: packet-write-cfloat-js packet-write-cfloat-js-negative-control
+
+# The retained walk keeps a lawful keyed/table chain at depth 128 and refuses
+# depth 129; a private emitter copy lowered to 127 must lose the 128 witness.
+.PHONY: tables-js-retain-depth tables-js-retain-depth-negative-control
+tables-js-retain-depth:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJsRetainKeepsDepth128$$'
+
+tables-js-retain-depth-negative-control: tables-js-retain-depth
+	$(call js_jstable_control,js-retain-depth-127,internal/codegen/jstable/retain.go,^TestJsRetainKeepsDepth128$$,./internal/codegen/jstable/,depth_keyed_scalar_128: retaining save refused or lost retention)
+
+test-js: tables-js-retain-depth-negative-control

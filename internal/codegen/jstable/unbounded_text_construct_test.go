@@ -93,7 +93,7 @@ const jsUnboundedGoOracle = `package probe
 import("encoding/hex";"encoding/json";"os";"testing";"unsafe")
 func TestOracle(t *testing.T){
  raw,err:=os.ReadFile("inputs.json");if err!=nil{t.Fatal(err)};var inputs []string;if err=json.Unmarshal(raw,&inputs);err!=nil{t.Fatal(err)}
- type row struct {Input string;Wire string;Cook string;Text string;Region int64}
+ type row struct {Input string;Wire string;Cook string;Text string;Region int64;BoundedWire,BoundedJSON bool}
  var rows []row
  for _,input:=range inputs{
   var b WhereBuilder;if !b.Init(){t.Fatal("builder init")};var report TableReport
@@ -105,7 +105,9 @@ func TestOracle(t *testing.T){
   if !WhereCookFrom(v,cook,TableByteOrderLittle,&b.Arena){t.Fatal("cook")}
   var handle WhereCook;if !WhereOpen(&handle,unsafe.Pointer(&cook[0]),cn){t.Fatal("cook open")};cv:=(*Where)(handle.Region)
   tn:=WhereToJSONMeasure(cv);text:=make([]byte,tn);if WhereToJSON(cv,text)!=tn{t.Fatal("JSON write")}
-  rows=append(rows,row{input,hex.EncodeToString(wire),hex.EncodeToString(cook),string(text),WhereLoadMeasure(wire)})
+  var loaded BoundedBuilder;if !loaded.Init(){t.Fatal("bounded load builder")};var boundedReport TableReport;boundedWire:=BoundedLoadBuilder(&loaded,wire,&boundedReport);loaded.Shutdown()
+  var bounded BoundedBuilder;if !bounded.Init(){t.Fatal("bounded builder init")};boundedReport=TableReport{};boundedJSON:=BoundedFromJSON(&bounded,[]byte(input),&boundedReport);bounded.Shutdown()
+  rows=append(rows,row{input,hex.EncodeToString(wire),hex.EncodeToString(cook),string(text),WhereLoadMeasure(wire),boundedWire,boundedJSON})
   b.Shutdown()
  }
  out,err:=json.Marshal(rows);if err!=nil{t.Fatal(err)};if err=os.WriteFile("oracle.json",out,0600);err!=nil{t.Fatal(err)}
@@ -167,8 +169,8 @@ for(const bad of ["x\u0000y","\ud800"]){
 }
 for(const mode of ["wire","json"]){
  const r=new m.TableVariableReport(),v=mode==="wire"?m.BoundedLoad(bytes(spec[2].Wire),r):m.BoundedFromJson(spec[2].Input,r);
- expect(v!==null&&!r.damaged&&r.oor===6&&v.byname.size===0,"bounded read of long text "+mode+" "+JSON.stringify(r));
- expect(v.rules[0].value==="éééé"&&v.first[1].value==="éééé"&&v.capped[0].value==="éééé"&&v.running[0].value==="éééé","codepoint clamp");
+ const want=mode==="wire"?spec[2].BoundedWire:spec[2].BoundedJSON;
+ expect(!want&&v===null&&!r.damaged&&r.oor>0,"bounded refusal of long text "+mode+" "+JSON.stringify(r));
 }
 const mapSource=new m.Where();mapSource.byname.set("xyz",1);const mapWire=m.WhereSave(mapSource),keyAt=Buffer.from(mapWire).indexOf(Buffer.from("xyz"));
 for(const byte of [0,255]){const damaged=mapWire.slice();damaged[keyAt]=byte;const r=new m.TableVariableReport();expect(m.WhereLoad(damaged,r)===null&&r.damaged,"malformed map key");}
