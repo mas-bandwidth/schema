@@ -587,15 +587,11 @@ table Root { grades [2]Grade }
 	if verdict := unionEngineVerdict(t, u, wire); !strings.HasPrefix(verdict, "read 1 ") {
 		t.Fatalf("engine rejected enum fixture: %s", verdict)
 	}
-	script := pyrun.ImportPrelude + `from probe import Root
-from probe._schema.descriptor import FieldDesc
+	script := pyrun.ImportPrelude + `from probe import Root, LoadReport
 from probe._schema.retain import TableRetain, _capture_file
 with open('wire','rb') as f: wire=f.read()
-# The older base refuses this codec; provide the descriptor the list-kind
-# prerequisite generates so this isolated scan is tested against Go-validated wire.
-field=Root.descriptor.field('grades')
-field.codec='array'
-field.element=FieldDesc('grades',0,30,'enum',variant_ids=field.variant_ids)
+report=LoadReport(); Root.load(wire,report)
+assert report.unknown==1
 retain=TableRetain(bytearray(4096),bytearray(240))
 assert _capture_file(Root,memoryview(wire),retain)==(0,1)
 print('enum-array')

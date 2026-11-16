@@ -825,8 +825,8 @@ def _capture_file(cls: type[Any], wire: memoryview, retain: TableRetain, ids: li
         if target_class is not None:
             body(data, target_class.descriptor, node, steps)
 
-    def array(raw: memoryview, field: Any, node: int, steps: tuple[tuple[int, int], ...], ordinal: int | None = None, content: bool = False) -> None:
-        data = raw if content else framed(raw)
+    def array(raw: memoryview, field: Any, node: int, steps: tuple[tuple[int, int], ...], ordinal: int | None = None, unframed: bool = False) -> None:
+        data = raw if unframed else framed(raw)
         ordinal = field.ordinal if ordinal is None else ordinal
         r = Reader(data, 0, len(data), ids)
         kind = r.byte()
