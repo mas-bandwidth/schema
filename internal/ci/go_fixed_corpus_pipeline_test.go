@@ -25,7 +25,7 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	pin := ""
-	for _, line := range strings.Split(string(pins), "\n") {
+	for line := range strings.SplitSeq(string(pins), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 4 && f[0] == "../serialize" {
 			pin = f[3]
