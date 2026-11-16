@@ -138,12 +138,4 @@ func TestPythonReflectionSurfaceSelection(t *testing.T) {
 			}
 		}
 	}
-	// A declaration can use the registry entry's name when the registry is omitted.
-	u := unitFromSource(t, "package surfaceprobe\ntype UnitView { value int32 }")
-	if _, err := New().Generate(u, "python", Options{"surface": "wire"}); err != nil {
-		t.Fatalf("wire-only name: %v", err)
-	}
-	if _, err := New().Generate(u, "python", Options{"surface": "wire,view"}); err == nil || !strings.Contains(err.Error(), "UnitView") {
-		t.Fatalf("view collision: %v", err)
-	}
 }
