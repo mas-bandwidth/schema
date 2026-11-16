@@ -453,6 +453,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
+	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
 	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
@@ -629,24 +630,39 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("\n    @classmethod\n")
 	if st.FixedDeclared {
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n        return _s_fixed_load(cls, data, 1, report)[0]\n")
-	} else if straight {
-		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
-		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
 	} else {
-		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
-		b.WriteString("        return load_table(cls, data, report)\n")
+		if straight {
+			fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
+		} else {
+			b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
+		}
+		if st.Integrity == "crc32c" {
+			b.WriteString("        data = _s_open_crc(data)\n")
+		}
+		if straight {
+			fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
+		} else {
+			b.WriteString("        return load_table(cls, data, report)\n")
+		}
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
 	if st.FixedDeclared {
 		b.WriteString("        return _s_fixed_save(type(self), [self])\n")
-	} else if straight {
-		fmt.Fprintf(b, "        return _s_save_%s(self)\n", name)
 	} else {
-		b.WriteString("        return save_table(self)\n")
+		call := "save_table(self)"
+		if straight {
+			call = fmt.Sprintf("_s_save_%s(self)", name)
+		}
+		if st.Integrity == "crc32c" {
+			call = "_s_seal_crc(" + call + ")"
+		}
+		fmt.Fprintf(b, "        return %s\n", call)
 	}
 	b.WriteString("\n    def measure(self) -> int:\n")
 	if st.FixedDeclared {
 		b.WriteString("        return _s_fixed_measure(type(self), 1)\n\n\n")
+	} else if st.Integrity == "crc32c" {
+		b.WriteString("        return measure_table(self) + 4\n\n\n")
 	} else {
 		b.WriteString("        return measure_table(self)\n\n\n")
 	}
@@ -713,6 +729,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
 		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
+		if f.IsTextList() {
+			fmt.Fprintf(b, "            text_total=%d,\n", f.TextTotal)
+		}
 		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
@@ -1432,7 +1451,7 @@ func codecOf(f *ir.Field) string {
 		// a fixed or counted array of a fixed-class scalar: the same kind-14
 		// body, each element through its own kind module
 		switch element {
-		case "bool", "int", "float32", "float64", "string", "enum":
+		case "bool", "int", "float32", "float64", "string", "enum", "text_optional":
 			return "array"
 		}
 		return "unsupported"
@@ -1508,10 +1527,18 @@ func elementCodecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
 	case ir.TNamed:
-		if _, ok := f.Type.Ref.(*ir.Struct); ok {
-			// a table or a packet type by value: both ride a kind-13 body
+		switch f.Type.Ref.(type) {
+		case *ir.Struct:
 			return "table"
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			return "int"
 		}
 	}
 	return "unsupported"
@@ -1521,6 +1548,12 @@ func elementCodecOf(f *ir.Field) string {
 // unbounded array's is elementCodecOf's, and a fixed [N]T or counted [..N]T
 // array also carries the fixed class's floats, strings, enums and flags masks.
 func arrayElemCodec(f *ir.Field) string {
+	if f.IsTextList() {
+		if ir.TextListOptional(f) {
+			return "text_optional"
+		}
+		return "string"
+	}
 	element := elementCodecOf(f)
 	if f.Array == ir.ArrayList || element != "unsupported" || f.Type.Pointer {
 		return element
@@ -1610,7 +1643,7 @@ func innerCodecOf(f *ir.Field) string {
 	}
 	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		switch optionalElemCodecOf(f) {
-		case "bool", "int", "table", "float32", "float64":
+		case "bool", "int", "table", "enum", "float32", "float64":
 			return "array"
 		}
 		return "unsupported"
@@ -1642,7 +1675,7 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	switch codec {
 	case "bool":
 		def = "False"
-	case "int":
+	case "int", "enum":
 		def = "0"
 	case "float32", "float64":
 		def = "0.0"
@@ -1655,6 +1688,10 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+	if dep := deprecatedOrdinals(f); dep != "" {
+		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
+	}
 	fmt.Fprintf(b, "                default=%s,\n", def)
 	if isFloat(f) {
 		fmt.Fprintf(b, "                f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
@@ -1888,6 +1925,9 @@ func deprecatedOrdinals(f *ir.Field) string {
 // fieldSize is a string or bytes field's declared byte bound, and 0 for every
 // field that declares none or is not a byte buffer.
 func fieldSize(f *ir.Field) int64 {
+	if f.IsTextList() {
+		return ir.TextListValue(f).Type.Size
+	}
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		return f.Type.Size

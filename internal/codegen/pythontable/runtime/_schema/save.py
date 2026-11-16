@@ -201,22 +201,7 @@ def _validate_fields(
         elif field.codec == "map":
             yield from _validate_map_entries(field, current, where)
         elif field.codec == "array":
-            if not isinstance(current, list):
-                raise InvalidValue(where, "not a list")
-            kind_array._check_count(where, len(current))
-            kind_array._check_shape(field, len(current), where)
-            element = field.element
-            if element is None:
-                raise InvalidValue(where, "an array carries no element descriptor")
-            for i, item in enumerate(current):
-                cell = f"{where}[{i}]"
-                if element.codec == "table":
-                    target = descriptor.by_name(element.target)
-                    if target is None or type(item) is not target:
-                        raise InvalidValue(cell, f"not a {element.target}")
-                    yield item, cell
-                else:
-                    kinds._REGISTRY[element.codec].validate(element, item, cell)
+            yield from _validate_array(field, current, where)
         else:
             kind = kinds._REGISTRY[field.codec]
             kind.validate(field, current, where)
@@ -224,6 +209,27 @@ def _validate_fields(
             # each is validated as a field's table is
             for table, table_path in _held_tables(kind, field, current, where):
                 yield table, table_path
+
+
+def _validate_array(field: FieldDesc, current: Any, where: str) -> Iterator[tuple[Any, str]]:
+    if not isinstance(current, list):
+        raise InvalidValue(where, "not a list")
+    kind_array._check_count(where, len(current))
+    kind_array._check_shape(field, len(current), where)
+    element = field.element
+    if element is None:
+        raise InvalidValue(where, "an array carries no element descriptor")
+    for i, item in enumerate(current):
+        cell = f"{where}[{i}]"
+        if element.codec == "table":
+            target = descriptor.by_name(element.target)
+            if target is None or type(item) is not target:
+                raise InvalidValue(cell, f"not a {element.target}")
+            yield item, cell
+        else:
+            kinds._REGISTRY[element.codec].validate(element, item, cell)
+    if field.text_total and sum(len(item.encode("utf-8")) for item in current if item is not None) > field.text_total:
+        raise InvalidValue(where, "text total exceeded")
 
 
 def _validate_map_entries(
@@ -252,6 +258,13 @@ def _validate_map_entries(
         elif value_field.codec == "table":
             kinds._REGISTRY["table"].validate(value_field, current, where)
             yield current, where
+        elif value_field.codec == "array":
+            yield from _validate_array(value_field, current, where)
+        elif value_field.codec == "pointer_array":
+            kinds._REGISTRY["pointer_array"].validate(value_field, current, where)
+            for index, item in enumerate(current):
+                if item is not None:
+                    yield item, f"{where}[{index}]"
         elif value_field.codec == "map":
             yield from _validate_map_entries(value_field, current, where)
         elif value_field.codec in ("union", "union_array"):
@@ -418,6 +431,13 @@ def _collect_map_edges(
         elif value_field.codec == "table":
             if not value_field.is_default(current):
                 yield current, where, False, blobs
+        elif value_field.codec == "array" and value_field.element is not None and value_field.element.codec == "table":
+            for index, item in enumerate(current):
+                yield item, (where, "", index), False, blobs
+        elif value_field.codec == "pointer_array":
+            for index, item in enumerate(current):
+                if item is not None:
+                    yield item, (where, "", index), True, blobs
         elif value_field.codec == "map":
             yield from _collect_map_edges(value_field, current, where, ctx, blobs)
         elif value_field.codec in ("union", "union_array"):
