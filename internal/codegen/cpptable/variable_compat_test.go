@@ -82,3 +82,49 @@ if (RootReadStrict(wire, sizeof(wire)-1, NULL) != NULL) { printf("truncated wire
 		})
 	}
 }
+
+// Enum variants may be reordered without changing the names on keyed form-1
+// slots. Each schema is independently checked and the baseline must admit the
+// edit; the two generated writers establish the old input and new rewrite.
+func TestCppVariableKeyedOrderEvolution(t *testing.T) {
+	t.Parallel()
+	schema := func(variants string) string {
+		return "package compat\n enum Mode { " + variants + " }\n table Root {\n values [Mode]int32\n}\n"
+	}
+	old := cppUnitFrom(t, schema("One, Two"))
+	current := cppUnitFrom(t, schema("Two, One"))
+	refusals, _ := baseline.Split(baseline.Diff(baseline.Render(old), baseline.Render(current), baseline.DefaultTokenPolicy))
+	if len(refusals) != 0 {
+		t.Fatalf("the baseline refuses enum reorder: %v", refusals)
+	}
+	write := func(u *ir.Unit) []byte {
+		t.Helper()
+		out, err := cppHeldRun(t, u, `Root value; RootReset(value);
+value.values[Mode::One] = 5; value.values[Mode::Two] = 7;
+uint8_t wire[4096]; int64_t n = RootSave(&value, wire, sizeof(wire));
+if (n <= 0) { return 1; } for (int64_t i = 0; i < n; i++) { printf("%02x", wire[i]); }
+`)
+		if err != nil {
+			t.Fatalf("writer: %v\n%s", err, out)
+		}
+		wire, err := hex.DecodeString(strings.TrimSpace(string(out)))
+		if err != nil || len(wire) == 0 {
+			t.Fatalf("writer wire %q: %v", out, err)
+		}
+		return wire
+	}
+	wire, canonical := write(old), write(current)
+	body := fmt.Sprintf(`const uint8_t wire[] = { %s }; const uint8_t want[] = { %s };
+const Root *value = RootReadStrict(wire, sizeof(wire), NULL);
+if (!value) { printf("old keyed order refused\n"); return 1; }
+if (value->values[Mode::One] != 5 || value->values[Mode::Two] != 7) { printf("keyed values moved\n"); return 2; }
+uint8_t saved[4096]; int64_t n = RootSave(value, saved, sizeof(saved));
+if (n != (int64_t)sizeof(want) || memcmp(saved, want, sizeof(want)) != 0) { printf("keyed canonical save differs\n"); return 3; }
+table_release(TableDefaultAllocator(), (void *) value);
+if (RootReadStrict(wire, sizeof(wire)-1, NULL)) { printf("truncated keyed wire accepted\n"); return 4; }
+`, cppBytes(wire), cppBytes(canonical))
+	out, err := cppHeldRun(t, current, body)
+	if err != nil {
+		t.Fatalf("reader: %v\n%s", err, out)
+	}
+}
