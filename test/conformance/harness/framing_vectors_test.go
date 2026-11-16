@@ -686,8 +686,10 @@ var framingVectors = []framingVector{
 		body: cat(b(11, 13, 4, 7, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
 		body: cat(b(11, 15, 17, 17, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
-	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
-		body: cat(b(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	// A keyed element can be a table, but not a pointer (§3); the table
+	// carries the pointer that reaches the unknown node type.
+	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: []string{"mystery", "key", "mystery2", "node-table", "graphUnknown"}, held: true,
+		body: cat(b(1, 16, 8, 13, 1, 2, 4, 3, 17, 2, 0), nodeTable(1, graphNodeRecord(5, b(0))), b(0))},
 }
 
 // counting is n distinct raw entries, 1..n: a reader checks distinctness and
