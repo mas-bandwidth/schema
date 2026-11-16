@@ -357,8 +357,11 @@ func countCapFloatRows(t *testing.T) []countCapRow {
 	var rows []countCapRow
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 6 || f[1] != "float" {
+		if len(f) != 6 || (f[1] != "float" && f[1] != "float_reversed") {
 			continue
+		}
+		if (f[0] == "over_cap_then_nan") != (f[1] == "float_reversed") {
+			t.Fatalf("%s has wrong schema %s", f[0], f[1])
 		}
 		wire, err := hex.DecodeString(f[2])
 		if err != nil {
@@ -376,6 +379,27 @@ func countCapFloatRows(t *testing.T) []countCapRow {
 	return rows
 }
 
+// Split the two refusal orders by their declaration-order schema.
+func countCapFloatGroups(rows []countCapRow) []struct {
+	schema string
+	rows   []countCapRow
+} {
+	groups := []struct {
+		schema string
+		rows   []countCapRow
+	}{
+		{schema: countCapFloatSchema}, {schema: "package probe\n table Root { values []int32\n f float32 }\n"},
+	}
+	for _, row := range rows {
+		i := 0
+		if row.name == "over_cap_then_nan" {
+			i = 1
+		}
+		groups[i].rows = append(groups[i].rows, row)
+	}
+	return groups
+}
+
 // TestLuaCountCapReadOrder holds the two-refusal rule (docs/SPEC-TABLES.md
 // §2.9): when a read meets a NaN and an over-cap count, the first in read
 // order names it. nan_then_over_cap refuses as non_finite_float and
@@ -383,8 +407,10 @@ func countCapFloatRows(t *testing.T) []countCapRow {
 func TestLuaCountCapReadOrder(t *testing.T) {
 	t.Parallel()
 	rows := countCapFloatRows(t)
-	for _, fault := range countCapFaults(rows, runCountCap(t, countCapFloatSchema, rows, nil)) {
-		t.Error(fault)
+	for _, group := range countCapFloatGroups(rows) {
+		for _, fault := range countCapFaults(group.rows, runCountCap(t, group.schema, group.rows, nil)) {
+			t.Error(fault)
+		}
 	}
 }
 
@@ -418,7 +444,12 @@ func TestLuaCountCapReadOrderNegativeControl(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			got := countCapFailed(t, countCapFloatSchema, rows, c.edit)
+			got := map[string]bool{}
+			for _, group := range countCapFloatGroups(rows) {
+				for key, value := range countCapFailed(t, group.schema, group.rows, c.edit) {
+					got[key] = value
+				}
+			}
 			for read := range c.want {
 				if !got[read] {
 					t.Errorf("%s: the probe did not see the %s control", read, c.name)

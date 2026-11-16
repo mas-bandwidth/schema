@@ -13,8 +13,8 @@
 #            fixed: fixed table Root { a int32, flag bool,
 #            small int8 | max = 5, f float32 }, a value-only root;
 #            float: table Root { f float32, values []int32 }, a variable
-#            root whose wire can carry a NaN and an over-cap count in either
-#            read order
+#            root with f before values; float_reversed declares values before f
+#            so both NaN/count read orders follow their own declaration order
 #   wire     the file, lowercase hex ("-" is no bytes)
 #   strict   the strict read's one reason (<T>ReadStrict; Goose's
 #            load_error): the TableRefuseReason member, the name before any
@@ -60,4 +60,4 @@ fixed_kind_mismatch	fixed	01010c0178008cec01864cdc63af0100000000000000	kind_mism
 fixed_nan	fixed	01010a0000c07f00d9ea01864cdb63af0100000000000000	non_finite_float	-	-
 float_good	float	01010a0000c03f020e0604010700000000d9ea01864cdb63affb674d1acf7b27210200000000000000	ok	-	ok
 nan_then_over_cap	float	01010a0000c07f020e0604808080800800d9ea01864cdb63affb674d1acf7b27210200000000000000	non_finite_float	-	count_over_extent_cap
-over_cap_then_nan	float	01020e06048080808008010a0000c07f00d9ea01864cdb63affb674d1acf7b27210200000000000000	count_over_extent_cap	-	count_over_extent_cap
+over_cap_then_nan	float_reversed	01010e06048080808008020a0000c07f00fb674d1acf7b2721d9ea01864cdb63af0200000000000000	count_over_extent_cap	-	count_over_extent_cap
