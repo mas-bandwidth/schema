@@ -125,6 +125,21 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 	if first == "" || second == "" || !strings.Contains(first, "needs.plan.outputs.rows0") || !strings.Contains(second, "needs.plan.outputs.rows1") || !strings.Contains(first, "max-parallel: 4") || strings.Replace(firstBody, "needs.plan.outputs.rows0", "needs.plan.outputs.rows1", 1) != secondBody {
 		t.Fatal("Python matrix jobs differ in setup, execution, or partition wiring")
 	}
+	if !pythonMatrixGoConcurrency(jobs) {
+		t.Fatal("both Python matrix consumers must cap Go concurrency at 2")
+	}
+	capLine := "\n    env:\n      GOMAXPROCS: '2'\n"
+	for _, name := range []string{"test", "test-second"} {
+		mutated := map[string]string{"test": first, "test-second": second}
+		mutated[name] = strings.Replace(mutated[name], capLine, "\n", 1)
+		if pythonMatrixGoConcurrency(mutated) {
+			t.Fatalf("missing Go concurrency cap in %s escaped guard", name)
+		}
+	}
+	mutated := map[string]string{"test": strings.Replace(first, capLine, "\n", 1), "test-second": strings.Replace(second, capLine, "\n", 1)}
+	if pythonMatrixGoConcurrency(mutated) {
+		t.Fatal("missing Go concurrency cap in both matrix jobs escaped guard")
+	}
 	if jobs["fixed-corpus"] != "" && !strings.Contains(first, "needs: [plan, fixed-corpus]") {
 		t.Fatal("Python matrix jobs do not wait for the fixed corpus producer")
 	}
@@ -161,6 +176,11 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 	if compilerShardCoverage(wanted, append(slices.Clone(got), got[0])) {
 		t.Fatal("duplicate compiler row escaped coverage control")
 	}
+}
+
+func pythonMatrixGoConcurrency(jobs map[string]string) bool {
+	capLine := "\n    env:\n      GOMAXPROCS: '2'\n"
+	return strings.Count(jobs["test"], capLine) == 1 && strings.Count(jobs["test-second"], capLine) == 1
 }
 
 func pythonPlanCoverage(want, got []json.RawMessage) bool {

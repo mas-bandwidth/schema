@@ -108,6 +108,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.rows0) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
+    env:
+      GOMAXPROCS: '2'
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -155,6 +157,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.rows1) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
+    env:
+      GOMAXPROCS: '2'
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
