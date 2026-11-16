@@ -10,9 +10,10 @@
 //
 // - WRITE: a NaN (any sign, any payload) and both infinities trap at the bare
 //   float32 and float64 fields, an element of the fixed float32 array and of
-//   the counted float64 array, and the compressed float32; and a double past
+//   the counted float64 array; and a double past
 //   float32's range, which narrows to an infinity, traps at the float32 field.
-//   A write refusal in serialize.nut is a trap (a throw), never a latch.
+//   A compressed float32 refuses with false before the runtime call.
+//   A bare-float write refusal in serialize.nut is a trap (a throw).
 // - READ: crafted bytes holding an all-ones exponent at each of those slots
 //   are refused on the raw bits with the latched reason non_finite_float, and
 //   the largest finite pattern beside them reads.
@@ -112,7 +113,7 @@ local read = function(bytes, into) {
   return "" + rs.error();
 };
 
-// THE WRITE HALF: every non-finite value at every slot traps.
+// THE WRITE HALF: bare floats trap and compressed floats return false.
 local nonFinite = [
   ["NaN", casti2f(0x7ff8000000000000)],
   ["-NaN", casti2f(0xfff8000000000000)],
@@ -128,7 +129,6 @@ local writeSlots = [
   ["wide (float64 field)", function(v, x) { v.Wide = x; }],
   ["narrows[1] (float32 array element)", function(v, x) { v.Narrows[1] = x; }],
   ["wides[2] (float64 array element)", function(v, x) { v.Wides[2] = x; }],
-  ["quantized (compressed float32)", function(v, x) { v.Quantized = x; }],
 ];
 
 // traps answers whether writing v throws a not-finite trap
@@ -147,6 +147,16 @@ foreach (slot in writeSlots) {
     slot[1](v, nf[1]);
     check(traps(v), "non_finite_float write refusal: " + nf[0] + " at " + slot[0]);
   }
+}
+foreach (nf in nonFinite) {
+  local v = baseline();
+  v.Quantized = nf[1];
+  local ws = serialize.WriteStream(blob(64));
+  local refused = false;
+  try {
+    refused = Finite.WriteFloats(ws, v) == false;
+  } catch (e) {}
+  check(refused, "non_finite_float write refusal: " + nf[0] + " at quantized (compressed float32)");
 }
 {
   // a double past float32's range rounds to an infinity: not a float32 value

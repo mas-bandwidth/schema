@@ -5771,6 +5771,20 @@ and a loader materializes one node and stores that index in all three
 slots. §2.1's own example — a large `*Palette` several parents share — is
 one node on the wire, in a builder and in a region alike (§6.3).
 
+**A leg without object identity loads a root plus a node directory.** A
+runtime that copies a value flat (into a message, a shared table or a log
+line) does not keep term sharing, so a node three slots hold would be copied
+three times, and a value this section requires to load would grow with its
+paths rather than its nodes. Such a leg returns a table that reaches a pointer
+to a table as the root beside a directory of the table nodes in index order,
+and every table-pointer field holds the index of the node it names (`2` and
+up, since no pointer names the root; null as the language's null). A field the
+root did not store reads its declared default. Its save numbers a node by that
+index, so two fields holding one index are one node. A `*string` or `*bytes`
+field holds its bytes, and the directory holds null at the node-table position
+that blob spent; a table that reaches no pointer to a table loads as a plain
+map. Elixir is the leg that does this today (USAGE.md, Per-language notes).
+
 **A data cycle is refused at SAVE FROM A BUILDER, and the refusal is
 free.** The numbering walk carries one entry per reachable node — that
 map IS identity; a node must know its index to be named twice — so
@@ -6617,10 +6631,9 @@ plain float's NaN or infinity.
 **THE MESSAGE FORM REFUSES THE NON-CANONICAL SPELLING TOO, ON §4's RULE.** A
 batch that decodes to a good value but that no conforming writer of a lawful
 lineage version would produce is refused: fields out of the writer's order; a
-field stored at its declared default; a union written with arm reference `0`;
-and a message body that omits a field its own announcement declares. Absent
-fields, unknown fields from a newer writer and widened fields stay lawful and
-read as today (§4).
+field stored at its declared default; and a union written with arm reference
+`0`. Absent fields, unknown fields from a newer writer and widened fields stay
+lawful and read as today (§4).
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -8816,16 +8829,15 @@ diagnostic name, which is not normative and is never compared:
 - **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
   to a value but that no conforming writer of a lawful lineage version would
   produce (the owner, 2026-11-10: "strict. refuse non-canonical.",
-  docs/rulings.json reads-refuse-non-canonical). The seven shapes, on the
+  docs/rulings.json reads-refuse-non-canonical). The six shapes, on the
   variable and message forms: fields out of the writer's order; a field stored
   at its declared default (a default change is refused by the lineage check,
   docs/VERSIONING.md, so every lawful writer's default for a field the reader
   names is the reader's own, which is what makes the case decidable); an
   explicit null pointer; an id-table entry that is unused, or out of first-use
-  order; an empty node table, or one out of its place; a union written with arm
-  reference `0`; and a message body that omits a field its own announcement
-  declares. Absent fields, unknown fields from a newer writer and widened
-  fields stay lawful and read as today. The JSON form is not changed here: a
+  order; an empty node table, or one out of its place; and a union written with
+  arm reference `0`. Absent fields, unknown fields from a newer writer and
+  widened fields stay lawful and read as today. The JSON form is not changed here: a
   JSON read accepts any field order (§16.2), and this rule is the binary
   forms' alone.
 - **A NON-FINITE FLOAT — `non_finite_float`** (§3.3), and **ONE BLOB NAMED
