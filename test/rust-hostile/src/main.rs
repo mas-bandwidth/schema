@@ -167,13 +167,12 @@ macro_rules! table_ops {
 }
 
 // A FIXED ROOT's form-3 file (docs/SPEC-TABLES.md §3.4), read through its
-// fixed codec by the form byte, as the C++ runner does. The Rust leg's fixed
-// row has no text form and no bridge to the variable value, so an accepted
-// file is checked by writing it back (the canonical bytes) and its text
-// digest is owed: the answer names that, and known-findings.tsv carries it.
+// fixed codec by the form byte, as the C++ runner does. Check its canonical
+// write-back, then use the generated checked Row-to-value bridge to compute
+// the same canonical decoded text digest as every other accepted table.
 #[allow(unused_macros)]
 macro_rules! fixed_ops {
-    ($k:ident, $load:ident, $save:ident, $row:ident) => {
+    ($k:ident, $load:ident, $save:ident, $row:ident, $value:ident, $to_json:ident) => {
         |input: &[u8]| -> String {
             let mut values = vec![$k::$row::default(); 1];
             let mut plan = vec![$k::TableFixedEntry::default(); 1 << 14];
@@ -189,7 +188,11 @@ macro_rules! fixed_ops {
             let mut buffer = vec![0u8; input.len() + 4096];
             match $k::$save(&values, &mut buffer) {
                 Some(n) if &buffer[..n] == input => {
-                    "accept-unverified: the fixed row wrote the input back byte for byte; its text digest is owed (no row-to-value bridge)".to_string()
+                    let value = match $k::$value::try_from(&values[0]) {
+                        Ok(value) => value,
+                        Err(()) => return "error: the decoded fixed row did not convert to its value".to_string(),
+                    };
+                    $crate::text_digest($k::$to_json(&value))
                 }
                 Some(_) => "error: the fixed row did not write the input back".to_string(),
                 None => "error: the fixed save refused the decoded row".to_string(),
