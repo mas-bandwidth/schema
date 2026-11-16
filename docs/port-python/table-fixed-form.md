@@ -50,3 +50,20 @@ writer's guard chain. The root's inactive storage is not a substitute: its
 zero bytes would otherwise erase the active child's newly added defaults.
 These precomputed guarded fills are counted in `fixed_plan_max` and obey the
 same caller plan capacity as the copy and widening operations.
+
+`make python-fixed-form-proof` connects the envelope, bounded batch, plan
+selection, compiled-plan, definition-hash, closure, live-extent, writing and
+round-trip rows to the shared C++ corpus. `make python-fixed-form-bench`
+first compares an eight-byte, two-int32 record against a live C++ writer,
+then measures 5000 calls in each of five samples after 100 warmup calls,
+with collection disabled during the samples. Median wall-clock times on
+Linux, in microseconds per one-record file:
+
+| Interpreter | FixedLoad | FixedSave |
+|---|---:|---:|
+| CPython 3.11.18 | 15.69 | 6.33 |
+| CPython 3.15.2 | 14.19 | 7.23 |
+
+These measure the complete checked file operation, including allocation,
+envelope handling and the bounds pass. They are observations for this small
+fixture, rather than throughput guarantees for other record shapes.

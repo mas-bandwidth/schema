@@ -628,3 +628,7 @@ Each kind a card adds to the packet or the table leg has its own page under
 (`packet-<kind>.md`, `table-<kind>.md`): what the kind carries, its code
 shape and its measured bench numbers. The first is
 [packet-floats.md](port-python/packet-floats.md).
+
+The form-3 codec's current oracle-gated `FixedLoad` and `FixedSave` timings,
+method and reproducible target are recorded in
+[Python fixed-form files](port-python/table-fixed-form.md).

@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -239,4 +240,54 @@ func (r pythonFixedProofRunner) SaveMutated(t *testing.T, tc fixedproof.RowCase,
 	script := fmt.Sprintf("from %s import *\nrows = [%s() for _ in range(%d)]\n%s\nwith open('saved','wb') as f:\n    f.write(%s.fixed_save(rows))\n", u.Package, tc.Root, tc.Count, setup, tc.Root)
 	_, saved := pythonFixedRun(t, files, script, nil)
 	return saved, nil
+}
+
+// TestPythonFixedProofSuite connects the form-3 engine's owned rows to the
+// shared oracle suite. Value/evolution proof cards add their own row files.
+func TestPythonFixedProofSuite(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "both Python pins and the C++ fixed-form corpus")
+	fixedproof.RunEvolutionRows(t, filepath.Join("..", "..", ".."), pythonFixedProofRunner{},
+		"fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection",
+		"compiled-plans", "definition-hash", "fixed-closure", "live-extents", "writing")
+}
+
+// Functional: real monotonic time measures the already oracle-gated codec.
+func TestPythonFixedFormBenchFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned interpreters and C++ oracle")
+	tc := fixedproof.RowCase{ID: "python-fixed-bench", Schema: "package probe\nfixed table T { x int32 = 1; y int32 = 2 }\n", Root: "T", Body: 8, Count: 1}
+	tc.Schema = strings.ReplaceAll(tc.Schema, ";", "\n")
+	u := fixedproof.ParseCheckUnit(t, tc.Schema)
+	wire, _ := fixedproof.CppOracle(t, tc, u)
+	files, err := pythontable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := pyrun.ImportPrelude + `import gc, statistics, time
+from probe import T
+with open('wire','rb') as f: wire=f.read()
+values=T.fixed_load(wire)
+assert T.fixed_save(values)==wire and len(wire)==T.fixed_measure(1)
+for _ in range(100):
+    T.fixed_load(wire)
+    T.fixed_save(values)
+gc.disable()
+for name,call in [('FixedLoad',lambda:T.fixed_load(wire)),('FixedSave',lambda:T.fixed_save(values))]:
+    samples=[]
+    for _ in range(5):
+        begin=time.perf_counter_ns()
+        for i in range(5000): call()
+        samples.append((time.perf_counter_ns()-begin)/5000)
+    print(name,'ns_per_record',round(statistics.median(samples),1),'samples',samples)
+gc.enable()
+`
+	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		dir := pythonFixedTree(t, files)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+		if err != nil {
+			t.Fatalf("fixed benchmark: %v\n%s\n%s", err, out, stderr)
+		}
+		t.Logf("%s\n%s", pin, out)
+	}
 }
