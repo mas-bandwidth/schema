@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	mathbits "math/bits"
@@ -20,17 +21,23 @@ import (
 // This scanner reads the announcement and batch directly. It uses declaration
 // metadata for identity/defaults, but no tablewire reader or decoded instance.
 // Its errors distinguish damage and unsupported layouts from a clean spelling.
-type sharedMessageDamage struct{ Cause error }
+type sharedMessageDamage struct {
+	Cause        error
+	PrefixShapes map[string]bool // facts from independently completed fields before damage
+}
 
 func (e *sharedMessageDamage) Error() string { return e.Cause.Error() }
 func (e *sharedMessageDamage) Unwrap() error { return e.Cause }
 
-type sharedMessageUnsupported struct{ Detail string }
+type sharedMessageUnsupported struct {
+	Detail       string
+	PrefixShapes map[string]bool
+}
 
 func (e *sharedMessageUnsupported) Error() string { return e.Detail }
 
 func sharedMessageUnsupportedf(format string, args ...any) error {
-	return &sharedMessageUnsupported{fmt.Sprintf(format, args...)}
+	return &sharedMessageUnsupported{Detail: fmt.Sprintf(format, args...)}
 }
 
 type sharedMessageBytes struct {
@@ -369,13 +376,12 @@ func (w *sharedMessageWalk) body(st *ir.Struct, depth int) (bool, error) {
 		}
 		seen[e.Id], count = true, count+1
 		f := fields[e.Id]
+		unknown, outOfOrder := false, false
 		if w.same && st != nil {
 			if f == nil {
-				w.shapes["same-build-unknown-field"] = true
+				unknown = true
 			} else {
-				if order[e.Id] < last {
-					w.shapes["fields-out-of-order"] = true
-				}
+				outOfOrder = order[e.Id] < last
 				last = order[e.Id]
 			}
 		}
@@ -387,6 +393,14 @@ func (w *sharedMessageWalk) body(st *ir.Struct, depth int) (bool, error) {
 		atDefault, err := w.payload(e, bound, depth+1)
 		if err != nil {
 			return false, err
+		}
+		// Header facts become prefix facts only after this field's complete
+		// payload validates. A damaged payload must not certify its own header.
+		if unknown {
+			w.shapes["same-build-unknown-field"] = true
+		}
+		if outOfOrder {
+			w.shapes["fields-out-of-order"] = true
 		}
 		// None is forbidden only in a FIELD position, including a field
 		// unknown to an older build. Fixed message declarations cannot be
@@ -583,13 +597,17 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 }
 
 func messageStructuralSpellings(unit *ir.Unit, root *ir.Struct, announcement, batch []byte) (shapes map[string]bool, err error) {
-	// A damaged suffix can masquerade as field references before the walk
-	// detects damage. Never certify any provisional spelling from a failed walk.
+	var completed map[string]bool
+	// A failed batch has no complete classification. Preserve only facts from
+	// independently completed fields as a separate typed prefix result.
 	defer func() {
 		if err != nil {
 			shapes = nil
-			if _, ok := errors.AsType[*sharedMessageUnsupported](err); !ok {
-				err = &sharedMessageDamage{err}
+            if unsupported, ok := errors.AsType[*sharedMessageUnsupported](err); ok {
+                unsupported.PrefixShapes = maps.Clone(completed)
+            } else {
+                err = &sharedMessageDamage{Cause: err, PrefixShapes: maps.Clone(completed)}
+            }
 			}
 		}
 	}()
@@ -605,6 +623,7 @@ func messageStructuralSpellings(unit *ir.Unit, root *ir.Struct, announcement, ba
 	}
 	w := &sharedMessageWalk{r: &sharedMessageBits{data: batch, at: 16}, entries: entries,
 		refBits: max(1, mathbits.Len(uint(len(entries)))), same: version == ir.BuildVersion(unit), shapes: map[string]bool{}}
+	completed = w.shapes
 	for range int(batch[1]) + 1 {
 		if _, err := w.body(root, 0); err != nil {
 			return w.shapes, err
@@ -672,8 +691,8 @@ func TestSharedMessageManifestSpellings(t *testing.T) {
 	}
 }
 
-// A damaged bytes suffix can resemble another vocabulary reference. Markers
-// observed before structural validation finishes are not certified spellings.
+// Batch damage does not erase independently completed prefix fields, but an
+// incomplete field's header alone must not certify a prefix spelling.
 func TestSharedMessageDamageDiscardsProvisionalSpellings(t *testing.T) {
 	t.Parallel()
 	root := conformanceRoot(t)
@@ -704,11 +723,50 @@ func TestSharedMessageDamageDiscardsProvisionalSpellings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	version, entries, err := sharedMessageAnnouncement(announcement)
+	if err != nil || version != ir.BuildVersion(u) || len(entries) < 6 || entries[1].Kind != 9 || entries[5].Kind != 9 || entries[1].Shape.Packing != 0 || entries[5].Shape.Packing != 0 {
+		t.Fatalf("prefix witness no longer has two uncompressed uint64 fields: %v", err)
+	}
+	for _, f := range u.Tables["LoginRequest"].Fields {
+		if ir.TableFieldWireId(f) == entries[5].Id {
+			t.Fatal("prefix witness's second field must be unknown to LoginRequest")
+		}
+	}
+	bits := &sharedMessageBits{data: batch, at: 16}
+	refBits := max(1, mathbits.Len(uint(len(entries))))
+	first, err := bits.small(refBits)
+	if err != nil || first != 2 {
+		t.Fatal("prefix witness lost its first field")
+	}
+	if _, err := bits.number(64); err != nil || bits.at != 85 {
+		t.Fatal("prefix witness's first field did not complete at bit85")
+	}
+	second, err := bits.small(refBits)
+	if err != nil || second != 6 || bits.at != 90 {
+		t.Fatal("prefix witness lost its second field header at bit90")
+	}
+	if _, err := bits.number(64); err != nil || bits.at != 154 {
+		t.Fatal("prefix witness's unknown field did not complete at bit154")
+	}
 	shapes, err := messageStructuralSpellings(u, u.Tables["LoginRequest"], announcement, batch)
 	var damage *sharedMessageDamage
 	var unsupported *sharedMessageUnsupported
 	if !errors.As(err, &damage) || errors.As(err, &unsupported) || shapes != nil {
 		t.Fatalf("damaged suffix certified spellings or lacked damage type: shapes=%v error=%T %v", shapes, err, err)
+	}
+	// Ref2 is a complete uint64 (bits21–85), followed by unknown ref6 and
+	// its complete uint64 (bits90–154). The later string fails at bit215.
+	if len(damage.PrefixShapes) != 1 || !damage.PrefixShapes["same-build-unknown-field"] {
+		t.Fatalf("completed unknown field lost its prefix fact: %v", damage.PrefixShapes)
+	}
+	// Keep the same original bytes through bit96: ref6's header completes,
+	// but its uint64 payload does not. That field contributes no prefix fact.
+	shapes, err = messageStructuralSpellings(u, u.Tables["LoginRequest"], announcement, batch[:12])
+	if !errors.As(err, &damage) {
+		t.Fatalf("incomplete field did not report typed damage: %v", err)
+	}
+	if shapes != nil || len(damage.PrefixShapes) != 0 {
+		t.Fatalf("incomplete unknown field certified a prefix fact: shapes=%v error=%v prefix=%v", shapes, err, damage.PrefixShapes)
 	}
 }
 
