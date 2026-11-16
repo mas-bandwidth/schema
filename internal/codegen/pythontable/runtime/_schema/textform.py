@@ -428,6 +428,7 @@ class Document:
         import re
 
         replacements: list[tuple[int, int, bytes]] = []
+        spans: list[tuple[int, int]] = []
         original = to_json(self.value)
         for path, replacement in edits:
             if isinstance(path, str):
@@ -442,18 +443,26 @@ class Document:
             current = _locate(self.root, self._cls, parts)
             if current.kind == "list":
                 raise TextError("text_edit_conflict", current.start)
+            spans.append((current.start, current.end))
             probe = parse(b"(" + replacement + b")")
             if (len(probe.children) != 1 or probe.children[0].kind == "list"
                     or probe.children[0].start != 1 or probe.children[0].end != len(replacement) + 1):
                 raise TextError("text_edit_conflict", current.start)
             candidate = self.source[:current.start] + replacement + self.source[current.end:]
-            _, value = load(self._cls, candidate, self.limits)
-            if to_json(value) != original:
+            try:
+                _, value = load(self._cls, candidate, self.limits)
+            except TextError:
+                # A disjoint edit can repair a temporary duplicate key or other
+                # cross-field constraint. Validate the combined document below.
                 replacements.append((current.start, current.end, replacement))
-        replacements.sort()
-        for previous, following in zip(replacements, replacements[1:]):
+            else:
+                if to_json(value) != original:
+                    replacements.append((current.start, current.end, replacement))
+        spans.sort()
+        for previous, following in zip(spans, spans[1:]):
             if previous[1] > following[0] or previous[0] == following[0]:
                 raise TextError("text_edit_conflict", following[0])
+        replacements.sort()
         result = self.source
         for start, end, replacement in reversed(replacements):
             result = result[:start] + replacement + result[end:]

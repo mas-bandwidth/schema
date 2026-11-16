@@ -234,6 +234,8 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
         assert doc.value.items[0].id == 6 and doc.value.items[2] is None
         assert doc.value.lookup == {"west": None, "east": 2} and doc.value.blob == b""
         assert doc.edit([('lookup[0][1]', b'4')]).value.lookup == {"west": 4, "east": 2}
+        swapped = doc.edit([('lookup[0][0]', b'"east"'), ('lookup[1][0]', b'"west"')])
+        assert swapped.value.lookup == {"east": None, "west": 2}
     if stem == "roadmap":
         assert doc.value.schema == 1 and doc.value.root == "schema/goal" and doc.value.count == 2
         assert [n.title for n in doc.value.nodes] == ["First", "Second"]
