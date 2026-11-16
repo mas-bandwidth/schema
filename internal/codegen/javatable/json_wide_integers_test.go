@@ -57,7 +57,7 @@ func TestJavaJsonWideIntegersAreStrings(t *testing.T) {
 		t.Fatal(err)
 	}
 	numberNames := map[string]bool{}
-	for _, line := range strings.Split(string(numberTokens), "\n") {
+	for line := range strings.SplitSeq(string(numberTokens), "\n") {
 		if line != "" && !strings.HasPrefix(line, "#") {
 			fields := strings.Split(line, "\t")
 			if len(fields) != 5 {
