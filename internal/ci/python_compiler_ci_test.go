@@ -47,8 +47,8 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 		if strings.HasPrefix(row.Target, "python-ci-required-shape-") {
 			shapeRows[row.Target]++
 		}
-		if strings.HasPrefix(row.Target, "python-ci-compiler-shard-") {
-			got = append(got, strings.Split(strings.TrimPrefix(row.Target, "python-ci-compiler-shard-"), "+")...)
+		if names, ok := strings.CutPrefix(row.Target, "python-ci-compiler-shard-"); ok {
+			got = append(got, strings.Split(names, "+")...)
 		}
 		if row.Target == "python-ci-compiler" {
 			t.Error("unbounded compiler aggregate remains in matrix")
