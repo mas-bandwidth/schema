@@ -14,7 +14,9 @@
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
 .PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control
-test-python: python-ci-support python-ci-packages python-ci-compiler
+test-python: python-ci-support
+	$(MAKE) --no-print-directory python-ci-packages
+	$(MAKE) --no-print-directory python-ci-compiler
 
 .PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
 PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
