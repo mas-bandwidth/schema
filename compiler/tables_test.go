@@ -761,6 +761,10 @@ table NativeRoot
 func TestViewFileNamesAreClaimedInEveryUnit(t *testing.T) {
 	c := New()
 	found := map[string]bool{}
+	unitNames := map[string]bool{}
+	for _, name := range tablenames.Claimed() {
+		unitNames[name] = true
+	}
 	files, err := c.Generate(unitFromSource(t, viewSurfaceSrc), "cpp", Options{})
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -770,7 +774,7 @@ func TestViewFileNamesAreClaimedInEveryUnit(t *testing.T) {
 			continue
 		}
 		for _, ident := range identsIn(string(body)) {
-			if tablenames.Registered(ident) {
+			if unitNames[ident] {
 				found[ident] = true
 			}
 		}
