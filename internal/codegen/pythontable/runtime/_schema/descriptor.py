@@ -44,6 +44,7 @@ class FieldDesc:
         "elem_align",
         "name",
         "json_key",
+        "required",
         "frac_bits",
         "json_variants",
         "json_keys",
@@ -265,15 +266,12 @@ class FieldDesc:
         self.set_element = self._set_element
         self.wide = wide
         self.guard = guard
-        self.required = required
         self.field_deprecated = field_deprecated
         self.counted = counted
         self.count_offset = count_offset
         self.present_offset = present_offset
         self.unbounded_container = unbounded_container
-        self.unbounded = unbounded
         self.array_bound = array_bound
-        self.frac_bits = frac_bits
         self._target_desc = None
         self._union_desc = None
         self.type_name = type_name
