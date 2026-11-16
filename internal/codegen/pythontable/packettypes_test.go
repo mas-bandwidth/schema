@@ -391,14 +391,8 @@ table Reading
 
 const packetFloatText = `{"sample":{"f32":1.5,"f64":-2.25,"cf":1.25,"q":-90.5}}`
 
-// TestPythonTablePacketTypesFloatKinds holds what a packet type of float and
-// fixed fields does in a table field now that the packet wire carries those
-// kinds and the table runtime does not yet: Generate accepts it, the generated
-// package imports (the hosted packet codec's float checks resolve in the table
-// runtime) and is mypy --strict clean, the packet class's own wire round-trips,
-// and the table read and write refuse the float field by name through
-// kind_unsupported.py, the whole value or nothing, under both pinned
-// interpreters.
+// TestPythonTablePacketTypesFloatKinds holds packet and table wire round trips
+// for a hosted packet type with float and fixed-point fields.
 func TestPythonTablePacketTypesFloatKinds(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, packetFloatSchema)
@@ -430,16 +424,9 @@ print("packet", again.f32, again.f64, again.write() == packet)
 
 with open("wire.bin", "rb") as handle:
     data = handle.read()
-try:
-    Reading.load(data)
-    print("table read")
-except packetfloats.Refused as err:
-    print("table read refused", err.reason)
-try:
-    Reading().save()
-    print("table written")
-except packetfloats.InvalidValue:
-    print("table write refused")
+loaded = Reading.load(data)
+print("table", loaded.sample.f32, loaded.sample.f64, loaded.sample.cf, loaded.sample.q, loaded.save() == data)
+print("table default", bool(Reading().save()))
 print("OK")
 `
 	inputs := map[string][]byte{"main.py": []byte(probe), "wire.bin": wire}
@@ -450,8 +437,8 @@ print("OK")
 	}
 	for _, line := range []string{
 		"packet 1.5 -2.25 True",
-		"table read refused unsupported_kind",
-		"table write refused",
+		"table 1.5 -2.25 1.25 -5931008 True",
+		"table default True",
 		"OK",
 	} {
 		if !strings.Contains(got, line+"\n") {
