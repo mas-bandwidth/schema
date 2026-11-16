@@ -164,6 +164,8 @@ fixed table T
 // "is present for every float range", the 'L' row "stays empty until a
 // table-declared limit exists", and "Structs, flags and unions share one
 // `seen` map keyed by bare name".
+// Legacy v1 byte/tag/dedup checks below preserve historical identity.
+// Current v2 version and path checks follow; emitted hash checks use v2.
 func t03R5(t *testing.T) {
 	// (1) EVERY RANGE: two schemas whose layouts are byte-equal and whose
 	// ranges differ — the leg's own published hash must move, or "an old
@@ -245,7 +247,7 @@ fixed table T
 `
 	u := unitFrom(t, carrying)
 	st := findTable(t, u, "T")
-	digest := ir.TableFixedDefinitionsDigest(st)
+	digest := ir.TableFixedDefinitionsDigestLegacy(st)
 	if len(digest) == 0 {
 		t.Fatal("R5: the fixture carries no digest fact, so the 'L' clause cannot bite")
 	}
@@ -280,13 +282,32 @@ fixed table T
     caps Caps
 }
 `
-	dTwice := ir.TableFixedDefinitionsDigest(findTable(t, unitFrom(t, twice), "T"))
-	dOnce := ir.TableFixedDefinitionsDigest(findTable(t, unitFrom(t, once), "T"))
+	dTwice := ir.TableFixedDefinitionsDigestLegacy(findTable(t, unitFrom(t, twice), "T"))
+	dOnce := ir.TableFixedDefinitionsDigestLegacy(findTable(t, unitFrom(t, once), "T"))
 	if !bytes.Equal(dTwice, dOnce) {
 		t.Errorf("R5: a flags type named by two fields is re-emitted — the digest is deduped by name, once")
 	}
 	if n := bytes.Count(dTwice, []byte{'F'}); n != 1 {
 		t.Errorf("R5: the digest carries %d 'F' rows for one flags type, want 1 — deduped by name, once", n)
+	}
+
+	// Current v2 binds each occurrence to its wire path. The shared IR tests
+	// own the framed-byte contract; these fixtures must use that version and
+	// retain both references even when they name the same flags definition.
+	flagsOnce := findTable(t, unitFrom(t, once), "T")
+	flagsTwice := findTable(t, unitFrom(t, twice), "T")
+	for _, root := range []*ir.Struct{findTable(t, unitFrom(t, narrow), "T"), findTable(t, unitFrom(t, coarse), "T"), flagsOnce, flagsTwice} {
+		if version, err := ir.TableFixedDefinitionsDigestVersion(ir.TableFixedDefinitionsDigest(root)); err != nil || version != 2 {
+			t.Errorf("R5 v2: digest version = %d, err = %v", version, err)
+		}
+	}
+	if string(ir.TableFixedDefinitionsDigest(flagsOnce)) == string(ir.TableFixedDefinitionsDigest(flagsTwice)) {
+		t.Error("R5 v2: a second flags occurrence left the digest unchanged")
+	}
+	first, second := *flagsTwice, *flagsTwice
+	first.Fields, second.Fields = flagsTwice.Fields[:1], flagsTwice.Fields[1:]
+	if string(ir.TableFixedDefinitionsDigest(&first)) == string(ir.TableFixedDefinitionsDigest(&second)) {
+		t.Error("R5 v2: the same flags definition at different field paths collided")
 	}
 }
 
