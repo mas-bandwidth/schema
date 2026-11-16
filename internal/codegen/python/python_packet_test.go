@@ -67,7 +67,7 @@ func loadPythonUnit(t *testing.T, paths ...string) *ir.Unit {
 // rootClosure is the declarations a root type needs by value, in their own
 // files. It makes a one-root unit out of a corpus file the codec cannot carry
 // whole, so a carried root's C++ pin can still be read.
-func rootClosure(u *ir.Unit, root string) *ir.Unit {
+func rootClosure(u *ir.Unit, roots ...string) *ir.Unit {
 	byName := map[string]ir.Decl{}
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
@@ -98,7 +98,9 @@ func rootClosure(u *ir.Unit, root string) *ir.Unit {
 			}
 		}
 	}
-	add(root)
+	for _, root := range roots {
+		add(root)
+	}
 	out := &ir.Unit{
 		Package: u.Package, ProtocolId: u.ProtocolId,
 		DeclFile: map[string]string{}, Consts: map[string]*ir.Const{},
@@ -200,12 +202,8 @@ func itemsBlocker(u *ir.Unit, items []ir.Item, seen map[string]bool) string {
 			if k := itemsBlocker(u, item.Else, seen); k != "" {
 				return k
 			}
-		case *ir.ConstItem:
-			return "const"
-		case *ir.ReservedItem:
-			return "reserved"
-		case *ir.AlignItem:
-			return "align"
+		case *ir.ConstItem, *ir.ReservedItem, *ir.AlignItem:
+			// carried by the packet layout emitters
 		}
 	}
 	return ""
@@ -471,7 +469,7 @@ func TestPythonPacketCore(t *testing.T) {
 			base := pruned.DeclFile[pin.root]
 			intField, boolField, intMin, intMax := topLevelFields(pruned, pin.root)
 			probe := packetProbe(pruned, pin.root, base, intField, boolField, intMin, intMax)
-			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
+			pinBytes, err := os.ReadFile(pinFile(root, pin.name))
 			if err != nil {
 				t.Fatal(err)
 			}

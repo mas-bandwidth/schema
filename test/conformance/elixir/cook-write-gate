@@ -1,0 +1,50 @@
+#!/bin/sh
+# THE ELIXIR COOK-WRITE GATE (docs/SPEC-TABLES.md §7.2, §7.6): reads one
+# `conformance-harness run --only elixir` log and its work directory, and
+# passes only when the leg's cook-write line reads `pass N/N` with the same N
+# twice, no case of the surface is relaxed, and no case answers absent except
+# blob_shared in both byte orders (its own work, which tightens this gate when
+# it lands). The run's other surfaces are not this gate's verdict.
+#
+# usage: cook-write-gate <log> <work>
+log=$1
+work=$2
+
+line=$(grep -E '^cook-write +' "$log")
+if [ -z "$line" ]; then
+	echo "elixir cook-write gate: $log has no cook-write line"
+	exit 1
+fi
+set -- $line
+verdict=$2
+count=$3
+suffix=${4:-}
+if [ "$verdict" != pass ] || [ "${count%/*}" != "${count#*/}" ]; then
+	echo "elixir cook-write gate: the cook-write line reads '$line', want pass N/N"
+	exit 1
+fi
+
+absent=$(ls "$work/out/elixir/cook-write" 2>/dev/null | grep '\.absent$' | LC_ALL=C sort | tr '\n' ' ')
+case "$suffix" in
+"")
+	want=""
+	;;
++2a)
+	want="blob_shared-be.absent blob_shared.absent "
+	;;
+*)
+	want="(none past blob_shared)"
+	;;
+esac
+if [ "$absent" != "$want" ]; then
+	echo "elixir cook-write gate: '$line' answers absent: ${absent:-none}; only blob_shared may"
+	exit 1
+fi
+
+if grep -qE 'RELAXED.* elixir / cook-write' "$log"; then
+	grep -E 'RELAXED.* elixir / cook-write' "$log"
+	echo "elixir cook-write gate: a cook-write case is relaxed"
+	exit 1
+fi
+
+echo "elixir cook-write gate: $line, every case gated"

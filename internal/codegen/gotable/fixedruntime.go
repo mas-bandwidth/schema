@@ -694,7 +694,11 @@ func tableFixedUTF8Ok(p []byte) bool {
 // absent optional's payload, a counted array's slots past its count, a text's
 // units past its used length, and an inactive union arm. A dead range is
 // checked here before anything lands, and a non-zero one is wire_damaged. Each
+<<<<<<< HEAD
 // dead range is added to dead, and an entry inside one is not asked.
+=======
+// count or optional range is added to dead, and an entry inside one is not asked.
+>>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	var deadBuf [64][2]uint32
 	dead := deadBuf[:0]
@@ -761,11 +765,19 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case tableFixedSlack:
 			// an inactive union arm: the bytes under tag 0 to the widest arm's
 			// span, or those past a narrower taken arm
+<<<<<<< HEAD
 			span, zero := tableFixedDeadSpan(src, p.Src, p.Src+p.Size)
 			if !zero {
 				return TableRefuseWireDamaged.Error()
 			}
 			dead = append(dead, span)
+=======
+			if _, zero := tableFixedDeadSpan(src, p.Src, p.Src+p.Size); !zero {
+				return TableRefuseWireDamaged.Error()
+			}
+			// No active entry reads a union's dead tail: its arm guards
+			// already exclude it, so it needs no dead-span bookkeeping.
+>>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 		case tableFixedTag:
 			// a union tag past the reader's arm count names no arm (§4.6)
 			var tag uint64
@@ -1169,7 +1181,8 @@ type tableFixedCompiler struct {
 	chainAt   uint32
 	chainLaid bool
 	report *TableReport
-	// unlawful is a writer field whose kind moved off every ladder: no plan
+	// unlawful is a removed writer field, arm or variant, a narrowed span,
+	// or a kind moved off every ladder: no plan
 	// is laid, and a file under the entry's hash refuses layout_malformed
 	// (docs/FIXED-FORM-ALGORITHM.md §5.4).
 	unlawful bool
@@ -1297,12 +1310,36 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-// census is whether THIS entry is the first time the writer's field is seen:
-// an array's element subtree is compiled once per element and the unknown
-// count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
+// A lawful older writer names only fields, arms and variants the reader retains.
+// Deprecation retains the slot and its name; removing it cannot leave source
+// bytes outside the check pass (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.8 rule 6).
+func tableFixedChildrenNamed(theirs tableFixedLayoutView, ti int32, mine tableFixedLayoutView, mi int32) bool {
+	tc := ti + 1
+	for range tableFixedEntryAt(theirs, ti).Children {
+		mc := mi + 1
+		named := false
+		for range tableFixedEntryAt(mine, mi).Children {
+			if tableFixedEntryAt(theirs, tc).ID == tableFixedEntryAt(mine, mc).ID {
+				named = true
+				break
+			}
+			mc += tableFixedSubtree(mine, mc)
+		}
+		if !named {
+			return false
+		}
+		tc += tableFixedSubtree(theirs, tc)
+	}
+	return true
+}
+
 func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
+	if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+		c.unlawful = true
+		return
+	}
 	myChild := mi + 1
 	for range me.Children {
 		mc := tableFixedEntryAt(mine, myChild)
@@ -1318,23 +1355,6 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 			theirChild += tableFixedSubtree(theirs, theirChild)
 		}
 		myChild += tableFixedSubtree(mine, myChild)
-	}
-	tcAt := ti + 1
-	for range te.Children {
-		tc := tableFixedEntryAt(theirs, tcAt)
-		named := false
-		mcAt := mi + 1
-		for range me.Children {
-			if tableFixedEntryAt(mine, mcAt).ID == tc.ID {
-				named = true
-				break
-			}
-			mcAt += tableFixedSubtree(mine, mcAt)
-		}
-		if !named && census && c.report != nil {
-			c.report.Unknown++
-		}
-		tcAt += tableFixedSubtree(theirs, tcAt)
 	}
 }
 
@@ -1383,6 +1403,12 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if d.Counted != 0 {
 			head = 4
 		}
+		// A required count word past the writer's field reaches beyond its
+		// record; refuse before subtracting the head from an unsigned size.
+		if te.Size < head {
+			c.tooLarge = true
+			return
+		}
 		var theirN, myN uint32
 		if tel.Size != 0 {
 			theirN = (te.Size - head) / tel.Size
@@ -1390,6 +1416,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if mel.Size != 0 {
 			myN = (me.Size - head) / mel.Size
 		}
+		if theirN > myN { c.unlawful = true; return }
 		theirBase := theirAt + head
 		n := theirN
 		n = min(n, myN)
@@ -1406,11 +1433,20 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
 		}
 	case 16:
+		if !tableFixedChildrenNamed(theirs, ti+1, mine, mi+1) {
+			c.unlawful = true
+			return
+		}
 		tkey := tableFixedEntryAt(theirs, ti+1)
 		mkey := tableFixedEntryAt(mine, mi+1)
 		tel := ti + 1 + tableFixedSubtree(theirs, ti+1)
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
+		mee := tableFixedEntryAt(mine, mel)
+		if te.Size/tee.Size > me.Size/mee.Size {
+			c.unlawful = true
+			return
+		}
 		for k := range mkey.Children {
 			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).ID
 			for j := range tkey.Children {
@@ -1422,20 +1458,16 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			}
 		}
 	case 15:
+		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+			c.unlawful = true
+			return
+		}
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
-		// THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed
-		// BEFORE c.argW is retuned below so it is stamped at the OUTER width:
-		// None answers to the OUTER tag (bill §12.7). Every tag value below is
-		// written under THEIR tag's guard, so a record naming an arm this build
-		// does not have — or a tag past the writer's arm set entirely — landed
-		// no tag at all from the plan and was answered by the prefill. That
-		// answer was right and silent: DstSize carries THE WRITER'S ARM COUNT
-		// for this one entry, and the read loop counts a clamp for a raw tag
-		// past that set, so the compiled plan counts what the identity plan's
-		// decode bound counts (schema#1254, §5.4, §5.8 row 12). Entries apply in
-		// push order, so the arm that matches overwrites this one and it stands
-		// when none does.
+		// None goes down first, guarded only by the outer arm. Each matched
+		// writer arm then overwrites it with the reader's ordinal. A missing
+		// writer arm makes the lineage unlawful above; a tag outside the
+		// writer's set refuses in the check pass, before any record lands.
 		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Guard: guard, Op: tableFixedConst, Arg: arg}
 		if te.Children > 0 && te.Children <= 255 {
 			none.DstSize = uint8(te.Children)
@@ -1495,6 +1527,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		// (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH ordinal takes the remap
 		// table.
 		if te.Size < me.Size {
+			if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+				c.unlawful = true
+				return
+			}
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
 				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)})
 			return
@@ -1507,6 +1543,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		n := te.Children
 		if n > tableFixedRemapMax {
 			c.overflow = true
+			return
+		}
+		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+			c.unlawful = true
 			return
 		}
 		m := make([]uint16, n)
@@ -1525,6 +1565,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		e.Aux = tableFixedLayTable(c, m, int32(n))
 		tableFixedPush(c, e)
 	case 12:
+		if te.Size > me.Size {
+			c.unlawful = true
+			return
+		}
 		units := me.Size - 4
 		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})

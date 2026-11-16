@@ -494,16 +494,27 @@ func tableJSONCount(base unsafe.Pointer, f *TableFieldInfo) int32 {
 }
 
 // tableJSONCountInContract reports whether a counted field's companion is one
+<<<<<<< HEAD
 // the declaration admits: never negative, and past its bound only for a
 // container with no declared bound. The binary writers refuse these values
 // (docs/SPEC.md §5.1 rows 3 and 4), so the text writer does too rather than
 // write a truncated count or a clamped length.
+=======
+// the declaration admits: at or above its declared minimum (never negative), and
+// past its bound only for a container with no declared bound. The binary writers
+// refuse these values (docs/SPEC.md §5.1 rows 3 and 4), so the text writer does
+// too rather than write a truncated count or a clamped length.
+>>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 func tableJSONCountInContract(base unsafe.Pointer, f *TableFieldInfo) bool {
 	if !f.Counted {
 		return true
 	}
 	count := *(*int32)(unsafe.Add(base, uintptr(f.CountOffset)))
+<<<<<<< HEAD
 	return count >= 0 && (f.UnboundedContainer || count <= f.ArrayBound)
+=======
+	return count >= f.ArrayMin && (f.UnboundedContainer || count <= f.ArrayBound)
+>>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 }
 
 func tableJSONSetCount(base unsafe.Pointer, f *TableFieldInfo, count int32) {
@@ -1254,6 +1265,12 @@ func tableJSONAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 	if f.Optional {
 		// absent is the default; a present optional's key is its presence
 		return tableJSONGetRaw(unsafe.Add(base, uintptr(f.PresentOffset)), 1) == 0
+	}
+	// a count outside the write contract is never at its default: it is written
+	// and refused there, rather than clamped here and elided (docs/SPEC.md §5.1
+	// rows 3 and 4)
+	if !tableJSONCountInContract(base, f) {
+		return false
 	}
 	storage, defaults := unsafe.Add(base, uintptr(f.Offset)), unsafe.Add(def, uintptr(f.Offset))
 	if f.Map || f.List {

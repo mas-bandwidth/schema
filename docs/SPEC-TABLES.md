@@ -16225,12 +16225,25 @@ written as something else.
 - **A ranged integer, or a `fixed`/`ufixed` raw value, off its `min`/`max`** —
   `invalid_value` (docs/SPEC.md §5.1 row 1).
 - **A `bits(N)` value wider than `N` bits** — `invalid_value` (§5.1 row 2).
+<<<<<<< HEAD
 - **A counted array's count past its `Max`, below its `Min`, or negative** —
   `invalid_value` (§5.1 row 3).
 - **A `string(N)` or `bytes(N)` length past `N` or negative** —
   `invalid_value` (§5.1 row 4).
 - **A compressed or ranged float off its range** — `invalid_value` (§5.1
   row 10).
+=======
+- **A counted array's count past its `Max` or below its `Min` (or
+  negative)** — refused per leg as docs/SPEC.md §5.1 row 3 and
+  docs/rulings.json `write-refusal` list: the verdict is the contract, the
+  reason name per language.
+- **A `string(N)` or `bytes(N)` length past `N` or negative** — refused per
+  leg as docs/SPEC.md §5.1 row 4 and docs/rulings.json `write-refusal` list:
+  the verdict is the contract, the reason name per language.
+- **A compressed or ranged float off its range** — refused per leg as
+  docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
+  verdict is the contract, the reason name per language.
+>>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 - **A graph nested past 128** (§16.2): the writer carries the reader's depth
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by

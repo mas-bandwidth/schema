@@ -191,5 +191,175 @@ func TestSmallRangeInFloat32(t *testing.T) {
 		}
 	}
 }
+<<<<<<< HEAD
+=======
+
+func TestContractOmitDefaults(t *testing.T) {
+	options := TableJSONOptions{OmitDefaults: true}
+	for _, c := range []struct {
+		what string
+		edit func(*Contract)
+	}{
+		{"negative length at its default", func(v *Contract) { v.NameLength = -1 }},
+		{"negative count at its default", func(v *Contract) { v.MarksCount = -1 }},
+	} {
+		var v Contract
+		c.edit(&v)
+		if n := ContractToJSONMeasureWith(&v, options); n != -1 {
+			t.Fatalf("%s: ToJSONMeasureWith = %d, want the refusal -1", c.what, n)
+		}
+		var sink [4096]byte
+		if n := ContractToJSONWith(&v, sink[:], options); n != -1 {
+			t.Fatalf("%s: ToJSONWith = %d, want the refusal -1", c.what, n)
+		}
+	}
+	var v Contract
+	n := ContractToJSONMeasureWith(&v, options)
+	if n <= 0 {
+		t.Fatalf("all defaults: ToJSONMeasureWith = %d, want the elided text's size", n)
+	}
+	out := make([]byte, n)
+	if got := ContractToJSONWith(&v, out, options); got != n {
+		t.Fatalf("all defaults: ToJSONWith = %d, want the measured %d", got, n)
+	}
+	var back Contract
+	var report TableReport
+	if !ContractFromJSON(&back, out, &report) {
+		t.Fatalf("all defaults: FromJSON refused its own text: %+v\n%s", report, out)
+	}
+}
+`)
+	runGeneratedTables(t, `package probe
+fixed table Bounded {
+    items [1..3]int32
+}
+`, `package probe
+import "testing"
+
+func TestCountedArrayMinimum(t *testing.T) {
+	for _, c := range []struct {
+		what  string
+		count int32
+	}{
+		{"count below Min", 0},
+		{"count negative", -1},
+		{"count past Max", 4},
+	} {
+		var v Bounded
+		BoundedReset(&v)
+		v.ItemsCount = c.count
+		if n := BoundedToJSONMeasure(&v); n != -1 {
+			t.Fatalf("%s: ToJSONMeasure = %d, want the refusal -1", c.what, n)
+		}
+		var sink [4096]byte
+		if n := BoundedToJSON(&v, sink[:]); n != -1 {
+			t.Fatalf("%s: ToJSON = %d, want the refusal -1", c.what, n)
+		}
+		if text, err := BoundedSaveText(&v); err == nil || text != "" {
+			t.Fatalf("%s: SaveText = %q, %v, want the refusal", c.what, text, err)
+		}
+	}
+	for _, count := range []int32{1, 2, 3} {
+		var v Bounded
+		BoundedReset(&v)
+		v.ItemsCount = count
+		for i := int32(0); i < count; i++ {
+			v.Items[i] = i + 5
+		}
+		n := BoundedToJSONMeasure(&v)
+		if n <= 0 {
+			t.Fatalf("count %d: ToJSONMeasure = %d, want the written size", count, n)
+		}
+		out := make([]byte, n)
+		if got := BoundedToJSON(&v, out); got != n {
+			t.Fatalf("count %d: ToJSON = %d, want the measured %d", count, got, n)
+		}
+		var back Bounded
+		var report TableReport
+		if !BoundedFromJSON(&back, out, &report) || back.ItemsCount != count {
+			t.Fatalf("count %d: read back %+v, %+v\n%s", count, back, report, out)
+		}
+		for i := int32(0); i < count; i++ {
+			if back.Items[i] != v.Items[i] {
+				t.Fatalf("count %d: items[%d] read back %d, want %d", count, i, back.Items[i], v.Items[i])
+			}
+		}
+		if text, err := BoundedSaveText(&v); err != nil || text == "" {
+			t.Fatalf("count %d: SaveText = %q, %v, want the writer's text", count, text, err)
+		}
+	}
+}
+`)
+	runGeneratedTables(t, `package probe
+table Keys {
+    entries map[string(3)]int32
+}
+`, `package probe
+import "testing"
+
+func TestMapKeyLength(t *testing.T) {
+	var b KeysBuilder
+	if !b.Init() {
+		t.Fatal("builder init")
+	}
+	defer b.Shutdown()
+	value := KeysEntriesInsert(&b.Main, &b.GetRoot().Entries, "abc")
+	if value == nil {
+		t.Fatal("insert a key on its bound")
+	}
+	*value = 7
+	if !b.Lock() {
+		t.Fatal("builder lock")
+	}
+	root := b.AsConst()
+	entry := root.Entries.At(0)
+	if entry == nil {
+		t.Fatal("map entry")
+	}
+	for _, c := range []struct {
+		what   string
+		length int32
+	}{
+		{"negative key length", -1},
+		{"key length past N", 4},
+	} {
+		entry.KeyLength = c.length
+		if n := KeysToJSONMeasure(root); n != -1 {
+			t.Fatalf("%s: ToJSONMeasure = %d, want the refusal -1", c.what, n)
+		}
+		var sink [4096]byte
+		if n := KeysToJSON(root, sink[:]); n != -1 {
+			t.Fatalf("%s: ToJSON = %d, want the refusal -1", c.what, n)
+		}
+		if text, err := KeysSaveText(root); err == nil || text != "" {
+			t.Fatalf("%s: SaveText = %q, %v, want the refusal", c.what, text, err)
+		}
+	}
+	entry.KeyLength = 3
+	n := KeysToJSONMeasure(root)
+	if n <= 0 {
+		t.Fatalf("key length on N: ToJSONMeasure = %d, want the written size", n)
+	}
+	out := make([]byte, n)
+	if got := KeysToJSON(root, out); got != n {
+		t.Fatalf("key length on N: ToJSON = %d, want the measured %d", got, n)
+	}
+	var back KeysBuilder
+	if !back.Init() {
+		t.Fatal("builder init")
+	}
+	defer back.Shutdown()
+	var report TableReport
+	if !KeysFromJSON(&back, out, &report) || report.Err() != nil {
+		t.Fatalf("key length on N: FromJSON refused its own text: %+v\n%s", report, out)
+	}
+	if got := KeysEntriesFind(&back.Arena, &back.GetRoot().Entries, "abc"); got == nil || *got != 7 {
+		t.Fatalf("key length on N: read back %v\n%s", got, out)
+	}
+	if text, err := KeysSaveText(root); err != nil || text == "" {
+		t.Fatalf("key length on N: SaveText = %q, %v, want the writer's text", text, err)
+	}
+}
+>>>>>>> 505e22bc7162ae395d5292b2a28d9d0c0836b7c9
 `)
 }

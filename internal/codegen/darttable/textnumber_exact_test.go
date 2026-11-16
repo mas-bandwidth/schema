@@ -1,22 +1,10 @@
 package darttable
 
-// A NUMBER TOKEN LANDS EXACTLY AS THE ENGINE LANDS IT (docs/SPEC-TABLES.md
-// §16.2). Two token classes are pinned here, each row's clamped count and
-// saved bytes the Go engine's (internal/tabletext, internal/tablewire) over
-// the same unit:
-//
-//   - `-0` is a float field's negative zero. The tolerant read keeps the token
-//     a _JNum rather than an int, because an int has no negative zero.
-//   - an integer token at or past +-2^63, a negative token in an unsigned
-//     field, and an integral float lands by its exact sign and magnitude,
-//     saturated at 2^64-1 and counted, then the declared range, then the
-//     64-bit storage domain, each move counted.
-//
-// Each class has a reversed witness that puts the old read back and holds
-// that it is red on exactly that class's rows.
-//
-// Running the Dart SDK makes this a functional test: it is gated by
-// slowtest, as every Dart probe here is.
+// JSON numeric text is held to the Go engine (docs/SPEC-TABLES.md §16.2).
+// Floats preserve negative zero. Wide integers read exact decimal strings,
+// including values beyond binary64 precision; bare numbers and invalid or
+// out-of-range strings refuse. The controls remove negative-zero handling or
+// route wide decimal strings through binary64 and must change their rows.
 
 import (
 	"fmt"
@@ -24,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,8 +37,18 @@ var textNegativeZero = []string{
 	`{"d": -0}`,
 }
 
-// textInt64 are the rows the exact 64-bit placement decides.
+// textInt64 holds valid string-encoded values a binary64 conversion rounds.
 var textInt64 = []string{
+	`{"u": "9007199254740993"}`,
+	`{"u": "9223372036854775807"}`,
+	`{"s": "-9007199254740993"}`,
+	`{"u": "18446744073709551615"}`,
+	`{"s": "9223372036854775807"}`,
+}
+
+// Keep the old number-token and out-of-domain values as refusal cases, and
+// exercise the same out-of-domain digits in their required string form.
+var textWideRefusal = []string{
 	`{"u": 18446744073709551616}`,
 	`{"u": -1}`,
 	`{"s": 9223372036854775808}`,
@@ -60,18 +58,23 @@ var textInt64 = []string{
 	`{"w": 18446744073709551615}`,
 	`{"u": -1e3}`,
 	`{"u": 2e19}`,
+	`{"u": "18446744073709551616"}`,
+	`{"u": "-1"}`,
+	`{"s": "9223372036854775808"}`,
+	`{"s": "-9223372036854775809"}`,
+	`{"s": "99999999999999999999999"}`,
+	`{"s": "-99999999999999999999999"}`,
+	`{"u": "-1e3"}`,
+	`{"u": "2e19"}`,
 }
 
-// textNumberSteady are rows both reads have always landed as the engine does.
 var textNumberSteady = []string{
 	`{"d": -0.0}`,
 	`{"f": 0}`,
 	`{"s": -0, "u": -0, "w": -0}`,
-	`{"u": 9223372036854775807}`,
-	`{"u": 9223372036854775808}`,
-	`{"u": 18446744073709551615}`,
-	`{"s": 9223372036854775807, "w": 4294967295}`,
-	`{"s": -9223372036854775808}`,
+	`{"u": "9223372036854775808"}`,
+	`{"s": "-9223372036854775808"}`,
+	`{"w": 4294967295}`,
 	`{"s": 1e19}`,
 	`{"s": -1e19}`,
 	`{"w": 1e10}`,
@@ -84,13 +87,14 @@ func textNumberTexts() []string {
 	var all []string
 	all = append(all, textNegativeZero...)
 	all = append(all, textInt64...)
+	all = append(all, textWideRefusal...)
 	all = append(all, textNumberSteady...)
 	return all
 }
 
 // textNumberRun generates the unit, lets edit plant a reversal in the
 // generated wire module, and answers one line per text:
-// `<clamped> <kind mismatch> <saved bytes in hex>`.
+// `read <saved bytes>` or `refused <reason>`.
 func textNumberRun(t *testing.T, edit func(string) string) []string {
 	t.Helper()
 	u := unitFrom(t, textNumberSchema)
@@ -114,8 +118,12 @@ void main() {
   for (final text in File('texts.txt').readAsStringSync().split('\n')) {
     final r = w.TableTextReport();
     final v = w.rootFromJson(text, r);
-    final hex = w.rootWireSave(v).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    print('${r.refused ? 1 : 0} ${r.reason == 'kind_mismatch' ? 1 : 0} $hex');
+    if (r.refused) {
+      print('refused ${r.reason}');
+    } else {
+      final hex = w.rootWireSave(v).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      print('read $hex');
+    }
   }
 }
 `
@@ -144,13 +152,21 @@ func textNumberOracle(t *testing.T) []string {
 		inst := model.New(u.Tables["Root"])
 		var rep tabletext.Report
 		if !model.Read(inst, []byte(text), &rep) {
-			t.Fatalf("%s: the Go engine refused the text (%+v)", text, rep)
+			reason, _, _ := strings.Cut(rep.Reason, ":")
+			if reason != "kind_mismatch" && reason != "out_of_range" {
+				t.Fatalf("%s: unexpected Go refusal (%+v)", text, rep)
+			}
+			want = append(want, "refused "+reason)
+			continue
 		}
-		wire, err := tablewire.Encode(model, inst)
+		if slices.Contains(textWideRefusal, text) {
+			t.Fatalf("%s: wide out-of-contract text was accepted", text)
+		}
+		wire, err := tablewire.EncodeVariable(model, inst)
 		if err != nil {
 			t.Fatalf("%s: the Go engine's wire: %v", text, err)
 		}
-		want = append(want, fmt.Sprintf("%s %s %x", strconv.Itoa(0), strconv.Itoa(0), wire))
+		want = append(want, fmt.Sprintf("read %x", wire))
 	}
 	return want
 }
@@ -200,52 +216,32 @@ func TestDartTextNegativeZeroNegativeControl(t *testing.T) {
 	}
 }
 
-// textInt64DoubleCompare is the read that compared a token past an int by its
-// double, the reversed witness's body.
-const textInt64DoubleCompare = `int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
-  int clamp(int v) {
-    if (unsigned) {
-      if (v < 0 && hi != null && hi >= 0) { v = lo ?? 0; }
-      if (lo != null && _u64Below(v, lo)) { v = lo; }
-      if (hi != null && _u64Above(v, hi)) { v = hi; }
-    } else {
-      if (lo != null && v < lo) { v = lo; }
-      if (hi != null && v > hi) { v = hi; }
-    }
-    return v;
+// textInt64DoubleCompare plants a lossy binary64 conversion in the emitted
+// wide-string reader while retaining its token and range checks.
+const textInt64DoubleCompare = `int _jsonWideIntField(dynamic val, TableTextReport r, int? lo, int? hi, bool unsigned, [int def = 0]) {
+  if (val is! String || !_jsonIntegerToken(val)) {
+    r.refuse('kind_mismatch');
+    return def;
   }
-  if (val is int) return clamp(val);
-  if (unsigned && val is _JNum && (hi == null || hi < 0)) {
-    final wide = BigInt.tryParse(val.token);
-    if (wide != null && wide >= BigInt.zero && wide <= BigInt.parse('18446744073709551615')) {
-      final signed = wide > BigInt.from(9223372036854775807)
-          ? wide - (BigInt.one << 64) : wide;
-      return clamp(signed.toInt());
-    }
+  if (_jsonIntegerDigits(val) > 20) {
+    r.refuse('out_of_range');
+    return def;
   }
-  if (val is _JNum && val.d.isFinite && val.d == val.d.truncateToDouble()) {
-    if (val.d > 9223372036854775807.0) { return clamp(9223372036854775807); }
-    if (val.d < -9223372036854775808.0) { return clamp(-9223372036854775808); }
-    return clamp(val.d.toInt());
-  }
-  if (val is num && val.isFinite && val.toDouble() == val.toDouble().truncateToDouble()) {
-    if (val.toDouble() > 9223372036854775807.0) { return clamp(9223372036854775807); }
-    if (val.toDouble() < -9223372036854775808.0) { return clamp(-9223372036854775808); }
-    return clamp(val.toInt());
-  }
-  return def;
+  final rounded = double.parse(val);
+  return _jsonPlaceInteger(BigInt.from(rounded), r, lo, hi, unsigned, def);
 }
 
-int _jsonIntFieldExact(`
+int _jsonWideIntFieldExact(`
 
 func TestDartTextInt64DoubleCompareNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "dart")
 	t.Parallel()
 	got := textNumberRun(t, func(src string) string {
-		return plant(t, src, "int _jsonIntField(", textInt64DoubleCompare)
+		return plant(t, src, "int _jsonWideIntField(", textInt64DoubleCompare)
 	})
 	red := textNumberRed(got, textNumberOracle(t))
-	if strings.Join(red, " | ") != strings.Join(textInt64, " | ") {
-		t.Fatalf("the double compare is red on %q, want exactly %q", red, textInt64)
+	wantRed := append(append([]string{}, textInt64...), `{"s": "-9223372036854775809"}`)
+	if strings.Join(red, " | ") != strings.Join(wantRed, " | ") {
+		t.Fatalf("the double compare is red on %q, want exactly %q", red, wantRed)
 	}
 }
