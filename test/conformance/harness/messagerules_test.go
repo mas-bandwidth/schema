@@ -1178,8 +1178,13 @@ func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
 	if got.ok || !readRefused(got.err, got.report) {
 		t.Fatalf("a count past the bound refuses: ok=%v err=%v report=%+v", got.ok, got.err, got.report)
 	}
-	if fv := fieldOf(t, got.inst, "few"); fv.Count != 0 {
-		t.Errorf("a refused read handed back a count of %d", fv.Count)
+	// Counted arrays are born at their declared minimum, even on refusal.
+	born := fieldOf(t, model.New(model.Lookup("Bases")), "few").Count
+	if born != 2 {
+		t.Fatalf("few's born count is %d, want 2", born)
+	}
+	if fv := fieldOf(t, got.inst, "few"); fv.Count != born {
+		t.Errorf("a refused read changed the born count: got %d, want %d", fv.Count, born)
 	}
 }
 
@@ -1256,8 +1261,12 @@ func TestTheSixFindings(t *testing.T) {
 		if ok || !readRefused(derr, rep) {
 			t.Errorf("the surplus body refuses: ok=%v err=%v report=%+v", ok, derr, rep)
 		}
-		if few := fieldOf(t, read, "few"); few.Count != 0 {
-			t.Errorf("a refused read handed back %d elements", few.Count)
+		born := fieldOf(t, model.New(model.Lookup("Bases")), "few").Count
+		if born != 2 {
+			t.Fatalf("few's born count is %d, want 2", born)
+		}
+		if few := fieldOf(t, read, "few"); few.Count != born {
+			t.Errorf("a refused read changed the born count: got %d, want %d", few.Count, born)
 		}
 	}
 
