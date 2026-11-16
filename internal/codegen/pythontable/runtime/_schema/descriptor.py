@@ -218,11 +218,11 @@ class FieldDesc:
         if self.codec == "pointer_array":
             if type(value) is not list:
                 return False
-            if len(value) == 0:
-                return True
-            if self.array_mode != "fixed":
-                return False
-            return all(elem is None for elem in value)
+            if self.array_mode == "fixed":
+                return all(elem is None for elem in value)
+            if self.array_mode == "counted":
+                return len(value) == self.min_count and all(elem is None for elem in value)
+            return len(value) == 0
         if self.pointer or self.optional:
             return value is None
         if self.codec in ("bool", "int", "enum", "string", "unsupported"):
