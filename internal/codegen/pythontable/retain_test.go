@@ -512,14 +512,20 @@ func TestPythonRetainUnionArrayCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := &unionWire{}
+	w.ref("trail")
+	w.ref("leaf")
 	ghost := unionCat(w.ref("future_field"), []byte{4}, unionI32(73), []byte{0})
 	first := w.arm("leaf", 13, ghost)
 	second := w.arm("future_arm", 4, unionI32(12))
 	trail := w.array("trail", 15, 2, first, second)
+	w.ref("inner")
+	w.ref("pick")
 	nestedGhost := unionCat(w.ref("nested_future"), []byte{4}, unionI32(74), []byte{0})
 	nestedLeaf := w.arm("leaf", 13, nestedGhost)
 	innerPick := w.arm("pick", 15, nestedLeaf)
-	wire := w.file(trail, w.union("inner", innerPick), w.least())
+	inner := w.union("inner", innerPick)
+	w.ref("least")
+	wire := w.file(trail, inner, w.least())
 	script := pyrun.ImportPrelude + `from unions import Root, LoadReport
 from unions._schema.retain import TableRetain, _capture_file
 with open('wire','rb') as f: wire=f.read()
@@ -657,6 +663,7 @@ table Root {
 		t.Fatal(err)
 	}
 	w := &unionWire{}
+	w.ref("inner")
 	ghost := unionCat(w.ref("future"), []byte{4}, unionI32(7))
 	wire := w.file(w.table("inner", ghost))
 	canonical := &unionWire{}
@@ -1203,14 +1210,14 @@ def leb(n):
     while n>=128: b.append((n&127)|128); n >>= 7
     b.append(n); return bytes(b)
 child=Root.descriptor.field('child'); keyed=Root.descriptor.field('keyed')
-ids=[child.field_id,keyed.field_id,keyed.keys[0]]+list(range(1,4094))
+ids=[child.field_id]+list(range(1,4094))+[keyed.field_id,keyed.keys[0]]
 body=bytearray()
-for ref in range(4,4097): body+=leb(ref)+bytes([4,1,0,0,0])
+for ref in range(2,4095): body+=leb(ref)+bytes([4,1,0,0,0])
 body.append(0)
 child_field=bytes([1,13])+leb(len(body))+body
-slot=leb(4096)+bytes([4,2,0,0,0,0])
-keyed_payload=bytes([13,1,3])+leb(len(slot))+slot
-keyed_field=bytes([2,16])+leb(len(keyed_payload))+keyed_payload
+slot=leb(4094)+bytes([4,2,0,0,0,0])
+keyed_payload=bytes([13,1])+leb(4096)+leb(len(slot))+slot
+keyed_field=leb(4095)+bytes([16])+leb(len(keyed_payload))+keyed_payload
 wire=bytes([1])+child_field+keyed_field+bytes([0])+b''.join(x.to_bytes(8,'little') for x in ids)+len(ids).to_bytes(8,'little')
 keep=TableRetain(bytearray(600000),bytearray(24*4093)); report=LoadReport()
 value=Root.load_retain(wire,keep,report)
