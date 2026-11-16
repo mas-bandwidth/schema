@@ -1386,6 +1386,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"promotion-tag.yml:tag",
 		"python-leg.yml:plan",
 		"python-leg.yml:test",
+		"python-leg.yml:test-second",
 		"release.yml:release",
 		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
