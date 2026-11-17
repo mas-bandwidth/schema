@@ -18,10 +18,17 @@ const tableWireCheckSource = `
     internal const int WireWhole = 0, WireDamaged = 1, WireCountCap = 2, WireBlobShared = 3;
     internal static int WireCheck(ReadOnlySpan<byte> body, ReadOnlySpan<byte> ids, bool announcement, out bool nonFinite)
     {
-        WireWalk w = new WireWalk { Ids = ids, Words = (ids.Length / 8 + 64) / 64, Announcement = announcement };
+        int words = (ids.Length / 8 + 64) / 64;
+        Span<ulong> used = stackalloc ulong[words];
+        WireWalk w = new WireWalk { Ids = ids, Words = words, Announcement = announcement, UsedIds = used };
         try
         {
             w.Root(body);
+            // THE ID TABLE IS ITS FIRST-USE ORDER (docs/SPEC-TABLES.md §3,
+            // docs/rulings.json reads-refuse-non-canonical): an entry no
+            // reference names, or one met out of its place, is a spelling no
+            // conforming writer produces. Judged after every other condition.
+            if (w.Fail == WireWhole && (w.OutOfOrder || w.Used != ids.Length / 8)) { w.Fail = WireDamaged; }
             nonFinite = w.NonFinite;
             return w.Fail;
         }
@@ -30,8 +37,19 @@ const tableWireCheckSource = `
     ref struct WireWalk
     {
         public ReadOnlySpan<byte> Ids, Table;
-        public int Words, Depth, Fail, Nodes, EdgeCount;
-        public bool Announcement, NonFinite, Present;
+        public int Words, Depth, Fail, Nodes, EdgeCount, Used;
+        public bool Announcement, NonFinite, Present, OutOfOrder;
+        // UsedIds marks each id-table reference the walk has resolved; Used
+        // counts them. The table is distinct, so first-use order holds while
+        // each newly met reference is the next entry.
+        public Span<ulong> UsedIds;
+        void Use(ulong reference)
+        {
+            int r = (int)reference;
+            if ((UsedIds[r >> 6] & (1ul << (r & 63))) != 0) { return; }
+            UsedIds[r >> 6] |= 1ul << (r & 63);
+            if (r != ++Used) { OutOfOrder = true; }
+        }
         // Edges holds every non-null kind 17 payload in wire order, the root
         // body's first and then each record's; Starts[k] is node k's first edge
         // (node 0 the root, node k record k).
@@ -92,6 +110,9 @@ const tableWireCheckSource = `
                     off += (int)length; records++;
                 }
                 if (declared != (ulong)records) { Damage(); return; }
+                // A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL
+                // (§3.1): a table of no records is refused, not read.
+                if (records == 0) { Damage(); return; }
                 Starts = System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
                 Starts[0] = 0; Starts[1] = rootEdges;
                 off = first;
@@ -100,6 +121,7 @@ const tableWireCheckSource = `
                     Leb(t, ref off, out ulong reference); Leb(t, ref off, out ulong length);
                     ReadOnlySpan<byte> rec = t.Slice(off, (int)length); off += (int)length;
                     ulong id = Read64(Ids, (int)(reference - 1) * 8);
+                    Use(reference);
                     // A BLOB RECORD IS ITS BYTES (§2.5, §3.1): a text blob's content
                     // rule is a wire-alone condition
                     if (id == StringTypeId) { if (!TextValid(rec)) { Damage(); return; } }
@@ -171,11 +193,16 @@ const tableWireCheckSource = `
         {
             Span<ulong> seen = stackalloc ulong[Words];
             int off = 0;
+            bool tableSeen = false;
             while (true)
             {
                 if (!Leb(buf, ref off, out ulong reference)) { return Damage(); }
                 if (reference == 0) { return off == buf.Length || Damage(); }
+                // A NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field
+                // after it is a node table out of its place.
+                if (tableSeen) { return Damage(); }
                 if (reference > (ulong)(Ids.Length / 8)) { return Damage(); }
+                Use(reference);
                 int r = (int)reference;
                 if ((seen[r >> 6] & (1ul << (r & 63))) != 0) { return Damage(); }
                 seen[r >> 6] |= 1ul << (r & 63);
@@ -191,6 +218,7 @@ const tableWireCheckSource = `
                     if (!root || kind != 12) { return Damage(); }
                     if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                     Table = buf.Slice(off, (int)n); Present = true; off += (int)n;
+                    tableSeen = true;
                     continue;
                 }
                 if (!Payload(buf, ref off, kind)) { return false; }
@@ -214,6 +242,7 @@ const tableWireCheckSource = `
                     Edge(index); return true;
                 case 30:
                     if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
+                    if (variant != 0) { Use(variant); }
                     return true;
                 case 15: return Union(buf, ref off);
                 case 12:
@@ -298,6 +327,7 @@ const tableWireCheckSource = `
             for (ulong i = 0; i < count; i++)
             {
                 if (!Leb(b, ref off, out ulong key) || key == 0 || key > (ulong)(Ids.Length / 8)) { return Damage(); }
+                Use(key);
                 int k = (int)key;
                 if ((seen[k >> 6] & (1ul << (k & 63))) != 0) { return Damage(); }
                 seen[k >> 6] |= 1ul << (k & 63);
@@ -315,6 +345,7 @@ const tableWireCheckSource = `
             if (!Leb(buf, ref off, out ulong arm)) { return Damage(); }
             if (arm == 0) { return true; }
             if (arm > (ulong)(Ids.Length / 8) || off >= buf.Length) { return Damage(); }
+            Use(arm);
             byte kind = buf[off++];
             if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
             off += (int)n;
