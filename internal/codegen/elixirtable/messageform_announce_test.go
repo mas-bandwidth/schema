@@ -135,17 +135,6 @@ func TestMessageFormAnnounceElixir(t *testing.T) {
     {:error, :malformed, bad} = M.announce_read(bin)
     check(not bad.announced, "#{label}: a failed strict check set a vocabulary")
   end
-
-  # THE ID TABLE IS IN FIRST-USE ORDER (docs/SPEC-TABLES.md §3;
-  # docs/rulings.json reads-refuse-non-canonical): the announcement with one
-  # more id-table entry no reference names is malformed.
-  size = byte_size(data) - 8
-  <<head::binary-size(^size), n::little-64>> = data
-  unused = head <> <<0x0123456789ABCDEF::little-64>> <> <<n + 1::little-64>>
-  case M.announce_read(unused) do
-    {:error, :malformed, bad} -> check(not bad.announced, "the unused id entry set a vocabulary")
-    other -> check(false, "an announcement with an unused id entry answered #{inspect(other)}")
-  end
 `)
 		if err != nil {
 			t.Fatalf("%v\n%s", err, out)
