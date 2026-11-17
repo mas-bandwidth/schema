@@ -617,7 +617,7 @@ type EffectRow struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so an endpoint's build is knowable.
-const BuildVersion uint64 = 0x93ff58e3111cb4d4
+const BuildVersion uint64 = 0x3684616af27a45c9
 
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 //

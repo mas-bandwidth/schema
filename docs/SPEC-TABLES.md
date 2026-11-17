@@ -3559,7 +3559,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 8` and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3781,18 +3781,11 @@ writes it down. It is idempotent — a
 lock that is already current is left untouched — and `--print` writes nothing
 at all.
 
-**A lock written under rendering version 6 is SALVAGED, not deleted.** Its one
-layout becomes the first lineage entry, its field lines are carried forward
-unchanged, and `schema lock` writes the file as version 8. Rendering 7 is also SALVAGED with every existing lineage entry preserved; a missing writer snapshot stays unknown until explicitly imported. Deleting this file
-now means wiping a fleet's lineage. A lock older than the salvage floor holds
-nothing a lineage can start from, and is refused with the one remedy that
-works: write it again with `schema lock`. A lock written by a NEWER compiler
-than this one is refused in its own sentence: *"this lock is rendering version
-9 and this compiler writes version 8 — it was written by a NEWER compiler than
-this one, and this one cannot know what it holds: build the compiler this tree
-pins, or relock with it"*.
+**Old lock renderings are SALVAGED, not deleted.** Rendering7/8 lineage entries keep their exact saved layout, digest, wire key, order and retirement. Rendering6 predates lineage: when the checked source still matches all saved declaration facts, its layout-only key becomes the first entry with unknown writer metadata. A changed rendering6 source must first be restored to its exact historical declaration, migrated, then evolved; the wider reader cannot reconstruct historical layout bytes. Relocking writes rendering9 and appends the prospective current identity. Missing snapshots stay unknown until explicitly imported. Deleting the lock wipes a fleet’s lineage. A lock older than the salvage floor is refused, as is a rendering from a NEWER compiler.
 
-**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, digest, record-body size and hash must match. Different captured constraints under one legacy hash are refused, not overwritten. The caller establishes provenance; anonymous legacy digests cannot recover all historical bounds. Missing metadata never implies retirement. The complete migration and compatibility boundary are in `FIXED-FORM-ALGORITHM.md` §5.2.
+**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, recorded-scheme digest, record-body size and raw hash must match. The default API remains strict: an empty historical digest cannot silently erase source constraints.
+
+For an old layout-only key, the additional `--legacy-layout-only` option explicitly trusts the supplied historical source’s provenance. It requires an empty saved digest and still validates checked-source closure, root, layout, body size and raw layout-only key. The complete snapshot and a `legacy-layout-only` marker are saved in rendering9 and bound by the lineage roll-up. The paired options must be repeated to validate an already imported layout-only entry. This operation does not authenticate old bounds from the hash or distinguish files from two historical writers that shared that key. Different captured constraints are refused rather than overwritten; missing metadata never implies retirement. See `FIXED-FORM-ALGORITHM.md` §5.2 for the compatibility boundary.
 
 **`--retire` is the lock's ONE NON-APPEND EDIT.** `schema lock --retire Table@0x… --reason <text>` marks one lineage entry retired; the entry stays in
 the lineage forever, and a file carrying that layout is then answered
@@ -6486,16 +6479,18 @@ the float already lies on the announced grid, because the file carries the raw
 float and the message carries its nearest grid point, and an off-grid value and a
 rounding tie each come back as the grid point the rule chose (the round-trip paragraph, below).
 
-**A RANGED OFFSET ABOVE THE SENDER'S OWN `max` IS A VALUE OUTSIDE THE WRITER'S
-RANGE, AND IT REFUSES `out_of_range`.** A ranged value's `bits` can spell
-offsets past the sender's own range whenever `max - min` is not one less than a
-power of two, exactly as a reference's width can spell values past `E`. No
-writer emits one, and the announcement says what the writer's range was, so the
-reader refuses the batch `out_of_range` (§6.5), and never clamps
-(the maintainer, 2026-11-03: a value outside the writer's range refuses). A value inside
-the sender's range and outside this reader's own refuses by the same name
-(§4). The quantized float's index above `count` refuses as the packet wire
-refuses it (the quantization paragraph, above).
+**A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW.** A ranged
+value's `bits` can spell offsets above the writer's declared maximum whenever
+`max - min` is not one less than a power of two. The announcement carries the
+base and width, not that maximum: for example `[0,5]` and `[0,7]` announce the
+same base and three-bit width. A writer refuses a value outside its own declared
+range. A reader holds the reconstructed value to the announced kind's storage
+domain and its own declared range, refusing `out_of_range` without clamping.
+When the announced build version and shape match its own declaration, the
+reader also knows the writer's exact maximum and holds the value to it. Under a
+different build it cannot infer that maximum from the shape alone. A quantized
+float's index above `count` refuses as the packet wire refuses it (the
+quantization paragraph, above).
 
 **THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
 because an announcement carrying a kind outside the closed set is malformed and
@@ -6652,7 +6647,7 @@ announcement decide — an enum-keyed array's key names a declared no-payload
 entry and no key repeats, a string's bytes are well-formed UTF-8 with no zero
 byte, a float is finite and a quantized float's index is at most its `count`, an
 array's or keyed array's count is within `[min, max]` and a ranged integer's
-offset is within the sender's `max`, and a nested body names no field id twice
+reconstructed value is within its announced kind's storage domain, and a nested body names no field id twice
 and no reserved id — and a failure refuses the batch. **The skip walk is bounded
 at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
 
@@ -13475,7 +13470,20 @@ imply, intersected with each table's `forms` declaration (§2.12); the one list
 it refuses is one naming `json`, `cook` or `block` for a table whose `forms`
 declaration leaves that form out, and the default full set refuses nothing.
 
-Only the Go target honors the flag; any other `--lang` refuses it by name.
+Go honors all nine names. Python also honors the flag for `wire`, `fixed`
+and `block`; explicit requests for its remaining unconnected surfaces are
+refused by name. Python's absent option and explicit full default set preserve
+its existing output while those surfaces are connected. Every other `--lang`
+refuses the flag by name.
+
+Python's `wire` selection keeps the table descriptors and the variable-table
+wire methods. If `fixed` is omitted, it emits no fixed batch methods, layout
+metadata or fixed runtime. A declared fixed root still cannot borrow form `1`:
+its plain file load, save and measure refuse `fixed_surface_not_selected`.
+Selecting `fixed` (which implies `wire`) restores the fixed batch methods and
+makes those plain file methods use form `3`. The default does the same. Omitting
+`block` removes the table's block descriptor. This selection does not opt Python
+into the separate per-table `forms` declaration (§2.12).
 
 **A default generate removes stale surface files.** A `generate --lang go`
 without `--surface` removes from the output directory every `.go` file whose
@@ -19572,6 +19580,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | `?T` presence companion | layout | `optional=true`, and the `size=`/`offset=`s the companion moves |
 | `*T` reference slot | layout | kind `17` with `type=` naming the pointee |
 | a `flags` field's storage width | layout | `size=` |
+| a counted array’s minimum count | **meaning** | `countmin=` beside `bound=` — the announced shape and the admitted counts depend on it even when storage does not |
 | a specified DEFAULT | **meaning** | `default=` — an elided field materializes it (§3) |
 | a declared `min`/`max`; a compressed float's range; `bits(N)`'s implied range | **meaning** | `min=` / `max=` — §4 holds a load to the reader's bounds |
 | a compressed float's RESOLUTION | **meaning** | `step=` |
@@ -19640,7 +19649,7 @@ record <Name> sizeof=<n> alignof=<n>
     field <id> kind=<n> offset=<n> size=<n> [ frac=<n> ]
         [ type=<Name> | enum=<Name> | union=<Name> ]
         [ elem=<n> ] [ elemkind=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
-        [ bound=<n> ] [ key=<Name> ]
+        [ bound=<n> ] [ countmin=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
         [ total=<n> ]
@@ -19648,6 +19657,11 @@ record <Name> sizeof=<n> alignof=<n>
 
 **The optional tokens appear in that order and only where the fact exists**,
 and they are one line on the wire — the display above is wrapped for reading.
+A counted array always carries `countmin=`, including zero, beside its maximum
+`bound=`. It is separate from an integer element’s `min=` range. The same tail
+applies to general union arms. This is prospective projection form 6: changing a
+count minimum changes message admission/shape even when storage is unchanged.
+Historical form 5 projections and build ids are not recomputed under form 6.
 `frac=` is a fixed field's `F`: the slot holds units × 2^F, so the scale
 is a meaning fact like a bound (§20.1, group 3) and rides beside the kind;
 a fixed field's `default=` is the raw integer its slot holds.
@@ -19851,7 +19865,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 5
+schema-build-version 6
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -19866,12 +19880,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0x482a6d07fc09a843`**. `ShipConfig` gets no
+and the build version is **`0xdf9d79c984aaa892`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xfb3cc9032b967207`**, deliberately not equal to the protocol id, so no
+**`0x2b425f3c41ab10cf`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 

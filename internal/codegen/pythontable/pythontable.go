@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -47,11 +48,43 @@ var runtimeFS embed.FS
 // own fields use a packet kind the packet wire does not carry yet is refused
 // by name, naming the kind and the packet card, never the whole unit silently.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateSurfaceLineage(u, gotable.DefaultSurfaces(), nil)
+}
+
+// GenerateSurface selects exactly the requested carried table surfaces.
+func GenerateSurface(u *ir.Unit, surfaces Surfaces) (map[string][]byte, error) {
+	return GenerateSurfaceLineage(u, surfaces, nil)
+}
+
+// GenerateSurfaceLineage preserves caller-supplied fixed layouts while selecting surfaces.
+func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	if err := ValidateSurfaces(u, surfaces); err != nil {
+		return nil, err
+	}
+	if err := ValidateAvailableSurfaces(surfaces); err != nil {
+		return nil, err
+	}
+
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := python.CheckNames(u); err != nil {
+	if err := python.CheckNamesWithTextSurfaces(u, surfaces.JSON, surfaces.TextForm); err != nil {
 		return nil, err
+	}
+	if surfaces.Retain && (u.Tables["TableRetain"] != nil || u.Structs["TableRetain"] != nil || u.Unions["TableRetain"] != nil || u.TableUnions["TableRetain"] != nil || u.Enums["TableRetain"] != nil || u.Flags["TableRetain"] != nil || u.Consts["TableRetain"] != nil) {
+		return nil, fmt.Errorf("python: TableRetain is the table retention runtime name; rename the declaration")
+	}
+	if surfaces.Retain {
+		for _, file := range u.Files {
+			for _, table := range file.Tables {
+				for _, field := range table.Fields {
+					switch field.Name {
+					case "load_retain", "measure_retain", "save_retain", "load_retain_messages", "save_retain_messages":
+						return nil, fmt.Errorf("python: %s.%s is a generated retention method; rename the field", table.Name, field.Name)
+					}
+				}
+			}
+		}
 	}
 	if err := checkBlobRefName(u); err != nil {
 		return nil, err
@@ -63,16 +96,48 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	plans := filePlans(u)
 	for _, plan := range plans {
-		out[path.Join(u.Package, plan.base+".py")] = []byte(emitModule(u, plan, blocks))
+		out[path.Join(u.Package, plan.base+".py")] = []byte(emitModule(u, plan, blocks, surfaces))
 	}
-	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, plans))
+	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, plans, surfaces))
+	if message := messageModule(u); surfaces.Message && message != "" {
+		out[path.Join(u.Package, RuntimeDir, "_message_unit.py")] = []byte(message)
+	}
 	out[path.Join(u.Package, "py.typed")] = []byte{}
 	runtime, err := Runtime()
 	if err != nil {
 		return nil, err
 	}
 	for rel, data := range runtime {
+		if !unitHasCook(u, surfaces) && (rel == "_schema/cook.py" || rel == "_schema/cookwrite.py") {
+			continue
+		}
+		if !surfaces.View && rel == "_schema/view.py" {
+			continue
+		}
+		if !unitHasJSON(u, surfaces) && (rel == "_schema/json_scan.py" || rel == "_schema/json_table.py") {
+			continue
+		}
+		if !surfaces.Retain && rel == "_schema/retain.py" {
+			continue
+		}
+		if !surfaces.Fixed && rel == "_schema/fixedform.py" {
+			continue
+		}
+		if (!surfaces.TextForm || !unitHasJSON(u, surfaces)) && (rel == "_schema/textform.py" || rel == "_schema/textform_scan.py") {
+			continue
+		}
 		out[path.Join(u.Package, rel)] = data
+	}
+	// The nameable set is fixed by the schema, not the retained input. It is
+	// the same set used to size the generated C++ ID table.
+	if surfaces.Retain && len(ir.VariableTables(u)) != 0 {
+		var retainIDs strings.Builder
+		retainIDs.WriteString("\"\"\"Compile-time table IDs used by the retaining writer.\"\"\"\n\nKNOWN = (\n")
+		for _, id := range ir.TableWireIds(u) {
+			fmt.Fprintf(&retainIDs, "    0x%016x,\n", id)
+		}
+		retainIDs.WriteString(")\n")
+		out[path.Join(u.Package, RuntimeDir, "retain_known.py")] = []byte(retainIDs.String())
 	}
 	// The hosted packet classes carry the packet core's own codec, so the
 	// table package ships the packet runtime's serialize.py beside its table
@@ -87,6 +152,19 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			continue
 		}
 		out[path.Join(u.Package, rel)] = data
+	}
+	if surfaces.Fixed {
+		fixedData, err := emitPythonFixedData(u, lineage)
+		if err != nil {
+			return nil, err
+		}
+		out[path.Join(u.Package, "_fixed.py")] = []byte(fixedData)
+	}
+
+	if surfaces.View {
+		if err := AddView(u, out); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -146,6 +224,7 @@ func checkBlobRefName(u *ir.Unit) error {
 		}
 	}
 	return nil
+
 }
 
 // closureUnions is the set of table-closure unions: every union a table
@@ -431,7 +510,7 @@ func moduleBase(u *ir.Unit) string {
 	return strings.ToUpper(u.Package[:1]) + u.Package[1:] + "Tables"
 }
 
-func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
+func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfaces) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", plan.base)
 	fmt.Fprintf(&b, "\"\"\"%s.schema: the generated packet and table classes and their descriptors.\"\"\"\n\n", plan.base)
@@ -452,7 +531,8 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	for _, name := range imports.Typing {
 		typing[name] = true
 	}
-	fmt.Fprintf(&b, "from typing import %s\n\n", strings.Join(sortedSet(typing), ", "))
+	fmt.Fprintf(&b, "from typing import %s\n", strings.Join(sortedSet(typing), ", "))
+	b.WriteString("from typing import Any as _s_Any, Literal as _s_Literal\n\n")
 	for _, base := range python.SortedSiblingBases(imports.Siblings) {
 		fmt.Fprintf(&b, "from . import %s as %s\n", base, imports.Siblings[base])
 	}
@@ -485,11 +565,25 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 	if len(imports.Serialize) > 0 {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
+	if surfaces.Retain && len(ir.VariableTables(u)) != 0 {
+		b.WriteString("from ._schema.retain import TableRetain\n")
+	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
-	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
+	b.WriteString("from ._schema.integrity import crc32c as _s_crc32c, open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
+	if unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
+		b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
+	}
+	if surfaces.Fixed {
+		b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
+	}
+	if surfaces.TextForm && unitHasJSON(u, surfaces) {
+		b.WriteString("from ._schema.textform import Document as _s_TextDocument, Limits as _s_TextLimits, read as _s_read_text_form\n")
+	}
+	b.WriteString("from ._schema.text_carrier import decode_text as _s_decode_text, encode_text as _s_encode_text\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_file as _s_check_file, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _collect_root, _validate as _validate_value, _check_root as _s_check_root, _write_form, _write_node_table, measure_table, save_table\n\n\n")
 
 	if body := host.Body(); body != "" {
@@ -509,8 +603,10 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		if !closure[st.Name] {
 			continue
 		}
-		emitTableDescriptor(&b, u, st, true)
-		emitValueBlockRow(&b, u, st)
+		emitTableDescriptor(&b, u, st, true, surfaces)
+		if surfaces.Block {
+			emitValueBlockRow(&b, u, st)
+		}
 	}
 	packetUnions := append([]*ir.Union(nil), plan.packetUnions...)
 	sort.Slice(packetUnions, func(i, j int) bool { return packetUnions[i].Name < packetUnions[j].Name })
@@ -518,7 +614,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		if !closureUn[un.Name] {
 			continue
 		}
-		emitUnionDescriptor(&b, un)
+		emitUnionDescriptor(&b, u, un)
 		fmt.Fprintf(&b, "register_union(%s)\n\n\n", un.Name)
 	}
 
@@ -534,11 +630,19 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		}
 	}
 	for _, un := range orderUnions(unions) {
-		emitUnion(&b, un)
+		emitUnion(&b, u, un)
 	}
 	for _, st := range tables {
-		emitTable(&b, u, st)
-		emitBlockDescriptors(&b, u, st, blocks)
+		emitTable(&b, u, st, surfaces)
+		if surfaceCarries(surfaces, st, "block") {
+			emitBlockDescriptors(&b, u, st, blocks)
+		} else if surfaces.Block {
+			// A table excluded as a block root may still be a by-value child
+			// of an included root. Keep its row layout for that enclosing block.
+			emitBlockDescriptors(&b, u, st, nil)
+		} else {
+			fmt.Fprintf(&b, "%s.block = None\n\n", st.Name)
+		}
 	}
 	return b.String()
 }
@@ -622,7 +726,7 @@ func emitGraphEqRepr(b *strings.Builder, name string) {
 	b.WriteString("        return _s_graph_repr(self)\n")
 }
 
-func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
+func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces) {
 	name := st.Name
 	fmt.Fprintf(b, "class %s:\n", name)
 	fmt.Fprintf(b, "    \"\"\"The table %s.\"\"\"\n\n", name)
@@ -646,7 +750,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        pass\n")
 	} else {
 		for _, f := range st.Fields {
-			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f))
+			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExprForClass(st.Name, f, st.FixedDeclared))
 		}
 	}
 	emitGraphEqRepr(b, name)
@@ -654,42 +758,249 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	variable := ir.VariableTables(u)[name]
 	fast := pointerArraysStraightLineable(st)
 	straight := scalarOnly(st) || fast
+	if surfaces.Fixed && fixedRootAdmitted(u, st) {
+		b.WriteString("\n    fixed_plan_max: ClassVar[int] = 0\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load(cls, data: bytes | bytearray | memoryview, capacity: int = 4096, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[Self]:\n        return _s_fixed_load(cls, data, capacity, report, plan_capacity)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_save(cls, values: list[Self]) -> bytes:\n        return _s_fixed_save(cls, values)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_measure(cls, count: int) -> int:\n        return _s_fixed_measure(cls, count)\n")
+	}
 	b.WriteString("\n    @classmethod\n")
-	if straight {
-		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
+	if st.FixedDeclared && !surfaces.Fixed {
+		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n        raise Refused(\"fixed_surface_not_selected\")\n")
+	} else if st.FixedDeclared {
+		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n        return _s_fixed_load(cls, data, 1, report)[0]\n")
 	} else {
-		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
-	}
-	if st.Integrity == "crc32c" {
-		b.WriteString("        data = _s_open_crc(data)\n")
-	}
-	if straight {
-		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
-	} else {
-		b.WriteString("        return load_table(cls, data, report)\n")
+		if straight {
+			fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
+		} else {
+			b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
+		}
+		if st.Integrity == "crc32c" {
+			b.WriteString("        data = _s_open_crc(data)\n")
+		}
+		if straight {
+			fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
+		} else {
+			b.WriteString("        return load_table(cls, data, report)\n")
+		}
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
-	call := "save_table(self)"
-	if straight {
-		call = fmt.Sprintf("_s_save_%s(self)", name)
+	if st.FixedDeclared && !surfaces.Fixed {
+		b.WriteString("        raise InvalidValue(type(self).__name__, \"fixed_surface_not_selected\")\n")
+	} else if st.FixedDeclared {
+		b.WriteString("        return _s_fixed_save(type(self), [self])\n")
+	} else {
+		call := "save_table(self)"
+		if straight {
+			call = fmt.Sprintf("_s_save_%s(self)", name)
+		}
+		if st.Integrity == "crc32c" {
+			call = "_s_seal_crc(" + call + ")"
+		}
+		fmt.Fprintf(b, "        return %s\n", call)
 	}
-	if st.Integrity == "crc32c" {
-		call = "_s_seal_crc(" + call + ")"
-	}
-	fmt.Fprintf(b, "        return %s\n", call)
 	b.WriteString("\n    def measure(self) -> int:\n")
-	if st.Integrity == "crc32c" {
+	if st.FixedDeclared && !surfaces.Fixed {
+		b.WriteString("        raise InvalidValue(type(self).__name__, \"fixed_surface_not_selected\")\n")
+	} else if st.FixedDeclared {
+		b.WriteString("        return _s_fixed_measure(type(self), 1)\n")
+	} else if st.Integrity == "crc32c" {
 		b.WriteString("        return measure_table(self) + 4\n\n\n")
 	} else {
-		b.WriteString("        return measure_table(self)\n\n\n")
+		b.WriteString("        return measure_table(self)\n")
 	}
-	emitTableDescriptor(b, u, st, false)
+	if surfaces.Retain {
+		if ir.VariableTables(u)[st.Name] {
+			b.WriteString("\n    @classmethod\n")
+			b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: TableRetain, report: LoadReport | None = None) -> Self:\n")
+			if st.Integrity == "crc32c" {
+				b.WriteString("        data = _s_open_crc(data)\n")
+			}
+			b.WriteString("        return load_table(cls, data, report, retain)\n")
+			b.WriteString("\n    def measure_retain(self, retain: TableRetain) -> int:\n")
+			b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
+			if st.Integrity == "crc32c" {
+				b.WriteString("        return _encode_retain(self, retain, Writer(None))[0] + 4\n")
+			} else {
+				b.WriteString("        return _encode_retain(self, retain, Writer(None))[0]\n")
+			}
+			b.WriteString("\n    def save_retain(self, retain: TableRetain, report: LoadReport) -> bytes:\n")
+			b.WriteString("        from ._schema.save import _encode_retain, Writer\n")
+			b.WriteString("        if report is None:\n            raise InvalidValue(\"report\", \"save_retain requires a report\")\n")
+			b.WriteString("        output = bytearray()\n        _, lost = _encode_retain(self, retain, Writer(output))\n        report.retain_lost += lost\n")
+			if st.Integrity == "crc32c" {
+				b.WriteString("        output.extend(_s_crc32c(memoryview(output)).to_bytes(4, \"little\"))\n        return bytes(output)\n\n\n")
+			} else {
+				b.WriteString("        return bytes(output)\n\n\n")
+			}
+		} else {
+			b.WriteString("\n    @classmethod\n")
+			b.WriteString("    def load_retain(cls, data: bytes | bytearray | memoryview, retain: object, report: LoadReport | None = None) -> Self:\n")
+			b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain is unavailable for a fixed-class root\")\n")
+			b.WriteString("\n    def measure_retain(self, retain: object) -> int:\n")
+			b.WriteString("        raise InvalidValue(\"measure_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
+			b.WriteString("\n    def save_retain(self, retain: object, report: LoadReport) -> bytes:\n")
+			b.WriteString("        raise InvalidValue(\"save_retain\", \"a fixed-class root cannot retain unknown fields\")\n")
+			b.WriteString("\n    @classmethod\n")
+			b.WriteString("    def load_retain_messages(cls, *args: object, **kwargs: object) -> None:\n")
+			b.WriteString("        raise Refused(\"unsupported_kind\", \"load_retain_messages is unavailable for a fixed-class root\")\n")
+			b.WriteString("\n    def save_retain_messages(self, *args: object, **kwargs: object) -> None:\n")
+			b.WriteString("        raise InvalidValue(\"save_retain_messages\", \"a fixed-class root cannot retain unknown messages\")\n\n\n")
+		}
+	}
+	if surfaceCarries(surfaces, st, "json") {
+		b.WriteString("\n    @classmethod\n")
+		b.WriteString("    def from_json(cls, text: str, report: LoadReport | None = None) -> Self:\n")
+		if scalarOnly(st) {
+			fmt.Fprintf(b, "        return _s_from_json(cls, text, report, _s_json_fill_%s)\n", name)
+		} else {
+			b.WriteString("        return _s_from_json(cls, text, report)\n")
+		}
+		b.WriteString("\n    def to_json(self) -> str:\n")
+		if scalarOnly(st) {
+			fmt.Fprintf(b, "        return _s_json_write_%s(self)\n\n\n", name)
+		} else {
+			b.WriteString("        return _s_to_json(self)\n\n\n")
+		}
+	}
+	fmt.Fprintf(b, "    @classmethod\n    def load_text(cls, text: str, report: LoadReport | None = None) -> %s:\n        return cls.load(_s_decode_text(text), report)\n\n    def save_text(self) -> str:\n        return _s_encode_text(self.save())\n\n", name)
+	if surfaces.TextForm && surfaceCarries(surfaces, st, "json") {
+		b.WriteString("    @classmethod\n    def from_text_form(cls, text: bytes, *, max_bytes: int = 0, max_tokens: int = 0, max_nodes: int = 0, max_allocation: int = 0, max_depth: int = 0) -> _s_TextDocument:\n        return _s_read_text_form(cls, text, _s_TextLimits(max_bytes, max_tokens, max_nodes, max_allocation, max_depth))\n\n\n")
+	}
+	emitTableDescriptor(b, u, st, false, surfaces)
+	if surfaceCarries(surfaces, st, "cook") && cookScalarOnly(st) {
+		emitCookScalar(b, u, st)
+	}
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
 	} else if scalarOnly(st) {
 		emitStraightLine(b, st)
+		if surfaceCarries(surfaces, st, "json") {
+			emitStraightLineJSON(b, st)
+		}
 	}
 	b.WriteString("\n")
+}
+
+// emitStraightLineJSON unrolls a scalar table's canonical writer. Both this
+// shape and the descriptor walk use the same field validation and formatting.
+func emitStraightLineJSON(b *strings.Builder, st *ir.Struct) {
+	fmt.Fprintf(b, "def _s_json_fill_%s(value: %s, data: dict[str, _s_Any], graph: dict[int, tuple[_s_Any, bool]] | None, unknown: list[int]) -> None:\n", st.Name, st.Name)
+	b.WriteString("    fields = value.descriptor.fields\n")
+	b.WriteString("    for key, item in data.items():\n")
+	b.WriteString("        if '\\x00' in key or len(key.encode('utf-8')) > 255 or key.startswith('&'):\n")
+	b.WriteString("            raise Refused('malformed')\n")
+	for i, f := range st.Fields {
+		branch := "if"
+		if i > 0 {
+			branch = "elif"
+		}
+		fmt.Fprintf(b, "        %s key == %s:\n", branch, strconv.Quote(ir.TableFieldJsonKey(f)))
+		fmt.Fprintf(b, "            value.%s = _s_json_read_field(fields[%d], item, graph, unknown)\n", f.Name, i)
+	}
+	if len(st.Fields) > 0 {
+		b.WriteString("        else:\n")
+		b.WriteString("            unknown[0] += 1\n            _s_json_skip(item, graph)\n")
+	} else {
+		b.WriteString("        unknown[0] += 1\n        _s_json_skip(item, graph)\n")
+	}
+	for i, f := range st.Fields {
+		if f.Required {
+			fmt.Fprintf(b, "    if %s not in data and _s_json_guard(fields[%d], value):\n", strconv.Quote(ir.TableFieldJsonKey(f)), i)
+			fmt.Fprintf(b, "        raise Refused('missing_required', %s)\n", strconv.Quote(f.Name))
+		}
+	}
+	b.WriteString("\n")
+	fmt.Fprintf(b, "def _s_json_write_%s(value: %s) -> str:\n", st.Name, st.Name)
+	b.WriteString("    fields = value.descriptor.fields\n")
+	b.WriteString("    lines: list[str] = []\n")
+	for i, f := range st.Fields {
+		indent := "    "
+		prefix := strconv.Quote("  " + pythonJSONKey(ir.TableFieldJsonKey(f)) + ": ")
+		if f.Guard != "" {
+			fmt.Fprintf(b, "    if _s_json_guard(fields[%d], value):\n", i)
+			indent = "        "
+		}
+		if _, ok := f.Type.Ref.(*ir.Flags); ok {
+			fmt.Fprintf(b, "%slines.append(%s + _s_json_render(fields[%d], value.%s, 1, {}, {}))\n", indent, prefix, i, f.Name)
+		} else {
+			fmt.Fprintf(b, "%slines.append(%s + _s_json_field(fields[%d], value.%s))\n", indent, prefix, i, f.Name)
+		}
+	}
+	b.WriteString("    return '{}\\n' if not lines else '{\\n' + ',\\n'.join(lines) + '\\n}\\n'\n\n")
+}
+
+// pythonJSONKey spells a schema key with the text writer's canonical escapes.
+func pythonJSONKey(key string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range key {
+		switch r {
+		case '"', '\\':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case '\b':
+			b.WriteString(`\b`)
+		case '\f':
+			b.WriteString(`\f`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 {
+				fmt.Fprintf(&b, `\u%04x`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// cookScalarOnly identifies records whose inline stores can be emitted in
+// straight-line form. Other records use the descriptor walk.
+func cookScalarOnly(st *ir.Struct) bool {
+	if len(st.Fields) == 0 || len(structGuards(st)) != 0 {
+		return false
+	}
+	for _, f := range st.Fields {
+		if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
+			return false
+		}
+		switch codecOf(f) {
+		case "bool", "int", "enum":
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func emitCookScalar(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
+	fmt.Fprintf(b, "def _s_cook_record_%s(buf: bytearray, value: %s, at: int, order: _s_Literal[\"little\", \"big\"]) -> None:\n", st.Name, st.Name)
+	layout := ir.RecordLayout(u, st)
+	for _, f := range st.Fields {
+		fl := layout.FieldByName(f.Name)
+		if fl == nil {
+			continue
+		}
+		pieces := ir.FieldPieces(u, f, fl.Offset)
+		if len(pieces) == 0 {
+			continue
+		}
+		off, size := pieces[0].Offset, pieces[0].Size
+		if codecOf(f) == "bool" {
+			fmt.Fprintf(b, "    buf[at + %d] = 1 if value.%s else 0\n", off, f.Name)
+		} else {
+			lo, _ := intRange(f)
+			fmt.Fprintf(b, "    buf[at + %d : at + %d] = int(value.%s).to_bytes(%d, order, signed=%s)\n", off, off+size, f.Name, size, pyBool(strings.HasPrefix(lo, "-")))
+		}
+	}
+	fmt.Fprintf(b, "setattr(%s, \"_s_cook_write\", _s_cook_record_%s)\n\n", st.Name, st.Name)
 }
 
 // emitTableDescriptor emits one generated class's table descriptor: the facts
@@ -697,8 +1008,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 // hosted from the packet core: it registers by name, because a packet type by
 // value never rides the node table's type ids, and its class is the packet
 // core's.
-func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool) {
+func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool, surfaces Surfaces) {
 	name := st.Name
+	layout := ir.RecordLayout(u, st)
 	variable := false
 	if !valueClass {
 		variable = ir.VariableTables(u)[name]
@@ -706,26 +1018,68 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	guards := structGuards(st)
 	fmt.Fprintf(b, "%s.descriptor = TableDesc(\n", name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
+	fmt.Fprintf(b, "    doc=%s, tags=%s,\n", strconv.Quote(st.Doc), pythonTags(st.Tags))
+	fmt.Fprintf(b, "    table=%s,\n", pyBool(st.IsTable))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
+	fmt.Fprintf(b, "    json_array=%s,\n", pyBool(st.JsonArray))
 	if !valueClass {
 		var forms []string
-		for _, form := range []string{"wire", "json", "block", "cook"} {
-			if st.CarriesForm(form) {
-				forms = append(forms, strconv.Quote(form))
-			}
+		for _, form := range surfaceForms(surfaces, st) {
+			forms = append(forms, strconv.Quote(form))
 		}
 		if len(forms) == 1 {
 			forms[0] += ","
 		}
 		fmt.Fprintf(b, "    forms=(%s),\n", strings.Join(forms, ", "))
 	}
+	fmt.Fprintf(b, "    size=%d,\n", layout.Size)
+	fmt.Fprintf(b, "    align=%d,\n", layout.Align)
+	fmt.Fprintf(b, "    cook_align=%d,\n", ir.CookNodeAlign(u, st))
+	fmt.Fprintf(b, "    extent_start=%d,\n", ir.CookExtentStart(u, st))
+	fmt.Fprintf(b, "    build_version=%s,\n", hex64(ir.BuildVersion(u)))
+	fmt.Fprintf(b, "    region_align=%d,\n", ir.TableRegionAlign(u))
+	fmt.Fprintf(b, "    bytes_blob_type_id=%s,\n", hex64(ir.BytesTypeId))
+	fmt.Fprintf(b, "    string_blob_type_id=%s,\n", hex64(ir.StringTypeId))
+	fmt.Fprintf(b, "    padding=(")
+	end := int64(0)
+	for _, field := range layout.Fields {
+		if field.Offset > end {
+			fmt.Fprintf(b, "(%d, %d),", end, field.Offset)
+		}
+		end = field.Offset + field.Size
+	}
+	if end < layout.Size {
+		fmt.Fprintf(b, "(%d, %d),", end, layout.Size)
+	}
+	fmt.Fprintf(b, "),\n")
+
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
 		codec := codecOf(f)
 		fmt.Fprintf(b, "        FieldDesc(\n")
 		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
+		fmt.Fprintf(b, "            json_text_list=%s,\n", pyBool(f.IsTextList()))
+		if f.IsTextList() {
+			fmt.Fprintf(b, "            json_text_unbounded=%s,\n", pyBool(ir.TextListValue(f).Type.TextUnbounded()))
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			fmt.Fprintf(b, "            json_variants=%s,\n", pythonJSONNames(ref.Variants))
+		case *ir.Flags:
+			fmt.Fprintf(b, "            json_variants=%s,\n", pythonJSONNames(ref.Variants))
+			fmt.Fprintln(b, "            json_flags=True,")
+		}
+		if f.KeyEnumRef != nil {
+			fmt.Fprintf(b, "            json_keys=%s,\n", pythonJSONNames(f.KeyEnumRef.Variants))
+		}
+		fmt.Fprintf(b, "            doc=%s, tags=%s,\n", strconv.Quote(f.Doc), pythonTags(f.Tags))
+		fmt.Fprintf(b, "            json_key=%s, type_name=%s,\n", strconv.Quote(ir.TableFieldJsonKey(f)), strconv.Quote(ir.TableTypeSpelling(f)))
+		fieldLayout := layout.FieldByName(f.Name)
+		if fieldLayout != nil {
+			fmt.Fprintf(b, "            at=%d, pieces=%s, elem_size=%d, elem_align=%d, %s,\n", fieldLayout.Offset, reflectionPieces(u, f, fieldLayout.Offset), reflectionElemSize(u, f), reflectionElemAlign(u, f), reflectionColumns(u, f, fieldLayout.Offset))
+		}
 		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
 		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
 		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codec))
@@ -743,7 +1097,6 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            map_entry=%s,\n", strconv.Quote(mapEntry))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
-		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
@@ -762,7 +1115,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		if f.IsTextList() {
 			fmt.Fprintf(b, "            text_total=%d,\n", f.TextTotal)
 		}
-		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
+		fmt.Fprintf(b, "            variant_ids=%s, %s,\n", viewVariantIds(f, true), reflectionVocabularyColumns(f))
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
 		}
@@ -787,6 +1140,8 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		if codec == "keyed" {
 			emitKeyedDesc(b, f)
+		} else if f.KeyEnumRef != nil {
+			fmt.Fprintf(b, "            keys=%s,\n", viewKeys(f, true))
 		}
 		fmt.Fprintf(b, "        ),\n")
 	}
@@ -925,9 +1280,7 @@ func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guar
 	b.WriteString("    if ctx.order:\n")
 	b.WriteString("        _write_node_table(writer, ctx)\n")
 	b.WriteString("    writer.byte(0)\n")
-	b.WriteString("    for table_id in ctx.ids:\n")
-	b.WriteString("        writer.raw(table_id.to_bytes(8, \"little\"))\n")
-	b.WriteString("    writer.raw(len(ctx.ids).to_bytes(8, \"little\"))\n")
+	b.WriteString("    ctx.write_ids(writer)\n")
 	b.WriteString("    return bytes(sink)\n\n")
 	fmt.Fprintf(b, "def _s_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
 	b.WriteString("    return load_table(cls, data, report)\n\n\n")
@@ -1026,6 +1379,17 @@ func emitValueBlockRow(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("))\n\n\n")
 }
 
+func pythonJSONNames(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, strconv.Quote(name))
+	}
+	if len(quoted) == 1 {
+		return "(" + quoted[0] + ",)"
+	}
+	return "(" + strings.Join(quoted, ", ") + ")"
+}
+
 // scalarOnly reports whether every field is a scalar the generated
 // straight-line shape can bind directly: a bool, an integer (a flags mask
 // included), a string, a bytes or an enum. A by-value table, a pointer, a
@@ -1072,11 +1436,21 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "        _s_kinds._REGISTRY[%q].write(writer, fields[%d], current, ctx)\n", codecOf(f), i)
 	}
 	b.WriteString("    writer.byte(0)\n")
-	b.WriteString("    for table_id in ctx.ids:\n")
-	b.WriteString("        writer.raw(table_id.to_bytes(8, \"little\"))\n")
-	b.WriteString("    writer.raw(len(ctx.ids).to_bytes(8, \"little\"))\n")
+	b.WriteString("    ctx.write_ids(writer)\n")
 	b.WriteString("    return bytes(sink)\n\n")
 	fmt.Fprintf(b, "def _s_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
+	b.WriteString("    try:\n")
+	fmt.Fprintf(b, "        return _s_checked_load_%s(cls, data, report)\n", name)
+	b.WriteString("    except Refused as err:\n")
+	b.WriteString("        if err.reason != \"wire_damaged\":\n")
+	b.WriteString("            try:\n")
+	b.WriteString("                view = buffer_view(data)\n")
+	b.WriteString("                _s_check_file(view, _id_table(view))\n")
+	b.WriteString("            except Refused as walked:\n")
+	b.WriteString("                if walked.reason != err.reason:\n")
+	b.WriteString("                    raise walked from None\n")
+	b.WriteString("        raise\n\n")
+	fmt.Fprintf(b, "def _s_checked_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
 	b.WriteString("    view = buffer_view(data)\n")
 	b.WriteString("    ids = _id_table(view)\n")
 	b.WriteString("    _check_id_order(view, ids)\n")
@@ -1090,6 +1464,8 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("        reference = reader.varint()\n")
 	b.WriteString("        if reference == 0:\n")
 	b.WriteString("            break\n")
+	b.WriteString("        if ctx.saw_node:\n")
+	b.WriteString("            raise Refused(\"wire_damaged\", \"the node table is not the root body's last field\")\n")
 	b.WriteString("        field_id = reader.id_at(reference)\n")
 	b.WriteString("        kind = reader.byte()\n")
 	b.WriteString("        if field_id in seen:\n")
@@ -1171,7 +1547,7 @@ func emitKeyedClass(b *strings.Builder, st *ir.Struct, f *ir.Field) {
 // emitUnion emits a table-side union (docs/PORT-PYTHON.md, THE VALUE MAPPING,
 // Tables): a class whose type is the arm number and whose payload arms are
 // built fresh, beside its UnionDesc and ArmDesc data.
-func emitUnion(b *strings.Builder, un *ir.Union) {
+func emitUnion(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 	slots := []string{strconv.Quote("type")}
 	for _, v := range un.Variants {
 		if v.F != nil {
@@ -1201,16 +1577,18 @@ func emitUnion(b *strings.Builder, un *ir.Union) {
 	}
 	emitGraphEqRepr(b, un.Name)
 	b.WriteString("\n")
-	emitUnionDescriptor(b, un)
+	emitUnionDescriptor(b, u, un)
 	fmt.Fprintf(b, "register_union(%s)\n\n\n", un.Name)
 }
 
 // emitUnionDescriptor emits one generated union's descriptor: its arms in
 // declaration order (docs/SPEC-TABLES.md §8.1). It is shared by the table-side
 // union class and the packet union the packet core hosts.
-func emitUnionDescriptor(b *strings.Builder, un *ir.Union) {
+func emitUnionDescriptor(b *strings.Builder, u *ir.Unit, un *ir.Union) {
+	size, _, tagSize, armOffset := ir.UnionLayout(u, un)
 	fmt.Fprintf(b, "%s.descriptor = UnionDesc(\n", un.Name)
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(un.Name))
+	fmt.Fprintf(b, "    size=%d, tag_size=%d, arm_offset=%d, doc=%s, tags=%s,\n", size, tagSize, armOffset, strconv.Quote(un.Doc), pythonTags(un.Tags))
 	b.WriteString("    arms=(\n")
 	for tag, v := range un.Variants {
 		wire := v.Name
@@ -1232,7 +1610,9 @@ func emitUnionDescriptor(b *strings.Builder, un *ir.Union) {
 		fmt.Fprintf(b, "            kind=%d,\n", kind)
 		fmt.Fprintf(b, "            target=%s,\n", strconv.Quote(target))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(pointer))
-		fmt.Fprintf(b, "            field=%s,\n", armFieldDesc(v, tag+1))
+		armSize, _ := ir.ArmLayout(u, v)
+		fmt.Fprintf(b, "            size=%d, doc=%s, tags=%s,\n", armSize, strconv.Quote(v.Doc), pythonTags(v.Tags))
+		fmt.Fprintf(b, "            field=%s,\n", armFieldDesc(u, un, v, tag+1))
 		fmt.Fprintf(b, "        ),\n")
 	}
 	b.WriteString("    ),\n")
@@ -1244,7 +1624,7 @@ func emitUnionDescriptor(b *strings.Builder, un *ir.Union) {
 // field id (docs/SPEC-TABLES.md §2.6, §3). A payload-free arm has no field
 // line. An arm whose codec needs a walk the union module does not run (a
 // keyed array, a byte buffer) refuses by name through kind_unsupported.py.
-func armFieldDesc(v ir.UnionVariant, tag int) string {
+func armFieldDesc(u *ir.Unit, un *ir.Union, v ir.UnionVariant, tag int) string {
 	f := v.F
 	if f == nil {
 		return "None"
@@ -1260,9 +1640,10 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 	}
 	elemCodec := ""
 	if codec == "array" {
-		elemCodec = elementCodecOf(f)
+		elemCodec = arrayElemCodec(f)
 	}
 	lo, hi := intRange(f)
+	offset := int64(0)
 	mapEntry := ""
 	if f.MapEntry != nil {
 		mapEntry = f.MapEntry.Name
@@ -1271,8 +1652,23 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 	if dep := deprecatedOrdinals(f); dep != "" {
 		deprecated = ", deprecated=" + dep
 	}
+	floatMeta := ""
+	if isFloat(f) {
+		floatMeta = ", f32=" + pyBool(f.Type.Kind == ir.TFloat32) +
+			", fmin=" + floatBound(f, f.FMin) + ", fmax=" + floatBound(f, f.FMax) +
+			", float_range=" + pyBool(compressedFloat(f))
+	}
 	return "FieldDesc(" +
 		"name=" + strconv.Quote(v.Name) +
+		", doc=" + strconv.Quote(v.Doc) +
+		", tags=" + pythonTags(v.Tags) +
+		", json_key=" + strconv.Quote(ir.TableFieldJsonKey(f)) +
+		", type_name=" + strconv.Quote(ir.FieldTypeSpelling(f)) +
+		", at=" + strconv.FormatInt(offset, 10) +
+		", pieces=" + reflectionPieces(u, f, offset) +
+		", elem_align=" + strconv.FormatInt(reflectionElemAlign(u, f), 10) +
+		", elem_size=" + strconv.FormatInt(reflectionElemSize(u, f), 10) +
+		", " + reflectionColumns(u, f, offset) +
 		", field_id=" + hex64(ir.TableWireId(wire)) +
 		", kind=" + strconv.Itoa(ir.TableWireFieldKind(f)) +
 		", codec=" + strconv.Quote(codec) +
@@ -1291,19 +1687,34 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 		", elem_kind=" + strconv.Itoa(ir.TableWireElemKind(f)) +
 		", elem_codec=" + strconv.Quote(elemCodec) +
 		", size=" + strconv.FormatInt(fieldSize(f), 10) +
-		", variant_ids=" + variantIds(f) +
+		", json_variants=" + pythonJSONFieldVariants(f) +
+		", json_flags=" + pyBool(pythonJSONIsFlags(f)) +
+		", variant_ids=" + viewVariantIds(f, true) +
+		", " + reflectionVocabularyColumns(f) +
 		deprecated +
+		floatMeta +
 		", default=" + defaultFor(f, codec) +
 		")"
 }
 
-func packageInit(u *ir.Unit, plans []*filePlan) string {
+func packageInit(u *ir.Unit, plans []*filePlan, surfaces Surfaces) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Code generated by the schema compiler from the unit %s. DO NOT EDIT.\n", u.Package)
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
 	b.WriteString("from ._schema import BlobRef, InvalidValue, LoadReport, Refused\n")
+	if surfaces.Fixed {
+		b.WriteString("from ._schema.fixedform import FixedLoadReport\n")
+	}
 	names := []string{"BUILD_VERSION", "BlobRef", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	if surfaces.Retain && len(ir.VariableTables(u)) != 0 {
+		b.WriteString("from ._schema.retain import TableRetain\n")
+		names = append(names, "TableRetain")
+	}
+	if surfaces.Fixed {
+		names = append(names, "FixedLoadReport")
+	}
+
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
@@ -1350,6 +1761,25 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			}
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(values, ", "))
 		}
+	}
+	if surfaces.Message && messageModule(u) != "" {
+		alias := "_unit_message"
+		for slices.Contains(names, alias) {
+			alias += "_"
+		}
+		fmt.Fprintf(&b, "from ._schema import _message_unit as %s\n", alias)
+		for _, name := range []string{"ANNOUNCEMENT", "BuildVersionMismatch", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages"} {
+			// A schema export keeps its existing public binding. The complete
+			// message API remains available through _schema._message_unit.
+			if slices.Contains(names, name) {
+				continue
+			}
+			fmt.Fprintf(&b, "from ._schema._message_unit import %s as %s\n", name, name)
+			names = append(names, name)
+		}
+	}
+	if surfaces.Fixed {
+		b.WriteString("from . import _fixed as _s_fixed\n")
 	}
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)
 	fmt.Fprintf(&b, "BUILD_VERSION: Final = 0x%016x\n\n", ir.BuildVersion(u))
@@ -1410,11 +1840,12 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
-	if codec == "enum" {
-		fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
-		if dep := deprecatedOrdinals(f); dep != "" {
-			fmt.Fprintf(b, "                deprecated=%s,\n", dep)
-		}
+	fmt.Fprintf(b, "                unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
+	fmt.Fprintf(b, "                json_variants=%s,\n", pythonJSONFieldVariants(f))
+	fmt.Fprintf(b, "                json_flags=%s,\n", pyBool(pythonJSONIsFlags(f)))
+	fmt.Fprintf(b, "                %s,\n", reflectionElementColumns(f))
+	if dep := deprecatedOrdinals(f); dep != "" {
+		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
 	}
 	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
 	fmt.Fprintf(b, "            ),\n")
@@ -1433,9 +1864,25 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	}
 }
 
+func pythonJSONFieldVariants(f *ir.Field) string {
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Enum:
+		return pythonJSONNames(ref.Variants)
+	case *ir.Flags:
+		return pythonJSONNames(ref.Variants)
+	default:
+		return "()"
+	}
+}
+
+func pythonJSONIsFlags(f *ir.Field) bool {
+	_, ok := f.Type.Ref.(*ir.Flags)
+	return ok
+}
+
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
 // element the keyed kind does not carry yet: bool, the integer and
-// fixed-point kinds, enums, and tables by value.
+// fixed-point kinds, enums, flags masks, and tables by value.
 func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1450,6 +1897,8 @@ func keyedElemCodec(f *ir.Field) string {
 			}
 		case *ir.Enum:
 			return "enum"
+		case *ir.Flags:
+			return "int"
 		}
 	}
 	return ""
@@ -1722,7 +2171,10 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
-	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+	fmt.Fprintf(b, "                unbounded=%s,\n", pyBool(f.Type.TextUnbounded()))
+	fmt.Fprintf(b, "                json_variants=%s,\n", pythonJSONFieldVariants(f))
+	fmt.Fprintf(b, "                json_flags=%s,\n", pyBool(pythonJSONIsFlags(f)))
+	fmt.Fprintf(b, "                %s,\n", reflectionElementColumns(f))
 	if dep := deprecatedOrdinals(f); dep != "" {
 		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
 	}
@@ -1799,6 +2251,10 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
 func defaultExpr(owner string, f *ir.Field) string {
+	return defaultExprForClass(owner, f, false)
+}
+
+func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
 		count := int64(0)
 		switch f.Array {
@@ -1817,6 +2273,7 @@ func defaultExpr(owner string, f *ir.Field) string {
 		}
 		return "[" + strings.Join(values, ", ") + "]"
 	}
+
 	if f.Type.Pointer || f.Type.Optional {
 		return "None"
 	}
@@ -1827,9 +2284,13 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A union array is born at its declared minimum, with independent
-		// None-valued elements; fixed arrays are born at their full bound.
+		// Fixed files and variable union arrays start at their declared
+		// minimum. Other variable counted arrays preserve their existing
+		// absent-field reset. Every constructed element is distinct.
 		count := int64(0)
+		if fixed {
+			count = f.BornCount()
+		}
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
 		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
@@ -1838,12 +2299,14 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if count <= 0 {
 			return "[]"
 		}
+		// Keep the source independent of the bound. Immutable zeros can be
+		// repeated; nested values must be constructed separately to avoid aliasing.
 		elem := elementDefault(owner, f)
-		values := make([]string, 0, count)
-		for i := int64(0); i < count; i++ {
-			values = append(values, elem)
+		switch elem {
+		case "0", "False", "0.0", `""`, `b""`, "None":
+			return fmt.Sprintf("[%s] * %d", elem, count)
 		}
-		return "[" + strings.Join(values, ", ") + "]"
+		return fmt.Sprintf("[%s for _s_i in range(%d)]", elem, count)
 	}
 	return valueDefault(f)
 }
@@ -2057,5 +2520,17 @@ func goBytesLiteral(data []byte) string {
 		fmt.Fprintf(&b, "\\x%02x", c)
 	}
 	b.WriteByte('"')
+	return b.String()
+}
+
+// pythonTags emits an immutable, ordered sequence of annotation tags.
+func pythonTags(tags []string) string {
+	var b strings.Builder
+	b.WriteString("(")
+	for _, tag := range tags {
+		b.WriteString(strconv.Quote(tag))
+		b.WriteString(", ")
+	}
+	b.WriteString(")")
 	return b.String()
 }

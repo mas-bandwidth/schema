@@ -17,7 +17,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -117,15 +116,14 @@ func generateLuauUnit(t *testing.T, root, schema string) (string, []string, map[
 	if err != nil {
 		t.Fatalf("schema %s does not load: %v", schema, err)
 	}
-	files, err := luau.Generate(u)
+	// The driver's own path, so the table reader carries every layout the
+	// unit's lock records (docs/FIXED-FORM-ALGORITHM.md §5.9 #1): a corpus
+	// file written under a recorded older layout is the lock's lineage, which
+	// a bare backend call cannot see.
+	files, err := compiler.New().Generate(u, "luau", compiler.Options{})
 	if err != nil {
 		t.Fatalf("schema %s: luau: %v", schema, err)
 	}
-	tables, err := luautable.Generate(u)
-	if err != nil {
-		t.Fatalf("schema %s: luautable: %v", schema, err)
-	}
-	maps.Copy(files, tables)
 	dir := t.TempDir()
 	var mods []string
 	for name, data := range files {

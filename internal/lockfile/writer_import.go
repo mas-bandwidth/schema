@@ -14,6 +14,19 @@ import (
 // No wire fact, entry order, retired mark or reason is changed. Existing
 // different captured constraints are never overwritten.
 func ImportWriter(u *ir.Unit, paths []string, target string, writer *ir.Unit) (path string, rewrote bool, err error) {
+	return ImportWriterWithOptions(u, paths, target, writer, WriterImportOptions{})
+}
+
+// WriterImportOptions makes the historical layout-only trust decision explicit.
+// It cannot distinguish files from two historical writers sharing the same key.
+type WriterImportOptions struct {
+	LegacyLayoutOnly bool
+}
+
+// ImportWriterWithOptions requires caller-established source provenance. The
+// optional layout-only route still validates root/layout/body/raw key, but the
+// old empty digest cannot authenticate the supplied declaration's bounds.
+func ImportWriterWithOptions(u *ir.Unit, paths []string, target string, writer *ir.Unit, options WriterImportOptions) (path string, rewrote bool, err error) {
 	name, hashText, hasHash := strings.Cut(target, "@")
 	if !hasHash || name == "" {
 		return "", false, fmt.Errorf("--writer names one locked layout as Table@0x<hash>")
@@ -72,6 +85,13 @@ func ImportWriter(u *ir.Unit, paths []string, target string, writer *ir.Unit) (p
 	old := table.Lineage[at]
 	candidate := old
 	candidate.Writer = source
+	if options.LegacyLayoutOnly && len(old.Digest) != 0 {
+		return "", false, fmt.Errorf("--legacy-layout-only requires an existing empty-digest layout-only identity")
+	}
+	if old.LegacyLayoutOnly && !options.LegacyLayoutOnly {
+		return "", false, fmt.Errorf("this writer was imported with explicit layout-only trust; repeat --legacy-layout-only to validate it")
+	}
+	candidate.LegacyLayoutOnly = options.LegacyLayoutOnly
 	if err := validateWriter(candidate, name); err != nil {
 		return "", false, err
 	}
@@ -81,6 +101,7 @@ func ImportWriter(u *ir.Unit, paths []string, target string, writer *ir.Unit) (p
 	if old.Writer == nil {
 		table.Lineage[at].Writer = source
 	}
+	table.Lineage[at].LegacyLayoutOnly = options.LegacyLayoutOnly
 	locked.Version = Version
 	next := locked.Text()
 	if next == string(data) {

@@ -138,7 +138,11 @@ split ./internal/codegen/gotable ^TestGoSharedRuntimeCoversTheCorpora$
 # the complement alone ran past the cap (cancelled at 116 s on a fleet runner,
 # 2026-11-15; 322 tests, no single heavy one), so it is cut by family
 split ./internal/codegen/gotable ^TestFixed
-split ./internal/codegen/gotable ^TestGo[^S]
+# 2026-11-16: broad Go namespace row exceeded the 2m fleet cap. These
+# disjoint buckets preserve ^TestGo[^S], including future/non-ASCII names.
+split ./internal/codegen/gotable ^TestGo[A-M]
+split ./internal/codegen/gotable ^TestGo[N-R]
+split ./internal/codegen/gotable ^TestGo[^A-S]
 split ./internal/codegen/rusttable ^TestRetainsAndWidensOnEveryRootRust$
 split ./internal/codegen/elixirtable ^TestMessageFormBatchElixir$
 split ./internal/codegen/cpptable ^TestMessageFormSkipDepthCPP$

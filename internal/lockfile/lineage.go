@@ -34,6 +34,7 @@
 package lockfile
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -51,6 +52,11 @@ type LineageEntry struct {
 	// Writer is the complete evaluated writer closure. Nil means a legacy lock
 	// did not capture it; it never means the writer had no constraints.
 	Writer *ir.Struct
+
+	// LegacyLayoutOnly records an explicit trusted-source import for an old
+	// layout-only key. The old key did not bind writer constraints; this flag
+	// never asserts that colliding old files can be distinguished.
+	LegacyLayoutOnly bool
 
 	// Wire is the eight bytes the file header and every record carry — fnv1a64
 	// over Layout and then Digest (algorithm §5.2's HASH). It is the lineage's
@@ -88,21 +94,10 @@ type LineageEntry struct {
 	Reason string
 }
 
-// lineageWireHash is algorithm §5.2's HASH: fnv1a64 over the layout bytes and
-// then the definitions digest.
-//
-// ir.TableFixedLayoutHash takes the schema and COMPUTES the digest; a lineage
-// entry stores the two runs because a historical layout has no live *Struct.
-// Hashing the concatenation with a nil schema is the same walk: FNV is
-// sequential, and a nil schema is an empty extra digest.
+// lineageWireHash preserves an entry's recorded digest scheme. A historical
+// key is raw FNV over its exact saved bytes, never a current-schema rehash.
 func lineageWireHash(layout, digest []byte) uint64 {
-	if len(digest) == 0 {
-		return ir.TableFixedLayoutHash(layout, nil)
-	}
-	both := make([]byte, 0, len(layout)+len(digest))
-	both = append(both, layout...)
-	both = append(both, digest...)
-	return ir.TableFixedLayoutHash(both, nil)
+	return ir.TableFixedLayoutHashRecorded(layout, digest)
 }
 
 // LineageHash is THE ROLL-UP: one number over the SET of lineage lines, in
@@ -137,6 +132,9 @@ func LineageHash(entries []LineageEntry) uint64 {
 		fmt.Fprintf(&b, "lineage wire=0x%016x", e.Wire)
 		if e.Writer != nil {
 			fmt.Fprintf(&b, " writer=%x", writerBytes(e.Writer))
+		}
+		if e.LegacyLayoutOnly {
+			b.WriteString(" legacy-layout-only")
 		}
 		if e.Retired {
 			b.WriteString(" retired")
@@ -201,6 +199,9 @@ func (e LineageEntry) line() string {
 	if e.Writer != nil {
 		s += fmt.Sprintf(" writer=%x", writerBytes(e.Writer))
 	}
+	if e.LegacyLayoutOnly {
+		s += " legacy-layout-only"
+	}
 	if e.Retired {
 		s += " retired"
 	}
@@ -234,6 +235,8 @@ func parseLineage(line, table string) (LineageEntry, error) {
 		}
 		seen[key] = true
 		switch {
+		case !valued && key == "legacy-layout-only":
+			e.LegacyLayoutOnly = true
 		case !valued && key == "retired":
 			e.Retired = true
 		case key == "wire":
@@ -455,10 +458,40 @@ func salvageLineage(locked, live *Unit) {
 		if lk.Decl != DeclFixedTable || len(lk.Lineage) != 0 {
 			continue
 		}
-		if lv := live.Table(lk.Name); lv != nil && lv.Decl == DeclFixedTable {
-			lk.Lineage = append([]LineageEntry(nil), lv.Lineage...)
+		if lv := live.Table(lk.Name); lv != nil && lv.Decl == DeclFixedTable && lk.Layout == lv.Layout && len(lv.Lineage) == 1 {
+			// The immediate pre-lineage v6 writer used layout-only identity.
+			// Reconstruct only an unchanged declaration's layout, never a wider
+			// reader's layout or historical constraints from current source.
+			old := lv.Lineage[0]
+			old.Digest = nil
+			old.Wire = lineageWireHash(old.Layout, nil)
+			old.Writer = nil
+			lk.Lineage = []LineageEntry{old}
 		}
 	}
+}
+
+// checkLineageWireFacts closes the same-key shortcut as well as append's
+// duplicate-key guard. Hash equality never permits different stored wire facts,
+// even when historical writer metadata was not captured.
+func checkLineageWireFacts(table string, old, next LineageEntry) error {
+	if old.Wire != next.Wire {
+		return nil
+	}
+	var changed []string
+	if !bytes.Equal(old.Layout, next.Layout) {
+		changed = append(changed, "layout bytes")
+	}
+	if !bytes.Equal(old.Digest, next.Digest) {
+		changed = append(changed, "definitions digest")
+	}
+	if old.Record != next.Record {
+		changed = append(changed, "record-body size")
+	}
+	if len(changed) != 0 {
+		return fmt.Errorf("fixed table %s: wire identity collision wire=0x%016x: equal keys carry different %s; historical facts cannot be replaced or treated as unchanged", table, old.Wire, strings.Join(changed, ", "))
+	}
+	return nil
 }
 
 // mergeLineage carries the committed history forward onto the rendering that is
@@ -484,6 +517,9 @@ func mergeLineage(locked, live *Unit) error {
 		cur := lv.Lineage[0]
 		history := append([]LineageEntry(nil), lk.Lineage...)
 		last := history[len(history)-1]
+		if err := checkLineageWireFacts(lv.Name, last, cur); err != nil {
+			return err
+		}
 		if last.Wire == cur.Wire {
 			if last.Writer != nil && !sameWriterConstraints(last.Writer, cur.Writer) {
 				return fmt.Errorf("fixed table %s: distinct captured writer constraints share legacy wire=0x%016x; preserving the old snapshot requires a separate wire-identity correction, not an overwrite", lv.Name, cur.Wire)
@@ -553,6 +589,9 @@ func Warnings(paths []string) []string {
 // what `schema lock` is for.
 func diffLineage(lk, lv *Table, policy Policy) error {
 	if len(lk.Lineage) == 0 {
+		if lv != nil && lk.Layout != lv.Layout {
+			return fmt.Errorf("fixed table %s: this pre-lineage lock no longer matches the checked historical declaration; restore the exact historical source, migrate the lock, then evolve the schema — historical layout bytes cannot be reconstructed from a changed reader", lk.Name)
+		}
 		return fmt.Errorf("fixed table %s: the lock carries no lineage for it — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7); write it with `schema lock` (docs/SPEC-TABLES.md §2.10)",
 			lk.Name)
 	}
@@ -563,11 +602,14 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 			}
 		}
 	}
-	if policy != Current || len(lv.Lineage) != 1 {
+	if lv == nil || len(lv.Lineage) != 1 {
 		return nil
 	}
 	last, cur := lk.Lineage[len(lk.Lineage)-1], lv.Lineage[0]
-	if last.Wire == cur.Wire {
+	if err := checkLineageWireFacts(lk.Name, last, cur); err != nil {
+		return err
+	}
+	if policy != Current || last.Wire == cur.Wire {
 		return nil
 	}
 	return lineageDrift{stale(lk.Decl, lk.Name,

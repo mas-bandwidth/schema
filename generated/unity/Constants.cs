@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf35accd0582cdd84
+// package example — protocol id 0x2bf51af687ac0abd
 //
 // Unity C# (--lang unity, docs/UNITY.md): C# 9 over netstandard2.1, no `unsafe`
 // code, no reflection, no runtime code generation — IL2CPP and Burst safe.
@@ -533,7 +533,7 @@ namespace Example
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0xf35accd0582cdd84;
+        public const ulong ProtocolId = 0x2bf51af687ac0abd;
 
         public const long PositionUnits = 1024;
 

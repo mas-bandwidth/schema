@@ -103,7 +103,9 @@ const ProjectionVersion = 3
 // change for the same schema and input without the protocol id changing
 // (SPEC §3.1).
 // 2 constructs a selected packet union payload with its declared defaults.
-const WireLaw = 2
+// 3 introduces path-addressed, lossless fixed-file definition identities.
+// The announced minor release moves all protocol and derived build IDs.
+const WireLaw = 3
 
 // WireProjection renders the unit's wire-affecting facts as canonical text.
 // Two units with the same projection produce the same bytes; that is the

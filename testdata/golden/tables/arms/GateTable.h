@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package armdemo — protocol id 0x727cea182a6959a7 (packets only: tables version by field id, not by protocol id)
+// package armdemo — protocol id 0x2e08b132138189b9 (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2442,14 +2442,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xa2,
-    0x6e,
-    0xa0,
-    0x9d,
-    0x34,
-    0x84,
-    0x21,
-    0x6a,
+    0x3f,
+    0x6f,
+    0x8b,
+    0x1c,
+    0x00,
+    0xdc,
+    0x02,
+    0x7b,
     0x02,
     0x0e,
     0x16,
@@ -9680,7 +9680,7 @@ namespace armdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x6a2184349da06ea2ull;
+static const uint64_t BuildVersion = 0x7b02dc001c8b6f3full;
 
 } // namespace armdemo
 
@@ -11122,7 +11122,7 @@ inline void OnlyFixedWriteBody( uint8_t * b, const Only & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t OnlyFixedBodyBytes = 4;
 constexpr int64_t OnlyFixedRecordBytes = 8 + OnlyFixedBodyBytes; // the hash and the body
-constexpr uint64_t OnlyFixedHash = 0x2078b2b4cf504f6eull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t OnlyFixedHash = 0xa99ec4722e5927d9ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -11183,9 +11183,10 @@ constexpr int32_t OnlyFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t OnlyFixedLineage[] = {
-    0x2078b2b4cf504f6eull, // identity
+    0x2078b2b4cf504f6eull, // lock
+    0xa99ec4722e5927d9ull, // identity
 };
-constexpr int32_t OnlyFixedLineageCount = 1;
+constexpr int32_t OnlyFixedLineageCount = 2;
 constexpr int32_t OnlyFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t OnlyFixedFloorLive = OnlyFixedFloor;
@@ -11197,14 +11198,21 @@ constexpr uint8_t OnlyFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63, 0xaf, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t OnlyFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x97, 0x0b, 0x5f, 0x6c, 0xc0, 0xdb, 0xba, 0x31, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63, 0xaf, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout OnlyFixedKnown[] = {
-    { 0x2078b2b4cf504f6eull, OnlyFixedKnown0Layout, 38, 12 }, // identity
+    { 0x2078b2b4cf504f6eull, OnlyFixedKnown0Layout, 38, 12 }, // lock
+    { 0xa99ec4722e5927d9ull, OnlyFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * OnlyFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t OnlyFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t OnlyFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

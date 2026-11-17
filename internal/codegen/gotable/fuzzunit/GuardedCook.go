@@ -683,7 +683,7 @@ func PatrolAt(slot *int64, arena ...*TableArena) *PatrolRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c PatrolCook) Type() *TableCookInfo { return &tableCookRecords[11] }
 
-const tableCookBuildVersion uint64 = 0x93ff58e3111cb4d4
+const tableCookBuildVersion uint64 = 0x3684616af27a45c9
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8

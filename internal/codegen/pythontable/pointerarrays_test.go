@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -618,8 +619,41 @@ const (
 	chainLong  = 20000
 )
 
+var pointerArrayProofPhases = []string{"functional", "deep", "typing"}
+var pointerArrayDeepPins = []string{"current", "floor"}
+
 func TestPythonVtPointerArrays(t *testing.T) {
 	t.Parallel()
+	phase := os.Getenv("SCHEMA_PYTHON_POINTER_ARRAY_PHASE")
+	if phase == "" {
+		// The ordinary full test keeps the original single-process proof and typing.
+		testPythonVtPointerArraysPhase(t, "", "")
+		return
+	}
+	known := false
+	for _, name := range pointerArrayProofPhases {
+		known = known || phase == name
+	}
+	if !known {
+		t.Fatalf("unknown pointer proof phase %q", phase)
+	}
+	ran := false
+	t.Run(phase, func(t *testing.T) {
+		if phase == "deep" {
+			for _, pin := range pointerArrayDeepPins {
+				t.Run(pin, func(t *testing.T) { ran = true; testPythonVtPointerArraysPhase(t, phase, pin) })
+			}
+		} else {
+			ran = true
+			testPythonVtPointerArraysPhase(t, phase, "")
+		}
+	})
+	if !ran {
+		t.Fatal("pointer proof selector matched no phase")
+	}
+}
+
+func testPythonVtPointerArraysPhase(t *testing.T, phase, deepPin string) {
 
 	u := loadNamedUnit(t, "PtrArr.schema", pointerArraysSchema)
 	rootSt := u.Tables["Root"]
@@ -924,26 +958,89 @@ table Guarded
 		fmt.Fprintf(&manifest, "CHAIN %d %s\n", n, hex.EncodeToString(buildChainWire(t, u, m, n)))
 	}
 
-	probe := pyrun.ImportPrelude + pointerArraysProbePy
-	inputs := map[string][]byte{
-		"cases.txt": []byte(manifest.String()),
-		"probe.py":  []byte(probe),
-	}
+	if phase != "typing" {
+		source := pointerArraysProbePy
+		if phase != "" {
+			source = pointerArraysPhaseProbe(t, phase)
+		}
+		probe := pyrun.ImportPrelude + source
+		inputs := map[string][]byte{
+			"cases.txt": []byte(manifest.String()),
+			"probe.py":  []byte(probe),
+		}
 
-	gotCurrent := string(pyrun.Run(t, dir, "probe.py", inputs))
-	gotFloor := string(pyrun.RunFloor(t, dir, "probe.py", inputs))
-	if gotCurrent != gotFloor {
-		t.Fatalf("pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", gotCurrent, gotFloor)
-	}
-	if !strings.Contains(gotCurrent, "ALL_POINTER_ARRAY_CHECKS_OK\n") {
-		t.Fatalf("probe did not finish cleanly:\n%s", gotCurrent)
-	}
+		if phase == "deep" {
+			runner := pyrun.Run
+			switch deepPin {
+			case "current":
+			case "floor":
+				runner = pyrun.RunFloor
+			default:
+				t.Fatalf("unknown deep proof pin %q", deepPin)
+			}
+			// Each pin must emit the same canonical complete-proof answer. This
+			// preserves the old cross-pin equality check when CI runs them apart.
+			got := string(runner(t, dir, "probe.py", inputs))
+			if got != "POINTER_ARRAY_deep_CHECKS_OK\n" {
+				t.Fatalf("deep %s did not finish: %s", deepPin, got)
+			}
+		} else {
+			gotCurrent := string(pyrun.Run(t, dir, "probe.py", inputs))
+			gotFloor := string(pyrun.RunFloor(t, dir, "probe.py", inputs))
+			if gotCurrent != gotFloor {
+				t.Fatalf("pinned interpreters disagree:\ncurrent:\n%s\nfloor:\n%s", gotCurrent, gotFloor)
+			}
+			marker := "ALL_POINTER_ARRAY_CHECKS_OK\n"
+			if phase != "" {
+				marker = "POINTER_ARRAY_" + phase + "_CHECKS_OK\n"
+			}
+			if !strings.Contains(gotCurrent, marker) {
+				t.Fatalf("probe did not finish cleanly:\n%s", gotCurrent)
+			}
 
-	for _, pkg := range []string{"ptrarr", "ptrarr/_schema", "evo", "listdemo", "tblg1"} {
-		if out, err := pyrun.Analyze(t, dir, pkg); err != nil {
-			t.Fatalf("mypy --strict on %s failed:\n%s", pkg, out)
 		}
 	}
+	if phase == "" || phase == "typing" {
+		for _, pkg := range []string{"ptrarr", "ptrarr/_schema", "evo", "listdemo", "tblg1"} {
+			if out, err := pyrun.Analyze(t, dir, pkg); err != nil {
+				t.Fatalf("mypy --strict on %s failed:\n%s", pkg, out)
+			}
+		}
+	}
+}
+
+// Each phase keeps a complete assertion section of the original probe. Deep
+// walks still compare both 10k/20k chains and every call/depth bound on both pins.
+func pointerArraysPhaseProbe(t *testing.T, phase string) string {
+	t.Helper()
+	const functionalStart = "# 1. Defaults at birth\n"
+	const deepStart = "# 9. A chain far deeper than the recursion limit loads from the engine's wire,\n"
+	const end = `print("ALL_POINTER_ARRAY_CHECKS_OK")`
+	for _, marker := range []string{functionalStart, deepStart, end} {
+		if strings.Count(pointerArraysProbePy, marker) != 1 {
+			t.Fatalf("pointer proof phase marker occurs %d times", strings.Count(pointerArraysProbePy, marker))
+		}
+	}
+	prefix, body, _ := strings.Cut(pointerArraysProbePy, functionalStart)
+	functional, body, _ := strings.Cut(body, deepStart)
+	deep, tail, _ := strings.Cut(body, end)
+	if strings.TrimSpace(tail) != "" {
+		t.Fatal("pointer proof postlude needs an explicit phase")
+	}
+	switch phase {
+	case "functional":
+		body = prefix + functionalStart + functional
+	case "deep":
+		body = prefix + `
+for ln in lines:
+    parts = ln.split(" ")
+    if parts[0] == "CHAIN":
+        chain_wires[int(parts[1])] = bytes.fromhex(parts[2])
+` + deepStart + deep
+	default:
+		t.Fatalf("unknown pointer proof phase %q", phase)
+	}
+	return body + "\nprint(" + strconv.Quote("POINTER_ARRAY_"+phase+"_CHECKS_OK") + ")\n"
 }
 
 const pointerArraysProbePy = `import warnings

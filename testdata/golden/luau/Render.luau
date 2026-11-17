@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xf35accd0582cdd84 — the Luau type surface (docs/PORT-LUAU.md)
+-- package example — protocol id 0x2bf51af687ac0abd — the Luau type surface (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 local _Enums = require("./Enums")

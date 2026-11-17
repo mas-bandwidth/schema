@@ -342,14 +342,24 @@ func parseWriter(data []byte, maxEntries int) (*ir.Struct, error) {
 	return root, nil
 }
 func validateWriter(e LineageEntry, table string) error {
+	if e.LegacyLayoutOnly && (e.Writer == nil || len(e.Digest) != 0) {
+		return fmt.Errorf("legacy-layout-only requires a complete trusted writer and an empty recorded digest")
+	}
 	if e.Writer == nil {
 		return nil
 	}
 	if e.Writer.WireName() != table {
 		return fmt.Errorf("writer snapshot root %s does not name fixed table %s", e.Writer.WireName(), table)
 	}
+	digest, err := ir.TableFixedDefinitionsDigestForRecorded(e.Writer, e.Digest)
+	if e.LegacyLayoutOnly {
+		digest, err = nil, nil // Explicit provenance replaces missing digest facts.
+	}
+	if err != nil {
+		return fmt.Errorf("fixed table %s, lineage wire=0x%016x: writer snapshot: %w", table, e.Wire, err)
+	}
 	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(e.Writer))
-	if !bytes.Equal(layout, e.Layout) || !bytes.Equal(ir.TableFixedDefinitionsDigest(e.Writer), e.Digest) || ir.TableFixedTypeBytes(e.Writer) != e.Record || lineageWireHash(layout, ir.TableFixedDefinitionsDigest(e.Writer)) != e.Wire {
+	if !bytes.Equal(layout, e.Layout) || !bytes.Equal(digest, e.Digest) || ir.TableFixedTypeBytes(e.Writer) != e.Record || lineageWireHash(layout, digest) != e.Wire {
 		return fmt.Errorf("fixed table %s, lineage wire=0x%016x: writer snapshot does not match its root/layout/digest/record/hash", table, e.Wire)
 	}
 	return nil

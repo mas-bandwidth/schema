@@ -117,11 +117,11 @@ func TestLuauFixedProofGroupCNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter")
 	groupCFixedCases(t, func(t *testing.T, tc fixedproof.RowCase) {
 		u := fixedproof.ParseCheckUnit(t, tc.Schema)
-		cpp, vfy := fixedproof.CppOracle(t, tc, u)
+		cpp, vfy, load := fixedproof.CppOracleWithLoadVerdict(t, tc, u)
 		layout, _, body := fixedproof.RootFacts(fixedproof.RootStruct(t, u, tc.Root))
 		form := bytes.Clone(cpp)
 		form[0] ^= 1
-		if vfy(form) == nil {
+		if load(form) == nil {
 			t.Fatal("C++ accepted corrupt form")
 		}
 		_, _, r := groupCFixedTests(t, tc, form, false)
@@ -135,7 +135,7 @@ func TestLuauFixedProofGroupCNegativeControl(t *testing.T) {
 		}
 		bad[at] ^= 1
 		if vfy(bad) == nil {
-			t.Fatal("C++ accepted mutated payload")
+			t.Fatal("C++ equality oracle accepted mutated payload")
 		}
 		_, round, r := groupCFixedTests(t, tc, bad, false)
 		if !r && bytes.Equal(round, cpp) {
@@ -146,7 +146,7 @@ func TestLuauFixedProofGroupCNegativeControl(t *testing.T) {
 			t.Fatal("writer mutation still matched")
 		}
 		if !r && vfy(w) == nil {
-			t.Fatal("C++ accepted mutated writer")
+			t.Fatal("C++ equality oracle accepted mutated writer")
 		}
 	})
 }

@@ -587,7 +587,7 @@ A cell becomes ✅ when the layer that carries it lands with its proof.
 | P10 | the conformance driver, every surface | `port/python/p10-conformance` |
 | P11 | the wire-fuzz differential | `port/python/p11-wirefuzz` |
 | P12 | the hostile corpus runner and resource bounds | `port/python/p12-hostile` |
-| P13 | cards | `port/python/p13-cards` |
+| P13 | [cards](port-python/table-cards.md) | `port/python/p13-cards` |
 | P14 | the strict analyzer gate and every negative control | `port/python/p14-lint-controls` |
 | P15 | CI, nightly fuzz, readiness, bench legs, release tier | `port/python/p15-ci` |
 | P16 | USAGE fragments, per-language prose, the register complete | `port/python/p16-docs` |
@@ -714,3 +714,45 @@ Each kind a card adds to the packet or the table leg has its own page under
 (`packet-<kind>.md`, `table-<kind>.md`): what the kind carries, its code
 shape and its measured bench numbers. The first is
 [packet-floats.md](port-python/packet-floats.md).
+
+The form-3 codec's current oracle-gated `FixedLoad` and `FixedSave` timings,
+method and reproducible target are recorded in
+[Python fixed-form files](port-python/table-fixed-form.md).
+
+### THE FIXED IDENTITY-PLAN SHAPES
+
+docs/FIXED-FORM-ALGORITHM.md §4.2 permits two shapes for the identity plan:
+coalesced runs straight into the reader's storage, or one whole-body copy into
+a record image followed by a scatter. Python's storage is objects, so the
+first shape is the scatter run directly over the file's own bytes: when every
+operation of a plan is an unguarded copy to the same offset and nothing is
+reset or prefilled, the image would equal the body byte for byte, and the
+runtime decodes each record from the file without building it. Every other
+plan (widening, remaps, guards, fills, holes) still runs through the image.
+`make python-fixed-form-bench` measures both shapes on every run: the kept
+runtime and a scratch copy with the direct switch turned off. Median of five
+samples, an oracle-checked two-`int32` record, macOS arm64, `gc` disabled:
+
+| interpreter | shape | FixedLoad, 1 record | FixedLoad, 1024 records | FixedSave, 1 record | FixedSave, 1024 records |
+|---|---|---:|---:|---:|---:|
+| CPython 3.15.2 | direct decode (kept) | 3.54 µs | 1.97 µs/record | 1.91 µs | 1.52 µs/record |
+| CPython 3.15.2 | record image | 4.04 µs | 2.49 µs/record | 1.92 µs | 1.50 µs/record |
+| CPython 3.11.18 | direct decode (kept) | 3.96 µs | 2.17 µs/record | 1.84 µs | 1.42 µs/record |
+| CPython 3.11.18 | record image | 4.41 µs | 2.79 µs/record | 1.79 µs | 1.42 µs/record |
+
+The direct decode is 11–12% faster for a one-record file and 21–22% faster per
+record in a batch on both pins, so it is kept. The writer has one shape; its
+rows differ only by noise.
+
+
+### Selecting table surfaces
+
+`schema generate --lang python --surface wire` emits table descriptors and
+variable-table wire methods while omitting fixed batch methods, fixed layout
+metadata and block descriptors. A declared fixed root's plain `load`, `save`
+and `measure` refuse `fixed_surface_not_selected`; they never fall back to
+form 1. Select `fixed` to include its batch API and form-3 file methods, or
+`block` to include block descriptors; both imply `wire`. The absent option and
+explicit full default set preserve existing output. Other explicit Python
+surface requests are refused until their emitters connect selection; this does
+not register support for per-table `forms` declarations (SPEC-TABLES §8.8).

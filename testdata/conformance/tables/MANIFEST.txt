@@ -927,10 +927,11 @@ unit backenddemo tables/backend
 unit vocabdemo   tables/vocab
 unit vocab9demo  tables/vocab9
 
-connection backend_conn backenddemo 0x16d0630a084485ae testdata/wire/tables/backend_conn.bin
-connection vocab_conn   vocabdemo   0x40062c876abfc027 testdata/wire/tables/vocab_conn.bin
-connection vocab9_conn  vocab9demo  0x3a923c7d0da66dd8 testdata/wire/tables/vocab9_conn.bin
-connection graph_conn   graphdemo   0xfdaabe4726d81d5c testdata/wire/tables/graph_conn.bin
+connection backend_conn backenddemo 0x2309093a1139c6cc testdata/wire/tables/backend_conn.bin
+connection vocab_conn vocabdemo 0x849644d72721d12e testdata/wire/tables/vocab_conn.bin
+connection vocab9_conn vocab9demo 0x354e211ad4f819ce testdata/wire/tables/vocab9_conn.bin
+# graph_conn.bin retains the historical peer; this connection uses the current writer.
+connection graph_conn graphdemo 0x2e0dc8d1c2bff1ae testdata/wire/tables/graph_conn_current.bin
 
 # The three backend messages of schema#523, each in both instances: 106 / 273 /
 # 104 bytes as files against 52 / 148 / 43 as messages, and 10 / 43 / 10 against
