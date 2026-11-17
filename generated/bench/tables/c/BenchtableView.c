@@ -56,7 +56,7 @@ const benchtable_unit_view_info_t * schema_benchtable_unit_view_(void)
         { "TableMixed", "BenchTable.schema", 1, &schema_benchtable_table_mixed_info_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL },
         { "TableStat", "BenchTable.schema", 1, &schema_benchtable_table_stat_info_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL },
     };
-    static const benchtable_unit_view_info_t info = { "benchtable", 0x0926221bcb6f475full,
+    static const benchtable_unit_view_info_t info = { "benchtable", 0x4c9383ebe3cde248ull,
         3, types,
         3, tables,
         1, enums,

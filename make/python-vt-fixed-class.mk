@@ -9,6 +9,7 @@
 # deprecated-variant, subclass and equality rule is broken in its own copy, and
 # TestPythonVtFixedClassElisionNegativeControl must go red naming that case.
 test-python: python-vt-fixed-class-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-vt-fixed-class-negative-control
 
 .PHONY: python-vt-fixed-class-negative-control
 python-vt-fixed-class-negative-control: python-toolchain-check deps-go

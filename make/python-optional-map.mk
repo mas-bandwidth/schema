@@ -1,3 +1,4 @@
+PYTHON_CI_SUPPORT_GROUPS += python-optional-map-negative-control
 # Optional map controls plant presence and graph-numbering faults in a copy.
 .PHONY: python-optional-map-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-ci-optional-map

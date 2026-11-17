@@ -57,7 +57,10 @@ func skipProgressAnnouncement(t *testing.T, u *ir.Unit) (announcement []byte, sl
 	entries := append(tablewire.MessageVocabulary(u), hostile)
 	vocabulary := ir.TableVocabularyBytes(entries)
 	out := []byte{ir.TableWireForm, 1, uint8(ir.TableKindU64)}
-	out = binary.LittleEndian.AppendUint64(out, ir.BuildVersion(u))
+	// ANOTHER BUILD VERSION: the hostile entry is a field this record does not
+	// declare, which only a writer of another build sends; under this reader's
+	// own build it is refused before any skip (docs/SPEC-TABLES.md §3.3 (b)).
+	out = binary.LittleEndian.AppendUint64(out, ir.BuildVersion(u)^1)
 	out = append(out, 2, uint8(ir.TableKindArray))
 	body := []byte{uint8(ir.TableKindU8)}
 	body = binary.AppendUvarint(body, uint64(len(vocabulary)))

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestLockWriterHistoricalImportCLI(t *testing.T) {
@@ -37,7 +38,8 @@ func TestLockWriterHistoricalImportCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lk.Version = 7
+	// Missing metadata also remains explicit for a prospective entry.
+	lk.Version = lockfile.Version
 	for i := range lk.Tables {
 		for j := range lk.Tables[i].Lineage {
 			lk.Tables[i].Lineage[j].Writer = nil
@@ -66,7 +68,31 @@ func TestLockWriterHistoricalImportCLI(t *testing.T) {
 	if !strings.Contains(out, "already carries") {
 		t.Fatal(out)
 	}
-	for _, args := range [][]string{{"--writer", target}, {"--from", old}, {"--writer", target, "--from", old, "--print"}, {"--writer", target, "--from", old, "--retire", target, "--reason", "old"}} {
+	// Only the named opt-in can attach constrained source to a layout-only key.
+	legacy := got.Table("Row").Lineage[0]
+	legacy.Digest, legacy.Writer = nil, nil
+	legacy.Wire = ir.TableFixedLayoutHashRecorded(legacy.Layout, nil)
+	got.Table("Row").Lineage = append([]lockfile.LineageEntry{legacy}, got.Table("Row").Lineage...)
+	if err := os.WriteFile(path, []byte(got.Text()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	layoutTarget := fmt.Sprintf("Row@0x%016x", legacy.Wire)
+	if output, err := exec.Command(bin, "lock", "--writer", layoutTarget, "--from", old, current).CombinedOutput(); err == nil || !strings.Contains(string(output), "does not match") {
+		t.Fatalf("strict CLI accepted missing digest facts: %v %s", err, output)
+	}
+	run(t, bin, "lock", "--writer", layoutTarget, "--from", old, "--legacy-layout-only", current)
+	enriched, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trusted, err := lockfile.Parse(path, enriched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !trusted.Table("Row").Lineage[0].LegacyLayoutOnly || trusted.Table("Row").Lineage[0].Writer.Fields[0].IntMax.Int64() != 10 {
+		t.Fatal("CLI lost trusted historical writer bounds")
+	}
+	for _, args := range [][]string{{"--legacy-layout-only"}, {"--writer", target}, {"--from", old}, {"--writer", target, "--from", old, "--print"}, {"--writer", target, "--from", old, "--retire", target, "--reason", "old"}} {
 		argv := append([]string{"lock"}, args...)
 		argv = append(argv, current)
 		out, err := exec.Command(bin, argv...).CombinedOutput()

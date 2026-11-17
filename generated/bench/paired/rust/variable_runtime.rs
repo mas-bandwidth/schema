@@ -1928,19 +1928,32 @@ pub static KNOWN_IDS: &[u64] = &[
 // A complete traversal can prove an unused transport ID (§3). An incomplete
 // traversal defers to the existing framing/value walk, which owns its named
 // refusal (including count caps and non-finite diagnostics).
+//
+// THE SAME TRAVERSAL HOLDS THE WRITER'S GRAPH SPELLING (§3, §3.1;
+// docs/rulings.json reads-refuse-non-canonical): it meets references in the
+// wire's byte order, which is the order a writer first names them, root body
+// first and the node table's records in index order, so an entry first named
+// out of turn is an id table out of first-use order; and the node table is the
+// root body's last field and holds at least one record. Each is a spelling no
+// conforming writer produces, so Some(false) refuses it like an unused entry.
 pub fn table_ids_all_used(body: &[u8], ids: &[u64]) -> Option<bool> {
     if ids.len() > 4096 { return None; }
-    let mut walk = TableIdUse { ids, seen: [false; 4096] };
+    let mut walk = TableIdUse { ids, seen: [false; 4096], next: 0, canonical: true };
     walk.body(body, true, 0)?;
-    Some(walk.seen[..ids.len()].iter().all(|used| *used))
+    Some(walk.canonical && walk.seen[..ids.len()].iter().all(|used| *used))
 }
 
-struct TableIdUse<'a> { ids: &'a [u64], seen: [bool; 4096] }
+struct TableIdUse<'a> { ids: &'a [u64], seen: [bool; 4096], next: usize, canonical: bool }
 
 impl TableIdUse<'_> {
     fn reference(&mut self, reference: u64) -> Option<u64> {
         let index = usize::try_from(reference.checked_sub(1)?).ok()?;
         let id = *self.ids.get(index)?;
+        if !self.seen[index] {
+            // first named out of turn: the id table is not in first-use order
+            if index != self.next { self.canonical = false; }
+            self.next += 1;
+        }
         self.seen[index] = true;
         Some(id)
     }
@@ -1955,13 +1968,17 @@ impl TableIdUse<'_> {
 
     fn body(&mut self, bytes: &[u8], root: bool, depth: usize) -> Option<()> {
         let mut at = 0;
+        let mut after_nodes = false;
         loop {
             let reference = leb_read(bytes, &mut at)?;
             if reference == 0 { return (at == bytes.len()).then_some(()); }
+            // a field after the node table: the table is out of its place (§3.1)
+            if after_nodes { self.canonical = false; }
             let id = self.reference(reference)?;
             let kind = *bytes.get(at)?; at += 1;
             if id == NODE_TABLE_ID {
                 if !root || kind != 12 { return None; }
+                after_nodes = true;
                 self.nodes(Self::frame(bytes, &mut at)?, depth)?;
             } else {
                 self.payload(bytes, &mut at, kind, depth)?;
@@ -1973,6 +1990,8 @@ impl TableIdUse<'_> {
         let mut at = 0;
         let count = leb_read(bytes, &mut at)?;
         if count > bytes.len() as u64 { return None; }
+        // a node table with no record is one no writer emits (§3.1)
+        if count == 0 { self.canonical = false; }
         for _ in 0..count {
             let type_id = self.reference(leb_read(bytes, &mut at)?)?;
             let body = Self::frame(bytes, &mut at)?;

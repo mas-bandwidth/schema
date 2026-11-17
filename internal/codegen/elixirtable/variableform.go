@@ -232,7 +232,8 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 const firstUseCall = "first_use_order?(body, ids)"
 
 // firstUseSource is the id table's first-use rule (docs/SPEC-TABLES.md §3) as
-// one self-contained walk over the variable read's wire: the engine's
+// one self-contained walk, shared by the variable read and the announcement
+// read (messageform.go): the engine's
 // wireCheck.use points (internal/tablewire/wirecheck.go) in the engine's
 // order. A field reference, an enum's variant, a union's arm and a keyed
 // slot's key use their id where the walk meets them, depth first in wire order

@@ -19,3 +19,4 @@ python-vt-idtable-negative-control: deps-go python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtableNegativeControl$$' ./internal/codegen/pythontable/
 
 test-python: python-vt-idtable python-vt-idtable-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-vt-idtable python-vt-idtable-negative-control

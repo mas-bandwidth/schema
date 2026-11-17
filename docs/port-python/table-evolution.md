@@ -44,6 +44,23 @@
   a slot that names a record of a type the reader declares but the slot does
   not target is damage. `TestPythonVtEvolution` holds each case to the
   engine's verdict.
+- **The two roadmap rows over the manifest.** `TestPythonVtEvolutionRows`
+  holds defaults-and-table-rename and renames over every conformance manifest
+  instance of the row (the `was` rows w1_fleet, w1_fleet_default and w2_fleet,
+  the vocabulary rows r1_cfg, r1_ping and r2_cfg, and their six cross reads),
+  plus the defaults_at and defaults_off constructs, under both pins: an
+  instance loads and saves back byte for byte with the engine's unknown count;
+  a cross read takes reports.txt's verdict and, when it reads, saves the
+  manifest's canonical rewrite bytes; a refusal leaves no value and the
+  caller's buffer and report untouched. A fixed root (Cfg) reads form 3
+  through the generated load, as the other legs read it through their fixed
+  read. Every instance and report row of the four evolution units is named by
+  one of the two rows (the previous_form_* rows are the fixed class's).
+  `TestPythonVtEvolutionRowsNegativeControl` plants three faults and requires
+  each aimed row red by case name: a copy of the runtime that judges no bytes
+  value at its default, a copy whose fixed-form layout check is inverted, and
+  a package generated with every `was` forgotten
+  (`make python-vt-evolution-rows python-vt-evolution-rows-negative-control`).
 - **A deprecated enum variant** (SPEC-TABLES §2.15) keeps its id and ordinal
   in the descriptor's `deprecated` set: a read that meets it yields the
   field's declared default and counts nothing, and a write of it raises

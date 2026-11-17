@@ -12,6 +12,7 @@ package cstable
 // the weak and owed clauses lacked.
 
 import (
+	"bytes"
 	"fmt"
 	"maps"
 	"os"
@@ -130,9 +131,23 @@ fixed table T {
 	if len(roots) != 1 {
 		t.Fatalf("R30: the fixture declares %d fixed roots, want one", len(roots))
 	}
+	// Keep the frozen v1 byte assertion explicitly in its recorded scheme.
+	legacy := ir.TableFixedDefinitionsDigestLegacy(roots[0])
+	if len(legacy) != 26 || legacy[0] != 'R' || legacy[17] != 'Q' {
+		t.Errorf("R30: legacy compressed-float digest lacks its R/Q rows: % x", legacy)
+	}
+	// Current rows are framed and path-addressed. A resolution-only refinement
+	// of the same checked writer must still move its v2 digest.
 	d := ir.TableFixedDefinitionsDigest(roots[0])
-	if len(d) != 26 || d[0] != 'R' || d[17] != 'Q' {
-		t.Errorf("R30: a compressed float's digest = % x, want 'R' min max 'Q' resolution", d)
+	version, err := ir.TableFixedDefinitionsDigestVersion(d)
+	if err != nil || version != 2 {
+		t.Fatalf("R30: current digest scheme = %d, %v", version, err)
+	}
+	refined := unitFrom(t, `package probe
+fixed table T { q float32 = 0.0 | min = 0.0, max = 1.0, resolution = 0.005 }
+`)
+	if bytes.Equal(d, ir.TableFixedDefinitionsDigest(refined.Tables["T"])) {
+		t.Error("R30: resolution-only refinement did not move the current digest")
 	}
 	src := generateCS(t, `package probe
 fixed table T {

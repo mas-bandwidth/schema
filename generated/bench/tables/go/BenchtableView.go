@@ -199,7 +199,7 @@ func init() {
 	}}
 }
 
-var tableUnitView = UnitViewInfo{Package: "benchtable", ProtocolID: 0x0926221bcb6f475f,
+var tableUnitView = UnitViewInfo{Package: "benchtable", ProtocolID: 0x4c9383ebe3cde248,
 	NumTypes: 3, Types: []ViewType{
 		{Name: "TableChatEvent", File: "BenchTable.schema", Table: false, Type: &TableChatEventTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "TableHitEvent", File: "BenchTable.schema", Table: false, Type: &TableHitEventTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},

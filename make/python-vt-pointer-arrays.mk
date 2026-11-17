@@ -21,6 +21,20 @@
 	python-vt-pointer-arrays-write-non-node-negative-control \
 	python-vt-pointer-arrays-write-wrong-type-node-negative-control \
 	python-vt-pointer-arrays-write-cycle-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-vt-pointer-arrays-count-over-bound-negative-control \
+	python-vt-pointer-arrays-read-cycle-negative-control \
+	python-vt-pointer-arrays-wrong-type-target-negative-control \
+	python-vt-pointer-arrays-index-past-node-table-negative-control \
+	python-vt-pointer-arrays-element-kind-negative-control \
+	python-vt-pointer-arrays-shared-identity-negative-control \
+	python-vt-pointer-arrays-field-guard-negative-control \
+	python-vt-pointer-arrays-write-not-list-negative-control \
+	python-vt-pointer-arrays-write-fixed-length-negative-control \
+	python-vt-pointer-arrays-write-counted-range-negative-control \
+	python-vt-pointer-arrays-write-over-count-negative-control \
+	python-vt-pointer-arrays-write-non-node-negative-control \
+	python-vt-pointer-arrays-write-wrong-type-node-negative-control \
+	python-vt-pointer-arrays-write-cycle-negative-control
 test-python: python-vt-pointer-arrays-count-over-bound-negative-control \
 	python-vt-pointer-arrays-read-cycle-negative-control \
 	python-vt-pointer-arrays-wrong-type-target-negative-control \
@@ -93,6 +107,7 @@ python-vt-pointer-arrays-write-cycle-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtPointerArraysNegativeControl$$/^write-cycle$$' ./internal/codegen/pythontable/
 
 .PHONY: python-vt-pointer-array-body-bound-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-vt-pointer-array-body-bound-negative-control
 test-python: python-vt-pointer-array-body-bound-negative-control
 python-vt-pointer-array-body-bound-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtPointerArrayBodyBound$$' ./internal/codegen/pythontable/

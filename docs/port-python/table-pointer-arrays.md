@@ -39,6 +39,40 @@
   with the profiler on that chain and on one half its length: the Python frame
   depth stays constant and the calls double with the chain.
 
+### The variable-class and pointer-arrays rows
+
+`TestPythonVtPointerArraysRows` holds the two roadmap rows over the shared
+conformance corpus, the rows luatable's `vtcells_test.go` names for them, and
+the Go-engine construct `blobs_pointers` (a node whose pointers share the flat
+node table with two blob records, a chain and a pointer array holding a null).
+Each manifest wire is read by the generated `Root.load` under both pinned
+interpreters and held to the Go engine's own verdict on it: accepted, the
+value saves back byte-identical to the engine's canonical wire, measures its
+length, saves the same bytes a second time, and reports the engine's widened
+and unknown counters; refused, the load returns no value and leaves the
+caller's buffer and `LoadReport` as they were. A report row's verdict is also
+`reports.txt`'s.
+
+- **variable-class**: `graph_tree`, `graph_shared`, `graph_empty`,
+  `graph_deep`, `guard_false_no_edge`, `guard_true_both_edges`, `list_shared`,
+  `list_before_pointer`, and the construct.
+- **pointer-arrays**: `stream_parts`, `stream_chain`, `parts_elem_kind`,
+  `parts_count_past_bound`, `parts_index_out_of_range`, `w1_fleet`,
+  `w2_fleet`, and every other manifest row whose root reaches a pointer array
+  (`stream_header`, the three `stream_arm_*` rows, `w1_fleet_default`,
+  `w1_fleet_as_w2`, `w1_fleet_default_as_w2`, `w2_fleet_as_w1`, the listdemo
+  `list_*` rows), and the construct. A completeness check walks every manifest
+  row's root and fails on a row that reaches a pointer array and is not held.
+
+`TestPythonVtPointerArraysRowsNegativeControl` plants one fault at a time in a
+copy of the emitted runtime (the save numbering a shared node again at each
+reach, a bounded pointer array's count check dropped, the graph judge's
+index-past-the-node-table check dropped, a pointer array's indices written one
+past their node) and requires the rows each fault touches red by name. The
+make targets are `python-vt-pointer-arrays-rows` and its negative control
+(`make/python-vt-pointer-arrays-rows.mk`). No runtime change was needed: every
+row already held at the revision the test landed on.
+
 ### Pointer arrays bench
 
 `TestPythonVtPointerArraysShapeBench` runs a nine-field table (`[]*Leaf`,

@@ -30,6 +30,8 @@ func TestEveryPortBackendBitIsItsOwn(t *testing.T) {
 		{"Luau", Luau, 10},
 		{"Moo", Moo, 11},
 		{"Squirrel", Squirrel, 12},
+		{"Python", Python, 13},
+		{"Unity", Unity, 14},
 	}
 	seen := map[Backend]string{}
 	for _, a := range allocs {

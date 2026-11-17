@@ -1,1 +1,2 @@
-{"targets": "build/conformance-harness build/conformance-python"}
+{"targets": "build/conformance-harness build/conformance-python",
+ "python": "pin"}

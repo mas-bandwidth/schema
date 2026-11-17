@@ -431,6 +431,12 @@ type runPatternException struct {
 // runs; and slow-gate-coverage's pattern is emitted by tools/slowgatescan
 // when its recipe runs.
 var runPatternExceptions = []runPatternException{
+	{"make/python-fixed-proof-evolution.mk python-fixed-proof-evolution", "Make expands this aggregate selector; TestPythonFixedEvolutionCICoverage checks the expanded tagged test list and every selected case", "$(PYTHON_FIXED_EVOLUTION_AGGREGATE)"},
+	{"make/python-fixed-proof-evolution.mk $(PYTHON_FIXED_EVOLUTION_TARGETS)", "Make expands this per-row selector; TestPythonFixedEvolutionCICoverage checks every tagged test and subcase exactly once, with omission and duplicate controls", "$(PYTHON_FIXED_EVOLUTION_PATTERN_$(@:python-fixed-proof-evolution-row-%=%))"},
+	{"make/python-handtext.mk python-handtext-core", "Make expands this selector; TestPythonHandtextCISelection checks the four expanded rows against every tagged hand-text test", "$(PYTHON_HANDTEXT_CORE)"},
+	{"make/python-handtext.mk python-handtext-go-reference", "Make expands this selector; TestPythonHandtextCISelection checks the four expanded rows against every tagged hand-text test", "$(PYTHON_HANDTEXT_GO_REFERENCE)"},
+	{"make/python-handtext.mk python-handtext-cpp-reference", "Make expands this selector; TestPythonHandtextCISelection checks the four expanded rows against every tagged hand-text test", "$(PYTHON_HANDTEXT_CPP_REFERENCE)"},
+	{"make/python-handtext.mk python-handtext-negative-control", "Make expands this selector; TestPythonHandtextCISelection checks the four expanded rows against every tagged hand-text test and checks control-row omission", "$(PYTHON_HANDTEXT_CONTROLS)"},
 	{"make/go.mk cards-corpus-create", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root", "^TestCorpusFixtureWrite$"},
 	{"make/go.mk cards-fuzz-fixture", "same generated build/tables-generated-go/cards module, -run '^TestCardFixtureWrite$$'", "^TestCardFixtureWrite$"},
 	{"make/go.mk tables-go-soak", "cd test/go-tables && go test ... . — test/go-tables is a separate Go module whose generated replacements do not exist until make builds them, so -list cannot run from the repo root", "Soak"},

@@ -1,0 +1,45 @@
+#!/bin/sh
+# Remove message write preflight in a generated copy and require the surface
+# comparison to catch the out-of-range write.
+set -eu
+: "${PYTHON:?the current pinned Python is required}"
+: "${PYTHON_FLOOR:?the floor pinned Python is required}"
+work=$(mktemp -d "${TMPDIR:-/tmp}/python-message-control.XXXXXX")
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+cp -R build/conformance-python "$work/generated"
+runtime="$work/generated/backenddemo/backenddemo/_schema/message.py"
+cp "$runtime" "$work/original.py"
+anchor='_validate(value, getattr(value, "descriptor"), "", set())'
+test "$(grep -F -c "$anchor" "$runtime")" -eq 1
+sed 's/_validate(value, getattr(value, "descriptor"), "", set())/pass  # removed preflight/' "$runtime" > "$work/message.py"
+mv "$work/message.py" "$runtime"
+awk '$1 != "write-refusal-message" || $2 == "mref_range_high"' testdata/conformance/tables/MANIFEST.txt > "$work/manifest"
+for pin in "$PYTHON" "$PYTHON_FLOOR"; do
+    if PYTHON="$pin" PYTHON_FLOOR="$pin" PYTHON_MESSAGE_MANIFEST="$work/manifest" PYTHON_CONFORMANCE_GENERATED="$work/generated" test/conformance/python/message-gate > "$work/log" 2>&1; then
+        echo "message negative control: surface stayed green after removing write preflight" >&2
+        exit 1
+    fi
+    if ! grep -q 'message write refusal mref_range_high:' "$work/log"; then
+        cat "$work/log" >&2
+        echo "message negative control failed without the expected case" >&2
+        exit 1
+    fi
+    echo "message write-refusal surface detects removed preflight: $(basename "$pin")"
+done
+cp "$work/original.py" "$runtime"
+anchor='writer.put(2, 8)'
+test "$(grep -F -c "$anchor" "$runtime")" -eq 1
+sed 's/writer.put(2, 8)/writer.put(1, 8)/' "$runtime" > "$work/message.py"
+mv "$work/message.py" "$runtime"
+for pin in "$PYTHON" "$PYTHON_FLOOR"; do
+    if PYTHON="$pin" PYTHON_FLOOR="$pin" PYTHON_MESSAGE_MANIFEST="$work/manifest" PYTHON_CONFORMANCE_GENERATED="$work/generated" test/conformance/python/message-gate > "$work/log" 2>&1; then
+        echo "message negative control: surface stayed green after changing the form byte" >&2
+        exit 1
+    fi
+    if ! grep -q 'login_full' "$work/log"; then
+        cat "$work/log" >&2
+        echo "message negative control failed without the expected case" >&2
+        exit 1
+    fi
+    echo "message surface detects a changed form byte: $(basename "$pin")"
+done
