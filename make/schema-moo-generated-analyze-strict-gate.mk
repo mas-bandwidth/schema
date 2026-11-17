@@ -25,6 +25,26 @@
 # One analyzer process over every module: about 3 s for 147 units on the
 # studio. The tests live in internal/codegen/moo (strictgate_test.go) so that
 # ci-full's emitter row, which installs the moo pin, runs them too.
+#
+# THE ROW'S TOOLS. Every target make/negative-controls.json puts in the moo
+# group names the pin's interpreter and analyzer under MOO_DIST, the place
+# .github/actions/moo installs and checks. A target-specific assignment wins
+# over the runner's environment, and moo.mk exports both names to the recipe,
+# so a runner that names another moo cannot select it. A command-line
+# assignment still wins, so a developer can name another build.
+
+tables-moo-block-lead-negative-control: MOO := $(MOO_DIST)/moo
+tables-moo-block-lead-negative-control: MOO_ANALYZE := $(MOO_DIST)/moo-analyze
+packet-analyze-moo-negative-control: MOO := $(MOO_DIST)/moo
+packet-analyze-moo-negative-control: MOO_ANALYZE := $(MOO_DIST)/moo-analyze
+packet-wire-moo-emitter-negative-control: MOO := $(MOO_DIST)/moo
+packet-wire-moo-emitter-negative-control: MOO_ANALYZE := $(MOO_DIST)/moo-analyze
+packet-wire-moo-negative-control: MOO := $(MOO_DIST)/moo
+packet-wire-moo-negative-control: MOO_ANALYZE := $(MOO_DIST)/moo-analyze
+schema-moo-generated-analyze-strict-gate-negative-control: MOO := $(MOO_DIST)/moo
+schema-moo-generated-analyze-strict-gate-negative-control: MOO_ANALYZE := $(MOO_DIST)/moo-analyze
+schema-moo-generated-analyze-strict-gate-pin-negative-control: MOO := $(MOO_DIST)/moo
+schema-moo-generated-analyze-strict-gate-pin-negative-control: MOO_ANALYZE := $(MOO_DIST)/moo-analyze
 
 .PHONY: schema-moo-generated-analyze-strict-gate
 schema-moo-generated-analyze-strict-gate: toolchain-moo

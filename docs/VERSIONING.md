@@ -333,7 +333,8 @@ committed rule and say what the repository does today.
 | a range tightened | refuses `out_of_range` where a stored value is past it | warns | moves |
 | a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | refuses `kind_mismatch` | **refuses** | moves |
 | a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file still kind-mismatches | moves |
-| `T`→`?T`, `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
+| `T`→`?T` | nothing at the bytes; a newer writer's present field at its defaults is a field stored at its declared default, refused by the old build (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file refuses a now-optional field stored at its default | moves (the presence flag is storage) |
+| `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
 | an enum variant reordered | nothing | passes | moves, and the protocol id with it where a `type` reaches the enum |
 | an enum variant renamed | the old name reads `None`, counted | warns | moves, and the protocol id with it where a `type` reaches the enum: order is spelled in names |
@@ -547,13 +548,17 @@ commit, and refuses a patch release whose form differs, by name
 (`TestReleaseFormGate`, with `release-form-gate-negative-control` beside it).
 The minor's condition, with the wire and announced, is the release's review.
 
-**3.0.0 moves the form to 5, as a major may.** For the release notes: "the
+**Earlier form-5 amendment, superseded by the pending form-6 amendment below.**
+The earlier planned-major note read: "3.0.0 moves the form to 5, as a major may."
+Its historical release-note wording was: "the
 build version's form is 5: it now covers an array's element kind; cooked files
 from earlier builds are refused, as any build-version change is". Form 5 puts
 an unbounded array's element kind on its line in the cook projection
 (SPEC-TABLES.md §20.2), because without it `[]int32` and `[]float32` shared
 a build version, and a cooked list of one read as the other with no refusal.
-Every unit's build version moves with the form.
+Every unit's build version moves with the form. This paragraph records the
+form-5 rationale; it does not assign a release tag or override the prospective
+form-6 policy below.
 
 ## The same-build forms: cook and block
 
@@ -876,6 +881,34 @@ Across releases, the previous-release differential above proves it.
 records the instances, so the history of "a release moved bits" lives where
 the compatibility rules do.
 
+- **Pending announced minor, fixed-file identity v2; WireLaw 3.** Fixed-file
+  definition identities now bind constraints to their wire field/arm paths and
+  preserve full-width integer/fixed bounds and counted minima. Every fixed root
+  receives the new digest prefix, including a root with no constraints. This
+  changes fixed-file header and per-record hashes for unchanged schemas, so
+  `WireLaw` moves from 2 to 3 under the existing rule. Every protocol id and
+  derived build version moves, including packet-only consumers: coordinated
+  peer redeployment and cook-cache invalidation are the deliberate cost. Packet
+  payload encoding itself is unchanged by this amendment. `ProjectionVersion`
+  remains 3. `BuildVersionForm` moves from 5 to 6: counted arrays now project
+  `countmin=` separately from scalar element bounds. The old form 5 omission let
+  distinct announced count minima share a build id; the new projection binds
+  that shape fact for fields, nested records and general union arms. Frozen
+  form 5 projection bytes/build ids remain historical evidence. Fixed file form
+  remains 3.
+  This must ship in an announced minor (or an already planned major), never a
+  patch. This amendment does not assign or publish a release tag. The release
+  operator must
+  verify the then-current tags before choosing the release number.
+  Lock rendering 9 preserves historical entries and adds the new own identity;
+  validated legacy writer snapshots select their recorded digest scheme.
+  Already-colliding historical writer files remain indistinguishable without
+  trusted per-file provenance. Rebuilding both sides of a fixture with the new
+  compiler is not cross-epoch proof: release evidence must also preserve old
+  writer bytes, demonstrate new-reader acceptance of unambiguous retained keys,
+  and old-reader refusal of new keys. Generated ids/fixed-wire pins and the
+  previous-release differential are reviewed with this announcement; a green
+  report that skips moved protocol ids alone does not establish backward reads.
 - **2026-08-15, fixed-point rounding unified: half away from zero.** The
   generated fixed-point narrowing changed from the bare arithmetic shift
   (ties toward +infinity) to the one fixed-point rounding rule, ties away
@@ -1101,9 +1134,8 @@ still open.
 - **`string(N)` and `bytes(N)` are different kinds** on the table wire though
   the packet wire treats them as one construct; respelling one as the other
   is a kind change.
-- **`T`→`?T` turns every old elided default into an absent field.** The
-  value is the default either way; a game that branches on presence sees
-  every existing player as "never set."
+- **The baseline refuses `T`→`?T`.** A new optional writer can store a
+  present field at its defaults, which an old plain reader refuses (§4).
 - **A tightened range refuses every stored file holding a value past it.** A
   narrowing is a data edit; migrate or back the files up first. A committed
   baseline warns on it, from either end and on a range declared where the

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package tabledemo — protocol id 0xba7b344f28584d33
+// package tabledemo — protocol id 0x5c9bc5717146f630
 // The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package tabledemo
@@ -133,6 +133,11 @@ const ScoreBoardMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 
-// ReadScoreBoard reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadScoreBoard reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
+
+// read reads value's fields from stream without the packet's end check: a
+// ScoreBoard nested in another value is read through it.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x0926221bcb6f475f
+// package benchtable — protocol id 0x4c9383ebe3cde248
 //
 // Wire functions return bool — the C++-style early-out. A READ-side schema
 // validation failure (a wrong wire constant, nonzero reserved bits, an
@@ -11,12 +11,12 @@
 // Error tells the two apart.
 //
 // WRITE-side contracts — a value outside its declared range, a count or a
-// length outside its bound, a mask bit above the wire width, an interior
-// null in a wide string — are CALLER ERROR and ride on Debug.Assert, so
-// they compile out of a release build along with the call, exactly as
-// serialize.cs's own WriteStream does. In a shipping release build it is
-// the caller's responsibility to be correct on the write side; every check
-// the reader needs is on the read side and runs in every build.
+// length outside its bound, a mask bit above the wire width, a zero byte or
+// ill-formed UTF-8 in a string(N) — are CALLER ERROR and ride on
+// Debug.Assert, so they compile out of a release build along with the call,
+// exactly as serialize.cs's own WriteStream does. In a shipping release
+// build it is the caller's responsibility to be correct on the write side;
+// every check the reader needs is on the read side and runs in every build.
 
 using System;
 using System.Diagnostics;
@@ -116,7 +116,7 @@ namespace Benchtable
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0x0926221bcb6f475f;
+        public const ulong ProtocolId = 0x4c9383ebe3cde248;
 
         public const TableWeapon TableWeaponMax = (TableWeapon)15; // the exported extent (SPEC §4.2)
 

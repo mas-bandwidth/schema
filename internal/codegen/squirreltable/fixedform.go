@@ -282,6 +282,10 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// an empty batch is refused in every build before any byte is written, and
+	// raises nothing (docs/rulings.json write-refusal).
+	m.Printf("  if (recs.len() == 0) { _M.FixedReason = \"invalid_value\"; return -1; }\n")
 	// CHECK THE WHOLE BATCH BEFORE SEEKING OR WRITING THE CALLER'S BUFFER
 	// (docs/FIXED-FORM-ALGORITHM.md §3.1, docs/SPEC.md §5.1). FixedCheckBody
 	// reuses the body writer's guards against one private record buffer, so the
@@ -319,7 +323,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 		// emitted with the declaring function, so a keyless unit carries none.
 		emitFixedCRC32C(m)
 		m.Printf("  local n = b.tell();\n")
-		m.Printf("  _rt_fixed.puti32(b, n, crc32c(b, n));\n")
+		m.Printf("  b.writen(crc32c(b, n), 'i');\n")
 		m.Printf("  return n + 4;\n")
 	} else {
 		m.Printf("  return b.tell();\n")
@@ -373,7 +377,10 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("  local rb = e.record;\n")
 	m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 	m.Printf("  local rest = len - 20 - L;\n")
-	m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
+	// a header and a layout followed by no record is refused, never read as a
+	// batch of zero.
+	m.Printf("  if (rest == 0 || rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
@@ -523,6 +530,8 @@ func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
 func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
 	m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 	m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
+	m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + %d + n, at + %s + %d)) return \"wire_damaged\";\n",
+		ind, off, fixedCountBytes, off, fixedCountBytes+f.Type.Size)
 	switch f.Type.Kind {
 	case ir.TString:
 		m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + %d, n)) return \"text_ill_formed\";\n", ind, off, fixedCountBytes)
@@ -777,7 +786,7 @@ func fixedEmitDecodeField(m *Module, f *ir.Field, at int64, expr, ind string) {
 		m.Printf("%s  %sPresent = b[at + %d] != 0;\n", ind, expr, at)
 		m.Printf("%s  if (%sPresent) {\n", ind, expr)
 		fixedEmitDecodePayload(m, f, at+1, expr, ind+"    ")
-		m.Printf("%s  }\n", ind)
+		m.Printf("%s  } else if (at + %d <= lim && _rt_fixed.deadNotZero(b, at + %d, at + %d)) return \"wire_damaged\";\n", ind, at+fixedFieldBytes(f), at+1, at+fixedFieldBytes(f))
 		m.Printf("%s}\n", ind)
 		return
 	}
@@ -804,6 +813,13 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 			m.Printf("%s  local c = _rt_fixed.geti32(b, at + %d);\n", ind, at)
 			m.Printf("%s  if (c < 0 || c > %d) return \"count_over_bound\";\n", ind, f.ArrayBound)
+			if f.ArrayMin > 0 {
+				// a count under the declared minimum refuses before it is read
+				// (docs/SPEC.md §5.1 row 3)
+				m.Printf("%s  if (c < %d) return \"count_over_bound\";\n", ind, f.ArrayMin)
+			}
+			m.Printf("%s  if (_rt_fixed.deadNotZero(b, at + %d + c * %d, at + %d + %d)) return \"wire_damaged\";\n",
+				ind, at+fixedCountBytes, fixedElementBytes(f), at+fixedCountBytes, f.ArrayBound*fixedElementBytes(f))
 			m.Printf("%s  if (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
 			base += fixedCountBytes
 			m.Printf("%s  for (local i = 0; i < c; i++) {\n", ind)
@@ -840,8 +856,17 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 			// A FORGED TAG, outside this reader's own set, refuses
 			// (docs/FIXED-FORM-ALGORITHM.md §5.4; tablewire fixed.go element)
 			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) return \"out_of_range\";\n", ind, expr, expr, len(r.Variants))
+			// THE ARM OUTSIDE THE TAKEN ONE IS DEAD (docs/FIXED-FORM-ALGORITHM.md
+			// §3.1, §4.5, §5.3 step 11): tag 0 names no arm, a void arm names
+			// none, and a narrower taken arm leaves the rest of the widest arm's
+			// span dead. Every dead byte is zero.
+			span := fixedElementBytes(f)
+			m.Printf("%sif (%s.Type == 0 && _rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+				ind, expr, off, tag, off, span)
 			for i, v := range r.Variants {
 				if v.F == nil {
+					m.Printf("%sif (%s.Type == %d && _rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+						ind, expr, i+1, off, tag, off, span)
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
@@ -857,6 +882,13 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 					if v.F.Array == ir.ArrayCounted {
 						m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s + %d);\n", armInd, off, tag)
 						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
+						if v.F.ArrayMin > 0 {
+							// a count under the declared minimum refuses before it
+							// is read (docs/SPEC.md §5.1 row 3)
+							m.Printf("%sif (c < %d) return \"count_over_bound\";\n", armInd, v.F.ArrayMin)
+						}
+						m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + %d + %d + c * %d, at + %s + %d + %d)) return \"wire_damaged\";\n",
+							armInd, off, tag, fixedCountBytes, fixedElementBytes(v.F), off, tag, fixedCountBytes+v.F.ArrayBound*fixedElementBytes(v.F))
 						m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", armInd, armExpr, armExpr, armExpr, armExpr, elemZero(v.F))
 						base += fixedCountBytes
 						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)
@@ -871,6 +903,8 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 				default:
 					fixedEmitDecodeElement(m, v.F, at+tag, armExpr, armInd, dyn, false)
 				}
+				m.Printf("%s  if (_rt_fixed.deadNotZero(b, at + %s + %d, at + %s + %d)) return \"wire_damaged\";\n",
+					ind, off, tag+fixedFieldBytes(v.F), off, span)
 				m.Printf("%s}\n", ind)
 			}
 			return

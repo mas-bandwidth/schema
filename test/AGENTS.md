@@ -62,11 +62,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `luau-runtime-home/` | Luau runtime-home check | `make tables-luau-runtime-home` | `make tables-luau-runtime-home` |
 | `message-one-encoding/` | message form one-encoding fixture | `make test-go` | `go test -run TestSpecMessageFormHasOneEncoding ./compiler/` |
 | `moo-runtime-home/` | moo runtime-home check | `make tables-moo-runtime-home` | `make tables-moo-runtime-home` |
+| `non-canonical/` | non-canonical spelling wire vectors | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` | `go test -run TestCorpusNonCanonicalSpellings ./compiler/` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
 | `packet-end/` | packet end-check fixture | `make test-go` | `go test -run TestSpecPacketEndIsChecked ./compiler/` |
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
+| `packet-write-bareint/` | packet Write bare-integer width fixture | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` |
 | `packet-write-cfloat/` | packet Write compressed-float range fixture | `make test-go` | `go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/` |
 | `packet-write-text/` | packet text write contract fixtures | `go test -run TestSpecPacketWriteChecksText ./compiler/` | `go test -run TestSpecPacketWriteChecksText ./compiler/` |
 | `pointer-target-type/` | pointer target-type fixtures | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` |
@@ -85,4 +87,5 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
+| `unity/` | Unity C# packet wire tests | `make test-unity` | `make unity-wire` |
 | `vocabgen/` | wide-vocabulary generator | `make check` | `go run ./test/vocabgen` |

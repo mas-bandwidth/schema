@@ -50,6 +50,11 @@ func tableJSONWideStore(storage unsafe.Pointer,width uint32,v tableJSONWide) {
 func (v tableJSONWide) fraction(n int) tableJSONWide {
  if n<64 {v[1]=0;v[0]&=uint64(1)<<n-1} else {v[1]&=uint64(1)<<(n-64)-1};return v
 }
+func tableJSONWideInContract(storage unsafe.Pointer,f *TableFieldInfo) bool {
+ if !f.WideRange { return true }
+ signed:=tableJSONWideSigned(f.Kind);v:=tableJSONWideLoad(storage,f.ElemSize,signed)
+ return v.cmp(tableJSONWide(f.WideMin),signed)>=0 && v.cmp(tableJSONWide(f.WideMax),signed)<=0
+}
 func tableJSONWriteWide(out *tableJSONOut,storage unsafe.Pointer,f *TableFieldInfo) {
  signed:=tableJSONWideSigned(f.Kind);v:=tableJSONWideLoad(storage,f.ElemSize,signed)
  if signed && v.negative() {out.put('-');v=v.neg()}

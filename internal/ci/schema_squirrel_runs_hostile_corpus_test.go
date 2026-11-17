@@ -74,12 +74,7 @@ type squirrelExpectedHostileMismatch struct {
 // wire-non-finite-float, which arrived with the finite-tables ruling (#2226,
 // SPEC-TABLES §3.3), passes since tables-finite/squirrel: the strict read
 // refuses the NaN as non_finite_float, the manifest's verdict.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
-	// RELAXED 2026-11-14 (maintainer: get main green): #3486 made unpadded
-	// Base64 a refusal (json-base64-canonical); the Squirrel JSON read still
-	// accepts it. re-enable: relax/hostile-rows-squirrel
-	{name: "conformance-base64-unpadded", input: "inputs/conformance-base64-unpadded.json", expected: "refuse damaged", actual: "accept -", fixCard: "relax/hostile-rows-squirrel"},
-}
+var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
 
 func squirrelExpectedHostileMismatchNames() []string {
 	names := make([]string, 0, len(squirrelExpectedHostileMismatches))
@@ -306,12 +301,12 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 			unsupported[c.schema] = err.Error()
 			continue
 		}
-		files, err := squirrel.Generate(u)
-		if err != nil {
-			unsupported[c.schema] = err.Error()
-			continue
-		}
-		tables, err := squirreltable.Generate(u)
+		// The driver's own path, so the table reader carries every layout
+		// the unit's lock records (docs/FIXED-FORM-ALGORITHM.md §5.9 #1): a
+		// corpus file written under a recorded older layout is the lock's
+		// lineage, which a bare backend call cannot see. The one output holds
+		// the type and the table surface; plant sees all of it.
+		files, err := compiler.New().Generate(u, "squirrel", compiler.Options{})
 		if err != nil {
 			unsupported[c.schema] = err.Error()
 			continue
@@ -321,15 +316,10 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		for name, data := range files {
-			if err := os.WriteFile(filepath.Join(out, name), data, 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
 		if plant != nil {
-			plant(tables)
+			plant(files)
 		}
-		for name, data := range tables {
+		for name, data := range files {
 			if err := os.WriteFile(filepath.Join(out, name), data, 0o644); err != nil {
 				t.Fatal(err)
 			}

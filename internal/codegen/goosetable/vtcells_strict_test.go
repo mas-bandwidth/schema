@@ -155,7 +155,7 @@ func buildGooseVtWireVectors(t *testing.T, u *ir.Unit) ([]gooseVtWireVec, []byte
 	}
 	leafTID := ir.TableWireId(u.Tables["Leaf"].WireName())
 
-	validRichWire := encodeJSON("Root", `{"spot":{"x":1.5,"y":2.5,"tag":7},"cfg":{"scale":2,"name":"cfg","spot":{"x":3,"y":4,"tag":8},"keyed":{"alpha":10,"gamma":30}},"renamed":42,"wide":-12345678901234567890,"text":"hello","caption":"мир","mood":"gamma","keyed":{"alpha":1,"beta":2,"gamma":3},"xs":[5,6],"raw":"AAECAw==","bounded":[{"x":1,"y":2,"tag":1}],"ptrs":[{"id":1,"name":"a","next":null},null],"choice":{"spot":{"x":9,"y":10,"tag":3}},"choices":[{"xs":[1,2]},{"caption":"hi"}],"opt":[7,8],"lookup":{"3":30,"5":50},"head":{"id":9,"name":"h","next":{"id":10,"name":"n","next":null}},"blob":"AAEC","note_a":"same","note_b":"same"}`)
+	validRichWire := encodeJSON("Root", `{"spot":{"x":1.5,"y":2.5,"tag":7},"cfg":{"scale":2,"name":"cfg","spot":{"x":3,"y":4,"tag":8},"keyed":{"alpha":10,"gamma":30}},"renamed":42,"wide":"-12345678901234567890","text":"hello","caption":"мир","mood":"gamma","keyed":{"alpha":1,"beta":2,"gamma":3},"xs":[5,6],"raw":"AAECAw==","bounded":[{"x":1,"y":2,"tag":1}],"ptrs":[{"id":1,"name":"a","next":null},null],"choice":{"spot":{"x":9,"y":10,"tag":3}},"choices":[{"xs":[1,2]},{"caption":"hi"}],"opt":[7,8],"lookup":{"3":30,"5":50},"head":{"id":9,"name":"h","next":{"id":10,"name":"n","next":null}},"blob":"AAEC","note_a":"same","note_b":"same"}`)
 
 	vecs := []gooseVtWireVec{
 		{
@@ -197,6 +197,8 @@ func buildGooseVtWireVectors(t *testing.T, u *ir.Unit) ([]gooseVtWireVec, []byte
 			name: "inert-body-repeated-id",
 			want: false,
 			wire: makeWire(func(ref func(uint64) []byte) []byte {
+				// the id table in first-use order, so the repeat is the one fault
+				ref(ir.TableWireId("unknown_table"))
 				f1 := append(append(ref(ir.TableWireId("inner_x")), byte(ir.TableKindI32)), 1, 0, 0, 0)
 				f2 := append(append(ref(ir.TableWireId("inner_x")), byte(ir.TableKindI32)), 2, 0, 0, 0)
 				inner := append(append(f1, f2...), 0)
@@ -332,7 +334,7 @@ func buildGooseVtMessageVectors(t *testing.T, u *ir.Unit) (announce []byte, vali
 	scaleSlot := slotOf(ir.TableWireId("scale"))
 	keyedSlot := slotOf(ir.TableWireId("keyed"))
 	alphaSlot := slotOf(ir.TableWireId("alpha"))
-	unknownSlot := slotOf(ir.TableWireId("former")) // int32 field from Root, unknown to Config
+	unknownSlot := slotOf(ir.TableWireId("x")) // 32-bit float32 field of Spot: in the message closure, unknown to Config
 
 	// validBatch: Config body naming `scale` once.
 	validBatch = packBits(func(put func(uint64, int)) {
@@ -371,7 +373,7 @@ func buildGooseVtMessageVectors(t *testing.T, u *ir.Unit) (announce []byte, vali
 		put(0, refBits)
 	})
 
-	// damagedUnknownBatch: Config body naming an unknown field (`former`), then truncated before terminator.
+	// damagedUnknownBatch: Config body naming a field it does not know (`x`, from Spot), then truncated before terminator.
 	damagedUnknownBatch = packBits(func(put func(uint64, int)) {
 		put(2, 8)
 		put(0, 8)

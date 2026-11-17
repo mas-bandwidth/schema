@@ -1,5 +1,7 @@
 """The write-refusal surface: set one field, then Measure and Save."""
 
+from copy import deepcopy
+
 from _common import absent, entries, read_bytes, root_class, supported, write_bytes
 
 
@@ -18,16 +20,38 @@ def _set(value, path, rule, token):
     parts = path.replace("[", ".").replace("]", "").split(".")
     owner = _target(value, ".".join(parts[:-1])) if len(parts) > 1 else value
     name = parts[-1]
-    if rule == "int":
+    current = getattr(owner, name)
+    if rule == "count":
+        count = int(token)
+        if count < 0 or not isinstance(current, list) or (count > 0 and not current):
+            raise ValueError("count mutation needs a nonnegative count and a populated list")
+        resized = current[:count]
+        resized.extend(deepcopy(current[0]) for _ in range(count - len(resized)))
+        setattr(owner, name, resized)
+    elif rule == "length":
+        length = int(token)
+        if length < 0:
+            raise ValueError("length cannot be represented by a negative Python length")
+        setattr(owner, name, ("a" if isinstance(current, str) else b"a") * length)
+    elif rule == "ordinal":
+        setattr(owner, name, int(token))
+    elif rule == "tag":
+        union = type(current)()
+        union.type = int(token)
+        setattr(owner, name, union)
+    elif rule == "int":
         setattr(owner, name, int(token))
     elif rule == "bool":
         setattr(owner, name, token.lower() in ("true", "1"))
     elif rule == "float":
         setattr(owner, name, float(token))
     elif rule == "bytes":
-        setattr(owner, name, bytes.fromhex(token))
+        raw = bytes.fromhex(token)
+        # A str is the target's text storage. Preserve malformed bytes as
+        # surrogate escapes so the writer, not this mutation, rejects them.
+        setattr(owner, name, raw.decode("utf-8", "surrogateescape") if isinstance(current, str) else raw)
     else:
-        setattr(owner, name, token)
+        raise ValueError("unknown write-refusal mutation: " + rule)
 
 
 def run(manifest, outdir):

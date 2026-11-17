@@ -3,8 +3,10 @@
 // and read no stdin: inputs go IN as source (the module inputs.moo, each
 // input a buffer literal) and results come OUT on stdout as lowercase hex
 // lines. The interpreter is the pinned moo, $MOO or <repo>/dist/moo/moo
-// (`make dist-moo`); one that does not resolve FAILS the test, never skips.
-// Nothing here uses real time, a socket or the network.
+// (`make dist-moo`); the checked one, which raises on arithmetic outside
+// moo's number range, is $MOO_CHECKED or <repo>/dist/moo-checked/moo
+// (`make dist-moo-checked`). One that does not resolve FAILS the test, never
+// skips. Nothing here uses real time, a socket or the network.
 package moorun
 
 import (
@@ -36,23 +38,33 @@ end
 `
 
 // Interpreter and Analyzer resolve the pinned tools, or say why not.
-func Interpreter() (string, string) { return resolve("MOO", "moo") }
-func Analyzer() (string, string)    { return resolve("MOO_ANALYZE", "moo-analyze") }
+func Interpreter() (string, string) { return resolve("MOO", "dist/moo", "moo", "dist-moo") }
+func Analyzer() (string, string) {
+	return resolve("MOO_ANALYZE", "dist/moo", "moo-analyze", "dist-moo")
+}
 
-func resolve(env, tool string) (string, string) {
+// CheckedInterpreter resolves the pinned moo built with MOO_OVERFLOW_ERRORS=ON,
+// which raises on arithmetic that leaves moo's number range instead of
+// saturating. Its build is `make dist-moo-checked`; one that does not resolve
+// FAILS the test, never skips, exactly as Interpreter does.
+func CheckedInterpreter() (string, string) {
+	return resolve("MOO_CHECKED", "dist/moo-checked", "moo", "dist-moo-checked")
+}
+
+func resolve(env, dist, tool, target string) (string, string) {
 	if p := os.Getenv(env); p != "" {
 		if lp, err := exec.LookPath(p); err == nil {
 			return lp, ""
 		}
-		return "", fmt.Sprintf("$%s=%s does not resolve; run make dist-moo (or unset %s)", env, p, env)
+		return "", fmt.Sprintf("$%s=%s does not resolve; run make %s (or unset %s)", env, p, target, env)
 	}
 	root, err := repoRoot()
 	if err != nil {
-		return "", err.Error() + "; run make dist-moo from the repository root"
+		return "", err.Error() + "; run make " + target + " from the repository root"
 	}
-	p := filepath.Join(root, "dist", "moo", tool)
+	p := filepath.Join(root, filepath.FromSlash(dist), tool)
 	if _, err := os.Stat(p); err != nil {
-		return "", fmt.Sprintf("the pinned %s is not at %s; run make dist-moo", tool, p)
+		return "", fmt.Sprintf("the pinned %s is not at %s; run make %s", tool, p, target)
 	}
 	return p, ""
 }
@@ -114,6 +126,34 @@ func RunErr(t testing.TB, dir, main string, inputs map[string][]byte) ([]byte, e
 	if moo == "" {
 		t.Fatalf("moorun: the moo interpreter does not resolve: %s", why)
 	}
+	return runInterpreter(t, moo, dir, main, inputs)
+}
+
+// RunChecked is Run under the checked moo build, which raises on arithmetic
+// that leaves moo's number range.
+func RunChecked(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
+	t.Helper()
+	out, err := RunCheckedErr(t, dir, main, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// RunCheckedErr is RunChecked returning the failure instead of failing t (a
+// negative control expects one).
+func RunCheckedErr(t testing.TB, dir, main string, inputs map[string][]byte) ([]byte, error) {
+	t.Helper()
+	slowtest.Gate(t, "the checked moo interpreter")
+	moo, why := CheckedInterpreter()
+	if moo == "" {
+		t.Fatalf("moorun: the checked moo interpreter does not resolve: %s", why)
+	}
+	return runInterpreter(t, moo, dir, main, inputs)
+}
+
+func runInterpreter(t testing.TB, moo, dir, main string, inputs map[string][]byte) ([]byte, error) {
+	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, "inputs.moo"), InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)
 	}

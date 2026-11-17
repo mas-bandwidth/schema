@@ -318,6 +318,7 @@ define tables_generate
 	# nested TYPE the older side has no name for
 	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
 	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
+	$(1) generate --lang cpp --out $(2)/fnz test/tables/FNZ.schema
 	# THE DEAD-BYTE CORPUS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3):
 	# one fixed root carrying every dead region the zero rule names
 	$(1) generate --lang cpp --out $(2)/dead test/tables/DeadBytes.schema
@@ -375,7 +376,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -3258,20 +3259,12 @@ tables-pack: build/schema_test_pack build/schema_test_pack_asan build/tables-pac
 HOSTILE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
 HOSTILE_TREES := $(shell find testdata/conformance/tables/json-hostile -type f 2>/dev/null)
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C++ FromJson still reads
-# the rows base64-unpadded (json-base64-canonical) and
-# str-zero-escape-unknown-key (the skipped-value rule), which the MANIFEST and
-# the engine refuse. The gate runs on a copy of the manifest without those two
-# rows. re-enable: relax/hostile-rows-cpp
-HOSTILE_ENGINE_RELAXED := base64-unpadded str-zero-escape-unknown-key
 HOSTILE_GATE_MANIFEST := build/hostile-values/MANIFEST.txt
 
 build/hostile-values/.stamp: bin/schema $(HOSTILE_MANIFEST) $(HOSTILE_TREES)
 	@rm -rf build/hostile-values
 	@mkdir -p build/hostile-values
-	@awk -v skip='$(HOSTILE_ENGINE_RELAXED)' \
-		'BEGIN { n = split( skip, s, " " ); for ( i = 1; i <= n; i++ ) { relaxed[s[i]] = 1 } } !( $$1 == "json-hostile" && ( $$2 in relaxed ) )' \
-		$(HOSTILE_MANIFEST) > $(HOSTILE_GATE_MANIFEST)
+	@cp $(HOSTILE_MANIFEST) $(HOSTILE_GATE_MANIFEST)
 	@grep '^json-hostile ' $(HOSTILE_GATE_MANIFEST) | awk '$$6 != "refused"' | \
 	while read -r kind name unit root tree verdict; do \
 		./bin/schema pack --root $$root --out build/hostile-values/$$name.bin \
@@ -5286,52 +5279,52 @@ tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a probe case"; cat build/distinct-nc/log; exit 1; }
 	@echo "negative control: removing the probe's comparison turns the distinctness gate RED on the probe's own cases"
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C++ read skips an
-# unknown union arm without walking it, so the pinned vector
-# unknown_arm_text_nul loads; CPP_RELAX_VECTORS keeps it counted, not failed,
-# in the C++ wire fuzz. re-enable: relax/unknown-arm-text-cpp
-CPP_RELAX_VECTORS := --relax-vector unknown_arm_text_nul
+# Every C++ wire-fuzz input is compared, including unknown_arm_text_nul.
+# The generated strict walk checks an unknown arm's payload by its framing;
+# the pipe carries a failed read as a generic refusal, without comparing a
+# reason name. Fixed-class file roots use their fixed-form load and save.
+# The corpus regressions below hold the verdict and canonical write-back.
 
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) $(CPP_RELAX_VECTORS)
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) $(CPP_RELAX_VECTORS) \
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-asan.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-asan.bin
 
 # THE WIRE FUZZER'S NEGATIVE CONTROLS (docs/SPEC-TABLES.md §4.2). A fuzzer
 # that has never gone red proves nothing about the reader it points at, so
-# each control removes ONE check from the EMITTER — through `go build
-# -overlay`, so no tracked file moves — regenerates the corpus from the
-# sabotaged compiler, builds the same leg against it, and requires the fuzzer
-# to go red on the verdict that check guards. Two checks, because the tolerant
-# reader and the variable-class loader are two readers: a length check in the
-# string read, and the node-index range check in the numbering's resolve.
+# each control removes a read invariant from an EMITTER COPY — through
+# `go build -overlay`, so no tracked file moves — and regenerates the
+# feature-witness unit from that compiler. The ordinary leg first refuses
+# the exact vector; the changed leg must accept it, and the wire fuzzer must
+# report the acceptance disagreement. These four framing and graph checks
+# own conditions the declaration-dependent decoder cannot judge alone.
 #
-# $(1) the control's name  $(2) the emitter file  $(3) the sed program
-# $(4) the verdict the fuzzer must print
+# $(1) the control's name; the test script pins its source guards and vector.
+# The comparison is the read verdict, never a diagnostic counter or name.
+# Each control first replays its input through the healthy reader.
+# It then removes the relevant guard from an emitter COPY through a Go overlay.
+# Only the feature-witness unit is generated and linked for the changed reader.
+# The resulting leg must ACCEPT the same input the oracle REFUSES; a dropped
+# diagnostic flag, another refusal or a compiler failure cannot satisfy it.
+#
+# The controlled data is an unknown field of ArrayRoot. Its decoder can skip
+# the field, so the independent framing and graph validators own these checks:
+# length: bytes left after the array count's complete payload;
+# index: a pointer index beyond the file's node directory;
+# arm-width: an unknown fixed-width arm whose L disagrees with its kind;
+# arm-terminator: an unknown table arm ending before its own L.
+#
+# The graph index invariant runs in three phases. Its control removes all
+# three instances, admitting the bad index without accessing beyond storage.
+# Other reader conditions and all production sources remain unchanged.
+# Both healthy and broken transcripts live under build/wire-fuzz-nc-<name>.
+# No report counter or refusal reason is compared: only accept versus refuse.
+# The original one-line length plant had stopped matching emitted source;
+# these exact-count guards fail clearly if their source moves again.
+#
 define wire_fuzz_control
-	@rm -rf build/wire-fuzz-nc-$(1) && mkdir -p build/wire-fuzz-nc-$(1)
-	@sed -e '$(3)' $(2) > build/wire-fuzz-nc-$(1)/emitter.go.txt
-	@cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt && \
-		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/$(2)":"%s/build/wire-fuzz-nc-$(1)/emitter.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
-	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
-	$(call tables_generate,./build/wire-fuzz-nc-$(1)/schema,build/wire-fuzz-nc-$(1)/generated)
-	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,build/wire-fuzz-nc-$(1)/generated) \
-		test/tables/wire_fuzz_main.cpp \
-		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
-		-o build/wire-fuzz-nc-$(1)/leg
-	@if ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
-			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the wire fuzzer stayed green"; \
-		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
-	fi
-	@grep -qE "$(4)" build/wire-fuzz-nc-$(1)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the $(1) check"; \
-		  cat build/wire-fuzz-nc-$(1)/log; exit 1; }
-	@grep -m1 "FAILED" build/wire-fuzz-nc-$(1)/log
-	@echo "negative control: removing the $(1) check from the emitter turns the wire fuzzer RED"
+	python3 test/tables/wire_fuzz_negative_control.py $(1) "$(CXX)" "$(TABLES_CXXFLAGS)" "$(SERIALIZE)"
 endef
 
 # THE ORDINAL SLOT CACHE'S OWN CONTROL (docs/SPEC-TABLES.md §3). Every id a
@@ -5449,76 +5442,76 @@ tables-cpp-release: tables-cpp-release-battery
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
 
-# the string read's `room( len )`. THE ONE CONTENT RULE THE WIRE HAS
-# (docs/SPEC-TABLES.md §3, §4) reads a kind `12` payload AS IT ARRIVES, over
-# the whole of `L` and before the reader's own bound, so `room( len )` is what
-# says those bytes are there at all. A sabotaged leg believes a forged `L`: it
-# takes the payload over bytes the mutant never carried and steps its cursor by
-# a length the body never had, so the fields after it decode out of bytes that
-# are not their own and the leg reports counters the oracle does not. A LENGTH
-# IS A 64-BIT NUMBER (§3) and every reader of one takes it unsigned, so the
-# length this pass plants is 0xFFFFFFFFFFFFFFFF, the largest the wire can spell
-# and the one no buffer ever has room for.
-tables-wire-fuzz-length-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,length,internal/codegen/cpptable/codecs.go,s|if ( !r.getleb( len ) \|\| !r.room( len ) ) { r.report->damaged = true; return false; }|if ( !r.getleb( len ) ) { r.report->damaged = true; return false; } if ( !r.room( len ) ) { return false; } // NEGATIVE CONTROL: the fit check is gone|,the report differs|the oracle discards a damaged load)
+# An unknown array field still owes its own complete payload within L.
+# The vector declares zero elements but leaves an extra byte inside L;
+# its field reference, element kind, count and outer terminator are valid.
+# A decoder may skip this unknown field by L, so the independent framing
+# walk owns the count-versus-payload-length check. Removing that check
+# makes the real reader accept the vector, while the oracle refuses it.
+# The control compares this accept/refuse disagreement, never a report
+# flag omitted from an otherwise refused read. The field's L, count and
+# node/reference limits stay unchanged in production and in every other
+# check of the scratch reader.
+tables-wire-fuzz-length-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	$(call wire_fuzz_control,length)
 
-# the numbering's `index - 1 >= map.count`: an index past the node table then
-# reads a directory entry the region does not hold
-tables-wire-fuzz-index-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,index,internal/codegen/cpptable/arena.go,s|if ( index - 1 >= (uint64_t) map.count )|if ( false ) // NEGATIVE CONTROL: the range check is gone|,the report differs|the oracle discards a damaged load)
+# An unknown pointer still names an index the file's node directory holds.
+# The control removes the same bound from the graph's three checking phases.
+tables-wire-fuzz-index-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	$(call wire_fuzz_control,index)
 
 # AN ARM'S `L` IS CHECKED AGAINST ITS KIND'S WIDTH (docs/SPEC-TABLES.md §3):
 # the arm header carries the kind, and an `L` that is not that kind's width is
 # the arm's own framing damage. The fuzzer moves a fixed-width arm's `L` to
 # every width the closed set has and to zero; without the check the arm decodes
 # a value out of a payload that is not its own.
-tables-wire-fuzz-arm-width-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,arm-width,internal/codegen/cpptable/arms.go,s|if ( %s.size != %d ) { %s = %s; r.report->damaged = true|if ( false \&\& %s.size != %d ) { %s = %s; r.report->damaged = true|,differs|the oracle discards a damaged load)
+tables-wire-fuzz-arm-width-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	$(call wire_fuzz_control,arm-width)
 
 # A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3), for an arm whose payload
 # is a body as much as for a kind `13` field: the fuzzer writes the ZERO
 # REFERENCE ahead of the payload's last byte, so the body ends inside its own
 # `L` and the bytes after it are claimed by no field.
-tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness
-	$(call wire_fuzz_control,arm-terminator,internal/codegen/cpptable/arms.go,s|if ( %s.offset != %s.size ) { %s = %s; r.report->damaged = true|if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->damaged = true|,the decoded value differs|the oracle discards a damaged load)
+tables-wire-fuzz-arm-terminator-negative-control: build/conformance-harness build/wire-fuzz-cpp
+	$(call wire_fuzz_control,arm-terminator)
 
-# THE ORACLE NEVER PANICS, which is what makes it an oracle. The four controls
-# above sabotage the C++ EMITTER and ask whether the fuzzer notices a leg that
-# lost a check. This one sabotages the ORACLE and asks whether the fuzzer
-# notices the engine itself dying on hostile bytes. It is the standing control
-# for the pinned vector stream_count_past_body: a body header is read against
-# the parent buffer, so a wide count leaves the cursor past the end its own `L`
-# set, and the span from cursor to end goes negative. Without the clamp the
-# oracle slices with it and panics. The run must go red, on the VECTOR and on
-# the panic, and not merely somewhere.
-#
-# Nothing tracked is written to: the clamp is removed from a COPY and reached
-# through a Go build overlay, so an interrupt cannot leave a sabotaged tree.
-# The leg is the ordinary one, so this control costs no second C++ build.
+# THE ORACLE NEVER PANICS. This control injects a panic at the root
+# body-extent refusal, then replays the pinned malformed vector
+# that reaches it. The healthy engine must refuse normally first; the broken
+# engine must turn the fuzzer RED on the panic, on that exact vector.
+# The pinned count mutation fails the root-extent scan before the strict
+# array walk. A panic sentinel at that actual guard tests harness recovery
+# without depending on the retired decoder clamp or an unreachable guard.
+# The edit lives in a Go build overlay; no production source is modified.
 ORACLE_NC := build/wire-fuzz-nc-oracle
 .PHONY: tables-wire-fuzz-oracle-negative-control
 tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(ORACLE_NC) && mkdir -p $(ORACLE_NC)
-	@sed -e 's|if end < r.off {|if false { // NEGATIVE CONTROL: the clamp is gone|' \
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay testdata/wire/tables/fuzz-vectors/stream_count_past_body.bin --unit streamdemo --root Feed
+	@sed -e 's|return &Refusal{Reason: ReasonWireDamaged, Detail: "the root body does not end at the id table"}|panic("NEGATIVE CONTROL: root body extent")|' \
 		internal/tablewire/decode.go > $(ORACLE_NC)/decode.go.txt
-	@cmp -s internal/tablewire/decode.go $(ORACLE_NC)/decode.go.txt && \
-		{ echo "NEGATIVE CONTROL: the oracle sabotage patched nothing"; exit 1; } || true
+	@! cmp -s internal/tablewire/decode.go $(ORACLE_NC)/decode.go.txt || \
+		{ echo "NEGATIVE CONTROL: the oracle sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(ORACLE_NC)/decode.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ORACLE_NC)/overlay.json
 	go build -overlay $(ORACLE_NC)/overlay.json -o $(ORACLE_NC)/harness ./test/conformance/harness
-	@if $(ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
+	@if $(ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
+			--replay testdata/wire/tables/fuzz-vectors/stream_count_past_body.bin --unit streamdemo --root Feed \
 			--failed $(ORACLE_NC)/failed.bin > $(ORACLE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the oracle's clamp is gone and the wire fuzzer stayed green"; \
+		echo "NEGATIVE CONTROL FAILED: the oracle panicked and the wire fuzzer stayed green"; \
 		cat $(ORACLE_NC)/log; exit 1; \
 	fi
-	@grep -q "the oracle PANICKED" $(ORACLE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on an oracle panic"; \
+	@grep -q "the oracle PANICKED.*NEGATIVE CONTROL: root body extent" $(ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the planted oracle panic"; \
 		  cat $(ORACLE_NC)/log; exit 1; }
 	@grep -q "stream_count_past_body" $(ORACLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the panic was not on the pinned vector"; \
 		  cat $(ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(ORACLE_NC)/log
-	@echo "negative control: removing the oracle's body-span clamp turns the pinned vector RED"
+	@echo "negative control: the oracle's root-extent panic turns the pinned vector RED"
+
+
+
 
 # THE VERDICT IS THE WHOLE CONTRACT (docs/rulings.json refusal-verdict-only):
 # an answer that is not accepted is held to its verdict alone, never to a
@@ -5806,15 +5799,15 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 
 # ---- THE RETENTION LEG (docs/SPEC-TABLES.md §6.6, §4.2) ---------------------
 #
-# The same mutants through both engines' RETAINING paths, comparing the two
-# retention counters beside the six and the saved bytes beside them. The arm's
+# The same mutants through both engines' RETAINING paths, comparing the read
+# outcome and saved bytes (§4.2); diagnostic counters are not compared. The arm's
 # roster is the VARIABLE-CLASS FILE ROOTS and nothing else: a fixed-class
 # root's LoadRetain is refused by name, and a form-2 SaveRetain refuses by
 # name (§3.3).
 .PHONY: tables-wire-fuzz-retain
 tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) $(CPP_RELAX_VECTORS)
-	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) $(CPP_RELAX_VECTORS) \
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain.log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-asan.log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-retain-asan.bin
 
 # TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
@@ -5822,21 +5815,20 @@ tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wir
 # removes ONE check — through `go build -overlay`, so no tracked file moves —
 # and requires the leg to go red on the verdict that check guards.
 #
-# THE ORACLE'S DROP RULE. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
-# STATED (§6.6): a reference above the entry count, a reference at an entry of
-# zero, a reference at one of the three reserved ids, a non-canonical length,
-# an inner body whose terminator falls short, a nested `L` past its parent, and
-# a kind 17 at any depth all DROP THE RECORD. Without the verdict the oracle
-# keeps a record the reference drops, and the two retention reports differ on
-# the mutant that carried it.
+# THE ORACLE'S EXCLUDED-CLASS RULE (§6.6). Malformed wire is refused by the
+# strict read before retention; a valid payload in an excluded class, such as
+# a node reference, is dropped from the retained bytes. Hash zero is an
+# ordinary identity and must survive; reference zero alone means None or a
+# terminator. Ignoring the retaining walk's verdict keeps bytes for an
+# excluded class that the native reference drops, so saved values differ.
 RETAIN_ORACLE_NC := build/wire-fuzz-nc-retain-oracle
 .PHONY: tables-wire-fuzz-retain-oracle-negative-control
 tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(RETAIN_ORACLE_NC) && mkdir -p $(RETAIN_ORACLE_NC)
 	@sed -e 's|if rs.bad \|\| c.off != len(c.buf) {|if c.off != len(c.buf) { // NEGATIVE CONTROL: the walk'"'"'s verdict is ignored|' \
 		internal/tablewire/retain.go > $(RETAIN_ORACLE_NC)/retain.go.txt
-	@cmp -s internal/tablewire/retain.go $(RETAIN_ORACLE_NC)/retain.go.txt && \
-		{ echo "NEGATIVE CONTROL: the retain-oracle sabotage patched nothing"; exit 1; } || true
+	@! cmp -s internal/tablewire/retain.go $(RETAIN_ORACLE_NC)/retain.go.txt || \
+		{ echo "NEGATIVE CONTROL: the retain-oracle sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablewire/retain.go":"%s/$(RETAIN_ORACLE_NC)/retain.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_ORACLE_NC)/overlay.json
 	go build -overlay $(RETAIN_ORACLE_NC)/overlay.json -o $(RETAIN_ORACLE_NC)/harness ./test/conformance/harness
@@ -5845,29 +5837,27 @@ tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build
 		echo "NEGATIVE CONTROL FAILED: the oracle's drop rule is gone and the retention leg stayed green"; \
 		cat $(RETAIN_ORACLE_NC)/log; exit 1; \
 	fi
-	@grep -q "the retention report differs" $(RETAIN_ORACLE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on the two counters"; \
+	@grep -q "the decoded value differs" $(RETAIN_ORACLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the retention leg went red, but not on retained bytes"; \
 		  cat $(RETAIN_ORACLE_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(RETAIN_ORACLE_NC)/log
 	@echo "negative control: removing the oracle's drop rule turns the retention leg RED"
 
-# THE REFERENCE'S `retain_lost` ON AN EXCLUDED CLASS. EVERY EXCLUSION COUNTS
-# (§6.6), so a caller that needs to know retention held reads ONE NUMBER and
-# never has to reason about the list. `retainLostInline` is the count the
-# emitter puts beside `unknown` at every class a wire can carry to the unknown
-# arm — an unknown enum variant, an unknown union arm, an unknown keyed slot —
-# and without it the reference under-reports every one of them.
+# THE REFERENCE'S CAPTURE PATH. Disabling capture while still consuming the
+# unknown field drops bytes the retaining save must keep (§6.6). The original
+# class-control target name remains compatible, but its former counter-only
+# mutation cannot exercise §4.2's outcome-and-value differential contract.
 .PHONY: tables-wire-fuzz-retain-class-negative-control
 tables-wire-fuzz-retain-class-negative-control: build/conformance-harness
-	$(call retain_fuzz_control,retain-class,internal/codegen/cpptable/codecs.go,s|return " r.report->retain_lost++;"|return "" // NEGATIVE CONTROL: the class is not counted|,the retention report differs)
+	$(call retain_fuzz_control,retain-class,internal/codegen/cpptable/codecs.go,s|TableRetainCapture( retain, r, path, field_id, kind )|TableRetainCapture( NULL, r, path, field_id, kind )|,the decoded value differs)
 
 # $(1) the control's name  $(2) the emitter file  $(3) the sed program
 # $(4) the verdict the leg must print
 define retain_fuzz_control
 	@rm -rf build/wire-fuzz-nc-$(1) && mkdir -p build/wire-fuzz-nc-$(1)
 	@sed -e '$(3)' $(2) > build/wire-fuzz-nc-$(1)/emitter.go.txt
-	@cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt && \
-		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@! cmp -s $(2) build/wire-fuzz-nc-$(1)/emitter.go.txt || \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/$(2)":"%s/build/wire-fuzz-nc-$(1)/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/wire-fuzz-nc-$(1)/overlay.json
 	go build -overlay build/wire-fuzz-nc-$(1)/overlay.json -o build/wire-fuzz-nc-$(1)/schema ./cmd/schema
@@ -6163,16 +6153,17 @@ tables-wire-fuzz-message-text-oracle-negative-control: build/conformance-harness
 
 MESSAGE_TEXT_LEG_NC := build/wire-fuzz-nc-message-text-leg
 .PHONY: tables-wire-fuzz-message-text-leg-negative-control
-tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
+tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(MESSAGE_TEXT_LEG_NC) && mkdir -p $(MESSAGE_TEXT_LEG_NC)
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message
 	@go run ./tools/sabotage -name message-emitter-text-accepts-ill-formed \
 		-out $(MESSAGE_TEXT_LEG_NC)/messageload.go.txt internal/codegen/cpptable/messageload.go
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(MESSAGE_TEXT_LEG_NC)/messageload.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_LEG_NC)/overlay.json
 	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
 	./$(MESSAGE_TEXT_LEG_NC)/schema generate --lang cpp --out $(MESSAGE_TEXT_LEG_NC)/backend tables/backend
-	awk '/^#include "/ && !/BackendTable\.h/ { next } /^    (FIXED|VARIABLE|MESSAGE|RETAIN)\(/ && !/"backenddemo"/ { next } { print }' test/tables/wire_fuzz_main.cpp > $(MESSAGE_TEXT_LEG_NC)/main.cpp
-	$(CXX) $(TABLES_CXXFLAGS) -O1 -I$(MESSAGE_TEXT_LEG_NC)/backend -Itest/tables -I$(SERIALIZE) \
+	awk '/^#include "/ && !/BackendTable\.h/ { next } /^    (FIXED|NOFILE|VARIABLE|MESSAGE|RETAIN)\(/ && !/"backenddemo"/ { next } { print }' test/tables/wire_fuzz_main.cpp > $(MESSAGE_TEXT_LEG_NC)/main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -O1 -DNDEBUG -DSCHEMA_WIRE_FUZZ_CONTROL -I$(MESSAGE_TEXT_LEG_NC)/backend -Itest/tables -I$(SERIALIZE) \
 		$(MESSAGE_TEXT_LEG_NC)/main.cpp \
 		$(MESSAGE_TEXT_LEG_NC)/backend/BackendTable.cpp \
 		-o $(MESSAGE_TEXT_LEG_NC)/leg
@@ -6184,6 +6175,9 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	fi
 	@grep -q "message_ill_formed_text" $(MESSAGE_TEXT_LEG_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
+		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
+	@grep -q "read acceptance differs: the leg says true, the oracle says false" $(MESSAGE_TEXT_LEG_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the planted reader did not demonstrate incorrect acceptance"; \
 		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
 	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
@@ -6831,7 +6825,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 -Ibuild/tables-generated/fd1 \
-	    -Ibuild/tables-generated/dead \
+	    -Ibuild/tables-generated/dead -Ibuild/tables-generated/fnz \
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
@@ -8045,3 +8039,18 @@ conformance-big-endian-smoke: bin/schema
 	$(BE_RUN) ./build/be-go-smoke/be check-uint build/be-go-smoke/host-uint.bin
 	$(BE_RUN) ./build/be-go-smoke/be check-i16 build/be-go-smoke/host-i16.bin
 	@echo "big-endian leg (go smoke): two units agree across the byte order"
+
+# Keep the file-form codec and its pipe verdict tied to the committed corpus.
+.PHONY: tables-wire-fuzz-regressions
+tables-wire-fuzz-regressions: build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
+	./build/wire-fuzz-cpp --regressions
+	./build/wire-fuzz-cpp-asan --regressions
+
+tables-wire-fuzz: tables-wire-fuzz-regressions
+
+# An absent codec cannot turn a smaller wire-fuzz campaign green.
+.PHONY: wire-fuzz-roster-negative-control
+wire-fuzz-roster-negative-control:
+	python3 test/conformance/wire_fuzz_complete_test.py
+
+tables-wire-fuzz-negative-control tables-c-wire-fuzz-negative-control tables-js-wire-fuzz-negative-control: wire-fuzz-roster-negative-control

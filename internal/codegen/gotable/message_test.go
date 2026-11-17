@@ -29,7 +29,7 @@ func TestMessageWriter(t *testing.T) {
  choice Choice
  optional ?Nested }
  `
-	text := `{"yes":true,"small":-3,"raw":18446744073709551615,"big":340282366920938463463374607431768211455,"text":"hi😀","blob":"AAECAw==","items":[-3,7],"grades":{"Silver":{"n":4}},"choice":{"pair":[5,9]},"optional":{}}`
+	text := `{"yes":true,"small":-3,"raw":"18446744073709551615","big":"340282366920938463463374607431768211455","text":"hi😀","blob":"AAECAw==","items":[-3,7],"grades":{"Silver":{"n":4}},"choice":{"pair":[5,9]},"optional":{}}`
 	u := unitFrom(t, schema)
 	m := tabletext.NewModel(u)
 	v := m.New(m.Lookup("Root"))
@@ -105,7 +105,9 @@ func TestHostileAnnouncementBounded(t *testing.T) {
 	vocabField := append([]byte{2, 14}, lebs(uint64(len(vocabSub)))...)
 	vocabField = append(vocabField, vocabSub...)
 
-	versionField := binary.LittleEndian.AppendUint64([]byte{1, 9}, BuildVersion)
+	// Synthetic foreign metadata lets this probe reach unknown-field skip.
+	// Matching-build membership refusal is guarded separately.
+	versionField := binary.LittleEndian.AppendUint64([]byte{1, 9}, BuildVersion ^ 1)
 
 	announcement := append([]byte{1}, versionField...)
 	announcement = append(announcement, vocabField...)

@@ -21,10 +21,15 @@ def _target(fd: FieldDesc) -> type[Any]:
 
 class _Table:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
-        if not isinstance(value, _target(fd)):
+        # EXACTLY the generated class: a subclass could carry another
+        # descriptor or __eq__, and neither may change what is written.
+        if type(value) is not _target(fd):
             raise InvalidValue(path, f"not a {fd.target}")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         from .load import read_body
 
         length = r.varint()
@@ -34,15 +39,25 @@ class _Table:
         return obj
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        from .save import write_body
-
-        body = bytearray()
-        bw = _body_writer(body)
-        write_body(bw, value, ctx, False)
+        # The field's id is numbered before its body's, so the id table is in
+        # the pre-order the Go engine writes.
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
-        w.varint(len(body))
-        w.raw(body)
+        self.write_element(w, fd, value, ctx)
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        from .save import _RetainCtx, write_body
+
+        if isinstance(ctx, _RetainCtx):
+            frame = w.begin_frame()
+            write_body(w, value, ctx, False)
+            w.finish_frame(frame)
+        else:
+            body = bytearray()
+            bw = _body_writer(body)
+            write_body(bw, value, ctx, False)
+            w.varint(len(body))
+            w.raw(body)
 
 
 def _body_writer(buf: bytearray) -> Any:
@@ -52,3 +67,29 @@ def _body_writer(buf: bytearray) -> Any:
 
 
 kinds.register("table", _Table())
+
+
+class _OptionalTextElement:
+    """A text-list slot is exposed as str or None; kind 13 carries its record."""
+
+    def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
+        if value is not None:
+            kinds._REGISTRY["string"].validate(fd, value, path)
+
+    def read_element(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        record = kinds._REGISTRY["table"].read(r, fd, ctx)
+        return record.value
+
+    def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        record = _target(fd)()
+        record.value = value
+        _Table().write_element(w, fd, record, ctx)
+
+    def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
+        return self.read_element(r, fd, ctx)
+
+    def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
+        raise InvalidValue(fd.name, "text element is not a field")
+
+
+kinds.register("text_optional", _OptionalTextElement())

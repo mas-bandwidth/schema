@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0xc93127c82f083edf
+// package bench — protocol id 0xc52a41defad6ebb0
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // at every field, literal constant widths and masks, monomorphic
@@ -123,7 +123,7 @@ public final class Bench {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long PROTOCOL_ID = 0xc93127c82f083edfL;
+    public static final long PROTOCOL_ID = 0xc52a41defad6ebb0L;
 
     // type BenchPacket
     public static final class BenchPacket {
@@ -1993,11 +1993,51 @@ public final class Bench {
         assert value.statsCount <= 80;
         assert value.playerNameLength >= 0;
         assert value.playerNameLength <= 15;
+        for (int utf8Index = 0; utf8Index < value.playerNameLength; ) {
+            int utf8Lead = value.playerName[utf8Index++] & 0xFF;
+            if (utf8Lead < 0x80) continue;
+            int utf8Remaining, utf8Point;
+            if ((utf8Lead & 0xE0) == 0xC0) {
+                utf8Remaining = 1;
+                utf8Point = utf8Lead & 0x1F;
+            } else if ((utf8Lead & 0xF0) == 0xE0) {
+                utf8Remaining = 2;
+                utf8Point = utf8Lead & 0x0F;
+            } else if ((utf8Lead & 0xF8) == 0xF0) {
+                utf8Remaining = 3;
+                utf8Point = utf8Lead & 0x07;
+            } else return false; // malformed UTF-8 lead (SPEC §4.7)
+            if (utf8Remaining > value.playerNameLength - utf8Index) return false;
+            for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+                int utf8Byte = value.playerName[utf8Index++] & 0xFF;
+                if ((utf8Byte & 0xC0) != 0x80) return false;
+                utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
+            }
+            if (utf8Remaining == 1 && utf8Point < 0x80) return false;
+            if (utf8Remaining == 2
+                    && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
+                return false;
+            if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+        }
+        for (int i0 = 0; i0 < value.playerNameLength; i0++) {
+            if (value.playerName[i0] == 0) {
+                return false; // an interior null is content the write refuses (SPEC §4.7)
+            }
+        }
         assert value.payloadLength >= 0;
         assert value.payloadLength <= 16;
         assert value.aimX - value.aimX == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.aimX >= -1.0f;
+        assert value.aimX <= 1.0f;
         assert value.aimY - value.aimY == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.aimY >= -1.0f;
+        assert value.aimY <= 1.0f;
         assert value.aimZ - value.aimZ == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.aimZ >= -1.0f;
+        assert value.aimZ <= 1.0f;
         assert value.recoil - value.recoil == 0.0f; // finite: NaN and both infinities fail this
         assert value.drift - value.drift == 0.0; // finite: NaN and both infinities fail this
         {

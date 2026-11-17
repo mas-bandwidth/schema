@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf35accd0582cdd84
+// package example — protocol id 0x2bf51af687ac0abd
 
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
@@ -13,8 +13,8 @@ const SC = new DataView(new ArrayBuffer(8));
 export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
-// interior null (SPEC §4.7). Every string field's read calls it; nothing
-// allocates and nothing latches.
+// interior null (SPEC §4.7). Every string field's read and write calls it;
+// nothing allocates and nothing latches.
 function validText(bytes, length) {
   for (let utf8Index = 0; utf8Index < length;) {
     const utf8Lead = bytes[utf8Index++];
@@ -1384,6 +1384,9 @@ export function WriteStrsFlat(view, value) {
     return -1;
   }
   if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!validText(value.s, value.sLength)) {
     return -1;
   }
   lo = ((value.lead & 0x1f) | (((value.sLength) & 0xf) << 5));

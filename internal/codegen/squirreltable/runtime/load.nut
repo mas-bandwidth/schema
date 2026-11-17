@@ -130,6 +130,23 @@ local kindSigned = function(kind) {
   return false;
 };
 
+// THE ELEMENT KINDS ARE CLOSED (docs/SPEC-TABLES.md §3): an array body (kind
+// 14) opens with 1–13, 15, 17, 18–30; an enum-keyed body (kind 16) opens with
+// 1–11, 13, 18–30. Any other element kind is damage under any count, a count
+// of 0 included, in a field the reader cannot name as in one it declares, and
+// it is judged before any comparison with the reader's own element kind.
+local arrayElemKindClosed = function(kind) {
+  if (kind >= 1 && kind <= 13) return true;
+  if (kind == 15 || kind == 17) return true;
+  return kind >= 18 && kind <= 30;
+};
+
+local keyedElemKindClosed = function(kind) {
+  if (kind >= 1 && kind <= 11) return true;
+  if (kind == 13) return true;
+  return kind >= 18 && kind <= 30;
+};
+
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, f32 into
 // f64, and a 64-bit integer into its 128-bit width.
 local widens = function(from, to) {
@@ -515,6 +532,14 @@ local wcDamage = function(c) {
   return false;
 };
 
+// THE ID TABLE IS IN FIRST-USE ORDER AND EVERY ENTRY IS USED (docs/SPEC-TABLES.md
+// §3): each reference is at most the next unused one, and the walk's end
+// checks that every entry was reached
+local wcUse = function(c, ref) {
+  if (ref > c.nextRef) c.badOrder = true;
+  else if (ref == c.nextRef) c.nextRef++;
+};
+
 // well-formed UTF-8 with no zero byte (textValid in internal/tablewire/text.go)
 utf8Ok = function(b, at, len) {
   local i = 0;
@@ -589,6 +614,10 @@ local wcOpen = function(c, stack, at, end, kind) {
   }
   local count = wcHeader(c, at, end);
   if (count < 0) return false;
+  // THE ELEMENT KIND IS CLOSED under ANY count, a count of 0 included, in a
+  // declared field and in an unknown one alike (§3, §4)
+  if (kind == 14 && !arrayElemKindClosed(c.ek)) return wcDamage(c);
+  if (kind == 16 && !keyedElemKindClosed(c.ek)) return wcDamage(c);
   local f = { t = kind == 14 ? WC_ARRAY : WC_KEYED, off = c.pos, end = end,
     ek = c.ek, left = count, seen = {}, lvl = true };
   stack.append(f);
@@ -608,6 +637,7 @@ local wcUnion = function(c, stack, at, end, need) {
     return next;
   }
   if (ref > c.ids.len() || next >= end) { wcDamage(c); return -1; }
+  wcUse(c, ref);
   local kind = c.b[next] & 0xff;
   local n = wcLeb(c, next + 1, end);
   if (n < 0 || n > end - c.pos) { wcDamage(c); return -1; }
@@ -642,6 +672,7 @@ wcPayload = function(c, stack, at, end, kind) {
     case 30: {
       local ref = wcLeb(c, at, end);
       if (ref < 0 || ref > c.ids.len()) { wcDamage(c); return -1; }
+      if (ref > 0) wcUse(c, ref);
       return c.pos;
     }
     case 15:
@@ -705,7 +736,10 @@ local wcStep = function(c, stack, f) {
       if (ref < 0) return wcDamage(c);
       local at = c.pos;
       if (ref == 0) return at == end ? wcClose(c, stack, f) : wcDamage(c);
+      // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1)
+      if (f.root && c.table != null) return wcDamage(c);
       if (ref > c.ids.len()) return wcDamage(c);
+      wcUse(c, ref);
       local id = c.ids[ref - 1];
       if (id in f.seen) return wcDamage(c);
       f.seen[id] <- true;
@@ -741,6 +775,7 @@ local wcStep = function(c, stack, f) {
       local end = f.end;
       local key = wcLeb(c, f.off, end);
       if (key < 0 || key == 0 || key > c.ids.len()) return wcDamage(c);
+      wcUse(c, key);
       if (key in f.seen) return wcDamage(c);
       f.seen[key] <- true;
       local n = wcLeb(c, c.pos, end);
@@ -825,14 +860,16 @@ local wcGraph = function(c, children, blobs) {
 // checkFile over the root body bytes[at, end) and the id table `ids`
 local wireCheck = function(b, at, end, ids, announcement) {
   local c = { b = b, ids = ids, depth = 0, fail = null, nonFinite = false,
-    edges = [], table = null, pos = 0, ek = 0, announcement = announcement };
+    edges = [], table = null, pos = 0, ek = 0, announcement = announcement,
+    nextRef = 1, badOrder = false };
   if (!wcBody(c, at, end, true)) return c;
   local children = [c.edges];
   local blobs = [];
   if (c.table != null) {
     local te = c.table[1];
     local declared = wcLeb(c, c.table[0], te);
-    if (declared < 0) { wcDamage(c); return c; }
+    // AN EMPTY NODE TABLE IS NEVER WRITTEN (§3.1)
+    if (declared <= 0) { wcDamage(c); return c; }
     local off = c.pos;
     local recs = [];
     while (off < te) {
@@ -840,23 +877,25 @@ local wireCheck = function(b, at, end, ids, announcement) {
       if (ref < 0 || ref == 0 || ref > ids.len()) { wcDamage(c); return c; }
       local len = wcLeb(c, c.pos, te);
       if (len < 0 || len > te - c.pos) { wcDamage(c); return c; }
-      recs.append([ids[ref - 1], c.pos, c.pos + len]);
+      recs.append([ref, ids[ref - 1], c.pos, c.pos + len]);
       off = c.pos + len;
     }
     if (off != te || declared != recs.len()) { wcDamage(c); return c; }
     foreach (rec in recs) {
+      wcUse(c, rec[0]);
       c.edges = [];
-      if (rec[0] == STRING_BLOB_ID || rec[0] == BYTES_BLOB_ID) {
-        if (rec[0] == STRING_BLOB_ID && !utf8Ok(b, rec[1], rec[2] - rec[1])) { wcDamage(c); return c; }
+      if (rec[1] == STRING_BLOB_ID || rec[1] == BYTES_BLOB_ID) {
+        if (rec[1] == STRING_BLOB_ID && !utf8Ok(b, rec[2], rec[3] - rec[2])) { wcDamage(c); return c; }
         blobs.append(true);
       } else {
-        if (!wcBody(c, rec[1], rec[2], false)) return c;
+        if (!wcBody(c, rec[2], rec[3], false)) return c;
         blobs.append(false);
       }
       children.append(c.edges);
     }
   }
   wcGraph(c, children, blobs);
+  if (c.fail == null && !c.nonFinite && (c.badOrder || c.nextRef != ids.len() + 1)) wcDamage(c);
   return c;
 };
 
@@ -1159,6 +1198,9 @@ readMapField = function(fd, r, T, table, v, report, st) {
   local elemKind = u8(hr);
   local count = leb(hr);
   if (hr.bad) { report.bodyDamaged = true; return false; }
+  // A MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is held to
+  // the array list first, under any count (§3, §4)
+  if (!arrayElemKindClosed(elemKind)) { report.bodyDamaged = true; return false; }
   local sub = newReader(r.b, hr.at, end);
   if (elemKind != 13) {
     // a foreign ELEMENT kind is the ordinary array kind mismatch (§2.8, §4);
@@ -1262,6 +1304,12 @@ readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
   local ek = u8(hr);
   local count = leb(hr);
   if (hr.bad) { report.bodyDamaged = true; return false; }
+  // THE ELEMENT KIND IS CLOSED, judged under any count before any comparison
+  // with the reader's declaration (§3, §4)
+  if (fd.kind == 16 ? !keyedElemKindClosed(ek) : !arrayElemKindClosed(ek)) {
+    report.bodyDamaged = true;
+    return false;
+  }
   local sub = newReader(r.b, hr.at, end);
   sel = readArrayElems(fd, sub, ek, count, T, table, v, report, st);
   if (sel == ARRAY_SELECTED && sub.at != end) { report.bodyDamaged = true; return false; }

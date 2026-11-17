@@ -168,6 +168,18 @@ names every file and its verdict; `TestDeadBytesVectors` holds each manifest lin
 | `dead_union_narrow_zero.bin` | the narrow arm taken, the rest of the wide span zero | reads |
 | `dead_union_narrow_tail.bin` | the narrow arm taken with a non-zero byte past it | refused |
 
+## The compressed float's negative zero: one shared vector
+
+`docs/SPEC-TABLES.md` §3.3 rules that a compressed float's `-0` lands as `+0`,
+uncounted, and is written as `+0` (docs/rulings.json `fixed-compressed-negzero`).
+The vector `build/fixedform-corpus/negative_zero.bin` is the reference writer's
+file holding `-0`'s bits in its compressed field; its manifest line carries
+`expect=r0.value=0`, the value the rule lands, and the canonical bytes are the
+same record with that field all zero. `internal/fixedvector.NegativeZero` names
+it beside `WriterRange`, `TestNegativeZeroVectors` holds the file and its
+manifest line, and the Go leg's `TestFixedCompressedNegZeroRead` reads it
+through its generated load and saves the canonical bytes.
+
 ## The divergence rows: §5.8's 4, 9, 11, 12
 
 Four more rows, one per divergence of `FIXED-FORM-ALGORITHM.md` §5.8 that NO row above can reach — a

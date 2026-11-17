@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -17,6 +18,28 @@ import (
 
 const cookSchema = `package cookcorpus
 
+enum Shade { Red, Blue, Green }
+flags Traits { Fast, Strong }
+union Pick
+{
+    number int32
+    leaf Leaf
+    next *Node
+    ping
+    extra WithList
+    words string(8)
+}
+
+union Outer
+{
+    choice Pick
+}
+
+table WithList
+{
+    numbers []int32
+}
+
 fixed table Leaf
 {
     enabled bool
@@ -24,6 +47,10 @@ fixed table Leaf
     count   uint32
     wide    int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
     huge    uint128
+    label   string(8)
+    raw     bytes(8)
+    shade   Shade
+    traits  Traits
 }
 
 table Node
@@ -41,6 +68,27 @@ table Root
     tail  *Node
     leaf  Leaf
     stamp uint16
+    pairs [2]Leaf
+    counted [..2]Leaf
+    banks [Shade]Leaf
+    spare ?Leaf
+    blob *bytes
+    text_blob *string
+    pick Pick
+    scores []int32
+    flags []bool
+    friends []Leaf
+    values map[int32]int32
+    points map[uint8]Leaf
+    matrix map[uint8]map[uint8]int32
+    labels map[string(8)]int32
+    links []Node
+    outer Outer
+    trail [2]Pick
+    many [..2]Pick
+    maybe ?int32
+    optional_pairs ?[2]Leaf
+    optional_ints ?[2]int32
 }
 `
 
@@ -54,12 +102,13 @@ table Root
 // tables and *T pointers, so the forged frames below exercise those shapes.
 func TestPythonCook(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters and strict analyzer")
 	t.Run("write", testPythonCookWrite)
 	t.Run("open", testPythonCookOpen)
 	t.Run("negative-controls", testPythonCookNegativeControls)
 }
 
-const cookWriteProbe = `from cookcorpus import Leaf, Node, Root
+const cookWriteProbe = `from cookcorpus import Leaf, Node, Root, Pick
 from cookcorpus._schema import cook
 
 def full():
@@ -67,12 +116,56 @@ def full():
     r.live = True
     r.total = -5
     r.stamp = 65535
+    r.pairs[0].small = -3
+    r.pairs[1].label = "hi"
+    r.counted = [Leaf()]
+    r.counted[0].count = 42
+    r.banks[1].small = -2
+    r.banks[3].label = "last"
+    r.spare = Leaf()
+    r.spare.small = 5
+    r.blob = b"\x00\xff\x08"
+    r.text_blob = "hello"
+    r.pick.type = 1
+    r.pick.number = -11
+    r.scores = [12, -7, 42]
+    r.flags = [True, False, True]
+    r.friends = [Leaf(), Leaf()]
+    r.friends[0].small = -3
+    r.friends[1].label = "list"
+    r.values = {7: -3, -2: 11}
+    r.points = {2: Leaf()}
+    r.points[2].label = "map"
+    r.matrix = {2: {3: -8, 1: 7}, 1: {5: 2}}
+    r.labels = {"é": 4, "a": -2}
+    r.links = [Node()]
+    r.links[0].value = 8
+    r.links[0].next = Node()
+    r.links[0].next.value = -9
+    r.outer.type = 1
+    r.outer.choice.type = 1
+    r.outer.choice.number = 21
+    r.trail[0].type = 1
+    r.trail[0].number = -8
+    r.trail[1].type = 6
+    r.trail[1].words = "ok"
+    r.many = [Pick()]
+    r.many[0].type = 5
+    r.many[0].extra.numbers = [4, 8]
+    r.maybe = -14
+    r.optional_pairs = [Leaf(), Leaf()]
+    r.optional_pairs[1].label = "held"
+    r.optional_ints = [4, -8]
     l = r.leaf
     l.enabled = True
     l.small = -7
     l.count = 0xFFFFFFFF
     l.wide = -(1 << 120) + 12345
     l.huge = (1 << 127) + 987654321
+    l.label = "café"
+    l.raw = b"\x00\xff"
+    l.shade = 2
+    l.traits = 3
     a = Node()
     a.value = 1
     a.score = (1 << 64) - 1
@@ -108,9 +201,31 @@ def leaf():
     v.count = 4294967295
     v.wide = -(1 << 127)
     v.huge = (1 << 128) - 1
+    v.label = "hello"
+    v.raw = b"\x00\x01"
+    v.shade = 3
+    v.traits = 1
     return v
 
-for name, value in (("full", full()), ("empty", Root()), ("defaults", defaults()), ("leaf", leaf())):
+def union_leaf():
+    r = Root(); r.pick.type = 2; r.pick.leaf.small = -4; r.pick.leaf.label = "leaf"; return r
+
+def union_pointer():
+    r = Root(); r.pick.type = 3; r.pick.next = Node(); r.pick.next.value = 17; return r
+
+def union_void():
+    r = Root(); r.pick.type = 4; return r
+
+def union_list():
+    r = Root(); r.pick.type = 5; r.pick.extra.numbers = [2, 9]; return r
+
+def union_text():
+    r = Root(); r.pick.type = 6; r.pick.words = "hé"; return r
+
+def nested_union_list():
+    r = Root(); r.outer.type = 1; r.outer.choice.type = 5; r.outer.choice.extra.numbers = [3]; return r
+
+for name, value in (("full", full()), ("empty", Root()), ("defaults", defaults()), ("leaf", leaf()), ("union_leaf", union_leaf()), ("union_pointer", union_pointer()), ("union_void", union_void()), ("union_list", union_list()), ("nested_union_list", nested_union_list()), ("union_text", union_text())):
     wire = value.save()
     print("WIRE", name, wire.hex())
     measure = cook.cook_measure(value)
@@ -167,7 +282,7 @@ func parseCookWrite(out string) (parsedCookWrite, error) {
 		return nil, fmt.Errorf("the probe did not finish:\n%s", out)
 	}
 	seen := parsedCookWrite{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
@@ -222,7 +337,7 @@ func verifyCookWrite(u *ir.Unit, out string) error {
 		return err
 	}
 	m := tabletext.NewModel(u)
-	roots := map[string]string{"full": "Root", "empty": "Root", "defaults": "Root", "leaf": "Leaf"}
+	roots := map[string]string{"full": "Root", "empty": "Root", "defaults": "Root", "leaf": "Leaf", "union_leaf": "Root", "union_pointer": "Root", "union_void": "Root", "union_list": "Root", "nested_union_list": "Root", "union_text": "Root"}
 	if len(seen) != len(roots) {
 		return fmt.Errorf("the probe wrote %d values, the corpus has %d", len(seen), len(roots))
 	}
@@ -230,7 +345,7 @@ func verifyCookWrite(u *ir.Unit, out string) error {
 		got := seen[name]
 		inst := m.New(m.Lookup(root))
 		var report tabletext.Report
-		if _, err := tablewire.DecodeVariable(m, inst, got.wire, &report); err != nil {
+		if err := decodeCookWire(m, inst, got.wire, &report); err != nil {
 			return fmt.Errorf("%s: the runtime's wire does not decode: %v", name, err)
 		}
 		little, err := tablecook.Cook(m, inst, tablecook.Options{})
@@ -342,7 +457,7 @@ func verifyCookOpen(cases []cookOpenCase, out string) error {
 		return fmt.Errorf("the probe did not finish:\n%s", out)
 	}
 	got := map[string]map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
 			continue
@@ -365,6 +480,26 @@ func verifyCookOpen(cases []cookOpenCase, out string) error {
 	return nil
 }
 
+// Decode the input form the generated root carries. Variable roots use form 1;
+// an admitted fixed root uses form 3 once that runtime is integrated.
+func decodeCookWire(m *tabletext.Model, inst *tabletext.Instance, wire []byte, report *tabletext.Report) error {
+	if len(wire) == 0 {
+		return fmt.Errorf("empty wire")
+	}
+	if wire[0] == 1 {
+		_, err := tablewire.DecodeVariable(m, inst, wire, report)
+		return err
+	}
+	ok, err := tablewire.Decode(m, inst, wire, report)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("wire refused: %s", report.Reason)
+	}
+	return nil
+}
+
 // cookOracle is the tool's little- and big-endian cooks of the probe's corpus
 // values, keyed by the probe's value name.
 type cookOracle struct {
@@ -382,12 +517,12 @@ func makeCookOracle(t *testing.T, u *ir.Unit, files map[string][]byte) *cookOrac
 		t.Fatal(err)
 	}
 	m := tabletext.NewModel(u)
-	roots := map[string]string{"full": "Root", "empty": "Root", "defaults": "Root", "leaf": "Leaf"}
+	roots := map[string]string{"full": "Root", "empty": "Root", "defaults": "Root", "leaf": "Leaf", "union_leaf": "Root", "union_pointer": "Root", "union_void": "Root", "union_list": "Root", "nested_union_list": "Root", "union_text": "Root"}
 	oracle := &cookOracle{cooks: map[string][2][]byte{}, m: m}
 	for name, root := range roots {
 		inst := m.New(m.Lookup(root))
 		var report tabletext.Report
-		if _, err := tablewire.DecodeVariable(m, inst, seen[name].wire, &report); err != nil {
+		if err := decodeCookWire(m, inst, seen[name].wire, &report); err != nil {
 			t.Fatal(err)
 		}
 		little, err := tablecook.Cook(m, inst, tablecook.Options{})
@@ -429,6 +564,9 @@ func cookOpenCases(t *testing.T, u *ir.Unit, files map[string][]byte) ([]cookOpe
 		{name: "valid_little", root: "Root", data: little, open: "open", check: "open"},
 		{name: "valid_big", root: "Root", data: big, open: "foreign_order", check: "foreign_order"},
 		{name: "valid_fixed", root: "Leaf", data: leafCook, open: "open", check: "open"},
+		{name: "valid_union_list", root: "Root", data: oracle.cooks["union_list"][0], open: "open", check: "open"},
+		{name: "valid_nested_union_list", root: "Root", data: oracle.cooks["nested_union_list"][0], open: "open", check: "open"},
+		{name: "valid_union_text", root: "Root", data: oracle.cooks["union_text"][0], open: "open", check: "open"},
 	}
 	add := func(name string, data []byte, open, check string) {
 		cases = append(cases, cookOpenCase{name: name, root: "Root", data: data, open: open, check: check})
@@ -463,12 +601,86 @@ func cookOpenCases(t *testing.T, u *ir.Unit, files map[string][]byte) ([]cookOpe
 		le.PutUint64(f[entry(1):], b)
 		le.PutUint64(f[entry(2):], a)
 	}), "open", "bad_layout")
+	empty := oracle.cooks["empty"][0]
+	emptyHeader, err := tablecook.ReadHeader(empty, ir.BuildVersion(u))
+	if err != nil {
+		t.Fatal(err)
+	}
+	add("root_wrong_type", mutate(empty, func(f []byte) {
+		le.PutUint64(f[emptyHeader.AttribOffset()+8:], ir.TableWireId(u.Tables["Leaf"].WireName()))
+	}), "open", "bad_layout")
+	liveSlot := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "live", 0)
+	add("nonzero_padding", mutate(little, func(f []byte) { f[liveSlot+1] = 1 }), "open", "bad_layout")
+	labelAt := leafSlot + cookSlot(t, u, oracle.m, "Leaf", "label", 0)
+	labelCount := leafSlot + cookSlot(t, u, oracle.m, "Leaf", "label", 1)
+	add("text_negative_count", mutate(little, func(f []byte) { le.PutUint32(f[labelCount:], ^uint32(0)) }), "open", "bad_layout")
+	add("text_overlong_count", mutate(little, func(f []byte) { le.PutUint32(f[labelCount:], 9) }), "open", "bad_layout")
+	add("text_nonzero_tail", mutate(little, func(f []byte) { f[labelAt+6] = 1 }), "open", "bad_layout")
+	rawAt := leafSlot + cookSlot(t, u, oracle.m, "Leaf", "raw", 0)
+	rawCount := leafSlot + cookSlot(t, u, oracle.m, "Leaf", "raw", 1)
+	add("bytes_negative_count", mutate(little, func(f []byte) { le.PutUint32(f[rawCount:], ^uint32(0)) }), "open", "bad_layout")
+	add("bytes_overlong_count", mutate(little, func(f []byte) { le.PutUint32(f[rawCount:], 9) }), "open", "bad_layout")
+	add("bytes_nonzero_tail", mutate(little, func(f []byte) { f[rawAt+3] = 1 }), "open", "bad_layout")
+	arrayAt := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "counted", 0)
+	arrayCount := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "counted", 1)
+	stride := ir.RecordLayout(u, u.Tables["Leaf"]).Size
+	add("array_negative_count", mutate(empty, func(f []byte) { le.PutUint32(f[arrayCount:], ^uint32(0)) }), "open", "bad_layout")
+	add("array_overlong_count", mutate(little, func(f []byte) { le.PutUint32(f[arrayCount:], 3) }), "open", "bad_layout")
+	add("array_dead_slot", mutate(little, func(f []byte) { f[arrayAt+stride] = 1 }), "open", "bad_layout")
+	optionalAt := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "spare", 0)
+	optionalPresent := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "spare", 1)
+	add("optional_bad_presence", mutate(little, func(f []byte) { f[optionalPresent] = 2 }), "open", "bad_layout")
+	add("optional_dead_payload", mutate(empty, func(f []byte) { f[optionalAt] = 1 }), "open", "bad_layout")
+	blobAt := int64(-1)
+	textBlobAt := int64(-1)
+	for _, d := range dir {
+		if d.TypeId == ir.BytesTypeId {
+			blobAt = h.DataOffset() + d.Offset
+		}
+		if d.TypeId == ir.StringTypeId {
+			textBlobAt = h.DataOffset() + d.Offset
+		}
+	}
+	if blobAt < 0 || textBlobAt < 0 {
+		t.Fatal("blob fixture lacks both node kinds")
+	}
+	blobSlot := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "blob", 0)
+	add("blob_overlong", mutate(little, func(f []byte) { le.PutUint32(f[blobAt:], ^uint32(0)) }), "open", "bad_layout")
+	add("blob_padding", mutate(little, func(f []byte) { f[blobAt+4] = 1 }), "open", "bad_layout")
+	add("blob_wrong_type", mutate(little, func(f []byte) { le.PutUint64(f[blobSlot:], uint64(textBlobAt-blobSlot)) }), "open", "bad_layout")
+	add("blob_unterminated", mutate(little, func(f []byte) { f[textBlobAt+8+5] = 1 }), "open", "bad_layout")
+	unionAt := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "pick", 0)
+	_, _, _, armOffset := ir.UnionLayout(u, u.TableUnions["Pick"])
+	add("union_bad_tag", mutate(empty, func(f []byte) { f[unionAt] = 7 }), "open", "bad_layout")
+	add("union_dead_storage", mutate(little, func(f []byte) { f[unionAt+armOffset+4] = 1 }), "open", "bad_layout")
+	listAt := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "scores", 0)
+	flagsAt := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "flags", 0)
+	add("list_negative_count", mutate(empty, func(f []byte) { le.PutUint32(f[listAt+8:], ^uint32(0)) }), "open", "bad_layout")
+	add("list_past_extent", mutate(little, func(f []byte) { le.PutUint64(f[listAt:], uint64(h.DataLength)+8) }), "open", "bad_layout")
+	add("list_into_record", mutate(little, func(f []byte) { le.PutUint64(f[listAt:], uint64(liveSlot-listAt)) }), "open", "bad_layout")
+	add("list_overlap", mutate(little, func(f []byte) {
+		flagsTarget := flagsAt + int64(le.Uint64(f[flagsAt:]))
+		le.PutUint64(f[listAt:], uint64(flagsTarget-listAt))
+		le.PutUint32(f[listAt+8:], 1)
+	}), "open", "bad_layout")
+	mapAt := h.DataOffset() + cookSlot(t, u, oracle.m, "Root", "values", 0)
+	mapStart := mapAt + int64(le.Uint64(little[mapAt:]))
+	entryType := ir.RecordLayout(u, u.Tables["Root"]).FieldByName("values").Field.MapEntry
+	entryLayout := ir.RecordLayout(u, entryType)
+	keyOffset := entryLayout.FieldByName("key").Offset
+	add("map_duplicate_key", mutate(little, func(f []byte) {
+		copy(f[mapStart+entryLayout.Size+keyOffset:mapStart+entryLayout.Size+keyOffset+4], f[mapStart+keyOffset:mapStart+keyOffset+4])
+	}), "open", "bad_layout")
+	add("map_descending_key", mutate(little, func(f []byte) { le.PutUint32(f[mapStart+entryLayout.Size+keyOffset:], ^uint32(9)) }), "open", "bad_layout")
 	add("root_off_base", mutate(little, func(f []byte) { le.PutUint64(f[entry(0):], 8) }), "open", "bad_layout")
 	add("node_overlaps", mutate(little, func(f []byte) { le.PutUint64(f[entry(2):], le.Uint64(f[entry(1):])+1) }), "open", "bad_layout")
 	add("node_leaves_region", mutate(little, func(f []byte) {
 		le.PutUint64(f[entry(len(dir)-1):], uint64(h.DataLength)-1)
 	}), "open", "bad_layout")
 	add("directory_misaligned", mutate(little, func(f []byte) { le.PutUint64(f[entry(1):], le.Uint64(f[entry(1):])+1) }), "open", "bad_layout")
+	nodeStart := h.DataOffset() + dir[1].Offset
+	nextSlot := nodeStart + cookSlot(t, u, oracle.m, "Node", "next", 0)
+	add("reference_cycle_not_followed", mutate(little, func(f []byte) { le.PutUint64(f[nextSlot:], uint64(nodeStart-nextSlot)) }), "open", "open")
 	add("reference_unnamed", mutate(little, func(f []byte) { le.PutUint64(f[headSlot:], le.Uint64(f[headSlot:])+1) }), "open", "bad_layout")
 	add("reference_forward", mutate(little, func(f []byte) { le.PutUint64(f[headSlot:], uint64(h.DataLength)+8) }), "open", "bad_layout")
 	add("reference_backward", mutate(little, func(f []byte) { le.PutUint64(f[headSlot:], uint64(-headSlot)) }), "open", "bad_layout")
@@ -556,6 +768,54 @@ func testPythonCookNegativeControls(t *testing.T) {
 			out := string(pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + cookWriteProbe)}))
 			if err := verifyCookWrite(u, out); err == nil {
 				t.Fatalf("NEGATIVE CONTROL FAILED: %s left both little and big cooks identical to tablecook", tc.name)
+			}
+		})
+	}
+	for _, tc := range []struct{ name, anchor, replacement string }{
+		{"record-padding", "if any(region[base + start : base + end]):", "if False:"},
+		{"wrong-root-type", "if i == 0 and (offset != 0 or type_id != h.root.descriptor.type_id):", "if i == 0 and offset != 0:"},
+		{"text-count", "if used < 0 or used > fd.size:", "if False:"},
+		{"text-tail", "if any(region[at + used : storage_end]) or any(region[storage_end:count_at]):", "if False:"},
+		{"array-count", "if count < 0 or count > fd.bound:", "if False:"},
+		{"array-dead-slot", "if any(region[at + count * stride : at + fd.bound * stride]):", "if False:"},
+		{"optional-presence", "if present not in (0, 1):", "if False:"},
+		{"optional-dead-payload", "if any(region[at : present_at]):", "if False:"},
+		{"blob-extent", "if needed > end - offset:", "if False:"},
+		{"blob-terminator", "if type_id == h.root.descriptor.string_blob_type_id and region[offset + 8 + length] != 0:", "if False:"},
+		{"blob-type", "if found is None or found[1] != expected:", "if found is None:"},
+		{"union-tag", "if tag > len(ud.arms):", "if tag > len(ud.arms): tag = 0\n            if False:"},
+		{"union-dead-storage", "if any(region[at + ud.tag_size : arm_at]) or any(region[arm_at + arm_size : at + ud.size]):", "if False:"},
+		{"list-count", "if count < 0 or (delta == 0) != (count == 0):", "if count < 0: count = 0\n            if (delta == 0) != (count == 0):"},
+		{"map-key-order", "if position and previous >= value:", "if False:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cases, _ := cookOpenCases(t, u, files)
+			sabotaged := cloneFiles(files)
+			const path = "cookcorpus/_schema/cook.py"
+			text := string(sabotaged[path])
+			if !strings.Contains(text, tc.anchor) {
+				t.Fatalf("control anchor absent: %s", tc.anchor)
+			}
+			if tc.name == "array-count" {
+				text = strings.ReplaceAll(text, tc.anchor, tc.replacement)
+			} else {
+				text = strings.Replace(text, tc.anchor, tc.replacement, 1)
+			}
+			sabotaged[path] = []byte(text)
+			dir := t.TempDir()
+			writeTree(t, dir, sabotaged)
+			inputs := map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + cookOpenProbe)}
+			var manifest strings.Builder
+			for _, c := range cases {
+				filename := "case_" + c.name
+				inputs[filename] = c.data
+				fmt.Fprintf(&manifest, "%s %s %s %d\n", c.name, c.root, filename, c.base)
+			}
+			inputs["cases"] = []byte(manifest.String())
+			out := string(pyrun.Run(t, dir, "main.py", inputs))
+			if err := verifyCookOpen(cases, out); err == nil {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s", tc.name)
 			}
 		})
 	}

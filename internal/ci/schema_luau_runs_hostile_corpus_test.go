@@ -17,7 +17,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -117,15 +116,14 @@ func generateLuauUnit(t *testing.T, root, schema string) (string, []string, map[
 	if err != nil {
 		t.Fatalf("schema %s does not load: %v", schema, err)
 	}
-	files, err := luau.Generate(u)
+	// The driver's own path, so the table reader carries every layout the
+	// unit's lock records (docs/FIXED-FORM-ALGORITHM.md §5.9 #1): a corpus
+	// file written under a recorded older layout is the lock's lineage, which
+	// a bare backend call cannot see.
+	files, err := compiler.New().Generate(u, "luau", compiler.Options{})
 	if err != nil {
 		t.Fatalf("schema %s: luau: %v", schema, err)
 	}
-	tables, err := luautable.Generate(u)
-	if err != nil {
-		t.Fatalf("schema %s: luautable: %v", schema, err)
-	}
-	maps.Copy(files, tables)
 	dir := t.TempDir()
 	var mods []string
 	for name, data := range files {
@@ -575,13 +573,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 // mismatched component and the verdict the port reaches), and the card that
 // owes the fix. A carried row that stops disagreeing, or disagrees
 // differently, is drift and fails.
-var luauHostileCarried = []struct{ name, got, fix string }{
-	// RELAXED 2026-11-14 (maintainer: get main green): the Luau JSON read
-	// accepts unpadded base64 (json-base64-canonical) and a zero escape in a
-	// skipped value (the skipped-value rule). re-enable: relax/hostile-rows-luau
-	{"conformance-base64-unpadded", "[verdict] got accept/-/- want refuse/damaged/-", "relax/hostile-rows-luau"},
-	{"conformance-str-zero-escape-unknown-key", "[verdict] got accept/-/- want refuse/damaged/-", "relax/hostile-rows-luau"},
-}
+var luauHostileCarried = []struct{ name, got, fix string }{}
 
 // luauHostileCarriedFinding: a finding line (after its FIX-CARD prefix) that
 // a carried row names.

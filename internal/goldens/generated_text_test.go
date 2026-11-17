@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // bannedTerm is the word generated text never uses for the other side of a
@@ -77,6 +78,9 @@ func machineWords(t *testing.T) []string {
 // machine that ran the compiler. A unit a target refuses is skipped; every
 // target must emit for at least one unit.
 func TestGeneratedTextNamesNoMachine(t *testing.T) {
+	// every unit generated for every target: 96 s alone on a loaded bench,
+	// past what a two-minute fast-lane job can hold, so it runs nightly
+	slowtest.Gate(t, "every unit generated for every target")
 	var machine []*regexp.Regexp
 	for _, w := range machineWords(t) {
 		if len(w) < 3 {

@@ -22,7 +22,7 @@ const TableMessageBatchMax = 256
 const TableMessageRefBitsHere = 7
 const TableMessageEntriesHere = 70
 
-var tableAnnouncement = [...]byte{0x01, 0x01, 0x09, 0x52, 0xa8, 0xbf, 0x78, 0x93, 0x55, 0xd3, 0x41, 0x02, 0x0e, 0xcf, 0x06, 0x06, 0xcc, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b, 0x08, 0x01, 0x20, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7, 0xb7, 0x09, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98, 0x7b, 0x6d, 0x08, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71, 0x4c, 0xa9, 0x73, 0x09, 0x01, 0x40, 0x00, 0x85, 0xfc, 0x54, 0xbe, 0x51, 0x6b, 0xee, 0x3e, 0x05, 0x01, 0x29, 0xff, 0xbf, 0xa8, 0xca, 0x9a, 0x3a, 0x12, 0x01, 0x6d, 0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x01, 0x30, 0x00, 0xc6, 0x69, 0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x16, 0x01, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a, 0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x01, 0x08, 0x0d, 0x4c, 0x99, 0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x00, 0x50, 0x0d, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x04, 0x06, 0x00, 0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x0f, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x00, 0x10, 0x06, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3, 0x13, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6, 0x12, 0x01, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0xff, 0xff, 0xff, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0, 0x30, 0xbf, 0x1a, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27, 0x65, 0x0d, 0x56, 0x08, 0x01, 0x18, 0x00, 0x72, 0x86, 0xfd, 0x6c, 0x17, 0x92, 0x82, 0xc0, 0x01, 0x69, 0xcb, 0x79, 0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x01, 0x08, 0x00, 0xfe, 0xbc, 0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x01, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac, 0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x01, 0x0c, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x01, 0x09, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x01, 0x09, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x01, 0x0a, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x01, 0x08, 0x00, 0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x01, 0x0c, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x01, 0x0c, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x01, 0x03, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01, 0x56, 0xbd, 0x4f, 0x86, 0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x01, 0x0a, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x01, 0x08, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x01, 0x08, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x01, 0x0a, 0xff, 0x07, 0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2, 0x0d, 0x65, 0xb7, 0xec, 0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+var tableAnnouncement = [...]byte{0x01, 0x01, 0x09, 0xf0, 0xff, 0xdb, 0xeb, 0x78, 0xad, 0x2d, 0xba, 0x02, 0x0e, 0xcf, 0x06, 0x06, 0xcc, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b, 0x08, 0x01, 0x20, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7, 0xb7, 0x09, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98, 0x7b, 0x6d, 0x08, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71, 0x4c, 0xa9, 0x73, 0x09, 0x01, 0x40, 0x00, 0x85, 0xfc, 0x54, 0xbe, 0x51, 0x6b, 0xee, 0x3e, 0x05, 0x01, 0x29, 0xff, 0xbf, 0xa8, 0xca, 0x9a, 0x3a, 0x12, 0x01, 0x6d, 0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x01, 0x30, 0x00, 0xc6, 0x69, 0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x16, 0x01, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a, 0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x01, 0x08, 0x0d, 0x4c, 0x99, 0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x00, 0x50, 0x0d, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x04, 0x06, 0x00, 0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x0f, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x00, 0x10, 0x06, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x02, 0x00, 0x00, 0x80, 0xbf, 0x00, 0x00, 0x80, 0x3f, 0x0a, 0xd7, 0x23, 0x3c, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3, 0x13, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b, 0xd6, 0x12, 0x01, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0xff, 0xff, 0xff, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0, 0x30, 0xbf, 0x1a, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27, 0x65, 0x0d, 0x56, 0x08, 0x01, 0x18, 0x00, 0x72, 0x86, 0xfd, 0x6c, 0x17, 0x92, 0x82, 0xc0, 0x01, 0x69, 0xcb, 0x79, 0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x01, 0x08, 0x00, 0xfe, 0xbc, 0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x01, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac, 0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x01, 0x0c, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x01, 0x0f, 0xfd, 0xff, 0x01, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x01, 0x09, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x01, 0x09, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x01, 0x0c, 0xff, 0x1f, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x01, 0x0a, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x01, 0x08, 0x00, 0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x01, 0x0c, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x01, 0x0c, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x01, 0x03, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01, 0x56, 0xbd, 0x4f, 0x86, 0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x01, 0x0a, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x01, 0x08, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x01, 0x08, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x01, 0x0a, 0xff, 0x07, 0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2, 0x0d, 0x65, 0xb7, 0xec, 0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 var tableMessageEntries = [...]TableMessageEntry{
 	TableMessageEntry{ID: 0xaa38aca481f528a8, Shape: TableMessageShape{Kind: 7, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
 	TableMessageEntry{ID: 0x0dbe005c56697c3e, Shape: TableMessageShape{Kind: 4, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, Element: TableMessageShape{}},
@@ -202,6 +202,71 @@ func tableMessageBits(n uint64) int64 {
 func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
 }
+
+// A FIELD ID TWICE IN ONE BODY IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), and the
+// check is one test of the entry, in the caller's storage, whatever the
+// vocabulary's size. Each body read takes the next tick of the vocabulary's
+// clock and keeps it in starts[depth], an array the generated read declares
+// at the unit's deepest nesting. An entry keeps the tick of its last naming
+// (above eight bits holding that body's level, so the binary bound's deepest
+// body fits) and a bit for each shallower level whose body had named it, in
+// two words so every level below the binary bound has one: a level's mark
+// still stands when that level's open body began at or before the last naming,
+// and the levels whose bodies were opened since are dropped as the entry is
+// named again. Two slots announcing one id are one entry, the first.
+func tableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
+	v.bodyClock++
+	starts[depth] = v.bodyClock
+}
+func tableMessageSeenFirst(v *TableVocabulary) {
+	for i := range v.Count {
+		for j := range i {
+			if v.Entries[j].ID == v.Entries[i].ID {
+				v.Entries[i].bodyFirst = uint64(j + 1)
+				break
+			}
+		}
+	}
+}
+func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+	e := &v.Entries[ref-1]
+	if e.bodyFirst != 0 {
+		e = &v.Entries[e.bodyFirst-1]
+	}
+	at, last := e.bodySeenAt>>8, int(e.bodySeenAt&255)
+	if starts[depth] <= at {
+		if last == depth || depth < 128 && e.bodySeenBelow[depth>>6]>>uint(depth&63)&1 != 0 {
+			return true
+		}
+		if depth < 64 {
+			e.bodySeenBelow[0] &= 1<<uint(depth) - 1
+			e.bodySeenBelow[1] = 0
+		} else if depth < 128 {
+			e.bodySeenBelow[1] &= 1<<uint(depth-64) - 1
+		}
+	} else {
+		kept, hi := 0, depth
+		for kept < hi {
+			mid := (kept + hi) / 2
+			if starts[mid] <= at {
+				kept = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if last < kept {
+			e.bodySeenBelow[last>>6] |= 1 << uint(last&63)
+		}
+		if kept < 64 {
+			e.bodySeenBelow[0] &= 1<<uint(kept) - 1
+			e.bodySeenBelow[1] = 0
+		} else if kept < 128 {
+			e.bodySeenBelow[1] &= 1<<uint(kept-64) - 1
+		}
+	}
+	e.bodySeenAt = v.bodyClock<<8 | uint64(depth)
+	return false
+}
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
 		return TableMessageEntry{}, false
@@ -379,6 +444,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	if v.RefBits == 0 {
 		v.RefBits = 1
 	}
+	tableMessageSeenFirst(v)
 	v.Announced = true
 	return true
 }
@@ -575,10 +641,14 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && tableMessageSkip(r, v, indexBits, arm, depth+1)
 	case 12:
 		n, ok := tableMessageCount(r, s)
-		if !ok || !r.Align() {
+		if !ok || n > uint64(s.Max) || !r.Align() {
 			return false
 		}
-		return r.Skip(int64(n) * 8)
+		start := r.Offset / 8
+		if !r.Skip(int64(n) * 8) {
+			return false
+		}
+		return tableUTF8Valid(r.Buffer[start : start+int64(n)])
 	case 31:
 		if !r.Align() {
 			return false
@@ -587,30 +657,63 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		return ok && r.Skip(int64(n)*8)
 	case 14, 16:
 		n, ok := tableMessageCount(r, s)
-		if !ok {
+		if !ok || n > uint64(s.Max) {
 			return false
 		}
 		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
 			return false
 		}
-		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
-			width := e.Element.Bits
-			width = max(width, 0)
-			if s.Kind == 16 {
-				width += v.RefBits
-			}
+		if s.Kind == 14 && (e.Element.Bits >= 0 && e.Element.Kind != 10 && e.Element.Kind != 11 || e.Element.Kind == 0 || e.Element.Kind == 32) {
+			width := max(e.Element.Bits, int64(0))
 			return r.Skip(int64(n) * width)
 		}
-		for range n {
-			if s.Kind == 16 && !r.Skip(v.RefBits) {
-				return false
+		if s.Kind == 16 {
+			var seen [64]uint64
+			keys := seen[:0]
+			for range n {
+				ref, ok := r.Get(v.RefBits)
+				if !ok {
+					return false
+				}
+				id, ok := v.Name(ref)
+				if !ok {
+					return false
+				}
+				if slices.Contains(keys, id) {
+					return false
+				}
+				keys = append(keys, id)
+				if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) {
+					return false
+				}
 			}
+			return true
+		}
+		for range n {
 			before := r.Offset
 			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
 				return false
 			}
 		}
 		return true
+	case 10:
+		if s.Packing == 2 {
+			index, ok := r.Get(s.Bits)
+			return ok && index <= uint64(s.QCount)
+		}
+		raw, ok := r.Get(32)
+		if !ok {
+			return false
+		}
+		f := math.Float32frombits(uint32(raw))
+		return f == f && !math.IsInf(float64(f), 0)
+	case 11:
+		raw, ok := r.Get(64)
+		if !ok {
+			return false
+		}
+		f := math.Float64frombits(raw)
+		return !math.IsNaN(f) && !math.IsInf(f, 0)
 	}
 	return s.Bits >= 0 && r.Skip(s.Bits)
 }
@@ -620,13 +723,25 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 	if depth > 128 {
 		return false
 	}
+	var seen [64]uint64
+	ids := seen[:0]
 	for {
 		ref, ok := r.Get(v.RefBits)
-		if !ok || ref == 0 {
-			return ok
+		if !ok {
+			return false
+		}
+		if ref == 0 {
+			return true
 		}
 		e, ok := v.Entry(ref)
-		if !ok || !tableMessageSkip(r, v, indexBits, e, depth) {
+		if !ok || e.ID >= 0xfffffffffffffffd {
+			return false
+		}
+		if slices.Contains(ids, e.ID) {
+			return false
+		}
+		ids = append(ids, e.ID)
+		if !tableMessageSkip(r, v, indexBits, e, depth) {
 			return false
 		}
 	}
@@ -634,26 +749,84 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 
 // Numeric values are reconstructed at the announced storage width. Typed
 // readers then hold these lanes to the declared ranges, as the file read does.
-func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
+// The reconstruction is canonical: a signed kind is sign-extended to 128 bits,
+// an unsigned kind zero-extended, and a ranged offset carries into the high
+// lane. A timestamp (kind 36) is a signed sixty-four bit count. A value past
+// the 128-bit domain of an integer kind is reported so the reader refuses it
+// before it narrows.
+func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) (bool, bool) {
+	integer := s.Kind >= 2 && s.Kind <= 9 || s.Kind >= 18 && s.Kind <= 29 || s.Kind == 36
+	signed := integer && (s.Kind <= 5 || s.Kind == 18 || s.Kind >= 20 && s.Kind <= 24 || s.Kind == 36)
 	lo, ok := r.Get(min(s.Bits, 64))
 	if !ok || s.Packing == 2 && lo > uint64(s.QCount) {
-		return false
+		return false, false
 	}
 	hi := uint64(0)
 	if s.Bits > 64 {
 		hi, ok = r.Get(s.Bits - 64)
 		if !ok {
-			return false
+			return false, false
 		}
 	}
 	if s.Packing == 1 {
-		sum := lo + s.Base[0]
+		baseHi := s.Base[1]
+		if signed && s.Kind < 18 {
+			baseHi = uint64(int64(s.Base[0]) >> 63)
+		}
+		loSum := lo + s.Base[0]
 		carry := uint64(0)
-		if sum < lo {
+		if loSum < lo {
 			carry = 1
 		}
-		lo = sum
-		hi += s.Base[1] + carry
+		hiSum := hi + baseHi
+		carryHi := uint64(0)
+		if hiSum < hi {
+			carryHi = 1
+		}
+		hiSum += carry
+		if hiSum < carry {
+			carryHi = 1
+		}
+		if integer {
+			if signed {
+				if baseHi>>63 == 0 {
+					if carryHi != 0 || hiSum>>63 != 0 {
+						return true, true
+					}
+				} else {
+					mLo := ^s.Base[0] + 1
+					mHi := ^baseHi
+					if mLo == 0 {
+						mHi++
+					}
+					borrow := uint64(0)
+					if lo < mLo {
+						borrow = 1
+					}
+					dHi := hi - mHi - borrow
+					if !(hi < mHi || hi == mHi && borrow != 0) && dHi>>63 != 0 {
+						return true, true
+					}
+				}
+			} else if carryHi != 0 {
+				return true, true
+			}
+		}
+		lo = loSum
+		hi = hiSum
+	} else if signed {
+		if s.Bits < 64 {
+			if s.Bits > 0 {
+				shift := uint(64 - s.Bits)
+				lo = uint64(int64(lo<<shift) >> shift)
+			}
+			hi = uint64(int64(lo) >> 63)
+		} else if s.Bits == 64 {
+			hi = uint64(int64(lo) >> 63)
+		} else if s.Bits < 128 {
+			shift := uint(64 - (s.Bits - 64))
+			hi = uint64(int64(hi<<shift) >> shift)
+		}
 	}
 	if s.Packing == 2 {
 		index := uint32(lo)
@@ -663,7 +836,7 @@ func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 	}
 	binary.LittleEndian.PutUint64(out[:], lo)
 	binary.LittleEndian.PutUint64(out[8:], hi)
-	return true
+	return true, false
 }
 
 // A quantized float outside its range is a value the writer refuses
@@ -872,9 +1045,14 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 	return !w.Overflow
 }
 func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedEntity(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedEntityReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -889,14 +1067,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x23fcfd6678e36712:
 			{
+				if exact && order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -908,7 +1090,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.entity_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -927,12 +1120,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.EntityID = uint32(v)
 					}
 				}
+				if exact && !(value.EntityID != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xcb4b37357667310e:
 			{
+				if exact && order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -944,7 +1146,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -16383 || wide > 16383 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_x")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -963,12 +1176,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.PosX = int32(v)
 					}
 				}
+				if exact && !(value.PosX != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xcb4b3835766732c1:
 			{
+				if exact && order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -980,7 +1202,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -16383 || wide > 16383 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_y")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -999,12 +1232,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.PosY = int32(v)
 					}
 				}
+				if exact && !(value.PosY != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xcb4b353576672da8:
 			{
+				if exact && order >= 3 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 3
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1016,7 +1258,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -16383 || wide > 16383 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_z")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1035,12 +1288,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.PosZ = int32(v)
 					}
 				}
+				if exact && !(value.PosZ != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xb54d8e19798e16e8:
 			{
+				if exact && order >= 4 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 4
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1052,7 +1314,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 511 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.yaw")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1071,12 +1344,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.Yaw = uint32(v)
 					}
 				}
+				if exact && !(value.Yaw != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x53a9f665a90cc1b1:
 			{
+				if exact && order >= 5 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 5
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1088,7 +1370,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 511 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pitch")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1107,12 +1400,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.Pitch = uint32(v)
 					}
 				}
+				if exact && !(value.Pitch != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x6cede6b6eb60ee67:
 			{
+				if exact && order >= 6 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 6
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1124,7 +1426,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2048 || wide > 2047 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_x")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1143,12 +1456,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.VelX = int32(v)
 					}
 				}
+				if exact && !(value.VelX != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x6cede5b6eb60ecb4:
 			{
+				if exact && order >= 7 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 7
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1160,7 +1482,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2048 || wide > 2047 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_y")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1179,12 +1512,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.VelY = int32(v)
 					}
 				}
+				if exact && !(value.VelY != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x6cede8b6eb60f1cd:
 			{
+				if exact && order >= 8 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 8
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1196,7 +1538,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -2048 || wide > 2047 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_z")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1215,12 +1568,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.VelZ = int32(v)
 					}
 				}
+				if exact && !(value.VelZ != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x7f69d4b5288ba9cf:
 			{
+				if exact && order >= 9 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 9
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1232,7 +1594,18 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 1000 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.health")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1251,12 +1624,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.Health = int32(v)
 					}
 				}
+				if exact && !(value.Health != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xa0b610205f2c6e01:
 			{
+				if exact && order >= 10 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 10
 				widened := false
 				if entry.Shape.Kind != 30 || entry.Element.Kind != 0 {
 					if false {
@@ -1273,6 +1655,10 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						return false
 					}
 					if ref == 0 {
+						if exact {
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Weapon = MixedWeaponNone
 					} else {
 						id, ok := r.Vocabulary.Name(ref)
@@ -1291,6 +1677,11 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 			}
 		case 0x7f6308be8ab37fc0:
 			{
+				if exact && order >= 11 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 11
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -1302,8 +1693,13 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload11 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1316,12 +1712,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.Damage = MixedDamage(v)
 					}
 				}
+				if exact && !(value.Damage != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x11a44fc1d1243da7:
 			{
+				if exact && order >= 12 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 12
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -1333,8 +1738,13 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload12 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1351,12 +1761,21 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.Moving = b != 0
 					}
 				}
+				if exact && !(value.Moving != false) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x7674cfd19b9031ca:
 			{
+				if exact && order >= 13 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 13
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -1368,8 +1787,13 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload13 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1386,11 +1810,19 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 						value.Firing = b != 0
 					}
 				}
+				if exact && !(value.Firing != false) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1422,9 +1854,14 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	return !w.Overflow
 }
 func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedStat(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedStatReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1439,14 +1876,18 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x80ab75f0866dbf65:
 			{
+				if exact && order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 6 || entry.Element.Kind != 0 {
 					if false {
@@ -1458,7 +1899,18 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.stat_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1477,12 +1929,21 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 						value.StatID = uint32(v)
 					}
 				}
+				if exact && !(value.StatID != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x52076675ec13a0c1:
 			{
+				if exact && order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1494,7 +1955,18 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -512 || wide > 511 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.delta")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1513,11 +1985,19 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 						value.Delta = int32(v)
 					}
 				}
+				if exact && !(value.Delta != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1568,9 +2048,14 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 	return !w.Overflow
 }
 func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedHitEvent(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedHitEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1585,14 +2070,18 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xb7bc9ac015a25050:
 			{
+				if exact && order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1604,7 +2093,18 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.target_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1623,12 +2123,21 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 						value.TargetID = uint32(v)
 					}
 				}
+				if exact && !(value.TargetID != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x7f6308be8ab37fc0:
 			{
+				if exact && order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1640,7 +2149,18 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.damage")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1659,12 +2179,21 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 						value.Damage = int32(v)
 					}
 				}
+				if exact && !(value.Damage != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x01fbc365b059b925:
 			{
+				if exact && order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1676,7 +2205,18 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 7 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.hit_kind")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1695,12 +2235,21 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 						value.HitKind = int32(v)
 					}
 				}
+				if exact && !(value.HitKind != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x126167908c9aa52d:
 			{
+				if exact && order >= 3 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 3
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -1712,8 +2261,13 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload19 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -1730,11 +2284,19 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 						value.Crit = b != 0
 					}
 				}
+				if exact && !(value.Crit != false) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1766,9 +2328,14 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 	return !w.Overflow
 }
 func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedChatEvent(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedChatEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1783,14 +2350,18 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xa5013e9ad5caeda4:
 			{
+				if exact && order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1802,7 +2373,18 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 3 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.channel")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1821,12 +2403,21 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 						value.Channel = int32(v)
 					}
 				}
+				if exact && !(value.Channel != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xfbf1ac4d96ebd022:
 			{
+				if exact && order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1838,7 +2429,18 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4095 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.speaker")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1857,11 +2459,19 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 						value.Speaker = uint32(v)
 					}
 				}
+				if exact && !(value.Speaker != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1893,9 +2503,14 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 	return !w.Overflow
 }
 func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEvent) bool {
+	var starts [1]uint64
+	return tableMessageBodyMixedPickupEvent(r, value, starts[:], 0)
+}
+func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupEvent, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	MixedPickupEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1910,14 +2525,18 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x9e7fd06d864fbd56:
 			{
+				if exact && order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -1929,7 +2548,18 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 1023 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.item_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1948,12 +2578,21 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 						value.ItemID = uint32(v)
 					}
 				}
+				if exact && !(value.ItemID != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x8113fe7ea2b16969:
 			{
+				if exact && order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -1965,7 +2604,18 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.amount")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -1984,11 +2634,19 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 						value.Amount = int32(v)
 					}
 				}
+				if exact && !(value.Amount != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -2068,12 +2726,25 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 		}
 	}
 	{
-		if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 			return false
 		}
-		if value.EntitiesCount > 0 {
+		allBirth := value.EntitiesCount == 1
+		if allBirth {
+			for i := 0; i < 1; i++ {
+				probe := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
+				if !MixedEntitySaveMessageBody(&probe, &value.Entities[i]) {
+					return false
+				}
+				if probe.Bits > TableMessageRefBitsHere {
+					allBirth = false
+					break
+				}
+			}
+		}
+		if !allBirth {
 			w.Put(10, TableMessageRefBitsHere)
-			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+			if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 				return false
 			}
 			w.Put(uint64(value.EntitiesCount)-1, 3)
@@ -2331,9 +3002,14 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	return !w.Overflow
 }
 func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
+	var starts [2]uint64
+	return tableMessageBodyBenchMixed(r, value, starts[:], 0)
+}
+func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts []uint64, depth int) bool {
+	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	BenchMixedReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	exact := r.Vocabulary.BuildVersion == BuildVersion
+	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2348,14 +3024,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xaa38aca481f528a8:
 			{
+				if exact && order >= 0 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 0
 				widened := false
 				if entry.Shape.Kind != 7 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 7) {
@@ -2367,7 +3047,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.sequence")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2386,12 +3077,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.Sequence = uint32(v)
 					}
 				}
+				if exact && !(value.Sequence != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x0dbe005c56697c3e:
 			{
+				if exact && order >= 1 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 1
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -2403,7 +3103,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 65535 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_sequence")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2422,12 +3133,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.AckSequence = int32(v)
 					}
 				}
+				if exact && !(value.AckSequence != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x9bae0da8b829ee03:
 			{
+				if exact && order >= 2 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 2
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2439,7 +3159,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_bits")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2458,12 +3189,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.AckBits = uint32(v)
 					}
 				}
+				if exact && !(value.AckBits != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xb7d7b5650a590b05:
 			{
+				if exact && order >= 3 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 3
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2475,7 +3215,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.session_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2489,12 +3240,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.SessionID = uint64(v)
 					}
 				}
+				if exact && !(value.SessionID != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x6d7b98e2d095967e:
 			{
+				if exact && order >= 4 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 4
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -2506,7 +3266,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 4294967295 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.client_id")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2520,12 +3291,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.ClientID = uint32(v)
 					}
 				}
+				if exact && !(value.ClientID != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x73a94c71d60dc0d8:
 			{
+				if exact && order >= 5 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 5
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2537,7 +3317,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 18446744073709551615 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.nonce")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2556,12 +3347,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.Nonce = uint64(v)
 					}
 				}
+				if exact && !(value.Nonce != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x3eee6b51be54fc85:
 			{
+				if exact && order >= 6 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 6
 				widened := false
 				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
@@ -2573,7 +3373,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < -1000000000000 || wide > 1000000000000 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.world_time")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2592,12 +3403,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.WorldTime = int64(v)
 					}
 				}
+				if exact && !(value.WorldTime != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x7bbc035f7b6d0112:
 			{
+				if exact && order >= 7 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 7
 				widened := false
 				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
@@ -2609,7 +3429,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 281474976710655 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.frame_tick")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2628,12 +3459,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.FrameTick = uint64(v)
 					}
 				}
+				if exact && !(value.FrameTick != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x3c460475f9be69c6:
 			{
+				if exact && order >= 8 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 8
 				widened := false
 				if entry.Shape.Kind != 22 || entry.Element.Kind != 0 {
 					if false {
@@ -2645,7 +3485,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 16776960 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.server_time")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -2664,12 +3515,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.ServerTime = int32(v)
 					}
 				}
+				if exact && !(value.ServerTime != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x935d0fb07bb3822a:
 			{
+				if exact && order >= 9 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 9
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
 					if false {
@@ -2692,15 +3552,30 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					allDefault := true
+					if n < 1 {
+						r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.entities")
+						return false
+					}
 					if n > 8 {
 						r.Report.Refuse(TableRefuseCountOverBound, "BenchMixed.entities")
 						return false
 					}
 					for i := range n {
 						p := &base[i]
-						if !MixedEntityLoadMessageBody(r, &(*p)) {
-							return false
+						{
+							start := r.Bits.Offset
+							if !tableMessageBodyMixedEntity(r, &(*p), starts, depth+1) {
+								return false
+							}
+							if r.Bits.Offset-start != r.Vocabulary.RefBits {
+								allDefault = false
+							}
 						}
+					}
+					if exact && !widened && n == 1 && entry.Shape == tableMessageEntries[9].Shape && entry.Element == tableMessageEntries[9].Element && allDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					value.EntitiesCount = int32(n)
 				}
@@ -2710,6 +3585,11 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			}
 		case 0xee639cad45b1994c:
 			{
+				if exact && order >= 10 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 10
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
 					if false {
@@ -2738,11 +3618,15 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					}
 					for i := range n {
 						p := &base[i]
-						if !MixedStatLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyMixedStat(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
 					value.StatsCount = int32(n)
+				}
+				if exact && !(value.StatsCount > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -2750,6 +3634,11 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			}
 		case 0x2e35dc5321aa5790:
 			{
+				if exact && order >= 11 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 11
 				widened := false
 				if entry.Shape.Kind != 15 || entry.Element.Kind != 0 {
 					if false {
@@ -2768,7 +3657,8 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 							return false
 						}
 						if ref == 0 {
-							(*payload48).Type = MixedEventTypeNone
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							payload49, ok := r.Vocabulary.Entry(ref)
 							if !ok || payload49.ID >= 0xfffffffffffffffd || payload49.Shape.Kind == 0 {
@@ -2793,7 +3683,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 										value := &(*payload48)
 										MixedHitEventReset(&value.Hit)
 									}
-									if !MixedHitEventLoadMessageBody(r, &(*payload48).Hit) {
+									if !tableMessageBodyMixedHitEvent(r, &(*payload48).Hit, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2817,7 +3707,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 										value := &(*payload48)
 										MixedChatEventReset(&value.Chat)
 									}
-									if !MixedChatEventLoadMessageBody(r, &(*payload48).Chat) {
+									if !tableMessageBodyMixedChatEvent(r, &(*payload48).Chat, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2841,7 +3731,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 										value := &(*payload48)
 										MixedPickupEventReset(&value.Pickup)
 									}
-									if !MixedPickupEventLoadMessageBody(r, &(*payload48).Pickup) {
+									if !tableMessageBodyMixedPickupEvent(r, &(*payload48).Pickup, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2865,6 +3755,11 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			}
 		case 0x5759ce7586bbb5a3:
 			{
+				if exact && order >= 12 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 12
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
 					if false {
@@ -2895,7 +3790,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						p := &base[i]
 						{
 							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
+							ok, over := tableMessageReadScalar(&r.Bits, element.Shape, &raw)
+							if !ok {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+							if over {
+								r.Report.Refuse(TableRefuseOutOfRange, "")
+								return false
+							}
+							wide := binary.LittleEndian.Uint64(raw[:8])
+							if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 255 {
+								r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.loadout")
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
@@ -2911,12 +3817,28 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						}
 					}
 				}
+				allDefault := true
+				for i := range value.Loadout {
+					if value.Loadout[i] != 0 {
+						allDefault = false
+						break
+					}
+				}
+				if exact && !(!allDefault) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x13a62f542cf8e86e:
 			{
+				if exact && order >= 13 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 13
 				widened := false
 				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
 					if false {
@@ -2950,12 +3872,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					copy(value.PlayerName[:], text)
 					value.PlayerNameLength = int32(n)
 				}
+				if exact && !(value.PlayerNameLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
+				if exact && order >= 14 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 14
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
 					if false {
@@ -2984,12 +3915,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					copy(value.Payload[:], r.Bits.Buffer[start:start+int64(n)])
 					value.PayloadLength = int32(n)
 				}
+				if exact && !(value.PayloadLength > 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xdbaf7be5e24296c9:
 			{
+				if exact && order >= 15 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 15
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -3001,8 +3941,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload51 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3035,6 +3980,11 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			}
 		case 0xdbaf7ae5e2429516:
 			{
+				if exact && order >= 16 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 16
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -3046,8 +3996,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload52 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3080,6 +4035,11 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			}
 		case 0xdbaf79e5e2429363:
 			{
+				if exact && order >= 17 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 17
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -3091,8 +4051,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload53 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3125,6 +4090,11 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			}
 		case 0x9cef31fff7e2e457:
 			{
+				if exact && order >= 18 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 18
 				widened := false
 				if entry.Shape.Kind != 10 || entry.Element.Kind != 0 {
 					if false {
@@ -3136,8 +4106,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload54 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3157,12 +4132,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						}
 					}
 				}
+				if exact && !(math.Float32bits(value.Recoil) != math.Float32bits(0.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x5ab3f9c9341f6c04:
 			{
+				if exact && order >= 19 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 19
 				widened := false
 				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
@@ -3174,8 +4158,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload55 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3201,12 +4190,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						}
 					}
 				}
+				if exact && !(math.Float64bits(value.Drift) != math.Float64bits(0.0)) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xa3348580461faf16:
 			{
+				if exact && order >= 20 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 20
 				widened := false
 				if entry.Shape.Kind != 19 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 19) {
@@ -3218,8 +4216,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload56 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3238,12 +4241,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.WideKey = v
 					}
 				}
+				if exact && !(value.WideKey != (serialize.Uint128{Lo: 0, Hi: 0})) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xd61bdd7908af2642:
 			{
+				if exact && order >= 21 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 21
 				widened := false
 				if entry.Shape.Kind != 18 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 18) {
@@ -3255,8 +4267,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload57 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3280,12 +4297,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.Flux = v
 					}
 				}
+				if exact && !(value.Flux != (serialize.Int128{Lo: 0, Hi: 0})) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xbf30e00dc53307a9:
 			{
+				if exact && order >= 22 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 22
 				widened := false
 				if entry.Shape.Kind != 26 || entry.Element.Kind != 0 {
 					if false {
@@ -3297,7 +4323,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 64000 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ping")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3316,12 +4353,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.Ping = uint16(v)
 					}
 				}
+				if exact && !(value.Ping != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x560d6527ccd8515f:
 			{
+				if exact && order >= 23 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 23
 				widened := false
 				if entry.Shape.Kind != 8 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 8) {
@@ -3333,7 +4379,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := binary.LittleEndian.Uint64(raw[:8])
+					if binary.LittleEndian.Uint64(raw[8:]) != 0 || wide < 0 || wide > 16777215 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.crc_hint")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3352,12 +4409,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.CrcHint = uint32(v)
 					}
 				}
+				if exact && !(value.CrcHint != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xc08292176cfd8672:
 			{
+				if exact && order >= 24 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 24
 				widened := false
 				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
 					if false {
@@ -3369,8 +4435,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
 					payload60 := TableReader{Buffer: raw[:], Report: &r.Report}
@@ -3387,12 +4458,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.HasExtra = b != 0
 					}
 				}
+				if exact && !(value.HasExtra != true) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0xfd29ee12a979cb69:
 			{
+				if exact && order >= 25 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 25
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -3404,7 +4484,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 255 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.extra")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3423,12 +4514,21 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.Extra = int32(v)
 					}
 				}
+				if exact && !(value.Extra != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		case 0x78101ac0aa8cbcfe:
 			{
+				if exact && order >= 26 {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				order = 26
 				widened := false
 				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
@@ -3440,7 +4540,18 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 				}
 				{
 					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
+					ok, over := tableMessageReadScalar(&r.Bits, entry.Shape, &raw)
+					if !ok {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if over {
+						r.Report.Refuse(TableRefuseOutOfRange, "")
+						return false
+					}
+					wide := int64(binary.LittleEndian.Uint64(raw[:8]))
+					if int64(binary.LittleEndian.Uint64(raw[8:])) != wide>>63 || wide < 0 || wide > 15 {
+						r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.idle_ticks")
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
@@ -3459,11 +4570,19 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						value.IdleTicks = int32(v)
 					}
 				}
+				if exact && !(value.IdleTicks != 0) {
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				if widened {
 					r.Report.Widened++
 				}
 			}
 		default:
+			if exact {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")

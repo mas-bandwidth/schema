@@ -58,14 +58,15 @@ var cppVarCellAnchors = map[string]struct {
 			"r.report->refuse_reason = out_of_range;",
 		},
 	},
-	// vt/fixed-class: the conformance driver's form-1 read gates on the
-	// strict framing walk (framing_strict_ok); damage anywhere refuses the
-	// load before any value is decoded (D1).
+	// vt/fixed-class: the generated form-1 read gates on the strict
+	// wire-alone walk (TableStrictWalk), which walks the root body's framing
+	// and refuses the whole load on damage anywhere before any value is
+	// decoded (D1).
 	"vt/fixed-class/cpp": {
-		src: "test/conformance/cpp/main.cpp",
+		src: "internal/codegen/cpptable/strictwalk.go",
 		want: []string{
-			"const bool framing_ok = !form1 || framing_strict_ok(",
-			"static bool framing_strict_ok(",
+			"inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const TableIdTable & table, TableReport * report )",
+			"if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }",
 		},
 	},
 	// vt/doc-tags: the table's doc/tags negative controls plant the retired
@@ -97,15 +98,18 @@ var cppVarCellAnchors = map[string]struct {
 			`else if ( elem_kind != %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }`,
 		},
 	},
-	// vt/id-table-wire: the conformance driver's form-1 framing walk refuses a
-	// repeated field id (R5, which is how a node table riding twice is caught)
-	// and a node record no pointer reaches (T1, node_index_null), so those
-	// id-table wiring damages refuse the whole load before any value decodes.
+	// vt/id-table-wire: the generated strict walk refuses a repeated field id
+	// (R5, which is how a node table riding twice is caught) and a node record
+	// no pointer reaches (T1, node_index_null): a unit without pointers refuses
+	// any non-empty node table outright, and a pointer-bearing unit judges the
+	// graph over the marks TableGraphCheck keeps; so those id-table wiring
+	// damages refuse the whole load before any value decodes.
 	"vt/id-table-wire/cpp": {
-		src: "test/conformance/cpp/main.cpp",
+		src: "internal/codegen/cpptable/strictwalk.go",
 		want: []string{
-			"for ( size_t k = 0; k < seen.size(); k++ ) if ( seen[k] == id ) return false; // R5",
-			"for ( size_t k = 1; k < n; k++ ) if ( mark[k] == 0 ) return false; // unreachable is damage",
+			"if ( !TableStrictSeen( seen, ref ) ) { return false; } // R5: one field id twice in one body",
+			"if ( !r.getleb( count ) || count != 0 || r.offset != s.node_table_bytes )",
+			"const bool ok = TableGraphCheck( body, body_bytes, &table, scratch, records + 1, report );",
 		},
 	},
 	// vt/retain-unknown: a retaining read that cannot capture a field discards

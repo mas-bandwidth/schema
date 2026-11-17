@@ -10,6 +10,7 @@ package luautable
 
 import (
 	"math/big"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -44,5 +45,28 @@ func emitMessageForm(g *luau.Gen) error {
 	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(tablewire.MessageVocabulary(g.Unit))))
 	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(tablewire.MessageVocabulary(g.Unit)))
 	g.Pf("%s.TableMessageBuildVersion = %s\n\n", g.Self, luau.IntegerLit(new(big.Int).SetUint64(ir.BuildVersion(g.Unit))))
+	// the build version under each table the message form carries (a fixed
+	// table, §3.3: the form is fixed tables only, so no variable table is
+	// named here), so a message read knows when the sender announced this
+	// reader's own build (§3.3 (a), (b))
+	names := make([]string, 0, len(g.Unit.Tables))
+	for _, t := range g.Unit.Tables {
+		if t.FixedDeclared {
+			names = append(names, t.Name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	slices.Sort(names)
+	st := g.Require(RuntimeModule)
+	g.Pf("%s.buildVersion(%s.TableMessageBuildVersion, {", st, g.Self)
+	for i, name := range names {
+		if i > 0 {
+			g.Pf(",")
+		}
+		g.Pf(" %q", name)
+	}
+	g.Pf(" })\n\n")
 	return nil
 }

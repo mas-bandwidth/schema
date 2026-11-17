@@ -1,0 +1,47 @@
+package bareint
+
+// SPEC §5.1 row 11 on the packet Write: a bare intN/uintN value outside its
+// declared N-bit width is a value the declaration does not admit, checked by
+// the leg's mechanism (a debug assert in an assert leg, a refusal in every
+// build elsewhere). One type per width so a case names one value.
+// cases.txt beside this file lists the values and verdicts.
+
+type I8
+{
+    value int8
+}
+
+type I16
+{
+    value int16
+}
+
+type I32
+{
+    value int32
+}
+
+type I64
+{
+    value int64
+}
+
+type U8
+{
+    value uint8
+}
+
+type U16
+{
+    value uint16
+}
+
+type U32
+{
+    value uint32
+}
+
+type U64
+{
+    value uint64
+}

@@ -454,12 +454,12 @@ type Holder {
     team  Team
 }
 `)
-	const pinnedId = uint64(0x973fe01026957464) // WireLaw 2: selected payloads start at construction defaults
+	const pinnedId = uint64(0x03075e76fa58a0cd) // WireLaw 3: prospective fixed-file identity correction
 	if u.ProtocolId != pinnedId {
 		t.Fatalf("the neutrality probe's id moved: 0x%016x, pinned 0x%016x", u.ProtocolId, pinnedId)
 	}
 	const pinnedProjection = `schema-wire-projection 3
-schema-wire-law 2
+schema-wire-law 3
 package probe
 enum Team max=2 storage=8 variants=2
   variant 1 name=Red

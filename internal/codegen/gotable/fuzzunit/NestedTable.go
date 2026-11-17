@@ -237,7 +237,8 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -555,7 +556,7 @@ func ArchiveConfigFixedBounds(value *ArchiveConfig) bool {
 
 const ArchiveConfigFixedBodyBytes = 1252
 const ArchiveConfigFixedRecordBytes = 8 + ArchiveConfigFixedBodyBytes
-const ArchiveConfigFixedHash = 0x98b16f3242e9406b
+const ArchiveConfigFixedHash = 0x790226107513fdeb
 
 var ArchiveConfigFixedLayout = []byte{
 	0x4b, 0x00, 0x00, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x0d, 0xe4, 0x04, 0x00,
@@ -641,100 +642,187 @@ var ArchiveConfigFixedLayout = []byte{
 }
 
 var ArchiveConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // ArchiveConfig
-	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // root
-	{Dst: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), Counted: 0, Arg: 1, Meta: 1},                                 // version_note
-	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), Counted: 1, Arg: 0, Meta: 0},      // weapons
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // ArchiveConfig
+	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // root
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                                 // version_note
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0},      // weapons
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Min: 0, Counted: 0, Arg: 0, Meta: 0}, // effect
 	{Dst: uint32(4 + unsafe.Offsetof(struct {
 		Value BuffRow
-	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
-	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	}{}.Value)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
 	{Dst: uint32(4 + unsafe.Offsetof(struct {
 		Value DebuffRow
-	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
-	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
-	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), Stride: uint32(unsafe.Sizeof(ProfileConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), Counted: 1, Arg: 0, Meta: 0},   // profiles
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), Counted: 0, Arg: 1, Meta: 1},                                         // name
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), Stride: 1, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), Counted: 1, Arg: 3, Meta: 3},                                         // icon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // u8
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // experience
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // tilt
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // heading
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // timestamp
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // badge
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // port
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // epoch
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // precision
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // ratings
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // has_loadout
-	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // loadout
-	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // grade
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
-	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Counted: 1, Arg: 0, Meta: 0},        // grades
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
-	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                           // podium
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
-	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // perks
-	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // primary
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	}{}.Value)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), Stride: uint32(unsafe.Sizeof(ProfileConfig{})), Aux: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0},   // profiles
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                                         // name
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), Stride: 1, Aux: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), Min: 0, Counted: 1, Arg: 3, Meta: 3},                                         // icon
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // u8
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // experience
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // tilt
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // heading
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // timestamp
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // badge
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // port
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // epoch
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // precision
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // ratings
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // has_loadout
+	{Dst: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // loadout
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // grade
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0},        // grades
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), Stride: uint32(unsafe.Sizeof(Grade(0))), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                           // podium
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Bronze
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Silver
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // Gold
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // perks
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // primary
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Min: 0, Counted: 0, Arg: 0, Meta: 0}, // effect
 	{Dst: uint32(4 + unsafe.Offsetof(struct {
 		Value BuffRow
-	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
-	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	}{}.Value)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
 	{Dst: uint32(4 + unsafe.Offsetof(struct {
 		Value DebuffRow
-	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
-	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
-	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // backups
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
-	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Counted: 0, Arg: 0, Meta: 0}, // effect
+	}{}.Value)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), Stride: uint32(unsafe.Sizeof(WeaponConfig{})), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // backups
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                       // element
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // damage
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // speed
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // penetration
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // channel
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                          // homing
+	{Dst: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), Stride: 0, Aux: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)) + uint32(unsafe.Offsetof(EffectRow{}.Type)), Min: 0, Counted: 0, Arg: 0, Meta: 0}, // effect
 	{Dst: uint32(4 + unsafe.Offsetof(struct {
 		Value BuffRow
-	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
-	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
+	}{}.Value)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // buff
+	{Dst: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // multiplier
 	{Dst: uint32(4 + unsafe.Offsetof(struct {
 		Value DebuffRow
-	}{}.Value)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
-	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                       // amount
-	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), Stride: uint32(unsafe.Sizeof(AttachmentRow{})), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Counted: 1, Arg: 0, Meta: 0}, // attachments
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                     // slot
-	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
-	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // count
+	}{}.Value)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // debuff
+	{Dst: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                       // amount
+	{Dst: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), Stride: uint32(unsafe.Sizeof(AttachmentRow{})), Aux: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0}, // attachments
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                     // slot
+	{Dst: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // power
+	{Dst: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                    // count
 }
 
-var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 332)
+var ArchiveConfigFixedPlan = tableFixedBuildPlan(ArchiveConfigFixedLeaves, 352)
 
 var ArchiveConfigFixedKnown = []TableFixedKnownLayout{
 	{
 		Hash:        0x98b16f3242e9406b,
+		LayoutBytes: 1279,
+		Record:      1260,
+		Layout: []byte{
+			0x4b, 0x00, 0x00, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x0d, 0xe4, 0x04, 0x00,
+			0x00, 0x02, 0x00, 0x00, 0x00, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd, 0x54, 0xa3, 0x0d, 0xe0, 0x04,
+			0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67, 0x8a, 0x0c, 0x14,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e,
+			0xb4, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63,
+			0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05,
+			0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30,
+			0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5,
+			0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e,
+			0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43,
+			0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc,
+			0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+			0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00,
+			0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e, 0x18, 0x04, 0x00, 0x00,
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x05, 0x01, 0x00,
+			0x00, 0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06,
+			0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab,
+			0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50,
+			0x1e, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82,
+			0x28, 0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33,
+			0x92, 0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe,
+			0x81, 0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93,
+			0xa8, 0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b,
+			0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7,
+			0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0xf9, 0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00,
+			0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00,
+			0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9,
+			0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77,
+			0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde,
+			0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d,
+			0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7,
+			0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91,
+			0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00,
+			0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad,
+			0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1,
+			0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe,
+			0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a,
+			0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7,
+			0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+			0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc,
+			0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+			0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00,
+			0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13,
+			0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13,
+			0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa,
+			0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
+			0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
+			0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
+			0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+	{
+		Hash:        0x790226107513fdeb,
 		LayoutBytes: 1279,
 		Record:      1260,
 		Layout: []byte{
@@ -872,10 +960,10 @@ func ArchiveConfigFixedMeasure(count int64) int64 {
 }
 
 // ArchiveConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func ArchiveConfigFixedSave(values []ArchiveConfig, buffer []byte) int64 {
 	need := ArchiveConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -994,6 +1082,11 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -1042,7 +1135,7 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 // ArchiveConfigTableFields is ArchiveConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ArchiveConfigTableFields = []TableFieldInfo{
 	{Name: "root", JSON: "root", TypeName: "RootConfig", DeclaredTypeName: "RootConfig", ID: 0xa354fd1ff0c467c5, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Root)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Root)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1480, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -1054,7 +1147,7 @@ var ArchiveConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: RootConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "count", JSON: "count", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xb1e5e28e4479a274, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Count)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Count)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1480, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

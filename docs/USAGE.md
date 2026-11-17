@@ -1415,9 +1415,9 @@ fn main() {
 
     let mut report = TableReport::default();
     let Some(loaded) = root_config_load(&wire, &mut report) else {
-        panic!("framing damage: report.malformed is set");
+        panic!("framing damage: report.damaged is set");
     };
-    if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+    if report.unknown != 0 || report.widened != 0 {
         // the data came from a different schema generation: loaded is still
         // fully usable; log the counts so drift is visible
     }
@@ -3196,7 +3196,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xc06e89a209a3dda7
+0xbf7128181c3025bc
 ```
 
 ```cpp
@@ -4423,8 +4423,15 @@ your own header is needed.
 **C#** — modern .NET: .NET 8 or later and C# 12 or later. Types and unions
 are structs with `[InlineArray]` buffers, taken by `ref`; assigning one
 copies it. Reads scalars without boxing. Unity's runtime (C# 9,
-netstandard2.1) is the job of a separate Unity generator, which is not
-landed yet; this target no longer compiles there.
+netstandard2.1) is the job of the separate Unity generator, `--lang unity`;
+this target no longer compiles there.
+
+**Unity** — `--lang unity`: C# 9 over netstandard2.1, the surface Unity
+2021.2 through Unity 6 compiles, under IL2CPP and AOT. Packet types only.
+Types and unions are unmanaged structs with fixed-size buffers, taken by
+`ref`, against serialize.cs's streams. Writes are checked in debug asserts
+only; a public read checks the whole packet, its end included. See
+[UNITY.md](UNITY.md).
 
 **Dart** — Dart 3, VM and AOT (Flutter release ships AOT — the deployment
 the backend is tuned for). Generated code is **self-contained**: it imports
@@ -4672,6 +4679,43 @@ case Graphdemo.GraphCook.cook_open_scene(bytes) do
 end
 ```
 <!-- /elixir-table-usage -->
+
+**A loaded pointered value is a root plus a node directory.** A table that
+reaches a pointer to a table loads as `{root, nodes}`: `root` is the root's
+map, and `nodes` is a tuple of the table nodes in node-table order. A field
+the root did not store reads its declared default. Every table-pointer field
+holds a node number, `nil` for null; a `*string` or `*bytes` field holds its
+bytes. Node `2` and up name the tuple's entries in order; `deref(value, 1)`
+returns the root, but no pointer names it. A position the node table spent on
+a `*string` or `*bytes` blob holds `nil`. Follow a table pointer with
+`deref/2`, which returns `nil` for `nil`; never index the tuple by hand. Two
+fields that name one node hold the same number, so the node is held once
+however many pointers name it, and the value copies flat (to another process,
+a table or a log line) at the size of its nodes. A table that reaches no
+pointer to a table loads as a plain map.
+
+To save, build the same shape: put each node's map in the tuple, and store its
+number (its position plus 2) in every table-pointer field that names it.
+`save/2`
+writes each node once and numbers the wire by first visit, so any numbering
+you choose saves the same bytes. A pointer to a node whose body is still being
+walked is a data cycle, `{:error, :data_cycle}`; a number that names no table
+node (`1`, the root, included), or one node named by pointers of two table types, is
+`{:error, :invalid_value}`:
+
+```elixir
+# head and alias name one node: node 2 is the list's first node, node 3 its
+# second, and both fields hold 2
+first = %{"value" => 1, "name" => "a", "next" => 3}
+second = %{"value" => 2, "name" => "b", "next" => nil}
+scene = {%{"name" => "s", "head" => 2, "alias" => 2}, {first, second}}
+
+{:ok, wire} = Graphdemo.Table.save("Scene", scene)
+{:ok, {root, _nodes} = loaded, _report} = Graphdemo.Table.load("Scene", wire)
+head = Graphdemo.Table.deref(loaded, root["head"])
+second_node = Graphdemo.Table.deref(loaded, head["next"])
+true = root["head"] == root["alias"]
+```
 
 **Java** — Java 17 on the JVM, built to issue #156's measured directives.
 Generated code is **self-contained**: it references only `java.lang`,

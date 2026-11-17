@@ -55,6 +55,7 @@ var countName = map[string]string{
 	"lua":      "WindowCount",
 	"lobster":  "WindowCount",
 	"moo":      "WindowCount",
+	"python":   "window", // the list length is the count
 	"rust":     "window_count",
 	"squirrel": "WindowCount",
 }
@@ -76,6 +77,7 @@ var bornAtMinimum = map[string]string{
 	"lua":      "WindowCount = 2,",
 	"lobster":  "WindowCount: 2",
 	"moo":      "WindowCount = 2,",
+	"python":   "self.window = [0] * 2",
 	"rust":     "window_count: 2,",
 	"squirrel": "this.WindowCount = 2;",
 }
@@ -111,6 +113,7 @@ var refusesEveryBuild = map[string][]string{
 	// moo's assert, Luau's, is a call no build removes, so the writer refuses
 	// (returns false) in every build, as Lua's does
 	"moo":      {"if not isInt(value.WindowCount, 2, 8) then"},
+	"python":   {"if _s_type(_s_v1) is not _s_list or not 2 <= len(_s_v1) <= 8:", "validate_array(_s_v1, path + \".window\", 2, 8)"},
 	"squirrel": {`if (typeof value.WindowCount != "integer" || value.WindowCount < 2 || value.WindowCount > 8) return false;`},
 }
 
@@ -123,7 +126,7 @@ var assertsInDebug = map[string][]string{
 	"dart": {"assert(value.windowCount >= 2);", "assert(value.windowCount <= 8);"},
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
-	"lobster": {"assert v.WindowCount >= 2 and v.WindowCount <= 8"},
+	"lobster": {"assert v·.WindowCount >= 2 and v·.WindowCount <= 8"},
 	"rust":    {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
 }
 
@@ -161,7 +164,7 @@ var goneFromRelease = map[string][]string{
 	"cs":      {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
 	"dart":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
 	"java":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"lobster": {"if v.WindowCount < 2 or v.WindowCount > 8: return false"},
+	"lobster": {"if v·.WindowCount < 2 or v·.WindowCount > 8: return false"},
 	"rust":    {"if value.window_count < 2 || value.window_count > 8 {"},
 }
 

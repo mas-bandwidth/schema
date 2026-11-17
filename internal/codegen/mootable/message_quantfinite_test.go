@@ -201,7 +201,7 @@ func TestMooMessageQuantizedFloatIsFinite(t *testing.T) {
 func TestMooMessageQuantizedFloatIsFiniteNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
-	const anchor = "\tif not V.finite32(bits) then\n"
+	const anchor = "\tif not V.finite32(bits) then\n\t\tt.report.nonFinite += 1\n"
 	for _, row := range quantFiniteRows(t) {
 		if row.name != "float64/top_step_overflows/top" {
 			continue

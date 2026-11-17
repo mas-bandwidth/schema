@@ -60,3 +60,24 @@ func SchemaLockWarnings(paths []string) []string {
 func UpdateSchemaLock(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
 	return lockfile.Update(u, paths)
 }
+
+// ImportSchemaLockWriter records explicitly supplied, checked historical source
+// for one existing Table@0x<hash> lineage entry. The caller must establish the
+// source's provenance: legacy hashes do not encode every writer constraint.
+// The source root, layout, definitions digest, record size and hash must match;
+// existing different captured constraints are never overwritten.
+func ImportSchemaLockWriter(u *ir.Unit, paths []string, target string, writer *ir.Unit) (path string, rewrote bool, err error) {
+	return lockfile.ImportWriter(u, paths, target, writer)
+}
+
+// SchemaLockWriterImportOptions opts into the documented trusted historical
+// layout-only import. Default options preserve strict digest validation.
+type SchemaLockWriterImportOptions struct {
+	LegacyLayoutOnly bool
+}
+
+// ImportSchemaLockWriterWithOptions supplies explicit source provenance for a
+// historical layout-only key whose empty digest never bound writer constraints.
+func ImportSchemaLockWriterWithOptions(u *ir.Unit, paths []string, target string, writer *ir.Unit, options SchemaLockWriterImportOptions) (path string, rewrote bool, err error) {
+	return lockfile.ImportWriterWithOptions(u, paths, target, writer, lockfile.WriterImportOptions{LegacyLayoutOnly: options.LegacyLayoutOnly})
+}

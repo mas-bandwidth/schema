@@ -16,6 +16,10 @@ func init() {
 		old: "case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:\n\t\treturn ByteString(f.DefBytes)",
 		new: "case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:\n\t\treturn `\"\"` // SABOTAGED",
 	}}
+	sabotages["packet-write-cfloat-lua-range"] = []edit{{
+		old: `  if type(v.X) ~= "number" or v.X ~= v.X or v.X < 0.0 or v.X > 10.0 then return false end`,
+		new: `  -- SABOTAGED: the compressed-float range check is absent`,
+	}}
 	sabotages["packet-end-lua-end-check"] = []edit{
 		{
 			old: `	m.Printf("-- Read%s reads one packet: the type wire (SPEC §4.3, §6.1), then the\n", d.Name)
@@ -44,4 +48,11 @@ func init() {
 	m.Printf("  return true -- SABOTAGED: the end check removed\n")`,
 		},
 	}
+	sabotages["packet-write-text-lua-utf8"] = []edit{{
+		old: `  if not utf8valid(v.Text) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)`,
+		new: `  -- SABOTAGED: the UTF-8 write check is absent`,
+	}, {
+		old: `  if string.find(v.Text, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)`,
+		new: `  -- SABOTAGED: the interior-null write check is absent`,
+	}}
 }

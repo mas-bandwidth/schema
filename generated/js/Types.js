@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf35accd0582cdd84
+// package example — protocol id 0x2bf51af687ac0abd
 
 import { MaxHealth, MaxInputsPerPacket, MaxObjects, MaxPositionUnits, MaxVelocityUnits, RotationUnits, ShipMaxLasers, ShipMaxMissiles } from "./Constants.js";
 import { Pending, ShipType, Team } from "./Enums.js";
@@ -175,6 +175,9 @@ export function WriteHandle(stream, value) {
   }
   NUMBER_SCRATCH.value = value.objectId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 14)) {
+    return false;
+  }
+  if (!Number.isInteger(value.objectSequence) || value.objectSequence < 0 || value.objectSequence > 255) { // a bare integer must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.objectSequence;
@@ -711,12 +714,21 @@ export function ZeroInputPacket(value) {
 }
 
 export function WriteInputPacket(stream, value) {
+  if (!Number.isInteger(value.synchronizeSequence) || value.synchronizeSequence < 0 || value.synchronizeSequence > 65535) { // a bare integer must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.synchronizeSequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
+  if (typeof value.currentFrame !== "bigint" || value.currentFrame < 0n || value.currentFrame > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.currentFrame;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (typeof value.startFrame !== "bigint" || value.startFrame < 0n || value.startFrame > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.startFrame;
@@ -1036,8 +1048,14 @@ export function WriteExtremeProbe(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
+  if (typeof value.floorDefault !== "bigint" || value.floorDefault < -9223372036854775808n || value.floorDefault > 9223372036854775807n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDefault);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (typeof value.ceilingDefault !== "bigint" || value.ceilingDefault < 0n || value.ceilingDefault > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.ceilingDefault;
@@ -1120,8 +1138,14 @@ export function WriteExtremeRow(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
+  if (typeof value.floorDef !== "bigint" || value.floorDef < -9223372036854775808n || value.floorDef > 9223372036854775807n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorDef);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
+    return false;
+  }
+  if (typeof value.ceilingDef !== "bigint" || value.ceilingDef < 0n || value.ceilingDef > 18446744073709551615n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = value.ceilingDef;

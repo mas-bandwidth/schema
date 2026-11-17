@@ -833,7 +833,7 @@ namespace Bench
 
             // THE WIDE KINDS' JSON FORM (docs/SPEC-TABLES.md §16.2, §16.14 W10): an
             // integer-shaped kind whose storage is wider than 32 bits is written as a
-            // STRING of decimal digits and reads as a string or a number — int64,
+            // STRING of decimal digits and reads only as a string — int64,
             // uint64, int128, uint128, and the 64- and 128-bit fixed-point kinds.
             static bool TableWideJson(TableFieldInfo f)
             {
@@ -865,11 +865,10 @@ namespace Bench
                 return true;
             }
 
-            // a wide integer declares 'N' and takes a string or a number; every other
-            // shape is exact
+            // a wide integer declares 'N' and takes a string; every other shape is exact
             static bool TableShapeMatches(char want, char got)
             {
-                return want == got || (want == 'N' && (got == 's' || got == 'n'));
+                return want == got || (want == 'N' && got == 's');
             }
 
             static char Shape(TableFieldInfo f)
@@ -2656,8 +2655,9 @@ namespace Bench
                 }
                 if (TableWideJson(f) && Peek(text, ref input) == '"')
                 {
-                    // a wide integer reads as a string OR a number (§16.2); the string
-                    // holds the same digits, judged by the same integer-token rule
+                    // Wide values read from strings (§16.2), with the same
+                    // integer-token rule applied to their contents. Map keys pass their
+                    // already-decoded string body as numeric text below.
                     if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
                     Span<char> wideToken = stackalloc char[MaxNumber];
                     if (body.Length <= wideToken.Length)
@@ -3523,10 +3523,17 @@ namespace Bench
             internal const int WireWhole = 0, WireDamaged = 1, WireCountCap = 2, WireBlobShared = 3;
             internal static int WireCheck(ReadOnlySpan<byte> body, ReadOnlySpan<byte> ids, bool announcement, out bool nonFinite)
             {
-                WireWalk w = new WireWalk { Ids = ids, Words = (ids.Length / 8 + 64) / 64, Announcement = announcement };
+                int words = (ids.Length / 8 + 64) / 64;
+                Span<ulong> used = stackalloc ulong[words];
+                WireWalk w = new WireWalk { Ids = ids, Words = words, Announcement = announcement, UsedIds = used };
                 try
                 {
                     w.Root(body);
+                    // THE ID TABLE IS ITS FIRST-USE ORDER (docs/SPEC-TABLES.md §3,
+                    // docs/rulings.json reads-refuse-non-canonical): an entry no
+                    // reference names, or one met out of its place, is a spelling no
+                    // conforming writer produces. Judged after every other condition.
+                    if (w.Fail == WireWhole && (w.OutOfOrder || w.Used != ids.Length / 8)) { w.Fail = WireDamaged; }
                     nonFinite = w.NonFinite;
                     return w.Fail;
                 }
@@ -3535,8 +3542,19 @@ namespace Bench
             ref struct WireWalk
             {
                 public ReadOnlySpan<byte> Ids, Table;
-                public int Words, Depth, Fail, Nodes, EdgeCount;
-                public bool Announcement, NonFinite, Present;
+                public int Words, Depth, Fail, Nodes, EdgeCount, Used;
+                public bool Announcement, NonFinite, Present, OutOfOrder;
+                // UsedIds marks each id-table reference the walk has resolved; Used
+                // counts them. The table is distinct, so first-use order holds while
+                // each newly met reference is the next entry.
+                public Span<ulong> UsedIds;
+                void Use(ulong reference)
+                {
+                    int r = (int)reference;
+                    if ((UsedIds[r >> 6] & (1ul << (r & 63))) != 0) { return; }
+                    UsedIds[r >> 6] |= 1ul << (r & 63);
+                    if (r != ++Used) { OutOfOrder = true; }
+                }
                 // Edges holds every non-null kind 17 payload in wire order, the root
                 // body's first and then each record's; Starts[k] is node k's first edge
                 // (node 0 the root, node k record k).
@@ -3597,6 +3615,9 @@ namespace Bench
                             off += (int)length; records++;
                         }
                         if (declared != (ulong)records) { Damage(); return; }
+                        // A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL
+                        // (§3.1): a table of no records is refused, not read.
+                        if (records == 0) { Damage(); return; }
                         Starts = System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
                         Starts[0] = 0; Starts[1] = rootEdges;
                         off = first;
@@ -3605,6 +3626,7 @@ namespace Bench
                             Leb(t, ref off, out ulong reference); Leb(t, ref off, out ulong length);
                             ReadOnlySpan<byte> rec = t.Slice(off, (int)length); off += (int)length;
                             ulong id = Read64(Ids, (int)(reference - 1) * 8);
+                            Use(reference);
                             // A BLOB RECORD IS ITS BYTES (§2.5, §3.1): a text blob's content
                             // rule is a wire-alone condition
                             if (id == StringTypeId) { if (!TextValid(rec)) { Damage(); return; } }
@@ -3676,11 +3698,16 @@ namespace Bench
                 {
                     Span<ulong> seen = stackalloc ulong[Words];
                     int off = 0;
+                    bool tableSeen = false;
                     while (true)
                     {
                         if (!Leb(buf, ref off, out ulong reference)) { return Damage(); }
                         if (reference == 0) { return off == buf.Length || Damage(); }
+                        // A NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field
+                        // after it is a node table out of its place.
+                        if (tableSeen) { return Damage(); }
                         if (reference > (ulong)(Ids.Length / 8)) { return Damage(); }
+                        Use(reference);
                         int r = (int)reference;
                         if ((seen[r >> 6] & (1ul << (r & 63))) != 0) { return Damage(); }
                         seen[r >> 6] |= 1ul << (r & 63);
@@ -3696,6 +3723,7 @@ namespace Bench
                             if (!root || kind != 12) { return Damage(); }
                             if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                             Table = buf.Slice(off, (int)n); Present = true; off += (int)n;
+                            tableSeen = true;
                             continue;
                         }
                         if (!Payload(buf, ref off, kind)) { return false; }
@@ -3719,6 +3747,7 @@ namespace Bench
                             Edge(index); return true;
                         case 30:
                             if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
+                            if (variant != 0) { Use(variant); }
                             return true;
                         case 15: return Union(buf, ref off);
                         case 12:
@@ -3803,6 +3832,7 @@ namespace Bench
                     for (ulong i = 0; i < count; i++)
                     {
                         if (!Leb(b, ref off, out ulong key) || key == 0 || key > (ulong)(Ids.Length / 8)) { return Damage(); }
+                        Use(key);
                         int k = (int)key;
                         if ((seen[k >> 6] & (1ul << (k & 63))) != 0) { return Damage(); }
                         seen[k >> 6] |= 1ul << (k & 63);
@@ -3820,6 +3850,7 @@ namespace Bench
                     if (!Leb(buf, ref off, out ulong arm)) { return Damage(); }
                     if (arm == 0) { return true; }
                     if (arm > (ulong)(Ids.Length / 8) || off >= buf.Length) { return Damage(); }
+                    Use(arm);
                     byte kind = buf[off++];
                     if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                     off += (int)n;
@@ -3907,7 +3938,8 @@ namespace Bench
                         else if (f.Kind == 15)
                         {
                             object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                            if (tag > (ulong)f.EnumMax) { return false; }
+                            // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
+                            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                             if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
                         }
                         else if (f.Kind == 17)
@@ -4569,7 +4601,8 @@ namespace Bench
             static bool MessageRides(object value, TableFieldInfo f)
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
-                if (!f.Optional && f.Counted) { return f.GetCount(value) != 0; }
+                // text or bytes with a declared default elide at it, as Rides says
+                if (!f.Optional && f.Counted && f.DefaultBytes == null) { return f.GetCount(value) != 0; }
                 return Rides(value, f);
             }
             static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
@@ -4819,6 +4852,14 @@ namespace Bench
                 if (value != null) { type.Reset(value); }
                 Span<ulong> few = stackalloc ulong[16];
                 int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                // THE SENDER'S OWN BUILD VERSION IS THIS READER'S (§3.3 (a), (b)):
+                // there every field's default and every record's field order are this
+                // reader's, so a field it does not declare, a field out of declaration
+                // order and a field stored at the default the writer elides are
+                // spellings no conforming writer produces (docs/rulings.json
+                // reads-refuse-non-canonical). Under another build none is judged.
+                bool same = d.Vocabulary.BuildVersion == tableOwnVocabulary.BuildVersion;
+                int last = -1;
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -4826,13 +4867,40 @@ namespace Bench
                     if (Reserved(entry.Id) || !SeenOnce(few, ref count, ref more, entry.Id)) { return false; }
                     TableFieldInfo field = FindField(type, entry.Id);
                     if (field == null)
-                    { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
+                    {
+                        if (same) { return false; }
+                        d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue;
+                    }
+                    if (same && field.Ordinal <= last) { return false; }
+                    last = field.Ordinal;
                     if (!MessageCompatible(entry, field, out bool widened))
                     { return Fail(d.Report, "kind_mismatch"); }
+                    // §3.3 (c): a writer elides a union FIELD at None at every build,
+                    // so arm reference 0 stored at one is refused whatever build
+                    // announced it. A None element of an array of unions is positional.
+                    if (entry.Kind == 15 && !field.IsArray && !field.Required)
+                    { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
                     if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
                     if (widened && !field.MapKey) { d.Report.Widened++; }
                     if (field.Optional && value != null) { field.SetPresent(value, true); }
+                    if (same && value != null && MessageAtDefault(value, field)) { return false; }
                 }
+            }
+            // MessageAtDefault is the message writer's elision (MessageRides) of a
+            // field that is neither optional nor required, whatever its guard says.
+            static bool MessageAtDefault(object value, TableFieldInfo f)
+            {
+                if (f.Optional || f.Required) { return false; }
+                if (f.Counted)
+                {
+                    int n = f.GetCount(value);
+                    if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+                    return n == 0;
+                }
+                if (!f.IsArray) { return DefaultElement(value, f, 0); }
+                if (f.Kind == 13 && f.KeyId == null) { return false; }
+                for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }
+                return true;
             }
             static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
             {
@@ -5066,6 +5134,7 @@ namespace Bench
             {
                 long at = record + f.NativeOffset;
                 if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
+                if (f.Optional && !f.GetPresent(value)) { return true; }
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
                 System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
@@ -5077,7 +5146,7 @@ namespace Bench
                 }
                 if (f.Kind == 12 && !f.TextList)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
-                int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
+                int count = f.IsArray ? live : 1;
                 if (f.GetBuffer != null)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
                 if (f.Dynamic)
@@ -5089,8 +5158,9 @@ namespace Bench
                 }
                 for (int i = 0; i < count; i++)
                 {
-                    // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a NaN or an infinity refuses the cook
-                    if ((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))) { return false; }
+                    // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a debug
+                    // assert, as every write check on this leg is (docs/SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
                     long element = at + (long)i * f.NativeElementSize, before = extent;
                     if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
                     if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -5113,7 +5183,7 @@ namespace Bench
                 if (f.Kind == 15)
                 {
                     object union = f.GetChild(value, index); ulong tag = f.Arms.GetTag(union);
-                    if (tag > (ulong)f.EnumMax) { return false; }
+                    System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                     w.Put(at, tag, f.Arms.NativeTagSize);
                     TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                     return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
@@ -5166,6 +5236,7 @@ namespace Bench
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
+                if (f.Optional && !f.GetPresent(value)) { return true; }
                 if (f.Unbounded) { int length = f.GetCount(value); System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
                 if (f.Dynamic)
                 {
@@ -5180,7 +5251,7 @@ namespace Bench
                     else if (f.Kind == 15)
                     {
                         object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                        if (tag > (ulong)f.EnumMax) { return false; }
+                        System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                         TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                         if (arm != null && !NativeExtentSize(union, arm, ref at)) { return false; }
                     }
@@ -5284,34 +5355,39 @@ namespace Bench
                     object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
                     int count = Count(child, text);
                     System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
-                    return TextValid(text.GetBuffer(child).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(TextValid(text.GetBuffer(child).AsSpan(0, count)));
+                    return true;
                 }
                 if (!f.IsArray && f.Kind == 12)
                 {
                     int count = Count(value, f);
                     System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
-                    return TextValid(f.GetBuffer(value).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(TextValid(f.GetBuffer(value).AsSpan(0, count)));
+                    return true;
                 }
-                if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
-                if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
-                // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
-                // §3.3): collect precedes measure and the first output byte, so Measure
-                // and Save both answer -1.
-                if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, f.GetRaw(value, i)); }
+                // EVERY WRITE CHECK IS A DEBUG ASSERT (docs/SPEC.md §5.1, C# is an
+                // assert leg): a required value off its range, a NaN or an infinity
+                // (docs/SPEC-TABLES.md §3.3), an enum or union tag no variant names.
+                // A Release build carries none of them; correct writes are the
+                // programmer's job.
+                if (f.RequiredValidRaw != null) { System.Diagnostics.Debug.Assert(f.RequiredValidRaw(f.GetRaw(value, i))); }
+                if (f.RequiredValidWide != null) { System.Diagnostics.Debug.Assert(f.RequiredValidWide(f.GetWide(value, i))); }
+                if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }
                 if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
                 if (f.Kind == 15)
                 {
                     object union = f.GetChild(value, i);
                     ulong tag = f.Arms.GetTag(union);
                     if (tag == 0) { return true; }
-                    if (tag > (ulong)f.EnumMax || !Named(f.EnumName(tag))) { return false; }
+                    System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
                     return ids.Add(f.VariantId(tag)) && CollectPayload(union, f.Arms.Arms[(int)tag].Field, ref ids);
                 }
                 if (f.Kind == 30)
                 {
                     ulong v = f.GetRaw(value, i);
                     if (v == 0) { return true; }
-                    return v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && ids.Add(f.VariantId(v));
+                    System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+                    return ids.Add(f.VariantId(v));
                 }
                 return true;
             }
@@ -5320,14 +5396,15 @@ namespace Bench
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
                 if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
-                if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
+                if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFits(value, f)); }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
                 {
                     if (f.KeyId != null)
                     {
                         if (DefaultElement(value, f, i)) { continue; }
-                        if (!Named(f.KeyName((ulong)i + 1)) || !ids.Add(f.KeyId((ulong)i + 1))) { return false; }
+                        System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
+                        if (!ids.Add(f.KeyId((ulong)i + 1))) { return false; }
                     }
                     if (!CollectElement(value, f, i, ref ids)) { return false; }
                 }
@@ -6192,7 +6269,7 @@ namespace Bench
                 if (field.TextTotal == 0) { return true; }
                 long spent = extra;
                 TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
-                for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); if (length < 0) { return false; } spent += length; if (spent > field.TextTotal) { return false; } } }
+                for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); System.Diagnostics.Debug.Assert(length >= 0); spent += length; if (spent > field.TextTotal) { return false; } } }
                 return spent <= field.TextTotal;
             }
             internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
@@ -6283,6 +6360,15 @@ namespace Bench
             // fixed form refuses any other value, as the variable form does. Copy
             // would land a forged byte as truth.
             public const byte BoolByte = 9;
+            // A DEAD RANGE ALL-ZERO CHECK (docs/rulings.json fixed-dead-bytes-are-zero;
+            // docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11): Src is the range start
+            // and Size its length. A non-zero byte inside refuses wire_damaged.
+            public const byte Dead = 10;
+
+            // Meta on a BoolByte entry: the byte is an optional's PRESENT flag, and
+            // Aux is the payload's source byte count behind it. A present byte of 0
+            // makes that whole payload dead (docs/FIXED-FORM-ALGORITHM.md §4.5).
+            public const byte BoolPresent = 1;
 
             // Arg on a Text entry
             public const byte TextUtf8 = 1;
@@ -7469,6 +7555,17 @@ namespace Bench
                 return end;
             }
 
+            // DeadZero answers "wire_damaged" when the dead range [start,end) holds a
+            // byte other than zero, and null otherwise. EVERY DEAD BYTE IN A FIXED
+            // RECORD IS ZERO ON WRITE AND REFUSED ON READ WHEN NOT ZERO
+            // (docs/rulings.json fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md
+            // §4.5, §5.3 step 11). The range is never read as a value.
+            public static string DeadZero(ReadOnlySpan<byte> src, uint start, uint end)
+            {
+                for (uint i = start; i < end; ++i) { if (src[(int)i] != 0) { return "wire_damaged"; } }
+                return null;
+            }
+
             // THE WIDEN SCRATCH IS THE CALLER'S, AND IT IS HOISTED OUT OF THE RECORD
             // LOOP. Run is called ONCE PER RECORD, so a new byte[runs * dw] taken
             // inside the FlatWiden case allocated once per widened run per record —
@@ -7556,6 +7653,16 @@ namespace Bench
                             {
                                 ulong raw = src[(int)p.Src];
                                 if (raw > 1) { return "wire_damaged"; }
+                                // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                                // fixed-dead-bytes-are-zero): a present byte of 0 makes
+                                // the whole payload behind it dead, and a non-zero dead
+                                // byte refuses wire_damaged. Aux is the payload's source
+                                // byte count (§4.5).
+                                if (p.Meta == BoolPresent && raw == 0 && p.Aux != 0)
+                                {
+                                    string why = DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                    if (why != null) { return why; }
+                                }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
                                 break;
                             }
@@ -7614,6 +7721,15 @@ namespace Bench
                             {
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                                // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD
+                                // (docs/rulings.json fixed-dead-bytes-are-zero): Aux is
+                                // one element's source byte count, Size the writer's
+                                // bound in elements (§4.5).
+                                if (p.Aux != 0 && (uint)v < p.Size)
+                                {
+                                    string why = DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                    if (why != null) { return why; }
+                                }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                                 break;
                             }
@@ -7622,6 +7738,14 @@ namespace Bench
                                 uint cap = p.Size;
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                                // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                                // DEAD (docs/rulings.json fixed-dead-bytes-are-zero):
+                                // a non-zero dead byte refuses wire_damaged (§4.5).
+                                if ((uint)v < p.Size)
+                                {
+                                    string why = DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                    if (why != null) { return why; }
+                                }
                                 ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                                 // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
                                 // ELSE, and a violation REFUSES BY NAME, the verdict the
@@ -7729,6 +7853,16 @@ namespace Bench
                                 {
                                     slots[(int)p.Dst].SetRawReport?.Invoke(dst, p.Aux, report);
                                 }
+                                break;
+                            }
+                        case Dead:
+                            {
+                                // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                                // fixed-dead-bytes-are-zero): an inactive union arm's
+                                // span under tag 0, and the tail past a narrower taken
+                                // arm (§4.5). The range is never read as a value.
+                                string why = DeadZero(src, p.Src, p.Src + p.Size);
+                                if (why != null) { return why; }
                                 break;
                             }
                         default: break;
@@ -8504,15 +8638,15 @@ namespace Bench
             if (!TableWire.CollectField(v, fields[12], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[13], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[14], ref ids)) return false;
-            if (!float.IsFinite(v.AimX)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.AimX));
             if (BitConverter.SingleToUInt32Bits(v.AimX) != 0x00000000u && !ids.Add(0xdbaf7be5e24296c9ul)) return false;
-            if (!float.IsFinite(v.AimY)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.AimY));
             if (BitConverter.SingleToUInt32Bits(v.AimY) != 0x00000000u && !ids.Add(0xdbaf7ae5e2429516ul)) return false;
-            if (!float.IsFinite(v.AimZ)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.AimZ));
             if (BitConverter.SingleToUInt32Bits(v.AimZ) != 0x00000000u && !ids.Add(0xdbaf79e5e2429363ul)) return false;
-            if (!float.IsFinite(v.Recoil)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Recoil));
             if (BitConverter.SingleToUInt32Bits(v.Recoil) != 0x00000000u && !ids.Add(0x9cef31fff7e2e457ul)) return false;
-            if (!double.IsFinite(v.Drift)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Drift));
             if (BitConverter.DoubleToUInt64Bits(v.Drift) != 0x0000000000000000ul && !ids.Add(0x5ab3f9c9341f6c04ul)) return false;
             if (!TableWire.CollectField(v, fields[20], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[21], ref ids)) return false;
@@ -9415,9 +9549,9 @@ namespace Bench
                     default: break;
                 }
             }
-            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; }
-            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; }
-            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; }
+            if (value.AimX < -1.0f || value.AimX > 1.0f) { clamped++; } else if (value.AimX == 0) { value.AimX = 0.0f; }
+            if (value.AimY < -1.0f || value.AimY > 1.0f) { clamped++; } else if (value.AimY == 0) { value.AimY = 0.0f; }
+            if (value.AimZ < -1.0f || value.AimZ > 1.0f) { clamped++; } else if (value.AimZ == 0) { value.AimZ = 0.0f; }
             if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)) || ((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) { clamped++; }
             if (value.Ping > 64000) { clamped++; }
             // bits(24) width clamp

@@ -21,14 +21,14 @@ public final class TableVocabulary {
                 (byte) 0x01,
                 (byte) 0x01,
                 (byte) 0x09,
-                (byte) 0x52,
-                (byte) 0xa8,
-                (byte) 0xbf,
+                (byte) 0xf0,
+                (byte) 0xff,
+                (byte) 0xdb,
+                (byte) 0xeb,
                 (byte) 0x78,
-                (byte) 0x93,
-                (byte) 0x55,
-                (byte) 0xd3,
-                (byte) 0x41,
+                (byte) 0xad,
+                (byte) 0x2d,
+                (byte) 0xba,
                 (byte) 0x02,
                 (byte) 0x0e,
                 (byte) 0xcf,
@@ -908,8 +908,8 @@ public final class TableVocabulary {
             };
 
     // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
-    // the peer's against (docs/SPEC-TABLES.md §3.3).
-    private static final long tableBuildVersion = 0x41d3559378bfa852L;
+    // the endpoint's against (docs/SPEC-TABLES.md §3.3).
+    private static final long tableBuildVersion = 0xba2dad78ebdbfff0L;
 
     public static int announceMeasure() {
         return tableAnnouncement.length;
@@ -955,7 +955,7 @@ public final class TableVocabulary {
         public String reason;
         public int unknown;
         public int widened;
-        // The peer's and the unit's own build versions a strict announcement
+        // The endpoint's and the unit's own build versions a strict announcement
         // refusal carries (docs/SPEC-TABLES.md §3.3).
         public long buildVersionRemote;
         public long buildVersionOwn;
@@ -1001,6 +1001,15 @@ public final class TableVocabulary {
         this.strict = false;
         this.maxEntries = capacity;
         this.maxBytes = 65536;
+    }
+
+    // ownBuild answers whether the sender announced this unit's own build
+    // version: the one case where a reader knows the sender's declared
+    // defaults exactly, so a field written at the default it elides is not the
+    // one encoding (§3.3 (a)). Under another build version the sender's
+    // default is not this reader's to know, and the field reads as today.
+    boolean ownBuild() {
+        return announced && buildVersion == tableBuildVersion;
     }
 
     // NO RE-ANNOUNCEMENT, EVER, and REFUSAL IS TERMINAL (§3.3): a first
@@ -1169,7 +1178,7 @@ public final class TableVocabulary {
         }
         // "STRICT MODE IS OPT-IN, and the default is unchanged." With 'strict'
         // set, an announcement whose build version is not the unit's own is
-        // refused by name, sets no vocabulary, keeps the peer's build version,
+        // refused by name, sets no vocabulary, keeps the endpoint's build version,
         // moves no counter, is never damage, and is terminal like every
         // refused first announcement (§3.3).
         if (v.strict && v.buildVersion != tableBuildVersion) {
@@ -1460,28 +1469,17 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
-            // (§3.3): a string element's shape is the max its kind names.
-            if (!knownKind(elem)) {
+            // AN ARRAY OR KEYED ELEMENT IS FRAMING DAMAGE (§3.3): no
+            // declaration produces a list of lists, so an element kind of 14
+            // or 16 is refused before the element shape is decoded.
+            if (!knownKind(elem) || elem == 14 || elem == 16) {
                 return false;
             }
+            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+            // (§3.3): a string element's shape is the max its kind names.
             e.element = shapeRead(r, elem);
             if (e.element == null) {
                 return false;
-            }
-            if (elem == 14 || elem == 16) {
-                if (!r.has(1)) {
-                    return false;
-                }
-                int inner = r.u8();
-                if (!knownKind(inner)) {
-                    return false;
-                }
-                // The inner element's own shape follows its kind byte, and a
-                // kind 12 there reads its max like any other announced shape.
-                if (inner == 12 && shapeRead(r, inner) == null) {
-                    return false;
-                }
             }
         }
         return !r.err;

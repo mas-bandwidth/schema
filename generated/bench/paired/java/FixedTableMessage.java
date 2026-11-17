@@ -54,6 +54,7 @@ public final class FixedTableMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, FixedTableFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -70,6 +71,11 @@ public final class FixedTableMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x7ce4fd94 && idLo == 0x30e80cea) {
+                if (0 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 13 || elemKind != 0) {
@@ -84,13 +90,25 @@ public final class FixedTableMessage {
                         continue;
                     }
                 }
+                long canonAt = r.at;
                 if (!BenchMixedMessage.loadMessageBody(r, v.value)) {
+                    return false;
+                }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.at - canonAt == (long) r.vocab.refBits) {
+                    r.report.refuse("non_canonical");
                     return false;
                 }
                 if (widened) {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.damaged = true;
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;

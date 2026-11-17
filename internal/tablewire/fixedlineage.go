@@ -18,6 +18,7 @@ package tablewire
 
 import (
 	"encoding/binary"
+	"fmt"
 	"slices"
 	"sync"
 
@@ -113,10 +114,10 @@ func parseFixedLayout(b []byte) *fixedNode {
 
 // decodeFixedLineage reads one record an OLDER writer of this table wrote,
 // under the lock's layout for its hash. It answers a refusal's name, or "".
-func decodeFixedLineage(m *tabletext.Model, inst *tabletext.Instance, hash uint64, layout, rest []byte, report *tabletext.Report) string {
+func decodeFixedLineage(m *tabletext.Model, inst *tabletext.Instance, hash uint64, layout, rest []byte, report *tabletext.Report) (string, error) {
 	lock, err := unitLock(m.Unit)
 	if err != nil || lock == nil {
-		return FixedReasonLayoutUnknown
+		return FixedReasonLayoutUnknown, nil
 	}
 	entries := lockfile.Lineage(lock, inst.Def.WireName())
 	at := -1
@@ -126,31 +127,45 @@ func decodeFixedLineage(m *tabletext.Model, inst *tabletext.Instance, hash uint6
 		}
 	}
 	if at < 0 {
-		return FixedReasonLayoutUnknown
+		return FixedReasonLayoutUnknown, nil
 	}
 	if at < lockfile.Floor(lock, inst.Def.WireName()) {
-		return FixedReasonLayoutUnsupported
+		return FixedReasonLayoutUnsupported, nil
 	}
 	known := entries[at]
 	if string(layout) != string(known.Layout) {
-		return FixedReasonLayoutMalformed
+		return FixedReasonLayoutMalformed, nil
 	}
 	root := parseFixedLayout(known.Layout)
 	if root == nil || root.kind != ir.TableKindTable {
-		return FixedReasonLayoutMalformed
+		return FixedReasonLayoutMalformed, nil
 	}
 	record := 8 + int(known.Record)
 	if len(rest)%record != 0 || len(rest) == 0 {
-		return FixedReasonTruncated
+		return FixedReasonTruncated, nil
 	}
 	if len(rest) != record {
-		return FixedReasonBatchTooLarge
+		return FixedReasonBatchTooLarge, nil
 	}
 	if binary.LittleEndian.Uint64(rest) != hash {
-		return FixedReasonLayoutMalformed
+		return FixedReasonLayoutMalformed, nil
+	}
+	// The layout describes widths, not the writer's source ranges or count
+	// minima. When the lock captured its checked writer closure, validate the
+	// entire record against that closure before translating it to the reader.
+	// A legacy entry without a snapshot cannot establish the writer's source
+	// constraints. Report a setup error, not a verdict about this file.
+	if known.Writer == nil {
+		return "", fmt.Errorf("fixed table %s writer 0x%016x: historical writer metadata is missing; import the trusted archived schema with schema lock --writer and --from", inst.Def.WireName(), hash)
+	}
+	var writerReport tabletext.Report
+	writer := m.New(known.Writer)
+	validator := &fixedDecoder{m: m, report: &writerReport}
+	if reason := validator.body(rest[8:], writer); reason != "" {
+		return reason, nil
 	}
 	d := &lineageDecoder{m: m, report: report}
-	return d.table(root, rest[8:], inst)
+	return d.table(root, rest[8:], inst), nil
 }
 
 type lineageDecoder struct {
@@ -173,9 +188,10 @@ func (d *lineageDecoder) table(w *fixedNode, b []byte, inst *tabletext.Instance)
 		switch {
 		case !named:
 			d.report.Unknown++ // a field the reader no longer declares (§4)
-		case inst.Fields[i].Def.Deprecated:
-			// the reader yields its declared default out of a deprecated slot
 		default:
+			// A DEPRECATED FIELD IS CARRIED LIKE ANY FIELD (docs/SPEC-TABLES.md
+			// §3.4, §22.6; docs/rulings.json fixed-deprecated-field-is-carried):
+			// the older writer supplied it, so the reader lands the stored value.
 			if reason := d.field(c, b[off:off+c.size], &inst.Fields[i]); reason != "" {
 				return reason
 			}
@@ -239,7 +255,7 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 		n := theirs
 		if f.Array == ir.ArrayCounted {
 			count := int32(binary.LittleEndian.Uint32(b))
-			if count < 0 || int64(count) > theirs || int64(count) > f.ArrayBound {
+			if count < 0 || int64(count) < f.ArrayMin || int64(count) > theirs || int64(count) > f.ArrayBound {
 				return FixedReasonCountOverBound
 			}
 			if reason := fixedDead(b[head+int64(count)*elem.size : w.size]); reason != "" {

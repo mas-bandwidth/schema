@@ -124,7 +124,7 @@ const quiet = (r) => r.unknown === 0 && r.mismatch === 0 && r.oor === 0 && r.rep
 
 // 3. the refusals, by name, and damage, by flag
 {
-  const good = newer.RecSave(newer.RecFromJson('{"mid": 1}', new newer.TableVariableReport()));
+  const good = newer.RecSave(newer.RecFromJson('{"mid": "1"}', new newer.TableVariableReport()));
   check("empty wire", good !== null, null);
   const forms = [[2, "message_form_as_file"], [3, "newer_form"], [0, "newer_form"], [0xff, "newer_form"]];
   for (const [form, want] of forms) {

@@ -49,6 +49,15 @@ import (
 // A LineageEntry is ONE LOCKED LAYOUT of a fixed table: a version of the
 // record, in the form COMPILE reads it.
 type LineageEntry struct {
+	// Writer is the complete evaluated writer closure. Nil means a legacy lock
+	// did not capture it; it never means the writer had no constraints.
+	Writer *ir.Struct
+
+	// LegacyLayoutOnly records an explicit trusted-source import for an old
+	// layout-only key. The old key did not bind writer constraints; this flag
+	// never asserts that colliding old files can be distinguished.
+	LegacyLayoutOnly bool
+
 	// Wire is the eight bytes the file header and every record carry — fnv1a64
 	// over Layout and then Digest (algorithm §5.2's HASH). It is the lineage's
 	// key and the only fact a file is matched on.
@@ -85,21 +94,10 @@ type LineageEntry struct {
 	Reason string
 }
 
-// lineageWireHash is algorithm §5.2's HASH: fnv1a64 over the layout bytes and
-// then the definitions digest.
-//
-// ir.TableFixedLayoutHash takes the schema and COMPUTES the digest; a lineage
-// entry stores the two runs because a historical layout has no live *Struct.
-// Hashing the concatenation with a nil schema is the same walk: FNV is
-// sequential, and a nil schema is an empty extra digest.
+// lineageWireHash preserves an entry's recorded digest scheme. A historical
+// key is raw FNV over its exact saved bytes, never a current-schema rehash.
 func lineageWireHash(layout, digest []byte) uint64 {
-	if len(digest) == 0 {
-		return ir.TableFixedLayoutHash(layout, nil)
-	}
-	both := make([]byte, 0, len(layout)+len(digest))
-	both = append(both, layout...)
-	both = append(both, digest...)
-	return ir.TableFixedLayoutHash(both, nil)
+	return ir.TableFixedLayoutHashRecorded(layout, digest)
 }
 
 // LineageHash is THE ROLL-UP: one number over the SET of lineage lines, in
@@ -132,6 +130,12 @@ func LineageHash(entries []LineageEntry) uint64 {
 	var b strings.Builder
 	for _, e := range entries {
 		fmt.Fprintf(&b, "lineage wire=0x%016x", e.Wire)
+		if e.Writer != nil {
+			fmt.Fprintf(&b, " writer=%x", writerBytes(e.Writer))
+		}
+		if e.LegacyLayoutOnly {
+			b.WriteString(" legacy-layout-only")
+		}
 		if e.Retired {
 			b.WriteString(" retired")
 		}
@@ -171,7 +175,12 @@ func plural(n int, one, many string) string {
 func renderLineage(u *ir.Unit, st *ir.Struct) []LineageEntry {
 	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
 	digest := ir.TableFixedDefinitionsDigest(st)
+	var writer *ir.Struct
+	if ir.TableFixedEmitted(u, st) {
+		writer = st
+	}
 	return []LineageEntry{{
+		Writer: writer,
 		Wire:   lineageWireHash(layout, digest),
 		Layout: layout,
 		Digest: digest,
@@ -186,6 +195,12 @@ func (e LineageEntry) line() string {
 	s := fmt.Sprintf("lineage wire=0x%016x record=%d bytes=%x", e.Wire, e.Record, e.Layout)
 	if len(e.Digest) != 0 {
 		s += fmt.Sprintf(" digest=%x", e.Digest)
+	}
+	if e.Writer != nil {
+		s += fmt.Sprintf(" writer=%x", writerBytes(e.Writer))
+	}
+	if e.LegacyLayoutOnly {
+		s += " legacy-layout-only"
 	}
 	if e.Retired {
 		s += " retired"
@@ -205,6 +220,7 @@ func (e LineageEntry) line() string {
 // and the caller is the only place the table's name is in scope.
 func parseLineage(line, table string) (LineageEntry, error) {
 	e := LineageEntry{}
+	var writerData []byte
 	body := strings.TrimSpace(line)
 	if at := strings.Index(body, " reason="); at >= 0 {
 		e.Reason = strings.TrimSpace(body[at+len(" reason="):])
@@ -219,6 +235,8 @@ func parseLineage(line, table string) (LineageEntry, error) {
 		}
 		seen[key] = true
 		switch {
+		case !valued && key == "legacy-layout-only":
+			e.LegacyLayoutOnly = true
 		case !valued && key == "retired":
 			e.Retired = true
 		case key == "wire":
@@ -239,6 +257,15 @@ func parseLineage(line, table string) (LineageEntry, error) {
 				return LineageEntry{}, fmt.Errorf("%q is not the layout's bytes as hex", tok)
 			}
 			e.Layout = b
+		case key == "writer":
+			b, err := hex.DecodeString(val)
+			if err != nil {
+				return LineageEntry{}, fmt.Errorf("writer snapshot is not hex: %w", err)
+			}
+			if len(b) == 0 {
+				return LineageEntry{}, fmt.Errorf("writer snapshot is empty")
+			}
+			writerData = b
 		case key == "digest":
 			b, err := hex.DecodeString(val)
 			if err != nil {
@@ -316,6 +343,16 @@ func parseLineage(line, table string) (LineageEntry, error) {
 	count := binary.LittleEndian.Uint32(e.Layout[0:4])
 	if count == 0 || int64(count)*int64(layoutEntryBytes)+int64(layoutHeaderBytes) != int64(len(e.Layout)) {
 		return LineageEntry{}, fmt.Errorf("lineage wire=0x%016x carries malformed layout: layout_count_mismatch", e.Wire)
+	}
+	if writerData != nil {
+		var err error
+		e.Writer, err = parseWriter(writerData, int(count))
+		if err != nil {
+			return LineageEntry{}, err
+		}
+	}
+	if err := validateWriter(e, table); err != nil {
+		return LineageEntry{}, err
 	}
 	return e, nil
 }
@@ -421,10 +458,40 @@ func salvageLineage(locked, live *Unit) {
 		if lk.Decl != DeclFixedTable || len(lk.Lineage) != 0 {
 			continue
 		}
-		if lv := live.Table(lk.Name); lv != nil && lv.Decl == DeclFixedTable {
-			lk.Lineage = append([]LineageEntry(nil), lv.Lineage...)
+		if lv := live.Table(lk.Name); lv != nil && lv.Decl == DeclFixedTable && lk.Layout == lv.Layout && len(lv.Lineage) == 1 {
+			// The immediate pre-lineage v6 writer used layout-only identity.
+			// Reconstruct only an unchanged declaration's layout, never a wider
+			// reader's layout or historical constraints from current source.
+			old := lv.Lineage[0]
+			old.Digest = nil
+			old.Wire = lineageWireHash(old.Layout, nil)
+			old.Writer = nil
+			lk.Lineage = []LineageEntry{old}
 		}
 	}
+}
+
+// checkLineageWireFacts closes the same-key shortcut as well as append's
+// duplicate-key guard. Hash equality never permits different stored wire facts,
+// even when historical writer metadata was not captured.
+func checkLineageWireFacts(table string, old, next LineageEntry) error {
+	if old.Wire != next.Wire {
+		return nil
+	}
+	var changed []string
+	if !bytes.Equal(old.Layout, next.Layout) {
+		changed = append(changed, "layout bytes")
+	}
+	if !bytes.Equal(old.Digest, next.Digest) {
+		changed = append(changed, "definitions digest")
+	}
+	if old.Record != next.Record {
+		changed = append(changed, "record-body size")
+	}
+	if len(changed) != 0 {
+		return fmt.Errorf("fixed table %s: wire identity collision wire=0x%016x: equal keys carry different %s; historical facts cannot be replaced or treated as unchanged", table, old.Wire, strings.Join(changed, ", "))
+	}
+	return nil
 }
 
 // mergeLineage carries the committed history forward onto the rendering that is
@@ -450,21 +517,19 @@ func mergeLineage(locked, live *Unit) error {
 		cur := lv.Lineage[0]
 		history := append([]LineageEntry(nil), lk.Lineage...)
 		last := history[len(history)-1]
+		if err := checkLineageWireFacts(lv.Name, last, cur); err != nil {
+			return err
+		}
 		if last.Wire == cur.Wire {
+			if last.Writer != nil && !sameWriterConstraints(last.Writer, cur.Writer) {
+				return fmt.Errorf("fixed table %s: distinct captured writer constraints share legacy wire=0x%016x; preserving the old snapshot requires a separate wire-identity correction, not an overwrite", lv.Name, cur.Wire)
+			}
 			lv.Lineage = history
 			continue
 		}
-		// THE DIGEST LANDING: a lock written with an empty digest recorded the
-		// layout-bytes-only hash. Filling the §13 digest moves the wire hash
-		// without moving a layout byte, which is not a new version — rewrite
-		// the last entry in place so the corpus does not grow a second lineage
-		// entry the day the digest fills. A later range change has a nonempty
-		// last.Digest and still appends.
-		if len(last.Digest) == 0 && bytes.Equal(last.Layout, cur.Layout) {
-			history[len(history)-1] = cur
-			lv.Lineage = history
-			continue
-		}
+		// Even a formerly digest-less layout may have shipped. Keep its exact
+		// wire facts and append the current hash; metadata migration never
+		// rewrites a historical identity in place.
 		history, err := appendLineage(lv.Name, history, cur)
 		if err != nil {
 			return err
@@ -524,6 +589,9 @@ func Warnings(paths []string) []string {
 // what `schema lock` is for.
 func diffLineage(lk, lv *Table, policy Policy) error {
 	if len(lk.Lineage) == 0 {
+		if lv != nil && lk.Layout != lv.Layout {
+			return fmt.Errorf("fixed table %s: this pre-lineage lock no longer matches the checked historical declaration; restore the exact historical source, migrate the lock, then evolve the schema — historical layout bytes cannot be reconstructed from a changed reader", lk.Name)
+		}
 		return fmt.Errorf("fixed table %s: the lock carries no lineage for it — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7); write it with `schema lock` (docs/SPEC-TABLES.md §2.10)",
 			lk.Name)
 	}
@@ -534,11 +602,14 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 			}
 		}
 	}
-	if policy != Current || len(lv.Lineage) != 1 {
+	if lv == nil || len(lv.Lineage) != 1 {
 		return nil
 	}
 	last, cur := lk.Lineage[len(lk.Lineage)-1], lv.Lineage[0]
-	if last.Wire == cur.Wire {
+	if err := checkLineageWireFacts(lk.Name, last, cur); err != nil {
+		return err
+	}
+	if policy != Current || last.Wire == cur.Wire {
 		return nil
 	}
 	return lineageDrift{stale(lk.Decl, lk.Name,

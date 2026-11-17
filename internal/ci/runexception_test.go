@@ -8,14 +8,14 @@ import (
 
 // TestRunExceptionsNameExistingTests holds every -run exception anchored in
 // make/go.mk or the Makefile to the test it excuses: the exception's where
-// must still name a `go test -run` recipe in that file, and every test-name
-// token in that recipe's pattern must name a test (or fuzz target) declared
-// in a _test.go file in the repo. An exception whose line has drifted, or
-// whose named test has been renamed or deleted, is stale and fails here
-// rather than silently exempting a pattern that selects nothing. Patterns
-// carrying a make variable or template ($( ... )) and intentional empty
-// patterns ('^$', paired with -fuzz) name no literal test and are checked
-// only for their anchor.
+// must still name a rule holding a `go test -run` recipe in that file, and
+// every test-name token in that recipe's pattern must name a test (or fuzz
+// target) declared in a _test.go file in the repo. An exception whose rule
+// no longer holds that pattern, or whose named test has been renamed or
+// deleted, is stale and fails here rather than silently exempting a pattern
+// that selects nothing. Patterns carrying a make variable or template
+// ($( ... )) and intentional empty patterns ('^$', paired with -fuzz) name no
+// literal test and are checked only for their anchor.
 func TestRunExceptionsNameExistingTests(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -43,7 +43,7 @@ func TestRunExceptionsNameExistingTests(t *testing.T) {
 	tokenRe := regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 	checked := 0
 	for _, e := range runPatternExceptions {
-		file, _, _ := strings.Cut(e.where, ":")
+		file, _, _ := strings.Cut(e.where, " ")
 		if file != "make/go.mk" && file != "Makefile" {
 			continue
 		}
@@ -54,7 +54,7 @@ func TestRunExceptionsNameExistingTests(t *testing.T) {
 		}
 		r, ok := recipesByWhere[e.where]
 		if !ok {
-			t.Errorf("%s: stale -run exception: no go test -run recipe at this line in %s; delete the exception or re-anchor it", e.where, file)
+			t.Errorf("%s: stale -run exception: no go test -run recipe under this rule in %s; delete the exception or update the rule", e.where, file)
 			continue
 		}
 		if strings.Contains(r.pattern, "$(") {

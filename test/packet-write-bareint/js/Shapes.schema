@@ -1,0 +1,34 @@
+package bareintshapes
+
+// The JavaScript leg's own shapes for the bare-integer width check
+// (SPEC §5.1): array elements and a union arm payload reach the same
+// writer check as a top-level field, and U128 is the one wide bare width
+// the shared list does not carry.
+
+type U128
+{
+    value uint128
+}
+
+type Elems
+{
+    values [3]int16
+    counts [..2]uint32
+    wide [2]int64
+}
+
+type Arm
+{
+    value int8
+}
+
+union Choice
+{
+    ping
+    arm Arm
+}
+
+type Holder
+{
+    choice Choice
+}

@@ -68,6 +68,14 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 		// length in [0, N], align, then the used bytes: the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7)
 		w.Pf("%sif %s < 0 || %s > %d { %s }\n", ind, length, length, t.Size, refuseRange)
+		if t.Kind == ir.TString {
+			// the used bytes hold the content the read accepts (SPEC §4.7,
+			// §5.1 row 8): well-formed UTF-8, then no zero byte, each
+			// refused by its own reason in every build
+			w.Pf("%sif !serialize_valid_utf8(%s[0..%s]) { return SERIALIZE_ERROR_INVALID_UTF8; } // malformed UTF-8 is not a value of the type\n", ind, expr, length)
+			c := w.tmp("c")
+			w.Pf("%sfor %s in %s[0..%s] { if %s == 0 { return SERIALIZE_ERROR_EMBEDDED_NUL; } } // a zero byte is not a value of the type\n", ind, c, expr, length, c)
+		}
 		w.Pf("%sschema_rt::wire_bits(s, l, %s as! u32, %d);\n", ind, length, bits)
 		w.streamCall(ind, "%sserialize_bytes(s, %s[0..%s]);\n", ind, expr, length)
 	case ir.TFixed:

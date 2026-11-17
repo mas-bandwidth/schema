@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"math"
+	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -21,6 +22,17 @@ import (
 // 14 array, 15 union, 16 enum-keyed array, 17 pointer, 30 enum, 32 no payload.
 // A body is `ref, kind, payload ... 0`; a reference is the 1-based slot of the
 // id table the vector names in `ids`.
+//
+// THE FILE'S ID TABLE IS IN FIRST-USE ORDER (docs/SPEC-TABLES.md §3), which a
+// reader holds too (§4, docs/rulings.json reads-refuse-non-canonical). A script
+// names its ids against a SHARED map (cfgIds, squadIds, listNodeIds, ...) so
+// that every script of one unit reads against one numbering; `bytes` then
+// numbers the file the way a writer would: the table is the slots the body
+// references, in the order of their first use, and every reference is moved to
+// its id's new slot. No byte but a reference moves, and a reference keeps its
+// width. A reference above the entry count names no entry and is left as it
+// is, so it stays above the count. framing_canonical_test.go holds every file
+// to the rule, and names the one vector whose table IS its defect.
 
 type framingVector struct {
 	name, unit, root string
@@ -242,24 +254,48 @@ func depthTables(levels int) []byte {
 	return body
 }
 
-// depthArrays is a root body whose one unknown field holds `levels` arrays
-// nested by value: each array carries one element of kind 14.
+// depthArrays is a root body whose one unknown field holds `levels` array and
+// table bodies nested by value. An array body's element kind is closed (§3),
+// so an array cannot carry another array directly; each array carries one
+// table element (kind 13) and that table carries the next array field, which
+// is what makes the vector a lawful nesting at every level.
 func depthArrays(levels int) []byte {
-	content := b(14, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(14, 1), leb(uint64(len(content))), content)
+	var body []byte
+	if levels%2 == 0 {
+		body = b(0) // an even depth is the innermost table body
+	} else {
+		body = b(6, 0) // an odd depth is the innermost array body
 	}
-	return cat(b(1, 14), leb(uint64(len(content))), content, b(0))
+	for d := levels - 1; d >= 1; d-- {
+		if d%2 == 1 {
+			body = cat(b(13, 1), leb(uint64(len(body))), body)
+		} else {
+			body = cat(b(1, 14), leb(uint64(len(body))), body, b(0))
+		}
+	}
+	return cat(b(1, 14), leb(uint64(len(body))), body, b(0))
 }
 
-// depthKeyed is a root body whose one unknown field holds `levels` keyed
-// bodies nested by value: each slot's element is the next keyed body.
+// depthKeyed is a root body whose one unknown field holds `levels` keyed and
+// table bodies nested by value. The keyed body's element kind is closed (§3),
+// so a keyed body cannot carry another keyed body directly; each keyed body
+// carries one table element (kind 13) and that table carries the next keyed
+// field, which is what makes the vector a lawful nesting at every level.
 func depthKeyed(levels int) []byte {
-	content := b(16, 0)
-	for i := 1; i < levels; i++ {
-		content = cat(b(16, 1), b(1), leb(uint64(len(content))), content)
+	var body []byte
+	if levels%2 == 0 {
+		body = b(0) // an even depth is the innermost table body
+	} else {
+		body = b(6, 0) // an odd depth is the innermost keyed body
 	}
-	return cat(b(1, 16), leb(uint64(len(content))), content, b(0))
+	for d := levels - 1; d >= 1; d-- {
+		if d%2 == 1 {
+			body = cat(b(13, 1, 1), leb(uint64(len(body))), body)
+		} else {
+			body = cat(b(1, 16), leb(uint64(len(body))), body, b(0))
+		}
+	}
+	return cat(b(1, 16), leb(uint64(len(body))), body, b(0))
 }
 
 // depthUnionTables is a root body whose one unknown field is a union whose arm
@@ -320,11 +356,13 @@ var framingVectors = []framingVector{
 	{name: "frame_count_one_over", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0), count: new(uint64(2))},
 	// F5: a byte between the root's terminator and the first entry.
 	{name: "frame_slack_after_terminator", unit: "tblr1", root: "Cfg", ids: nil, body: b(0, 0)},
-	// F5: one id in two entries.
-	{name: "frame_duplicate_entry", unit: "tblr1", root: "Cfg", ids: []string{"grade", "grade"}, body: b(0)},
-	// F6: 4096 entries is the bound and resolves; 4097 is malformed.
-	{name: "frame_entries_4096", unit: "tblr1", root: "Cfg", entries: counting(4096), body: b(0)},
-	{name: "frame_entries_4097", unit: "tblr1", root: "Cfg", entries: counting(4097), body: b(0)},
+	// F5: one id in two entries, each referenced once (the field, then its
+	// variant), so the duplicate is the table's one defect.
+	{name: "frame_duplicate_entry", unit: "tblr1", root: "Cfg", ids: []string{"grade", "grade"}, body: b(1, 30, 2, 0)},
+	// F6: 4096 entries is the bound and resolves; 4097 is malformed. Each entry
+	// is one unknown field of the root, in slot order.
+	{name: "frame_entries_4096", unit: "tblr1", root: "Cfg", entries: counting(4096), body: countingFields(4096)},
+	{name: "frame_entries_4097", unit: "tblr1", root: "Cfg", entries: counting(4097), body: countingFields(4097)},
 	// F8: the entry count itself is the last legal slot and resolves.
 	{name: "frame_ref_last_slot", unit: "tblr1", root: "Cfg", ids: []string{"Silver", "grade"}, body: b(2, 30, 1, 0)},
 	// F9, L2: a reference above the count stops the root with grade standing.
@@ -359,7 +397,7 @@ var framingVectors = []framingVector{
 	// R4: a named field under another kind skips by the WIRE kind's rule, and
 	// the field after it lands.
 	{name: "frame_kind_mismatch_skips_by_wire_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(1, 4), i32(0), buffHalf, b(0))},
-	// R5: a repeated id, the last occurrence winning.
+	// R5: a repeated field ID refuses wire_damaged.
 	{name: "frame_repeat_last_wins", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(1, 30, 9), b(0))},
 	// R6: the build-version id in a file body is malformed on that body.
 	{name: "frame_reserved_build_version_id", unit: "tblr1", root: "Cfg", ids: []string{"grade", "Silver", "build-version"}, body: cat(gradeSilver, b(3, 4), i32(0), b(0))},
@@ -376,7 +414,7 @@ var framingVectors = []framingVector{
 
 	// ---------------------------------------------------------------- B. nested bodies
 	// L3: buff's terminator a byte early; the field defaults, grade lands after.
-	{name: "nested_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 8), buffBody, b(0xFF), gradeSilver, b(0))},
+	{name: "nested_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 8), buffBody, b(0xFF), b(0))},
 	// L1: L exactly the body, the last field of the root.
 	{name: "nested_L_exact", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, buffHalf, b(0))},
 	// L3, L2: L one past, swallowing the root's terminator: the body ends
@@ -386,23 +424,22 @@ var framingVectors = []framingVector{
 	// L4: L past the root body; the root stops with grade standing.
 	{name: "nested_L_past_body", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9), buffBody, b(0))},
 	// R2 inside a nested body: the unknown counts, the body reads on.
-	{name: "nested_unknown_id_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 13, 16, 4), i32(42), buffBody, gradeSilver, b(0))},
+	{name: "nested_unknown_id_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 13, 16, 4), i32(42), buffBody, b(0))},
 	// F9 inside a nested body: the body stops before decoding anything, and
 	// the root reads on past L.
-	{name: "nested_ref_above_count_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 3, 99, 4, 0xFF), gradeSilver, b(0))},
+	{name: "nested_ref_above_count_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 3, 99, 4, 0xFF), b(0))},
 	// HELD (finding N1, reported to the parent): the whole multiplier field and
 	// no terminator, the damage landing exactly at L. The engine and the C++
 	// reference both keep multiplier 1.5.
-	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 6, 7, 10), f32(1.5), gradeSilver, b(0))},
-	// HELD (finding N1, reported to the parent): the whole multiplier field,
-	// then a field under kind 37, the damage landing before L. The engine and
-	// the C++ reference both refill the body to its defaults, multiplier 1.
-	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), gradeSilver, b(0))},
+	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 6, 7, 10), f32(1.5), b(0))},
+	// The multiplier is complete, then a distinct unknown field carries kind
+	// 37. The strict read refuses the unsupported kind without keeping a value.
+	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9, 7, 10), f32(1.5), b(16, 37, 0), b(0))},
 
 	// ---------------------------------------------------------------- C. arrays
 	// H2: L = 0 and L = 1 are inert.
-	{name: "array_L0_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 0), gradeSilver, b(0))},
-	{name: "array_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 1, 30), gradeSilver, b(0))},
+	{name: "array_L0_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 0), b(0))},
+	{name: "array_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 1, 30), b(0))},
 	// H1: L = 2 is the empty array.
 	{name: "array_L2_empty", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 2, 30, 0, 0)},
 	// H6: the count at the bound, and one past it.
@@ -416,16 +453,17 @@ var framingVectors = []framingVector{
 	// `past`): count = 2 + 2·128 = 258, the elements bounded by L cover none,
 	// and the parent resumes at that byte.
 	{name: "array_header_crosses_L_unbounded", unit: "listdemo", root: "Ints", ids: []string{"values", "after"}, body: cat(b(1, 14, 2, 4, 0x82, 2, 4), i32(42), b(0))},
-	// H3, H5, H6: the same on a bounded array: count = 2 + 1·128 = 130, past
-	// the bound of 4, so clamped counts too.
-	{name: "array_header_crosses_L_bounded", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 30, 0x82), gradeSilver, b(0))},
-	// H3, H4: the crossed header under a foreign element kind is a kind
-	// mismatch and nothing else.
-	{name: "array_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 4, 0x82), gradeSilver, b(0))},
+	// H3, H5, H6: the same on a bounded array. The next field is an
+	// unknown ID already used as an enum variant, so the count crosses L and
+	// is 2 + 2·128 = 258, past the bound of 4.
+	{name: "array_header_crosses_L_bounded", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 30, 0x82), b(2, 6, 1, 0))},
+	// H3, H4: the foreign element kind is followed by a count crossing L.
+	// The strict framing refusal occurs before a value can be retained.
+	{name: "array_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 4, 0x82), b(2, 6, 1, 0))},
 	// H4: the element kind inside L.
-	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 4, 1, 2, 0)},
+	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 6, 4, 1, 2, 0, 0, 0, 0)},
 	// F10 at a count: `80 00`.
-	{name: "array_count_non_canonical", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 30, 0x80, 0, 0)},
+	{name: "array_count_non_canonical", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 4, 30, 0x81, 0, 2, 0)},
 	// H3 at the end of the buffer: a count that cannot complete even in the
 	// parent, with the root's own terminator gone with it.
 	{name: "array_header_incomplete_at_end", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(8, 14, 2, 30, 0x80))},
@@ -465,11 +503,11 @@ var framingVectors = []framingVector{
 	{name: "map_header_crosses_L_dart_mutant", unit: "listdemo", root: "Army", raw: mustHex("01010e580d022a020e200d020e030602040d0705041401000000000e030609040d0705045a0000000000060432000000002a020e020e830603040d0705041500000000000e030608040d0705045b0000000000060433000000000704080000000026a9020c9b014878424f4f300d39841cec105b36094ac93dea0ce83094fde47c74a279448ee2e5b1861b638ebaadbc90e9ea716f0f0182bf0700000000000000")},
 
 	// ---------------------------------------------------------------- E. enum-keyed arrays
-	// H3, H5 at kind 16: count = 2 + 1·128 = 130 over no triple bytes.
-	{name: "keyed_header_crosses_L", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 4, 0x82), gradeSilver, b(0))},
+	// H3, H5 at kind 16: count = 2 + 2·128 = 258 over no triple bytes.
+	{name: "keyed_header_crosses_L", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 2, 4, 0x82), b(2, 6, 1, 0))},
 	// H3, H4 at kind 16 (the class Java, Luau and Squirrel get wrong): element
 	// kind 30 where int32 is declared.
-	{name: "keyed_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 30, 0x82), gradeSilver, b(0))},
+	{name: "keyed_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 2, 30, 0x82), b(2, 6, 1, 0))},
 	// H7: a key reference of 0 after one landed slot.
 	{name: "keyed_key_zero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 2, 4), i32(7), b(0, 4), i32(0), b(0))},
 	// §3.2: a key this reader cannot name skips by its L and counts unknown;
@@ -482,27 +520,27 @@ var framingVectors = []framingVector{
 	// L6 at kind 16: two complete triples inside L, the count saying one.
 	{name: "keyed_slots_past_count", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 1, 2, 4), i32(7), b(3, 4), i32(3), b(0))},
 	// H4 at kind 16, inside L.
-	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 30, 1, 2, 4), i32(7), b(0))},
+	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(10, 16, 5, 30, 1, 2, 1, 3, 0)},
 	// H2 at kind 16.
-	{name: "keyed_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 1, 4), gradeSilver, b(0))},
+	{name: "keyed_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(10, 16, 1, 4), b(0))},
 
 	// ---------------------------------------------------------------- U. union arms
 	// H9: a fixed-width arm whose L is not its width.
-	{name: "union_arm_L_not_width", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 13, 4, 3, 0, 0, 0), gradeSilver, b(0))},
+	{name: "union_arm_L_not_width", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 13, 4, 3, 0, 0, 0), b(0))},
 	// H9: L the width, the arm lands.
 	{name: "union_arm_width_exact", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 13, 4, 4), i32(42), b(0))},
 	// L4 at an arm: L past the root body.
 	{name: "union_arm_L_past_body", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 13, 4, 9), i32(42), b(0))},
 	// L3 at a body arm: the terminator early, the union None.
-	{name: "union_body_arm_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 4, 13, 8, 5, 10), f32(2.5), b(0, 0xFF), gradeSilver, b(0))},
+	{name: "union_body_arm_terminator_early", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 4, 13, 8, 5, 10), f32(2.5), b(0, 0xFF), b(0))},
 	// H9: a payload-free arm with L = 1.
-	{name: "union_void_arm_L_nonzero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 12, 32, 1, 0xFF), gradeSilver, b(0))},
+	{name: "union_void_arm_L_nonzero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 12, 32, 1, 0xFF), b(0))},
 	// H9: the payload-free arm as written.
 	{name: "union_void_arm", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(3, 15, 12, 32, 0, 0)},
 	// R2 at an arm: an arm this reader cannot name.
-	{name: "union_unknown_arm", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 16, 4, 4), i32(42), gradeSilver, b(0))},
+	{name: "union_unknown_arm", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 16, 4, 4), i32(42), b(0))},
 	// H9: an arm id of 0 in a field is the empty union and carries nothing.
-	{name: "union_arm_zero_in_field", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(3, 15, 0), gradeSilver, b(0))},
+	{name: "union_arm_zero_in_field", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(3, 15, 0), b(0))},
 
 	// ---------------------------------------------------------------- T. the node table
 	// T1: one record, the pointer resolving to it.
@@ -517,19 +555,19 @@ var framingVectors = []framingVector{
 	// T2: bytes left over inside the field.
 	{name: "node_bytes_left_over", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2), b(0xFF)), b(0))},
 	// T2: the field under a kind other than 12.
-	{name: "node_field_wrong_kind", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 13, 10, 1), listNodeRecord(2), b(0))},
+	{name: "node_field_wrong_kind", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(4, 8), i32(1), b(0))},
 	// T4: a type id reference of 0.
 	{name: "node_type_ref_zero", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, cat(b(0, 7, 1, 4), i32(2), b(0))), b(0))},
 	// T7: an index above node_count + 1; that pointer null, the field after it
 	// landing.
-	{name: "node_index_above_count", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 3), b(2, 12, 1, 'a'), nodeTable(1, listNodeRecord(2)), b(0))},
-	// §3.1: index 0 is null.
-	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), nodeTable(1, listNodeRecord(2)), b(0))},
+	{name: "node_index_above_count", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(2, 12, 1, 'a'), b(3, 17, 3), nodeTable(1, listNodeRecord(2)), b(0))},
+	// §3.1: an explicit null index is non-canonical; its positive control
+	// omits the pointer and has the same value, without a node directory.
+	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), b(0))},
+	{name: "node_index_null_canonical", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(0)), held: true},
 	// R6, T5: the reserved id inside a record body stops that body.
 	{name: "node_reserved_id_in_record", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, b(5, 4, 4, 12, 0, 0)), b(0))},
-	// T1 (finding N7, settled): the node table riding twice; the LAST
-	// occurrence is the numbering, on R5's last-wins rule, and the earlier one
-	// is stepped over like any repeated field.
+	// T1: the node table rides twice, so the repeated ID refuses wire_damaged.
 	{name: "node_table_twice", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), nodeTable(1, listNodeRecord(3)), b(0))},
 	// T8: a pointer naming a node whose descent is still OPEN is a cycle, and
 	// no writer produces one (§3.1), so it is damage: node 2 naming itself,
@@ -549,8 +587,8 @@ var framingVectors = []framingVector{
 	// length is not a depth and no pass recurses per pointer. Held out of the
 	// manifest on this file's held rule.
 	{name: "node_chain_200000", unit: "graphdemo", root: "Scene", ids: sceneListNodeIds, body: listNodeChain(200000), held: true},
-	// T6: a reader that cannot name the reserved id counts one unknown.
-	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
+	// The malformed unknown-node record stays last in the root and refuses.
+	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(gradeSilver, b(17, 12, 3, 1, 0, 0), b(0))},
 	// L4 at the node-table field: its L past the root body.
 	{name: "node_table_L_past_body", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 12, 99, 1), listNodeRecord(2), b(0))},
 	// §3.1, §3.3, §5: a node record whose TYPE reference resolves to one of
@@ -591,7 +629,7 @@ var framingVectors = []framingVector{
 		body: sceneUnknownArray(b(17, 0))},
 	{name: "array_elem_kind_17_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindNodeIds, held: true,
 		body: cat(b(6, 14), leb(uint64(len(b(17, 1, 2)))), b(17, 1, 2),
-			nodeTable(1, listNodeRecordNext(7, 0)), b(0))},
+			nodeTable(1, listNodeRecord(7)), b(0))},
 
 	// ---------------------------------------------------------------- X. the nesting bound
 	// §4, ONE NESTING BOUND (binary_max_depth): the root body is depth 0 and
@@ -662,12 +700,14 @@ var framingVectors = []framingVector{
 		body: cat(b(11, 13, 4, 7, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
 		body: cat(b(11, 15, 17, 17, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
-	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
-		body: cat(b(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	// A keyed element can be a table, but not a pointer (§3); the table
+	// carries the pointer that reaches the unknown node type.
+	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: []string{"mystery", "key", "mystery2", "node-table", "graphUnknown"}, held: true,
+		body: cat(b(1, 16, 8, 13, 1, 2, 4, 3, 17, 2, 0), nodeTable(1, graphNodeRecord(5, b(0))), b(0))},
 }
 
-// counting is n distinct raw entries, 1..n: a reader checks distinctness and
-// nothing else about an entry nobody references (F6, F7).
+// counting is n distinct raw entries, 1..n: ids no Cfg declares, so each is an
+// unknown field to the reader (F6).
 func counting(n int) []uint64 {
 	out := make([]uint64, n)
 	for i := range out {
@@ -676,9 +716,90 @@ func counting(n int) []uint64 {
 	return out
 }
 
+// countingFields is a root body that references slots 1..n once each, in slot
+// order: one unknown uint8 field per slot (`ref, kind 6, 1`), then the
+// terminator.
+func countingFields(n int) []byte {
+	var out []byte
+	for ref := 1; ref <= n; ref++ {
+		out = append(out, leb(uint64(ref))...)
+		out = append(out, 6, 1)
+	}
+	return append(out, 0)
+}
+
 // bytes assembles one vector's file: the form byte, the body, the entries in
-// slot order, then the count (docs/SPEC-TABLES.md §3).
+// slot order, then the count (docs/SPEC-TABLES.md §3), with the table put in
+// first-use order (firstUseOrder).
 func (v framingVector) bytes(u *units) ([]byte, error) {
+	out, err := v.scriptBytes(u)
+	if err != nil || v.raw != nil || v.count != nil {
+		// a raw file is verbatim, and a vector whose entry count is its defect
+		// has no table to number
+		return out, err
+	}
+	if _, exempt := framingNonCanonicalTables[v.name]; exempt {
+		return out, nil
+	}
+	return firstUseOrder(out)
+}
+
+// firstUseOrder renumbers one file's id table into FIRST-USE ORDER (§3): the
+// slots the body references, in the order the framing locator meets them —
+// root body first, the node table's records in index order — and every
+// reference moved to its slot's new place. A slot no reference names is
+// dropped. A reference above the count is left as it is.
+func firstUseOrder(data []byte) ([]byte, error) {
+	f := frameWire(data)
+	n := uint64(len(f.entries))
+	if n == 0 {
+		return data, nil
+	}
+	moved := map[uint64]uint64{}
+	var order []uint64
+	var refs []wireSpot
+	for _, sp := range f.spots {
+		switch sp.kind {
+		case spotRef, spotArm, spotKey, spotVariant, spotRecordType:
+		default:
+			continue
+		}
+		if sp.value == 0 || sp.value > n {
+			continue
+		}
+		refs = append(refs, sp)
+		if _, seen := moved[sp.value]; !seen {
+			order = append(order, sp.value)
+			moved[sp.value] = uint64(len(order))
+		}
+	}
+	body := append([]byte(nil), data[f.bodyStart:f.bodyEnd]...)
+	for _, sp := range refs {
+		if moved[sp.value] == sp.value {
+			continue // a reference already in its place keeps its spelling, `81 00` included
+		}
+		spelled := lebBytes(moved[sp.value])
+		if len(spelled) != sp.width {
+			return nil, errReferenceWidth(sp.off)
+		}
+		copy(body[sp.off-f.bodyStart:], spelled)
+	}
+	out := append([]byte{data[0]}, body...)
+	for _, slot := range order {
+		out = append(out, u64(f.entries[slot-1])...)
+	}
+	return append(out, u64(uint64(len(order)))...), nil
+}
+
+type errReferenceWidth int
+
+func (e errReferenceWidth) Error() string {
+	return "the reference at byte " + strconv.Itoa(int(e)) + " changes width in first-use order"
+}
+
+// scriptBytes is the file exactly as the script spells it, its id table in the
+// shared map's slot order.
+func (v framingVector) scriptBytes(u *units) ([]byte, error) {
 	if v.raw != nil {
 		return v.raw, nil
 	}

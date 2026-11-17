@@ -312,14 +312,14 @@ table Save
 
 const cookConstructsJSON = `{
   "rows": [
-    {"items": [{"v": 1, "wide": 340282366920938463463374607431768211455, "fx": 2.5, "tag": "Write"}, {"v": -2, "fx": -999.25}], "label": 11, "names": ["a", "bcd"], "lines": ["", "an unbounded line"], "maybe": [null, "", "kept"]},
+    {"items": [{"v": 1, "wide": "340282366920938463463374607431768211455", "fx": "2.5", "tag": "Write"}, {"v": -2, "fx": "-999.25"}], "label": 11, "names": ["a", "bcd"], "lines": ["", "an unbounded line"], "maybe": [null, "", "kept"]},
     {"items": [], "label": 12, "names": []},
     {"items": [{"v": 3}], "label": 13, "names": ["eight888"]}
   ],
   "marks": [7, -7, 1048576],
   "modes": ["Write", "Read", "Write"],
-  "wides": [1, 2, 340282366920938463463374607431768211455],
-  "items": [{"sample": {"v": 5, "wide": 6}}, {"count": -9}, {"note": "hello"}, {"wrap": {"run": [{"v": 8}, {"v": 9, "fx": 1.5}], "n": 4}}, {"ack": null}, {}],
+  "wides": ["1", "2", "340282366920938463463374607431768211455"],
+  "items": [{"sample": {"v": 5, "wide": "6"}}, {"count": -9}, {"note": "hello"}, {"wrap": {"run": [{"v": 8}, {"v": 9, "fx": "1.5"}], "n": 4}}, {"ack": null}, {}],
   "linked": [{"items": [{"v": 21}], "label": 22, "names": ["z"]}, null],
   "pinned": {"items": [], "label": 31, "names": []},
   "one": {"wrap": {"run": [{"v": 41}], "n": 5}},
@@ -441,10 +441,15 @@ v.Next = v`, "refuse cycle Node"},
 v = T.NewHolder()
 v.RefsCount = 2
 v.Refs[2] = T.NewNode()`, "cooked"},
+	// A COUNTED ARRAY'S DEAD SLOT IS NEVER READ (§7.2; docs/rulings.json
+	// fixed-dead-bytes-are-zero): what it holds, a pointer or a map's
+	// entries, is ignored, and the cook is the one of the value without it
 	{"a pointer in a dead slot", `local root = "Holder"
 v = T.NewHolder()
 v.RefsCount = 1
-v.Refs[2] = T.NewNode()`, "refuse unnumbered_reference Holder.refs"},
+v.Refs[2] = T.NewNode()
+other = T.NewHolder()
+other.RefsCount = 1`, "cooked same"},
 	{"a count past its bound", `local root = "Holder"
 v = T.NewHolder()
 v.RefsCount = 3`, "refuse invalid_value Holder.refs"},
@@ -470,7 +475,9 @@ v.Squads[2].Roster = { entry(4, 40) }`, "cooked"},
 	{"a map in a dead slot", `local root = "Teams"
 v = T.NewTeams()
 v.SquadsCount = 1
-v.Squads[2].Roster = { entry(4, 40) }`, "refuse invalid_value Teams.squads"},
+v.Squads[2].Roster = { entry(4, 40) }
+other = T.NewTeams()
+other.SquadsCount = 1`, "cooked same"},
 	// A FIELD THE SAVE ELIDES IS NOT REACHED (§2.3, §7.6): an absent optional
 	// and a field under a false guard keep their slot zero, so a list in
 	// either names bytes the region will not hold
@@ -548,11 +555,11 @@ end
 
 // TestMooCookWriteRefusals: a value outside the cook's contract is refused by
 // name, never written partly (§7.6): a non-finite float of either width, a
-// data cycle, a pointer or a map's entries in a dead counted slot (storage
-// the numbering does not reach), a list under an absent optional or a false
-// guard, and a map whose keys repeat (a cook Find cannot search, §7.4). Each
-// asked of a clean value first, which cooks; and a map's entries are cooked
-// in key order whatever order the value holds them in.
+// data cycle, a list under an absent optional or a false guard, and a map
+// whose keys repeat (a cook Find cannot search, §7.4). Each asked of a clean
+// value first, which cooks; a map's entries are cooked in key order whatever
+// order the value holds them in; and a pointer or a map's entries in a dead
+// counted slot are ignored, the cook equal to the value's without them.
 func TestMooCookWriteRefusals(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
@@ -569,7 +576,8 @@ func TestMooCookWriteRefusals(t *testing.T) {
 // emitted table_cookwrite.moo (or the numbering it shares) and requires the
 // gate that holds the property to go red: the byte order ignored, a
 // reference delta one slot long, an unbounded array's alignment dropped, a
-// shared byte buffer refused as the wire refuses it, a map's slot delta one
+// shared byte buffer refused as the wire refuses it, a two-byte scalar's high
+// and low bytes swapped in a big-endian cook, a map's slot delta one
 // slot long, the arrays a map's entries hold left uncarved, a map's entries
 // left in the value's order, a repeated key let through, a field the save
 // elides carved as if it rode, an unbounded text's slot delta one slot long,
@@ -606,6 +614,7 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 		{"delta", plant("table_cookwrite.moo", "putNum64(ctx, at, to - at)", "putNum64(ctx, at, to - at + 8)"), true, true, false},
 		{"align", plant("table_cookwrite.moo", "\tc.at = align_up(c.at, l.ealign)\n\tlocal start = c.at\n\tc.at += count * size\n\tif c.write then\n\t\tlocal array = c.extentAt + start\n\t\t-- an empty list's", "\tlocal start = c.at\n\tc.at += count * size\n\tif c.write then\n\t\tlocal array = c.extentAt + start\n\t\t-- an empty list's"), false, true, false},
 		{"shared", plant("table_cookwrite.moo", "Save.number(d, value, true)", "Save.number(d, value, false)"), true, false, false},
+		{"wideorder", plant("table_cookwrite.moo", "buffer.writeu8(b, at, x // 256)\n\t\t\tbuffer.writeu8(b, at + 1, x % 256)", "buffer.writeu8(b, at, x % 256)\n\t\t\tbuffer.writeu8(b, at + 1, x // 256)"), true, false, false},
 		{"mapslot", plant("table_cookwrite.moo", "-- an empty map's reference is null in every encoding (§2.8)\n\t\tputNum64(ctx, at, if count > 0 then array - at else 0)", "putNum64(ctx, at, if count > 0 then array - at + 8 else 0)"), true, false, false},
 		{"mapextent", plant("table_cookwrite.moo", "if hasExtentRecord(d) then\n\t\tfor i = 1, count do\n\t\t\tif not carveRecord(", "if false then\n\t\tfor i = 1, count do\n\t\t\tif not carveRecord("), true, false, false},
 		{"maporder", plant("table_cookwrite.moo", "pcall(Save.mapOrder, fd, val)", "pcall(table.clone, val)"), false, false, true},

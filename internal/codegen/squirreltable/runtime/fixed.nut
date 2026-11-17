@@ -56,6 +56,18 @@ _M.put <- function(b, at, w, v) {
   for (local i = 0; i < w; i++) { b[at + i] = (v >> (8 * i)) & 0xff; }
 };
 
+// deadNotZero reports whether any byte of b[at..stop) is nonzero. Every dead
+// byte in a fixed record is zero on write and a non-zero one refuses the whole
+// load (docs/rulings.json fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md
+// §3.1, §4.5, §5.3 step 11). The dead bytes are an absent optional's payload,
+// a counted array's slots past its count, a text or bytes span past its used
+// length, and an inactive union arm.
+_M.deadNotZero <- function(b, at, stop) {
+  if (stop > b.len()) stop = b.len();
+  for (local i = at; i < stop; i++) if (b[i] != 0) return true;
+  return false;
+};
+
 // A FIXED-FORM FLOAT IS ITS IEEE-754 BIT PATTERN, AND FINITE
 // (docs/SPEC-TABLES.md §3.3, §3.4, the packet wire's rule): a writer refuses a NaN or an infinity, a float32 one that
 // narrows to an infinity included, and a read refuses one on its RAW BITS

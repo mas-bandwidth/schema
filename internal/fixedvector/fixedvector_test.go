@@ -310,3 +310,38 @@ func fixedCorpus(t *testing.T) string {
 	}
 	return dir
 }
+
+func TestNegativeZeroVectors(t *testing.T) {
+	t.Parallel()
+	corpus := builtCorpus(t)
+	if len(NegativeZero) == 0 {
+		t.Fatal("NegativeZero names no vector")
+	}
+	for _, vec := range NegativeZero {
+		t.Run(vec.Name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := os.Stat(filepath.Join(corpus, vec.File)); err != nil {
+				t.Fatalf("the negative-zero vector %s is not in the built corpus: %v", vec.File, err)
+			}
+			e, err := Read(corpus, vec.File)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e.Refused {
+				t.Fatalf("%s: the manifest carries no expect= for a file the rule reads as +0", vec.File)
+			}
+			leaves, err := e.Leaves()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(leaves) == 0 {
+				t.Fatalf("%s: the manifest expects no field", vec.File)
+			}
+			for _, leaf := range leaves {
+				if leaf.Value != 0 {
+					t.Errorf("%s: the manifest expects %s=%d, want 0 (+0)", vec.File, leaf.Path, leaf.Value)
+				}
+			}
+		})
+	}
+}

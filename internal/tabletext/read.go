@@ -239,8 +239,10 @@ func Shape(f *ir.Field) byte {
 }
 
 // jsonScalarShape is a number-or-string field's shape: 'n' for a JSON number,
-// and 'N' for a wide integer, which reads as a string OR a number
-// (docs/SPEC-TABLES.md §16.2). shapeMatches knows the two spellings 'N' takes.
+// and 'N' for a wide integer — a kind wider than 32 bits — which reads as a
+// STRING of digits only (docs/SPEC-TABLES.md §16.2, docs/rulings.json
+// json-wide-integers-refuse-number-token). shapeMatches knows the one
+// spelling 'N' takes.
 func jsonScalarShape(f *ir.Field) byte {
 	if TableKindWideInteger(ir.TableScalarKind(f)) {
 		return 'N'
@@ -249,13 +251,14 @@ func jsonScalarShape(f *ir.Field) byte {
 }
 
 // shapeMatches reports whether a value of the given shape satisfies the shape
-// a declaration takes. A wide integer declares 'N' and takes a string or a
-// number; every other shape is exact.
+// a declaration takes. A wide integer declares 'N' and takes a string only: a
+// bare number token there is a kind mismatch (§16.2). Every other shape is
+// exact.
 func shapeMatches(want, got byte) bool {
 	if want == got {
 		return true
 	}
-	return want == 'N' && (got == 's' || got == 'n')
+	return want == 'N' && got == 's'
 }
 
 // ElementShape is the same classifier one level down, for an array's elements.
@@ -1319,6 +1322,9 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 	}
 	// a fixed array's tail keeps the defaults the reset left there, exactly as
 	// a short wire count does
+	if f.Array == ir.ArrayCounted && int64(placed) < f.ArrayMin {
+		return in.fail("count_over_bound: " + f.Name)
+	}
 	fv.Count = placed
 	return true
 }
@@ -1577,21 +1583,17 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 		return in.placeFloat(cell, f, token, kind == ir.TableKindF32)
 	}
 	if TableKindWideInteger(kind) {
-		// a wide integer reads as a string OR a number (§16.2); the string
-		// holds the same digits the number does
-		if in.valueShape() == 's' {
-			text, _, ok := in.scanString(-1)
-			if !ok {
-				return false
-			}
-			return in.placeWideInteger(cell, f, string(text), kind)
+		// a wide integer reads as a STRING of digits only (§16.2); a bare
+		// number token is the wrong JSON type for the kind, refused by name
+		// at every site, never coerced
+		if in.valueShape() != 's' {
+			return in.fail("kind_mismatch: " + f.Name)
 		}
-		token, _, ok := in.scanNumber()
+		text, _, ok := in.scanString(-1)
 		if !ok {
-			in.bad = true
 			return false
 		}
-		return in.placeWideInteger(cell, f, token, kind)
+		return in.placeWideInteger(cell, f, string(text), kind)
 	}
 	if ir.TableKindWide(kind) {
 		// a fixed-point kind 32 bits or narrower: a JSON number only
@@ -1616,8 +1618,8 @@ func (in *reader) readScalar(cell *Cell, f *ir.Field, depth int) bool {
 	return false
 }
 
-// placeWideInteger converts a wide integer's value — a string's digits or a
-// number token — into storage (docs/SPEC-TABLES.md §16.2). I64/U64 land in the
+// placeWideInteger converts a wide integer's value — its string's digits —
+// into storage (docs/SPEC-TABLES.md §16.2). I64/U64 land in the
 // 64-bit lane, I128/U128 and the wide fixed-point kinds in the wide lane; the
 // pure integers hold the integer-token rule — digits and an optional minus, no
 // fraction, no exponent, no negative zero — and the fixed-point kinds keep
@@ -1659,6 +1661,17 @@ func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
 // length never changes the value it lands (§16.2 Numbers).
 const maxFloatDecimalDigits = 799
 
+// maxNumberExponent bounds the exponent a number token accumulates before its
+// mantissa is folded. No document holds enough digits to bring a value back
+// from overflow or underflow past it, so a long mantissa can still cancel a
+// long exponent (§16.2 Numbers).
+const maxNumberExponent = 100000000000000000
+
+// maxFloatDecimalExponent is the final decimal scale a float conversion is
+// handed. 10^100000 overflows and 10^-100000 underflows every width this walk
+// holds, whatever the mantissa contributes.
+const maxFloatDecimalExponent = 100000
+
 // boundedFloatToken rewrites a valid JSON number token to the same exact
 // decimal value with its insignificant zeros folded into one exponent and its
 // significant digits capped at maxFloatDecimalDigits plus a sticky digit.
@@ -1688,7 +1701,7 @@ func boundedFloatToken(token string) string {
 		}
 		fracDigits = token[fracAt:i]
 	}
-	exp := 0
+	exp := int64(0)
 	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
 		i++
 		expNegative := false
@@ -1697,8 +1710,8 @@ func boundedFloatToken(token string) string {
 			i++
 		}
 		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
-			if exp < 100000 {
-				exp = exp*10 + int(token[i]-'0')
+			if exp < maxNumberExponent {
+				exp = exp*10 + int64(token[i]-'0')
 			}
 		}
 		if expNegative {
@@ -1706,7 +1719,7 @@ func boundedFloatToken(token string) string {
 		}
 	}
 	digits := intDigits + fracDigits
-	exp -= len(fracDigits)
+	exp -= int64(len(fracDigits))
 	digits = strings.TrimLeft(digits, "0")
 	if digits == "" {
 		if negative {
@@ -1715,19 +1728,25 @@ func boundedFloatToken(token string) string {
 		return "0"
 	}
 	trimmed := strings.TrimRight(digits, "0")
-	exp += len(digits) - len(trimmed)
+	exp += int64(len(digits) - len(trimmed))
 	digits = trimmed
 	if len(digits) > maxFloatDecimalDigits {
 		drop := len(digits) - maxFloatDecimalDigits
 		// The sticky digit keeps a nonzero tail from looking like an exact
 		// shorter decimal; the exponent carries the digits dropped.
 		digits = digits[:maxFloatDecimalDigits] + "1"
-		exp += drop - 1
+		exp += int64(drop - 1)
+	}
+	if exp > maxFloatDecimalExponent {
+		exp = maxFloatDecimalExponent
+	}
+	if exp < -maxFloatDecimalExponent {
+		exp = -maxFloatDecimalExponent
 	}
 	if negative {
-		return "-" + digits + "e" + strconv.Itoa(exp)
+		return "-" + digits + "e" + strconv.FormatInt(exp, 10)
 	}
-	return digits + "e" + strconv.Itoa(exp)
+	return digits + "e" + strconv.FormatInt(exp, 10)
 }
 
 // placeFloat converts a number token into a float field. A magnitude the
@@ -2334,6 +2353,17 @@ func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
 func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) bool {
 	if (kind == ir.TableKindI128 || kind == ir.TableKindU128) && !integerToken(token) {
 		return in.fail("kind_mismatch: " + f.Name)
+	}
+	if kind != ir.TableKindI128 && kind != ir.TableKindU128 {
+		// A wide fixed value is a JSON string, but its decoded content is
+		// still one complete RFC 8259 number, with no surrounding spaces.
+		check := reader{text: []byte(token)}
+		if len(token) == 0 || token[0] == ' ' || token[0] == '\t' || token[0] == '\n' || token[0] == '\r' {
+			return in.fail("kind_mismatch: " + f.Name)
+		}
+		if _, ok := check.walkNumber(); !ok || check.pos != len(token) {
+			return in.fail("kind_mismatch: " + f.Name)
+		}
 	}
 	raw, exact, saturated := ParseWide(token, kind, f.Type.FracBits)
 	if !exact {

@@ -39,6 +39,12 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "python" {
+			if err != nil {
+				t.Fatalf("python refused scalar table defaults: %v", err)
+			}
+			continue // semantic read, write and negative controls: TestPythonDriverScalarValueDefaults
+		}
 		if target == "goose" {
 			gooseCarriesTableWire(t, out, err)
 			continue
@@ -93,10 +99,10 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			code := string(out["ProbeTable.lobster"])
 			for _, want := range []string{
-				`value.Name = schema_rt.put(value.Name, "untitled")`,
-				"value.NameLength = 8",
-				`value.Tag = schema_rt.put(value.Tag, "ab")`,
-				"value.TagLength = 2",
+				`value·.Name = schema_rt.put(value·.Name, "untitled")`,
+				"value·.NameLength = 8",
+				`value·.Tag = schema_rt.put(value·.Tag, "ab")`,
+				"value·.TagLength = 2",
 				"Caps: 3 // specified default (SPEC §5)",
 				`has_def: true, def_str: "untitled"`,
 			} {
@@ -335,6 +341,11 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 	u := unitFromSource(t, fixedValueDefaultsUnit)
 	c := New()
 	for _, target := range c.Targets() {
+		// The Unity table core carries no fixed form and no string, bytes or
+		// flags field yet, so a fixed table's prefill is not its surface.
+		if target == "unity" {
+			continue
+		}
 		out, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Errorf("%s refused a fixed table's string, bytes and flags defaults: %v", target, err)

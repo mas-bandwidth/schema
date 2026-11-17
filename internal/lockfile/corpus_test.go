@@ -34,9 +34,9 @@ var corpora = []string{
 	"../../test/table-base64",
 }
 
-// TestCorpusLocksAreCurrent regenerates each committed lock and compares byte
-// for byte — the idempotence `schema lock` promises, measured on the corpus
-// rather than a fixture.
+// TestCorpusLocksAreCurrent checks the current declaration and canonical lock
+// bytes while retaining real history. Render knows only the live entry; a
+// committed lineage may legitimately include any number of older epochs.
 func TestCorpusLocksAreCurrent(t *testing.T) {
 	for _, dir := range corpora {
 		t.Run(strings.TrimPrefix(dir, "../../"), func(t *testing.T) {
@@ -53,7 +53,30 @@ func TestCorpusLocksAreCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the corpus does not compile: %v", err)
 			}
-			if got := lockfile.Render(u).Text(); got != string(want) {
+			locked, err := lockfile.Parse(path, want)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if errs := lockfile.Check(u, paths); len(errs) != 0 {
+				t.Fatal(errs)
+			}
+			live := lockfile.Render(u)
+			if got := locked.Text(); got != string(want) {
+				t.Fatal("committed lock is not a canonical rendering")
+			}
+			live.Version = locked.Version
+			for i := range live.Tables {
+				current := &live.Tables[i]
+				held := locked.Table(current.Name)
+				if held == nil || len(current.Lineage) == 0 {
+					continue
+				}
+				if len(held.Lineage) == 0 || lockfile.LineageHash(current.Lineage) != lockfile.LineageHash(held.Lineage[len(held.Lineage)-1:]) {
+					t.Fatalf("%s current writer metadata does not match its last entry", current.Name)
+				}
+				current.Lineage = held.Lineage
+			}
+			if got := live.Text(); got != string(want) {
 				t.Errorf("%s is stale — a fixed table's layout moved:\n  ./bin/schema lock %s\n--- committed ---\n%s\n--- current ---\n%s",
 					path, dir, want, got)
 			}

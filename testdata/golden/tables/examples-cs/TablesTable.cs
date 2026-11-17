@@ -294,9 +294,9 @@ namespace Tabledemo
         public static bool WeaponConfigCollectTyped(WeaponConfig v, ref TableWire.Ids ids)
         {
             TableFieldInfo[] fields = WeaponConfigTableType().Fields;
-            if (!float.IsFinite(v.Damage)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Damage));
             if (BitConverter.SingleToUInt32Bits(v.Damage) != 0x41a80000u && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
-            if (!float.IsFinite(v.Speed)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Speed));
             if (BitConverter.SingleToUInt32Bits(v.Speed) != 0x43fa0000u && !ids.Add(0x1733055702acb1d2ul)) return false;
             if (v.Penetration != 1 && !ids.Add(0x4f31c5309e13e932ul)) return false;
             if (v.Channel != 0 && !ids.Add(0xa5013e9ad5caeda4ul)) return false;
@@ -650,7 +650,7 @@ namespace Tabledemo
             if (v.Badge != 0 && !ids.Add(0x10bda981fe095518ul)) return false;
             if (v.Port != 0 && !ids.Add(0x8c2cdb0da8933fa6ul)) return false;
             if (v.Epoch != 0 && !ids.Add(0xfc9697d1196e6ba6ul)) return false;
-            if (!double.IsFinite(v.Precision)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Precision));
             if (BitConverter.DoubleToUInt64Bits(v.Precision) != 0x0000000000000000ul && !ids.Add(0x288427f5babd05f7ul)) return false;
             if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
             if (v.HasLoadout != false && !ids.Add(0xa06f5e0a148e253cul)) return false;
@@ -810,7 +810,7 @@ namespace Tabledemo
         public static bool AttachmentCollectTyped(Attachment v, ref TableWire.Ids ids)
         {
             if (v.Slot != 0 && !ids.Add(0x6a771618f6fe31d1ul)) return false;
-            if (!float.IsFinite(v.Power)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Power));
             if (BitConverter.SingleToUInt32Bits(v.Power) != 0x3f800000u && !ids.Add(0xeef9d1358ae7b4e6ul)) return false;
             return true;
         }
@@ -907,7 +907,7 @@ namespace Tabledemo
 
         public static bool BuffCollectTyped(Buff v, ref TableWire.Ids ids)
         {
-            if (!float.IsFinite(v.Multiplier)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Multiplier));
             if (BitConverter.SingleToUInt32Bits(v.Multiplier) != 0x3f800000u && !ids.Add(0x9adc623a805c87c6ul)) return false;
             return true;
         }
@@ -1987,7 +1987,7 @@ namespace Tabledemo
 
         public const long RootConfigFixedBodyBytes = 1248;
         public const long RootConfigFixedRecordBytes = 8 + RootConfigFixedBodyBytes;
-        public const ulong RootConfigFixedHash = 0xe444571ba7da4319ul;
+        public const ulong RootConfigFixedHash = 0x9fe97797508fa1e5ul;
 
         public static readonly byte[] RootConfigFixedLayout = new byte[] {
             0x49, 0x00, 0x00, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6, 0x43, 0x48, 0x5f, 0x0d, 0xe0, 0x04, 0x00,
@@ -3259,6 +3259,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RootConfigFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -3312,6 +3320,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RootConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -3320,6 +3335,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -3391,6 +3413,14 @@ namespace Tabledemo
                             RootConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -3411,7 +3441,7 @@ namespace Tabledemo
 
         public static readonly TableFixedPlan RootConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 16u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
-            new TableFixedEntry(20u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(20u, 2u, 8u, 22u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(24u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(28u, 4u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(32u, 5u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3460,7 +3490,7 @@ namespace Tabledemo
             new TableFixedEntry(190u, 62u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(194u, 63u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(195u, 64u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(200u, 67u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(200u, 67u, 4u, 261u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(204u, 68u, 32u, 69u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(240u, 70u, 16u, 71u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 3, 1),
             new TableFixedEntry(260u, 72u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3474,7 +3504,7 @@ namespace Tabledemo
             new TableFixedEntry(294u, 80u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(310u, 81u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(311u, 82u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(312u, 83u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(312u, 83u, 4u, 1u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(316u, 84u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(320u, 85u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(323u, 86u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3496,7 +3526,7 @@ namespace Tabledemo
             new TableFixedEntry(387u, 106u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(391u, 107u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(392u, 108u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(397u, 111u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(397u, 111u, 8u, 8u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(401u, 112u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(405u, 113u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(409u, 114u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3526,7 +3556,7 @@ namespace Tabledemo
             new TableFixedEntry(555u, 140u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(571u, 141u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(572u, 142u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(573u, 143u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(573u, 143u, 4u, 1u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(577u, 144u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(581u, 145u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(584u, 146u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3548,7 +3578,7 @@ namespace Tabledemo
             new TableFixedEntry(648u, 166u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(652u, 167u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(653u, 168u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(658u, 171u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(658u, 171u, 8u, 8u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(662u, 172u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(666u, 173u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(670u, 174u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3578,7 +3608,7 @@ namespace Tabledemo
             new TableFixedEntry(816u, 200u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(832u, 201u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(833u, 202u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(834u, 203u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(834u, 203u, 4u, 1u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(838u, 204u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(842u, 205u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(845u, 206u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3600,7 +3630,7 @@ namespace Tabledemo
             new TableFixedEntry(909u, 226u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(913u, 227u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(914u, 228u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(919u, 231u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(919u, 231u, 8u, 8u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(923u, 232u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(927u, 233u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(931u, 234u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3630,7 +3660,7 @@ namespace Tabledemo
             new TableFixedEntry(1077u, 260u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(1093u, 261u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(1094u, 262u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1095u, 263u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(1095u, 263u, 4u, 1u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(1099u, 264u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(1103u, 265u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(1106u, 266u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3652,7 +3682,7 @@ namespace Tabledemo
             new TableFixedEntry(1170u, 286u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1174u, 287u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(1175u, 288u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1180u, 291u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(1180u, 291u, 8u, 8u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(1184u, 292u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1188u, 293u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1192u, 294u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3669,44 +3699,64 @@ namespace Tabledemo
             new TableFixedEntry(1236u, 305u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1240u, 306u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1244u, 307u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(42u, 0u, 4u, 0u, 41u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(42u, 9u, 4u, 0u, 41u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(42u, 10u, 4u, 0u, 41u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(64u, 0u, 4u, 0u, 63u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(64u, 17u, 4u, 0u, 63u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(64u, 18u, 4u, 0u, 63u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(86u, 0u, 4u, 0u, 85u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(86u, 25u, 4u, 0u, 85u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(86u, 26u, 4u, 0u, 85u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(108u, 0u, 4u, 0u, 107u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(108u, 33u, 4u, 0u, 107u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(108u, 34u, 4u, 0u, 107u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(130u, 0u, 4u, 0u, 129u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(130u, 41u, 4u, 0u, 129u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(130u, 42u, 4u, 0u, 129u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(152u, 0u, 4u, 0u, 151u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(152u, 49u, 4u, 0u, 151u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(152u, 50u, 4u, 0u, 151u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(174u, 0u, 4u, 0u, 173u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(174u, 57u, 4u, 0u, 173u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(174u, 58u, 4u, 0u, 173u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(196u, 0u, 4u, 0u, 195u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(196u, 65u, 4u, 0u, 195u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(196u, 66u, 4u, 0u, 195u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(349u, 0u, 4u, 0u, 348u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(349u, 93u, 4u, 0u, 348u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(349u, 94u, 4u, 0u, 348u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(371u, 0u, 4u, 0u, 370u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(371u, 101u, 4u, 0u, 370u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(371u, 102u, 4u, 0u, 370u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(393u, 0u, 4u, 0u, 392u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(393u, 109u, 4u, 0u, 392u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(393u, 110u, 4u, 0u, 392u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(610u, 0u, 4u, 0u, 609u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(610u, 153u, 4u, 0u, 609u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(610u, 154u, 4u, 0u, 609u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(632u, 0u, 4u, 0u, 631u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(632u, 161u, 4u, 0u, 631u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(632u, 162u, 4u, 0u, 631u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(654u, 0u, 4u, 0u, 653u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(654u, 169u, 4u, 0u, 653u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(654u, 170u, 4u, 0u, 653u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(871u, 0u, 4u, 0u, 870u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(871u, 213u, 4u, 0u, 870u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(871u, 214u, 4u, 0u, 870u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(893u, 0u, 4u, 0u, 892u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(893u, 221u, 4u, 0u, 892u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(893u, 222u, 4u, 0u, 892u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(915u, 0u, 4u, 0u, 914u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(915u, 229u, 4u, 0u, 914u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(915u, 230u, 4u, 0u, 914u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1132u, 0u, 4u, 0u, 1131u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(1132u, 273u, 4u, 0u, 1131u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(1132u, 274u, 4u, 0u, 1131u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1154u, 0u, 4u, 0u, 1153u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(1154u, 281u, 4u, 0u, 1153u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(1154u, 282u, 4u, 0u, 1153u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(1176u, 0u, 4u, 0u, 1175u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(1176u, 289u, 4u, 0u, 1175u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(1176u, 290u, 4u, 0u, 1175u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
         });
@@ -3791,8 +3841,89 @@ namespace Tabledemo
             0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7, 0x8a,
             0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RootConfigFixedLayout1 = new byte[] {
+            0x49, 0x00, 0x00, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6, 0x43, 0x48, 0x5f, 0x0d, 0xe0, 0x04, 0x00,
+            0x00, 0x03, 0x00, 0x00, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67, 0x8a, 0x0c, 0x14, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e, 0xb4,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d,
+            0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f,
+            0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33,
+            0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5,
+            0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a,
+            0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60,
+            0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2,
+            0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69,
+            0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6,
+            0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e, 0x18, 0x04, 0x00, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x05, 0x01, 0x00, 0x00,
+            0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab, 0x08,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e,
+            0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28,
+            0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33, 0x92,
+            0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe, 0x81,
+            0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93, 0xa8,
+            0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b, 0x6e,
+            0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7, 0x05,
+            0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf9,
+            0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00, 0x07,
+            0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00, 0x00,
+            0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9, 0x0e,
+            0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92,
+            0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a,
+            0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
+            0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7, 0x23,
+            0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5,
+            0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
+            0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06,
+            0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36,
+            0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5,
+            0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62,
+            0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed,
+            0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2,
+            0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc, 0x8a,
+            0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0xc0,
+            0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00,
+            0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d,
+            0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81,
+            0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa, 0x01,
+            0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18,
+            0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7, 0x8a,
+            0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RootConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0xe444571ba7da4319ul, RootConfigFixedLayout0, 1256),
+            new TableFixedKnownLayout(0x9fe97797508fa1e5ul, RootConfigFixedLayout1, 1256),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -3825,7 +3956,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RootConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RootConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -3927,7 +4058,7 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RootConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -3968,6 +4099,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RootConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RootConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -4074,7 +4219,7 @@ namespace Tabledemo
 
         public const long WeaponConfigFixedBodyBytes = 22;
         public const long WeaponConfigFixedRecordBytes = 8 + WeaponConfigFixedBodyBytes;
-        public const ulong WeaponConfigFixedHash = 0xd7c60dc6bdce60feul;
+        public const ulong WeaponConfigFixedHash = 0xab4a7e2b3d0adc47ul;
 
         public static readonly byte[] WeaponConfigFixedLayout = new byte[] {
             0x0b, 0x00, 0x00, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05, 0x0d, 0x16, 0x00, 0x00,
@@ -4225,6 +4370,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             WeaponConfigFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -4278,6 +4431,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             WeaponConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -4286,6 +4446,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -4357,6 +4524,14 @@ namespace Tabledemo
                             WeaponConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -4382,6 +4557,7 @@ namespace Tabledemo
             new TableFixedEntry(12u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(16u, 4u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(17u, 5u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(18u, 0u, 4u, 0u, 17u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(18u, 6u, 4u, 0u, 17u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(18u, 7u, 4u, 0u, 17u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
         });
@@ -4400,8 +4576,23 @@ namespace Tabledemo
             0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
             0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] WeaponConfigFixedLayout1 = new byte[] {
+            0x0b, 0x00, 0x00, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05, 0x0d, 0x16, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+            0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+            0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+            0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+            0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+            0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+            0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+            0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] WeaponConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0xd7c60dc6bdce60feul, WeaponConfigFixedLayout0, 30),
+            new TableFixedKnownLayout(0xab4a7e2b3d0adc47ul, WeaponConfigFixedLayout1, 30),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -4434,7 +4625,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = WeaponConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (WeaponConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(WeaponConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(WeaponConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -4536,7 +4727,7 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = WeaponConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -4577,6 +4768,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(WeaponConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, WeaponConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -4683,7 +4888,7 @@ namespace Tabledemo
 
         public const long LoadoutConfigFixedBodyBytes = 154;
         public const long LoadoutConfigFixedRecordBytes = 8 + LoadoutConfigFixedBodyBytes;
-        public const ulong LoadoutConfigFixedHash = 0x1907531031b66e4eul;
+        public const ulong LoadoutConfigFixedHash = 0x02d650bb48e88bc7ul;
 
         public static readonly byte[] LoadoutConfigFixedLayout = new byte[] {
             0x2b, 0x00, 0x00, 0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x0d, 0x9a, 0x00, 0x00,
@@ -5028,6 +5233,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             LoadoutConfigFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -5081,6 +5294,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             LoadoutConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -5089,6 +5309,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -5160,6 +5387,14 @@ namespace Tabledemo
                             LoadoutConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -5180,7 +5415,7 @@ namespace Tabledemo
 
         public static readonly TableFixedPlan LoadoutConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(1u, 1u, 4u, 1u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(5u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(9u, 3u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(12u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5202,7 +5437,7 @@ namespace Tabledemo
             new TableFixedEntry(76u, 24u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(80u, 25u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(81u, 26u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(86u, 29u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(86u, 29u, 8u, 8u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(90u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(94u, 31u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(98u, 32u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -5219,10 +5454,13 @@ namespace Tabledemo
             new TableFixedEntry(142u, 43u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(146u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(150u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(38u, 0u, 4u, 0u, 37u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(38u, 11u, 4u, 0u, 37u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(38u, 12u, 4u, 0u, 37u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(60u, 0u, 4u, 0u, 59u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(60u, 19u, 4u, 0u, 59u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(60u, 20u, 4u, 0u, 59u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(82u, 0u, 4u, 0u, 81u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(82u, 27u, 4u, 0u, 81u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(82u, 28u, 4u, 0u, 81u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
         });
@@ -5275,8 +5513,57 @@ namespace Tabledemo
             0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4,
             0xe7, 0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] LoadoutConfigFixedLayout1 = new byte[] {
+            0x2b, 0x00, 0x00, 0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x0d, 0x9a, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a,
+            0xd9, 0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39,
+            0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea,
+            0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32,
+            0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25,
+            0xd7, 0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+            0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+            0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+            0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+            0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+            0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+            0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+            0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24,
+            0xcc, 0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00,
+            0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05,
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d,
+            0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a,
+            0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd,
+            0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe,
+            0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03,
+            0xaa, 0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe,
+            0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4,
+            0xe7, 0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] LoadoutConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x1907531031b66e4eul, LoadoutConfigFixedLayout0, 162),
+            new TableFixedKnownLayout(0x02d650bb48e88bc7ul, LoadoutConfigFixedLayout1, 162),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -5309,7 +5596,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(LoadoutConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -5411,7 +5698,7 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = LoadoutConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -5452,6 +5739,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(LoadoutConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, LoadoutConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -5558,7 +5859,7 @@ namespace Tabledemo
 
         public const long ProfileConfigFixedBodyBytes = 261;
         public const long ProfileConfigFixedRecordBytes = 8 + ProfileConfigFixedBodyBytes;
-        public const ulong ProfileConfigFixedHash = 0x29b2075dafa37f7ful;
+        public const ulong ProfileConfigFixedHash = 0x433a2305eac5e6c0ul;
 
         public static readonly byte[] ProfileConfigFixedLayout = new byte[] {
             0x3a, 0x00, 0x00, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7, 0xfc, 0xff, 0x19, 0x0d, 0x05, 0x01, 0x00,
@@ -5977,6 +6278,14 @@ namespace Tabledemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             ProfileConfigFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -6030,6 +6339,13 @@ namespace Tabledemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             ProfileConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -6038,6 +6354,13 @@ namespace Tabledemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -6109,6 +6432,14 @@ namespace Tabledemo
                             ProfileConfigFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -6141,7 +6472,7 @@ namespace Tabledemo
             new TableFixedEntry(90u, 12u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(106u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(107u, 14u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(108u, 15u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(108u, 15u, 4u, 1u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(112u, 16u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(116u, 17u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
             new TableFixedEntry(119u, 18u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -6163,7 +6494,7 @@ namespace Tabledemo
             new TableFixedEntry(183u, 38u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(187u, 39u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(188u, 40u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(193u, 43u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
+            new TableFixedEntry(193u, 43u, 8u, 8u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(197u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(201u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(205u, 46u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -6180,10 +6511,13 @@ namespace Tabledemo
             new TableFixedEntry(249u, 57u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(253u, 58u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(257u, 59u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(145u, 0u, 4u, 0u, 144u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(145u, 25u, 4u, 0u, 144u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(145u, 26u, 4u, 0u, 144u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(167u, 0u, 4u, 0u, 166u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(167u, 33u, 4u, 0u, 166u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(167u, 34u, 4u, 0u, 166u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
+            new TableFixedEntry(189u, 0u, 4u, 0u, 188u, TableFixedWire.Dead, 0, 0, 0, 0, 1),
             new TableFixedEntry(189u, 41u, 4u, 0u, 188u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(189u, 42u, 4u, 0u, 188u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
         });
@@ -6252,8 +6586,73 @@ namespace Tabledemo
             0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
             0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] ProfileConfigFixedLayout1 = new byte[] {
+            0x3a, 0x00, 0x00, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7, 0xfc, 0xff, 0x19, 0x0d, 0x05, 0x01, 0x00,
+            0x00, 0x0d, 0x00, 0x00, 0x00, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x24, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x14,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab,
+            0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50,
+            0x1e, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82,
+            0x28, 0xb1, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33,
+            0x92, 0xdc, 0x5d, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x55, 0x09, 0xfe,
+            0x81, 0xa9, 0xbd, 0x10, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x3f, 0x93,
+            0xa8, 0x0d, 0xdb, 0x2c, 0x8c, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa6, 0x6b,
+            0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7,
+            0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xf9, 0xb0, 0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x3c, 0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0d, 0x9a, 0x00, 0x00, 0x00,
+            0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00, 0x00,
+            0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9,
+            0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77,
+            0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde,
+            0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d,
+            0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25, 0xd7,
+            0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91,
+            0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00, 0x00,
+            0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad,
+            0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1,
+            0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe,
+            0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a,
+            0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7,
+            0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+            0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xcc,
+            0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+            0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05, 0x00,
+            0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0x04,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a, 0x0a,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13,
+            0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe, 0x13,
+            0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa,
+            0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
+            0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
+            0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] ProfileConfigFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x29b2075dafa37f7ful, ProfileConfigFixedLayout0, 269),
+            new TableFixedKnownLayout(0x433a2305eac5e6c0ul, ProfileConfigFixedLayout1, 269),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -6286,7 +6685,7 @@ namespace Tabledemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ProfileConfigFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(ProfileConfigFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -6388,7 +6787,7 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = ProfileConfigFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -6429,6 +6828,20 @@ namespace Tabledemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(ProfileConfigFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, ProfileConfigFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the

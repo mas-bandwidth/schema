@@ -194,10 +194,8 @@ local function live_count(fd: any, holder: any, val: any): number
 	end
 	if fd.array == "counted" then
 		local c = holder[fd.slot .. "Count"]
-		if type(c) ~= "number" then
-			c = 0
-		end
-		return math.min(c, fd.bound)
+		if type(c) ~= "number" or c ~= math.floor(c) or c < 0 or c > fd.bound then return 0 end
+		return c
 	end
 	return fd.bound
 end
@@ -499,6 +497,7 @@ local function write_float(c: any, w: any, e: any, val: any, named: any): boolea
 		if not V.finite32(val) then
 			return refuse(c, "non_finite_float", named)
 		end
+		if not V.floatInRange(e, val) then return refuse(c, "invalid_value", named) end
 		w_u32(w, val)
 		return true
 	end
@@ -508,6 +507,7 @@ local function write_float(c: any, w: any, e: any, val: any, named: any): boolea
 	if not V.finite64(val[1], val[2]) then
 		return refuse(c, "non_finite_float", named)
 	end
+	if not V.floatInRange(e, val) then return refuse(c, "invalid_value", named) end
 	w_u32(w, val[1])
 	w_u32(w, val[2])
 	return true
@@ -610,6 +610,7 @@ end
 -- a positional array body under kind 14: the element kind, the count, then
 -- the elements (§2.9, §3)
 local function write_array(c: any, fd: any, w: any, holder: any, val: any, count: number): boolean
+	if type(val) == "buffer" and count > buffer.len(val) then return refuse(c, "invalid_value", fd) end
 	if fd.bound ~= nil and fd.bound > 0 and fd.array ~= "list" and count > fd.bound then
 		return refuse(c, "invalid_value", fd)
 	end
@@ -745,6 +746,13 @@ end
 local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	local s = arm.s
 	local val = u[arm.slot]
+	if s == "arr" and arm.array == "counted" then
+		local n = u[arm.slot .. "Count"]
+		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > arm.bound then return refuse(c, "invalid_value", arm) end
+	elseif s == "bytes" then
+		local n = u[arm.slot .. "Length"]
+		if type(val) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > arm.bound or n > buffer.len(val) then return refuse(c, "invalid_value", arm) end
+	end
 	if s == "tab" then
 		return write_body(c, St.lookup(arm.t), w, val)
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
@@ -837,6 +845,13 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	end
 	local s = fd.s
 	local val = v[fd.slot]
+	if s == "arr" and fd.array == "counted" and (fd.present == nil or v[fd.present]) then
+		local n = v[fd.slot .. "Count"]
+		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound then return refuse(c, "invalid_value", fd) end
+	elseif s == "bytes" and (fd.present == nil or v[fd.present]) then
+		local n = v[fd.slot .. "Length"]
+		if type(val) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound or n > buffer.len(val) then return refuse(c, "invalid_value", fd) end
+	end
 	-- `| required` (§2.3): the writer ALWAYS writes the field when its guard
 	-- holds. A required integer whose declared range excludes its stored
 	-- value has no wire value, and the save refuses, as Go's writer does.

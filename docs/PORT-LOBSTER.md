@@ -28,6 +28,10 @@ and `modules/` unzipped into `dist/lobster-v2026.8/`. `$LOBSTER` overrides the
 toolchain; `make toolchain-lobster` refuses a pin that does not resolve, by
 name (the toolchain gate, issue #599). The fleet installs the same pin.
 
+**The release configuration is the default JIT with `--runtime-no-asserts`.**
+This compiles out packet writers' schema-contract asserts; table write refusals
+remain active.
+
 ## THE TYPE MAPPING
 
 One packet module per schema file, `<Base>.lobster`, and a separate

@@ -8,6 +8,7 @@ package compiler
 
 import (
 	"encoding/hex"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,9 +87,7 @@ func TestCookAbsentOptionalPayloadZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ctable: %v", err)
 	}
-	for k, v := range tfiles {
-		cfiles[k] = v
-	}
+	maps.Copy(cfiles, tfiles)
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("the generated cook path is C: no cc on PATH")

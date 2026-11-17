@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xf35accd0582cdd84 */
+   package example — protocol id 0x2bf51af687ac0abd */
 
 #ifndef SCHEMA_EXAMPLE_JOINSWIRE_H
 #define SCHEMA_EXAMPLE_JOINSWIRE_H
@@ -444,6 +444,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_align( serializ
     }
     if ( value->flag )
     {
+        if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )
+        {
+            return 0;
+        }
         {
             int32_t i;
             for ( i = 0; i < value->s_length; i++ )
@@ -451,10 +455,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_align( serializ
                 serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
             }
         }
-        if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )
-        {
-            return 0;
-        }
+        serialize_assert( schema_utf8_valid_( (const uint8_t *) value->s, value->s_length ) ); /* ill-formed text on write (SPEC §5.1) */
         if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) value->s_length ) )
         {
             return 0;
@@ -970,6 +971,10 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_regain_after_align(
             }
         }
     }
+    if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )
+    {
+        return 0;
+    }
     {
         int32_t i;
         for ( i = 0; i < value->s_length; i++ )
@@ -977,10 +982,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_regain_after_align(
             serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
     }
-    if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )
-    {
-        return 0;
-    }
+    serialize_assert( schema_utf8_valid_( (const uint8_t *) value->s, value->s_length ) ); /* ill-formed text on write (SPEC §5.1) */
     if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) value->s_length ) )
     {
         return 0;

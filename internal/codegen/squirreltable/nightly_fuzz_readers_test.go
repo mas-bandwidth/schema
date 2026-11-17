@@ -10,11 +10,16 @@ package squirreltable_test
 // seed the pinned text of the same instance (SPEC-TABLES §16.5).
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
@@ -23,9 +28,24 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-const strictFuzzPrelude = `local inputs = dofile("inputs.nut", true);
-local run = function(unit, mod, root, key) {
+// THE MODULES ARE LOADED ONCE PER UNIT. A dofile per mutant compiles the
+// unit's whole module set again for every mutant and keeps that compilation
+// alive for the rest of the campaign, so the strict and text/JSON probes would
+// grow by megabytes per mutant. The unit's modules are immutable descriptors,
+// so one load is enough for every instance read through them (wirefuzz.nut
+// caches its units the same way).
+const schemaForPrelude = `local schemas = {};
+local schemaFor = function(unit) {
+  if (unit in schemas) return schemas[unit];
   local schema = dofile(unit + "/schema_module.nut", true);
+  schemas[unit] <- schema;
+  return schema;
+};
+`
+
+const strictFuzzPrelude = `local inputs = dofile("inputs.nut", true);
+` + schemaForPrelude + `local run = function(unit, mod, root, key) {
+  local schema = schemaFor(unit);
   local T = schema.require(mod);
   local R = schema.require("schema_table_refusal");
   local report = {};
@@ -39,10 +59,10 @@ local run = function(unit, mod, root, key) {
 `
 
 const textJSONFuzzPrelude = `local inputs = dofile("inputs.nut", true);
-local fresh = function() { return { unknown=0, mismatch=0, widened=0, oor=0,
+` + schemaForPrelude + `local fresh = function() { return { unknown=0, mismatch=0, widened=0, oor=0,
   repeated=0, bodyDamaged=false, refused=false }; };
 local run = function(unit, mod, root, key, kind) {
-  local schema = dofile(unit + "/schema_module.nut", true);
+  local schema = schemaFor(unit);
   local T = schema.require(mod);
   local r = fresh();
   local v;
@@ -125,6 +145,57 @@ func fuzzReaderSeeds(t *testing.T) (string, map[string]string, []fuzzReaderSeed)
 	return dir, mods, seeds
 }
 
+// runNightlyReader runs dir/main under the pinned interpreter and returns its
+// stdout, with inputs written beside it as the module sqrun.Run writes. The
+// child is killed when the test returns, and on Linux the kernel kills it if
+// the test binary itself dies (go test's -timeout or a stopped runner), so no
+// interpreter outlives the campaign holding its allocations.
+func runNightlyReader(t *testing.T, dir, main string, inputs map[string][]byte) []byte {
+	t.Helper()
+	sq := sqrun.Require(t)
+	if err := os.WriteFile(filepath.Join(dir, "inputs.nut"), sqrun.InputsModule(inputs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(sq, main)
+	cmd.Dir = dir
+	dieWithParent(cmd)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	finished := false
+	t.Cleanup(func() {
+		if finished {
+			return
+		}
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+	err := cmd.Wait()
+	finished = true
+	if err != nil || stderr.Len() > 0 {
+		t.Fatalf("sq %s in %s: %v\nstderr:\n%s\nstdout:\n%s", main, dir, err, stderr.String(), stdout.String())
+	}
+	return stdout.Bytes()
+}
+
+// dieWithParent arms the kernel's parent-death signal where the platform has
+// one, so the interpreter does not survive the test binary. The field is set by
+// name because this file is compiled on hosts whose SysProcAttr has no
+// Pdeathsig.
+func dieWithParent(cmd *exec.Cmd) {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	attr := &syscall.SysProcAttr{}
+	field := reflect.ValueOf(attr).Elem().FieldByName("Pdeathsig")
+	if field.IsValid() && field.CanSet() {
+		field.Set(reflect.ValueOf(syscall.SIGKILL))
+	}
+	cmd.SysProcAttr = attr
+}
+
 func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
@@ -146,7 +217,7 @@ func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 		}
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
-	out := sqrun.Run(t, dir, "main.nut", inputs)
+	out := runNightlyReader(t, dir, "main.nut", inputs)
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 	if len(lines) != n {
 		t.Fatalf("the strict probe printed %d lines for %d mutants; a reader crashed or hung", len(lines), n)
@@ -187,7 +258,7 @@ func TestSquirrelNightlyFuzzTextJSON(t *testing.T) {
 		}
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
-	out := sqrun.Run(t, dir, "main.nut", inputs)
+	out := runNightlyReader(t, dir, "main.nut", inputs)
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
 	if len(lines) != n {
 		t.Fatalf("the text/json probe printed %d lines for %d mutants; a reader crashed or hung", len(lines), n)

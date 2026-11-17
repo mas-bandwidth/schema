@@ -1,9 +1,8 @@
-//go:build schema_leg_python
-
 package compiler
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,37 +76,62 @@ func TestPythonTablesEmitTheSurface(t *testing.T) {
 	}
 }
 
-// TestPythonTableCarrySetStaysEmpty: the table frame adds no construct from
-// the §2 carry vocabulary (docs/SPEC-TABLES.md), so the skeleton's empty set
-// is the honest registration; compiler/carries_python_tables.go holds the
-// line a later card turns on.
-func TestPythonTableCarrySetStaysEmpty(t *testing.T) {
+// TestPythonTableCarrySetCarriesTimestamp: the table frame's first §2 carry
+// construct is `timestamp` (docs/SPEC-TABLES.md §2.11), registered in
+// compiler/carries_python_timestamp.go and held to the Go engine by
+// internal/codegen/pythontable's TestPythonVtTimestamp.
+func TestPythonTableCarrySetCarriesTimestamp(t *testing.T) {
 	t.Parallel()
 	got, ok := Carried("python")
 	if !ok {
 		t.Fatal("the python target registered no carries set")
 	}
-	if len(got) != 0 {
-		t.Fatalf("the table frame registered %v, and it carries no §2 construct yet", got)
+	if !slices.Contains(got, carryTimestamp) {
+		t.Fatalf("the table frame registered %v, and timestamp is not among them", got)
+	}
+}
+
+// TestPythonTableCarrySetIsRegisteredByItsLayers: the table frame itself adds
+// no construct from the §2 carry vocabulary (docs/SPEC-TABLES.md); every
+// construct the python set holds is one a field-kind layer registers in its
+// own compiler/carries_python_<kind>.go and appends to nonGoCarriers["python"]
+// from its own test file (the optional kind: optional-variable-closure).
+func TestPythonTableCarrySetIsRegisteredByItsLayers(t *testing.T) {
+	t.Parallel()
+	got, ok := Carried("python")
+	if !ok {
+		t.Fatal("the python target registered no carries set")
+	}
+	for _, construct := range got {
+		if !slices.Contains(nonGoCarriers["python"], construct) {
+			t.Errorf("the table frame registered %q, which no field-kind layer claims", construct)
+		}
 	}
 }
 
 // The compiler keeps the common carry checks before the table frame. Direct
-// descriptor generation remains available for later field-codec layers.
+// descriptor generation remains available for later field-codec layers. The
+// optional array `?[3]int16` left this list when the optional kind began
+// carrying it (compiler/carries_python_optional.go).
 func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 	t.Parallel()
-	for _, field := range []string{"[]int32", "map[uint32]int32", "?[3]int16"} {
-		u := unitFromSource(t, "package probe\ntable Root {\n values "+field+"\n}\n")
-		_, err := New().Generate(u, "python", Options{})
-		if err == nil {
-			t.Errorf("python emitted an uncarried field values %s", field)
-		} else if !strings.Contains(err.Error(), "python") || !strings.Contains(err.Error(), "values") {
-			t.Errorf("the refusal does not name the target and field: %v", err)
-		}
+	list := unitFromSource(t, "package probe\ntable Root {\n values []float32\n}\n")
+	if _, err := New().Generate(list, "python", Options{}); err != nil {
+		t.Fatalf("the table frame refused its float list: %v", err)
+	}
+	// A plain map spends no §2 carry construct; the map carrier registry is
+	// what admits it (compiler/carries_python_maps.go).
+	u := unitFromSource(t, "package probe\ntable Root {\n values map[uint32]int32\n}\n")
+	files, err := New().Generate(u, "python", Options{})
+	if err != nil {
+		t.Fatalf("the table frame refused its map field: %v", err)
+	}
+	if _, ok := files["probe/_schema/kind_map.py"]; !ok {
+		t.Error("the map unit emitted no probe/_schema/kind_map.py")
 	}
 	// The table frame carries the full integer widths, independently of the
 	// narrower packet core's temporary refusal chain.
-	u := unitFromSource(t, "package probe\nfixed table Scalar {\n value uint128\n}\n")
+	u = unitFromSource(t, "package probe\nfixed table Scalar {\n value uint128\n}\n")
 	if _, err := New().Generate(u, "python", Options{}); err != nil {
 		t.Fatalf("the table frame refused its uint128 field: %v", err)
 	}
@@ -133,7 +157,7 @@ func TestPythonTableRuntimeNamesAreClaimed(t *testing.T) {
 		if !strings.HasSuffix(rel, ".py") {
 			continue
 		}
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '#' {
 				continue
 			}

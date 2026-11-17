@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous — protocol id 0xf4a226f4166d919b
+// package ludicrous — protocol id 0xd2ded2cc8a482aa1
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -33,7 +33,7 @@ import 'Schema.dart' show Schema;
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0xf4a226f4166d919b;
+const int protocolId = 0xd2ded2cc8a482aa1;
 
 const int maxWorldUnits = 30000;
 
@@ -387,6 +387,8 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
     }
   }
   assert(value.locked == 196608);
+  assert(value.tail >= 0);
+  assert(value.tail <= 255);
   v = value.tail & 0xff;
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -1515,6 +1517,8 @@ int writeDegenerateProbe(DegenerateProbe value, ByteData view) {
     const locked = Int128(0xffffffffffffffff, 0xfffff4c58c31d00e);
     assert(value.lockedWide == locked);
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 255);
   v = value.tail & 0xff;
   scratch |= v << scratchBits;
   scratchBits += 8;

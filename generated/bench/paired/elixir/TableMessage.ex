@@ -28,7 +28,7 @@ defmodule Bench.TableMessage do
 
   import Bitwise
 
-  @announcement <<0x01, 0x01, 0x09, 0x52, 0xA8, 0xBF, 0x78, 0x93, 0x55, 0xD3, 0x41, 0x02, 0x0E,
+  @announcement <<0x01, 0x01, 0x09, 0xF0, 0xFF, 0xDB, 0xEB, 0x78, 0xAD, 0x2D, 0xBA, 0x02, 0x0E,
                   0xCF, 0x06, 0x06, 0xCC, 0x06, 0xA8, 0x28, 0xF5, 0x81, 0xA4, 0xAC, 0x38, 0xAA,
                   0x07, 0x01, 0x10, 0x00, 0x3E, 0x7C, 0x69, 0x56, 0x5C, 0x00, 0xBE, 0x0D, 0x04,
                   0x01, 0x10, 0x00, 0x03, 0xEE, 0x29, 0xB8, 0xA8, 0x0D, 0xAE, 0x9B, 0x08, 0x01,
@@ -148,8 +148,15 @@ defmodule Bench.TableMessage do
 
   def announce_read(data, vocab) do
     case open_file(data) do
-      {:ok, body, ids} -> walk_body(body, ids, vocab)
-      {:error, reason} -> {:error, reason, %{vocab | refused: true}}
+      {:ok, body, ids} ->
+        # an id table out of first-use order is the whole wire malformed (§3),
+        # judged before the build version is read, as the engine does
+        if first_use_order?(body, ids),
+          do: walk_body(body, ids, vocab),
+          else: {:error, :malformed, %{vocab | refused: true}}
+
+      {:error, reason} ->
+        {:error, reason, %{vocab | refused: true}}
     end
   end
 
@@ -199,6 +206,217 @@ defmodule Bench.TableMessage do
         end
     end
   end
+
+  # THE ID TABLE IS IN FIRST-USE ORDER (docs/SPEC-TABLES.md §3): its entries
+  # are the ids the wire uses, in the order a walk first resolves each one,
+  # root body first and then the node table's records in index order. An
+  # entry no reference names, or one out of that order, is a spelling no
+  # conforming writer produces, and the read refuses it rather than re-encoding
+  # it (docs/rulings.json reads-refuse-non-canonical). A field reference, an
+  # enum's variant, a union's arm, a keyed slot's key and a node record's type
+  # each use their id where the walk meets them.
+  defp first_use_order?(body, ids) do
+    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil),
+         {:ok, {order, _seen}} <- first_use_nodes(table, ids, acc) do
+      Enum.reverse(order) == first_use_entries(ids)
+    else
+      # framing this walk cannot follow is strict_syntax!/3's to refuse
+      _ -> true
+    end
+  end
+
+  defp first_use_entries(ids), do: for(<<id::little-unsigned-64 <- ids>>, do: id)
+
+  defp first_use(ids, ref, {order, seen} = acc) do
+    if ref >= 1 and ref <= div(byte_size(ids), 8) do
+      id = :binary.decode_unsigned(binary_part(ids, (ref - 1) * 8, 8), :little)
+
+      if MapSet.member?(seen, id),
+        do: {:ok, id, acc},
+        else: {:ok, id, {[id | order], MapSet.put(seen, id)}}
+    else
+      :error
+    end
+  end
+
+  # first_use_fields walks one body to its terminator. In the root body the
+  # node table's payload is set aside, its records walked after the body.
+  defp first_use_fields(bin, ids, acc, root, table) do
+    case first_use_leb(bin) do
+      {0, rest} ->
+        {:ok, rest, acc, table}
+
+      {ref, <<kind, rest::binary>>} ->
+        case first_use(ids, ref, acc) do
+          {:ok, 0xFFFFFFFFFFFFFFFF, acc} when root and kind == 12 ->
+            with {:ok, content, rest} <- first_use_framed(rest) do
+              first_use_fields(rest, ids, acc, root, content)
+            end
+
+          {:ok, _id, acc} ->
+            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc) do
+              first_use_fields(rest, ids, acc, root, table)
+            end
+
+          :error ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp first_use_nodes(nil, _ids, acc), do: {:ok, acc}
+
+  defp first_use_nodes(table, ids, acc) do
+    case first_use_leb(table) do
+      {n, records} -> first_use_records(records, n, ids, acc)
+      :error -> :error
+    end
+  end
+
+  defp first_use_records(<<>>, 0, _ids, acc), do: {:ok, acc}
+  defp first_use_records(_rest, 0, _ids, _acc), do: :error
+
+  defp first_use_records(rest, n, ids, acc) do
+    with {ref, rest} <- first_use_leb(rest),
+         {:ok, type_id, acc} <- first_use(ids, ref, acc),
+         {:ok, record, rest} <- first_use_framed(rest),
+         {:ok, acc} <- first_use_record(record, type_id, ids, acc) do
+      first_use_records(rest, n - 1, ids, acc)
+    end
+  end
+
+  # a blob record is its bytes (§2.5, §3.1): no reference rides inside it
+  defp first_use_record(_record, type_id, _ids, acc)
+       when type_id in [0x704BE0D8FAAFFC58, 0x2F2EC0474F1C4FE4],
+       do: {:ok, acc}
+
+  defp first_use_record(record, _type_id, ids, acc), do: first_use_content(record, 13, ids, acc)
+
+  defp first_use_payload(bin, kind, ids, acc) when kind in [17, 30] do
+    case first_use_leb(bin) do
+      {0, rest} ->
+        {:ok, rest, acc}
+
+      {ref, rest} when kind == 30 ->
+        with {:ok, _id, acc} <- first_use(ids, ref, acc), do: {:ok, rest, acc}
+
+      {_index, rest} ->
+        {:ok, rest, acc}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp first_use_payload(bin, 15, ids, acc) do
+    case first_use_leb(bin) do
+      {0, rest} ->
+        {:ok, rest, acc}
+
+      {ref, <<kind, rest::binary>>} ->
+        with {:ok, _id, acc} <- first_use(ids, ref, acc),
+             {:ok, content, rest} <- first_use_framed(rest),
+             {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+          {:ok, rest, acc}
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp first_use_payload(bin, kind, ids, acc) when kind in [12, 13, 14, 16, 31, 32] do
+    with {:ok, content, rest} <- first_use_framed(bin),
+         {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+      {:ok, rest, acc}
+    end
+  end
+
+  defp first_use_payload(bin, kind, _ids, acc) do
+    w = first_use_width(kind)
+
+    case bin do
+      <<_::binary-size(^w), rest::binary>> when w > 0 -> {:ok, rest, acc}
+      _ -> :error
+    end
+  end
+
+  defp first_use_content(b, 13, ids, acc) do
+    case first_use_fields(b, ids, acc, false, nil) do
+      {:ok, <<>>, acc, nil} -> {:ok, acc}
+      _ -> :error
+    end
+  end
+
+  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc) when kind in [14, 16] do
+    case first_use_leb(rest) do
+      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc)
+      {n, items} -> first_use_slots(items, ek, n, ids, acc)
+      :error -> :error
+    end
+  end
+
+  defp first_use_content(_b, kind, _ids, _acc) when kind in [14, 16], do: :error
+
+  defp first_use_content(b, kind, ids, acc) when kind in [15, 17, 30] do
+    case first_use_payload(b, kind, ids, acc) do
+      {:ok, <<>>, acc} -> {:ok, acc}
+      _ -> :error
+    end
+  end
+
+  defp first_use_content(_b, _kind, _ids, acc), do: {:ok, acc}
+
+  defp first_use_elements(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
+  defp first_use_elements(_rest, _ek, 0, _ids, _acc), do: :error
+
+  defp first_use_elements(rest, ek, n, ids, acc) do
+    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc) do
+      first_use_elements(rest, ek, n - 1, ids, acc)
+    end
+  end
+
+  defp first_use_slots(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
+  defp first_use_slots(_rest, _ek, 0, _ids, _acc), do: :error
+
+  defp first_use_slots(rest, ek, n, ids, acc) do
+    with {key, rest} <- first_use_leb(rest),
+         {:ok, _id, acc} <- first_use(ids, key, acc),
+         {:ok, content, rest} <- first_use_framed(rest),
+         {:ok, acc} <- first_use_content(content, ek, ids, acc) do
+      first_use_slots(rest, ek, n - 1, ids, acc)
+    end
+  end
+
+  defp first_use_framed(bin) do
+    case first_use_leb(bin) do
+      {n, rest} when byte_size(rest) >= n ->
+        <<content::binary-size(^n), rest::binary>> = rest
+        {:ok, content, rest}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp first_use_leb(bin), do: first_use_leb(bin, 0, 0)
+
+  defp first_use_leb(<<b, rest::binary>>, shift, acc) when shift < 64 do
+    acc = acc ||| (b &&& 0x7F) <<< shift
+    if b < 0x80, do: {acc, rest}, else: first_use_leb(rest, shift + 7, acc)
+  end
+
+  defp first_use_leb(_bin, _shift, _acc), do: :error
+
+  defp first_use_width(kind) when kind in [1, 2, 6, 20, 25], do: 1
+  defp first_use_width(kind) when kind in [3, 7, 21, 26], do: 2
+  defp first_use_width(kind) when kind in [4, 8, 10, 22, 27], do: 4
+  defp first_use_width(kind) when kind in [5, 9, 11, 23, 28, 36], do: 8
+  defp first_use_width(kind) when kind in [18, 19, 24, 29], do: 16
+  defp first_use_width(_kind), do: 0
 
   # A table carrying one id twice is the whole wire malformed (§3).
   defp unique_ids?(<<>>), do: true
@@ -599,8 +817,30 @@ defmodule Bench.TableMessage do
                 if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
                   delta = round_f32(hif - lof)
 
-                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
-                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
+                  if delta != :nonfinite do
+                    values = round_f32(delta / resf)
+
+                    if values != :nonfinite do
+                      # the step count and the index width derive from the
+                      # triple exactly as the packet wire derives them (SPEC.md
+                      # §4.3): the count clamps to [1, 2^32 - 256]
+                      values = if values < 1.0, do: 1.0, else: values
+                      values = if values > 4_294_967_040.0, do: 4_294_967_040.0, else: values
+                      count = ceil(values)
+
+                      {:ok,
+                       %{
+                         kind: kind,
+                         packing: 2,
+                         qmin: lof,
+                         qmax: hif,
+                         qres: resf,
+                         count: count,
+                         bits: bit_length(count)
+                       }, rest2}
+                    else
+                      :error
+                    end
                   else
                     :error
                   end
@@ -739,6 +979,20 @@ defmodule Bench.TableMessage do
       <<f::little-float-32>> = <<bits::little-32>>
       f
     end
+  end
+
+  # The compressed float's step-index arithmetic (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): the index a value takes, in float32 at every step, never
+  # fused, never widened. The announcement already held the triple to the
+  # packet wire's own rule, so an in-range value quantizes without overflow;
+  # the clamp to [0, 1] absorbs only the float32 rounding at the ends.
+  defp quantize(%{qmin: qmin, qmax: qmax, count: count}, value) do
+    delta = round_f32(qmax - qmin)
+    count32 = round_f32(count * 1.0)
+    normalized = round_f32(round_f32(value - qmin) / delta)
+    normalized = if normalized < 0.0, do: 0.0, else: normalized
+    normalized = if normalized > 1.0, do: 1.0, else: normalized
+    min(floor(round_f32(round_f32(normalized * count32) + 0.5)), count)
   end
 
   @batch_max 256
@@ -906,6 +1160,9 @@ defmodule Bench.TableMessage do
 
   defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
 
+  defp encode_value(vocab, 16, shape, elem, value, acc),
+    do: encode_keyed(vocab, shape, elem, value, acc)
+
   defp encode_value(vocab, 30, _shape, _elem, value, acc) do
     if enum_ref?(vocab, value), do: {:ok, put_bits(acc, value, vocab.ref_bits)}, else: :error
   end
@@ -923,7 +1180,8 @@ defmodule Bench.TableMessage do
     raw =
       case shape do
         %{packing: 1, base: base} -> value - base
-        _ -> if kind in [2, 3, 4, 5, 18, 36], do: value + (1 <<< (bits - 1)), else: value
+        _ when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36] -> value + (1 <<< (bits - 1))
+        _ -> value
       end
 
     if raw >= 0 and raw <= bit_mask(bits) do
@@ -953,6 +1211,18 @@ defmodule Bench.TableMessage do
 
   defp encode_float(%{packing: 0}, value, acc),
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
+
+  # A QUANTIZED FLOAT RIDES ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): narrow to float32, refuse a value that overflows the width
+  # and a finite value outside [min, max] (invalid_value, refused whole), then
+  # quantize by the packet wire's rule, in float32 at every step.
+  defp encode_float(%{packing: 2} = shape, value, acc) do
+    case round_f32(value) do
+      :nonfinite -> throw(:non_finite_float)
+      v32 when v32 < shape.qmin or v32 > shape.qmax -> throw(:invalid_value)
+      v32 -> {:ok, put_bits(acc, quantize(shape, v32), shape.bits)}
+    end
+  end
 
   defp encode_float(_shape, _value, _acc), do: :error
 
@@ -989,6 +1259,40 @@ defmodule Bench.TableMessage do
     end
   end
 
+  # An enum-keyed array (docs/SPEC-TABLES.md §3.2, §3.3): the present-slot
+  # count at bits_required(0, slots), then per slot a KEY REFERENCE and the
+  # element. A count past the announced slots, a key that names no kind-0 entry
+  # (a variant name), and a key that names one twice each refuse the batch in
+  # every build (docs/SPEC-TABLES.md §3.2, §3.3, §5.1). No align: a keyed body
+  # never aligns, whatever its element kind.
+  defp encode_keyed(vocab, shape, elem, value, acc) do
+    count = length(value)
+    check(count <= shape.max)
+    acc2 = put_bits(acc, count, bit_length(shape.max))
+    encode_keyed_slots(vocab, elem, value, acc2, MapSet.new())
+  end
+
+  defp encode_keyed_slots(_vocab, _elem, [], acc, _seen), do: {:ok, acc}
+
+  defp encode_keyed_slots(vocab, elem, [{key_ref, value} | rest], acc, seen) do
+    case entry_at(vocab, key_ref) do
+      {:ok, entry} ->
+        check(
+          entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD and not MapSet.member?(seen, entry.id)
+        )
+
+        acc2 = put_bits(acc, key_ref, vocab.ref_bits)
+
+        case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), value, acc2) do
+          {:ok, acc3} -> encode_keyed_slots(vocab, elem, rest, acc3, MapSet.put(seen, entry.id))
+          :error -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
   defp encode_union(vocab, :none, acc), do: {:ok, put_bits(acc, 0, vocab.ref_bits)}
 
   defp encode_union(vocab, {ref, value}, acc) do
@@ -1021,6 +1325,16 @@ defmodule Bench.TableMessage do
 
       %{each_min: lo, each_max: hi} ->
         check(is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi)))
+
+      %{keyed_each_min: lo, keyed_each_max: hi} ->
+        check(
+          is_list(value) and
+            Enum.all?(
+              value,
+              &(is_tuple(&1) and is_integer(elem(&1, 1)) and elem(&1, 1) >= lo and
+                  elem(&1, 1) <= hi)
+            )
+        )
 
       %{text: max} ->
         check(is_binary(value) and byte_size(value) <= max and text_ok?(value))
@@ -1441,7 +1755,7 @@ defmodule Bench.TableMessage do
     if kind_holds?(kind, value), do: value, else: :malformed
   end
 
-  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
+  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw

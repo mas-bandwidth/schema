@@ -53,6 +53,18 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
     }
 }
 
+/// FixedTable: true when a DEAD byte of this record image is not zero.
+pub fn fixed_table_fixed_dead(b: &[u8]) -> bool {
+    let _ = b;
+    {
+        let at = 0;
+        if bench_mixed_fixed_dead(&b[at..at + 1236]) {
+            return true;
+        }
+    }
+    false
+}
+
 /// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 #[allow(clippy::manual_range_contains)] // the clamp count is a bitwise OR on purpose (no branch)
@@ -78,7 +90,7 @@ pub fn fixed_table_fixed_finite_body(value: &FixedTableRow) -> &'static str {
 pub const FIXED_TABLE_FIXED_BODY_BYTES: usize = 1236;
 pub const FIXED_TABLE_FIXED_RECORD_BYTES: usize = 8 + FIXED_TABLE_FIXED_BODY_BYTES; // the hash and the body
 /// fnv1a64 over the layout and the definitions digest (bill §13).
-pub const FIXED_TABLE_FIXED_HASH: u64 = 0x5f1320927e9ad910;
+pub const FIXED_TABLE_FIXED_HASH: u64 = 0xcde672e9249dd5e0;
 
 /// THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 /// PRE-ORDER walk of the closure in the writer's declared order. Every byte
@@ -279,7 +291,7 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
 /// is not on the wire and the number cannot be re-derived from a file (§5.2).
 pub const FIXED_TABLE_FIXED_LINEAGE: [TableFixedKnown; 1] = [
     TableFixedKnown {
-        hash: 0x5f1320927e9ad910,
+        hash: 0xcde672e9249dd5e0,
         layout: &FIXED_TABLE_FIXED_BLOCK,
         record: 1244,
         retired: false,
@@ -306,6 +318,12 @@ pub const fn fixed_table_fixed_measure(count: usize) -> usize {
 /// None when the buffer is smaller than fixed_table_fixed_measure says or a float
 /// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3).
 pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Option<usize> {
+    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6). The write
+    // contract is a debug assert, as this leg's other write checks are.
+    debug_assert!(
+        !values.is_empty(),
+        "a fixed-form file holds at least one record (docs/SPEC-TABLES.md §22.6)"
+    );
     let need = fixed_table_fixed_measure(values.len());
     if buffer.len() < need {
         return None;
@@ -360,10 +378,11 @@ pub fn fixed_table_fixed_load(
 ) -> Option<usize> {
     let damaged_before = report.damaged;
     report.damaged = false;
-    let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
+    let mut untouched = false;
+    let read = fixed_table_fixed_load_records(values, data, plan, remap, report, &mut untouched);
     let damaged = report.damaged;
     report.damaged |= damaged_before;
-    if damaged {
+    if damaged && !untouched {
         for value in values.iter_mut() {
             fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
         }
@@ -378,6 +397,7 @@ fn fixed_table_fixed_load_records(
     plan: &mut [TableFixedEntry],
     remap: &mut [u16],
     report: &mut TableFixedReport,
+    untouched: &mut bool,
 ) -> Option<usize> {
     if data.is_empty() {
         report.damaged = true;
@@ -461,15 +481,29 @@ fn fixed_table_fixed_load_records(
     // The REMAP lane is the build's too, laid beside the plan it belongs to;
     // the caller's slice stays in the signature as the capacity it always was.
     let _ = remap;
-    // A ROOT IS ONE RECORD (§3.4): a caller with room for exactly one and a
-    // file carrying none has no value to read, which is truncation.
-    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) || (rest.len() == 0 && values.len() == 1) {
+    // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):
+    // a header and a layout followed by no record is truncation, at any
+    // capacity. A record size of 8 or less, or a ragged tail, is the same.
+    if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
         report.damaged = true;
         return None;
     }
     let n = rest.len() / record_bytes;
     if n > values.len() {
         return report.refuse(TableFixedReason::BatchTooLarge);
+    }
+    // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
+    // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte
+    // no live value covers is zero, and a non-zero one refuses the whole load
+    // BEFORE any record lands. An absent optional's payload, a counted array's
+    // slots past its count, a text's or bytes' units past its length, and an
+    // inactive union arm are the four dead regions.
+    for k in 0..n {
+        if fixed_table_fixed_dead(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {
+            report.damaged = true;
+            *untouched = true;
+            return None;
+        }
     }
     // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
     // `Copy` over the whole body, so the hole list is empty and the loop below

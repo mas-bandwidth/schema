@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x1922430092518648
+// package realworld — protocol id 0xcc9644116a3dac22
 
 #pragma once
 
@@ -254,7 +254,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     return true;
 }
 
-SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPacket & value )
+SCHEMA_READ_INLINE bool ReadRealPacketBody( serialize::ReadStream & stream, RealPacket & value )
 {
     read_int( stream, value.f001_int, -805495, 805495 );
     read_double( stream, value.f002_f64 );
@@ -507,6 +507,17 @@ SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPack
     read_fixed( stream, value.f095_fixed, 16, 16, -1577, 1577 );
     read_bits( stream, value.f096_bits, 18 );
     read_bits( stream, value.f097_bits, 12 );
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPacket & value )
+{
+    if ( !ReadRealPacketBody( stream, value ) )
+    {
+        return false;
+    }
+    serialize::ReadStream end = stream; // check a copy, so the caller keeps the object's bit count
+    serialize_end( end ); // the packet ends here: no whole byte and no nonzero final padding (SPEC §5)
     return true;
 }
 

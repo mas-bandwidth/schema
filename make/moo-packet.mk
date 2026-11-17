@@ -108,4 +108,32 @@ packet-utf8-moo-negative-control: packet-utf8-moo
 # reaches through TEST_LEGS.
 test-moo: packet-defaults-moo packet-defaults-moo-negative-control \
 	packet-finite-moo packet-finite-moo-negative-control \
-	packet-utf8-moo packet-utf8-moo-negative-control
+	packet-utf8-moo packet-utf8-moo-negative-control \
+	packet-end-moo packet-end-moo-negative-control
+
+# PACKET END (SPEC §5 "Read termination", testdata/wire/packet-end/README.md):
+# the generated public ReadEnd is the one-packet read, so the exact packet 03
+# reads as 3 and 03 ff (a whole byte left) and fb (non-zero unused bits in the
+# final byte) are refused. The control drops the end call from the emitted
+# public read and must fail the trailing and padding cases by name, with the
+# exact packet still accepted.
+MOO_PACKET_END_RUN = -analyze -schema test/packet-end/End.schema -inputs testdata/wire/packet-end \
+	-main test/packet-end/moo/main.moo
+
+.PHONY: packet-end-moo packet-end-moo-negative-control
+packet-end-moo: toolchain-moo moo-packet-driver
+	$(MOO_PACKET_DRIVER) $(MOO_PACKET_END_RUN)
+
+packet-end-moo-negative-control: packet-end-moo
+	$(call moo-packet-sabotaged-driver,build/packet-end/moo-negative,packet-end-moo-no-end,wire.go)
+	@if ./build/packet-end/moo-negative/driver $(MOO_PACKET_END_RUN) > build/packet-end/moo-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the moo end check disappeared and the packet-end gate stayed green'; \
+		cat build/packet-end/moo-negative/log; exit 1; fi
+	@grep -Fq 'FAILED: trailing:' build/packet-end/moo-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not named'; cat build/packet-end/moo-negative/log; exit 1; }
+	@grep -Fq 'FAILED: padding:' build/packet-end/moo-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the non-zero padding was not named'; cat build/packet-end/moo-negative/log; exit 1; }
+	@if grep -F 'FAILED: ' build/packet-end/moo-negative/log | grep -Fvq -e 'FAILED: trailing:' -e 'FAILED: padding:'; then \
+		echo 'NEGATIVE CONTROL FAILED: the moo end-check removal failed another case'; \
+		cat build/packet-end/moo-negative/log; exit 1; fi
+	@echo 'packet end moo negative control: the removed end check accepts trailing data and non-zero padding'

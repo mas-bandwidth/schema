@@ -878,6 +878,65 @@ public final class BenchPacketVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert v.a >= -100 && v.a <= 100 : "BenchPacket.a";
+        assert v.b >= 0 && v.b <= 65535 : "BenchPacket.b";
+        assert v.c >= -1000000 && v.c <= 1000000 : "BenchPacket.c";
+        assert (v.bits7 & 0xffffffffL) <= 0x7fL : "BenchPacket.bits7";
+        assert (v.bits13 & 0xffffffffL) <= 0x1fffL : "BenchPacket.bits13";
+        assert (v.bits23 & 0xffffffffL) <= 0x7fffffL : "BenchPacket.bits23";
+        for (int i = 0, n = Math.min(v.blob.size(), 17); i < n; i++) {
+            int e = v.blob.get(i);
+            assert (e & 0xffffffffL) <= 0xffL : "BenchPacket.blob";
+        }
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -887,6 +946,7 @@ public final class BenchPacketVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -922,7 +982,7 @@ public final class BenchPacketVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -1277,7 +1337,9 @@ public final class BenchPacketVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "big");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.big));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -1472,7 +1534,7 @@ public final class BenchPacketVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -100, 100);
+                        long placed = in.integer(true, false, -100, 100);
                         if (!in.rejected) {
                             v.a = (int) placed;
                         }
@@ -1493,7 +1555,7 @@ public final class BenchPacketVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 65535);
+                        long placed = in.integer(true, false, 0, 65535);
                         if (!in.rejected) {
                             v.b = (int) placed;
                         }
@@ -1514,7 +1576,7 @@ public final class BenchPacketVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -1000000, 1000000);
+                        long placed = in.integer(true, false, -1000000, 1000000);
                         if (!in.rejected) {
                             v.c = (int) placed;
                         }
@@ -1535,7 +1597,7 @@ public final class BenchPacketVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7fL);
+                        long placed = in.integer(false, false, 0L, 0x7fL);
                         if (!in.rejected) {
                             v.bits7 = (int) placed;
                         }
@@ -1556,7 +1618,7 @@ public final class BenchPacketVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x1fffL);
+                        long placed = in.integer(false, false, 0L, 0x1fffL);
                         if (!in.rejected) {
                             v.bits13 = (int) placed;
                         }
@@ -1577,7 +1639,7 @@ public final class BenchPacketVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7fffffL);
+                        long placed = in.integer(false, false, 0L, 0x7fffffL);
                         if (!in.rejected) {
                             v.bits23 = (int) placed;
                         }
@@ -1676,13 +1738,14 @@ public final class BenchPacketVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[10] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffffffL);
                         if (!in.rejected) {
                             v.big = placed;
                         }
@@ -1723,7 +1786,7 @@ public final class BenchPacketVariable {
                                 in.skipValue();
                             } else {
                                 if (ec == '-' || (ec >= '0' && ec <= '9')) {
-                                    v.blob.add((int) in.integer(false, 0L, 0xffL));
+                                    v.blob.add((int) in.integer(false, false, 0L, 0xffL));
                                 } else {
                                     in.skipValue();
                                     in.rep.refuse("kind_mismatch");

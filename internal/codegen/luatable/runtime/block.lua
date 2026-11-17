@@ -233,9 +233,7 @@ function B.prepare(T, name, d)
   for _, f in ipairs(d.fields) do
     if out_of_line(f) then
       local elem = T.Tables[f.elem.target]
-      if elem.block_row == nil then
-        elem.block_row = B.Layout(T, f.elem.target, false)
-      end
+      if elem.block_row == nil then elem.block_row = B.Layout(T, f.elem.target, false) end
     end
   end
 end

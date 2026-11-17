@@ -845,6 +845,6 @@ func TestMooWireFuzzReadNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo and the Go toolchain (it runs the generated moo and builds the Go target)")
 	t.Parallel()
 	witness(t, plant("examples", "Wire.moo",
-		"function M.ReadProbeShape(stream: any, value: ProbeShape): boolean\n\tif not stream:serializeInt(NUM, 0, 2) then",
-		"function M.ReadProbeShape(stream: any, value: ProbeShape): boolean\n\tif not stream:serializeBits(NUM, 2) then -- SABOTAGED"), "ProbeShape", "read")
+		"function M.ReadProbeShapeBody(stream: any, value: ProbeShape): boolean\n\tif not stream:serializeInt(NUM, 0, 2) then",
+		"function M.ReadProbeShapeBody(stream: any, value: ProbeShape): boolean\n\tif not stream:serializeBits(NUM, 2) then -- SABOTAGED"), "ProbeShape", "read")
 }

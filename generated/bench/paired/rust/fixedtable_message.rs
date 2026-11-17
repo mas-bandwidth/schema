@@ -8,13 +8,6 @@
 // closed by the zero reference; a field at its declared default does not ride.
 // The bodies of one batch are one continuous bit stream, padded to a byte once
 // at its end (§3.3).
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_assignments)]
-#![allow(unused_labels)]
-#![allow(unused_comparisons)]
-#![allow(clippy::all)]
 
 // THE ONE REPORT (§4, §3.3): the crate root exports one TableReport, the
 // variable runtime's when the unit carries that form and the message
@@ -113,7 +106,6 @@ pub fn fixed_table_message_default() -> FixedTableRow {
 /// One FixedTable body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableRow) -> bool {
-    let d = fixed_table_message_default();
     {
         let mut probe1 = TableBitWriter::measure();
         if !bench_mixed_save_message_body(&mut probe1, &value.value) { return false; }
@@ -135,6 +127,8 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let same_build = v.build_version == BUILD_VERSION;
+    let mut next_field = 0usize;
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -145,7 +139,9 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
         seen_count += 1;
         match entry.id {
             0x7ce4fd9430e80cea => {
-                let mut widened = false;
+                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 1;
+                let unknown_before = report.unknown;
                 'f2: {
                     if entry.kind != 13 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -153,10 +149,16 @@ pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f2;
                     }
                     if !bench_mixed_load_message_body(r, v, report, &mut value.value) { return false; }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let mut probe3 = TableBitWriter::measure();
+                        if !bench_mixed_save_message_body(&mut probe3, &value.value) { return false; }
+                        let rides = probe3.bits > TABLE_MESSAGE_REF_BITS as u64;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             _ => {
+                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
                 if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }

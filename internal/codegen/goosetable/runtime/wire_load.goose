@@ -87,6 +87,7 @@ let LoadRefuseKindMismatch: i64 = 19;
 let LoadRefuseIntegrityMismatch: i64 = 22;
 let LoadRefuseNonFiniteFloat: i64 = 23;
 let LoadRefuseBlobShared: i64 = 24;
+let LoadRefusePreviousForm: i64 = 25;
 let LoadRefuseNewerForm: i64 = 26;
 let LoadRefuseMessageFormAsFile: i64 = 27;
 
@@ -102,6 +103,7 @@ fn load_refusal_name(code: i64) -> const u8[:] {
         LoadRefuseIntegrityMismatch => "integrity_mismatch",
         LoadRefuseNonFiniteFloat => "non_finite_float",
         LoadRefuseBlobShared => "blob_shared",
+        LoadRefusePreviousForm => "previous_form",
         LoadRefuseNewerForm => "newer_form",
         LoadRefuseMessageFormAsFile => "message_form_as_file",
         _ => "",
@@ -112,7 +114,8 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 // `report` and whose answer was `root` (docs/SPEC-TABLES.md §6.5; gotable's
 // TableReport.Err and <T>ReadStrict, in their order): a non-finite float,
 // then a form byte this reader does not carry (unknown_form, whose report
-// names which), a failed integrity trailer, damage the verdict names
+// names which), a form-1 file at a fixed root with no file form
+// (previous_form, §3.4), a failed integrity trailer, damage the verdict names
 // (wire_damaged) apart from a malformed body (malformed), then a builder's
 // count past the int32 storage cap (count_over_extent_cap, §2.9), then
 // blob_shared, oor and kind_mismatch. A load that read nothing whole (no
@@ -123,6 +126,7 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 fn load_error(report: const LoadReport&, root: i64) -> i64 {
     if report.non_finite { return LoadRefuseNonFiniteFloat; }
     if report.reason == LoadRefuseNewerForm || report.reason == LoadRefuseMessageFormAsFile { return LoadRefuseUnknownForm; }
+    if report.reason == LoadRefusePreviousForm { return LoadRefusePreviousForm; }
     if report.reason == LoadRefuseIntegrityMismatch { return LoadRefuseIntegrityMismatch; }
     if report.damaged { return LoadRefuseWireDamaged; }
     if report.body_damaged { return LoadRefuseMalformed; }
@@ -1849,6 +1853,7 @@ struct WireCheck {
     non_finite: bool,
     depth: i64,
     serial: i64,
+    next_ref: u64,       // the next id first-use must name (§3)
     stamp: i64[>..<]&,
     undo: i64[>..<]&,
     edges: u64[>..<]&,     // every kind 17 payload, in wire order
@@ -1869,6 +1874,13 @@ fn wc_refuse(w: WireCheck&, code: i64) -> bool {
 
 fn wc_id(w: WireCheck&, ref: u64) -> u64 {
     return le_at(w.data, w.ids_at + ((ref - 1) as! i64) * 8, 8);
+}
+
+// A first reference appends the next id; repeats may name any earlier id.
+fn wc_use(w: WireCheck&, ref: u64) -> bool {
+    if ref > w.next_ref { return wc_damage(w); }
+    if ref == w.next_ref { w.next_ref += 1; }
+    return true;
 }
 
 // wc_open is a new scope's number and the undo mark that closes it.
@@ -1960,6 +1972,7 @@ recursive fn wc_keyed(w: WireCheck&, at: i64, end: i64) -> bool {
     while i < count {
         let key, after_key, good = leb_at(w.data, off, end);
         if !good || key == 0 || key > w.ids_n as! u64 { wc_close(w, mark); return wc_damage(w); }
+        if !wc_use(w, key) { wc_close(w, mark); return false; }
         if !wc_name(w, key, scope) { wc_close(w, mark); return wc_damage(w); }
         let n, after, framed = leb_at(w.data, after_key, end);
         if !framed || n > (end - after) as! u64 { wc_close(w, mark); return wc_damage(w); }
@@ -1980,6 +1993,7 @@ recursive fn wc_union(w: WireCheck&, at: i64, end: i64) -> i64 {
     if !ok { wc_damage(w); return -1; }
     if ref == 0 { return next; }
     if ref > w.ids_n as! u64 || next >= end { wc_damage(w); return -1; }
+    if !wc_use(w, ref) { return -1; }
     let kind = w.data[next];
     let n, after, framed = leb_at(w.data, next + 1, end);
     if !framed || n > (end - after) as! u64 { wc_damage(w); return -1; }
@@ -2012,6 +2026,7 @@ recursive fn wc_payload(w: WireCheck&, at: i64, end: i64, kind: u8) -> i64 {
     if kind == 30 {
         let ref, next, ok = leb_at(w.data, at, end);
         if !ok || ref > w.ids_n as! u64 { wc_damage(w); return -1; }
+        if ref != 0 && !wc_use(w, ref) { return -1; }
         return next;
     }
     if kind == 15 { return wc_union(w, at, end); }
@@ -2080,7 +2095,10 @@ recursive fn wc_body(w: WireCheck&, at: i64, end: i64, root: bool) -> bool {
             if off != end { return wc_damage(w); } // bytes after a body's terminator inside its L
             return true;
         }
+        // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1)
+        if root && !w.announcement && w.table_present { wc_close(w, mark); return wc_damage(w); }
         if ref > w.ids_n as! u64 { wc_close(w, mark); return wc_damage(w); }
+        if !wc_use(w, ref) { wc_close(w, mark); return false; }
         if !wc_name(w, ref, scope) { wc_close(w, mark); return wc_damage(w); } // the same field id twice in one body
         if off >= end { wc_close(w, mark); return wc_damage(w); }
         let kind = w.data[off];
@@ -2163,7 +2181,7 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
     var undo: i64[>..<] = [];
     var edges: u64[>..<] = [];
     var w = WireCheck { data: data, ids_at: ids_at, ids_n: ids_n, announcement: announcement, fail: 0,
-                        non_finite: false, depth: 0, serial: 0, stamp: stamp, undo: undo, edges: edges,
+                        non_finite: false, depth: 0, serial: 0, next_ref: 1, stamp: stamp, undo: undo, edges: edges,
                         table_off: 0, table_end: 0, table_present: false };
     if !wc_body(w, at, end, true) { return w.fail, w.non_finite; }
     var first: i64[>..<] = [];
@@ -2174,12 +2192,14 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
         // THE NODE TABLE, READ WHOLE (§3.1): its count, then records of a
         // type reference and an L, consumed exactly and as many as declared
         let declared, after, ok = leb_at(data, w.table_off, w.table_end);
-        if !ok { wc_damage(w); return w.fail, w.non_finite; }
+        // a writer with no records writes no node table (§3.1)
+        if !ok || (!w.announcement && declared == 0) { wc_damage(w); return w.fail, w.non_finite; }
         var off = after;
         var found: u64 = 0;
         while off < w.table_end {
             let ref, next, good = leb_at(data, off, w.table_end);
             if !good || ref == 0 || ref > ids_n as! u64 { wc_damage(w); return w.fail, w.non_finite; }
+            if !wc_use(w, ref) { return w.fail, w.non_finite; }
             let len, body, framed = leb_at(data, next, w.table_end);
             if !framed || len > (w.table_end - body) as! u64 { wc_damage(w); return w.fail, w.non_finite; }
             let stop = body + (len as! i64);
@@ -2205,6 +2225,7 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
         if off != w.table_end || found != declared { wc_damage(w); return w.fail, w.non_finite; }
     }
     first.push(w.edges.len);
+    if w.next_ref - 1 != ids_n as! u64 { wc_damage(w); return w.fail, w.non_finite; }
     wc_graph(w, first, blob);
     return w.fail, w.non_finite;
 }
@@ -2223,6 +2244,14 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     }
     let t = table_index(c, root);
     if t < 0 { report.refused = true; return -1; }
+    // A DECLARED FIXED TABLE PAST THE RECORD CEILING HAS NO FILE FORM
+    // (docs/SPEC-TABLES.md §1, §3.4): its read refuses form 1 as
+    // previous_form, decoding nothing and moving no counter
+    if unit.tables[t].no_file_form {
+        report.refused = true;
+        report.reason = LoadRefusePreviousForm;
+        return -1;
+    }
     var file = data;
     if unit.tables[t].integrity {
         if !integrity_holds(data, 1) {

@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xf35accd0582cdd84
+-- package example — protocol id 0x2bf51af687ac0abd
 
 local _M = {}
 
@@ -884,6 +884,8 @@ function _M.WriteStrs(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if type(v.S) ~= "string" or #v.S > 8 then return false end
+  if not utf8valid(v.S) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)
+  if string.find(v.S, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)
   if not stream:serializeBits({ value = #v.S }, 4) then return false end -- the length
   -- align, then the used bytes (SPEC §4.7)
   if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end

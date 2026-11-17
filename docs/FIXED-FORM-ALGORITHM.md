@@ -59,8 +59,8 @@ representation cannot express a cycle**, and there is no cycle rule to write.
 as a text kind; `string(N)` (`12`) is the only text kind in a layout. **The hash** is
 `h := 0xcbf29ce484222325; for each byte v: h ^= v; h *= 0x100000001b3` over the layout's bytes as written,
 **the 4-byte count included**, and then over the DEFINITIONS DIGEST (§5.2) — the facts a range, a `bits(N)`, a
-`fixed(I,F)` split or a `flags` bit count states and the layout's sizes do not, which never ride the wire. An
-empty digest leaves the hash the layout's alone. It is a wire identity, never a security claim (fix 8). **The closed
+`fixed(I,F)` split or a `flags` bit count states and the layout's sizes do not, which never ride the wire. A
+legacy empty digest leaves the hash the layout's alone; prospective v2 roots always include their identity prefix (§5.2). It is a wire identity, never a security claim (fix 8). **The closed
 kind set is `1..30`, `32`, `35`** — `31` (§3's framing escape), `33` (retired) and `34` (reserved) are not in it, and a
 kind outside it names a form this reader never saw: `REFUSE layout_kind_unknown`, never stepped over.
 
@@ -574,7 +574,7 @@ layout last**, and nil for a name the lock carries as a nested `type` rather tha
 `LineageEntry` carries the five facts the table above asks for and the two the operator writes: **`Wire`**
 (the eight bytes the header and every record carry — the lineage's key and the only fact a file is matched
 on), **`Layout`** (the bytes verbatim: a u32 entry count and a run of seventeen-byte entries, what LOAD
-memcmps and what PLAN walks), **`Digest`** (§13, empty where a table carries none of those facts),
+memcmps and what PLAN walks), **`Digest`** (§13, legacy-v1 or prospective v2 according to its recorded prefix),
 **`Record`** (the BODY size, the one fact a backend never takes raw: `record_bytes` is `8 + Record` and COMPILE
 adds the eight), **`Retired`**, and **`Reason`** (the operator's sentence). Nothing changed about
 the FILE: the digest still never rides the wire.
@@ -592,6 +592,85 @@ same wire hash would be unreadable for ever, and the lock refuses the collision 
 served by being RETIRED, `schema lock --retire T@0x<hash> --reason "…"`, which keeps the entry and moves the
 floor. A lock written before the lineage existed is SALVAGED and never deleted (bill §11.8): its single layout
 becomes the first entry, and every field line, default and deprecation mark is carried forward unchanged.
+
+
+**WRITER SNAPSHOTS IN RENDERING 8.** A new lineage entry also captures the complete evaluated by-value writer
+closure in an optional `writer=<hex>` token. `lockfile.LineageEntry.Writer` is that closure as `*ir.Struct`;
+COMPILE passes it unchanged alongside the layout and the whole-record size. The snapshot preserves field
+identity and nesting, optional and array shape/count minima, exact 128-bit bounds, fixed-point scale,
+float bounds/resolution, enum/flags sets, union arms and defaults. It is metadata, never a new wire fact:
+`Wire`, `Layout`, `Digest` and `Record` retain their existing meanings and bytes. The snapshot is bound by
+the lineage roll-up and checked against its root, layout, digest, record size and wire hash when parsed.
+
+Rendering 8 **reads and salvages renderings 6 and 7**, preserving every historical entry, its order, hashes,
+retirement and reason. A missing snapshot is **legacy-unknown**, never an empty set of constraints. Normal
+migration does not guess a historical snapshot from the wider reader or from anonymous digest records.
+The old parser/check acceptance remains; missing metadata does not retire a hash and is not a runtime
+`layout_unsupported` event. A backend that requires complete source checks must report its concrete missing
+metadata at generation time, rather than claiming a conforming historical read it cannot implement.
+
+A trusted historical schema can supply the missing facts explicitly:
+
+```
+schema lock --writer 'Config@0x<recorded-hash>' --from path/to/historical-unit path/to/current-unit
+```
+
+The current lock must be current first. The historical unit is checked as source, and its named fixed root,
+layout bytes, digest, record-body size and hash must all match the selected existing entry. Only that entry
+is enriched. Repeating the same import is idempotent; different captured constraints under the same legacy
+hash refuse without changing the lock. `--writer` and `--from` are paired and cannot combine with `--print`,
+`--retire` or `--reason`. **The caller establishes the source's provenance**: matching a legacy hash is a
+necessary consistency check, not proof that the source is the historical writer.
+
+**EXPLICIT LAYOUT-ONLY IMPORT IN RENDERING 9.** A pre-digest writer may have
+recorded an empty digest even though its source carried constraints. The strict
+import above refuses that mismatch. A caller with trusted historical source can
+select the distinct, explicit compatibility operation:
+
+```
+schema lock --writer 'Config@0x<recorded-hash>' --from path/to/historical-unit --legacy-layout-only path/to/current-unit
+```
+
+The selected entry must have an empty digest. The checked source must match its
+root wire name, layout bytes, record-body size and raw layout-only key exactly.
+Its complete by-value closure becomes the writer snapshot. The `legacy-layout-only`
+marker is recorded on that lineage line and bound into the lineage roll-up;
+it is legal only in rendering 9, requires a complete writer snapshot, and cannot
+coexist with a nonempty digest. No old wire key, layout, body size, order,
+retirement or reason is changed. This is an explicit source-provenance assertion,
+not an inference from matching bytes or from the current reader.
+
+The public API is `compiler.ImportSchemaLockWriterWithOptions` with
+`compiler.SchemaLockWriterImportOptions{LegacyLayoutOnly: true}`; the lock
+implementation uses `ImportWriterWithOptions` and `WriterImportOptions`.
+The original import API and zero options retain strict digest equality.
+Validating an existing explicitly trusted import requires repeating the opt-in;
+a different captured constraint set under the same key is refused rather than
+overwritten. Repeating the same explicit import is idempotent. These rules do
+not distinguish files from multiple historical writers sharing one key: such
+files still need trusted per-file provenance or a separately chosen operator
+migration policy.
+
+**PRE-LINEAGE V6 SALVAGE.** The immediate predecessor of rendering 7 used
+layout-only file keys. Rendering 9 reconstructs that key only when the checked
+source still matches the v6 lock's complete declaration projection, including
+held-declaration hashes. It retains the raw layout-only entry with no writer
+snapshot and appends the current v2 entry; matching current source does not
+silently establish historical provenance. Import its source explicitly as above
+when a backend needs complete writer checks. If the source has changed, restore
+the exact historical source, migrate its lock first, then evolve the schema.
+A wider current declaration cannot supply the missing historical layout bytes.
+
+This boundary is irreducible. Optional anonymous `R` digest records omit the field they constrain, so two
+lawful histories can end in the same rendering-7 lock after removing a range from either of two same-kind
+fields. A lock alone cannot reconstruct which writer field had the bound. Count minima are absent from
+the wire digest too, but their `born:N` lock defaults are invariant under lawful evolution, so changing a
+minimum is refused as a default change. Integer bounds outside int64 also lose information in the legacy
+digest. Capturing snapshots does not repair these legacy identity ambiguities: distinct fully captured
+constraints with one wire hash are diagnosed rather than overwritten. Correcting the prospective wire
+identity is separate work and must preserve all previously recorded hashes; this extension changes none.
+If no historical source or trusted snapshot exists, those concrete histories remain unproven. Other entries
+with complete snapshots and new locked units can still be generated and validated independently.
 
 **§5.1 has its implementation too**: `internal/lockfile/monotone.go`, reached from the lock's own diff — one
 comparison per recorded fact, in the order that names the change best, the first difference is the finding,
@@ -692,8 +771,8 @@ SITE, from the schema** — the reference's signature is `ir.TableFixedLayoutHas
 digest argument for a leg to omit. That is the point of the shape: a leg that forgot the second argument, or
 passed an empty one, would hash the layout bytes alone and publish a number that collides with every sibling
 the digest exists to separate. A LINEAGE ENTRY is the one caller with no live schema behind it — a historical
-layout has no `*Struct` — so it stores the two runs and hashes the concatenation, which is the same walk
-because FNV is sequential and a nil schema is an empty second run:
+layout has no `*Struct` — so it stores the two runs and calls `TableFixedLayoutHashRecorded`, which hashes
+the exact concatenation without selecting a new identity epoch:
 
 ```
 HASH(layout_bytes, T):
@@ -703,7 +782,79 @@ HASH(layout_bytes, T):
   return h
 ```
 
-**THE DEFINITIONS DIGEST** (bill §13) is every fact of §5.1 that is not wire shape. Without it
+**PROSPECTIVE V2 DEFINITIONS DIGEST (WireLaw 3).** Every non-nil fixed root begins
+its digest with the 26 bytes `00 73 63 68 65 6d 61 2d 66 69 78 65 64 2d 64 65 66 69 6e 69 74 69 6f 6e 73 02`
+(`\0schema-fixed-definitions\x02`), even when there are no rows. The initial zero
+cannot begin a legacy digest. A new plain root therefore does not intentionally
+reuse a pre-digest writer's layout-only key. FNV-1a64 remains the wire identity,
+not a collision-free or security hash; duplicate wire keys remain refused.
+
+A row is `tag:u8, path_bytes:u32 LE, path, payload_bytes:u32 LE, payload`.
+A path segment is `role:u8, fixed_kind:u32 LE, wire_id:u64 LE`. The root segment
+has role `t`, kind 13 and the root's wire id. Each field appends role `f` and
+its wire id; each union arm appends role `a` and its arm wire id. The kind is
+the field's fixed scalar kind, or kind 16 for a keyed array, or kind 14 for an
+array/bytes field. An optional appends `?, 35, 0`; an array or keyed array
+appends `e, element_fixed_kind, 0` before its element facts. The optional
+segment follows the field segment. Count minima attach before the element
+segment. All ids use their existing `was` aliases. Anonymous path segments
+are distinguished by role and kind, never by source spelling.
+
+Walk declared fields depth first. Emit every reachable occurrence of a named
+struct, union or flags declaration at its wire path; do not deduplicate by name.
+The checked by-value closure is acyclic. Within a field emit these rows in order:
+
+| fact | tag and payload |
+|---|---|
+| counted-array minimum, including zero | `C`: minimum as u64 LE |
+| integer range or fixed whole-unit range | `R`: fixed scalar kind u32 LE, signedness u8 (1 signed, 0 unsigned), fractional bits u32 LE, then canonical min and max |
+| float range | `D`: fixed scalar kind u32 LE, min and max IEEE-754 float64 bits as u64 LE |
+| float resolution, including absent/zero | `Q`: IEEE-754 float64 bits as u64 LE |
+| `bits(N)` | `B`: N u32 LE |
+| `fixed(I,F)` / `ufixed(I,F)` | `X`: I u32 LE, F u32 LE, signedness u8 |
+| flags at this wire path | `F`: effective wire bit count u32 LE, variant count u32 LE, then each variant name hash u64 LE in bit order |
+
+A canonical integer is sign u8 (0 nonnegative, 1 negative), magnitude length
+u32 LE, and minimal big-endian magnitude bytes. Zero has an empty magnitude.
+This preserves the full signed/unsigned 128-bit domain. Fixed bounds are the
+checked IR's whole-unit endpoints; the recorded fractional bits bind their raw
+scale without rounding or truncation.
+Marker 2 with zero length is reserved for an absent bound in unchecked IR;
+valid checked ranged fields have actual bounds. No reader-limit row exists
+until the language declares one. Defaults, annotations and the writer snapshot's
+JSON rendering are not incidental identity inputs.
+
+`TableFixedDefinitionsDigest` computes v2; `TableFixedDefinitionsDigestLegacy`
+freezes the old stream. `TableFixedDefinitionsDigestForRecorded` selects the
+recorded scheme, and its result MUST equal the recorded digest. In particular,
+empty historical digest does not authorize discarding source constraints.
+The separately marked layout-only import above is the explicit provenance-based
+exception; it does not change this digest helper's contract.
+An unknown prospective version refuses. `TableFixedLayoutHashRecorded` hashes
+the two supplied byte runs without adding a prefix. The historical
+`TableFixedLayoutHash(layout, nil)` operation remains raw for compatibility;
+new own identities always supply their non-nil schema.
+
+Lock rendering 9 salvages renderings 6, 7 and 8, preserving every old wire key,
+layout, digest, record-body size, snapshot, retirement, reason and order. Existing
+lineage roll-ups are checked during migration, including renderings 7 and 8. Relock
+appends the current v2 entry once even when its layout equals the prior layout.
+Historical snapshot validation uses its recorded digest scheme, never today's
+default. No runtime header or record-body format changes. Missing historical
+metadata remains a generation-time limitation for a backend needing strict
+source checks; it is not an inferred retirement.
+
+No prospective digest can distinguish already-written files from two writers
+with equal historical key, layout and framing. Those bytes need trusted per-file
+writer provenance for offline migration, or an explicit operator policy. Known
+historical schemas alone cannot recover the missing discriminator. This change
+does not claim to repair such files or silently choose the more permissive writer.
+
+The release carries WireLaw 3 under VERSIONING's existing announced-minor rule;
+all protocol ids and derived build versions move. Cook form 5 and fixed file
+form 3 remain unchanged. See VERSIONING's recorded amendment for rollout cost.
+
+**LEGACY-V1 DEFINITIONS DIGEST** (historical compatibility only) is every fact of §5.1 that is not wire shape. Without it
 `int32 | 0..100` and `| 0..200` hash identically and an old reader cannot refuse the widening. It is the
 compiler's, it is recorded in the lock beside the layout bytes, and **it never rides the wire**: the hash
 binds it. Walk `T`'s closure as §1.1 walks it — declared field order, depth first, each NAMED type emitted
@@ -713,8 +864,8 @@ once — and append, per field:
 |---|---|
 | an INTEGER range | `'R'`, then min and max, each as an i64 LE |
 | a FLOAT range | `'R'`, then min and max, each as the **IEEE-754 bits of the `float64` bound**, u64 LE (`math.Float64bits`) — never the bound narrowed to an integer, which would hash `0.5` and `0.25` the same |
-| a FIXED-POINT range | `'R'`, then min and max, each as its RAW scaled i64 LE |
-| a FLOAT range's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, immediately after that range's `'R'` and bounds. This row is present for every float range, including an uncompressed range whose absent resolution is `0.0` (eight zero bytes). It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestTableFixedDefinitionsDigestResolutionMovesTheHash` |
+| a FIXED-POINT range | `'R'`, then the checked whole-unit min and max as i64 LE; the separate `'X'` row binds the scale. The historical wording called these raw-scaled bounds, but the implementation has always used `Field.IntMin`/`IntMax` without scaling |
+| a FLOAT range's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, immediately after that range's `'R'` and bounds. This row is present for every float range, including an uncompressed range whose absent resolution is `0.0` (eight zero bytes). It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestLegacyTableFixedDefinitionsDigestResolutionMovesTheHash` |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
@@ -725,7 +876,7 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) — EIGHT BYTES PER BOUND either
+**That table remains the legacy-v1 contract.** The reference emits `'R'` for every range (integer, float, fixed-point) — EIGHT BYTES PER BOUND either
 way, an i64 for an integer or fixed-point bound and the `float64`'s own bits for a float one — `'Q'`
 for every float range's resolution (including zero for an uncompressed range), and
 `'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and

@@ -550,13 +550,20 @@ do
   tr.Pad4, tr.Pad5 = 0x123456789ABCDEF0i, 0xABCDEF
   tr.Inner.A, tr.Inner.B, tr.Inner.C = 0x11111, 0x22222, 0x33333
   local want = { vec2, sf, su, si, so, sc, st, sw, trio, ts, tf, tr }
+  -- Each shape is its own flushed packet in the pinned stream, so each is read
+  -- through the public one-packet Read over its own slice (SPEC §5).
   local names = { "Vec2", "SpanF64", "SpanU64", "SpanI64", "SpanOne", "SpanChunk", "SpanTail", "SpanTwice", "Trio", "TrioSole", "TrioFirst", "TrioStraddle" }
-  local s = serialize.ReadStream.new(inputs["degenerate"])
+  local bytes = { 16, 16, 16, 16, 8, 8, 20, 32, 8, 8, 10, 51 }
+  local off = 0
   local ok = true
   for i, n in ipairs(names) do
+    local slice = buffer.create(bytes[i])
+    buffer.copy(slice, 0, inputs["degenerate"], off, bytes[i])
+    local s = serialize.ReadStream.new(slice)
     local got = D["New" .. n]()
     if not D["Read" .. n](s, got) then print("degenerate REFUSED " .. n); ok = false; break end
     if dump(got) ~= dump(want[i]) then print("degenerate MISMATCH " .. n .. " got " .. dump(got) .. " want " .. dump(want[i])); ok = false; break end
+    off = off + bytes[i]
   end
   if ok then print("degenerate OK") end
 end
@@ -609,7 +616,7 @@ for _ = 1, 2 do
 	end
 	local r = serialize.ReadStream.new(buffer.fromstring("\x51"))
 	assert(A.ReadDefaultChoice(r, out), "read independent DefaultChoice oracle")
-	assert(r:bitsProcessed() == 7, "DefaultChoice consumes exactly 7 bits")
+	assert(r:bitsProcessed() == 8, "the public read consumes the 7-bit object and its one padding bit")
 	assert(out.Type == A.DefaultChoiceType.First and out.First.EntriesCount == 0 and out.First.Marker == 5,
 		"DefaultChoice selects First and reads count zero, marker five")
 	for i = 1, 2 do

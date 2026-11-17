@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package ludicrous — protocol id 0xf4a226f4166d919b
+-- package ludicrous — protocol id 0xd2ded2cc8a482aa1
 --
 -- Lua 5.4 values (docs/PORT-LUA.md): integers of 64 bits or fewer are Lua
 -- integers (a uint64 is the same bits read unsigned); 128-bit values are
@@ -36,7 +36,7 @@ local WIDE = { value = { lo = 0, hi = 0 } }
 
 -- The unit's protocol id — the hash of its wire shape (SPEC §3.1), as the
 -- 64 bits of a Lua integer (a hex literal wraps; read it unsigned).
-_M.ProtocolId = 0xf4a226f4166d919b
+_M.ProtocolId = 0xd2ded2cc8a482aa1
 
 _M.MaxWorldUnits = 30000
 
@@ -438,7 +438,8 @@ function _M.WriteUnsignedProbe(stream, v)
   end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Locked }, 16, 16, 3, 3) then return false end
-  if math.type(v.Tail) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 255 then return false end
   if not stream:serializeBits({ value = v.Tail }, 8) then return false end -- the storage width
   return true
 end
@@ -514,7 +515,8 @@ function _M.WriteDegenerateProbe(stream, v)
   then
     return false
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 255 then return false end
   if not stream:serializeBits({ value = v.Tail }, 8) then return false end -- the storage width
   return true
 end

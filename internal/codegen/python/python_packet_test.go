@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -67,7 +68,7 @@ func loadPythonUnit(t *testing.T, paths ...string) *ir.Unit {
 // rootClosure is the declarations a root type needs by value, in their own
 // files. It makes a one-root unit out of a corpus file the codec cannot carry
 // whole, so a carried root's C++ pin can still be read.
-func rootClosure(u *ir.Unit, root string) *ir.Unit {
+func rootClosure(u *ir.Unit, roots ...string) *ir.Unit {
 	byName := map[string]ir.Decl{}
 	for _, f := range u.Files {
 		for _, d := range f.Decls {
@@ -98,7 +99,9 @@ func rootClosure(u *ir.Unit, root string) *ir.Unit {
 			}
 		}
 	}
-	add(root)
+	for _, root := range roots {
+		add(root)
+	}
 	out := &ir.Unit{
 		Package: u.Package, ProtocolId: u.ProtocolId,
 		DeclFile: map[string]string{}, Consts: map[string]*ir.Const{},
@@ -200,12 +203,8 @@ func itemsBlocker(u *ir.Unit, items []ir.Item, seen map[string]bool) string {
 			if k := itemsBlocker(u, item.Else, seen); k != "" {
 				return k
 			}
-		case *ir.ConstItem:
-			return "const"
-		case *ir.ReservedItem:
-			return "reserved"
-		case *ir.AlignItem:
-			return "align"
+		case *ir.ConstItem, *ir.ReservedItem, *ir.AlignItem:
+			// carried by the packet layout emitters
 		}
 	}
 	return ""
@@ -403,6 +402,45 @@ func topLevelFields(u *ir.Unit, root string) (intField, boolField string, intMin
 // both pinned interpreters, refuses hostile input and wrong-typed values, runs
 // the analyzer over each generated tree, and lists every pin it skips with the
 // kind that blocks it (docs/PORT-PYTHON.md, THE HARNESS).
+const packetCoreShards = 8
+
+func packetCoreShard(value string) (int, error) {
+	if value == "" {
+		return -1, nil
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 || n >= packetCoreShards || strconv.Itoa(n) != value {
+		return 0, fmt.Errorf("invalid PYTHON_PACKET_CORE_SHARD %q", value)
+	}
+	return n, nil
+}
+
+func packetCoreSelected(index, shard int) bool {
+	return shard < 0 || index%packetCoreShards == shard
+}
+
+func TestPythonPacketCoreShardPlan(t *testing.T) {
+	if shard, err := packetCoreShard(""); err != nil || shard != -1 {
+		t.Fatal("unset selector must run every case")
+	}
+	for _, value := range []string{"-1", "8", "01", "bad"} {
+		if _, err := packetCoreShard(value); err == nil {
+			t.Errorf("accepted invalid shard %q", value)
+		}
+	}
+	for i := range packetPins() {
+		count := 0
+		for shard := range packetCoreShards {
+			if packetCoreSelected(i, shard) {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("case %d selected %d times", i, count)
+		}
+	}
+}
+
 func TestPythonPacketCore(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -459,7 +497,17 @@ func TestPythonPacketCore(t *testing.T) {
 		t.Fatal("no C++-pinned packet golden uses only carried kinds; the harness would prove nothing")
 	}
 	sort.Slice(carried, func(i, j int) bool { return carried[i].name < carried[j].name })
-	for _, pin := range carried {
+	shard, err := packetCoreShard(os.Getenv("PYTHON_PACKET_CORE_SHARD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shard >= 0 && len(carried) < packetCoreShards {
+		t.Fatalf("only %d carried cases for %d shards", len(carried), packetCoreShards)
+	}
+	for i, pin := range carried {
+		if !packetCoreSelected(i, shard) {
+			continue
+		}
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()
 			u := load(pin.paths)
@@ -471,7 +519,7 @@ func TestPythonPacketCore(t *testing.T) {
 			base := pruned.DeclFile[pin.root]
 			intField, boolField, intMin, intMax := topLevelFields(pruned, pin.root)
 			probe := packetProbe(pruned, pin.root, base, intField, boolField, intMin, intMax)
-			pinBytes, err := os.ReadFile(filepath.Join(root, "testdata", "wire", pin.name+".bin"))
+			pinBytes, err := os.ReadFile(pinFile(root, pin.name))
 			if err != nil {
 				t.Fatal(err)
 			}

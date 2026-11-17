@@ -690,9 +690,7 @@ local function scalar_at(r, d, kind, report, ctx)
   -- outside it counts out of range and the strict read refuses it; no
   -- reader clamps. A field, an element, a map value and a union arm all land
   -- here, as fixed.lua and message.lua hold the same bound.
-  if d.fmin ~= nil and d.fmax ~= nil and (x < d.fmin or x > d.fmax) then
-    report.outOfRange = report.outOfRange + 1
-  end
+  if d.fmin ~= nil and d.fmax ~= nil and (x < d.fmin or x > d.fmax) then report.outOfRange = report.outOfRange + 1 end
   -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
   -- declared kind is TBits): a flags field's descriptor carries its wire bits
   -- for the JSON writer, and an undeclared flag bit on the wire lands as it
@@ -1969,6 +1967,7 @@ function L.NewState()
     wc = {
       bodies = {},
       slots = {},
+      used = {},
       edges = {},
       first = {},
       last = {},
@@ -2269,6 +2268,18 @@ local function wc_fail(c, reason)
   return nil
 end
 
+-- Each first use must name the next table entry. The table itself already
+-- rejects duplicate IDs; references in node bodies are visited after root.
+local function wc_use(c, ref)
+  if ref == 0 then return true end
+  if not c.used[ref] then
+    if ref ~= c.next_id then return wc_fail(c, "wire_damaged") end
+    c.used[ref] = true
+    c.next_id = c.next_id + 1
+  end
+  return true
+end
+
 -- canonical LEB128 at `at` inside lim: the value and the next offset, or nil
 local function wc_leb(b, at, lim)
   local v, s = 0, 0
@@ -2363,6 +2374,7 @@ end
 local function wc_body(c, b, at, lim, root)
   local seen = wc_set(c.bodies, c.depth)
   local ids = c.ids
+  local nodesPlaced = false
   while true do
     local ref, nx = wc_leb(b, at, lim)
     if ref == nil then return wc_fail(c, "wire_damaged") end
@@ -2371,7 +2383,11 @@ local function wc_body(c, b, at, lim, root)
       if at ~= lim then return wc_fail(c, "wire_damaged") end
       return true
     end
+    -- A NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field after it is
+    -- a node table out of its place, refused rather than read.
+    if nodesPlaced then return wc_fail(c, "wire_damaged") end
     if above(ref, c.nids) then return wc_fail(c, "wire_damaged") end
+    if not wc_use(c, ref) then return nil end
     local id = ids[ref]
     if seen[id] then return wc_fail(c, "wire_damaged") end
     seen[id] = true
@@ -2386,6 +2402,7 @@ local function wc_body(c, b, at, lim, root)
       if n == nil or above(n, lim - after) then return wc_fail(c, "wire_damaged") end
       at = after + n
       c.table, c.tlim = after, at
+      nodesPlaced = true
     else
       at = wc_payload(c, b, at, lim, kind)
       if at == nil then return nil end
@@ -2426,6 +2443,7 @@ local function wc_keyed(c, b, at, lim)
   for _ = 1, count do
     local key, nx = wc_leb(b, off, lim)
     if key == nil or key == 0 or above(key, c.nids) then return wc_fail(c, "wire_damaged") end
+    if not wc_use(c, key) then return nil end
     if seen[key] then return wc_fail(c, "wire_damaged") end
     seen[key] = true
     local n, after = wc_leb(b, nx, lim)
@@ -2444,6 +2462,7 @@ local function wc_union(c, b, at, lim)
   if ref == nil then return wc_fail(c, "wire_damaged") end
   if ref == 0 then return nx end
   if above(ref, c.nids) or nx >= lim then return wc_fail(c, "wire_damaged") end
+  if not wc_use(c, ref) then return nil end
   local kind = string.byte(b, nx + 1)
   local n, after = wc_leb(b, nx + 1, lim)
   if n == nil or above(n, lim - after) then return wc_fail(c, "wire_damaged") end
@@ -2478,6 +2497,7 @@ wc_payload = function(c, b, at, lim, kind)
   elseif kind == 30 then
     local ref, nx = wc_leb(b, at, lim)
     if ref == nil or above(ref, c.nids) then return wc_fail(c, "wire_damaged") end
+    if not wc_use(c, ref) then return nil end
     return nx
   elseif kind == 15 then
     return wc_union(c, b, at, lim)
@@ -2582,6 +2602,10 @@ end
 local function wire_check(st, bytes, blen)
   local c = st.wc
   local nids = #st.ids
+  for k in pairs(c.used) do
+    c.used[k] = nil
+  end
+  c.next_id = 1
   c.ids, c.nids, c.fail, c.nonFinite, c.depth, c.ne, c.table = st.ids, nids, nil, false, 0, 0, nil
   local stop = blen - 8 - nids * 8
   local first, last, blob = c.first, c.last, c.blob
@@ -2596,6 +2620,7 @@ local function wire_check(st, bytes, blen)
     while off < lim do
       local ref, nx = wc_leb(b, off, lim)
       if ref == nil or ref == 0 or above(ref, nids) then return "wire_damaged" end
+      if not wc_use(c, ref) then return c.fail end
       local length, after = wc_leb(b, nx, lim)
       if length == nil or above(length, lim - after) then return "wire_damaged" end
       local recend = after + length
@@ -2614,7 +2639,12 @@ local function wire_check(st, bytes, blen)
       off = recend
     end
     if declared ~= n - 1 then return "wire_damaged" end
+    -- A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL (§3.1): a
+    -- field carrying a count of 0 is a spelling no conforming writer
+    -- produces, refused rather than read.
+    if n == 1 then return "wire_damaged" end
   end
+  if c.next_id ~= nids + 1 then return "wire_damaged" end
   if not wc_graph(c, n) then return c.fail end
   if c.nonFinite then return "non_finite_float" end
   return nil

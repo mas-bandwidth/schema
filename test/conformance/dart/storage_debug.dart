@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'StorageCook.dart';
 import 'StoragereleaseFixed.dart';
+import 'StoragereleaseWire.dart' as wire;
 
 bool refused(String name, void Function(Root value) set) {
   final value = Root();
@@ -26,12 +27,35 @@ bool refused(String name, void Function(Root value) set) {
   }
 }
 
+// The variable cook path (RootCookWire): the wire library's value, whose
+// list and text carry their own lengths, checked the same way.
+bool refusedWire(String name, void Function(wire.Root value) set) {
+  final value = wire.Root();
+  set(value);
+  try {
+    final ok = RootCookWire.cook(value, Uint8List(256), Endian.little);
+    stdout.writeln('FAIL storage debug $name: cook answered $ok, no assert');
+    return false;
+  } on AssertionError {
+    stdout.writeln('refused: $name');
+    return true;
+  } catch (e) {
+    stdout.writeln('FAIL storage debug $name: ${e.runtimeType}, no assert');
+    return false;
+  }
+}
+
 void main() {
   var ok = true;
   // the declared bound is 8
   ok &= refused('count', (value) => value.itemsCount = 9);
   // string(16)
   ok &= refused('length', (value) => value.nameLength = 17);
+  ok &= refusedWire(
+    'variable count',
+    (value) => value.items = List.generate(9, (_) => wire.Item()),
+  );
+  ok &= refusedWire('variable length', (value) => value.name = 'x' * 17);
   if (!ok) {
     exit(1);
   }

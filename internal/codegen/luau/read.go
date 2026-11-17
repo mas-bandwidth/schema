@@ -105,9 +105,10 @@ func emitReadStruct(g *Gen, d *ir.Struct) {
 	}
 	g.Pf("end\n\n")
 
-	g.Pf("-- Read%s reads the type wire (SPEC §4.3, §6.1); false refuses without a latch\n", d.Name)
+	g.Pf("-- Read%sBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch\n", d.Name)
 	g.Pf("-- (a stream refusal rides stream:error(), named by the runtime's refusalName).\n")
-	g.Pf("function %s.Read%s(stream: any, value: any): boolean\n", g.Self, d.Name)
+	g.Pf("-- It does not end the packet: the public Read%s is the one-packet read (SPEC §5).\n", d.Name)
+	g.Pf("function %s.Read%sBody(stream: any, value: any): boolean\n", g.Self, d.Name)
 	g.BulkBytes = ir.AlignedFixedByteArrays(d)
 	defer func() { g.BulkBytes = nil }()
 	if len(d.Items) == 0 {
@@ -115,6 +116,18 @@ func emitReadStruct(g *Gen, d *ir.Struct) {
 	}
 	emitReadItems(g, d.Items, "  ")
 	g.Pf("  return true\nend\n\n")
+	emitReadWrapper(g, d.Name)
+}
+
+// emitReadWrapper emits the public one-packet read: the type's body and then
+// the runtime's end check, once, after the top-level object (SPEC §5).
+func emitReadWrapper(g *Gen, name string) {
+	g.Pf("-- Read%s reads one packet: the type wire and the runtime's end check, once,\n", name)
+	g.Pf("-- after the top-level object (SPEC §5).\n")
+	g.Pf("function %s.Read%s(stream: any, value: any): boolean\n", g.Self, name)
+	g.Pf("  if not %s.Read%sBody(stream, value) then return false end\n", g.Self, name)
+	g.Pf("  return stream:serializeEnd()\n")
+	g.Pf("end\n\n")
 }
 
 func emitReadUnion(g *Gen, d *ir.Union) {
@@ -132,10 +145,12 @@ func emitReadUnion(g *Gen, d *ir.Union) {
 	g.Pf("end\n\n")
 	g.Pf("-- Zero%s resets the union to None; unselected arms are unspecified (SPEC §4.8).\n", d.Name)
 	g.Pf("function %s.Zero%s(value: any)\n  value.Type = 0\nend\n\n", g.Self, d.Name)
-	g.Pf("function %s.Read%s(stream: any, value: any): boolean\n", g.Self, d.Name)
+	g.Pf("-- Read%sBody reads the union wire; it does not end the packet (SPEC §5).\n", d.Name)
+	g.Pf("function %s.Read%sBody(stream: any, value: any): boolean\n", g.Self, d.Name)
 	if d.Max == 0 {
 		g.Pf("  value.Type = 0 -- zero wire bits — only None exists (SPEC §4.8)\n")
 		g.Pf("  return true\nend\n\n")
+		emitReadWrapper(g, d.Name)
 		return
 	}
 	g.call("  ", fmt.Sprintf("stream:serializeInt(BITS, 0, %d)", d.Max), " -- rejects a tag above the count (SPEC §4.8)")
@@ -149,10 +164,11 @@ func emitReadUnion(g *Gen, d *ir.Union) {
 		}
 		arm := ir.GoExportName(v.Name)
 		g.Pf("    %s(value.%s) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)\n", funcName(g, "Init", v.Type), arm)
-		g.Pf("    return %s(stream, value.%s)\n", funcName(g, "Read", v.Type), arm)
+		g.Pf("    return %s(stream, value.%s)\n", funcName(g, "Read", v.Type)+"Body", arm)
 		g.Pf("  end\n")
 	}
 	g.Pf("  return true -- None\nend\n\n")
+	emitReadWrapper(g, d.Name)
 }
 
 // tagValue is the tag enum member for a union variant, required from the
@@ -374,7 +390,7 @@ func emitReadScalar(g *Gen, f *ir.Field, name, lenName, ind string) {
 			}
 			g.Pf("%s%s = integer.create(BITS.value)\n", ind, name)
 		case *ir.Struct, *ir.Union:
-			g.call(ind, fmt.Sprintf("%s(stream, %s)", funcName(g, "Read", f.Type.Name), name), "")
+			g.call(ind, fmt.Sprintf("%s(stream, %s)", funcName(g, "Read", f.Type.Name)+"Body", name), "")
 		}
 	}
 }

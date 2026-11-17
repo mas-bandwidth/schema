@@ -414,7 +414,9 @@ int main( void )
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	cmd := exec.CommandContext(ctx, filepath.Join(dir, "probe"))
+	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
+	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
 
@@ -689,6 +691,20 @@ func TestCyclicWireIsRefusedC(t *testing.T) {
 	mapCyclic := bytes.Clone(mapWire)
 	cyclePatch(t, mapCyclic, 3, 2)
 	body.WriteString(cycleProbe(mapCyclic, false, "cycle: a cycle through a map pointer slot loaded"))
+
+	// a cycle every record is reachable through: root(1) -> A(2) and B(3),
+	// A -> C(4), B -> C, then A's pointer at C turned back at A. C is still
+	// named by B, so the reachability rule is satisfied and only the cycle
+	// verdict refuses this wire.
+	reachable := cycleEncode(t, m, 4, nil, []cycleLink{
+		{0, "left", 1}, {0, "right", 2}, {1, "left", 3}, {2, "left", 3},
+	})
+	pattern := []byte{byte(ir.TableKindPointer), 3}
+	if bytes.Count(reachable, pattern) != 2 {
+		t.Fatal("the two pointers at C are not where this test expects them")
+	}
+	reachable[bytes.Index(reachable, pattern)+1] = 2
+	body.WriteString(cycleProbe(reachable, false, "cycle: a reachable cycle loaded"))
 
 	out, err := cHeldRun(t, u, body.String())
 	if err != nil {

@@ -128,7 +128,8 @@ impl MixedEventRow {
 impl Default for MixedEventRow {
     fn default() -> Self {
         // the empty union: tag zero and an overlay of zeros, which is a value
-        // of every arm — each is plain data with no niche in it
+        // of every arm — zero is valid for every scalar and every bool, and a
+        // zero self-relative delta is the null reference
         unsafe { core::mem::zeroed() }
     }
 }
@@ -136,7 +137,8 @@ impl Default for MixedEventRow {
 impl Default for MixedEventRowArms {
     fn default() -> Self {
         // the empty union: tag zero and an overlay of zeros, which is a value
-        // of every arm — each is plain data with no niche in it
+        // of every arm — zero is valid for every scalar and every bool, and a
+        // zero self-relative delta is the null reference
         unsafe { core::mem::zeroed() }
     }
 }
@@ -170,8 +172,8 @@ pub struct MixedEntityRow {
 
 impl Default for MixedEntityRow {
     fn default() -> Self {
-        // a cooked record is plain bytes with no niche in it, so the zero
-        // form is a value of the type by construction
+        // a cooked record's zero form is a value of the type: zero is valid
+        // for every scalar, and false is a valid bool
         unsafe { core::mem::zeroed() }
     }
 }
@@ -186,8 +188,8 @@ pub struct MixedStatRow {
 
 impl Default for MixedStatRow {
     fn default() -> Self {
-        // a cooked record is plain bytes with no niche in it, so the zero
-        // form is a value of the type by construction
+        // a cooked record's zero form is a value of the type: zero is valid
+        // for every scalar, and false is a valid bool
         unsafe { core::mem::zeroed() }
     }
 }
@@ -204,8 +206,8 @@ pub struct MixedHitEventRow {
 
 impl Default for MixedHitEventRow {
     fn default() -> Self {
-        // a cooked record is plain bytes with no niche in it, so the zero
-        // form is a value of the type by construction
+        // a cooked record's zero form is a value of the type: zero is valid
+        // for every scalar, and false is a valid bool
         unsafe { core::mem::zeroed() }
     }
 }
@@ -220,8 +222,8 @@ pub struct MixedChatEventRow {
 
 impl Default for MixedChatEventRow {
     fn default() -> Self {
-        // a cooked record is plain bytes with no niche in it, so the zero
-        // form is a value of the type by construction
+        // a cooked record's zero form is a value of the type: zero is valid
+        // for every scalar, and false is a valid bool
         unsafe { core::mem::zeroed() }
     }
 }
@@ -236,8 +238,8 @@ pub struct MixedPickupEventRow {
 
 impl Default for MixedPickupEventRow {
     fn default() -> Self {
-        // a cooked record is plain bytes with no niche in it, so the zero
-        // form is a value of the type by construction
+        // a cooked record's zero form is a value of the type: zero is valid
+        // for every scalar, and false is a valid bool
         unsafe { core::mem::zeroed() }
     }
 }
@@ -281,8 +283,8 @@ pub struct BenchMixedRow {
 
 impl Default for BenchMixedRow {
     fn default() -> Self {
-        // a cooked record is plain bytes with no niche in it, so the zero
-        // form is a value of the type by construction
+        // a cooked record's zero form is a value of the type: zero is valid
+        // for every scalar, and false is a valid bool
         unsafe { core::mem::zeroed() }
     }
 }

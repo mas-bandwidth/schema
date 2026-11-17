@@ -959,7 +959,7 @@ const example_unit_view_info_t * schema_example_unit_view_(void)
         { "TickRate", "Wire.schema", "float32", 1, 0, 60.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
         { "VelocityUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
     };
-    static const example_unit_view_info_t info = { "example", 0xf35accd0582cdd84ull,
+    static const example_unit_view_info_t info = { "example", 0x2bf51af687ac0abdull,
         74, types,
         0, NULL,
         6, enums,

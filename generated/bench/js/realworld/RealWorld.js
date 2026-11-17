@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package realworld — protocol id 0x1922430092518648
+// package realworld — protocol id 0xcc9644116a3dac22
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -22,7 +22,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0x1922430092518648n;
+export const ProtocolId = 0xcc9644116a3dac22n;
 
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
@@ -480,6 +480,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.f008U64 !== "bigint" || value.f008U64 < 0n || value.f008U64 > 18446744073709551615n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.f008U64;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -585,6 +588,9 @@ export function WriteRealPacket(stream, value) {
   }
   NUMBER_SCRATCH.value = value.f028Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
+  }
+  if (typeof value.f029I64 !== "bigint" || value.f029I64 < -9223372036854775808n || value.f029I64 > 9223372036854775807n) { // a bare integer must fit its width
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f029I64);
@@ -769,6 +775,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
+  if (typeof value.f063I64 !== "bigint" || value.f063I64 < -9223372036854775808n || value.f063I64 > 9223372036854775807n) { // a bare integer must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f063I64);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
@@ -857,6 +866,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   if (value.f074Bool) {
+    if (typeof value.f075U64 !== "bigint" || value.f075U64 < 0n || value.f075U64 > 18446744073709551615n) { // a bare integer must fit its width
+      return false;
+    }
     BIGINT_SCRATCH.value = value.f075U64;
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;

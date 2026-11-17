@@ -8,6 +8,7 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -478,7 +479,7 @@ func TestZeroCostForValueOnlyTables(t *testing.T) {
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
 		"kTableSegment", "kTableSlab", "kTableMaxDepth", "is_pointer", "variable",
-		"Builder", "PackMeasure", "LoadMeasure", "<atomic>", "template",
+		"Builder", "PackMeasure", "PackBytes", "PackCopy", "PackSlots", "LoadMeasure", "<atomic>", "template",
 	} {
 		if strings.Contains(header, leak) {
 			t.Errorf("pointer machinery leaked into a value-only unit: %q", leak)
@@ -517,7 +518,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	for _, want := range []string{
 		"struct TableArena", "struct TableRef", "struct TableSlot",
 		"struct RootBuilder", "struct NodeBuilder",
-		"RootLoadMeasure", "RootPackMeasure", "RootPack(",
+		"RootLoadMeasure", "RootPackBytes(", "RootPackCopy(", "RootPackSlots(",
 		"NodeAt(", "NodeEmplace(", "TableRef next;", "TableRef head;",
 		"#include <atomic>",
 	} {
@@ -534,7 +535,7 @@ func TestPointerSurfaceEmitted(t *testing.T) {
 	// arena runtime and the two extra descriptor columns, which are emitted
 	// once per header and belong to the unit, not to any table in it.
 	for _, absent := range []string{
-		"struct PlainBuilder", "PlainPackMeasure", "PlainPack(",
+		"struct PlainBuilder", "PlainPackMeasure", "PlainPack(", "PlainPackBytes", "PlainPackCopy", "PlainPackSlots",
 		"PlainLoadMeasureBody", "PlainEmplace", "PlainLoadBuilder",
 	} {
 		if strings.Contains(header, absent) {
@@ -758,9 +759,27 @@ table NativeRoot
 // The unit carries ONE trivial table, because that is what makes the C++
 // backend emit a view at all today (§8.3's port status); every declaration the
 // scan is about sits outside its closure.
+func TestViewNameAuditScopes(t *testing.T) {
+	t.Parallel()
+	claimed := tablenames.Claimed()
+	if !tablenames.Registered("TableEnums") || slices.Contains(claimed, "TableEnums") {
+		t.Fatal("the scoped Rust table module must not be a unit-level claim")
+	}
+	if !tablenames.Registered("parse") || slices.Contains(claimed, "parse") {
+		t.Fatal("the scoped Python parse helper must not be a unit-level claim")
+	}
+	if !slices.Contains(claimed, "TableTypeInfo") || !tablenames.InEveryUnit("TableTypeInfo") {
+		t.Fatal("the actual C++ view descriptor must remain a unit-level view claim")
+	}
+}
+
 func TestViewFileNamesAreClaimedInEveryUnit(t *testing.T) {
 	c := New()
 	found := map[string]bool{}
+	unitNames := map[string]bool{}
+	for _, name := range tablenames.Claimed() {
+		unitNames[name] = true
+	}
 	files, err := c.Generate(unitFromSource(t, viewSurfaceSrc), "cpp", Options{})
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -770,7 +789,7 @@ func TestViewFileNamesAreClaimedInEveryUnit(t *testing.T) {
 			continue
 		}
 		for _, ident := range identsIn(string(body)) {
-			if tablenames.Registered(ident) {
+			if unitNames[ident] {
 				found[ident] = true
 			}
 		}
@@ -988,7 +1007,7 @@ fixed table ShipConfig
 	u := unitFromSource(t, workedSource)
 	u.ProtocolId = 0x0123456789abcdef // the id §20.2 works the example under
 
-	const want = "0x482a6d07fc09a843"
+	const want = "0xdf9d79c984aaa892"
 	if got := ir.BuildVersion(u); fmt.Sprintf("0x%016x", got) != want {
 		t.Fatalf("the compiler's build version is 0x%016x, and docs/SPEC-TABLES.md §20.2 states %s", got, want)
 	}
@@ -1010,7 +1029,7 @@ fixed table ShipConfig
 				if !strings.Contains(line, "BuildVersion = 0x") {
 					continue
 				}
-				if !strings.Contains(strings.ToLower(line), "482a6d07fc09a843") {
+				if !strings.Contains(strings.ToLower(line), want) {
 					t.Errorf("%s emits %q — docs/SPEC-TABLES.md §20.2's number for this unit is %s", name, strings.TrimSpace(line), want)
 				}
 				found = true
@@ -1023,8 +1042,9 @@ fixed table ShipConfig
 }
 
 // THE RESOLVING WALK'S CAP COUNTS NESTED FRAMED VALUES (docs/SPEC-TABLES.md
-// §6.6): the last depth the cap admits rides and one past it is dropped. The C
-// target pins the same pair in TestCTableRetainFramedDepth.
+// §6.6) and it is §4's binary bound. The last depth the cap admits rides, and a
+// schema one level past the bound is refused by the compiler, so no conforming
+// wire can reach a record the retaining walk must drop for its depth.
 func TestCppTableRetainFramedDepth(t *testing.T) {
 	t.Parallel()
 	old := unitFromSource(t, "package probe\ntable Root { next *Root }\n")
@@ -1032,7 +1052,7 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, depth := range []int{64, 65} {
+	for _, depth := range []int{128, 129} {
 		t.Run(fmt.Sprint(depth), func(t *testing.T) {
 			var schema, fixture strings.Builder
 			schema.WriteString("package probe\ntable Root { next *Root\nextra T0 }\n")
@@ -1047,6 +1067,19 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 				}
 			}
 			fixture.WriteString(strings.Repeat("}", depth))
+			if depth > 128 {
+				f, perrs := parser.Parse("Probe.schema", []byte(schema.String()))
+				if len(perrs) > 0 {
+					t.Fatalf("parse: %v", perrs[0])
+				}
+				_, cerrs := check.Unit([]check.SourceFile{{
+					Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(schema.String()), AST: f,
+				}})
+				if len(cerrs) == 0 || !strings.Contains(cerrs[0].Error(), "binary bound") {
+					t.Fatalf("a %d-level schema: %v, want the compiler's binary-bound refusal", depth, cerrs)
+				}
+				return
+			}
 			future := unitFromSource(t, schema.String())
 			m := tabletext.NewModel(future)
 			value := m.New(m.Lookup("Root"))
@@ -1059,7 +1092,7 @@ func TestCppTableRetainFramedDepth(t *testing.T) {
 				t.Fatal(err)
 			}
 			kept := 0
-			if depth == 64 {
+			if depth == 128 {
 				kept = 1
 			}
 			referenceCompileRun(t, files, fmt.Sprintf(`#include "ProbeTable.h"

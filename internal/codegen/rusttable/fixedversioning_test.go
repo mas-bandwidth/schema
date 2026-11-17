@@ -317,6 +317,7 @@ type versionProbe struct {
 	reader string   // the reader's schema, by base name
 	older  []string // the lineage handed it, oldest first
 	retire int      // the first `retire` entries are marked retired
+	root   string   // the reader's fixed root, when the schema carries more than one
 	src    string   // the probe module's Rust source
 }
 
@@ -779,6 +780,7 @@ fn v_%[1]s() {
     let body = 20 + layout_bytes + 8;
     data[body] = 0;
     data[body + 1] = 0;
+    data[body + 2..body + 6].fill(0); // the absent payload is dead
     assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
     assert!(!values[0].flag && !values[0].note_present);
     assert_eq!(values[0].pick.labelled().unwrap().label_length, 5);
@@ -817,9 +819,8 @@ func versionProbeSource(tests string) string {
 // internal/codegen/rusttable/fixedversioning_test.go; nothing here is tracked.
 use crate::*;
 
-/// A Row is plain data with no niche in it (SPEC §7.2) and the emitter derives
-/// neither PartialEq nor Debug on one, so a BYTE VIEW is how a probe compares a
-/// destination with a fresh value and how it poisons one.
+/// The emitter derives neither PartialEq nor Debug on a Row, so a BYTE VIEW is
+/// how a probe compares a destination with a fresh value and how it poisons one.
 #[allow(dead_code)]
 fn as_bytes<T: Copy>(v: &T) -> &[u8] {
     unsafe { core::slice::from_raw_parts((v as *const T) as *const u8, core::mem::size_of::<T>()) }
@@ -1237,6 +1238,9 @@ func versionWriteCrate(t *testing.T, root, serialize string, p versionProbe) {
 	t.Helper()
 	u := versionUnit(t, versionSchema(t, p.reader))
 	table := versionRootName(t, u)
+	if p.root != "" {
+		table = p.root
+	}
 
 	lineage := map[string][]FixedLineageEntry{}
 	for i, base := range p.older {
@@ -1275,6 +1279,7 @@ func versionWriteCrate(t *testing.T, root, serialize string, p versionProbe) {
 	src := strings.NewReplacer(
 		"ROWTYPE", table+"Row",
 		"LOADFN", ir.RustSnake(table)+"_fixed_load",
+		"SAVEFN", ir.RustSnake(table)+"_fixed_save",
 	).Replace(p.src)
 	files["version_probe.rs"] = []byte(src)
 

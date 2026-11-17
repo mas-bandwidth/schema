@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0xc93127c82f083edf
+// package bench — protocol id 0xc52a41defad6ebb0
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -33,7 +33,7 @@ import 'Schema.dart' show Schema;
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0xc93127c82f083edf;
+const int protocolId = 0xc52a41defad6ebb0;
 
 // type BenchPacket
 final class BenchPacket {
@@ -2127,6 +2127,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
+  assert(value.clientId >= 0);
+  assert(value.clientId <= 4294967295);
   v = value.sessionId;
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -2385,6 +2387,11 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   }
   assert(value.playerNameLength >= 0);
   assert(value.playerNameLength <= 15);
+  assert(Schema.utf8Valid(value.playerName, value.playerNameLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.playerNameLength; i0++) {
+    assert(value.playerName[i0] != 0);
+  }
   v =
       value.loadout[0] |
       (value.loadout[1] << 8) |

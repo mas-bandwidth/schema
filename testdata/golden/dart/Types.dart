@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf35accd0582cdd84
+// package example — protocol id 0x2bf51af687ac0abd
 
 import 'dart:typed_data';
 
@@ -456,6 +456,8 @@ int writeHandle(Handle value, ByteData view) {
   var v = 0;
   assert(value.objectId >= 0);
   assert(value.objectId <= 9999);
+  assert(value.objectSequence >= 0);
+  assert(value.objectSequence <= 255);
   v = (value.objectId & 0x3fff) | ((value.objectSequence & 0xff) << 14);
   scratch |= v << scratchBits;
   scratchBits += 22;
@@ -1856,6 +1858,8 @@ int writeInputPacket(InputPacket value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.synchronizeSequence >= 0);
+  assert(value.synchronizeSequence <= 65535);
   v = value.synchronizeSequence & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 16;

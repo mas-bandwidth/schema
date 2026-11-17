@@ -14,12 +14,14 @@ on:
     branches: [ main ]
     paths: [ 'ROADMAP.md', 'docs/roadmap.sexp', 'docs/roadmap-evidence/**', 'tools/roadmap/**', '.github/workflows/roadmap.yml' ]
   workflow_dispatch:
+  schedule:
+    - cron: '41 7 * * *'
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   roadmap:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     timeout-minutes: 2
     defaults:
@@ -42,7 +44,12 @@ jobs:
             exit 1
           fi
           sbcl --version
-      - name: the tables match the data, blocks hold only tables, and the hand text is Glenn's
+      # Cards never commit ROADMAP.md (tools/roadmap/roadmap.mk): a pull
+      # request and a push to main are both held to the data rendering
+      # (roadmap-check), which passes whether or not the committed page is
+      # current, so a stale page never reddens main. The page equal to the
+      # render is roadmap-page-check, the nightly `page` job below.
+      - name: the data renders, blocks hold only tables, and the hand text is Glenn's
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -53,3 +60,20 @@ jobs:
         run: make roadmap-check-negative-control
       - name: the renderer and gate suites
         run: make roadmap-test
+
+  # THE PAGE IS THE RENDER (make roadmap-page-check): nightly and on dispatch
+  # only, so a page main has yet to re-render reports its staleness here and
+  # never reddens a push or a pull request.
+  page:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: the committed tables are the render of the data
+        run: make roadmap-page-check ROADMAP_BASE=HEAD~1

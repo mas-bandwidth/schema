@@ -57,5 +57,11 @@ not an implicit permissive reader. cmd/nova-sprint/landsexp.go merges whole line
 and entries, motivating unchanged-byte and local-edit requirements. This corpus
 captures their layout shapes, not a claim to parse their undeclared legacy data.
 
+The Python implementation consumes these vectors in
+`TestPythonHandtextCorpus` and `TestPythonHandtextUnbounded`; the reference
+comparison tests run the same positive documents through generated Go and C++.
+Run the Python gates with `make python-handtext` and their planted-fault checks
+with `make python-handtext-negative-control`.
+
 The directory's `.gitattributes` disables newline conversion and treats CRLF
 as intentional for whitespace checking; byte preservation is part of the oracle.

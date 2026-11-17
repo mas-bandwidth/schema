@@ -150,15 +150,29 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 					indent, val, val, lo, val, hi)
 			}
 			emitBitsOrSkip(b, indent, val+" - "+subtrahend(lo), ir.BitsRequired(f.IntMin, f.IntMax), "the offset from min")
-		default:
-			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" then return false end\n", indent, val)
+		case t.Width < 64:
+			// a bare intN/uintN refuses a value its N bits cannot carry
+			// (SPEC §5.1 row 11): the storage is a 64-bit integer, so the
+			// width test is the writer's own
+			lo, hi := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
+			if t.Signed {
+				lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(t.Width-1)))
+				hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width-1)), big.NewInt(1))
+			}
+			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" or %s < %s or %s > %s then return false end -- the declared width (SPEC §5.1 row 11)\n",
+				indent, val, val, IntLiteral(lo), val, IntLiteral(hi))
 			expr := val
-			if t.Signed && t.Width < 64 {
+			if t.Signed {
 				// a signed storage's same-width unsigned pattern (the C++
 				// target's cast; SPEC §4.3)
 				expr = fmt.Sprintf("%s & 0x%x", val, uint64(1)<<uint(t.Width)-1)
 			}
 			emitBitsOrSkip(b, indent, expr, int64(t.Width), "the storage width")
+		default:
+			// 64 bits: every Lua integer is an int64, and a uint64 is the same
+			// bits read unsigned (docs/PORT-LUA.md)
+			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" then return false end\n", indent, val)
+			emitBitsOrSkip(b, indent, val, int64(t.Width), "the storage width")
 		}
 	case ir.TBits:
 		fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" then return false end\n", indent, val)
@@ -168,6 +182,8 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 			t.IntBits, t.FracBits, IntLiteral(f.IntMin), IntLiteral(f.IntMax)), " -- the Q format's raw offset (SPEC §4.3)")
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif type(%s) ~= \"number\" or %s ~= %s or %s < %s or %s > %s then return false end -- compressed-float range (SPEC §5.1 row 10)\n",
+				indent, val, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {
@@ -178,6 +194,10 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 	case ir.TString, ir.TBytes:
 		size := t.Size
 		fmt.Fprintf(b, "%sif type(%s) ~= \"string\" or #%s > %d then return false end\n", indent, val, val, size)
+		if t.Kind == ir.TString {
+			fmt.Fprintf(b, "%sif not utf8valid(%s) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)\n", indent, val)
+			fmt.Fprintf(b, "%sif string.find(%s, \"\\0\", 1, true) then return false end -- interior null (SPEC §5.1 row 8)\n", indent, val)
+		}
 		length := "#" + val
 		emitBitsOrSkip(b, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the length")
 		call(fmt.Sprintf("stream:serializeBytes({ value = string.sub(%s, 1, %s) }, %s)", val, length, length),

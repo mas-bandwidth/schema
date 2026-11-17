@@ -459,11 +459,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   FIRST, then the arms, then any guardless present-defaults entry that must\n")
 	g.pf("   run after the guarded payload it replaces: the entries that are nearly\n")
 	g.pf("   all of a plan never test a guard at all. */\n")
-	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
-	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
-	// width (ir.TableFixedSplitByWidth). The split count is the new guarded split.
-	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
+	// Preserve union tags as validation boundaries before splitting mixed-width
+	// copies for host byte order. Both splits retain the copy destinations and
+	// recount the guarded partition.
 	dead := fixedDeadMetaOf(g.unit, st)
+	plan, guarded = dead.splitUnionTags(plan, guarded)
+	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for i, e := range split.Plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
@@ -500,16 +501,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		deadBytes, armBytes, armCount, tagWidth := int64(0), int64(0), int64(0), int64(0)
 		switch e.Op {
 		case ir.TableFixedOpCount:
-			deadBytes = dead.counts[e.Src]
+			deadBytes = fixedExtentAt(dead.counts, e.Src, e.GuardLinks)
 		case ir.TableFixedOpPresentDefaults:
-			deadBytes = dead.presents[e.Src]
+			deadBytes = fixedExtentAt(dead.presents, e.Src, e.GuardLinks)
 		case ir.TableFixedOpCopy:
-			if un, ok := dead.unions[e.Src]; ok && e.Size == un.tagWidth {
+			if un, ok := dead.unionAt(e.Src, e.GuardLinks); ok && e.Size == un.tagWidth {
 				deadBytes, tagWidth, armCount = un.widest, un.tagWidth, int64(len(un.arms)-1)
+				split.Elems[i] = un.tagWidth // a tag keeps its declared host-order width after splitting
 			}
 		}
 		if e.Guard != ir.TableFixedNoGuard {
-			if un, ok := dead.unions[e.Guard]; ok && e.Arg >= 0 && e.Arg < len(un.arms) {
+			outer := e.GuardLinks
+			if len(outer) > 0 {
+				outer = outer[:len(outer)-1]
+			}
+			if un, ok := dead.unionAt(e.Guard, outer); ok && e.Arg >= 0 && e.Arg < len(un.arms) {
 				armBytes = un.arms[e.Arg]
 			}
 		}
@@ -518,7 +524,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// not run and validate nothing; zero is "under no optional". The span
 		// the present-defaults entry judges is the whole absent payload.
 		present := int64(0)
-		if at := dead.presentOf(e.Src); at >= 0 {
+		if at := dead.presentOf(e.Src, e.GuardLinks); at >= 0 {
 			present = at + 1
 		}
 		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d, %du }, /* %s */\n",
@@ -880,6 +886,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( rest == 0 || record_bytes <= 8 || rest %% record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
+	g.pf("    /* THE SELECTED FILL LIST IS IMMUTABLE: validate every native span before\n")
+	g.pf("       landing any record, so an invalid plan leaves caller storage untouched. */\n")
+	g.pf("    if ( !table_fixed_fill_fits( fill, fill_count, sizeof( defaults ) ) )\n")
+	g.pf("    { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }\n")
 	// STEP 11.
 	g.pf("    /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before\n")
 	g.pf("       the prefill, so a refusal has written not one destination byte (§5.3,\n")
@@ -914,7 +924,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
 	g.pf("            return -1;\n        }\n")
 	g.fixedBoolDamagePass(st)
-	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
+	g.pf("        /* The immutable spans passed the whole-load preflight above. */\n")
+	g.pf("        if ( !table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )\n        {\n")
+	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED;\n")
+	g.pf("            return -1;\n        }\n")
 	runDefaults := "NULL"
 	if presentDefaults {
 		runDefaults = "(const uint8_t *) &defaults"
@@ -1373,9 +1386,11 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, true), formatFloat(f.FMin, true),
 			expr+" > "+formatFloat(f.FMax, true), formatFloat(f.FMax, true), ind)
+		g.fixedClampNegZero(expr, formatFloat(0, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
 		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, false), formatFloat(f.FMin, false),
 			expr+" > "+formatFloat(f.FMax, false), formatFloat(f.FMax, false), ind)
+		g.fixedClampNegZero(expr, formatFloat(0, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -1429,6 +1444,24 @@ func (g *tableGen) fixedClampBoth(expr, loTest, lo, hiTest, hi, ind string) {
 	   warning about code that is not this. A sum would silence it too and is
 	   measurably slower (test/bench/fixedform_measure.cpp). */
 	g.pf("%s(*out_of_range) += (int) ( %s ) | (int) ( %s );\n", ind, loTest, hiTest)
+}
+
+/*
+fixedClampNegZero is A COMPRESSED FLOAT'S -0 RULE (docs/SPEC-TABLES.md §3.3,
+
+	docs/rulings.json fixed-compressed-negzero): it is inside the range and only
+	its spelling differs, so it lands as the value 0 itself and nothing is
+	counted. A plain float's -0 is carried bit-exact and never reaches here.
+
+	THE RULE IS A SUM, NOT A COMPARE: -0 + +0 is +0 under round-to-nearest,
+	every other finite value is unchanged by adding +0, and a non-finite value
+	was refused before this pass; a float == would draw -Wfloat-equal. The sum
+	is not folded away because no build of the generated C may drop signed
+	zeros (-ffast-math is forbidden, bench/BENCH-STANDARD.md), and
+	TestFixedCompressedNegZeroRead reads a -0 back as +0 through it.
+*/
+func (g *tableGen) fixedClampNegZero(expr, zero, ind string) {
+	g.pf("%s%s = %s + %s;\n", ind, expr, expr, zero)
 }
 
 /*

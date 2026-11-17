@@ -65,6 +65,8 @@ fixed table Root { stamp uint64 = 5
 		value.Fields[1].Count = 1
 		value.Fields[1].Elems[0].Tab.Fields[0].Cell.U = 8
 		value.Fields[1].Elems[0].Tab.Fields[1].Cell.B = false
+		value.Fields[1].Elems[1].Tab.Fields[0].Cell.U = 9
+		value.Fields[1].Elems[1].Tab.Fields[1].Cell.B = false
 		for _, big := range []bool{false, true} {
 			key := "cook-le"
 			if big {
@@ -100,6 +102,8 @@ void main(){
  value.rowsCount=1;
  value.rows[0].value=8;
  value.rows[0].flag=false;
+ value.rows[1].value=9;
+ value.rows[1].flag=false;
  final size=c.RootCook.cookMeasure(value);
  for(final order in [Endian.little,Endian.big]){
   final bytes=Uint8List(size+4)..fillRange(0,size+4,0xa5);

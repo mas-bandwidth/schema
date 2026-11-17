@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package ludicrous — protocol id 0xf4a226f4166d919b
+# package ludicrous — protocol id 0xd2ded2cc8a482aa1
 #
 # The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
 # read windows (every intermediate a BEAM small integer), single
@@ -241,7 +241,7 @@ defmodule Ludicrous.Ludicrous do
   sides at the same id speak identical bits; there is no other versioning.
   """
   @spec protocol_id() :: non_neg_integer()
-  def protocol_id, do: 0xF4A226F4166D919B
+  def protocol_id, do: 0xD2DED2CC8A482AA1
 
   @doc "The constant MaxWorldUnits."
   @spec max_world_units() :: integer()
@@ -588,6 +588,18 @@ defmodule Ludicrous.Ludicrous do
       raise ArgumentError, "value.locked must hold the locked value 196608"
     end
 
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 255 do
+      raise ArgumentError, "value.tail is above the wire maximum"
+    end
+
     v = value_tail &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
@@ -735,6 +747,18 @@ defmodule Ludicrous.Ludicrous do
       seed: value_seed
     } = value
 
+    if not is_integer(value_entity_id) do
+      raise ArgumentError, "value.entity_id is not an integer"
+    end
+
+    if value_entity_id < 0 do
+      raise ArgumentError, "value.entity_id is below the wire minimum"
+    end
+
+    if value_entity_id > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.entity_id is above the wire maximum"
+    end
+
     v = value_entity_id &&& 0xFFFFFFFF
     scratch = v
     v = value_entity_id >>> 32 &&& 0xFFFFFFFF
@@ -796,6 +820,19 @@ defmodule Ludicrous.Ludicrous do
 
     v = value_bias + 1000
     scratch = scratch ||| v <<< 40
+
+    if not is_integer(value_seed) do
+      raise ArgumentError, "value.seed is not an integer"
+    end
+
+    if value_seed < 0 do
+      raise ArgumentError, "value.seed is below the wire minimum"
+    end
+
+    if value_seed > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.seed is above the wire maximum"
+    end
+
     v = value_seed &&& 0xFFFFFFFF
     sc7 = scratch
     scratch = scratch >>> 48
@@ -1070,6 +1107,18 @@ defmodule Ludicrous.Ludicrous do
       seed: value_wide_seed
     } = value_wide
 
+    if not is_integer(value_wide_entity_id) do
+      raise ArgumentError, "value.wide.entity_id is not an integer"
+    end
+
+    if value_wide_entity_id < 0 do
+      raise ArgumentError, "value.wide.entity_id is below the wire minimum"
+    end
+
+    if value_wide_entity_id > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.wide.entity_id is above the wire maximum"
+    end
+
     v = value_wide_entity_id &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1160,6 +1209,19 @@ defmodule Ludicrous.Ludicrous do
     v = value_wide_bias + 1000
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+
+    if not is_integer(value_wide_seed) do
+      raise ArgumentError, "value.wide.seed is not an integer"
+    end
+
+    if value_wide_seed < 0 do
+      raise ArgumentError, "value.wide.seed is below the wire minimum"
+    end
+
+    if value_wide_seed > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "value.wide.seed is above the wire maximum"
+    end
+
     v = value_wide_seed &&& 0xFFFFFFFF
     sc10 = scratch
     fl10 = scratch_bits >>> 3
@@ -1223,6 +1285,18 @@ defmodule Ludicrous.Ludicrous do
 
     {data, scratch, scratch_bits} =
       if value_has_target do
+        if not is_integer(value.target_id) do
+          raise ArgumentError, "value.target_id is not an integer"
+        end
+
+        if value.target_id < 0 do
+          raise ArgumentError, "value.target_id is below the wire minimum"
+        end
+
+        if value.target_id > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+          raise ArgumentError, "value.target_id is above the wire maximum"
+        end
+
         v = value.target_id &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
@@ -1508,6 +1582,18 @@ defmodule Ludicrous.Ludicrous do
 
     if value_locked_wide != -12_345_678_901_234 do
       raise ArgumentError, "value.locked_wide must hold the locked value -12345678901234"
+    end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
+
+    if value_tail < 0 do
+      raise ArgumentError, "value.tail is below the wire minimum"
+    end
+
+    if value_tail > 255 do
+      raise ArgumentError, "value.tail is above the wire maximum"
     end
 
     v = value_tail &&& 0xFF
@@ -2122,6 +2208,18 @@ defmodule Ludicrous.Ludicrous do
   defp wZludicrous_stateZkeys([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZludicrous_stateZkeys([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
+    if e < 0 do
+      raise ArgumentError, "e is below the wire minimum"
+    end
+
+    if e > 340_282_366_920_938_463_463_374_607_431_768_211_455 do
+      raise ArgumentError, "e is above the wire maximum"
+    end
+
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32

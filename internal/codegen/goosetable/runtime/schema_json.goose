@@ -612,9 +612,9 @@ fn json_peek(jr: JsonIn&) -> u8 {
     return 0;
 }
 
-// json_shape_takes reports whether a value of the given JSON shape satisfies
-// the shape a declaration takes: a wide integer declares 'N' and takes a
-// string or a number (docs/SPEC-TABLES.md §16.2), every other shape is exact.
+// json_shape_takes routes both strings and numbers for shape N to the scalar
+// reader. The reader accepts a wide value only as a string and counts a number
+// as kind mismatch (§16.2); every other shape is exact.
 fn json_shape_takes(want: u8, got: u8) -> bool {
     if want == got { return true; }
     return want == 'N' && (got == 's' || got == 'n');
@@ -833,15 +833,19 @@ fn json_scan_into(jr: JsonIn&, dst: u8[:], store: bool) -> i64, bool {
     return placed, true;
 }
 
-// json_skip_string scans past a string and keeps nothing.
+// json_skip_string scans past a string and keeps nothing, and is still held
+// to the grammar and text rules a PLACED value is held to (§4, §16.3): a
+// string the read only skips that decodes to U+0000 refuses the read as a
+// placed one does.
 fn json_skip_string(jr: JsonIn&) -> bool {
-    return json_scan(jr, false) { unit, n => };
+    return json_scan(jr, true) { unit, n => };
 }
 
 // json_key scans an object key or a variant name into a key buffer: a name is
-// compared and never stored (§16.3).
+// compared and never stored, and is held to a placed value's text rule — one
+// that decodes to U+0000 refuses the read (§4, §16.3).
 fn json_key(jr: JsonIn&, key: u8[256]&) -> i64, bool {
-    return json_scan_into(jr, key[..JsonMaxKey], false);
+    return json_scan_into(jr, key[..JsonMaxKey], true);
 }
 
 fn json_name_is(name: const u8[:], key: const u8[:]) -> bool {
@@ -1172,8 +1176,8 @@ fn json_place_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&, tok: const u8[:
     return true;
 }
 
-// json_read_int reads an integer field: a wide kind (wider than 32 bits)
-// takes the same digits inside a JSON string too (docs/SPEC-TABLES.md §16.2).
+// json_read_int reads an integer field: a kind wider than 32 bits takes
+// its digits only inside a JSON string (docs/SPEC-TABLES.md §16.2).
 fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     if f.kw > 4 && json_peek(jr) == '"' {
         let buf, ok = json_scan_all(jr);
@@ -1182,6 +1186,7 @@ fn json_read_int<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     }
     let start, end, whole, ok = json_number(jr);
     if !ok { return false; }
+    if f.kw > 4 { jr.rep.mismatch += 1; return true; }
     if !whole {
         // a fraction or an exponent is the wrong shape for an integer field
         jr.rep.mismatch += 1;

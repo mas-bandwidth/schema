@@ -59,10 +59,7 @@ use std::io::{self, Read, Write};
 struct Reply {
     loaded: bool,
     unknown: u64,
-    mismatch: u64,
     widened: u64,
-    oor: u64,
-    repeated: u64,
     damaged: bool,
     refused: bool,
     measure: i64,
@@ -527,10 +524,12 @@ fn main() {
         let mut head = [0u8; 47];
         head[0] = reply.loaded as u8;
         head[1..5].copy_from_slice(&(reply.unknown as u32).to_le_bytes());
-        head[5..9].copy_from_slice(&(reply.mismatch as u32).to_le_bytes());
+        // kind_mismatch, clamped and duplicate are retired. The slots stay
+        // and carry zero.
+        head[5..9].copy_from_slice(&0u32.to_le_bytes());
         head[9..13].copy_from_slice(&(reply.widened as u32).to_le_bytes());
-        head[13..17].copy_from_slice(&(reply.oor as u32).to_le_bytes());
-        head[17..21].copy_from_slice(&(reply.repeated as u32).to_le_bytes());
+        head[13..17].copy_from_slice(&0u32.to_le_bytes());
+        head[17..21].copy_from_slice(&0u32.to_le_bytes());
         head[21] = reply.damaged as u8;
         head[22] = reply.refused as u8;
         head[23..31].copy_from_slice(&reply.measure.to_le_bytes());

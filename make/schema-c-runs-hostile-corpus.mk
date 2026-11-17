@@ -27,6 +27,11 @@ C_HOSTILE_CFLAGS   := -std=c99 -Wall -Wextra -Werror -O1 -ffp-contract=off $(C_H
 # One sanitizer translation unit per core. Four-wide left the fleet runner's
 # other cores idle and the per-commit job died inside this compile.
 C_HOSTILE_JOBS     ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
+# The runner starts one sanitizer process per case. At the default
+# half-the-machine fan-out, a process that has already answered can still leave
+# its pipes to the reaper past the exec wait bound under load; two at a time
+# keeps each case's own verdict the only thing the run measures.
+C_HOSTILE_RUN_JOBS ?= 2
 
 C_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
@@ -70,6 +75,7 @@ $(C_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go in
 .PHONY: schema-c-runs-hostile-corpus
 schema-c-runs-hostile-corpus: $(C_HOSTILE_BUILD)/case $(C_HOSTILE_BUILD)/hostilecorpusexec
 	$(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
+		-jobs $(C_HOSTILE_RUN_JOBS) \
 		-corpus "$(C_HOSTILE_CORPUS)" -findings "$(C_HOSTILE_FINDINGS)"
 
 test-c: schema-c-runs-hostile-corpus
@@ -85,6 +91,7 @@ schema-c-runs-hostile-corpus-negative-control: $(C_HOSTILE_BUILD)/case $(C_HOSTI
 	@if cmp -s $(C_HOSTILE_CORPUS)/manifest.tsv $(C_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdict did not apply'; exit 1; fi
 	@if $(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
+			-jobs $(C_HOSTILE_RUN_JOBS) \
 			-corpus $(C_HOSTILE_BUILD)/plant/corpus -findings "$(C_HOSTILE_FINDINGS)" > $(C_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a changed verdict left the corpus green'; \
 		cat $(C_HOSTILE_BUILD)/plant/log; exit 1; fi

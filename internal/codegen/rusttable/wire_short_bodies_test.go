@@ -90,13 +90,15 @@ func buildShortBodiesAndUnreachableVectors(t *testing.T, u *ir.Unit) []shortBody
 		tid  uint64
 		body []byte
 	}) []byte {
+		// The root's node-table field is met before its record type IDs.
+		nodeRef := ref(math.MaxUint64)
 		nt := binary.AppendUvarint(nil, uint64(len(recs)))
 		for _, r := range recs {
 			nt = append(nt, ref(r.tid)...)
 			nt = binary.AppendUvarint(nt, uint64(len(r.body)))
 			nt = append(nt, r.body...)
 		}
-		out := append(ref(math.MaxUint64), byte(ir.TableKindString))
+		out := append(nodeRef, byte(ir.TableKindString))
 		out = binary.AppendUvarint(out, uint64(len(nt)))
 		return append(out, nt...)
 	}
@@ -294,6 +296,10 @@ func buildShortBodiesAndUnreachableVectors(t *testing.T, u *ir.Unit) []shortBody
 		{
 			name: "unreachable-chained-nodes",
 			wire: makeWire(func(ref func(uint64) []byte) []byte {
+				// the id table in first-use order: the node table and the
+				// record's type are named on the wire before its field
+				ref(math.MaxUint64)
+				ref(leafTID)
 				next3 := append(ptrField(ref, "next", 3), 0)
 				return nodeTable(ref,
 					struct {

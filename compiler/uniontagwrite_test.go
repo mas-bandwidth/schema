@@ -55,7 +55,7 @@ var tagAssertsInDebug = map[string][]string{
 	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
 	// --runtime-no-asserts removes a Lobster assert from the build
-	"lobster": {"assert v.Type >= 0 and v.Type <= 2"},
+	"lobster": {"assert v·.Type >= 0 and v·.Type <= 2"},
 }
 
 // tagGoneFromRelease is the every-build refusal each assert target used to
@@ -65,7 +65,7 @@ var tagGoneFromRelease = map[string][]string{
 	"c":       {"if ( value->type > TAGUNIT_SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
 	"cpp":     {"not a ShotType value; nothing was written"},
 	"cs":      {"if (tagValue > 2)"},
-	"lobster": {"if v.Type < 0 or v.Type > 2: return false"},
+	"lobster": {"if v·.Type < 0 or v·.Type > 2: return false"},
 }
 
 // tagRefusesEveryBuild is the write's UNCONDITIONAL tag refusal, for the
@@ -90,6 +90,7 @@ var tagRefusesEveryBuild = map[string][]string{
 	// moo's assert, Luau's, is a call no build removes, so the writer refuses
 	// (returns false) in every build, as Lua's does.
 	"moo":      {"if not isInt(value.Type, 0, 2) then -- the tag validates before it rides (SPEC §4.8)"},
+	"python":   {`if _s_type(_s_v1) is not _s_int or _s_v1 < 0 or _s_v1 > 2:`, `validate_int(_s_v1, path + ".type", 0, 2)`},
 	"squirrel": {`if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;`},
 }
 

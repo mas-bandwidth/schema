@@ -13,4 +13,8 @@ func init() {
 		old: `				m.Printf("%s%s[%d] = 0x%02x;\n", ind, target, i, b)`,
 		new: `				m.Printf("%s// SABOTAGED: %s[%d] = 0x%02x;\n", ind, target, i, b)`,
 	}}
+	sabotages["packet-end-squirrel-end"] = []edit{{
+		old: `	m.Printf("  return stream.serializeEnd();\n};\n\n")`,
+		new: `	m.Printf("  return true; // SABOTAGED: no end check\n};\n\n")`,
+	}}
 }

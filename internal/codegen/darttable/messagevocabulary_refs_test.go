@@ -52,7 +52,7 @@ fixed table Root
 }
 `
 
-const peerRootJSON = `{"player_id":301050681195367,"region":"EU","score":34567,"tags":[1,2,3],"body":{"tally":7}}`
+const peerRootJSON = `{"player_id":"301050681195367","region":"EU","score":34567,"tags":[1,2,3],"body":{"tally":7}}`
 
 func peerUnit(t *testing.T, src string) *ir.Unit {
 	t.Helper()

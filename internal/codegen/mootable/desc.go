@@ -58,6 +58,19 @@ func emitDescriptor(g *Gen, t *ir.Struct) {
 	sort.Strings(placeable)
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(t)
 	g.Pf("\tplace = { tables = { %s }, str = %v, bytes = %v },\n", strings.Join(placeable, ", "), stringEdge, bytesEdge)
+	// THE TYPES THIS READER DECLARES, whatever a pointer below this root
+	// reaches (§3.1): a record of one that a slot names at the wrong type is
+	// damage, and only a record of a type outside this set reads null.
+	var declared []string
+	for name := range g.Unit.Tables {
+		declared = append(declared, name)
+	}
+	sort.Strings(declared)
+	declaredIDs := make([]string, len(declared))
+	for i, name := range declared {
+		declaredIDs[i] = IdLit(ir.TableWireId(g.Unit.Tables[name].WireName()))
+	}
+	g.Pf("\tdeclared = { %s },\n", strings.Join(declaredIDs, ", "))
 	g.Pf("\tfields = {\n")
 	guards := guardPairs(t)
 	for i, f := range t.Fields {

@@ -106,6 +106,7 @@ type luauFuzzAnswer struct {
 	loaded   bool   // Load returned a root
 	counts   luauFuzzCounts
 	refused  bool
+	measure  int64 // the root's measured region, -1 for a fixed root or a refusal
 	saved    []byte
 	saveFail bool // Save refused the loaded value (or nothing was loaded)
 }
@@ -136,6 +137,7 @@ func parseLuauFuzzLine(line string) (luauFuzzAnswer, error) {
 		malformed:    raw[21] != 0,
 	}
 	a.refused = raw[22] != 0
+	a.measure = int64(binary.LittleEndian.Uint64(raw[23:]))
 	n := int64(binary.LittleEndian.Uint64(raw[39:]))
 	if n < 0 {
 		a.saveFail = true
@@ -582,7 +584,7 @@ func TestLuauWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 // The "str" branch is matched exactly once.
 const luauFuzzControlAnchor = `	elseif s == "str" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then _report.malformed = true; return false end`
+		if r.bad or r.at + n > r.e then _report.malformed = true; noteField("malformed", fieldName); return false end`
 
 // TestLuauWireFuzzNegativeControl patches the emitted load in memory — one
 // anchor, matched exactly once — so a string frame length past the body stops
@@ -591,7 +593,7 @@ const luauFuzzControlAnchor = `	elseif s == "str" then
 func TestLuauWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, luauFuzzCost)
-	sabotaged := strings.Replace(luauFuzzControlAnchor, "_report.malformed = true; return false", "return false", 1)
+	sabotaged := strings.Replace(luauFuzzControlAnchor, "_report.malformed = true; noteField(\"malformed\", fieldName); return false", "return false", 1)
 	const strictTopAnchor = "local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil"
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luauFuzzControlAnchor); n != 1 {

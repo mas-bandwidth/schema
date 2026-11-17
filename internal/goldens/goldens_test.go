@@ -205,6 +205,13 @@ func TestGoldenSourceLuau(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "luau"), files)
 }
 
+// TestGoldenSourcePython pins the Python packet source and its runtime.
+func TestGoldenSourcePython(t *testing.T) {
+	t.Parallel()
+	u := loadCorpus(t)
+	pinDir(t, filepath.Join(goldenDir, "python"), generate(t, u, "python", nil))
+}
+
 // The enum `Count` export moves NEITHER WIRE. Count is generated-code
 // surface: it enters no wire-shape projection and no cook projection, so the
 // packet wire's protocol id and the table wire's build version must both
@@ -222,8 +229,8 @@ func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 		protocolId   uint64
 		buildVersion uint64
 	}{
-		{"examples", corpusDir, 0xf35accd0582cdd84, 0xbd554b50416c01a6},
-		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0x0443c050d3bac7a8},
+		{"examples", corpusDir, 0x2bf51af687ac0abd, 0xf54396dac4647d28},
+		{"examples128", corpus128Dir, 0xd2ded2cc8a482aa1, 0x7b5f4ee797ef6bfe},
 	} {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
@@ -290,6 +297,9 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 	for _, n := range names {
 		path := filepath.Join(dir, n)
 		if *update {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(path, files[n], 0o644); err != nil {
 				t.Fatal(err)
 			}

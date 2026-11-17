@@ -842,10 +842,9 @@ void spillAbsent(String outDir, String name) {
   File('$outDir/$name.absent').writeAsBytesSync(<int>[]);
 }
 
-String _reportLine(int unknown, int kind, int widened, int clamped, int duplicate, bool malformed, bool refused) {
-  final m = malformed ? 'true' : 'false';
-  final v = refused ? 'refused' : 'read';
-  return '$unknown,$kind,$widened,$clamped,$duplicate,$m,$v\n';
+String _reportLine(int unknown, int widened, int retained, int retainLost, bool refused) {
+  if (refused) return 'refused\n';
+  return '$unknown,0,$widened,$retained,$retainLost,false,read\n';
 }
 
 void _w2fUtf8(String s, Uint8List dst, void Function(int) setLen) {
@@ -1005,7 +1004,7 @@ String _fixedReportLine<T, P, R>(
   final n = load(values, 1, wire, wire.length, newPlan(), report);
   final (unknown, widened, refused) = status(report);
   final bad = n != 1 || refused;
-  return _reportLine(unknown, 0, widened, 0, 0, bad, bad);
+  return _reportLine(unknown, widened, 0, 0, bad);
 }
 
 Uint8List? _wireResaveOne<T, R>(
@@ -3067,133 +3066,133 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
     case 'featurewitnesses Root':
       final rep = feature.TableWireReport();
       feature.rootWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'featurewitnesses ArrayRoot':
       final rep = feature.TableWireReport();
       feature.arrayRootWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'tblg1 Guarded':
       final rep = tblg1.TableWireReport();
       tblg1.guardedWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'tblw1 Fleet':
       final rep = tblw1.TableWireReport();
       tblw1.fleetWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'tblw2 Fleet':
       final rep = tblw2.TableWireReport();
       tblw2.fleetWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'graphdemo Scene':
       final rep = graphdemo.TableWireReport();
       graphdemo.sceneWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'blobdemo Catalog':
       final rep = blobdemo.TableWireReport();
       blobdemo.catalogWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Save':
       final rep = listdemo.TableWireReport();
       listdemo.saveWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Album':
       final rep = listdemo.TableWireReport();
       listdemo.albumWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Sheet':
       final rep = listdemo.TableWireReport();
       listdemo.sheetWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Unbounded':
       final rep = listdemo.TableWireReport();
       listdemo.unboundedWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Cells':
       final rep = mapdemo.TableWireReport();
       mapdemo.cellsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Chunks':
       final rep = mapdemo.TableWireReport();
       mapdemo.chunksWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Crews':
       final rep = mapdemo.TableWireReport();
       mapdemo.crewsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Depth':
       final rep = mapdemo.TableWireReport();
       mapdemo.depthWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Docs':
       final rep = mapdemo.TableWireReport();
       mapdemo.docsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Fleet':
       final rep = mapdemo.TableWireReport();
       mapdemo.fleetWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Pairs':
       final rep = mapdemo.TableWireReport();
       mapdemo.pairsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Runs':
       final rep = mapdemo.TableWireReport();
       mapdemo.runsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Slots':
       final rep = mapdemo.TableWireReport();
       mapdemo.slotsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Spans':
       final rep = mapdemo.TableWireReport();
       mapdemo.spansWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Text':
       final rep = mapdemo.TableWireReport();
       mapdemo.textWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'mapdemo Trails':
       final rep = mapdemo.TableWireReport();
       mapdemo.trailsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'widelist Wide':
       final rep = widelist.TableWireReport();
       widelist.wideWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
       listdemo.armyWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Mixed':
       final rep = listdemo.TableWireReport();
       listdemo.mixedWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'streamdemo Feed':
       final rep = streamdemo.TableWireReport();
       streamdemo.feedWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'tabledemo WideBlob':
-      return _reportLine(0, 0, 0, 0, 0, true, true);
+      return _reportLine(0, 0, 0, 0, true);
     case 'graphdemo ListNode':
       final rep = graphdemo.TableWireReport();
       graphdemo.listNodeWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Bounded':
       final rep = listdemo.TableWireReport();
       listdemo.boundedWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Ints':
       final rep = listdemo.TableWireReport();
       listdemo.intsWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Squad':
       final rep = listdemo.TableWireReport();
       listdemo.squadWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'tblp2 Chain':
       final rep = tblp2.TableWireReport();
       tblp2.chainWireLoad(wire, rep);
-      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'backenddemo LoginRequest':
       return _fixedReportLine(wire, backenddemo_fixed.LoginRequest.new, backend.loginRequestFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), backend.loginRequestFixedLoad);
     case 'backenddemo MatchResult':
@@ -3233,7 +3232,7 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
           scan.scanNodeTable();
           if (scan.wireUnreachedNode()) rep.refuse('unreached_node');
         }
-        return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+        return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
       }
       return _fixedReportLine(wire, tblr1_fixed.Cfg.new, r1_fixed.cfgFixedNewPlan, tblr1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), r1_fixed.cfgFixedLoad);
     case 'tblr2 Cfg':
@@ -3962,8 +3961,8 @@ bool _sameBytes(List<int> a, List<int> b) {
 // THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
 // `report` surface prints it, then the §16 text of the value the read left,
 // unless the row says `no-value` or the read was refused. DAMAGE DISCARDS THE
-// WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that reports malformed answers
-// the report line alone, and no value is written after it. A derived line is
+// WHOLE LOAD (docs/SPEC-TABLES.md §4): a refused read answers the refusal
+// alone, and no value is written after it. A derived line is
 // `framing <case> <unit> <root> <wire> [no-value]`.
 int surfaceFraming(String outDir) {
   for (final f in kind('framing')) {
@@ -3974,9 +3973,7 @@ int surfaceFraming(String outDir) {
       continue;
     }
     final noValue = f.length > 5 && f[5] == 'no-value';
-    final fields = line.trimRight().split(',');
-    final damaged = fields.length == 7 && fields[5] == 'true';
-    if (fields.last == 'refused' || damaged) {
+    if (line.trimRight() == 'refused') {
       File('$outDir/${f[1]}').writeAsStringSync(line);
       continue;
     }
@@ -4001,7 +3998,7 @@ int surfaceFraming(String outDir) {
   return 0;
 }
 
-// The report line, then the §16 text of the value the read left when the
+// The verdict line, then the §16 text of the value the read left when the
 // read reads, as `framing` answers a row that owes its value.
 int surfaceReport(String outDir) {
   for (final f in kind('report')) {
@@ -4011,9 +4008,7 @@ int surfaceReport(String outDir) {
       spillAbsent(outDir, f[1]);
       continue;
     }
-    final fields = line.trimRight().split(',');
-    final damaged = fields.length == 7 && fields[5] == 'true';
-    if (fields.last == 'refused' || damaged) {
+    if (line.trimRight() == 'refused') {
       File('$outDir/${f[1]}').writeAsStringSync(line);
       continue;
     }

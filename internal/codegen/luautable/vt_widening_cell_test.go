@@ -188,7 +188,7 @@ func TestLuauVtWideningCellNegativeControl(t *testing.T) {
 			patches: []vtPatch{
 				{
 					file: "schema_load.luau",
-					from: "\tif got == keep and keep == count and sub.at < sub.e then report.malformed = true end\n",
+					from: "\tif got == keep and keep == count and sub.at < sub.e then report.malformed = true; noteField(\"malformed\", arrayName) end\n",
 					to:   "\tif false then report.malformed = true end\n",
 				},
 				{

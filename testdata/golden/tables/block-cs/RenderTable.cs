@@ -706,7 +706,7 @@ namespace Blockdemo
             if (v.CameraId != 0 && !ids.Add(0x9f61700f084ab92eul)) return false;
             if (v.CameraType != 0 && !ids.Add(0x336d3dc7fffd0c9bul)) return false;
             if (v.TargetObjectId != 0 && !ids.Add(0x6a0c6a156952b9c2ul)) return false;
-            if (!float.IsFinite(v.Fov)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Fov));
             if (BitConverter.SingleToUInt32Bits(v.Fov) != 0x00000000u && !ids.Add(0xdcb27c18fed9e15cul)) return false;
             return true;
         }
@@ -841,7 +841,7 @@ namespace Blockdemo
             if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
             if (v.ObjectId != 0 && !ids.Add(0x0bdab42c07f19812ul)) return false;
             if (v.TargetObjectId != 0 && !ids.Add(0x6a0c6a156952b9c2ul)) return false;
-            if (!float.IsFinite(v.Thrust)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Thrust));
             if (BitConverter.SingleToUInt32Bits(v.Thrust) != 0x00000000u && !ids.Add(0xcfd587cb3100cd73ul)) return false;
             if (v.ObjectSequence != 0 && !ids.Add(0x5de0015285763c46ul)) return false;
             if (!TableWire.CollectField(v, fields[7], ref ids)) return false;
@@ -1401,7 +1401,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderStaticPropTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.Scale)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Scale));
             if (BitConverter.DoubleToUInt64Bits(v.Scale) != 0x0000000000000000ul && !ids.Add(0x6aacb9fbb71a1d91ul)) return false;
             if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
             if (v.StaticPropId != 0 && !ids.Add(0xd23da7ab574b95c3ul)) return false;
@@ -1532,7 +1532,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderCosmeticPropTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.Scale)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Scale));
             if (BitConverter.DoubleToUInt64Bits(v.Scale) != 0x0000000000000000ul && !ids.Add(0x6aacb9fbb71a1d91ul)) return false;
             if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
             if (v.CosmeticPropId != 0 && !ids.Add(0xb66e4449e56b2e26ul)) return false;
@@ -1668,7 +1668,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderLaserTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.T)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.T));
             if (BitConverter.DoubleToUInt64Bits(v.T) != 0x0000000000000000ul && !ids.Add(0xaf63e94c860202a3ul)) return false;
             if (v.LaserId != 0 && !ids.Add(0xcd29c05f390294ecul)) return false;
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
@@ -1791,7 +1791,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderExplosionTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.T)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.T));
             if (BitConverter.DoubleToUInt64Bits(v.T) != 0x0000000000000000ul && !ids.Add(0xaf63e94c860202a3ul)) return false;
             if (v.ExplosionId != 0 && !ids.Add(0xfd7f3fa0b16ed778ul)) return false;
             if (v.ParentObjectId != 0 && !ids.Add(0x0bee7b3cb4046c93ul)) return false;
@@ -1914,11 +1914,11 @@ namespace Blockdemo
 
         public static bool RenderVector3CollectTyped(RenderVector3 v, ref TableWire.Ids ids)
         {
-            if (!double.IsFinite(v.X)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.X));
             if (BitConverter.DoubleToUInt64Bits(v.X) != 0x0000000000000000ul && !ids.Add(0xaf63f54c86021707ul)) return false;
-            if (!double.IsFinite(v.Y)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Y));
             if (BitConverter.DoubleToUInt64Bits(v.Y) != 0x0000000000000000ul && !ids.Add(0xaf63f44c86021554ul)) return false;
-            if (!double.IsFinite(v.Z)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Z));
             if (BitConverter.DoubleToUInt64Bits(v.Z) != 0x0000000000000000ul && !ids.Add(0xaf63f74c86021a6dul)) return false;
             return true;
         }
@@ -2024,13 +2024,13 @@ namespace Blockdemo
 
         public static bool RenderQuaternionCollectTyped(RenderQuaternion v, ref TableWire.Ids ids)
         {
-            if (!double.IsFinite(v.X)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.X));
             if (BitConverter.DoubleToUInt64Bits(v.X) != 0x0000000000000000ul && !ids.Add(0xaf63f54c86021707ul)) return false;
-            if (!double.IsFinite(v.Y)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Y));
             if (BitConverter.DoubleToUInt64Bits(v.Y) != 0x0000000000000000ul && !ids.Add(0xaf63f44c86021554ul)) return false;
-            if (!double.IsFinite(v.Z)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Z));
             if (BitConverter.DoubleToUInt64Bits(v.Z) != 0x0000000000000000ul && !ids.Add(0xaf63f74c86021a6dul)) return false;
-            if (!double.IsFinite(v.W)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.W));
             if (BitConverter.DoubleToUInt64Bits(v.W) != 0x3ff0000000000000ul && !ids.Add(0xaf63ea4c86020456ul)) return false;
             return true;
         }
@@ -3314,7 +3314,7 @@ namespace Blockdemo
 
         public const long RenderCameraFixedBodyBytes = 72;
         public const long RenderCameraFixedRecordBytes = 8 + RenderCameraFixedBodyBytes;
-        public const ulong RenderCameraFixedHash = 0x74ade5c3866f68d1ul;
+        public const ulong RenderCameraFixedHash = 0xb491cd9363b09ffaul;
 
         public static readonly byte[] RenderCameraFixedLayout = new byte[] {
             0x0e, 0x00, 0x00, 0x00, 0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6, 0x11, 0x0d, 0x48, 0x00, 0x00,
@@ -3486,6 +3486,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderCameraFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -3539,6 +3547,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderCameraFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -3547,6 +3562,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -3618,6 +3640,14 @@ namespace Blockdemo
                             RenderCameraFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -3668,8 +3698,27 @@ namespace Blockdemo
             0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00,
         };
+        private static readonly byte[] RenderCameraFixedLayout1 = new byte[] {
+            0x0e, 0x00, 0x00, 0x00, 0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6, 0x11, 0x0d, 0x48, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0xb9,
+            0x4a, 0x08, 0x0f, 0x70, 0x61, 0x9f, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9b,
+            0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderCameraFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x74ade5c3866f68d1ul, RenderCameraFixedLayout0, 80),
+            new TableFixedKnownLayout(0xb491cd9363b09ffaul, RenderCameraFixedLayout1, 80),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -3702,7 +3751,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCameraFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderCameraFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderCameraFixedFiniteBody(values[k]) == null); }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderCameraFixedHash);
@@ -3800,7 +3849,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderCameraFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -3841,6 +3890,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderCameraFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderCameraFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -3946,7 +4009,7 @@ namespace Blockdemo
 
         public const long RenderShipFixedBodyBytes = 81;
         public const long RenderShipFixedRecordBytes = 8 + RenderShipFixedBodyBytes;
-        public const ulong RenderShipFixedHash = 0x863125cfa2630ceeul;
+        public const ulong RenderShipFixedHash = 0x66c2646b21ac5b5ful;
 
         public static readonly byte[] RenderShipFixedLayout = new byte[] {
             0x1a, 0x00, 0x00, 0x00, 0x07, 0x60, 0xad, 0x3f, 0xd9, 0xed, 0x00, 0x5b, 0x0d, 0x51, 0x00, 0x00,
@@ -4157,6 +4220,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderShipFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -4210,6 +4281,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderShipFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -4218,6 +4296,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -4289,6 +4374,14 @@ namespace Blockdemo
                             RenderShipFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -4356,8 +4449,39 @@ namespace Blockdemo
             0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
             0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderShipFixedLayout1 = new byte[] {
+            0x1a, 0x00, 0x00, 0x00, 0x07, 0x60, 0xad, 0x3f, 0xd9, 0xed, 0x00, 0x5b, 0x0d, 0x51, 0x00, 0x00,
+            0x00, 0x0b, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+            0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+            0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x73, 0xcd, 0x00, 0x31, 0xcb, 0x87, 0xd5, 0xcf, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x68, 0x72, 0xe7, 0xa2, 0x86, 0x2e, 0x7d, 0x1f, 0x1e, 0x01, 0x00, 0x00, 0x00,
+            0x03, 0x00, 0x00, 0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3, 0x21, 0x23, 0x6c, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e,
+            0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3,
+            0xec, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7,
+            0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
+            0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1,
+            0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
+            0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderShipFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x863125cfa2630ceeul, RenderShipFixedLayout0, 89),
+            new TableFixedKnownLayout(0x66c2646b21ac5b5ful, RenderShipFixedLayout1, 89),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -4390,7 +4514,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderShipFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderShipFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderShipFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderShipFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -4492,7 +4616,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderShipFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -4533,6 +4657,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderShipFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderShipFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -4639,7 +4777,7 @@ namespace Blockdemo
 
         public const long RenderTurretFixedBodyBytes = 59;
         public const long RenderTurretFixedRecordBytes = 8 + RenderTurretFixedBodyBytes;
-        public const ulong RenderTurretFixedHash = 0x9e443be2f7294b72ul;
+        public const ulong RenderTurretFixedHash = 0xe04b36c5f1842bedul;
 
         public static readonly byte[] RenderTurretFixedLayout = new byte[] {
             0x12, 0x00, 0x00, 0x00, 0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x0d, 0x3b, 0x00, 0x00,
@@ -4818,6 +4956,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderTurretFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -4871,6 +5017,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderTurretFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -4879,6 +5032,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -4950,6 +5110,14 @@ namespace Blockdemo
                             RenderTurretFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -5005,8 +5173,31 @@ namespace Blockdemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderTurretFixedLayout1 = new byte[] {
+            0x12, 0x00, 0x00, 0x00, 0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x0d, 0x3b, 0x00, 0x00,
+            0x00, 0x09, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x20, 0x00,
+            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63,
+            0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1,
+            0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x98, 0xf1, 0x07, 0x2c,
+            0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93, 0x6c, 0x04, 0xb4,
+            0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x1f, 0x54,
+            0xed, 0x6a, 0x1a, 0xa1, 0x88, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc2, 0xb9,
+            0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
+            0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderTurretFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x9e443be2f7294b72ul, RenderTurretFixedLayout0, 67),
+            new TableFixedKnownLayout(0xe04b36c5f1842bedul, RenderTurretFixedLayout1, 67),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -5039,7 +5230,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderTurretFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderTurretFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderTurretFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderTurretFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -5141,7 +5332,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderTurretFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -5182,6 +5373,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderTurretFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderTurretFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -5288,7 +5493,7 @@ namespace Blockdemo
 
         public const long RenderMissileFixedBodyBytes = 71;
         public const long RenderMissileFixedRecordBytes = 8 + RenderMissileFixedBodyBytes;
-        public const ulong RenderMissileFixedHash = 0xf7ec4593b531c59aul;
+        public const ulong RenderMissileFixedHash = 0x24d3188fbb5f76d5ul;
 
         public static readonly byte[] RenderMissileFixedLayout = new byte[] {
             0x15, 0x00, 0x00, 0x00, 0x5b, 0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x0d, 0x47, 0x00, 0x00,
@@ -5476,6 +5681,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderMissileFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -5529,6 +5742,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderMissileFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -5537,6 +5757,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -5608,6 +5835,14 @@ namespace Blockdemo
                             RenderMissileFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -5666,8 +5901,34 @@ namespace Blockdemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
             0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderMissileFixedLayout1 = new byte[] {
+            0x15, 0x00, 0x00, 0x00, 0x5b, 0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x0d, 0x47, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+            0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+            0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xbc, 0xb4, 0x07, 0x2c, 0x0e, 0x2a, 0x1b, 0x15, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00,
+            0x00, 0x00, 0xca, 0xaf, 0x76, 0x5a, 0xd2, 0xa4, 0xd0, 0xf5, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x5d, 0x07, 0xd9, 0xf6, 0x72, 0x79, 0x8d, 0x47, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00,
+            0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderMissileFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0xf7ec4593b531c59aul, RenderMissileFixedLayout0, 79),
+            new TableFixedKnownLayout(0x24d3188fbb5f76d5ul, RenderMissileFixedLayout1, 79),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -5700,7 +5961,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderMissileFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderMissileFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderMissileFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderMissileFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -5802,7 +6063,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderMissileFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -5843,6 +6104,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderMissileFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderMissileFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -5949,7 +6224,7 @@ namespace Blockdemo
 
         public const long RenderDynamicPropFixedBodyBytes = 71;
         public const long RenderDynamicPropFixedRecordBytes = 8 + RenderDynamicPropFixedBodyBytes;
-        public const ulong RenderDynamicPropFixedHash = 0x79301f61e3f56e22ul;
+        public const ulong RenderDynamicPropFixedHash = 0x5fdcef41a5116bddul;
 
         public static readonly byte[] RenderDynamicPropFixedLayout = new byte[] {
             0x16, 0x00, 0x00, 0x00, 0x47, 0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc, 0x0d, 0x47, 0x00, 0x00,
@@ -6139,6 +6414,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderDynamicPropFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -6192,6 +6475,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderDynamicPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -6200,6 +6490,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -6271,6 +6568,14 @@ namespace Blockdemo
                             RenderDynamicPropFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -6330,8 +6635,35 @@ namespace Blockdemo
             0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
             0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderDynamicPropFixedLayout1 = new byte[] {
+            0x16, 0x00, 0x00, 0x00, 0x47, 0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc, 0x0d, 0x47, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+            0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+            0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00,
+            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
+            0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderDynamicPropFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x79301f61e3f56e22ul, RenderDynamicPropFixedLayout0, 79),
+            new TableFixedKnownLayout(0x5fdcef41a5116bddul, RenderDynamicPropFixedLayout1, 79),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -6364,7 +6696,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderDynamicPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderDynamicPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderDynamicPropFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderDynamicPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -6466,7 +6798,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderDynamicPropFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -6507,6 +6839,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderDynamicPropFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderDynamicPropFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -6613,7 +6959,7 @@ namespace Blockdemo
 
         public const long RenderStaticPropFixedBodyBytes = 78;
         public const long RenderStaticPropFixedRecordBytes = 8 + RenderStaticPropFixedBodyBytes;
-        public const ulong RenderStaticPropFixedHash = 0xa63b40147f0f5066ul;
+        public const ulong RenderStaticPropFixedHash = 0x708877297c4bf111ul;
 
         public static readonly byte[] RenderStaticPropFixedLayout = new byte[] {
             0x16, 0x00, 0x00, 0x00, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a, 0xc1, 0x0d, 0x4e, 0x00, 0x00,
@@ -6804,6 +7150,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderStaticPropFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -6857,6 +7211,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderStaticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -6865,6 +7226,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -6936,6 +7304,14 @@ namespace Blockdemo
                             RenderStaticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -6995,8 +7371,35 @@ namespace Blockdemo
             0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
             0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderStaticPropFixedLayout1 = new byte[] {
+            0x16, 0x00, 0x00, 0x00, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a, 0xc1, 0x0d, 0x4e, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91, 0x1d,
+            0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec,
+            0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xc3, 0x95, 0x4b, 0x57, 0xab, 0xa7, 0x3d, 0xd2, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00,
+            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
+            0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderStaticPropFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0xa63b40147f0f5066ul, RenderStaticPropFixedLayout0, 86),
+            new TableFixedKnownLayout(0x708877297c4bf111ul, RenderStaticPropFixedLayout1, 86),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -7029,7 +7432,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderStaticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderStaticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderStaticPropFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderStaticPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -7131,7 +7534,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderStaticPropFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -7172,6 +7575,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderStaticPropFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderStaticPropFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -7278,7 +7695,7 @@ namespace Blockdemo
 
         public const long RenderCosmeticPropFixedBodyBytes = 79;
         public const long RenderCosmeticPropFixedRecordBytes = 8 + RenderCosmeticPropFixedBodyBytes;
-        public const ulong RenderCosmeticPropFixedHash = 0x72a2fa1985def98eul;
+        public const ulong RenderCosmeticPropFixedHash = 0x47440473d29f9c79ul;
 
         public static readonly byte[] RenderCosmeticPropFixedLayout = new byte[] {
             0x17, 0x00, 0x00, 0x00, 0x6f, 0x63, 0x76, 0xe7, 0xba, 0xbd, 0xf5, 0x5f, 0x0d, 0x4f, 0x00, 0x00,
@@ -7474,6 +7891,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderCosmeticPropFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -7527,6 +7952,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderCosmeticPropFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -7535,6 +7967,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -7606,6 +8045,14 @@ namespace Blockdemo
                             RenderCosmeticPropFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -7667,8 +8114,36 @@ namespace Blockdemo
             0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
             0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderCosmeticPropFixedLayout1 = new byte[] {
+            0x17, 0x00, 0x00, 0x00, 0x6f, 0x63, 0x76, 0xe7, 0xba, 0xbd, 0xf5, 0x5f, 0x0d, 0x4f, 0x00, 0x00,
+            0x00, 0x08, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91, 0x1d,
+            0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec,
+            0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x26, 0x2e, 0x6b, 0xe5, 0x49, 0x44, 0x6e, 0xb6, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x28, 0xc2, 0xdd, 0xcb, 0x3b, 0xf7, 0x7b, 0x4d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03,
+            0x00, 0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01,
+            0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00,
+            0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
+            0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderCosmeticPropFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x72a2fa1985def98eul, RenderCosmeticPropFixedLayout0, 87),
+            new TableFixedKnownLayout(0x47440473d29f9c79ul, RenderCosmeticPropFixedLayout1, 87),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -7701,7 +8176,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCosmeticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderCosmeticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -7803,7 +8278,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderCosmeticPropFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -7844,6 +8319,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderCosmeticPropFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderCosmeticPropFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -7950,7 +8439,7 @@ namespace Blockdemo
 
         public const long RenderLaserFixedBodyBytes = 62;
         public const long RenderLaserFixedRecordBytes = 8 + RenderLaserFixedBodyBytes;
-        public const ulong RenderLaserFixedHash = 0x99df0a3db4b1eebdul;
+        public const ulong RenderLaserFixedHash = 0xbd47f27872c00ba6ul;
 
         public static readonly byte[] RenderLaserFixedLayout = new byte[] {
             0x13, 0x00, 0x00, 0x00, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0, 0x0d, 0x3e, 0x00, 0x00,
@@ -8128,6 +8617,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderLaserFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -8181,6 +8678,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderLaserFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -8189,6 +8693,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -8260,6 +8771,14 @@ namespace Blockdemo
                             RenderLaserFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -8314,8 +8833,32 @@ namespace Blockdemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderLaserFixedLayout1 = new byte[] {
+            0x13, 0x00, 0x00, 0x00, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0, 0x0d, 0x3e, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf2, 0x40, 0x15, 0xb9, 0xba, 0xa5, 0x17,
+            0x69, 0x0d, 0x18, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0x02, 0x02,
+            0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x94,
+            0x02, 0x39, 0x5f, 0xc0, 0x29, 0xcd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41,
+            0x38, 0x13, 0x42, 0xc2, 0x93, 0xb5, 0x96, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+            0x5e, 0x80, 0xf4, 0xd8, 0x72, 0xa1, 0xe8, 0x94, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xfa, 0xef, 0x7e, 0x96, 0xa7, 0x5a, 0x74, 0xa0, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04,
+            0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderLaserFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0x99df0a3db4b1eebdul, RenderLaserFixedLayout0, 70),
+            new TableFixedKnownLayout(0xbd47f27872c00ba6ul, RenderLaserFixedLayout1, 70),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -8348,7 +8891,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderLaserFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderLaserFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderLaserFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderLaserFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -8450,7 +8993,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderLaserFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -8491,6 +9034,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderLaserFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderLaserFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
@@ -8597,7 +9154,7 @@ namespace Blockdemo
 
         public const long RenderExplosionFixedBodyBytes = 74;
         public const long RenderExplosionFixedRecordBytes = 8 + RenderExplosionFixedBodyBytes;
-        public const ulong RenderExplosionFixedHash = 0xf71917b507eff722ul;
+        public const ulong RenderExplosionFixedHash = 0xf1aaafacd510bcddul;
 
         public static readonly byte[] RenderExplosionFixedLayout = new byte[] {
             0x15, 0x00, 0x00, 0x00, 0xf8, 0xe5, 0xc9, 0x85, 0xb5, 0x38, 0xc7, 0x0c, 0x0d, 0x4a, 0x00, 0x00,
@@ -8786,6 +9343,14 @@ namespace Blockdemo
                         {
                             ulong raw = src[(int)p.Src];
                             if (raw > 1) { return "wire_damaged"; }
+                            // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): a present byte of 0 makes the
+                            // whole payload behind it dead (§4.5). Aux is its source byte count.
+                            if (p.Meta == TableFixedWire.BoolPresent && raw == 0 && p.Aux != 0)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 1, p.Src + 1 + p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderExplosionFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
@@ -8839,6 +9404,13 @@ namespace Blockdemo
                         {
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
+                            // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):
+                            // Aux is one element's source byte count, Size the bound in elements.
+                            if (p.Aux != 0 && (uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v * p.Aux, p.Src + 4 + p.Size * p.Aux);
+                                if (dw != null) { return dw; }
+                            }
                             RenderExplosionFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
                             break;
                         }
@@ -8847,6 +9419,13 @@ namespace Blockdemo
                             uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
+                            // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
+                            // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.
+                            if ((uint)v < p.Size)
+                            {
+                                string dw = TableFixedWire.DeadZero(src, p.Src + 4 + (uint)v, p.Src + 4 + p.Size);
+                                if (dw != null) { return dw; }
+                            }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
@@ -8918,6 +9497,14 @@ namespace Blockdemo
                             RenderExplosionFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
+                    case TableFixedWire.Dead:
+                        {
+                            // A DEAD RANGE MUST BE ALL ZERO (docs/rulings.json
+                            // fixed-dead-bytes-are-zero): an inactive union arm's span.
+                            string dw = TableFixedWire.DeadZero(src, p.Src, p.Src + p.Size);
+                            if (dw != null) { return dw; }
+                            break;
+                        }
                     default: break;
                 }
             }
@@ -8976,8 +9563,34 @@ namespace Blockdemo
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
             0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
+        private static readonly byte[] RenderExplosionFixedLayout1 = new byte[] {
+            0x15, 0x00, 0x00, 0x00, 0xf8, 0xe5, 0xc9, 0x85, 0xb5, 0x38, 0xc7, 0x0c, 0x0d, 0x4a, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0x02,
+            0x02, 0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x78,
+            0xd7, 0x6e, 0xb1, 0xa0, 0x3f, 0x7f, 0xfd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x93, 0x6c, 0x04, 0xb4, 0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xe5, 0x3b, 0x39, 0xd3, 0x9c, 0xeb, 0x89, 0xdc, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00,
+            0x00, 0x00, 0xec, 0xeb, 0xad, 0x52, 0xd9, 0xc8, 0x2c, 0x3d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x34, 0xe6, 0x80, 0x93, 0xf7, 0x6e, 0x73, 0xc8, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00,
+            0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
         public static readonly TableFixedKnownLayout[] RenderExplosionFixedKnown = new TableFixedKnownLayout[] {
             new TableFixedKnownLayout(0xf71917b507eff722ul, RenderExplosionFixedLayout0, 82),
+            new TableFixedKnownLayout(0xf1aaafacd510bcddul, RenderExplosionFixedLayout1, 82),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -9010,7 +9623,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderExplosionFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderExplosionFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderExplosionFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderExplosionFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -9112,7 +9725,7 @@ namespace Blockdemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
-            if (pick != 0)
+            if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderExplosionFixedLineagePlans[pick];
                 if (lane.Why != null)
@@ -9153,6 +9766,20 @@ namespace Blockdemo
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            {
+                TableFixedLayoutView dead_writer = TableFixedWire.View(known.Layout);
+                TableFixedLayoutView dead_reader = TableFixedWire.View(RenderExplosionFixedLayout);
+                for (int k = 0; k < n; ++k)
+                {
+                    ReadOnlySpan<byte> rec = at.Slice((int)(k * record_bytes));
+                    string dead_why = TableFixedWire.DeadCheck(dead_writer, dead_reader, RenderExplosionFixedDst, rec.Slice(8, (int)(record_bytes - 8)));
+                    if (dead_why != null)
+                    {
+                        if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = dead_why; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                }
             }
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the

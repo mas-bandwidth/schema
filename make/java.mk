@@ -1192,6 +1192,7 @@ build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fi
 	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_RELEASE_WRITE) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/dead \
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) -Itest/java-tables/serialize128 \
@@ -2463,6 +2464,102 @@ write-refusal-storage-debug-java-negative-control: bin/schema $(STORAGE_RELEASE_
 
 test-java: write-refusal-storage-debug-java write-refusal-storage-debug-java-negative-control
 
+# THE WRITE CONTRACT's controls (docs/SPEC.md §5.1), the Java leg. The
+# generated Java writer's contract checks are assertions, and the conformance
+# driver answers those surfaces under `-ea`. Each control removes one check
+# from a COPY of the generated unit, compiles it ahead of build/conformance-java
+# and requires the surface the check belongs to to go red by the row it names,
+# while the wire (or message) surface stays green.
+JAVA_WRITE_REFUSAL_CONTROL := build/conformance-java-write-refusal-control
+.PHONY: conformance-negative-control-java-write-refusal
+conformance-negative-control-java-write-refusal: build/conformance-harness build-conformance-java
+	@rm -rf $(JAVA_WRITE_REFUSAL_CONTROL) && mkdir -p $(JAVA_WRITE_REFUSAL_CONTROL)/generated $(JAVA_WRITE_REFUSAL_CONTROL)/classes
+	@cp build/tables-generated-java/examples/*.java $(JAVA_WRITE_REFUSAL_CONTROL)/generated/
+	@sed -i.orig 's/assert v\.penetration >= 0L && v\.penetration <= 10L;/assert true; \/\/ SABOTAGED: penetration range check removed/' \
+		$(JAVA_WRITE_REFUSAL_CONTROL)/generated/WeaponConfigFixed.java
+	@! cmp -s $(JAVA_WRITE_REFUSAL_CONTROL)/generated/WeaponConfigFixed.java \
+		$(JAVA_WRITE_REFUSAL_CONTROL)/generated/WeaponConfigFixed.java.orig || \
+		{ echo "NEGATIVE CONTROL: the penetration check sabotage did not apply"; exit 1; }
+	@rm $(JAVA_WRITE_REFUSAL_CONTROL)/generated/*.orig
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_WRITE_REFUSAL_CONTROL)/classes \
+		$(JAVA_WRITE_REFUSAL_CONTROL)/generated/*.java
+	@printf '#!/bin/sh\nexec %s -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+		"$(JAVA)" "$(CURDIR)/$(JAVA_WRITE_REFUSAL_CONTROL)" "$(CURDIR)" > $(JAVA_WRITE_REFUSAL_CONTROL)/driver
+	@chmod +x $(JAVA_WRITE_REFUSAL_CONTROL)/driver
+	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WRITE_REFUSAL_CONTROL)" > $(JAVA_WRITE_REFUSAL_CONTROL)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(JAVA_WRITE_REFUSAL_CONTROL)/drivers.txt \
+			--work $(JAVA_WRITE_REFUSAL_CONTROL)/work > $(JAVA_WRITE_REFUSAL_CONTROL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the removed ranged-scalar check left conformance green"; \
+		cat $(JAVA_WRITE_REFUSAL_CONTROL)/log; exit 1; fi
+	@grep -q 'java / write-refusal: wref_range_high' $(JAVA_WRITE_REFUSAL_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: write-refusal did not go red on wref_range_high"; cat $(JAVA_WRITE_REFUSAL_CONTROL)/log; exit 1; }
+	@grep -q 'java / write-refusal-fixed: fref_range_high' $(JAVA_WRITE_REFUSAL_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: write-refusal-fixed did not go red on fref_range_high"; cat $(JAVA_WRITE_REFUSAL_CONTROL)/log; exit 1; }
+	@grep -qE '^message +pass' $(JAVA_WRITE_REFUSAL_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the message form's separate writer went red"; cat $(JAVA_WRITE_REFUSAL_CONTROL)/log; exit 1; }
+	@grep -m1 'java / write-refusal: wref_range_high' $(JAVA_WRITE_REFUSAL_CONTROL)/log
+	@echo "negative control: removing the Java ranged-scalar check turns write-refusal and write-refusal-fixed RED"
+
+JAVA_WRITE_REFUSAL_FIXED_CONTROL := build/conformance-java-write-refusal-fixed-control
+.PHONY: conformance-negative-control-java-write-refusal-fixed
+conformance-negative-control-java-write-refusal-fixed: build/conformance-harness build-conformance-java
+	@rm -rf $(JAVA_WRITE_REFUSAL_FIXED_CONTROL) && mkdir -p $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/classes
+	@cp build/tables-generated-java/examples/*.java $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/
+	@sed -i.orig 's/assert v\.type >= 0 && v\.type <= 2;/assert true; \/\/ SABOTAGED: union tag check removed/' \
+		$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/EffectFixed.java
+	@! cmp -s $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/EffectFixed.java \
+		$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/EffectFixed.java.orig || \
+		{ echo "NEGATIVE CONTROL: the union tag check sabotage did not apply"; exit 1; }
+	@rm $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/*.orig
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/classes \
+		$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/*.java
+	@printf '#!/bin/sh\nexec %s -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+		"$(JAVA)" "$(CURDIR)/$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)" "$(CURDIR)" > $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/driver
+	@chmod +x $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/driver
+	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)" > $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/drivers.txt \
+			--work $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/work > $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the removed fixed-form union tag check left conformance green"; \
+		cat $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log; exit 1; fi
+	@grep -q 'java / write-refusal-fixed: fref_union_tag' $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: write-refusal-fixed did not go red on fref_union_tag"; cat $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log; exit 1; }
+	@grep -q '^write-refusal FAIL' $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form's writer did not take write-refusal red"; cat $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log; exit 1; }
+	@grep -qE '^wire +pass' $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire surface went red"; cat $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log; exit 1; }
+	@grep -m1 'java / write-refusal-fixed: fref_union_tag' $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/log
+	@echo "negative control: removing the Java fixed-form union tag check turns write-refusal-fixed RED"
+
+JAVA_WRITE_REFUSAL_MESSAGE_CONTROL := build/conformance-java-write-refusal-message-control
+.PHONY: conformance-negative-control-java-write-refusal-message
+conformance-negative-control-java-write-refusal-message: build/conformance-harness build-conformance-java
+	@rm -rf $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL) && mkdir -p $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/classes
+	@cp build/tables-generated-java/backend/*.java $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/
+	@sed -i.orig 's/assert Long\.compareUnsigned((v\.quantity) & 0xffL, 0x63L) <= 0;/assert true; \/\/ SABOTAGED: quantity upper bound removed/' \
+		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java
+	@! cmp -s $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java \
+		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java.orig || \
+		{ echo "NEGATIVE CONTROL: the message quantity check sabotage did not apply"; exit 1; }
+	@rm $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/*.orig
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/classes \
+		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/*.java
+	@printf '#!/bin/sh\nexec %s -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+		"$(JAVA)" "$(CURDIR)/$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)" "$(CURDIR)" > $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/driver
+	@chmod +x $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/driver
+	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)" > $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/drivers.txt \
+			--work $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/work > $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the removed message ranged-int check left conformance green"; \
+		cat $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log; exit 1; fi
+	@grep -q 'java / write-refusal-message: mref_range_high' $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: write-refusal-message did not go red on mref_range_high"; cat $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log; exit 1; }
+	@grep -qE '^message +pass' $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the message surface went red"; cat $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log; exit 1; }
+	@grep -qE '^wire +pass' $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire surface went red"; cat $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log; exit 1; }
+	@grep -m1 'java / write-refusal-message: mref_range_high' $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/log
+	@echo "negative control: removing the Java message ranged-int check turns write-refusal-message RED"
+
 # THE PACKET-END LEG (docs/SPEC.md §5 "Read termination",
 # docs/PACKET-WIRE-ALGORITHM.md §3 READ_PACKET): the generated one-packet read
 # refuses a whole byte left after the top-level object and non-zero unused
@@ -2500,3 +2597,23 @@ packet-end-java-negative-control: packet-end-java
 	@echo 'packet end Java negative control: a removed end check accepts a trailing byte'
 
 test-java: packet-end-java packet-end-java-negative-control
+
+# Declaration-free transport IDs: run the legal and noncanonical vectors
+# through both public load paths, then plant a bypass of the order check.
+.PHONY: tables-java-transport-id tables-java-transport-id-negative-control
+tables-java-transport-id:
+	@mkdir -p build/java-transport-id
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDFirstUse$$' ./internal/codegen/javatable/ \
+		> build/java-transport-id/positive.log 2>&1 || { cat build/java-transport-id/positive.log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaTransportIDFirstUse ' build/java-transport-id/positive.log || { cat build/java-transport-id/positive.log; exit 1; }
+	@echo 'Java transport IDs: legal and noncanonical vectors matched the Go oracle'
+
+tables-java-transport-id-negative-control: tables-java-transport-id
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDNegativeControl$$' ./internal/codegen/javatable/ \
+		> build/java-transport-id/control.log 2>&1 || { cat build/java-transport-id/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaTransportIDNegativeControl ' build/java-transport-id/control.log || { cat build/java-transport-id/control.log; exit 1; }
+	@echo 'Java transport IDs: bypassing the check makes each malformed identity vector read'
+
+test-java: tables-java-transport-id tables-java-transport-id-negative-control

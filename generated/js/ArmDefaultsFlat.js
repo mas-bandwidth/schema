@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf35accd0582cdd84
+// package example — protocol id 0x2bf51af687ac0abd
 //
 // THE FLAT TIER — the shipped JavaScript wire path: a single-word 32-bit
 // bitpacker inlined at every field (byte-identical wire to serialize.js),
@@ -42,6 +42,9 @@ export function WriteDefaultArmFlat(view, value) {
   sb = 2;
   for (let i0 = 0; i0 < value.entriesCount; i0++) {
     const e0 = value.entries[i0];
+    if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+      return -1;
+    }
     if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
       return -1;
     }
@@ -219,6 +222,9 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
         const e0 = value.first.entries[i0];
+        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+          return -1;
+        }
         if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
@@ -270,6 +276,9 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
         const e0 = value.second.entries[i0];
+        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+          return -1;
+        }
         if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
@@ -616,6 +625,9 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
         const e0 = value.choice.first.entries[i0];
+        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+          return -1;
+        }
         if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
@@ -667,6 +679,9 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
         const e0 = value.choice.second.entries[i0];
+        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+          return -1;
+        }
         if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
@@ -999,6 +1014,9 @@ export function WriteDefaultBulkArmFlat(view, value) {
   sb = 2;
   for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
     const e0 = value.payload.entries[i0];
+    if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+      return -1;
+    }
     if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
       return -1;
     }
@@ -1275,6 +1293,9 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
         const e0 = value.first.payload.entries[i0];
+        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+          return -1;
+        }
         if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }
@@ -1361,6 +1382,9 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
         const e0 = value.second.payload.entries[i0];
+        if (!Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+          return -1;
+        }
         if (!Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
           return -1;
         }

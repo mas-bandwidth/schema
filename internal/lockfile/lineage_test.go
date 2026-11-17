@@ -162,7 +162,7 @@ func TestLockLineageUnchangedHashAddsNothing(t *testing.T) {
 // SALVAGES, never deletes." A committed v6 lock holds no lineage, so the one
 // layout it holds becomes the first lineage entry, and the field lines it holds
 // are carried forward unchanged rather than wiped fleet-wide.
-func TestLockV6SalvagesIntoV7WithOneEntry(t *testing.T) {
+func TestLockV6SalvagesIntoV9WithLegacyAndCurrentEntries(t *testing.T) {
 	dir, paths := fixture(t, rowTable("    a int32\n    b int32"))
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 		t.Fatal(err)
@@ -179,6 +179,16 @@ func TestLockV6SalvagesIntoV7WithOneEntry(t *testing.T) {
 		if strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
 			continue
 		}
+		if strings.HasPrefix(line, "fixed table ") {
+			parts := strings.Fields(line)
+			var held []string
+			for _, part := range parts {
+				if !strings.HasPrefix(part, "lineage=") {
+					held = append(held, part)
+				}
+			}
+			line = strings.Join(held, " ")
+		}
 		v6 = append(v6, line)
 	}
 	old := strings.Replace(strings.Join(v6, "\n"), fmt.Sprintf("schema-lock %d", lockfile.Version), "schema-lock 6", 1)
@@ -191,8 +201,8 @@ func TestLockV6SalvagesIntoV7WithOneEntry(t *testing.T) {
 
 	// it READS: a v6 lock is salvage, not a delete, so the law still holds
 	// against it and the check is silent
-	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
-		t.Fatalf("a v6 lock salvages rather than refusing: %v", errs)
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) == 0 || !strings.Contains(errs[0].Error(), "not the lineage's last entry") {
+		t.Fatalf("identity upgrade must explicitly require relocking v6: %v", errs)
 	}
 	// and `schema lock` rewrites it as v7 with ONE lineage entry, the single
 	// layout it held
@@ -205,8 +215,8 @@ func TestLockV6SalvagesIntoV7WithOneEntry(t *testing.T) {
 	}
 	want, _, _ := wireHashOf(t, paths, "Row")
 	got := lockfile.Lineage(lk, "Row")
-	if len(got) != 1 || got[0].Wire != want {
-		t.Fatalf("the v6 lock's single layout is the first lineage entry: %d entries", len(got))
+	if len(got) != 2 || got[0].Wire != ir.TableFixedLayoutHashRecorded(got[0].Layout, nil) || got[0].Writer != nil || got[1].Wire != want || got[1].Writer == nil {
+		t.Fatalf("v6 preserves layout-only history and appends the prospective current writer: %d entries", len(got))
 	}
 	// the field lines came through unchanged: the law is the same law
 	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
@@ -457,7 +467,7 @@ func TestLineageAccessorIsWhatCompileReads(t *testing.T) {
 		}
 		// the bytes are what LOAD compares a file against, and the hash binds
 		// them together with the digest
-		if len(e.Layout) == 0 || ir.TableFixedLayoutHash(e.Layout, nil) != e.Wire || len(e.Digest) != 0 {
+		if len(e.Layout) == 0 || ir.TableFixedLayoutHashRecorded(e.Layout, e.Digest) != e.Wire {
 			t.Errorf("entry %d: bytes=%x digest=%x do not hash to 0x%016x", i, e.Layout, e.Digest, e.Wire)
 		}
 		if e.Record <= 0 {
@@ -490,8 +500,8 @@ func TestLockLineageRecordsTheDefinitionsDigest(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("one layout: %d", len(got))
 	}
-	if len(got[0].Digest) == 0 || got[0].Digest[0] != 'R' {
-		t.Fatalf("a range produces a nonempty digest starting with 'R', got %q", got[0].Digest)
+	if version, err := ir.TableFixedDefinitionsDigestVersion(got[0].Digest); err != nil || version != 2 {
+		t.Fatalf("a new range uses the prospective definitions scheme: %x: %v", got[0].Digest, err)
 	}
 	if got[0].Wire != want {
 		t.Errorf("the wire hash folds the digest: lock 0x%016x, ir 0x%016x", got[0].Wire, want)
@@ -501,11 +511,10 @@ func TestLockLineageRecordsTheDefinitionsDigest(t *testing.T) {
 	}
 }
 
-// TestLockDigestLandingRewritesInPlace: a lock written with an empty digest
-// recorded the layout-bytes-only hash. Filling the digest moves the wire hash
-// without moving a layout byte — not a new version — so `schema lock` rewrites
-// the last entry in place rather than appending.
-func TestLockDigestLandingRewritesInPlace(t *testing.T) {
+// A digest-less historical identity stays known when the current definition
+// acquires a digest: append the current hash without rewriting shipped bytes.
+func TestLockDigestLandingPreservesHistoricalIdentity(t *testing.T) {
+	t.Parallel()
 	dir, paths := fixture(t, rowTable("    n int32 | min = 0, max = 100"))
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 		t.Fatal(err)
@@ -524,6 +533,7 @@ func TestLockDigestLandingRewritesInPlace(t *testing.T) {
 		t.Fatal("the first lock holds one lineage entry")
 	}
 	t0.Lineage[0].Digest = nil
+	t0.Lineage[0].Writer = nil
 	t0.Lineage[0].Wire = ir.TableFixedLayoutHash(t0.Lineage[0].Layout, nil)
 	if err := os.WriteFile(path, []byte(locked.Text()), 0o644); err != nil {
 		t.Fatal(err)
@@ -532,12 +542,16 @@ func TestLockDigestLandingRewritesInPlace(t *testing.T) {
 		t.Fatalf("filling the digest rewrites the lock: rewrote=%v err=%v", rewrote, err)
 	}
 	got := lineageOf(t, path, "Row")
-	if len(got) != 1 {
-		t.Fatalf("digest landing is not a new version: want 1 entry, got %d", len(got))
+	if len(got) != 2 {
+		t.Fatalf("both historical and current hashes stay known: got %d", len(got))
+	}
+	old := t0.Lineage[0]
+	if got[0].Wire != old.Wire || got[0].Record != old.Record || string(got[0].Layout) != string(old.Layout) || len(got[0].Digest) != 0 || got[0].Writer != nil || got[0].Retired != old.Retired || got[0].Reason != old.Reason {
+		t.Fatal("digest migration changed historical facts")
 	}
 	want, _, _ := wireHashOf(t, paths, "Row")
-	if got[0].Wire != want || len(got[0].Digest) == 0 {
-		t.Errorf("the rewritten entry carries the digest hash 0x%016x, got 0x%016x digest %q", want, got[0].Wire, got[0].Digest)
+	if got[1].Wire != want || len(got[1].Digest) == 0 || got[1].Writer == nil {
+		t.Errorf("the appended entry carries the current digest hash 0x%016x, got 0x%016x digest %q", want, got[1].Wire, got[1].Digest)
 	}
 }
 

@@ -351,7 +351,8 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1004,7 +1005,8 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1827,7 +1829,8 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -2951,6 +2954,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBody(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -3035,6 +3042,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3047,6 +3055,13 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 							return false
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
+					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -3153,7 +3168,8 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -4002,6 +4018,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBodyRetain(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -4089,6 +4109,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					elem.Path = r.Path.step(3, uint32(int(slot)-1))
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4102,6 +4123,13 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 							return false
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
+					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4234,7 +4262,7 @@ func ShipEntryFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 44, Dst: dst + uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Size: 4, Aux: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // hardpoints count
+	out[n] = TableFixedEntry{Src: src + 44, Dst: dst + uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Size: 4, Min: 0, Aux: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // hardpoints count
 	n++
 	for i := range uint32(4) {
 		es := src + 48 + i*4
@@ -4335,7 +4363,7 @@ func PackConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 379, Dst: dst + uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Size: 3, Aux: 98, Guard: tableFixedNoGuard, Op: tableFixedCount} // reserves count
+	out[n] = TableFixedEntry{Src: src + 379, Dst: dst + uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Size: 3, Min: 0, Aux: 98, Guard: tableFixedNoGuard, Op: tableFixedCount} // reserves count
 	n++
 	for i := range uint32(3) {
 		es := src + 383 + i*98
@@ -4724,7 +4752,7 @@ func GunnerSettingsFixedBounds(value *GunnerSettings) bool {
 
 const GunnerSettingsFixedBodyBytes = 33
 const GunnerSettingsFixedRecordBytes = 8 + GunnerSettingsFixedBodyBytes
-const GunnerSettingsFixedHash = 0x096e203e5991edb3
+const GunnerSettingsFixedHash = 0xa13c0ab038ca9960
 
 var GunnerSettingsFixedLayout = []byte{
 	0x04, 0x00, 0x00, 0x00, 0xaf, 0x37, 0x33, 0x25, 0xb2, 0x42, 0x68, 0xb7, 0x0d, 0x21, 0x00, 0x00,
@@ -4735,10 +4763,10 @@ var GunnerSettingsFixedLayout = []byte{
 }
 
 var GunnerSettingsFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                         // GunnerSettings
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // tracking
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1}, // callsign
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                         // GunnerSettings
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Min: 0, Counted: 0, Arg: 1, Meta: 1}, // callsign
 }
 
 var GunnerSettingsFixedPlan = tableFixedBuildPlan(GunnerSettingsFixedLeaves, 3)
@@ -4746,6 +4774,18 @@ var GunnerSettingsFixedPlan = tableFixedBuildPlan(GunnerSettingsFixedLeaves, 3)
 var GunnerSettingsFixedKnown = []TableFixedKnownLayout{
 	{
 		Hash:        0x096e203e5991edb3,
+		LayoutBytes: 72,
+		Record:      41,
+		Layout: []byte{
+			0x04, 0x00, 0x00, 0x00, 0xaf, 0x37, 0x33, 0x25, 0xb2, 0x42, 0x68, 0xb7, 0x0d, 0x21, 0x00, 0x00,
+			0x00, 0x03, 0x00, 0x00, 0x00, 0x6a, 0x64, 0x01, 0x22, 0x66, 0xa3, 0x5a, 0xb7, 0x0a, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xb0, 0x02, 0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x88, 0x84, 0xb9, 0x27, 0x46, 0xc4, 0x5b, 0x0c,
+			0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+	{
+		Hash:        0xa13c0ab038ca9960,
 		LayoutBytes: 72,
 		Record:      41,
 		Layout: []byte{
@@ -4808,10 +4848,10 @@ func GunnerSettingsFixedMeasure(count int64) int64 {
 }
 
 // GunnerSettingsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func GunnerSettingsFixedSave(values []GunnerSettings, buffer []byte) int64 {
 	need := GunnerSettingsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -4930,6 +4970,11 @@ func GunnerSettingsFixedLoad(values []GunnerSettings, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -4991,7 +5036,7 @@ func ShipEntryFixedBounds(value *ShipEntry) bool {
 
 const ShipEntryFixedBodyBytes = 98
 const ShipEntryFixedRecordBytes = 8 + ShipEntryFixedBodyBytes
-const ShipEntryFixedHash = 0xfe5a81cf85f6ddd1
+const ShipEntryFixedHash = 0x56a2590e9ee494cd
 
 var ShipEntryFixedLayout = []byte{
 	0x0b, 0x00, 0x00, 0x00, 0x29, 0x1a, 0x17, 0xda, 0x11, 0x99, 0x1a, 0x1d, 0x0d, 0x62, 0x00, 0x00,
@@ -5009,17 +5054,17 @@ var ShipEntryFixedLayout = []byte{
 }
 
 var ShipEntryFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // ShipEntry
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Counted: 0, Arg: 1, Meta: 1},                            // display_name
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // health
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // mass
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Counted: 1, Arg: 0, Meta: 0}, // hardpoints
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                // element
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                                                               // gunner ?
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // tracking
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1},                        // callsign
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0}, // ShipEntry
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                            // display_name
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // health
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                        // mass
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0}, // hardpoints
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                // element
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // gunner ?
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                      // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                               // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                        // callsign
 }
 
 var ShipEntryFixedPlan = tableFixedBuildPlan(ShipEntryFixedLeaves, 12)
@@ -5027,6 +5072,25 @@ var ShipEntryFixedPlan = tableFixedBuildPlan(ShipEntryFixedLeaves, 12)
 var ShipEntryFixedKnown = []TableFixedKnownLayout{
 	{
 		Hash:        0xfe5a81cf85f6ddd1,
+		LayoutBytes: 191,
+		Record:      106,
+		Layout: []byte{
+			0x0b, 0x00, 0x00, 0x00, 0x29, 0x1a, 0x17, 0xda, 0x11, 0x99, 0x1a, 0x1d, 0x0d, 0x62, 0x00, 0x00,
+			0x00, 0x05, 0x00, 0x00, 0x00, 0x5d, 0x5a, 0xbd, 0x66, 0xcd, 0xd7, 0x21, 0x2d, 0x0c, 0x24, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x0a, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0x0a, 0x7b, 0xce, 0xa2, 0x57, 0x37, 0x1f, 0x0a,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x73, 0x2b, 0xa8, 0x9c, 0xe0, 0xcc, 0xd0, 0x95,
+			0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0x44, 0xcd, 0xc0, 0x48, 0xb6,
+			0xdb, 0x40, 0x23, 0x22, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xaa, 0x44, 0xcd, 0xc0, 0x48,
+			0xb6, 0xdb, 0x40, 0x0d, 0x21, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x6a, 0x64, 0x01, 0x22,
+			0x66, 0xa3, 0x5a, 0xb7, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xb0, 0x02,
+			0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x88,
+			0x84, 0xb9, 0x27, 0x46, 0xc4, 0x5b, 0x0c, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+	{
+		Hash:        0x56a2590e9ee494cd,
 		LayoutBytes: 191,
 		Record:      106,
 		Layout: []byte{
@@ -5096,10 +5160,10 @@ func ShipEntryFixedMeasure(count int64) int64 {
 }
 
 // ShipEntryFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func ShipEntryFixedSave(values []ShipEntry, buffer []byte) int64 {
 	need := ShipEntryFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5218,6 +5282,11 @@ func ShipEntryFixedLoad(values []ShipEntry, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5279,7 +5348,7 @@ func GlobalSettingsFixedBounds(value *GlobalSettings) bool {
 
 const GlobalSettingsFixedBodyBytes = 69
 const GlobalSettingsFixedRecordBytes = 8 + GlobalSettingsFixedBodyBytes
-const GlobalSettingsFixedHash = 0x14b8c217ea989d2a
+const GlobalSettingsFixedHash = 0x91d5eafab44b155d
 
 var GlobalSettingsFixedLayout = []byte{
 	0x09, 0x00, 0x00, 0x00, 0x5b, 0x21, 0xce, 0xf6, 0xb1, 0xdf, 0xb1, 0xff, 0x0d, 0x45, 0x00, 0x00,
@@ -5295,15 +5364,15 @@ var GlobalSettingsFixedLayout = []byte{
 }
 
 var GlobalSettingsFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // GlobalSettings
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                          // tick_rate
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // difficulty
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Easy
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Normal
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Hard
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), Counted: 0, Arg: 1, Meta: 1}, // build_note
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                       // spawn_delays
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // element
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // GlobalSettings
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                          // tick_rate
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                        // difficulty
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Easy
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Normal
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // Hard
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), Min: 0, Counted: 0, Arg: 1, Meta: 1}, // build_note
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                       // spawn_delays
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                           // element
 }
 
 var GlobalSettingsFixedPlan = tableFixedBuildPlan(GlobalSettingsFixedLeaves, 6)
@@ -5311,6 +5380,23 @@ var GlobalSettingsFixedPlan = tableFixedBuildPlan(GlobalSettingsFixedLeaves, 6)
 var GlobalSettingsFixedKnown = []TableFixedKnownLayout{
 	{
 		Hash:        0x14b8c217ea989d2a,
+		LayoutBytes: 157,
+		Record:      77,
+		Layout: []byte{
+			0x09, 0x00, 0x00, 0x00, 0x5b, 0x21, 0xce, 0xf6, 0xb1, 0xdf, 0xb1, 0xff, 0x0d, 0x45, 0x00, 0x00,
+			0x00, 0x04, 0x00, 0x00, 0x00, 0xf3, 0xea, 0x7d, 0x61, 0x9b, 0x85, 0x5f, 0xa6, 0x08, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x4a, 0x6e, 0x4c, 0xa7, 0x35, 0x7f, 0x46, 0x1e, 0x01,
+			0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x9b, 0x1f, 0xcd, 0x1c, 0x6c, 0x9e, 0x3d, 0x48, 0x20,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x52, 0x8d, 0xf8, 0x30, 0x1d, 0x12, 0xf3, 0x9f,
+			0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7c, 0x28, 0x87, 0x75, 0xd8, 0xb5, 0xc7,
+			0x58, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0x9d, 0x54, 0xc2, 0x1c, 0x92,
+			0xec, 0x14, 0x0c, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x12, 0x05, 0xb0, 0x13,
+			0x56, 0xae, 0x09, 0x0e, 0x0c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+	{
+		Hash:        0x91d5eafab44b155d,
 		LayoutBytes: 157,
 		Record:      77,
 		Layout: []byte{
@@ -5378,10 +5464,10 @@ func GlobalSettingsFixedMeasure(count int64) int64 {
 }
 
 // GlobalSettingsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func GlobalSettingsFixedSave(values []GlobalSettings, buffer []byte) int64 {
 	need := GlobalSettingsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5500,6 +5586,11 @@ func GlobalSettingsFixedLoad(values []GlobalSettings, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5561,7 +5652,7 @@ func PackConfigFixedBounds(value *PackConfig) bool {
 
 const PackConfigFixedBodyBytes = 677
 const PackConfigFixedRecordBytes = 8 + PackConfigFixedBodyBytes
-const PackConfigFixedHash = 0x519afb907887584b
+const PackConfigFixedHash = 0xc62544b957fd427c
 
 var PackConfigFixedLayout = []byte{
 	0x2d, 0x00, 0x00, 0x00, 0x6e, 0x33, 0x14, 0xb1, 0x5d, 0x82, 0x2d, 0xd0, 0x0d, 0xa5, 0x02, 0x00,
@@ -5616,51 +5707,51 @@ var PackConfigFixedLayout = []byte{
 }
 
 var PackConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // PackConfig
-	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Version)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // version
-	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Settings)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // settings
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tick_rate
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // difficulty
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Easy
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Normal
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Hard
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), Counted: 0, Arg: 1, Meta: 1},                       // build_note
-	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                             // spawn_delays
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Ships)), Stride: uint32(unsafe.Sizeof(ShipEntry{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                      // ships
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // ShipType
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Fighter
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Bomber
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Scout
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Counted: 0, Arg: 1, Meta: 1},                             // display_name
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // health
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // mass
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Counted: 1, Arg: 0, Meta: 0},  // hardpoints
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                                                                // gunner ?
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tracking
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1},                         // callsign
-	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // thresholds
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Difficulty
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Easy
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Normal
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Hard
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Reserves)), Stride: uint32(unsafe.Sizeof(ShipEntry{})), Aux: uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Counted: 1, Arg: 0, Meta: 0}, // reserves
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Counted: 0, Arg: 1, Meta: 1},                             // display_name
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // health
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // mass
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Counted: 1, Arg: 0, Meta: 0},  // hardpoints
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                                                                // gunner ?
-	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tracking
-	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Counted: 0, Arg: 1, Meta: 1},                         // callsign
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // PackConfig
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Version)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                     // version
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Settings)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                    // settings
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tick_rate
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // difficulty
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Easy
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Normal
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Hard
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                       // build_note
+	{Dst: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), Stride: uint32(unsafe.Sizeof(float32(0))), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                             // spawn_delays
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Ships)), Stride: uint32(unsafe.Sizeof(ShipEntry{})), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                      // ships
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // ShipType
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Fighter
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Bomber
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Scout
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                             // display_name
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // health
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // mass
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0},  // hardpoints
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // gunner ?
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                         // callsign
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // thresholds
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Difficulty
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Easy
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Normal
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // Hard
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(PackConfig{}.Reserves)), Stride: uint32(unsafe.Sizeof(ShipEntry{})), Aux: uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0}, // reserves
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                             // display_name
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Health)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // health
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                         // mass
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Min: 0, Counted: 1, Arg: 0, Meta: 0},  // hardpoints
+	{Dst: 0, Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                                                                 // element
+	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // gunner ?
+	{Dst: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                       // gunner
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // reaction
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), Stride: 0, Aux: 0, Min: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                // tracking
+	{Dst: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), Min: 0, Counted: 0, Arg: 1, Meta: 1},                         // callsign
 }
 
 var PackConfigFixedPlan = tableFixedBuildPlan(PackConfigFixedLeaves, 83)
@@ -5668,6 +5759,62 @@ var PackConfigFixedPlan = tableFixedBuildPlan(PackConfigFixedLeaves, 83)
 var PackConfigFixedKnown = []TableFixedKnownLayout{
 	{
 		Hash:        0x519afb907887584b,
+		LayoutBytes: 769,
+		Record:      685,
+		Layout: []byte{
+			0x2d, 0x00, 0x00, 0x00, 0x6e, 0x33, 0x14, 0xb1, 0x5d, 0x82, 0x2d, 0xd0, 0x0d, 0xa5, 0x02, 0x00,
+			0x00, 0x05, 0x00, 0x00, 0x00, 0x37, 0xea, 0x08, 0x98, 0x2c, 0xc6, 0x62, 0xbb, 0x08, 0x04, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xce, 0x49, 0x41, 0xb5, 0x57, 0x35, 0xb4, 0x7f, 0x0d, 0x45,
+			0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xf3, 0xea, 0x7d, 0x61, 0x9b, 0x85, 0x5f, 0xa6, 0x08,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x4a, 0x6e, 0x4c, 0xa7, 0x35, 0x7f, 0x46,
+			0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x9b, 0x1f, 0xcd, 0x1c, 0x6c, 0x9e, 0x3d,
+			0x48, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x52, 0x8d, 0xf8, 0x30, 0x1d, 0x12,
+			0xf3, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7c, 0x28, 0x87, 0x75, 0xd8,
+			0xb5, 0xc7, 0x58, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0x9d, 0x54, 0xc2,
+			0x1c, 0x92, 0xec, 0x14, 0x0c, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x12, 0x05,
+			0xb0, 0x13, 0x56, 0xae, 0x09, 0x0e, 0x0c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x44,
+			0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x10, 0x26, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+			0x67, 0xd0, 0xb4, 0x70, 0x0a, 0xce, 0x4e, 0x35, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
+			0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0xa5, 0xc1, 0x19, 0x57, 0x62, 0x3c, 0x57, 0x7d, 0x20, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x62, 0x00, 0x00,
+			0x00, 0x05, 0x00, 0x00, 0x00, 0x5d, 0x5a, 0xbd, 0x66, 0xcd, 0xd7, 0x21, 0x2d, 0x0c, 0x24, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x0a, 0x04,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0x0a, 0x7b, 0xce, 0xa2, 0x57, 0x37, 0x1f, 0x0a,
+			0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x73, 0x2b, 0xa8, 0x9c, 0xe0, 0xcc, 0xd0, 0x95,
+			0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0x44, 0xcd, 0xc0, 0x48, 0xb6,
+			0xdb, 0x40, 0x23, 0x22, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xaa, 0x44, 0xcd, 0xc0, 0x48,
+			0xb6, 0xdb, 0x40, 0x0d, 0x21, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x6a, 0x64, 0x01, 0x22,
+			0x66, 0xa3, 0x5a, 0xb7, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc, 0xb0, 0x02,
+			0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x88,
+			0x84, 0xb9, 0x27, 0x46, 0xc4, 0x5b, 0x0c, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71,
+			0x15, 0x4e, 0x34, 0x0a, 0x94, 0xda, 0x9c, 0x10, 0x0c, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+			0x50, 0x84, 0x6b, 0xa6, 0xc5, 0xab, 0x3e, 0xc4, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
+			0x00, 0x9b, 0x1f, 0xcd, 0x1c, 0x6c, 0x9e, 0x3d, 0x48, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x52, 0x8d, 0xf8, 0x30, 0x1d, 0x12, 0xf3, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x7c, 0x28, 0x87, 0x75, 0xd8, 0xb5, 0xc7, 0x58, 0x20, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x28, 0xc2, 0x01, 0xd2, 0xcc, 0x7f, 0x70, 0x77, 0x0e, 0x2a, 0x01,
+			0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x62,
+			0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x5d, 0x5a, 0xbd, 0x66, 0xcd, 0xd7, 0x21, 0x2d, 0x0c,
+			0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f,
+			0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0x0a, 0x7b, 0xce, 0xa2, 0x57, 0x37,
+			0x1f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x73, 0x2b, 0xa8, 0x9c, 0xe0, 0xcc,
+			0xd0, 0x95, 0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaa, 0x44, 0xcd, 0xc0,
+			0x48, 0xb6, 0xdb, 0x40, 0x23, 0x22, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xaa, 0x44, 0xcd,
+			0xc0, 0x48, 0xb6, 0xdb, 0x40, 0x0d, 0x21, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x6a, 0x64,
+			0x01, 0x22, 0x66, 0xa3, 0x5a, 0xb7, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbc,
+			0xb0, 0x02, 0x46, 0x9a, 0x71, 0xbf, 0xa6, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x18, 0x88, 0x84, 0xb9, 0x27, 0x46, 0xc4, 0x5b, 0x0c, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			0x00,
+		},
+	},
+	{
+		Hash:        0xc62544b957fd427c,
 		LayoutBytes: 769,
 		Record:      685,
 		Layout: []byte{
@@ -5774,10 +5921,10 @@ func PackConfigFixedMeasure(count int64) int64 {
 }
 
 // PackConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func PackConfigFixedSave(values []PackConfig, buffer []byte) int64 {
 	need := PackConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5896,6 +6043,11 @@ func PackConfigFixedLoad(values []PackConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5944,7 +6096,7 @@ func PackConfigFixedLoad(values []PackConfig, data []byte, plan []TableFixedEntr
 // GunnerSettingsTableFields is GunnerSettings's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GunnerSettingsTableFields = []TableFieldInfo{
 	{Name: "reaction", JSON: "reaction", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5956,7 +6108,7 @@ var GunnerSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tracking", JSON: "tracking", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5968,7 +6120,7 @@ var GunnerSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "callsign", JSON: "callsign", TypeName: "string", DeclaredTypeName: "string", ID: 0x5bc44627b9848818, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 24, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Callsign)), CountOffset: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 24, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Callsign)), CountOffset: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), PresentOffset: 0xffffffff,
 		CookOffset: 5, CookElemSize: 1, CookCountOffset: 32, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5998,7 +6150,7 @@ func GunnerSettingsTableType() *TableTypeInfo { return &GunnerSettingsTableInfo 
 // ShipEntryTableFields is ShipEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ShipEntryTableFields = []TableFieldInfo{
 	{Name: "display_name", JSON: "name", TypeName: "string", DeclaredTypeName: "string", ID: 0x2d21d7cd66bd5a5d, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.DisplayName)), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.DisplayName)), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 36, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6010,7 +6162,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "health", JSON: "health", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Health)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Health)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6022,7 +6174,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "mass", JSON: "mass", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 44, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6034,7 +6186,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "hardpoints", JSON: "hardpoints", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x95d0cce09ca82b73, Kind: 4, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Hardpoints[0])), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Hardpoints[0])), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 4, CookCountOffset: 64, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 8.0, RangeIntMin: 0, RangeIntMax: 8, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6046,7 +6198,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "gunner", JSON: "gunner", TypeName: "GunnerSettings", DeclaredTypeName: "GunnerSettings", ID: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)),
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)),
 		CookOffset: 68, CookElemSize: 36, CookCountOffset: 4294967295, CookPresentOffset: 104,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6072,7 +6224,7 @@ func ShipEntryTableType() *TableTypeInfo { return &ShipEntryTableInfo }
 // GlobalSettingsTableFields is GlobalSettings's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GlobalSettingsTableFields = []TableFieldInfo{
 	{Name: "tick_rate", JSON: "tick_rate", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xa65f859b617deaf3, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.TickRate)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.TickRate)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 240.0, RangeUintMin: 1, RangeUintMax: 240, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6084,7 +6236,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "difficulty", JSON: "difficulty", TypeName: "Difficulty", DeclaredTypeName: "Difficulty", ID: 0x467f35a74c6e4a70, Kind: 30, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.Difficulty)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.Difficulty)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6096,7 +6248,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "build_note", JSON: "build_note", TypeName: "string", DeclaredTypeName: "string", ID: 0x14ec921cc2549d60, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 48, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.BuildNote)), CountOffset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 48, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.BuildNote)), CountOffset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), PresentOffset: 0xffffffff,
 		CookOffset: 5, CookElemSize: 1, CookCountOffset: 56, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6108,7 +6260,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "spawn_delays", JSON: "spawn_delays", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9ae5613b0051271, Kind: 10, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.SpawnDelays[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 3, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.SpawnDelays[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 60, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6138,7 +6290,7 @@ func GlobalSettingsTableType() *TableTypeInfo { return &GlobalSettingsTableInfo 
 // PackConfigTableFields is PackConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var PackConfigTableFields = []TableFieldInfo{
 	{Name: "version", JSON: "version", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xbb62c62c9808ea37, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Version)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Version)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Version)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Version)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6150,7 +6302,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "settings", JSON: "settings", TypeName: "GlobalSettings", DeclaredTypeName: "GlobalSettings", ID: 0x7fb43557b54149ce, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Settings)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Settings)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Settings)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Settings)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 72, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6162,7 +6314,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: GlobalSettingsTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ships", JSON: "ships", TypeName: "ShipEntry", DeclaredTypeName: "ShipEntry", ID: 0x294a5c4913e1ad44, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(ShipTypeMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Ships)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Ships[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: int32(ShipTypeMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Ships)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Ships[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 76, CookElemSize: 108, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6174,7 +6326,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: ShipEntryTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "thresholds", JSON: "thresholds", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x9cda940a344e1571, Kind: 4, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(DifficultyMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Thresholds[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: int32(DifficultyMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Thresholds[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 400, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6186,7 +6338,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "reserves", JSON: "reserves", TypeName: "ShipEntry", DeclaredTypeName: "ShipEntry", ID: 0x77707fccd201c228, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(PackConfig{}.Reserves)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Reserves[0])), CountOffset: uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 3, Offset: uint32(unsafe.Offsetof(PackConfig{}.Reserves)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Reserves[0])), CountOffset: uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 412, CookElemSize: 108, CookCountOffset: 736, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

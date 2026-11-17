@@ -25,14 +25,14 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// the length over [0, N] where the runtime's string call frames it over
 		// [0, N-1]. One bit of difference, and every following field shifts.
 		//
-		// An interior null among the used bytes is writer misuse, not content:
-		// a debug assert that compiles out under NDEBUG, the same guard the
-		// C++ backend folds in. The READ side refuses it in every build, as
-		// validation of untrusted bytes (SPEC §4.7, §5).
+		// Check the length before inspecting the caller's buffer. Both text
+		// rules are debug assertions on write; the reader validates untrusted
+		// bytes in every build (SPEC §4.7, §5).
+		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_length; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.pf("%s        serialize_assert( value->%s[i] != 0 ); /* interior null on write (SPEC §4.7) */\n", ind, f.Name)
 		g.pf("%s    }\n%s}\n", ind, ind)
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
+		g.pf("%sserialize_assert( schema_utf8_valid_( (const uint8_t *) value->%s, value->%s_length ) ); /* ill-formed text on write (SPEC §5.1) */\n", ind, f.Name, f.Name)
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
@@ -69,15 +69,24 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_write_bool( stream, %s )", expr))
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			// A compressed float is finite and inside [min, max] before it is
+			// quantized (SPEC §5.1 row 10): caller misuse is a debug assert,
+			// gone under NDEBUG, and a release build writes what the caller
+			// passed. The runtime's [0, 1] clamp is not the value check, and
+			// its integer clamp after rounding is part of quantizing an
+			// in-range value (PACKET-WIRE-ALGORITHM §2.5).
+			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			min32 := float32(f.FMin)
+			max32 := float32(f.FMax)
+			delta := max32 - min32
+			g.pf("%sserialize_assert( %s >= %s && %s <= %s );\n", ind, expr,
+				formatFloat32(min32), expr, formatFloat32(max32))
 			// The runtime's precomputed entry point: the step
 			// count, wire width and float32 range width depend only on the
 			// declaration, so ir.CompressedFloatParams derives them ONCE at
 			// generation time — the same derivation the Go fold
 			// emits from — and the quantization arithmetic
 			// keeps its one audited home in serialize.h.
-			steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
-			min32 := float32(f.FMin)
-			delta := float32(f.FMax) - min32
 			g.call(ind, fmt.Sprintf("serialize_write_compressed_float_precomputed( stream, %s, %du, %d, %s, %s )",
 				expr, steps, wireBits, formatFloat32(delta), formatFloat32(min32)))
 			return

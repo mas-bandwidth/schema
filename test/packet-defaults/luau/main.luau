@@ -133,7 +133,11 @@ end
 local function checkRead(name: string, wire: string, bits: number, initial: any, want: any)
 	local stream = serialize.ReadStream.new(unhex(wire))
 	check((d :: any)["Read" .. name](stream, initial), "runtime read " .. name)
-	check(stream:bitsProcessed() == bits, "read consumed bits " .. name)
+	-- The public read is the one-packet read: it ends with the runtime's end
+	-- check, which consumes the final byte's padding (SPEC §5), so a read of a
+	-- non-byte-aligned write reports the pin's bits rounded up to a whole byte.
+	local wantBits = (bits + 7) // 8 * 8
+	check(stream:bitsProcessed() == wantBits, "read consumed bits " .. name)
 	check(deepEqual(initial, want), name .. ": values and backing storage")
 end
 

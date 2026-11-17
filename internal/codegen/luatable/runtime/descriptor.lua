@@ -324,10 +324,23 @@ local function invalid_value(T, d, val, where, seen, zero_ok)
     -- a float where an integer belongs is a named refusal, never a silent
     -- coercion (docs/PORT-LUA.md, THE TYPE MAPPING)
     if math.type(val) ~= "integer" then return where end
+    -- Bare integers have a storage boundary too. Check it before any
+    -- writer masks a cell or hands the value to string.pack (§5.1).
+    if d.width ~= nil and d.width < 8 then
+      local bits = d.width * 8
+      if d.signed then
+        local limit = 1 << (bits - 1)
+        if val < -limit or val >= limit then return where end
+      elseif math.ult((1 << bits) - 1, val) then
+        return where
+      end
+    end
     if d.lo ~= nil and (int_less(d.signed, val, d.lo) or int_less(d.signed, d.hi, val)) then return where end
     if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < 64 and math.ult((1 << d.bits) - 1, val) then
       return where
     end
+  elseif s == "bool" then
+    if type(val) ~= "boolean" then return where end
   elseif s == "wide" then
     if type(val) ~= "table" or math.type(val.lo) ~= "integer" or math.type(val.hi) ~= "integer" then return where end
     if d.lo ~= nil and (wide_less(d.signed, val, d.lo) or wide_less(d.signed, d.hi, val)) then return where end
@@ -358,8 +371,18 @@ local function invalid_value(T, d, val, where, seen, zero_ok)
     if not d.fixed and not d.keyed and not d.list then
       if #val > d.bound or #val < (d.min or 0) then return where end
     end
-    for _, x in ipairs(val) do
-      local hit = invalid_value(T, d.elem, x, where, seen, zero_ok)
+    -- every index the writers walk: 1..bound for a fixed or keyed array
+    -- (a nil slot is a hole, checked as one), the count for a list
+    local n
+    if d.fixed or d.keyed then
+      n = d.bound or 0
+    elseif d.list then
+      n = #val
+    else
+      n = math.min(#val, d.bound or 0)
+    end
+    for i = 1, n do
+      local hit = invalid_value(T, d.elem, val[i], where, seen, zero_ok)
       if hit then return hit end
     end
   elseif s == "map" then
@@ -413,7 +436,7 @@ end
 -- D.refuse_write is every writer's refusal before its first byte: a retired
 -- variant (§2.15), then the write contract (docs/SPEC.md §5.1).
 function D.refuse_write(T, name, v, zero_ok)
-  return D.refuse_deprecated(T, name, v) or D.refuse_invalid(T, name, v, zero_ok)
+  return D.refuse_deprecated(T, name, v) or D.refuse_invalid(T, name, v, zero_ok) or D.refuse_non_finite(T, name, v)
 end
 
 -- THE FINITE RULE ON WRITE (docs/SPEC-TABLES.md §3.3):

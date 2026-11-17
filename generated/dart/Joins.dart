@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf35accd0582cdd84
+// package example — protocol id 0x2bf51af687ac0abd
 
 import 'dart:typed_data';
 
@@ -839,6 +839,11 @@ int writeArmAlign(ArmAlign value, ByteData view) {
   if (value.flag) {
     assert(value.sLength >= 0);
     assert(value.sLength <= 4);
+    assert(Schema.utf8Valid(value.s, value.sLength));
+    // an interior null is content the write refuses (SPEC §4.7)
+    for (var i0 = 0; i0 < value.sLength; i0++) {
+      assert(value.s[i0] != 0);
+    }
     v = value.sLength & 0x7;
     scratch |= v << scratchBits;
     scratchBits += 3;
@@ -2227,6 +2232,11 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
   }
   assert(value.sLength >= 0);
   assert(value.sLength <= 4);
+  assert(Schema.utf8Valid(value.s, value.sLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.sLength; i0++) {
+    assert(value.s[i0] != 0);
+  }
   v = value.sLength & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;

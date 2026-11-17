@@ -8,13 +8,6 @@
 // closed by the zero reference; a field at its declared default does not ride.
 // The bodies of one batch are one continuous bit stream, padded to a byte once
 // at its end (§3.3).
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(unused_assignments)]
-#![allow(unused_labels)]
-#![allow(unused_comparisons)]
-#![allow(clippy::all)]
 
 // THE ONE REPORT (§4, §3.3): the crate root exports one TableReport, the
 // variable runtime's when the unit carries that form and the message
@@ -39,69 +32,79 @@ pub fn mixed_entity_message_default() -> MixedEntityRow {
 /// One MixedEntity body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntityRow) -> bool {
-    let d = mixed_entity_message_default();
+    let dflt = mixed_entity_message_default();
     {
-        if value.entity_id != d.entity_id {
+        if value.entity_id != dflt.entity_id {
             w.put(31, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.entity_id <= 4095, "entity_id exceeds bits(12) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.entity_id as u64, 0);
         }
     }
     {
-        if value.pos_x != d.pos_x {
+        if value.pos_x != dflt.pos_x {
             w.put(32, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pos_x >= -16383 && value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_x as i64 as u64, 0);
         }
     }
     {
-        if value.pos_y != d.pos_y {
+        if value.pos_y != dflt.pos_y {
             w.put(33, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pos_y >= -16383 && value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_y as i64 as u64, 0);
         }
     }
     {
-        if value.pos_z != d.pos_z {
+        if value.pos_z != dflt.pos_z {
             w.put(34, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pos_z >= -16383 && value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 15, base_lo: 0xffffffffffffc001, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pos_z as i64 as u64, 0);
         }
     }
     {
-        if value.yaw != d.yaw {
+        if value.yaw != dflt.yaw {
             w.put(35, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.yaw <= 511, "yaw exceeds bits(9) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.yaw as u64, 0);
         }
     }
     {
-        if value.pitch != d.pitch {
+        if value.pitch != dflt.pitch {
             w.put(36, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.pitch <= 511, "pitch exceeds bits(9) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 9, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.pitch as u64, 0);
         }
     }
     {
-        if value.vel_x != d.vel_x {
+        if value.vel_x != dflt.vel_x {
             w.put(37, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.vel_x >= -2048 && value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_x as i64 as u64, 0);
         }
     }
     {
-        if value.vel_y != d.vel_y {
+        if value.vel_y != dflt.vel_y {
             w.put(38, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.vel_y >= -2048 && value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_y as i64 as u64, 0);
         }
     }
     {
-        if value.vel_z != d.vel_z {
+        if value.vel_z != dflt.vel_z {
             w.put(39, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.vel_z >= -2048 && value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0xfffffffffffff800, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.vel_z as i64 as u64, 0);
         }
     }
     {
-        if value.health != d.health {
+        if value.health != dflt.health {
             w.put(40, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.health as i64 as u64, 0);
         }
     }
     {
-        if value.weapon != d.weapon {
+        if value.weapon != dflt.weapon {
             w.put(41, TABLE_MESSAGE_REF_BITS);
             match value.weapon {
                 0 => w.put(0, TABLE_MESSAGE_REF_BITS),
@@ -125,19 +128,19 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
         }
     }
     {
-        if value.damage != d.damage {
+        if value.damage != dflt.damage {
             w.put(42, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage, 0);
         }
     }
     {
-        if value.moving != d.moving {
+        if value.moving != dflt.moving {
             w.put(43, TABLE_MESSAGE_REF_BITS);
             w.put(if value.moving { 1 } else { 0 }, 1);
         }
     }
     {
-        if value.firing != d.firing {
+        if value.firing != dflt.firing {
             w.put(44, TABLE_MESSAGE_REF_BITS);
             w.put(if value.firing { 1 } else { 0 }, 1);
         }
@@ -155,6 +158,9 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let same_build = v.build_version == BUILD_VERSION;
+    let mut next_field = 0usize;
+    let dflt = mixed_entity_message_default();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -165,7 +171,10 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
         seen_count += 1;
         match entry.id {
             0x23fcfd6678e36712 => {
+                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 1;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f1: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
@@ -182,11 +191,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x > 4095 { x = 4095; report.damaged = true; }
                         value.entity_id = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.entity_id != dflt.entity_id;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xcb4b37357667310e => {
+                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 2;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f2: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -203,11 +219,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
                         value.pos_x = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.pos_x != dflt.pos_x;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xcb4b3835766732c1 => {
+                if same_build && next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 3;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f3: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -224,11 +247,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
                         value.pos_y = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.pos_y != dflt.pos_y;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xcb4b353576672da8 => {
+                if same_build && next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 4;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f4: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -245,11 +275,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
                         value.pos_z = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.pos_z != dflt.pos_z;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xb54d8e19798e16e8 => {
+                if same_build && next_field > 4 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 5;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f5: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
@@ -266,11 +303,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x > 511 { x = 511; report.damaged = true; }
                         value.yaw = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.yaw != dflt.yaw;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x53a9f665a90cc1b1 => {
+                if same_build && next_field > 5 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 6;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f6: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
@@ -287,11 +331,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x > 511 { x = 511; report.damaged = true; }
                         value.pitch = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.pitch != dflt.pitch;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x6cede6b6eb60ee67 => {
+                if same_build && next_field > 6 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 7;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f7: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -308,11 +359,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
                         value.vel_x = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.vel_x != dflt.vel_x;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x6cede5b6eb60ecb4 => {
+                if same_build && next_field > 7 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 8;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f8: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -329,11 +387,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
                         value.vel_y = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.vel_y != dflt.vel_y;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x6cede8b6eb60f1cd => {
+                if same_build && next_field > 8 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 9;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f9: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -350,11 +415,18 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
                         value.vel_z = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.vel_z != dflt.vel_z;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x7f69d4b5288ba9cf => {
+                if same_build && next_field > 9 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 10;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f10: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -371,11 +443,17 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 1000i128 { x = 1000i128; report.damaged = true; }
                         value.health = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.health != dflt.health;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xa0b610205f2c6e01 => {
-                let mut widened = false;
+                if same_build && next_field > 10 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 11;
+                let unknown_before = report.unknown;
                 'f11: {
                     if entry.kind != 30 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -408,11 +486,17 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             };
                         }
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.weapon != dflt.weapon;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x7f6308be8ab37fc0 => {
+                if same_build && next_field > 11 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 12;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f12: {
                     if entry.kind != 9 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
@@ -425,14 +509,20 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.damage = x as u64;
+                    }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.damage != dflt.damage;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                     if widened { report.widened += 1; }
                 }
             }
             0x11a44fc1d1243da7 => {
-                let mut widened = false;
+                if same_build && next_field > 12 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 13;
+                let unknown_before = report.unknown;
                 'f13: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -440,14 +530,19 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         break 'f13;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.moving = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.moving != dflt.moving;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x7674cfd19b9031ca => {
-                let mut widened = false;
+                if same_build && next_field > 13 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 14;
+                let unknown_before = report.unknown;
                 'f14: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -455,13 +550,17 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                         break 'f14;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.firing = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.firing != dflt.firing;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             _ => {
+                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
                 if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
@@ -484,16 +583,17 @@ pub fn mixed_stat_message_default() -> MixedStatRow {
 /// One MixedStat body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow) -> bool {
-    let d = mixed_stat_message_default();
+    let dflt = mixed_stat_message_default();
     {
-        if value.stat_id != d.stat_id {
+        if value.stat_id != dflt.stat_id {
             w.put(51, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.stat_id as u64, 0);
         }
     }
     {
-        if value.delta != d.delta {
+        if value.delta != dflt.delta {
             w.put(52, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0xfffffffffffffe00, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.delta as i64 as u64, 0);
         }
     }
@@ -510,6 +610,9 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let same_build = v.build_version == BUILD_VERSION;
+    let mut next_field = 0usize;
+    let dflt = mixed_stat_message_default();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -520,7 +623,9 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
         seen_count += 1;
         match entry.id {
             0x80ab75f0866dbf65 => {
-                let mut widened = false;
+                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 1;
+                let unknown_before = report.unknown;
                 'f15: {
                     if entry.kind != 6 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -533,11 +638,17 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                         if x > 255 { x = 255; report.damaged = true; }
                         value.stat_id = x as u32;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.stat_id != dflt.stat_id;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x52076675ec13a0c1 => {
+                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 2;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f16: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -554,10 +665,15 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                         if x < -512i128 { x = -512i128; report.damaged = true; } else if x > 511i128 { x = 511i128; report.damaged = true; }
                         value.delta = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.delta != dflt.delta;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             _ => {
+                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
                 if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
@@ -580,27 +696,30 @@ pub fn mixed_hit_event_message_default() -> MixedHitEventRow {
 /// One MixedHitEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHitEventRow) -> bool {
-    let d = mixed_hit_event_message_default();
+    let dflt = mixed_hit_event_message_default();
     {
-        if value.target_id != d.target_id {
+        if value.target_id != dflt.target_id {
             w.put(45, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.target_id <= 4095, "target_id exceeds bits(12) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.target_id as u64, 0);
         }
     }
     {
-        if value.damage != d.damage {
+        if value.damage != dflt.damage {
             w.put(46, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage as i64 as u64, 0);
         }
     }
     {
-        if value.hit_kind != d.hit_kind {
+        if value.hit_kind != dflt.hit_kind {
             w.put(47, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 3, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.hit_kind as i64 as u64, 0);
         }
     }
     {
-        if value.crit != d.crit {
+        if value.crit != dflt.crit {
             w.put(48, TABLE_MESSAGE_REF_BITS);
             w.put(if value.crit { 1 } else { 0 }, 1);
         }
@@ -618,6 +737,9 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let same_build = v.build_version == BUILD_VERSION;
+    let mut next_field = 0usize;
+    let dflt = mixed_hit_event_message_default();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -628,7 +750,10 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
         seen_count += 1;
         match entry.id {
             0xb7bc9ac015a25050 => {
+                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 1;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f17: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
@@ -645,11 +770,18 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         if x > 4095 { x = 4095; report.damaged = true; }
                         value.target_id = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.target_id != dflt.target_id;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x7f6308be8ab37fc0 => {
+                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 2;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f18: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -666,11 +798,18 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 4095i128 { x = 4095i128; report.damaged = true; }
                         value.damage = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.damage != dflt.damage;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x01fbc365b059b925 => {
+                if same_build && next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 3;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f19: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -687,11 +826,17 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 7i128 { x = 7i128; report.damaged = true; }
                         value.hit_kind = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.hit_kind != dflt.hit_kind;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x126167908c9aa52d => {
-                let mut widened = false;
+                if same_build && next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 4;
+                let unknown_before = report.unknown;
                 'f20: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -699,13 +844,17 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                         break 'f20;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.crit = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.crit != dflt.crit;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             _ => {
+                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
                 if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
@@ -728,16 +877,18 @@ pub fn mixed_chat_event_message_default() -> MixedChatEventRow {
 /// One MixedChatEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedChatEventRow) -> bool {
-    let d = mixed_chat_event_message_default();
+    let dflt = mixed_chat_event_message_default();
     {
-        if value.channel != d.channel {
+        if value.channel != dflt.channel {
             w.put(29, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 2, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.channel as i64 as u64, 0);
         }
     }
     {
-        if value.speaker != d.speaker {
+        if value.speaker != dflt.speaker {
             w.put(30, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.speaker <= 4095, "speaker exceeds bits(12) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 12, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.speaker as u64, 0);
         }
     }
@@ -754,6 +905,9 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let same_build = v.build_version == BUILD_VERSION;
+    let mut next_field = 0usize;
+    let dflt = mixed_chat_event_message_default();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -764,7 +918,10 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
         seen_count += 1;
         match entry.id {
             0xa5013e9ad5caeda4 => {
+                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 1;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f21: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -781,11 +938,18 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 3i128 { x = 3i128; report.damaged = true; }
                         value.channel = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.channel != dflt.channel;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xfbf1ac4d96ebd022 => {
+                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 2;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f22: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
@@ -802,10 +966,15 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                         if x > 4095 { x = 4095; report.damaged = true; }
                         value.speaker = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.speaker != dflt.speaker;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             _ => {
+                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
                 if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
@@ -828,16 +997,18 @@ pub fn mixed_pickup_event_message_default() -> MixedPickupEventRow {
 /// One MixedPickupEvent body (§3.3): each field off its declared default, then the zero
 /// reference.
 pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &MixedPickupEventRow) -> bool {
-    let d = mixed_pickup_event_message_default();
+    let dflt = mixed_pickup_event_message_default();
     {
-        if value.item_id != d.item_id {
+        if value.item_id != dflt.item_id {
             w.put(49, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.item_id <= 1023, "item_id exceeds bits(10) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 10, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.item_id as u64, 0);
         }
     }
     {
-        if value.amount != d.amount {
+        if value.amount != dflt.amount {
             w.put(50, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.amount as i64 as u64, 0);
         }
     }
@@ -854,6 +1025,9 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let same_build = v.build_version == BUILD_VERSION;
+    let mut next_field = 0usize;
+    let dflt = mixed_pickup_event_message_default();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -864,7 +1038,10 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
         seen_count += 1;
         match entry.id {
             0x9e7fd06d864fbd56 => {
+                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 1;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f23: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
@@ -881,11 +1058,18 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                         if x > 1023 { x = 1023; report.damaged = true; }
                         value.item_id = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.item_id != dflt.item_id;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x8113fe7ea2b16969 => {
+                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 2;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f24: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -902,10 +1086,15 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
                         value.amount = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.amount != dflt.amount;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             _ => {
+                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
                 if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }
@@ -1004,64 +1193,71 @@ pub fn bench_mixed_message_default() -> BenchMixedRow {
 
 /// One BenchMixed body (§3.3): each field off its declared default, then the zero
 /// reference.
+// The ride loop indexes the row's storage by the declared count: an
+// iterator would turn an off-contract short row into a silent short write.
+#[allow(clippy::needless_range_loop)]
 pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedRow) -> bool {
-    let d = bench_mixed_message_default();
+    let dflt = bench_mixed_message_default();
     {
-        if value.sequence != d.sequence {
+        if value.sequence != dflt.sequence {
             w.put(1, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.sequence as u64, 0);
         }
     }
     {
-        if value.ack_sequence != d.ack_sequence {
+        if value.ack_sequence != dflt.ack_sequence {
             w.put(2, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.ack_sequence >= 0 && value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ack_sequence as i64 as u64, 0);
         }
     }
     {
-        if value.ack_bits != d.ack_bits {
+        if value.ack_bits != dflt.ack_bits {
             w.put(3, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ack_bits as u64, 0);
         }
     }
     {
-        if value.session_id != d.session_id {
+        if value.session_id != dflt.session_id {
             w.put(4, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.session_id as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.session_id, 0);
         }
     }
     {
-        if value.client_id != d.client_id {
+        if value.client_id != dflt.client_id {
             w.put(5, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.client_id as u64, 0);
         }
     }
     {
-        if value.nonce != d.nonce {
+        if value.nonce != dflt.nonce {
             w.put(6, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.nonce as u64, 0);
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.nonce, 0);
         }
     }
     {
-        if value.world_time != d.world_time {
+        if value.world_time != dflt.world_time {
             w.put(7, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 41, base_lo: 0xffffff172b5af000, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.world_time as i64 as u64, 0);
+            debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 41, base_lo: 0xffffff172b5af000, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.world_time as u64, 0);
         }
     }
     {
-        if value.frame_tick != d.frame_tick {
+        if value.frame_tick != dflt.frame_tick {
             w.put(8, TABLE_MESSAGE_REF_BITS);
-            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 48, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.frame_tick as u64, 0);
+            debug_assert!(value.frame_tick <= 281474976710655, "frame_tick exceeds bits(48) width");
+            table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 48, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.frame_tick, 0);
         }
     }
     {
-        if value.server_time != d.server_time {
+        if value.server_time != dflt.server_time {
             w.put(9, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.server_time as i64 as u64, 0);
         }
     }
     {
-        if value.entities_count < 0 || value.entities_count > 8 { return false; }
+        debug_assert!(value.entities_count >= 0 && value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
         if value.entities_count > 0 {
             w.put(10, TABLE_MESSAGE_REF_BITS);
             w.put((value.entities_count as u64).wrapping_sub(1), 3);
@@ -1071,7 +1267,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if value.stats_count < 0 || value.stats_count > 80 { return false; }
+        debug_assert!(value.stats_count >= 0 && value.stats_count <= 80, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
         if value.stats_count > 0 {
             w.put(11, TABLE_MESSAGE_REF_BITS);
             w.put((value.stats_count as u64).wrapping_sub(0), 7);
@@ -1105,25 +1301,26 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if (0..4).any(|i| value.loadout[i] != d.loadout[i]) {
+        if (0..4).any(|i| value.loadout[i] != dflt.loadout[i]) {
             w.put(13, TABLE_MESSAGE_REF_BITS);
-            w.put((4 as u64).wrapping_sub(4), 0);
+            w.put(4u64.wrapping_sub(4), 0);
             w.align();
-            for i in 0..(4 as usize) {
+            for i in 0..4usize {
                 table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.loadout[i] as u64, 0);
             }
         }
     }
     {
-        if value.player_name_length < 0 || value.player_name_length > 15 { return false; }
+        debug_assert!(value.player_name_length >= 0 && value.player_name_length <= 15, "the declared length is the bound (docs/SPEC-TABLES.md §3.4)");
         if value.player_name_length > 0 {
             w.put(14, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(table_message_utf8(&value.player_name[..value.player_name_length as usize]), "player_name is ill-formed text");
             w.put(value.player_name_length as u64, 4);
             w.raw(&value.player_name[..value.player_name_length as usize]);
         }
     }
     {
-        if value.payload_length < 0 || value.payload_length > 16 { return false; }
+        debug_assert!(value.payload_length >= 0 && value.payload_length <= 16, "the declared length is the bound (docs/SPEC-TABLES.md §3.4)");
         if value.payload_length > 0 {
             w.put(15, TABLE_MESSAGE_REF_BITS);
             w.put((value.payload_length as u64).wrapping_sub(0), 5);
@@ -1134,79 +1331,84 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if value.aim_x != d.aim_x {
+        if value.aim_x != dflt.aim_x {
             w.put(16, TABLE_MESSAGE_REF_BITS);
             if !value.aim_x.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_x.to_bits() as u64, 0);
         }
     }
     {
-        if value.aim_y != d.aim_y {
+        if value.aim_y != dflt.aim_y {
             w.put(17, TABLE_MESSAGE_REF_BITS);
             if !value.aim_y.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_y.to_bits() as u64, 0);
         }
     }
     {
-        if value.aim_z != d.aim_z {
+        if value.aim_z != dflt.aim_z {
             w.put(18, TABLE_MESSAGE_REF_BITS);
             if !value.aim_z.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_z.to_bits() as u64, 0);
         }
     }
     {
-        if value.recoil.to_bits() != d.recoil.to_bits() {
+        if value.recoil.to_bits() != dflt.recoil.to_bits() {
             w.put(19, TABLE_MESSAGE_REF_BITS);
             if !value.recoil.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 32, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.recoil.to_bits() as u64, 0);
         }
     }
     {
-        if value.drift.to_bits() != d.drift.to_bits() {
+        if value.drift.to_bits() != dflt.drift.to_bits() {
             w.put(20, TABLE_MESSAGE_REF_BITS);
             if !value.drift.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 64, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.drift.to_bits(), 0);
         }
     }
     {
-        if value.wide_key != d.wide_key {
+        if value.wide_key != dflt.wide_key {
             w.put(21, TABLE_MESSAGE_REF_BITS);
             table_message_write_scalar(w, &TableMessageShape { packing: 0, bits: 128, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.wide_key.0 as u64, (value.wide_key.0 >> 64) as u64);
         }
     }
     {
-        if value.flux != d.flux {
+        if value.flux != dflt.flux {
             w.put(22, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.flux.0 >= -1267650600228229401496703205376 && value.flux.0 <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 102, base_lo: 0x0, base_hi: 0xfffffff000000000, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.flux.0 as u64, (value.flux.0 >> 64) as u64);
         }
     }
     {
-        if value.ping != d.ping {
+        if value.ping != dflt.ping {
             w.put(23, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.ping <= 64000, "ping raw value out of range [0, 64000]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 16, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.ping as u64, 0);
         }
     }
     {
-        if value.crc_hint != d.crc_hint {
+        if value.crc_hint != dflt.crc_hint {
             w.put(24, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.crc_hint <= 16777215, "crc_hint exceeds bits(24) width");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 24, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.crc_hint as u64, 0);
         }
     }
     {
-        if value.has_extra != d.has_extra {
+        if value.has_extra != dflt.has_extra {
             w.put(25, TABLE_MESSAGE_REF_BITS);
             w.put(if value.has_extra { 1 } else { 0 }, 1);
         }
     }
     {
-        if value.extra != d.extra {
+        if value.extra != dflt.extra {
             w.put(26, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.extra as i64 as u64, 0);
         }
     }
     {
-        if value.idle_ticks != d.idle_ticks {
+        if value.idle_ticks != dflt.idle_ticks {
             w.put(27, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 4, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.idle_ticks as i64 as u64, 0);
         }
     }
@@ -1223,6 +1425,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
     let mut seen_ids = [0u64; 64];
     let mut seen_count = 0usize;
     let mut seen_more: Vec<u64> = Vec::new();
+    let same_build = v.build_version == BUILD_VERSION;
+    let mut next_field = 0usize;
+    let dflt = bench_mixed_message_default();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
@@ -1233,7 +1438,10 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
         seen_count += 1;
         match entry.id {
             0xaa38aca481f528a8 => {
+                if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 1;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f28: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
@@ -1250,11 +1458,18 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x > 65535 { x = 65535; report.damaged = true; }
                         value.sequence = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.sequence != dflt.sequence;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x0dbe005c56697c3e => {
+                if same_build && next_field > 1 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 2;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f29: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -1271,11 +1486,18 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 65535i128 { x = 65535i128; report.damaged = true; }
                         value.ack_sequence = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.ack_sequence != dflt.ack_sequence;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x9bae0da8b829ee03 => {
+                if same_build && next_field > 2 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 3;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f30: {
                     if entry.kind != 8 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
@@ -1292,11 +1514,18 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x > 4294967295 { x = 4294967295; report.damaged = true; }
                         value.ack_bits = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.ack_bits != dflt.ack_bits;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xb7d7b5650a590b05 => {
+                if same_build && next_field > 3 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 4;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f31: {
                     if entry.kind != 9 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
@@ -1309,14 +1538,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.session_id = x as u64;
+                    }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.session_id != dflt.session_id;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                     if widened { report.widened += 1; }
                 }
             }
             0x6d7b98e2d095967e => {
+                if same_build && next_field > 4 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 5;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f32: {
                     if entry.kind != 8 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
@@ -1329,14 +1565,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.client_id = x as u32;
+                    }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.client_id != dflt.client_id;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                     if widened { report.widened += 1; }
                 }
             }
             0x73a94c71d60dc0d8 => {
+                if same_build && next_field > 5 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 6;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f33: {
                     if entry.kind != 9 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
@@ -1350,14 +1593,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x < 0u128 { x = 0u128; report.damaged = true; } else if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.damaged = true; }
+                        if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.damaged = true; }
                         value.nonce = x as u64;
+                    }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.nonce != dflt.nonce;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                     if widened { report.widened += 1; }
                 }
             }
             0x3eee6b51be54fc85 => {
+                if same_build && next_field > 6 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 7;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f34: {
                     if entry.kind != 5 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 5) {
@@ -1374,11 +1624,18 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x < -1000000000000i128 { x = -1000000000000i128; report.damaged = true; } else if x > 1000000000000i128 { x = 1000000000000i128; report.damaged = true; }
                         value.world_time = x as i64;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.world_time != dflt.world_time;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x7bbc035f7b6d0112 => {
+                if same_build && next_field > 7 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 8;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f35: {
                     if entry.kind != 9 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
@@ -1395,11 +1652,17 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x > 281474976710655 { x = 281474976710655; report.damaged = true; }
                         value.frame_tick = x as u64;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.frame_tick != dflt.frame_tick;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x3c460475f9be69c6 => {
-                let mut widened = false;
+                if same_build && next_field > 8 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 9;
+                let unknown_before = report.unknown;
                 'f36: {
                     if entry.kind != 22 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1412,11 +1675,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 16776960i128 { x = 16776960i128; report.damaged = true; }
                         value.server_time = x as i32;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.server_time != dflt.server_time;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x935d0fb07bb3822a => {
-                let mut widened = false;
+                if same_build && next_field > 9 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 10;
+                let unknown_before = report.unknown;
                 'f37: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
                         report.damaged = true;
@@ -1439,11 +1707,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                         value.entities_count = keep as i32;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.entities_count > 0;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0xee639cad45b1994c => {
-                let mut widened = false;
+                if same_build && next_field > 10 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 11;
+                let unknown_before = report.unknown;
                 'f39: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
                         report.damaged = true;
@@ -1466,11 +1739,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                         value.stats_count = keep as i32;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.stats_count > 0;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x2e35dc5321aa5790 => {
-                let mut widened = false;
+                if same_build && next_field > 11 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 12;
+                let unknown_before = report.unknown;
                 'f41: {
                     if entry.kind != 15 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1486,7 +1764,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             if arm_entry42.id >= 0xffff_ffff_ffff_fffd || arm_entry42.kind == 0 { report.damaged = true; return false; }
                             match arm_entry42.id {
                                 0x33732819300680aa => {
-                                    let mut widened = false;
                                     'a43: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
@@ -1497,11 +1774,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                         let mut arm44: MixedHitEventRow = Default::default();
                                         if !mixed_hit_event_load_message_body(r, v, report, &mut arm44) { return false; }
                                         value.game_event.set_hit(arm44);
-                                        if widened { report.widened += 1; }
                                     }
                                 }
                                 0xf2a38d910b5b348b => {
-                                    let mut widened = false;
                                     'a45: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
@@ -1512,11 +1787,9 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                         let mut arm46: MixedChatEventRow = Default::default();
                                         if !mixed_chat_event_load_message_body(r, v, report, &mut arm46) { return false; }
                                         value.game_event.set_chat(arm46);
-                                        if widened { report.widened += 1; }
                                     }
                                 }
                                 0x9fa3a41c86ecb765 => {
-                                    let mut widened = false;
                                     'a47: {
                                         if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
                                             value.game_event.set_none();
@@ -1527,7 +1800,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                                         let mut arm48: MixedPickupEventRow = Default::default();
                                         if !mixed_pickup_event_load_message_body(r, v, report, &mut arm48) { return false; }
                                         value.game_event.set_pickup(arm48);
-                                        if widened { report.widened += 1; }
                                     }
                                 }
                                 _ => {
@@ -1538,11 +1810,17 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             }
                         }
                     }
-                    if widened { report.widened += 1; }
+                    if value.game_event.tag() == 0 && report.unknown == unknown_before { report.damaged = true; return false; } // a union written with arm reference 0 (§3.3 (c))
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.game_event.tag() != 0;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x5759ce7586bbb5a3 => {
-                let mut widened = false;
+                if same_build && next_field > 12 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 13;
+                let unknown_before = report.unknown;
                 'f49: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
@@ -1562,17 +1840,22 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             let p: &mut u8 = if i < keep { &mut value.loadout[i as usize] } else { &mut scratch };
                             {
                                 let Some((lo, hi)) = table_message_read_scalar(r, element50.kind, &element50.shape) else { report.damaged = true; return false; };
-                                let mut x = table_message_unsigned(element50.kind, lo, hi);
+                                let x = table_message_unsigned(element50.kind, lo, hi);
                                 (*p) = x as u8;
                             }
                         }
                         if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = (0..4).any(|i| value.loadout[i] != dflt.loadout[i]);
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x13a62f542cf8e86e => {
-                let mut widened = false;
+                if same_build && next_field > 13 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 14;
+                let unknown_before = report.unknown;
                 'f51: {
                     if entry.kind != 12 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1593,11 +1876,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         value.player_name[..kept].copy_from_slice(&text[..kept]);
                         value.player_name_length = kept as i32;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.player_name_length > 0;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0xcfb8a9d063b5e9e5 => {
-                let mut widened = false;
+                if same_build && next_field > 14 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 15;
+                let unknown_before = report.unknown;
                 'f52: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
@@ -1616,11 +1904,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         value.payload[..kept].copy_from_slice(&buf[start..start + kept]);
                         value.payload_length = kept as i32;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.payload_length > 0;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0xdbaf7be5e24296c9 => {
-                let mut widened = false;
+                if same_build && next_field > 15 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 16;
+                let unknown_before = report.unknown;
                 'f53: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1628,16 +1921,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f53;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_x = x;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.aim_x != dflt.aim_x;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0xdbaf7ae5e2429516 => {
-                let mut widened = false;
+                if same_build && next_field > 16 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 17;
+                let unknown_before = report.unknown;
                 'f54: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1645,16 +1943,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f54;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_y = x;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.aim_y != dflt.aim_y;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0xdbaf79e5e2429363 => {
-                let mut widened = false;
+                if same_build && next_field > 17 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 18;
+                let unknown_before = report.unknown;
                 'f55: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1662,16 +1965,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f55;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
                         value.aim_z = x;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.aim_z != dflt.aim_z;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x9cef31fff7e2e457 => {
-                let mut widened = false;
+                if same_build && next_field > 18 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 19;
+                let unknown_before = report.unknown;
                 'f56: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1679,15 +1987,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f56;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.recoil"); 0.0 };
                         value.recoil = x;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.recoil.to_bits() != dflt.recoil.to_bits();
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x5ab3f9c9341f6c04 => {
+                if same_build && next_field > 19 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 20;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f57: {
                     if entry.kind != 11 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 11) {
@@ -1699,15 +2013,22 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         }
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = if entry.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let x = if entry.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite("BenchMixed.drift"); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite("BenchMixed.drift"); 0.0 };
                         value.drift = x;
+                    }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.drift.to_bits() != dflt.drift.to_bits();
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                     if widened { report.widened += 1; }
                 }
             }
             0xa3348580461faf16 => {
+                if same_build && next_field > 20 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 21;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f58: {
                     if entry.kind != 19 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 19) {
@@ -1720,14 +2041,21 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
-                        let mut x = table_message_unsigned(entry.kind, lo, hi);
+                        let x = table_message_unsigned(entry.kind, lo, hi);
                         value.wide_key = TableU128(x);
+                    }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.wide_key != dflt.wide_key;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                     if widened { report.widened += 1; }
                 }
             }
             0xd61bdd7908af2642 => {
+                if same_build && next_field > 21 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 22;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f59: {
                     if entry.kind != 18 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 18) {
@@ -1744,11 +2072,17 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.damaged = true; } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.damaged = true; }
                         value.flux = TableI128(x);
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.flux != dflt.flux;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xbf30e00dc53307a9 => {
-                let mut widened = false;
+                if same_build && next_field > 22 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 23;
+                let unknown_before = report.unknown;
                 'f60: {
                     if entry.kind != 26 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1758,14 +2092,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x < 0u128 { x = 0u128; report.damaged = true; } else if x > 64000u128 { x = 64000u128; report.damaged = true; }
+                        if x > 64000u128 { x = 64000u128; report.damaged = true; }
                         value.ping = x as u16;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.ping != dflt.ping;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0x560d6527ccd8515f => {
+                if same_build && next_field > 23 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 24;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f61: {
                     if entry.kind != 8 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
@@ -1782,11 +2122,17 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x > 16777215 { x = 16777215; report.damaged = true; }
                         value.crc_hint = x as u32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.crc_hint != dflt.crc_hint;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0xc08292176cfd8672 => {
-                let mut widened = false;
+                if same_build && next_field > 24 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 25;
+                let unknown_before = report.unknown;
                 'f62: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
@@ -1794,14 +2140,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         break 'f62;
                     }
                     {
-                        let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
+                        let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         value.has_extra = (lo as u8) != 0;
                     }
-                    if widened { report.widened += 1; }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.has_extra != dflt.has_extra;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                 }
             }
             0xfd29ee12a979cb69 => {
+                if same_build && next_field > 25 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 26;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f63: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -1818,11 +2170,18 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
                         value.extra = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.extra != dflt.extra;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             0x78101ac0aa8cbcfe => {
+                if same_build && next_field > 26 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 27;
                 let mut widened = false;
+                let unknown_before = report.unknown;
                 'f64: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
@@ -1839,10 +2198,15 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 15i128 { x = 15i128; report.damaged = true; }
                         value.idle_ticks = x as i32;
                     }
+                    if same_build && report.unknown == unknown_before {
+                        let rides = value.idle_ticks != dflt.idle_ticks;
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
                     if widened { report.widened += 1; }
                 }
             }
             _ => {
+                if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
                 if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
             }

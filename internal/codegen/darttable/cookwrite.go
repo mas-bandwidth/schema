@@ -174,11 +174,19 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 		if bound > 0 {
 			stride = pieces[0].Size / bound
 		}
+		// A counted array cooks its LIVE elements only; the slots past the
+		// count are dead storage and stay the zero the output fill wrote,
+		// as the engine writes a dead slot (docs/SPEC-TABLES.md §7.2, §7.6;
+		// docs/rulings.json fixed-dead-bytes-are-zero).
+		limit := fmt.Sprintf("%d", bound)
+		if f.Array == ir.ArrayCounted {
+			limit = expr + "Count"
+		}
 		// Typed float arrays already hold the transmitted 32-bit cells, and
 		// each is held finite first (docs/SPEC-TABLES.md §3.3): a NaN or an
 		// infinity refuses the cook, measure and write alike.
 		if f.Type.Kind == ir.TFloat32 {
-			g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 			g.cookRefuseUnless(ind+"  ", expr+"[i].isFinite", "false")
 			g.pf("%s}\n", ind)
 			g.pf("%sif (out != null) {\n", ind)
@@ -188,7 +196,7 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 			} else {
 				g.pf("%s  final raw = ByteData.view(\n%s    %s.buffer,\n%s    %s.offsetInBytes,\n%s    %s.lengthInBytes,\n%s  );\n", ind, ind, expr, ind, expr, ind, expr, ind)
 			}
-			g.pf("%s  for (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, limit)
 			setLine := fmt.Sprintf("%s    out.setUint32(at + %d + i * %d, raw.getUint32(i * 4, Endian.host), order);", ind, offset, stride)
 			if len(setLine) <= 80 {
 				g.pf("%s\n", setLine)
@@ -198,7 +206,7 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 			g.pf("%s  }\n%s}\n", ind, ind)
 			return
 		}
-		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
 		g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		g.pf("%s}\n", ind)
 		return
@@ -1103,7 +1111,10 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case 4:
 			writeTag = fmt.Sprintf("out.setUint32(%s, %s.armTag, order)", fmt.Sprintf("at + %d", offset), expr)
 		}
-		g.pf("%sif (%s.armTag < 0 || %s.armTag > %d) return false;\n", ind, expr, expr, len(un.Variants))
+		// a tag naming no arm is the programmer's error: a debug assert,
+		// gone in release (docs/SPEC.md §5.1, Dart is an assert leg)
+		g.cookAssert(ind, fmt.Sprintf("%s.armTag >= 0", expr))
+		g.cookAssert(ind, fmt.Sprintf("%s.armTag <= %d", expr, len(un.Variants)))
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  %s;\n", ind, writeTag)
 		g.pf("%s}\n", ind)
@@ -1125,21 +1136,24 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
 		ref := tableRef(f)
-		g.pf("%sif (%s.length > %d) return false;\n", ind, expr, bound)
+		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1)
+		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", expr, bound))
 		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
 			g.emitCookRef(ind+"  ", fmt.Sprintf("at + %d + i * %d", offset, stride), fmt.Sprintf("i < %s.length ? %s[i] : null", expr, expr))
 		case ref != nil:
-			// a DEAD slot holds the element's declared defaults, as the
-			// reference's storage does (§7.6)
-			if line := fmt.Sprintf("%s  final e = i < %s.length ? %s[i] : wire.%s();", ind, expr, expr, ref.Name); len(line) <= 80 {
-				g.pf("%s\n", line)
+			// a DEAD counted slot is storage the walk does not reach: the
+			// zero-filled region already holds it (§7.6), as the tool leaves it
+			g.pf("%s  if (i >= %s.length) break;\n", ind, expr)
+			call := fmt.Sprintf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;", ind, ref.Name, expr, offset, stride)
+			if len(call) <= 80 {
+				g.pf("%s\n", call)
 			} else {
-				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
+				g.pf("%s  final e = %s[i];\n", ind, expr)
+				g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
 			}
-			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
 		case unionRef(f) != nil:
 			// an element that is a union: its own storage, a dead slot being
 			// the zero storage the region already holds (§2.6)
@@ -1201,7 +1215,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		} else {
 			g.pf("%sfinal %s = utf8.encode(%s);\n", ind, text, expr)
 		}
-		g.pf("%sif (%s.length > %d) return false;\n", ind, text, f.Type.Size)
+		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", text, f.Type.Size))
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
 		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)

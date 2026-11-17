@@ -22,10 +22,20 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// readRef is the expression that names the Read<Name> function of declaration
-// typ: _M.Read<Name> here, or _<Base>_.Read<Name> through the file that
-// declares it.
-func readRef(m *Module, typ string) string { return m.ref(typ, "Read"+typ) }
+// readBodyRef is the expression that names the per-type body read of
+// declaration typ: _M.Read<Name>Body here, or _<Base>_.Read<Name>Body through
+// the file that declares it. Nested reads use the body, which does not end
+// (SPEC §5).
+func readBodyRef(m *Module, typ string) string { return m.ref(typ, "Read"+typ+"Body") }
+
+// emitReadPublic is the one-packet read of name: its per-type body, then the
+// runtime's end check once, after the top-level object (SPEC §5).
+func emitReadPublic(m *Module, name string) {
+	m.Printf("// Read%s reads one packet into value's storage in place; false on a refused read.\n", name)
+	m.Printf("_M.Read%s <- function(stream, value) {\n", name)
+	m.Printf("  if (!%s(stream, value)) return false;\n", readBodyRef(m, name))
+	m.Printf("  return stream.serializeEnd();\n};\n\n")
+}
 
 func init() {
 	RegisterSurface(Surface{Name: "read", Decl: readDecl})
@@ -42,12 +52,14 @@ func readDecl(m *Module, d ir.Decl) {
 }
 
 // emitReadStruct is one type's reader: the wire tree of st.Items in order,
-// with the untaken side of each branch zeroed (SPEC §5).
+// with the untaken side of each branch zeroed (SPEC §5). The body carries the
+// wire tree; the public read adds the one end check.
 func emitReadStruct(m *Module, st *ir.Struct) {
-	m.Printf("// Read%s reads into value's storage in place; false on a refused read.\n", st.Name)
-	m.Printf("_M.Read%s <- function(stream, value) {\n", st.Name)
+	m.Printf("// Read%sBody reads into value's storage in place without the packet end check; false on a refused read.\n", st.Name)
+	m.Printf("_M.Read%sBody <- function(stream, value) {\n", st.Name)
 	emitReadItems(m, st.Items, "  ")
 	m.Printf("  return true;\n};\n\n")
+	emitReadPublic(m, st.Name)
 }
 
 // emitReadUnion is a one-of reader (SPEC §4.8): the tag in [0, Max] via the
@@ -56,11 +68,12 @@ func emitReadStruct(m *Module, st *ir.Struct) {
 // the other arms' storage is left as it was. The cases are literals, each
 // commented with its arm: a table lookup per case would cost a get each.
 func emitReadUnion(m *Module, d *ir.Union) {
-	m.Printf("// Read%s reads the tag, then the selected arm in place; false on a refused read.\n", d.Name)
-	m.Printf("_M.Read%s <- function(stream, value) {\n", d.Name)
+	m.Printf("// Read%sBody reads the tag, then the selected arm in place without the packet end check; false on a refused read.\n", d.Name)
+	m.Printf("_M.Read%sBody <- function(stream, value) {\n", d.Name)
 	if d.Max == 0 {
 		m.Printf("  value.Type = 0; // zero wire bits: only None exists\n")
 		m.Printf("  return true;\n};\n\n")
+		emitReadPublic(m, d.Name)
 		return
 	}
 	h := m.Helper(holder)
@@ -84,7 +97,7 @@ func emitReadUnion(m *Module, d *ir.Union) {
 			m.Printf("    case %d: // %s\n", i+1, armName)
 			if armType != "" {
 				m.Printf("      value.%s = %s();\n", armName, m.Ref(armType))
-				m.Printf("      if (!%s(stream, value.%s)) return false;\n", readRef(m, armType), armName)
+				m.Printf("      if (!%s(stream, value.%s)) return false;\n", readBodyRef(m, armType), armName)
 			} else {
 				m.Init(v.F, "value."+armName, "      ")
 				emitReadField(m, v.F, "value."+armName, "      ")
@@ -94,6 +107,7 @@ func emitReadUnion(m *Module, d *ir.Union) {
 		m.Printf("  }\n")
 	}
 	m.Printf("  return true;\n};\n\n")
+	emitReadPublic(m, d.Name)
 }
 
 // intRangePath picks the runtime call family for a ranged integer — the same
@@ -266,7 +280,7 @@ func emitReadScalar(m *Module, f *ir.Field, target, ind string) {
 			m.Printf("%sif (!stream.%s(%s, %d)) return false;\n", ind, fn, scratch, ref.WireBits)
 			m.Printf("%s%s = %s.value;\n", ind, target, scratch)
 		case *ir.Struct, *ir.Union:
-			m.Printf("%sif (!%s(stream, %s)) return false;\n", ind, readRef(m, f.Type.Name), target)
+			m.Printf("%sif (!%s(stream, %s)) return false;\n", ind, readBodyRef(m, f.Type.Name), target)
 		}
 	}
 }

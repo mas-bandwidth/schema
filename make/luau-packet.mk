@@ -140,3 +140,47 @@ luau-ludicrous-negative-control: luau-ludicrous
 	@echo 'luau ludicrous negative control: a removed fixed writer contract fails its refusal check'
 
 test-luau: luau-ludicrous luau-ludicrous-negative-control
+
+# ---------------------------------------------------------------- packet end
+# The shared packet-end corpus (testdata/wire/packet-end, SPEC §5 "Read
+# termination"): the exact packet is accepted as its value, and a whole extra
+# byte or non-zero unused bits in the final byte are refused. The public
+# Read<Name> is the one-packet read; pins.luau carries the shared cases in as
+# source (the interpreter has no io library).
+LUAU_PACKET_END_PINS := $(wildcard testdata/wire/packet-end/*.bin testdata/wire/packet-end/*.bits)
+define luau-packet-end-tree
+	$(call luau-packet-generate,$(1),test/packet-end/End.schema,$(2))
+	cp test/packet-end/luau/main.luau $(1)/main.luau
+	{ printf 'return {\n'; \
+	  for f in testdata/wire/packet-end/*.bin; do \
+		n=$$(basename $$f .bin); \
+		printf '\t["%s"] = "%s",\n' "$$n" "$$(od -An -v -tx1 $$f | tr -d ' \n')"; \
+	  done; printf '}\n'; } > $(1)/pins.luau
+endef
+
+build/packet-end/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-end/End.schema \
+	test/packet-end/luau/main.luau $(LUAU_PACKET_END_PINS)
+	$(call luau-packet-end-tree,build/packet-end/luau)
+	@touch $@
+
+.PHONY: packet-end-luau packet-end-luau-negative-control
+packet-end-luau: toolchain-luau build/packet-end/luau/.stamp
+	cd build/packet-end/luau && $(LUAU) main.luau
+	cd build/packet-end/luau && $(LUAU_ANALYZE) *.luau
+
+packet-end-luau-negative-control: packet-end-luau
+	@rm -rf build/packet-end/luau-negative && mkdir -p build/packet-end/luau-negative
+	go run ./tools/sabotage -name packet-end-luau-read -out build/packet-end/luau-negative/read.gotext internal/codegen/luau/read.go
+	@printf '{"Replace":{"%s/internal/codegen/luau/read.go":"%s/build/packet-end/luau-negative/read.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-end/luau-negative/overlay.json
+	go build -overlay=build/packet-end/luau-negative/overlay.json -o build/packet-end/luau-negative/schema ./cmd/schema
+	$(call luau-packet-end-tree,build/packet-end/luau-negative/generated,./build/packet-end/luau-negative/schema)
+	@if (cd build/packet-end/luau-negative/generated && $(LUAU) main.luau) > build/packet-end/luau-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a missing end check passed the packet-end corpus in Luau'; exit 1; fi
+	@grep -Fq 'FAILED: packet-end trailing byte refused' build/packet-end/luau-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Luau failed for another reason'; cat build/packet-end/luau-negative/log; exit 1; }
+	@grep -Fq 'FAILED: packet-end padding bits refused' build/packet-end/luau-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Luau failed for another reason'; cat build/packet-end/luau-negative/log; exit 1; }
+	@echo 'packet-end Luau negative control: a missing end check fails the trailing byte and padding refusals'
+
+test-luau: packet-end-luau packet-end-luau-negative-control

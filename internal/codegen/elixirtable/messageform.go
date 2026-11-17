@@ -70,7 +70,10 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n", len(tablewire.MessageVocabulary(u)))
 	b.WriteString("\n")
-	b.WriteString(messageIntegrity(u, messageRuntimeBody+messageBatchRuntimeBody))
+	// THE ANNOUNCEMENT IS A FILE (§3.3), held to the id table's first-use rule
+	// like every other (docs/SPEC-TABLES.md §3; the engine's checkAnnouncement)
+	runtime := insertOnce(messageRuntimeBody, "  # A table carrying one id twice is the whole wire malformed (§3).\n", firstUseSource())
+	b.WriteString(messageIntegrity(u, runtime+messageBatchRuntimeBody))
 	b.WriteString(messageWriteRuleRows(u))
 	b.WriteString("end\n")
 	return []byte(b.String())
@@ -257,6 +260,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
 
+  defp encode_value(vocab, 16, shape, elem, value, acc),
+    do: encode_keyed(vocab, shape, elem, value, acc)
+
   defp encode_value(vocab, 30, _shape, _elem, value, acc) do
     if enum_ref?(vocab, value), do: {:ok, put_bits(acc, value, vocab.ref_bits)}, else: :error
   end
@@ -274,7 +280,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     raw =
       case shape do
         %{packing: 1, base: base} -> value - base
-        _ -> if kind in [2, 3, 4, 5, 18, 36], do: value + (1 <<< (bits - 1)), else: value
+        _ when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36] -> value + (1 <<< (bits - 1))
+        _ -> value
       end
 
     if raw >= 0 and raw <= bit_mask(bits) do
@@ -304,6 +311,18 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp encode_float(%{packing: 0}, value, acc),
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
+
+  # A QUANTIZED FLOAT RIDES ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): narrow to float32, refuse a value that overflows the width
+  # and a finite value outside [min, max] (invalid_value, refused whole), then
+  # quantize by the packet wire's rule, in float32 at every step.
+  defp encode_float(%{packing: 2} = shape, value, acc) do
+    case round_f32(value) do
+      :nonfinite -> throw(:non_finite_float)
+      v32 when v32 < shape.qmin or v32 > shape.qmax -> throw(:invalid_value)
+      v32 -> {:ok, put_bits(acc, quantize(shape, v32), shape.bits)}
+    end
+  end
 
   defp encode_float(_shape, _value, _acc), do: :error
 
@@ -340,6 +359,40 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
+  # An enum-keyed array (docs/SPEC-TABLES.md §3.2, §3.3): the present-slot
+  # count at bits_required(0, slots), then per slot a KEY REFERENCE and the
+  # element. A count past the announced slots, a key that names no kind-0 entry
+  # (a variant name), and a key that names one twice each refuse the batch in
+  # every build (docs/SPEC-TABLES.md §3.2, §3.3, §5.1). No align: a keyed body
+  # never aligns, whatever its element kind.
+  defp encode_keyed(vocab, shape, elem, value, acc) do
+    count = length(value)
+    check(count <= shape.max)
+    acc2 = put_bits(acc, count, bit_length(shape.max))
+    encode_keyed_slots(vocab, elem, value, acc2, MapSet.new())
+  end
+
+  defp encode_keyed_slots(_vocab, _elem, [], acc, _seen), do: {:ok, acc}
+
+  defp encode_keyed_slots(vocab, elem, [{key_ref, value} | rest], acc, seen) do
+    case entry_at(vocab, key_ref) do
+      {:ok, entry} ->
+        check(
+          entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD and not MapSet.member?(seen, entry.id)
+        )
+
+        acc2 = put_bits(acc, key_ref, vocab.ref_bits)
+
+        case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), value, acc2) do
+          {:ok, acc3} -> encode_keyed_slots(vocab, elem, rest, acc3, MapSet.put(seen, entry.id))
+          :error -> :error
+        end
+
+      :error ->
+        :error
+    end
+  end
+
   defp encode_union(vocab, :none, acc), do: {:ok, put_bits(acc, 0, vocab.ref_bits)}
 
   defp encode_union(vocab, {ref, value}, acc) do
@@ -372,6 +425,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
       %{each_min: lo, each_max: hi} ->
         check(is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi)))
+
+      %{keyed_each_min: lo, keyed_each_max: hi} ->
+        check(
+          is_list(value) and
+            Enum.all?(
+              value,
+              &(is_tuple(&1) and is_integer(elem(&1, 1)) and elem(&1, 1) >= lo and
+                  elem(&1, 1) <= hi)
+            )
+        )
 
       %{text: max} ->
         check(is_binary(value) and byte_size(value) <= max and text_ok?(value))
@@ -792,7 +855,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if kind_holds?(kind, value), do: value, else: :malformed
   end
 
-  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
+  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw
@@ -1003,8 +1066,15 @@ const messageRuntimeBody = `  defstruct announced: false,
 
   def announce_read(data, vocab) do
     case open_file(data) do
-      {:ok, body, ids} -> walk_body(body, ids, vocab)
-      {:error, reason} -> {:error, reason, %{vocab | refused: true}}
+      {:ok, body, ids} ->
+        # an id table out of first-use order is the whole wire malformed (§3),
+        # judged before the build version is read, as the engine does
+        if first_use_order?(body, ids),
+          do: walk_body(body, ids, vocab),
+          else: {:error, :malformed, %{vocab | refused: true}}
+
+      {:error, reason} ->
+        {:error, reason, %{vocab | refused: true}}
     end
   end
 
@@ -1454,8 +1524,30 @@ const messageRuntimeBody = `  defstruct announced: false,
                 if is_float(lof) and is_float(hif) and is_float(resf) and lof < hif and resf > 0.0 do
                   delta = round_f32(hif - lof)
 
-                  if delta != :nonfinite and round_f32(delta / resf) != :nonfinite do
-                    {:ok, %{kind: kind, packing: 2, qmin: lof, qmax: hif, qres: resf}, rest2}
+                  if delta != :nonfinite do
+                    values = round_f32(delta / resf)
+
+                    if values != :nonfinite do
+                      # the step count and the index width derive from the
+                      # triple exactly as the packet wire derives them (SPEC.md
+                      # §4.3): the count clamps to [1, 2^32 - 256]
+                      values = if values < 1.0, do: 1.0, else: values
+                      values = if values > 4_294_967_040.0, do: 4_294_967_040.0, else: values
+                      count = ceil(values)
+
+                      {:ok,
+                       %{
+                         kind: kind,
+                         packing: 2,
+                         qmin: lof,
+                         qmax: hif,
+                         qres: resf,
+                         count: count,
+                         bits: bit_length(count)
+                       }, rest2}
+                    else
+                      :error
+                    end
                   else
                     :error
                   end
@@ -1596,6 +1688,20 @@ const messageRuntimeBody = `  defstruct announced: false,
     end
   end
 
+  # The compressed float's step-index arithmetic (docs/SPEC-TABLES.md §3.3,
+  # SPEC.md §4.3): the index a value takes, in float32 at every step, never
+  # fused, never widened. The announcement already held the triple to the
+  # packet wire's own rule, so an in-range value quantizes without overflow;
+  # the clamp to [0, 1] absorbs only the float32 rounding at the ends.
+  defp quantize(%{qmin: qmin, qmax: qmax, count: count}, value) do
+    delta = round_f32(qmax - qmin)
+    count32 = round_f32(count * 1.0)
+    normalized = round_f32(round_f32(value - qmin) / delta)
+    normalized = if normalized < 0.0, do: 0.0, else: normalized
+    normalized = if normalized > 1.0, do: 1.0, else: normalized
+    min(floor(round_f32(round_f32(normalized * count32) + 0.5)), count)
+  end
+
 `
 
 // messageWriteRuleRows emits write_rule_rows/0: the write contract
@@ -1631,7 +1737,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 			return
 		}
 		switch r.what {
-		case "int", "each":
+		case "int", "each", "keyed_each":
 			if r.lo.Cmp(old.lo) < 0 {
 				old.lo = r.lo
 			}
@@ -1647,16 +1753,19 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		}
 	}
 	fieldRule := func(f *ir.Field) *rule {
-		if f.KeyEnum != "" || f.IsMap() || f.Type.Pointer {
+		if f.IsMap() || f.Type.Pointer {
 			return nil
 		}
 		if lo, hi, ok := messageIntBounds(f); ok {
 			if f.Array != ir.ArrayNone {
+				if f.KeyEnum != "" {
+					return &rule{what: "keyed_each", lo: lo, hi: hi}
+				}
 				return &rule{what: "each", lo: lo, hi: hi}
 			}
 			return &rule{what: "int", lo: lo, hi: hi}
 		}
-		if f.Array != ir.ArrayNone {
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 			return nil
 		}
 		if f.Type.Kind == ir.TString && !f.Type.Blob() && !f.Type.Unbounded && f.Type.Size > 0 {
@@ -1741,6 +1850,8 @@ func messageWriteRuleRows(u *ir.Unit) string {
 			rows = append(rows, head+":min, "+fixedIntLiteral(r.lo)+"}", head+":max, "+fixedIntLiteral(r.hi)+"}")
 		case "each":
 			rows = append(rows, head+":each_min, "+fixedIntLiteral(r.lo)+"}", head+":each_max, "+fixedIntLiteral(r.hi)+"}")
+		case "keyed_each":
+			rows = append(rows, head+":keyed_each_min, "+fixedIntLiteral(r.lo)+"}", head+":keyed_each_max, "+fixedIntLiteral(r.hi)+"}")
 		case "text":
 			rows = append(rows, fmt.Sprintf("%s:text, %d}", head, r.text))
 		default:

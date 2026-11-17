@@ -429,7 +429,7 @@ func FixedTableAt(slot *int64) *FixedTableRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FixedTableCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
-const tableCookBuildVersion uint64 = 0x41d3559378bfa852
+const tableCookBuildVersion uint64 = 0xba2dad78ebdbfff0
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -481,15 +481,20 @@ func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, l
 func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
 	p := unsafe.Add(base, f.Offset)
 	dest := at + int64(f.CookOffset)
+	present := true
 	if f.Optional {
+		present = *(*bool)(unsafe.Add(base, f.PresentOffset))
 		v := uint64(0)
-		if *(*bool)(unsafe.Add(base, f.PresentOffset)) {
+		if present {
 			v = 1
 		}
 		w.put(at+int64(f.CookPresentOffset), v, 1)
 	}
 	if f.List || f.Map {
 		return w.container(p, f, dest, live)
+	}
+	if !present {
+		return true
 	}
 	count := int32(1)
 	used := int32(1)
@@ -524,6 +529,9 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
 	if f.Pointer {
 		return w.reference((*int64)(p), at)
+	}
+	if !live {
+		return true
 	}
 	if f.Arms != nil {
 		u := f.Arms()

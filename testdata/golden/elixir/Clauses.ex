@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xf35accd0582cdd84
+# package example — protocol id 0x2bf51af687ac0abd
 
 # type W13
 defmodule Example.W13 do
@@ -1914,6 +1914,14 @@ defmodule Example.Clauses do
 
     if byte_size(value_s) > 8 do
       raise ArgumentError, "value.s longer than the declared 8-byte bound"
+    end
+
+    if not String.valid?(value_s) do
+      raise ArgumentError, "value.s is not well-formed UTF-8 (SPEC §4.7)"
+    end
+
+    if :binary.match(value_s, <<0>>) != :nomatch do
+      raise ArgumentError, "value.s holds a zero byte (SPEC §4.7)"
     end
 
     v = byte_size(value_s)

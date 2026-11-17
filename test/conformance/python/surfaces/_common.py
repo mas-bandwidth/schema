@@ -34,8 +34,8 @@ def absent(outdir, name, reason):
     write_bytes(outdir, name + ".absent", str(reason).encode("utf-8"))
 
 
-def unit_package(key):
-    unitdir = os.path.join(ROOT, key)
+def unit_package(key, tree=None):
+    unitdir = os.path.join(ROOT if tree is None else tree, key)
     if not os.path.isdir(unitdir):
         return None
     for name in sorted(os.listdir(unitdir)):
@@ -49,8 +49,8 @@ def unit_package(key):
     return None
 
 
-def root_class(unit, root):
-    package = unit_package(unit)
+def root_class(unit, root, tree=None):
+    package = unit_package(unit, tree)
     if package is None:
         return None
     return getattr(package, root, None)
@@ -64,23 +64,33 @@ def supported(cls):
             return True
         seen.add(descriptor.name)
         for field in descriptor.fields:
-            if field.codec == "unsupported":
+            if not carried(field):
                 return False
-            if field.codec in ("table", "pointer") and field.target:
-                from importlib import import_module
+            # An array's element (and a keyed array's slot) is a field of its
+            # own: an unsupported element or a child table behind it decides
+            # too.
+            for name in ("element", "elem"):
+                elem = getattr(field, name, None)
+                if elem is not None and not carried(elem):
+                    return False
+        return True
 
-                target = None
-                for module_name, module in list(sys.modules.items()):
-                    if module is None:
-                        continue
-                    candidate = getattr(module, field.target, None)
-                    if candidate is not None and getattr(candidate, "descriptor", None) is not None:
-                        target = candidate
-                        break
-                if target is None:
-                    return False
-                if not walk(target.descriptor):
-                    return False
+    def carried(field):
+        if field.codec == "unsupported":
+            return False
+        if field.codec in ("table", "pointer", "pointer_array") and field.target:
+            target = None
+            for module_name, module in list(sys.modules.items()):
+                if module is None:
+                    continue
+                candidate = getattr(module, field.target, None)
+                if candidate is not None and getattr(candidate, "descriptor", None) is not None:
+                    target = candidate
+                    break
+            if target is None:
+                return False
+            if not walk(target.descriptor):
+                return False
         return True
 
     return walk(cls.descriptor)

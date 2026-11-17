@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+   package graphdemo — protocol id 0xef0260949bdd7a2b (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-strict, docs/SPEC-TABLES.md). Compile the .c
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
@@ -465,6 +465,9 @@ typedef struct graphdemo_table_reader_t
     const uint8_t * ids;
     struct graphdemo_table_node_map_t * nodes;
     uint64_t id_count;
+    /* Only the declaration-free prepass tracks trailer first-use order.
+       Semantic decoders may revisit the same bytes in several phases. */
+    uint64_t * next_ref;
     int nested;
 } graphdemo_table_reader_t;
 
@@ -587,6 +590,15 @@ static SCHEMA_UNUSED int graphdemo_table_skip_utf8( const uint8_t * p, uint64_t 
 static SCHEMA_UNUSED int graphdemo_table_skip_value( graphdemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
 static SCHEMA_UNUSED int64_t graphdemo_table_skip_body( graphdemo_table_reader_t r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int graphdemo_table_skip_array( graphdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth );
+/* A successfully read payload must claim its whole frame. During the
+   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   semantic failures that stopped the walk earlier still take their own path. */
+static SCHEMA_UNUSED int graphdemo_table_skip_whole( graphdemo_table_reader_t sub, const graphdemo_table_reader_t * read )
+{
+    if ( read->offset == sub.size ) { return 1; }
+    if ( sub.next_ref != NULL ) { *sub.next_ref = UINT64_MAX; }
+    return 0;
+}
 static SCHEMA_UNUSED int graphdemo_table_skip_framed( graphdemo_table_reader_t sub, uint8_t kind, int64_t nodes, int depth )
 {
     switch ( kind )
@@ -604,13 +616,13 @@ static SCHEMA_UNUSED int graphdemo_table_skip_framed( graphdemo_table_reader_t s
         {
             graphdemo_table_reader_t rr = sub;
             if ( !graphdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return graphdemo_table_skip_whole( sub, &rr );
         }
         default:
         {
             graphdemo_table_reader_t rr = sub;
             if ( !graphdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return graphdemo_table_skip_whole( sub, &rr );
         }
     }
 }
@@ -624,6 +636,10 @@ static SCHEMA_UNUSED int64_t graphdemo_table_skip_body( graphdemo_table_reader_t
         if ( !graphdemo_table_reader_leb( &r, &ref ) ) { return -1; }
         if ( ref == 0 ) { return r.offset; }
         if ( ref > r.id_count || ref > 4096 || !graphdemo_table_reader_has( &r, 1 ) ) { return -1; }
+        if ( r.next_ref != NULL ) {
+            if ( ref > *r.next_ref ) { *r.next_ref = UINT64_MAX; return -1; }
+            if ( ref == *r.next_ref ) { (*r.next_ref)++; }
+        }
         if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
         seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
         id = graphdemo_table_reader_id_at( &r, ref ); kind = graphdemo_table_reader_get8( &r );
@@ -632,6 +648,22 @@ static SCHEMA_UNUSED int64_t graphdemo_table_skip_body( graphdemo_table_reader_t
         {
             graphdemo_table_reader_t payload;
             if ( !root || kind != 12 || !graphdemo_table_reader_span( &r, &payload ) ) { return -1; }
+            if ( r.next_ref != NULL ) {
+                uint64_t count, records = 0;
+                if ( !graphdemo_table_reader_leb( &payload, &count ) ) { return -1; }
+                while ( payload.offset < payload.size ) {
+                    uint64_t type_ref, type_id; graphdemo_table_reader_t body;
+                    if ( !graphdemo_table_reader_leb( &payload, &type_ref ) || type_ref == 0 || type_ref > payload.id_count ) { return -1; }
+                    if ( type_ref > *r.next_ref ) { *r.next_ref = UINT64_MAX; return -1; }
+                    if ( type_ref == *r.next_ref ) { (*r.next_ref)++; }
+                    type_id = graphdemo_table_reader_id_at( &payload, type_ref );
+                    if ( !graphdemo_table_reader_span( &payload, &body ) ) { return -1; }
+                    if ( type_id != UINT64_C(0x2f2ec0474f1c4fe4) && type_id != UINT64_C(0x704be0d8faaffc58) &&
+                         graphdemo_table_skip_body( body, nodes, 0, 0 ) != body.size ) { return -1; }
+                    records++;
+                }
+                if ( records != count ) { return -1; }
+            }
             continue;
         }
         if ( !graphdemo_table_skip_value( &r, kind, nodes, depth ) ) { return -1; }
@@ -658,6 +690,10 @@ static SCHEMA_UNUSED int graphdemo_table_skip_array( graphdemo_table_reader_t * 
         {
             uint64_t key; graphdemo_table_reader_t elem;
             if ( !graphdemo_table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
+            if ( sub->next_ref != NULL ) {
+                if ( key > *sub->next_ref ) { *sub->next_ref = UINT64_MAX; return 0; }
+                if ( key == *sub->next_ref ) { (*sub->next_ref)++; }
+            }
             if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
             seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
             if ( !graphdemo_table_reader_span( sub, &elem ) ) { return 0; }
@@ -680,12 +716,21 @@ static SCHEMA_UNUSED int graphdemo_table_skip_value( graphdemo_table_reader_t * 
             return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
         case 30:
             if ( !graphdemo_table_reader_leb( r, &n ) ) { return 0; }
-            return n <= r->id_count;
+            if ( n > r->id_count ) { return 0; }
+            if ( n && r->next_ref != NULL ) {
+                if ( n > *r->next_ref ) { *r->next_ref = UINT64_MAX; return 0; }
+                if ( n == *r->next_ref ) { (*r->next_ref)++; }
+            }
+            return 1;
         case 15:
         {
             uint64_t ref; uint8_t arm_kind; graphdemo_table_reader_t arm;
             if ( !graphdemo_table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
             if ( ref == 0 ) { return 1; }
+            if ( r->next_ref != NULL ) {
+                if ( ref > *r->next_ref ) { *r->next_ref = UINT64_MAX; return 0; }
+                if ( ref == *r->next_ref ) { (*r->next_ref)++; }
+            }
             if ( !graphdemo_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = graphdemo_table_reader_get8( r );
             if ( !graphdemo_table_reader_span( r, &arm ) ) { return 0; }
@@ -773,6 +818,23 @@ static SCHEMA_UNUSED int graphdemo_table_wire_open( graphdemo_table_reader_t * r
                 if ( seen[slot] == id ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 slot = (slot + 1) & 8191u;
             }
+        }
+    }
+    /* Every trailer identity occurs, in first-use order, over the whole
+       file: unknown fields, enum values, keyed slots, union arms and node
+       records included (SPEC-TABLES section 3). Keep this prepass local so
+       repeated semantic reads never advance its cursor. */
+    {
+        uint64_t next_ref = 1;
+        graphdemo_table_reader_t order = *r;
+        int64_t end;
+        order.next_ref = &next_ref;
+        end = graphdemo_table_skip_body( order, INT64_MAX - 1, 0, 1 );
+        /* Payloads that stopped early still take the semantic reader's
+           refusal. Judge identity order, unused entries after a complete
+           walk, and unclaimed tails of successfully read frames here. */
+        if ( next_ref == UINT64_MAX || (end == order.size && next_ref - 1 != r->id_count) ) {
+            report->refused=1; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0;
         }
     }
     /* Root slack invalidates the whole file before any overlay. A stopped
@@ -1046,9 +1108,32 @@ typedef struct graphdemo_table_fixed_entry_t
        value rides as two 8-byte lanes). The wire is little-endian on every
        host (§3.4), so on a big-endian host a copy must reverse each element
        rather than land the wire bytes in host order. Zero is a raw byte copy,
-       which is every non-copy op and every byte-sized element. It sits last
-       so existing positional initializers keep their meaning. */
+       which is every non-copy op and every byte-sized element. */
     uint8_t elem;
+    /* dead IS THIS ENTRY'S DEAD-BYTE FACT, and it depends on the op: a COUNT
+       entry's wire bytes per element, a PRESENT-DEFAULTS entry's wire payload
+       bytes, and a union's tag entry (a COPY or CONST) the widest arm's wire
+       bytes. The spans it closes are DEAD and the check pass holds every one of
+       their bytes to zero (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step
+       11; docs/SPEC-TABLES.md §3.4, §13.10). */
+    uint32_t dead;
+    /* arm IS A UNION ARM ENTRY'S WIRE BYTES, from the writer's layout, so the
+       bytes past a narrower TAKEN arm inside the widest arm's span are dead. */
+    uint32_t arm;
+    /* arm_count IS A UNION TAG ENTRY'S WRITER ARM COUNT, so a tag past the set
+       is left to the bounds pass's out_of_range rather than read as an inactive
+       arm's dead bytes. */
+    uint32_t arm_count;
+    /* tagw IS A UNION TAG ENTRY'S WRITER TAG WIDTH, the width the tag is read
+       at to decide which arm is live. */
+    uint8_t tagw;
+    /* present IS THE ENCLOSING OPTIONAL'S PRESENT BYTE, plus one, for an entry
+       inside that optional's payload — zero when the entry is under no optional.
+       The bytes are DEAD when the flag is 0 (docs/rulings.json
+       fixed-dead-bytes-are-zero; docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
+       §5.3 step 11): such an entry does not run and validates nothing, and the
+       present-defaults entry's dead span judges the whole payload instead. */
+    uint32_t present;
 } graphdemo_table_fixed_entry_t;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -1186,6 +1271,120 @@ static SCHEMA_UNUSED uint64_t graphdemo_table_fixed_tag_at( const uint8_t * src,
     return v;
 }
 
+/* THE DEAD BYTES ARE ZERO (docs/rulings.json fixed-dead-bytes-are-zero;
+   docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3 step 11; docs/SPEC-TABLES.md
+   §3.4, §13.10). A count, a length, a present flag and a tag decide which bytes
+   of a record are live; everything past that extent is DEAD, and a non-zero
+   dead byte refuses the whole load as wire_damaged in the check pass, before
+   any record lands. The four kinds are a counted array's slots past its count,
+   a string(N)'s or bytes(N)'s bytes past its used length, an absent optional's
+   payload, and an inactive union arm (under tag 0, and past a narrower TAKEN
+   arm inside the widest arm's span). */
+static SCHEMA_UNUSED int graphdemo_table_fixed_entry_runs( const graphdemo_table_fixed_entry_t * p, int32_t index, int32_t guarded,
+                                                 const uint8_t * src, const graphdemo_table_fixed_guard_link_t * guard_pool )
+{
+    int32_t j;
+    if ( p->present != 0 && src[p->present - 1u] == 0 ) { return 0; }
+    if ( index < guarded ) { return 1; }
+    if ( p->guard_count > 0 )
+    {
+        for ( j = 0; j < (int32_t) p->guard_count; ++j )
+        {
+            const graphdemo_table_fixed_guard_link_t * l = ( const graphdemo_table_fixed_guard_link_t * ) ( const void * )
+                ( ( const uint8_t * ) guard_pool + p->guard_index + j * (int32_t) sizeof( graphdemo_table_fixed_guard_link_t ) );
+            if ( graphdemo_table_fixed_tag_at( src, l->guard, l->argw ) != l->arg ) { return 0; }
+        }
+        return 1;
+    }
+    if ( p->guard != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { return 0; }
+    if ( p->guard2 != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD && graphdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { return 0; }
+    return 1;
+}
+
+static SCHEMA_UNUSED int graphdemo_table_fixed_span_zero( const uint8_t * src, uint32_t from, uint32_t to )
+{
+    uint32_t i;
+    for ( i = from; i < to; ++i ) { if ( src[i] != 0 ) { return 0; } }
+    return 1;
+}
+
+static SCHEMA_UNUSED int graphdemo_table_fixed_dead_refuses( const graphdemo_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
+                                                   const uint8_t * src, const graphdemo_table_fixed_guard_link_t * guard_pool )
+{
+    int32_t i;
+    for ( i = 0; i < count; ++i )
+    {
+        const graphdemo_table_fixed_entry_t * p = &plan[i];
+        if ( !graphdemo_table_fixed_entry_runs( p, i, guarded, src, guard_pool ) ) { continue; }
+        switch ( p->op )
+        {
+            case GRAPHDEMO_K_TABLE_FIXED_COUNT:
+            {
+                int32_t v;
+                uint32_t from, to;
+                if ( p->dead == 0 ) { break; }
+                v = (int32_t) graphdemo_table_fixed_get32( src + p->src );
+                /* A count past its bound is another check's refusal; do no
+                   arithmetic past this record's body on its way there. */
+                if ( v < 0 || (uint32_t) v > p->size ) { break; }
+                from = p->src + 4u + (uint32_t) v * p->dead;
+                to = p->src + 4u + p->size * p->dead;
+                if ( !graphdemo_table_fixed_span_zero( src, from, to ) ) { return 1; }
+                break;
+            }
+            case GRAPHDEMO_K_TABLE_FIXED_TEXT:
+            {
+                int32_t v;
+                uint32_t from, to;
+                v = (int32_t) graphdemo_table_fixed_get32( src + p->src );
+                if ( v < 0 || (uint32_t) v > p->size ) { break; }
+                from = p->src + 4u + (uint32_t) v;
+                to = p->src + 4u + p->size;
+                if ( !graphdemo_table_fixed_span_zero( src, from, to ) ) { return 1; }
+                break;
+            }
+            case GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS:
+            {
+                if ( src[p->src] == 0 && p->dead != 0 )
+                {
+                    if ( !graphdemo_table_fixed_span_zero( src, p->src + 1u, p->src + 1u + p->dead ) ) { return 1; }
+                }
+                break;
+            }
+            case GRAPHDEMO_K_TABLE_FIXED_COPY:
+            case GRAPHDEMO_K_TABLE_FIXED_CONST:
+            {
+                uint64_t tag;
+                uint32_t arm = 0, from, to;
+                int32_t q;
+                if ( p->dead == 0 || p->tagw == 0 ) { break; }
+                tag = graphdemo_table_fixed_get_le( src + p->src, p->tagw );
+                /* A TAG PAST THE WRITER'S SET NAMES NO ARM: the bounds pass
+                   refuses it out_of_range, so no arm span is dead here. */
+                if ( p->arm_count != 0 && tag > p->arm_count ) { break; }
+                if ( tag != 0 )
+                {
+                    for ( q = 0; q < count; ++q )
+                    {
+                        if ( plan[q].arm != 0 && plan[q].guard == p->src && plan[q].arg == tag &&
+                             graphdemo_table_fixed_entry_runs( &plan[q], q, guarded, src, guard_pool ) )
+                        {
+                            arm = plan[q].arm;
+                            break;
+                        }
+                    }
+                }
+                from = p->src + p->tagw + arm;
+                to = p->src + p->tagw + p->dead;
+                if ( !graphdemo_table_fixed_span_zero( src, from, to ) ) { return 1; }
+                break;
+            }
+            default: break;
+        }
+    }
+    return 0;
+}
+
 /* THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4). */
 static SCHEMA_UNUSED uint64_t graphdemo_table_fixed_hash_of( const uint8_t * layout, int64_t bytes )
 {
@@ -1320,6 +1519,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
                                                       int32_t * out_of_range, int32_t * widened, const uint8_t * defaults )
 {
+    if ( p->present != 0 && src[p->present - 1u] == 0 ) { return; }
     switch ( p->op )
     {
         case GRAPHDEMO_K_TABLE_FIXED_COPY:
@@ -1573,15 +1773,30 @@ typedef struct graphdemo_table_fixed_lineage_plan_t
 /* THE PREFILL ITSELF: the declared defaults, into the ranges named and nowhere
    else. The default image is the caller's own storage, reset once per read
    rather than once per record. */
-static SCHEMA_UNUSED void graphdemo_table_fixed_fill_run( const graphdemo_table_fixed_fill_t * fill, int32_t count,
+static SCHEMA_UNUSED int graphdemo_table_fixed_fill_fits( const graphdemo_table_fixed_fill_t * fill, int32_t count, size_t bytes )
+{
+    int32_t i;
+    if ( count < 0 || ( count > 0 && fill == NULL ) ) { return 0; }
+    for ( i = 0; i < count; ++i )
+    {
+        if ( fill[i].dst > bytes || fill[i].size > bytes - fill[i].dst ) { return 0; }
+    }
+    return 1;
+}
+
+static SCHEMA_UNUSED int graphdemo_table_fixed_fill_run( const graphdemo_table_fixed_fill_t * fill, int32_t count,
                                                 const uint8_t * SCHEMA_TABLE_RESTRICT defaults,
-                                                uint8_t * SCHEMA_TABLE_RESTRICT dst )
+                                                uint8_t * SCHEMA_TABLE_RESTRICT dst, size_t bytes )
 {
     int32_t i;
     for ( i = 0; i < count; ++i )
     {
+        /* A FILL NAMES NATIVE STORAGE, not a wire extent. Bind both sides to
+           the actual default/destination object before forming a pointer. */
+        if ( fill[i].dst > bytes || fill[i].size > bytes - fill[i].dst ) { return 0; }
         graphdemo_table_fixed_copy_run( dst + fill[i].dst, defaults + fill[i].dst, fill[i].size );
     }
+    return 1;
 }
 
 /* table_fixed_entry_lands is the bytes of the READER'S OWN STORAGE one entry
@@ -2045,6 +2260,7 @@ typedef struct graphdemo_table_fixed_compiler_t
     int overflow;
     int hostile;
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
+    uint32_t present;  /* the CURRENT optional's present byte plus one, 0 when none */
     graphdemo_table_report_t * report;
 } graphdemo_table_fixed_compiler_t;
 
@@ -2091,6 +2307,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_push( graphdemo_table_fixed_comp
     }
     const int32_t room = c->capacity - ( c->pool + (int32_t) sizeof( graphdemo_table_fixed_entry_t ) - 1 ) / (int32_t) sizeof( graphdemo_table_fixed_entry_t );
     if ( c->count >= room ) { c->overflow = 1; return; }
+    e.present = c->present;
     c->plan[c->count++] = e;
 }
 
@@ -2252,9 +2469,13 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compile_entry( graphdemo_table_f
                    after it. */
                 const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
                 const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+                const uint32_t outer_present = c->present;
+                c->present = their_at + 1u;
                 graphdemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                c->present = outer_present;
                 graphdemo_table_fixed_entry_t e = graphdemo_table_fixed_entry_zero();
                 e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                e.dead = te.size > 0u ? te.size - 1u : 0u; /* the WRITER's payload bytes, the absent optional's dead span */
                 graphdemo_table_fixed_push( c, e );
                 break;
             }
@@ -2290,6 +2511,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compile_entry( graphdemo_table_f
                        legal widening. */
                     graphdemo_table_fixed_entry_t e = graphdemo_table_fixed_entry_zero();
                     e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = GRAPHDEMO_K_TABLE_FIXED_COUNT; e.arg = arg;
+                    e.dead = tel.size; /* the WRITER's element bytes: the slots past the count are dead */
                     graphdemo_table_fixed_push( c, e );
                 }
                 for ( i = 0; i < n; ++i )
@@ -2347,6 +2569,9 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compile_entry( graphdemo_table_f
                     graphdemo_table_fixed_entry_t none = graphdemo_table_fixed_entry_zero();
                     none.src = their_at; none.dst = aux_at; none.size = my_tag;
                     none.aux = 0; none.guard = guard; none.op = GRAPHDEMO_K_TABLE_FIXED_CONST; none.arg = arg;
+                    none.dead = te.size - their_tag; /* the WIDEST arm's wire span; past the taken arm is dead */
+                    none.tagw = (uint8_t) their_tag;
+                    none.arm_count = te.children;
                     /* Writer arm count, for a tag past the old set (bill §12.5). */
                     if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
                     graphdemo_table_fixed_push( c, none );
@@ -2368,6 +2593,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compile_entry( graphdemo_table_f
                             tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
                             tag.aux = k + 1; tag.guard = their_at; tag.op = GRAPHDEMO_K_TABLE_FIXED_CONST; tag.arg = (uint64_t) j + 1u;
                             tag.argw = c->argw;
+                            tag.arm = ta.size; /* the WRITER's arm bytes, for the span past a narrower taken arm */
                             graphdemo_table_fixed_push( c, tag );
                             graphdemo_table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
                                                        mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
@@ -3577,11 +3803,16 @@ static SCHEMA_UNUSED int graphdemo_table_node_scan_open( graphdemo_table_node_sc
             scan->present = 1;
             if ( kind != 12 || !graphdemo_table_reader_span(fields,&scan->payload) )
             { scan->damaged = 1; return 0; }
+            /* The numbering is the root's final field (SPEC-TABLES §3.1).
+               Only the root terminator may follow its complete payload. */
+            if ( !graphdemo_table_reader_leb(fields,&ref) || ref != 0 || fields->offset != fields->size )
+            { scan->damaged = 1; return 0; }
+            break;
         }
         else if ( !graphdemo_table_reader_skip(fields,kind) ) { break; }
     }
     if ( !scan->present ) { return 0; }
-    if ( !graphdemo_table_reader_leb(&scan->payload,&scan->declared) ) { scan->damaged = 1; return 0; }
+    if ( !graphdemo_table_reader_leb(&scan->payload,&scan->declared) || scan->declared == 0 ) { scan->damaged = 1; return 0; }
     return 1;
 }
 
@@ -3992,7 +4223,7 @@ static SCHEMA_UNUSED int graphdemo_table_cycle_acyclic( graphdemo_table_node_map
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0xfdaabe4726d81d5cull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x2e0dc8d1c2bff1aeull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
@@ -4178,7 +4409,18 @@ static SCHEMA_UNUSED void graphdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #ifndef SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 #define SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 enum { GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=3, GRAPHDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=6, GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES=109, GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
-static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0x5c,0x1d,0xd8,0x26,0x47,0xbe,0xaa,0xfd,0x02,0x0e,0x46,0x06,0x44,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xae,0xf1,0xbf,0xc2,0xd1,0xc8,0x0d,0x2e,0x02,0x0e,0x46,0x06,0x44,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[]={0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,};
+static const int32_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[]={0,12,22,34,44,56,68,};
+static SCHEMA_UNUSED uint16_t graphdemo_table_message_own_slot(const uint8_t * raw,int64_t length)
+{
+ int32_t i;
+ for(i=0;i<GRAPHDEMO_K_TABLE_MESSAGE_ENTRIES_HERE;i++) {
+  int32_t start=GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[i],n=GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[i+1]-start;
+  if(length==n && !memcmp(raw,GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES+start,(size_t)n))return (uint16_t)(i+1);
+ }
+ return 0;
+}
 
 typedef struct graphdemo_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; } graphdemo_table_bit_writer_t;
 typedef struct graphdemo_table_bit_reader_t { const uint8_t * buffer; int64_t bits,offset; } graphdemo_table_bit_reader_t;
@@ -4352,6 +4594,7 @@ typedef struct graphdemo_table_message_entry_t {
  float qmin,qdelta;uint32_t qcount;float elem_qmin,elem_qdelta;uint32_t elem_qcount;
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
+ uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
 } graphdemo_table_message_entry_t;
 typedef struct graphdemo_table_message_shape_facts_t {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -4535,11 +4778,13 @@ static SCHEMA_UNUSED int graphdemo_table_announce_once(graphdemo_table_vocabular
   entry->max=at;
   count++;
  }
- /* Resolve the accepted spans into the caller's final 96-byte entries. */
+ /* Resolve accepted spans, retaining their exact own-entry proof. */
  at=0;
  {int64_t i;
- for(i=0;i<count;i++)if(!graphdemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
- }
+ for(i=0;i<count;i++){int64_t began=at;
+  if(!graphdemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
+  v->entries[i].own_slot=graphdemo_table_message_own_slot(words+began,at-began);
+ }}
  v->count=count;
  v->ref_bits=graphdemo_table_bits_required(0,count);
  v->announced=1;
@@ -4627,6 +4872,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip_body(graphdemo_table_messa
  int64_t ref;
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
      reference is bounded where the file form bounds it, so the bitset fits. */
   ref=entry-r->vocabulary->entries+1;
@@ -4663,7 +4909,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
  /* a node reference: no fixed body holds one */
  case 15:
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && graphdemo_table_message_skip_deeper(r,entry));
+  return entry==NULL || (entry->id<UINT64_C(0xfffffffffffffffd) && entry->kind!=0 && graphdemo_table_message_skip_deeper(r,entry));
  case 12:
   /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
      is inside the announced bound and its bytes are well-formed UTF-8 with no
@@ -5078,18 +5324,25 @@ v>>=7;
 }while(v);
 return graphdemo_table_retain_raw(s,b,n);
 }
+/* The node-table ID is forbidden inside a retained payload. Use it only
+   in this private representation to distinguish hash zero from the zero
+   reference (None or a body terminator), without increasing record size. */
 static SCHEMA_UNUSED int graphdemo_table_retain_id(graphdemo_table_retain_in_t * s,uint64_t id)
 {uint8_t b[8];
-graphdemo_table_retain_put64(b,id);
+graphdemo_table_retain_put64(b,id==0?UINT64_MAX:id);
+return graphdemo_table_retain_raw(s,b,8);
+}
+static SCHEMA_UNUSED int graphdemo_table_retain_none(graphdemo_table_retain_in_t * s)
+{uint8_t b[8]={0};
 return graphdemo_table_retain_raw(s,b,8);
 }
 static SCHEMA_UNUSED int graphdemo_table_retain_in_ref(graphdemo_table_retain_in_t * s,int zero)
 {uint64_t ref,id;
 if(!graphdemo_table_reader_leb(&s->input,&ref))return 0;
-if(!ref)return zero&&graphdemo_table_retain_id(s,0);
+if(!ref)return zero&&graphdemo_table_retain_none(s);
 if(ref>s->input.id_count)return 0;
 id=graphdemo_table_reader_id_at(&s->input,ref);
-return id&&!graphdemo_table_retain_reserved(id)&&graphdemo_table_retain_id(s,id);
+return !graphdemo_table_retain_reserved(id)&&graphdemo_table_retain_id(s,id);
 }
 static SCHEMA_UNUSED int graphdemo_table_retain_in_payload(graphdemo_table_retain_in_t *,uint8_t,int32_t);
 static SCHEMA_UNUSED int graphdemo_table_retain_in_content(graphdemo_table_retain_in_t *,uint8_t,int64_t,int32_t);
@@ -5115,7 +5368,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_content(graphdemo_table_retai
  int64_t mark=r->offset;
  uint8_t k;
  if(!graphdemo_table_reader_leb(r,&ref))return 0;
- if(!ref){if(!graphdemo_table_retain_id(s,0))return 0;
+ if(!ref){if(!graphdemo_table_retain_none(s))return 0;
  break;
  }r->offset=mark;
  if(!graphdemo_table_retain_in_ref(s,0)||r->offset>=end)return 0;
@@ -5274,6 +5527,7 @@ if(s->size-s->at<8)return 0;
 id=graphdemo_table_retain_u64(s->input+s->at);
 s->at+=8;
 if(!id)return graphdemo_table_retain_out_leb(s,0);
+if(id==UINT64_MAX)id=0;
 ref=graphdemo_table_retain_ref(s->ids,id,1,&s->overflow);
 return !s->ids->lost&&!s->overflow&&graphdemo_table_retain_out_leb(s,ref);
 }
@@ -5798,13 +6052,28 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_save_messages(const graphdemo_stamp
 }
 static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_message_reader_t * r,graphdemo_stamp_t * value)
 {
+ uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  graphdemo_stamp_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const graphdemo_table_message_entry_t * entry;
+ int64_t ref;
  if(!graphdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
+ int same_shape=same_build && entry->own_slot==2;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!graphdemo_table_message_skip(r,entry))goto damaged;
@@ -5824,9 +6093,21 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_messa
   if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
   value->tag_length=(int32_t)kept;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ graphdemo_table_bit_writer_t default_writer=graphdemo_table_bit_writer(NULL,INT64_MAX);
+ graphdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
+ if(!(value->tag_length != 0))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x823b8a195ce2133c): {
+ int same_shape=same_build && entry->own_slot==5;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
  if(!graphdemo_table_message_skip(r,entry))goto damaged;
@@ -5844,9 +6125,16 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_messa
   }
   value->seq=(int32_t)decoded;
   }
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ graphdemo_table_bit_writer_t default_writer=graphdemo_table_bit_writer(NULL,INT64_MAX);
+ graphdemo_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->seq == 0)))goto damaged;
+ }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!graphdemo_table_message_skip(r,entry))goto damaged;
  break;
  } }
@@ -6143,7 +6431,7 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_fixed_clamp_( graphdemo_stamp_t 
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t graphdemo_stamp_fixed_body_bytes = 16;
 static SCHEMA_UNUSED const int64_t graphdemo_stamp_fixed_record_bytes = 8 + 16; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t graphdemo_stamp_fixed_hash = 0x2b467a2ee937ea73ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
+static SCHEMA_UNUSED const uint64_t graphdemo_stamp_fixed_hash = 0x3d7dedc0769c4360ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -6179,8 +6467,8 @@ static SCHEMA_UNUSED const graphdemo_table_fixed_dst_t graphdemo_stamp_fixed_dst
    run after the guarded payload it replaces: the entries that are nearly
    all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const graphdemo_table_fixed_entry_t graphdemo_stamp_fixed_plan[] = {
-    { 0u, 12u, 8u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* tag */
-    { 12u, 16u, 4u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* seq */
+    { 0u, 12u, 8u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0, 0u, 0u, 0u, 0, 0u }, /* tag */
+    { 12u, 16u, 4u, 0u, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, GRAPHDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* seq */
 };
 static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_plan_guarded = 2;
@@ -6203,19 +6491,150 @@ static SCHEMA_UNUSED const graphdemo_table_fixed_fill_t graphdemo_stamp_fixed_co
 };
 static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_cover_count = 2;
 
+/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim */
+static SCHEMA_UNUSED const uint8_t graphdemo_stamp_fixed_known_0[] = {
+    0x03, 0x00, 0x00, 0x00, 0xa4, 0x93, 0xdb, 0xb7, 0x13, 0x91, 0x3b, 0xae, 0x0d, 0x10, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x0c, 0x0c, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 /* THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). THE ONLY FACT
    A FILE IS MATCHED ON IS THE HASH; the layout bytes are what a known hash
    is held to by memcmp, and the record size is taken from here and NEVER
    from the file. */
 static SCHEMA_UNUSED const graphdemo_table_fixed_known_layout_t graphdemo_stamp_fixed_known[] = {
-    { 0x2b467a2ee937ea73ull, graphdemo_stamp_fixed_layout, (int64_t) sizeof( graphdemo_stamp_fixed_layout ), 24 },
+    { 0x2b467a2ee937ea73ull, graphdemo_stamp_fixed_known_0, (int64_t) sizeof( graphdemo_stamp_fixed_known_0 ), 24 },
+    { 0x3d7dedc0769c4360ull, graphdemo_stamp_fixed_layout, (int64_t) sizeof( graphdemo_stamp_fixed_layout ), 24 },
 };
-static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_known_count = 1;
+static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_floor = 0;
+
+/* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
+   never from a file's (§5.9 #3). The storage is STATIC — this codec
+   allocates nothing — and the walk runs ONCE PER PROCESS, off the record
+   loop: a load selects a plan and never builds one, and a load can no
+   longer fail for want of one. C HAS NO PACKAGE INITIALIZER (§5.9 #7 of
+   this leg's PR), so "once" is this flag and not a language phase; what
+   §5.8 row 3 forbids — compiling from A FILE'S bytes into a cache a load
+   can miss — is gone either way: the bytes here are the lock's. */
+#define GRAPHDEMO_STAMP_FIXED_LINEAGE_STRIDE ( 2 + ( 0 + (int32_t) sizeof( graphdemo_table_fixed_entry_t ) - 1 ) / (int32_t) sizeof( graphdemo_table_fixed_entry_t ) )
+
+#ifndef SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE
+/* 0 = nobody has built, 1 = one thread is building, 2 = the plans are readable */
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT 0
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_BUILDING 1
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY 2
+#if defined( __GNUC__ ) || defined( __clang__ )
+typedef int graphdemo_table_fixed_once_t;
+#define graphdemo_table_fixed_once_ready( f ) ( __atomic_load_n( ( f ), __ATOMIC_ACQUIRE ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_publish( f ) __atomic_store_n( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY, __ATOMIC_RELEASE )
+static SCHEMA_UNUSED int graphdemo_table_fixed_once_claim( graphdemo_table_fixed_once_t * f )
+{
+    int want = SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT;
+    return __atomic_compare_exchange_n( f, &want, SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_BUILDING, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ) ? 1 : 0;
+}
+/* THE WAIT. The build is a BOUNDED walk over the lock's own bytes — no file, no
+   allocation, no lock of its own and no call out — so the thread that claimed it
+   always reaches the publish, and this spin always ends. It runs at most once
+   per process per table and never on the record loop. */
+static SCHEMA_UNUSED void graphdemo_table_fixed_once_wait( graphdemo_table_fixed_once_t * f )
+{
+    while ( __atomic_load_n( f, __ATOMIC_ACQUIRE ) != SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+    {
+        /* nothing: the load is the whole body, and it is an acquire */
+    }
+}
+#elif defined( _MSC_VER )
+typedef long graphdemo_table_fixed_once_t;
+#define graphdemo_table_fixed_once_ready( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY, SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_publish( f ) ( (void) _InterlockedExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY ) )
+#define graphdemo_table_fixed_once_claim( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_BUILDING, SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT )
+#define graphdemo_table_fixed_once_wait( f ) do { while ( !graphdemo_table_fixed_once_ready( f ) ) { } } while ( 0 )
+#else
+/* NO ATOMIC ON THIS COMPILER, AND THE WINDOW IS NAMED. The publish is a plain
+   store AFTER the loop, so no thread can read a zeroed plan: a thread reaches
+   the plans only after its own build wrote them. What is left is that two
+   threads may build at once and write THE SAME BYTES twice — a race in the
+   abstract machine with one outcome in practice — and the fix is not a bigger
+   macro here, it is §5.9 #7's generator-side COMPILE, which lays these plans
+   down as static const data and removes the lazy build entirely. OWED. */
+typedef int graphdemo_table_fixed_once_t;
+#define graphdemo_table_fixed_once_ready( f ) ( *( f ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_publish( f ) ( *( f ) = SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_claim( f ) ( 1 )
+#define graphdemo_table_fixed_once_wait( f ) ( (void) ( f ) )
+#endif
+#endif
+static graphdemo_table_fixed_entry_t graphdemo_stamp_fixed_lineage_storage[2][GRAPHDEMO_STAMP_FIXED_LINEAGE_STRIDE];
+static graphdemo_table_fixed_lineage_plan_t graphdemo_stamp_fixed_lineage[2];
+static graphdemo_table_fixed_once_t graphdemo_stamp_fixed_lineage_ready = SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT;
+static SCHEMA_UNUSED void graphdemo_stamp_fixed_lineage_build( void )
+{
+    int32_t i;
+    /* THE FLAG IS PUBLISHED LAST, AFTER THE LOOP, and a racing load WAITS for
+       it: a second thread that sees the plans unpublished must never read
+       them, because an unbuilt TableFixedLineagePlan is all zeros — entries
+       NULL, count 0 — and zeros are a plan step 8 accepts, landing a
+       prefill-only record where the read owed a refusal. So: READY is an
+       acquire load, the build is CLAIMED by one thread, every other thread
+       waits on that acquire, and the publish is a release store of READY
+       after the last entry is written (§5.9 #7). */
+    if ( graphdemo_table_fixed_once_ready( &graphdemo_stamp_fixed_lineage_ready ) ) { return; }
+    if ( !graphdemo_table_fixed_once_claim( &graphdemo_stamp_fixed_lineage_ready ) )
+    {
+        graphdemo_table_fixed_once_wait( &graphdemo_stamp_fixed_lineage_ready ); /* WAIT — never the zeroed plan */
+        return;
+    }
+    for ( i = 0; i < graphdemo_stamp_fixed_known_count; ++i )
+    {
+        graphdemo_table_fixed_layout_view_t parsed;
+        graphdemo_table_report_t census;
+        graphdemo_table_fixed_entry_t * dest = graphdemo_stamp_fixed_lineage_storage[i];
+        int32_t guarded = 0;
+        int32_t made;
+        int32_t fills = 0;
+        uint32_t fill_at = 0;
+        int why = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED;
+        memset( &graphdemo_stamp_fixed_lineage[i], 0, sizeof( graphdemo_stamp_fixed_lineage[i] ) );
+        if ( graphdemo_stamp_fixed_known[i].hash == graphdemo_stamp_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
+        memset( &census, 0, sizeof( census ) );
+        /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
+           (§5.9 #8). C cannot fail a build from a header, so the entry carries
+           the name and LOAD refuses by it if a file ever matches its hash. */
+        if ( !graphdemo_table_fixed_parse_layout( graphdemo_stamp_fixed_known[i].layout, graphdemo_stamp_fixed_known[i].layout_bytes, &parsed, &why ) )
+        { graphdemo_stamp_fixed_lineage[i].reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; continue; }
+        made = graphdemo_table_fixed_compile( &parsed, graphdemo_stamp_fixed_layout, (int32_t) sizeof( graphdemo_stamp_fixed_layout ), graphdemo_stamp_fixed_dst,
+                                    graphdemo_stamp_fixed_cover, graphdemo_stamp_fixed_cover_count,
+                                    dest, GRAPHDEMO_STAMP_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+        if ( made < 0 )
+        {
+            /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
+               and an entry whose plan exceeds it records plan_too_large ON THAT
+               ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
+               compiled walk refuses, or a depth past 64 — is named
+               layout_record_too_large, the reference's name (§5.8 row 6). */
+            graphdemo_stamp_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_GRAPHDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_GRAPHDEMO_TABLE_PLAN_TOO_LARGE;
+            continue;
+        }
+        graphdemo_stamp_fixed_lineage[i].entries = dest;
+        graphdemo_stamp_fixed_lineage[i].count = made;
+        graphdemo_stamp_fixed_lineage[i].guarded = guarded;
+        graphdemo_stamp_fixed_lineage[i].fill = ( fills > 0 ) ? (const graphdemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+        graphdemo_stamp_fixed_lineage[i].fill_count = fills;
+        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
+        graphdemo_stamp_fixed_lineage[i].unknown = census.unknown;
+        graphdemo_stamp_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+    }
+    /* AND THE FLAG LAST: every entry above is written before this store, and
+       this store is what a waiting thread's acquire is waiting for. */
+    graphdemo_table_fixed_once_publish( &graphdemo_stamp_fixed_lineage_ready );
+}
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -6346,6 +6765,26 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
     { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = graphdemo_stamp_fixed_known[pick].record_bytes;
+    if ( hash != graphdemo_stamp_fixed_hash )
+    {
+        graphdemo_stamp_fixed_lineage_build(); /* once per process, from THE LOCK'S bytes */
+        if ( graphdemo_stamp_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = graphdemo_stamp_fixed_lineage[pick].reason; return -1; }
+        if ( graphdemo_stamp_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_PLAN_TOO_LARGE; return -1; }
+        entries = graphdemo_stamp_fixed_lineage[pick].entries;
+        /* THE COMPILED PLAN'S OWN GUARD POOL is laid in its own storage,
+           and a chain-carrying entry's guard_index is a BYTE OFFSET from
+           that base — the same arithmetic the identity plan's static pool
+           reads by (§5.8 row 6). */
+        entry_guards = (const graphdemo_table_fixed_guard_link_t *) (const void *) entries;
+        entry_count = graphdemo_stamp_fixed_lineage[pick].count;
+        entry_guarded = graphdemo_stamp_fixed_lineage[pick].guarded;
+        fill = graphdemo_stamp_fixed_lineage[pick].fill;
+        fill_count = graphdemo_stamp_fixed_lineage[pick].fill_count;
+        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
+           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
+        census_unknown = graphdemo_stamp_fixed_lineage[pick].unknown;
+        census_kind = graphdemo_stamp_fixed_lineage[pick].kind_changed;
+    }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
     at = layout + layout_bytes;
@@ -6353,6 +6792,10 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
     if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE; return -1; }
+    /* THE SELECTED FILL LIST IS IMMUTABLE: validate every native span before
+       landing any record, so an invalid plan leaves caller storage untouched. */
+    if ( !graphdemo_table_fixed_fill_fits( fill, fill_count, sizeof( defaults ) ) )
+    { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
        the prefill, so a refusal has written not one destination byte (§5.3,
        §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
@@ -6369,6 +6812,16 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
     {
         int32_t rec_widened = report->widened;
         if ( graphdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_NO_LAYOUT; return -1; }
+        /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
+           §5.3 step 11): a non-zero one refuses the whole load as
+           wire_damaged in this check pass, before any byte of the record lands. */
+        if ( graphdemo_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { graphdemo_stamp_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return -1;
+        }
         /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§4.5, fix 2),
            refused in this check pass before any byte of the record lands. */
         {
@@ -6378,6 +6831,10 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
                 const graphdemo_table_fixed_entry_t * p = &entries[i];
                 uint32_t bool_bytes, b;
                 if ( p->op != GRAPHDEMO_K_TABLE_FIXED_BOOL && p->op != GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { continue; }
+                /* AN ABSENT OPTIONAL'S PAYLOAD DOES NOT RUN (§3.1, §4.5): its
+                   bytes are dead, and the dead-byte check above has already
+                   judged them as a whole. Nothing here reads them as values. */
+                if ( p->present != 0 && ( at + 8 )[p->present - 1u] == 0 ) { continue; }
                 if ( i >= entry_guarded )
                 {
                     if ( p->guard_count > 0 )
@@ -6411,7 +6868,12 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
                 }
             }
         }
-        graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
+        /* The immutable spans passed the whole-load preflight above. */
+        if ( !graphdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        {
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED;
+            return -1;
+        }
         graphdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { graphdemo_stamp_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the

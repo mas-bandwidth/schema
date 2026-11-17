@@ -105,12 +105,10 @@ func t07GoC14(t *testing.T) {
 
 // ---- go/W4 ------------------------------------------------------------------
 
-// t07GoW4 holds W4, "read slack unspecified", to the ONE read loop this leg
-// emits: §3.1 "Slack is UNSPECIFIED on read and not a refusal: a reader
-// validates the USED UNITS only, and non-zero slack is not `malformed`, not a
-// refusal, and moves no counter." The text op holds the length word to the
-// plan's own capacity and refuses an overbound length; past the used length it
-// copies the payload whole and never inspects, refuses or counts a slack byte.
+// t07GoW4 holds W4 to the ONE read loop this leg emits. The text op holds the
+// length word to the plan's own capacity and refuses an overbound length; past
+// the used length every dead byte is zero and a non-zero one refuses
+// (docs/rulings.json fixed-dead-bytes-are-zero; docs/SPEC-TABLES.md §3.4).
 func t07GoW4(t *testing.T) {
 	block := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
@@ -123,8 +121,11 @@ func t07GoW4(t *testing.T) {
 	if !strings.Contains(t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal"), "binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))") {
 		t.Error("W4: the reader lands the USED length (§3.1)")
 	}
+	if !strings.Contains(block, "tableFixedDeadSpan(src, p.Src+4+uint32(v), p.Src+4+capn)") {
+		t.Error("W4: the bytes past a text's used length are not checked for zero (fixed-dead-bytes-are-zero)")
+	}
 	if strings.Contains(block, "Malformed") {
-		t.Error("W4: non-zero slack is not malformed; the pre-scan validates only used units (§3.1)")
+		t.Error("W4: a non-zero dead byte is wire_damaged, never malformed (§3.4)")
 	}
 	if !strings.Contains(run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\" {") {
 		t.Error("W4: the direct runner does not pre-scan before writes")
@@ -256,20 +257,20 @@ func t07GoW8(t *testing.T) {
 	}
 	// meta 3 is tableFixedTextBytes and meta 1 is tableFixedTextUTF8 in the
 	// runtime the unit carries (fixedruntime.go's tableFixedRuntime const).
-	if blob[1] != "1" || blob[3] != "1" || blob[5] != strconv.Itoa(t07TextBytes) {
+	if blob[1] != "1" || blob[4] != "1" || blob[6] != strconv.Itoa(t07TextBytes) {
 		t.Errorf("W8: bytes(N) takes the ARRAY row — stride 1, a live count, meta bytes — got %v", blob)
 	}
 	note, ok := rows["note"]
 	if !ok {
 		t.Fatal("W8: the emitted RootFixedDst names no note row")
 	}
-	if note[1] != "0" || note[3] != "0" || note[5] != strconv.Itoa(t07TextUtf8) {
+	if note[1] != "0" || note[4] != "0" || note[6] != strconv.Itoa(t07TextUtf8) {
 		t.Errorf("W8: a text field's row is the other way round — no stride, no count, meta utf8 — got %v", note)
 	}
 }
 
 // t07DstRows reads the emitted `var RootFixedDst = []TableFixedDst{ … }` into a
-// map from each row's trailing name to its six comma-separated fields.
+// map from each row's trailing name to its seven comma-separated fields.
 func t07DstRows(t *testing.T, src string) map[string][]string {
 	t.Helper()
 	const open = "var RootFixedDst = []TableFixedDst{"

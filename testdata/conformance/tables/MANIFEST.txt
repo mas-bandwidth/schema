@@ -246,8 +246,10 @@ report form_ff        tblv1 Cfg   testdata/wire/tables/form_ff.bin
 # byte is read FIRST.
 report message_as_file tblv1 Cfg  testdata/wire/tables/login_full_message.bin
 
-# THE POINTER SPELLING IS ITS OWN FRAMING (§3.1). T and ?T are wire-identical
-# and read each other as instances above; *T rides as a u32 NODE INDEX under
+# THE POINTER SPELLING IS ITS OWN FRAMING (§3.1). The four T/?T report rows
+# above (p1_as_p3, p3_as_p1, p1_empty_as_p3, p3_empty_as_p1) refuse
+# previous_form: the fixed readers receive variable-form files. A lineage moving
+# T to ?T is refused by the baseline (§4.1). *T rides as a u32 NODE INDEX under
 # kind 17 with the body in the node table, so a reader of either other spelling
 # meets a kind mismatch and a node table it cannot name. These two are the
 # evolution cases that edit says exist, and the counters are the expectation.
@@ -344,7 +346,7 @@ report nopayload_named_field  messagedemo ToolMessage testdata/wire/tables/nopay
 # wire fuzzer's pinned vectors (testdata/wire/tables/fuzz-vectors/INDEX.txt)
 # beside this one. The bytes are the reference leg's, pinned by
 # test/tables/main.cpp.
-report nested_arm_trailing messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
+report nested_arm_trailing messagedemo ToolEnvelope testdata/wire/tables/nested_arm_trailing.bin
 
 # THE ARM'S KIND BYTE, at the four pins §3 names. A2 declares `a` as an int64
 # arm, `b` as a float32 arm and `c` as a string(8) arm; each row puts a payload
@@ -704,7 +706,7 @@ json-hostile num-float32-upper-band        tabledemo  RootConfig  testdata/confo
 json-hostile num-float64-overflow          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float64-overflow refused
 json-hostile num-fraction                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-fraction       refused
 json-hostile num-int-overflow              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow   refused
-json-hostile num-int64-min                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-min      read
+json-hostile num-int64-min-string                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-min-string      read
 json-hostile num-integral-forms            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms refused
 json-hostile num-leading-plus              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus   refused
 json-hostile num-leading-zero              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-zero   refused
@@ -726,10 +728,10 @@ json-hostile num-exponent-forms            tabledemo  RootConfig  testdata/confo
 json-hostile num-float32-min-subnormal     tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float32-min-subnormal read
 json-hostile num-negative-zero-floats      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero-floats read
 json-hostile num-float-max                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-float-max      read
-json-hostile num-int64-extremes            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-extremes read
-json-hostile num-uint64-max                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-max     read
-json-hostile num-uint64-two-to-63          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-two-to-63 read
-json-hostile num-int64-past-extremes       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-past-extremes refused
+json-hostile num-int64-extremes-string            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-extremes-string read
+json-hostile num-uint64-max-string                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-max-string     read
+json-hostile num-uint64-two-to-63-string          tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-uint64-two-to-63-string read
+json-hostile num-int64-past-extremes-string       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-past-extremes-string refused
 json-hostile str-writer-escapes            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-writer-escapes read
 json-hostile str-raw-non-ascii             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-raw-non-ascii  read
 json-hostile base64-padding-one            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-padding-one read
@@ -863,28 +865,31 @@ cook-write scalars_edges   testdata/conformance/tables/cook-write/scalars_edges.
 # the text form's rules at the wide kinds (§16.2): a fixed takes any number
 # token whose value is EXACTLY representable in its Q I.F and refuses a finer
 # one as the wrong shape, never rounding; out of range clamps on the raw scale;
-# a magnitude past 128 bits saturates and counts; a 128-bit integer takes any
-# integral token, exact past 2^53
+# a magnitude past 128 bits saturates and counts; a 128-bit integer takes its
+# string of digits, exact past 2^53. A fixed kind wider than 32 bits and a
+# 128-bit integer are written as strings (§16.2); the same vectors spelled as
+# bare number tokens are JSON-HOSTILE-NUMBER-TOKEN.txt's, and each `-string`
+# row here is one of those vectors' string twin
 json-hostile fixed-fraction-too-fine       scalars    SimState    testdata/conformance/tables/json-hostile/fixed-fraction-too-fine refused
 json-hostile fixed-exact-fraction          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-exact-fraction read
-json-hostile fixed-integral-token          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-integral-token read
+json-hostile fixed-integral-token-string          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-integral-token-string read
 json-hostile fixed-over-range              scalars    SimState    testdata/conformance/tables/json-hostile/fixed-over-range   refused
 json-hostile fixed-huge-exponent           scalars    SimState    testdata/conformance/tables/json-hostile/fixed-huge-exponent refused
 json-hostile fixed-below-resolution        scalars    SimState    testdata/conformance/tables/json-hostile/fixed-below-resolution refused
 json-hostile fixed-negative-zero           scalars    SimState    testdata/conformance/tables/json-hostile/fixed-negative-zero read
-json-hostile fixed-at-bound                scalars    SimState    testdata/conformance/tables/json-hostile/fixed-at-bound     read
+json-hostile fixed-at-bound-string                scalars    SimState    testdata/conformance/tables/json-hostile/fixed-at-bound-string     read
 json-hostile ufixed-negative               scalars    SimState    testdata/conformance/tables/json-hostile/ufixed-negative    refused
 json-hostile fixed-array-elements          scalars    SimState    testdata/conformance/tables/json-hostile/fixed-array-elements refused
 json-hostile fixed-wrong-shape             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-wrong-shape  refused
-json-hostile int128-beyond-int64           scalars    SimState    testdata/conformance/tables/json-hostile/int128-beyond-int64 read
-json-hostile int128-over-range             scalars    SimState    testdata/conformance/tables/json-hostile/int128-over-range  refused
+json-hostile int128-beyond-int64-string           scalars    SimState    testdata/conformance/tables/json-hostile/int128-beyond-int64-string read
+json-hostile int128-over-range-string             scalars    SimState    testdata/conformance/tables/json-hostile/int128-over-range-string  refused
 json-hostile int128-fractional             scalars    SimState    testdata/conformance/tables/json-hostile/int128-fractional  refused
 json-hostile int128-integral-forms         scalars    SimState    testdata/conformance/tables/json-hostile/int128-integral-forms refused
-json-hostile uint128-max                   scalars    SimState    testdata/conformance/tables/json-hostile/uint128-max        read
-json-hostile uint128-over                  scalars    SimState    testdata/conformance/tables/json-hostile/uint128-over       refused
-json-hostile uint128-negative              scalars    SimState    testdata/conformance/tables/json-hostile/uint128-negative   refused
+json-hostile uint128-max-string                   scalars    SimState    testdata/conformance/tables/json-hostile/uint128-max-string        read
+json-hostile uint128-over-string                  scalars    SimState    testdata/conformance/tables/json-hostile/uint128-over-string       refused
+json-hostile uint128-negative-string              scalars    SimState    testdata/conformance/tables/json-hostile/uint128-negative-string   refused
 json-hostile int128-saturated-below        scalars    SimState    testdata/conformance/tables/json-hostile/int128-saturated-below refused
-json-hostile fixed-nested-type             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-nested-type  refused
+json-hostile fixed-nested-type-string             scalars    SimState    testdata/conformance/tables/json-hostile/fixed-nested-type-string  refused
 
 # THE BYTE BUFFER's text rules (§2.5, §16.2): `""` and `null` are two values;
 # a body that is not base64, or not a string at all, is `kind_mismatch` with
@@ -922,10 +927,11 @@ unit backenddemo tables/backend
 unit vocabdemo   tables/vocab
 unit vocab9demo  tables/vocab9
 
-connection backend_conn backenddemo 0x16d0630a084485ae testdata/wire/tables/backend_conn.bin
-connection vocab_conn   vocabdemo   0x40062c876abfc027 testdata/wire/tables/vocab_conn.bin
-connection vocab9_conn  vocab9demo  0x3a923c7d0da66dd8 testdata/wire/tables/vocab9_conn.bin
-connection graph_conn   graphdemo   0xfdaabe4726d81d5c testdata/wire/tables/graph_conn.bin
+connection backend_conn backenddemo 0x2309093a1139c6cc testdata/wire/tables/backend_conn.bin
+connection vocab_conn vocabdemo 0x849644d72721d12e testdata/wire/tables/vocab_conn.bin
+connection vocab9_conn vocab9demo 0x354e211ad4f819ce testdata/wire/tables/vocab9_conn.bin
+# graph_conn.bin retains the historical peer; this connection uses the current writer.
+connection graph_conn graphdemo 0x2e0dc8d1c2bff1ae testdata/wire/tables/graph_conn_current.bin
 
 # The three backend messages of schema#523, each in both instances: 106 / 273 /
 # 104 bytes as files against 52 / 148 / 43 as messages, and 10 / 43 / 10 against
@@ -1147,7 +1153,7 @@ framing frame_seven_bytes                       tblr1 Cfg testdata/wire/tables/f
 framing frame_eight_bytes                       tblr1 Cfg testdata/wire/tables/framing/frame_eight_bytes.bin                refused -
 framing frame_nine_bytes                        tblr1 Cfg testdata/wire/tables/framing/frame_nine_bytes.bin                 refused -
 framing frame_count_past_front                  tblr1 Cfg testdata/wire/tables/framing/frame_count_past_front.bin           refused -
-framing frame_unreferenced_entry                tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin         read    testdata/conformance/tables/framing/cfg_default.json
+framing frame_unreferenced_entry                tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin         refused -
 framing frame_count_one_over                    tblr1 Cfg testdata/wire/tables/framing/frame_count_one_over.bin             refused -
 framing frame_slack_after_terminator            tblr1 Cfg testdata/wire/tables/framing/frame_slack_after_terminator.bin     refused -
 framing frame_duplicate_entry                   tblr1 Cfg testdata/wire/tables/framing/frame_duplicate_entry.bin            refused -
@@ -1225,7 +1231,7 @@ framing node_bytes_left_over                    graphdemo ListNode testdata/wire
 framing node_field_wrong_kind                   graphdemo ListNode testdata/wire/tables/framing/node_field_wrong_kind.bin            refused -
 framing node_type_ref_zero                      graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin               refused -
 framing node_index_above_count                  graphdemo ListNode testdata/wire/tables/framing/node_index_above_count.bin           refused -
-framing node_index_null                         graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin                  refused -
+framing node_index_null                         graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin                  read    testdata/conformance/tables/framing/listnode_1.json
 framing node_reserved_id_in_record              graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin       refused -
 framing node_unknown_to_fixed_reader            tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin     refused -
 framing node_table_L_past_body                  graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin           refused -
@@ -1369,7 +1375,6 @@ rewrite w2_fleet_as_w1 tblw1 Fleet testdata/wire/tables/w2_fleet.bin
 rewrite w1_fleet_default_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet_default.bin
 rewrite map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
 rewrite frame_empty_table tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin
-rewrite frame_unreferenced_entry tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin
 rewrite frame_entries_4096 tblr1 Cfg testdata/wire/tables/framing/frame_entries_4096.bin
 rewrite frame_ref_last_slot tblr1 Cfg testdata/wire/tables/framing/frame_ref_last_slot.bin
 rewrite frame_unknown_id_fixed_width tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_fixed_width.bin
@@ -1377,24 +1382,23 @@ rewrite frame_unknown_id_union tblr1 Cfg testdata/wire/tables/framing/frame_unkn
 rewrite frame_unknown_id_union_empty tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union_empty.bin
 rewrite nested_L_exact tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin
 rewrite nested_unknown_id_inside tblr1 Cfg testdata/wire/tables/framing/nested_unknown_id_inside.bin
-rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite array_count_at_bound tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin
 rewrite keyed_unknown_key tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin
 rewrite union_arm_width_exact tblr1 Cfg testdata/wire/tables/framing/union_arm_width_exact.bin
 rewrite union_void_arm tblr1 Cfg testdata/wire/tables/framing/union_void_arm.bin
 rewrite union_unknown_arm tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin
-rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
 rewrite node_clean graphdemo ListNode testdata/wire/tables/framing/node_clean.bin
 rewrite node_diamond_chain graphdemo Scene testdata/wire/tables/framing/node_diamond_chain.bin
 rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin
-# THE HAND-BUILT NON-CANONICAL SPELLINGS (docs/SPEC-TABLES.md §22): each is a
-# legal wire no conforming writer produces, so the leg that reads it must write
-# the canonical bytes back. Fields out of declaration order with the id table
-# no longer in first-use order; and the id table reversed and every reference
-# renumbered. A repeated field (rewrite_field_twice.bin) is refused under the
-# strict-only read (§3).
+# THE HAND-BUILT ORDER WITNESSES (docs/SPEC-TABLES.md §22): the ID-reversed
+# and repeated-field inputs refuse; the field-reordered input below is lawful.
+# A field order may come from another lawful declaration. The ID table
+# remains first-use ordered; the current writer emits its own field order.
+rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
+rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
+
 rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
-rewrite rewrite_ids_reversed    tblw1 Fleet testdata/wire/tables/rewrite_ids_reversed.bin
 
 # THE WRITE-ALGORITHM EDGES (docs/SPEC-TABLES.md §22): one value per degree of
 # freedom a writer has, each a trap for one wrong implementation of it. Map keys
