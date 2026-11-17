@@ -129,8 +129,9 @@ func writeVarPackages(t *testing.T, srcdir string) {
 // TestCardConstructsRetainUnknownFields (docs/SPEC-TABLES.md §6.6) proves a
 // retained load and save keeps the unknown scalar and string fields the older
 // declaration cannot name, re-emits them so the newer declaration rereads every
-// value equal, and reports the excluded *string node index as loss — never
-// retained silently. The save is idempotent.
+// value equal, and reports the excluded *string node index, and the *string
+// record it names that the older root cannot place, as loss — never retained
+// silently. The save is idempotent.
 func TestCardConstructsRetainUnknownFields(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -196,9 +197,13 @@ const retainDriver = `public final class RetainDriver {
         if (o == null) { fail("load returned null"); }
         if (!"hi".equals(o.id)) { fail("id=" + o.id); }
         if (o.oldName != 42) { fail("oldName=" + o.oldName); }
-        if (report.unknown != 5) { fail("unknown=" + report.unknown); }
+        // five unknown fields, and the *string record extra_ptr names: the
+        // older root's closure holds no *string, so the record is unknown once
+        // and, an excluded class, one loss beside the node index's
+        // (docs/rulings.json blob-target-outside-closure-refused, §6.6)
+        if (report.unknown != 6) { fail("unknown=" + report.unknown); }
         if (report.retained != 4) { fail("retained=" + report.retained); }
-        if (report.retainLost != 1) { fail("retainLost=" + report.retainLost); }
+        if (report.retainLost != 2) { fail("retainLost=" + report.retainLost); }
 
         byte[] saved = oldpkg.CardRetain.saveRetain(o, retain, report);
         if (saved == null) { fail("save returned null"); }
@@ -292,7 +297,8 @@ const lossDriver = `public final class LossDriver {
         oldpkg.TableVariable.Report sr = new oldpkg.TableVariable.Report();
         oldpkg.CardVariable.Value o = oldpkg.CardRetain.loadRetain(wire, shortRetain, sr);
         if (o == null) { fail("load returned null"); }
-        if (sr.retainLost != 5) { fail("one-byte-short buffer reported retainLost=" + sr.retainLost); }
+        // five fields lost, and the *string record no root slot places
+        if (sr.retainLost != 6) { fail("one-byte-short buffer reported retainLost=" + sr.retainLost); }
         if (sr.retained != 0) { fail("one-byte-short buffer retained a field"); }
 
         // The input bytes are unchanged by the retained load.
