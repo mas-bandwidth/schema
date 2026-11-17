@@ -13,13 +13,13 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control python-vt-widening python-vt-widening-negative-control
 test-python: python-ci-support
 	$(MAKE) --no-print-directory python-ci-packages
 	$(MAKE) --no-print-directory python-ci-compiler
 
-.PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
-PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted
+.PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-vt-widening
+PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-vt-widening
 python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
 .PHONY: python-ci-support-list
 python-ci-support-list:
@@ -103,6 +103,18 @@ python-table-core-negative-control:
 # pinned probe must go red under each.
 python-table-maps-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtMapsNegativeControl' ./internal/codegen/pythontable/ -count=1
+
+# The widening cell: TestPythonVtWidening holds every manifest report row the
+# Go engine widens (the field, union arm, array element and map key sites) and
+# its sibling refusals under both pinned interpreters, and refuses to skip a
+# row the engine widens. The negative control plants the kind-pair ladder, then
+# the field, arm and map widened counters, in a COPY of the emitted runtime and
+# requires its rows red by name.
+python-ci-vt-widening: python-vt-widening python-vt-widening-negative-control
+python-vt-widening: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWidening$$' ./internal/codegen/pythontable/
+python-vt-widening-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideningNegativeControl$$' ./internal/codegen/pythontable/
 
 generated/bench/tables/python/.stamp: ;
 

@@ -8332,20 +8332,21 @@ defmodule Benchtable.Table do
 
   defp cook_carve(_desc, _value, _node_off, _index, _order, buf), do: buf
 
-  # Each node is written into its own window, a buffer of the node's size
-  # that answers the region's offsets ({origin, bytes}), and the windows are
-  # joined in layout order with the alignment gaps between them zero: a write
-  # copies one node, never the whole region, so the writer's work is linear in
-  # the node count.
+  # Each node is written into its own window, the writes that answer the
+  # region's offsets ({origin, writes}: each write its bytes at an offset in
+  # the node). A window's bytes are laid in ONE pass, in offset order with the
+  # gaps between writes zero, and the windows are joined in layout order the
+  # same way, with the alignment gaps between them zero: no write copies a
+  # node or the region, so the writer's work is linear in the cooked size.
   defp cook_render(plan, order) do
     try do
       index = Map.new(plan.nodes, fn n -> {n.key, n.offset} end)
 
       {parts, at} =
         Enum.reduce(plan.nodes, {[], 0}, fn n, {parts, at} ->
-          window = {n.offset, :binary.copy(<<0>>, n.size)}
+          window = {n.offset, []}
 
-          {_origin, bytes} =
+          window =
             case n.kind do
               :blob ->
                 window = put_u32(window, n.offset, byte_size(n.value), order)
@@ -8361,6 +8362,7 @@ defmodule Benchtable.Table do
                 end
             end
 
+          bytes = cook_window(window, n.size)
           {[bytes, :binary.copy(<<0>>, n.offset - at) | parts], n.offset + n.size}
         end)
 
@@ -8682,12 +8684,37 @@ defmodule Benchtable.Table do
   defp put_float(buf, at, v, 8, :big), do: put_raw(buf, at, <<v::big-float-64>>)
   defp put_float(_buf, _at, _v, _w, _order), do: throw(:invalid)
 
-  defp put_raw({origin, buf}, at, bytes), do: {origin, put_raw(buf, at - origin, bytes)}
+  # a write is recorded in its window, never spliced into a buffer
+  defp put_raw(window, _at, <<>>), do: window
+  defp put_raw({origin, writes}, at, bytes), do: {origin, [{at - origin, bytes} | writes]}
 
-  defp put_raw(buf, at, bytes) do
-    n = byte_size(bytes)
-    binary_part(buf, 0, at) <> bytes <> binary_part(buf, at + n, byte_size(buf) - at - n)
+  # cook_window lays one node's writes, kept newest first, as its bytes: in
+  # the order made when that is offset order, else sorted by offset (a stable
+  # sort, so equal offsets keep their order), each write past the one before
+  # it and the gaps zero. Writes that overlap or leave the node are applied
+  # one by one in the order made, the later write winning.
+  defp cook_window({_origin, writes}, size) do
+    made = Enum.reverse(writes)
+
+    with :overlap <- cook_lay_writes(made, 0, size, []),
+         :overlap <- cook_lay_writes(List.keysort(made, 0), 0, size, []) do
+      Enum.reduce(made, :binary.copy(<<0>>, size), fn {at, bytes}, buf ->
+        n = byte_size(bytes)
+        binary_part(buf, 0, at) <> bytes <> binary_part(buf, at + n, byte_size(buf) - at - n)
+      end)
+    end
   end
+
+  defp cook_lay_writes([], at, size, parts) when at <= size,
+    do: Enum.reverse(parts, [:binary.copy(<<0>>, size - at)])
+
+  defp cook_lay_writes([{w, bytes} | rest], at, size, parts)
+       when w >= at and w + byte_size(bytes) <= size do
+    gap = :binary.copy(<<0>>, w - at)
+    cook_lay_writes(rest, w + byte_size(bytes), size, [bytes, gap | parts])
+  end
+
+  defp cook_lay_writes(_writes, _at, _size, _parts), do: :overlap
 
   # Retention requires a variable root (docs/SPEC-TABLES.md §6.6).
   # Refuse before inspecting input or changing the caller's report and stores.
