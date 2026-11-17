@@ -18,11 +18,6 @@
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
  :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
 
-(:id "port/python/vt/reflection" :state :done
- :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/reflection_test.go: TestPythonReflection" "internal/codegen/pythontable/reflection_layout_test.go: TestPythonReflectionAccessorNegativeControl")
- :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
- :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
-
 (:id "port/python/vt/block-read" :state :done
  :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/block_test.go: TestPythonBlockRead" "internal/codegen/pythontable/block_test.go: TestPythonBlockReadDamaged")
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
@@ -120,16 +115,6 @@
 
 (:id "port/python/vt/retain-unknown" :state :done
  :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/retain_test.go: TestPythonRetainArrayWideningReport" "internal/codegen/pythontable/retain_crc_test.go: TestPythonRetainCRC")
- :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
- :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
-
-(:id "port/python/vt/doc-tags" :state :done
- :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/reflection_test.go: TestPythonReflection" "internal/codegen/pythontable/reflection_layout_test.go: TestPythonReflectionAccessorNegativeControl")
- :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
- :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
-
-(:id "port/python/vt/unit-registry" :state :done
- :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/reflection_test.go: TestPythonReflection" "internal/codegen/pythontable/reflection_layout_test.go: TestPythonReflectionAccessorNegativeControl")
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
  :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
 
