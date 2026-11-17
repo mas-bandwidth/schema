@@ -5,6 +5,7 @@
 # the emitted runtime and of the generated package and requires each row to go
 # red by name; its row is make/negative-controls.d/python-vt-evolution-rows-negative-control.json.
 .PHONY: python-vt-evolution-rows python-vt-evolution-rows-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-vt-evolution-rows python-vt-evolution-rows-negative-control
 python-vt-evolution-rows: dist-python
 	SCHEMA_SLOW=1 go test -count=1 -timeout 120s -tags schema_leg_python -run '^TestPythonVtEvolutionRows$$' ./internal/codegen/pythontable/
 python-vt-evolution-rows-negative-control: dist-python
