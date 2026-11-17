@@ -291,9 +291,10 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
-  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_optional.py`,
-  `kind_table.py` and `kind_pointer.py`; the directory is the list). A later
+  each `_schema/kind_<kind>.py` beside it registers a kind the leg carries
+  (`kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_optional.py`,
+  `kind_table.py`, `kind_pointer.py` and the modules later cards added
+  beside them; the directory is the list). A later
   card adds its module and one registration line in it, never an edit to the
   body walk; `kinds.py` imports every `kind_*.py` itself, so no other file
   names a new module. A kind that wraps another names the wrapped codec in the
@@ -417,7 +418,7 @@ generated class per table and per map entry, each with its descriptor
   - `map[K]V` for the base key and value kinds: carried
     ([the table maps](port-python/table-maps.md))
 
-  - `?map[K]V`: refused
+  - `?map[K]V`: carried ([the table optional maps](port-python/table-optional-map.md))
 
   - unions with table arms, and arrays of them: carried
     ([the table unions](port-python/table-unions.md))
@@ -554,9 +555,12 @@ out as lowercase hex lines.**
 
 ## THE REGISTER
 
-The `python` column of [PORTING.md](PORTING.md) holds every technique ❌,
-citing #381 (the language list) and the `port/python` layer that carries it,
-or `—` with the platform's reason:
+The `python` column of [PORTING.md](PORTING.md) marks a technique ✅ where
+the leg carries it, naming the tests and targets that prove it; ❌ citing #381
+(the language list) and the `port/python` layer that carries it; or `—` with
+the platform's reason. M17's reason (every blob is one `bytes` or `str` of
+its own length, so there is no slab to outgrow) is in its cell; the others
+are:
 
 - **M2 and M3**: every CPython `int` and `float` is a heap object, so there is
   no unboxed form to keep.

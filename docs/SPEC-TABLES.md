@@ -15876,7 +15876,10 @@ Rust and Squirrel — and the VARIABLE class in C and C++ (§16.7).** A pointere
 Elixir, Go, Java, JavaScript and Rust the absence is already made one level
 up: a
 pointered unit gets no table source at all (§11), so it has no text form for
-the same reason it has no wire codec.
+the same reason it has no wire codec. Python carries the text form in both
+classes, a pointered unit's included: `T.from_json(text)` reads into the
+generated classes and `value.to_json()` writes a node two pointers name once,
+labelled `"&node"`, and names it by label after.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
