@@ -20,8 +20,12 @@ import (
 const skipDepthUnknownId = uint64(0x5a5a5a5a00000001)
 
 // skipDepthAnnouncement is the messagedemo unit's own message vocabulary with
-// one entry the reader cannot name, of kind 13, appended. It answers the
-// announcement, the entry's reference, and the reference width.
+// one entry the reader cannot name, of kind 13, appended. A record that
+// declares a field this reader's record does not is another build's, so the
+// announcement carries another build version: under the reader's own, a field
+// the record does not declare is refused before any skip (§3.3), and the skip
+// walk this test bounds is never reached. It answers the announcement, the
+// entry's reference, and the reference width.
 func skipDepthAnnouncement(t *testing.T, u *ir.Unit) (ann []byte, ref uint64, refBits int) {
 	t.Helper()
 	entries := append([]ir.TableVocabularyEntry(nil), tablewire.MessageVocabulary(u)...)
@@ -37,7 +41,7 @@ func skipDepthAnnouncement(t *testing.T, u *ir.Unit) (ann []byte, ref uint64, re
 	vocabulary := ir.TableVocabularyBytes(entries)
 
 	out := []byte{ir.TableWireForm, 1, byte(ir.TableKindU64)}
-	out = binary.LittleEndian.AppendUint64(out, ir.BuildVersion(u))
+	out = binary.LittleEndian.AppendUint64(out, ir.BuildVersion(u)+1)
 	out = append(out, 2, byte(ir.TableKindArray))
 	var body []byte
 	body = append(body, byte(ir.TableKindU8))

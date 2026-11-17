@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -61,6 +62,16 @@ func TestSharedBlobWitnessSpellings(t *testing.T) {
 				if len(shapes) > 0 {
 					t.Errorf("%s/%s: %v", c.Name, entry.name, shapes)
 				}
+			}
+			// every spelling the shared walk names, field order included; a
+			// witness built on framing damage (a repeated field) is judged on
+			// what the walk can frame
+			shapes, err := sharedFixtureSpellings(u, st, b)
+			if _, damaged := errors.AsType[*fixtureDamage](err); err != nil && !damaged {
+				t.Errorf("%s/%s: %v", c.Name, entry.name, err)
+			}
+			if len(shapes) > 0 {
+				t.Errorf("%s/%s: spellings %v", c.Name, entry.name, sortedShapes(shapes))
 			}
 		}
 	}

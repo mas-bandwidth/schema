@@ -55,8 +55,8 @@ end
 	probe.WriteString(`
 case Graphdemo.Table.load("ListNode", File.read!(` +
 		elixirString(filepath.Join(framing, "node_chain_two.bin")) + `)) do
-  {:ok, value, %{reason: ""}} ->
-    ReservedTypeProbe.check(is_map(value["next"]), "node_chain_two: control lost next")
+  {:ok, {root, nodes} = value, %{reason: ""}} when is_map(root) and is_tuple(nodes) ->
+    ReservedTypeProbe.check(is_map(Graphdemo.Table.deref(value, root["next"])), "node_chain_two: control lost next")
   other -> ReservedTypeProbe.check(false, "node_chain_two: control did not read: " <> inspect(other))
 end
 IO.puts("ok: reserved node type ids refused and node_chain_two loaded")

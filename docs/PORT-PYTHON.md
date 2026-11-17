@@ -335,6 +335,27 @@ generated class per table and per map entry, each with its descriptor
   joins the optional-array carriers (`compiler/tablesoptionalarrays.go`). An
   optional array of an element kind this cut does not carry keeps
   `inner` "unsupported" and refuses by name.
+- **Widening is decided by the kind pair.** A field, a union arm, an array
+  element or a map key whose writer's kind is below the reader's on the same
+  ladder (`2, 3, 4, 5, 18` signed and `6, 7, 8, 9, 19` unsigned, plus `10` into
+  `11`) reads at the writer's width, lands the exact value, and counts ONE
+  `widened` — one per field, arm, array or map, never per element. The ladder
+  and the widened-width read live once, in `kind_array.py` (`_widens`,
+  `_read_widened`, a bulk `struct.unpack` followed by the reader's range
+  check), and the field, arm, keyed, optional-array and map sites call them;
+  every other retype, every narrowing and every crossed signedness refuses the
+  whole read `kind_mismatch` before a value lands. A widened value outside the
+  reader's declared range refuses `out_of_range`; a NaN or an infinity never
+  reaches the float rung (`non_finite_float`). The construct has no §2 carry
+  key, so `compiler/carries_python_widening.go` registers no line and the
+  emitter carries it directly; `TestPythonVtWidening` holds every manifest
+  report row the engine widens (and the sibling refusals at each site) under
+  both pins, and its negative control plants the ladder and each counter fault
+  in a copy of the emitted runtime. A root declared `fixed table` reads form 3
+  alone and refuses a form-1 file as `previous_form`; that gate is the fixed
+  form's row, so the widening cell asks the engine through the same
+  declaration with the root variable, as the conformance harness does for a
+  fixed root's framing rows.
 - **The shape is measured.** A table whose fields are all carried kinds and
   that holds no map gets the straight-line generated root save/load pair,
   unrolled with each field descriptor and codec bound to a local and any
@@ -369,6 +390,9 @@ generated class per table and per map entry, each with its descriptor
   - by-value tables: carried
 
   - `*T` pointers to tables: carried
+
+  - enums and the id-table wire's escape and payload-free kinds: carried
+    ([the id table](port-python/table-idtable.md))
 
   - pointer arrays `[]*T`, `[N]*T`, `[..N]*T` and `[Min..N]*T`: carried
     ([the table pointer arrays](port-python/table-pointer-arrays.md))

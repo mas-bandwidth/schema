@@ -587,7 +587,14 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 			w.raw(tabletext.WideBytes(tabletext.WideValue(cell), kind))
 			return nil
 		}
-		w.width(tabletext.KindWidth(kind), cell.U)
+		// A SIGNED INTEGER IS ITS I MEMBER, the one cellIsDefault judges and the
+		// message writer writes, so the bytes are the value the elision decided
+		// on: a writer never rides a field whose bytes are its default.
+		v := cell.U
+		if f.Type.Kind == ir.TInt && f.Type.Signed {
+			v = uint64(cell.I)
+		}
+		w.width(tabletext.KindWidth(kind), v)
 	}
 	return nil
 }
