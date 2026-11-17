@@ -65,9 +65,13 @@ alias Probe.TableMessage, as: M
 		}
 		value := m.New(u.Tables["Ranges"])
 		raw := rawM.New(rawU.Tables["Ranges"])
-		text := fmt.Sprintf(`{"%s":%s}`, field, input)
+		// Every Ranges field is 64 bits wide, and a wide integer's JSON
+		// spelling is a string (docs/rulings.json json-wide-integers-are-strings,
+		// docs/SPEC-TABLES.md §16); the corpus holds the numbers themselves.
+		text := fmt.Sprintf(`{"%s":%q}`, field, input)
+		expectedText := fmt.Sprintf(`{"%s":%q}`, field, expected)
 		var r tabletext.Report
-		if !m.Read(value, fmt.Appendf(nil, `{"%s":%s}`, field, expected), &r) || !r.Silent() {
+		if !m.Read(value, []byte(expectedText), &r) || !r.Silent() {
 			t.Fatal(r)
 		}
 		if !rawM.Read(raw, []byte(text), &r) || !r.Silent() {
@@ -89,7 +93,7 @@ alias Probe.TableMessage, as: M
 		if err != nil {
 			t.Fatal(err)
 		}
-		retainedWire, retainedWant := rangeRetainedWires(t, m, rawM, u, rawU, "RetainedRanges", text, fmt.Sprintf(`{"%s":%s}`, field, expected))
+		retainedWire, retainedWant := rangeRetainedWires(t, m, rawM, u, rawU, "RetainedRanges", text, expectedText)
 		index := -1
 		for i, f := range u.Tables["Ranges"].Fields {
 			if f.Name == field {
@@ -128,7 +132,7 @@ at=byte_size(file)-32+%d*8
 head=binary_part(file,0,at)
 tail=binary_part(file,at+8,byte_size(file)-at-8)
 forged=<<head::binary,%s::little-signed-64,tail::binary>>
-`, field, text, hex.EncodeToString(want), hex.EncodeToString(wire), hex.EncodeToString(le), hex.EncodeToString(be), fmt.Sprintf(`{"%s":%s}`, field, expected), expected, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant), index, input)
+`, field, text, hex.EncodeToString(want), hex.EncodeToString(wire), hex.EncodeToString(le), hex.EncodeToString(be), expectedText, expected, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant), index, input)
 		if clamps > 0 {
 			fmt.Fprintf(&probe, `
 for result<-[T.from_json("Ranges",input)] do
@@ -154,7 +158,7 @@ rescue
  ArgumentError -> true
 end
 Probe.check(refused,field<>" fixed invalid writer refusal")
-`, fmt.Sprintf(`{"%s":%s}`, field, expected), expected, expected, expected, input)
+`, expectedText, expected, expected, expected, input)
 		} else {
 			fmt.Fprintf(&probe, `
 {:ok,jvalue,r}=T.from_json("Ranges",input)
@@ -218,8 +222,10 @@ func TestOneSidedRangeClosureElixir(t *testing.T) {
 	}
 	rawU := unitFrom(t, rawSchema)
 	m, rawM := tabletext.NewModel(u), tabletext.NewModel(rawU)
-	input := `{"items":[-11,32767],"counted":[10,8],"keyed":{"A":6,"B":-20},"maybe":-8,"nested":{"value":-3}}`
-	expected := `{"items":[-10,32767],"counted":[9,8],"keyed":{"A":5,"B":-20},"maybe":-7,"nested":{"value":-2}}`
+	// `maybe` is 64 bits wide, so its JSON spelling is a string
+	// (docs/rulings.json json-wide-integers-are-strings, docs/SPEC-TABLES.md §16)
+	input := `{"items":[-11,32767],"counted":[10,8],"keyed":{"A":6,"B":-20},"maybe":"-8","nested":{"value":-3}}`
+	expected := `{"items":[-10,32767],"counted":[9,8],"keyed":{"A":5,"B":-20},"maybe":"-7","nested":{"value":-2}}`
 	raw, value := rawM.New(rawU.Tables["Closure"]), m.New(u.Tables["Closure"])
 	var r tabletext.Report
 	if !rawM.Read(raw, []byte(input), &r) || !r.Silent() {

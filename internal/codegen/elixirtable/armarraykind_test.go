@@ -49,7 +49,17 @@ func TestUnionArrayElementKindsElixir(t *testing.T) {
 			mismatch int
 		}{{[]byte{0, 0}, false, 1}, {[]byte{255, 0}, false, 1}, {[]byte{a.kind, 0}, true, 0}, {nil, true, 0}, {[]byte{a.kind}, true, 0}} {
 			for _, field := range []string{"choice", "batch", "nested"} {
-				arm := append([]byte{2, 14, byte(len(p.body))}, p.body...)
+				// The id table holds exactly the ids the body references, in
+				// first-use order (docs/SPEC-TABLES.md §3): the field, then for
+				// "nested" the Wrap arm "selected" (ref 2) before the Choice arm
+				// it carries (ref 3), else the Choice arm (ref 2).
+				ids := []string{field, a.name}
+				armRef := byte(2)
+				if field == "nested" {
+					ids = []string{field, "selected", a.name}
+					armRef = 3
+				}
+				arm := append([]byte{armRef, 14, byte(len(p.body))}, p.body...)
 				wire := []byte{1, 1}
 				switch field {
 				case "choice":
@@ -60,14 +70,10 @@ func TestUnionArrayElementKindsElixir(t *testing.T) {
 					wire = append(wire, 14, byte(len(body)))
 					wire = append(wire, body...)
 				case "nested":
-					wire = append(wire, 15, 3, 15, byte(len(arm)))
+					wire = append(wire, 15, 2, 15, byte(len(arm)))
 					wire = append(wire, arm...)
 				}
 				wire = append(wire, 0)
-				ids := []string{field, a.name}
-				if field == "nested" {
-					ids = append(ids, "selected")
-				}
 				for _, id := range ids {
 					wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId(id))
 				}
