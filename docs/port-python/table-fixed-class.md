@@ -45,6 +45,28 @@
   (`kind_unsupported.py`) until the packet-types card carries them; only a
   table's own fields ride the float kinds here.
 
+### The manifest row
+
+`TestPythonVtFixedClassRows` holds the row's manifest corpus, the same cases
+luatable names: the tabledemo roots (`root_full`, `root_default`,
+`profile_elide`, `loadout_full`, `archive`), the V1/V2 evolution seams
+(`v1_cfg`, `v1_seams`, `v2_cfg`, `v2_seams` and their cross-generation report
+rows), the P1 chain (`chain_value`, `chain_value_empty`), the form-byte
+refusals (`form_zero`, `form_six`, `form_ff`, `message_as_file`) and a
+previous-form wide blob. Each instance is read through the generated fixed
+reader and saves back byte-identical to the canonical wire with its measure
+equal to the file's length, or is refused as the manifest says; a report row
+answers reports.txt's verdict. Both pinned interpreters run every case and must
+agree. `TestPythonVtFixedClassRowsNegativeControl` moves the fixed file's last
+header byte in a copy of the emitted runtime and requires every accepted
+instance row to go red by its own name.
+
+The build-version task's corpus is held by `TestPythonVtFixedClassBuildVersion`
+(every manifest unit's generated package carries the engine's build version),
+`TestPythonVtFixedClassBuildVersionImports` (the exported constant under both
+pins) and its negative control; no runtime change was needed for the row or the
+version, so no new bench numbers are recorded here.
+
 ### Bench
 
 Both saves first check that the root is exactly its generated class (a
