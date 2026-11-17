@@ -223,13 +223,30 @@ fixed table One {
 	if err != nil {
 		t.Fatalf("Generate receiver: %v", err)
 	}
+	// The receiver's build version is not the sender's, so the order is not
+	// judged (docs/rulings.json reads-refuse-non-canonical, §3.3 (b)): the
+	// announcement stores each field once and its slot order is no one
+	// record's order. The engine reads the body, and so does this reader.
+	// Under the receiver's own build version the field it cannot name has no
+	// place in the order at all, and the body is refused.
+	rm := tabletext.NewModel(receiver)
+	var rvocab tablewire.Vocabulary
+	if err := rvocab.AnnounceRead(tablewire.Announce(sender), &modelReport); err != nil {
+		t.Fatalf("read sender announcement: %v", err)
+	}
+	if ok, err := tablewire.DecodeMessage(rm, rm.New(rm.Lookup("One")), bad, &rvocab, &tabletext.Report{}); !ok || err != nil {
+		t.Fatalf("the engine refused the body under another build version: ok=%v err=%v", ok, err)
+	}
 	probe := fmt.Sprintf(`local T = require(%q)
 local inputs = require("inputs")
 local vocab, report = {}, {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report), "sender announcement refused")
 local values = T.LoadMessages("One", vocab, inputs.batch, report)
-if values == nil or #values == 0 then print("refused") else print("read") end
+if values == nil or #values == 0 then print("other=refused") else print("other=read") end
+vocab.buildVersion = T.BuildVersion
+values = T.LoadMessages("One", vocab, inputs.batch, {})
+if values == nil or #values == 0 then print("same=refused") else print("same=read") end
 `, ModuleName(receiver))
 	out, stderr, err := try(t, files, probe, map[string][]byte{
 		"announce": tablewire.Announce(sender),
@@ -238,8 +255,8 @@ if values == nil or #values == 0 then print("refused") else print("read") end
 	if err != nil {
 		t.Fatalf("unknown-field order probe failed: %v\nstderr:\n%s\nstdout:\n%s", err, stderr, out)
 	}
-	if strings.TrimSpace(out) != "refused" {
-		t.Fatalf("LoadMessages = %q, want refusal when an unknown field is out of writer order", strings.TrimSpace(out))
+	if got := strings.Fields(out); len(got) != 2 || got[0] != "other=read" || got[1] != "same=refused" {
+		t.Fatalf("LoadMessages = %q, want other=read (order not judged under another build) and same=refused", strings.TrimSpace(out))
 	}
 }
 

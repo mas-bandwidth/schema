@@ -341,8 +341,8 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 	u := unitFromSource(t, fixedValueDefaultsUnit)
 	c := New()
 	for _, target := range c.Targets() {
-		// Packet types only. The Unity table backend is a named follow-on,
-		// so a fixed table's prefill is not this target's surface.
+		// The Unity table core carries no fixed form and no string, bytes or
+		// flags field yet, so a fixed table's prefill is not its surface.
 		if target == "unity" {
 			continue
 		}
@@ -397,10 +397,6 @@ func TestFX1GeneratesOnEveryLeg(t *testing.T) {
 	u := unitFromSource(t, string(src))
 	c := New()
 	for _, target := range c.Targets() {
-		// Packet types only. The Unity table backend is a named follow-on.
-		if target == "unity" {
-			continue
-		}
 		if _, err := c.Generate(u, target, Options{}); err != nil {
 			t.Errorf("%s refused FX1 (label string(8) = \"fx\"): %v", target, err)
 		}
