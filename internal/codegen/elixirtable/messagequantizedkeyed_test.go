@@ -95,8 +95,10 @@ fixed table Root
 		cfSlot, elixirFloat(want), tokensSlot, alphaRef, gammaRef)
 
 	body := fmt.Sprintf(`    vocab =
-      case M.announce_read(M.announce()) do
-        {:ok, v} -> v
+      with {:ok, v} <- M.announce_read(M.announce()),
+           {:ok, bound} <- M.for_root(v, "Root") do
+        bound
+      else
         other -> raise "announce_read refused: #{inspect(other)}"
       end
 

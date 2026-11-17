@@ -847,7 +847,8 @@ defmodule Driver do
            mod when mod != nil <- message_module(unit),
            table when table != nil <- table_module(unit),
            batch when is_binary(batch) <- Map.get(batches, wire) do
-        {:ok, vocab} = mod.announce_read(File.read!(announcement))
+        {:ok, announced} = mod.announce_read(File.read!(announcement))
+        {:ok, vocab} = mod.for_root(announced, root)
         {:ok, [body]} = mod.load_messages(vocab, File.read!(batch))
         ctx = %{descs: table.descriptors(), vocab: vocab}
 
@@ -1165,6 +1166,7 @@ defmodule Driver do
       Module.concat([Macro.camelize(Map.get(@unit_packages, unit, unit)), "TableMessage"])
 
     if Code.ensure_loaded?(mod) and function_exported?(mod, :announce_read, 1) and
+         function_exported?(mod, :for_root, 2) and
          function_exported?(mod, :load_messages, 2) and function_exported?(mod, :save_messages, 2),
        do: mod,
        else: nil
@@ -1184,8 +1186,9 @@ defmodule Driver do
         {:absent, "unit #{unit} has no TableMessage module"}
 
       mod ->
-        with {:announce_read, {:ok, vocab}} <-
+        with {:announce_read, {:ok, announced}} <-
                {:announce_read, mod.announce_read(File.read!(announcement))},
+             {:for_root, {:ok, vocab}} <- {:for_root, mod.for_root(announced, root)},
              {:load_messages, {:ok, values}} <-
                {:load_messages, mod.load_messages(vocab, File.read!(batch))},
              {:save_messages, {:ok, bytes}} <-
@@ -1390,9 +1393,17 @@ defmodule WriteRefusal do
                do: {:ok, List.replace_at(current, i, v)}
       end
 
+    # a field set to its declared default is left out, as the writer elides it
+    # (docs/SPEC-TABLES.md §3.3)
     case result do
-      {:ok, v} -> {:ok, List.keystore(body, ref, 0, {ref, v})}
-      other -> other
+      {:ok, v} when rest == [] and index == nil and is_map_key(f, :default) and v == f.default ->
+        {:ok, List.keydelete(body, ref, 0)}
+
+      {:ok, v} ->
+        {:ok, in_declaration_order(ctx, desc, List.keystore(body, ref, 0, {ref, v}))}
+
+      other ->
+        other
     end
   end
 
@@ -1461,6 +1472,17 @@ defmodule WriteRefusal do
       nil -> raise "write-refusal: id #{id} is not in the announced vocabulary"
       i -> i + 1
     end
+  end
+
+  # a message body names its fields in declaration order (docs/SPEC-TABLES.md
+  # §3.3): a field the row sets that the body did not carry goes in its place
+  defp in_declaration_order(ctx, desc, body) do
+    order =
+      desc.fields
+      |> Enum.with_index()
+      |> Map.new(fn {f, i} -> {ref_of(ctx.vocab, f.id), i} end)
+
+    Enum.sort_by(body, fn {ref, _} -> Map.get(order, ref, length(desc.fields)) end)
   end
 end
 
@@ -1725,13 +1747,15 @@ defmodule WireFuzz do
   end
 
   # the MESSAGE form's codec, docs/SPEC-TABLES.md §3.3: the unit's announced
-  # vocabulary and the batch verbs load_messages/2, save_messages/2 and
-  # measure_messages/2.
+  # vocabulary, for_root/2 binding it to the root record, and the batch verbs
+  # load_messages/2, save_messages/2 and measure_messages/2 on the bound
+  # vocabulary.
   defp message_codec(unit, _root) do
     mod = Module.concat([Macro.camelize(Driver.unit_package(unit)), "TableMessage"])
 
     if Code.ensure_loaded?(mod) and function_exported?(mod, :announce, 0) and
          function_exported?(mod, :announce_read, 1) and
+         function_exported?(mod, :for_root, 2) and
          function_exported?(mod, :load_messages, 2) and
          function_exported?(mod, :save_messages, 2) and
          function_exported?(mod, :measure_messages, 2),
@@ -1822,7 +1846,8 @@ defmodule WireFuzz do
   defp answer_message(r, wire) do
     with mod when mod != nil <- message_codec(r.unit, r.root),
          tmod when tmod != nil <- file_codec(r.unit, r.root),
-         vocab when vocab != nil <- vocab(mod) do
+         announced when announced != nil <- vocab(mod),
+         {:ok, vocab} <- mod.for_root(announced, r.root) do
       case mod.load_messages(vocab, wire) do
         {:ok, bodies} ->
           tables = tmod.descriptors()

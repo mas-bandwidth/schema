@@ -147,7 +147,8 @@ defmodule Probe do
   end
 
   def run do
-    {:ok, vocab} = M.announce_read(M.announce())
+    {:ok, announced} = M.announce_read(M.announce())
+    {:ok, vocab} = M.for_root(announced, "KeyedConfig")
     batch = Base.decode16!(%[2]q, case: :lower)
     damaged = Base.decode16!(%[3]q, case: :lower)
 

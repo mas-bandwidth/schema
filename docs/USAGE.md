@@ -1821,6 +1821,18 @@ takes an array of values, and a variable table has no message functions at all.
 Message reads allocate nothing. A damaged body can return a partially decoded root, but
 the output count includes only complete bodies.
 
+In Elixir the operations live on `<Package>.TableMessage`: `announce/0`,
+`announce_measure/0` and `announce_read/1,2`, then `for_root/2` binds the
+resolved vocabulary to one fixed root, and `measure_messages/2`,
+`save_messages/2` and `load_messages/2,3` act on the bound vocabulary. Each
+fixed root also has `<root>_measure_messages/2`, `<root>_save_messages/2` and
+`<root>_load_messages/2,3`, which bind and act in one call. On a vocabulary no
+root is bound to, the three batch verbs answer `{:error, :no_root}`, and
+`for_root/2` answers `{:error, :unknown_root}` for a name that is not a fixed
+root. A body is a list of `{reference, value}` pairs in declaration order with
+every field at its default left out; against the unit's own announcement the
+bound write refuses any other body with `{:error, :invalid_value}`.
+
 **What you get.** The three backend messages measured on schema#523 go from
 106, 273 and 104 bytes to 52, 148 and 43, and from 10, 43 and 10 to 3, 11 and 3
 when every field sits at its declared default. Sent as ONE batch under an
