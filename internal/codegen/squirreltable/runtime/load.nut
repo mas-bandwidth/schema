@@ -2100,10 +2100,20 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
       if (rec.tid == STRING_BLOB_ID) {
         local dec = utf8Decode(rec.b, rec.at, rec.end - rec.at);
         if (!dec.ok) { report.bodyDamaged = true; st.nodes.append(null); continue; }
+        // THE TWO RESERVED BLOB IDS ARE TYPES EVERY READER CAN NAME
+        // (docs/SPEC-TABLES.md §3.1): this record is a string record whatever
+        // the root reaches, so a declared *string slot naming it is the right
+        // kind and a *bytes slot is damage. A root with no *string edge cannot
+        // PLACE it, and a record this root cannot place counts unknown (a
+        // newer writer's field this reader does not declare).
+        if (!c.blobString) { report.unknown = report.unknown + 1; if (retain != null) report.retainLost = report.retainLost + 1; }
         st.nodes.append({ kind = "s", s = dec.s, named = false, token = {} });
         continue;
       }
       if (rec.tid == BYTES_BLOB_ID) {
+        // THE SAME RULE FOR *bytes: nameable whatever the root reaches,
+        // placeable only under a root with a *bytes edge.
+        if (!c.blobBytes) { report.unknown = report.unknown + 1; if (retain != null) report.retainLost = report.retainLost + 1; }
         st.nodes.append({ kind = "b", b = rec.b, at = rec.at, end = rec.end, val = null, named = false });
         continue;
       }
