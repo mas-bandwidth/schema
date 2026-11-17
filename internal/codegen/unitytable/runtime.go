@@ -33,6 +33,9 @@ func emitRuntime(u *ir.Unit, orphans []*ir.Struct) []byte {
 		schema.WriteString(k.runtime())
 	}
 	schema.WriteString(wireCheck)
+	if fixedRuntimeNeeded(u) {
+		schema.WriteString(fixedRuntime)
+	}
 	schema.WriteString("}\n")
 	usings := []string{"System", "System.Buffers", "System.Buffers.Binary"}
 	if saves {
@@ -56,9 +59,14 @@ public struct TableReport
     public int Widened;
     public bool Refused;
     public int Reason;
+    // LayoutHash is the file's layout hash on a fixed-form refusal for the
+    // layout (layout_unknown, layout_unsupported), and 0 otherwise.
+    public ulong LayoutHash;
 
     public const int Accepted = 0, WireDamaged = 1, KindMismatch = 2, OutOfRange = 3, MissingRequired = 4,
-        NewerForm = 5, MessageFormAsFile = 6, CountOverExtentCap = 7, BlobShared = 8, NonFiniteFloat = 9;
+        NewerForm = 5, MessageFormAsFile = 6, CountOverExtentCap = 7, BlobShared = 8, NonFiniteFloat = 9,
+        Truncated = 10, PreviousForm = 11, ReservedNotZero = 12, LayoutMalformed = 13, LayoutUnknown = 14,
+        LayoutUnsupported = 15, BatchTooLarge = 16, NoLayout = 17, PlanTooLarge = 18;
 
     // ReasonName is a reason's spelling in §6.5's vocabulary.
     public static string ReasonName(int reason)
@@ -75,6 +83,15 @@ public struct TableReport
             case CountOverExtentCap: return "count_over_extent_cap";
             case BlobShared: return "blob_shared";
             case NonFiniteFloat: return "non_finite_float";
+            case Truncated: return "truncated";
+            case PreviousForm: return "previous_form";
+            case ReservedNotZero: return "reserved_not_zero";
+            case LayoutMalformed: return "layout_malformed";
+            case LayoutUnknown: return "layout_unknown";
+            case LayoutUnsupported: return "layout_unsupported";
+            case BatchTooLarge: return "batch_too_large";
+            case NoLayout: return "no_layout";
+            case PlanTooLarge: return "plan_too_large";
         }
         return "unknown_reason";
     }
