@@ -245,23 +245,18 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 	slots := make(chan struct{}, 4)
 	var wg sync.WaitGroup
 	var driverErr error
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		slots <- struct{}{}
 		defer func() { <-slots }()
 		driverErr = h.buildDriver()
-	}()
+	})
 	unitErrs := make([]error, len(sabotages)+1)
 	for i := 0; i <= len(sabotages); i++ {
 		dir := gen
 		if i > 0 {
 			s := sabotages[i-1]
 			dir = filepath.Join(h.tmp, fmt.Sprintf("planted%d", i))
-			planted := map[string][]byte{}
-			for name, data := range files {
-				planted[name] = data
-			}
+			planted := maps.Clone(files)
 			next := strings.Replace(string(files[s.file]), s.from, s.to, -1)
 			if next == string(files[s.file]) {
 				t.Fatalf("sabotage %s patched nothing in %s", s.name, s.file)
@@ -269,13 +264,11 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 			planted[s.file] = []byte(next)
 			writeFiles(t, dir, planted)
 		}
-		wg.Add(1)
-		go func(i int, dir string) {
-			defer wg.Done()
+		wg.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
 			unitErrs[i] = h.buildUnit(dir, filepath.Join(h.tmp, fmt.Sprintf("units%d", i), "probe"), fmt.Sprintf("u%d", i))
-		}(i, dir)
+		})
 	}
 	wg.Wait()
 	if driverErr != nil {
@@ -485,7 +478,7 @@ func unityTableCorpus(t *testing.T, reader *ir.Unit) []unityTableCase {
 			if st == nil {
 				continue
 			}
-			for i := 0; i < 24; i++ {
+			for i := range 24 {
 				inst := randomInst(m, st, r)
 				if w.name == "narrow-writer" && root == "Toggles" && i%2 == 0 {
 					node := m.New(w.unit.Tables["Node"])
@@ -575,7 +568,7 @@ func unityTableCorpus(t *testing.T, reader *ir.Unit) []unityTableCase {
 
 	// mutants of every seed
 	for _, s := range seeds {
-		for k := 0; k < 6; k++ {
+		for k := range 6 {
 			wire := append([]byte(nil), s.wire...)
 			at := r.IntN(len(wire))
 			wire[at] ^= byte(1 << r.IntN(8))
