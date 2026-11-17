@@ -16,11 +16,11 @@ package rusttable
 //   - variable: a variable-form root over scalar float32/float64, a nested
 //     table, []float32, []float64 and a list of tables;
 //   - fixed: the Go cell's schema, a `fixed table` over a plain type with
-//     bounded float arrays. The Rust fixed RECORD (RootRow, form byte 3) has no
-//     text surface; what a fixed-class unit emits is the variable-form Root
-//     beside it (form byte 1), whose to_json this spelling holds against the
-//     engine. The text of a form-3 record is not carried in Rust and is not
-//     claimed.
+//     bounded float arrays. This probe exercises the legacy form-1 Root value
+//     API beside the fixed RootRow. Its Go oracle uses the same variable-form
+//     twin as TestFixedClassOnTableWireRust; production generation retains the
+//     original fixed declaration. Current form-3 root text/cook behavior has
+//     its own full shared-corpus conformance-rust-fixed-roots gate.
 //
 // Non-finite patterns are redrawn: JSON has no spelling for them and the writer
 // refuses them (§16.3), which the probe also checks. Instance 0 is the
@@ -254,6 +254,12 @@ func runRustTextDifferential(t *testing.T, schema string, rows bool, seeds []uin
 	}
 
 	m := tabletext.NewModel(u)
+	if !rows {
+		// The probe above saves through root_save, the explicit legacy value
+		// API, rather than the form-3 file selector. Match its form in the
+		// independent oracle without changing the generated fixed declaration.
+		m = fcVariableModel(u)
+	}
 	var msgs []string
 	for _, seed := range seeds {
 		dir := filepath.Join(root, fmt.Sprintf("inst-%d", seed))

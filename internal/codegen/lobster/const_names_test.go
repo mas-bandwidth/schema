@@ -35,7 +35,6 @@ func TestLobsterConstNamesNeverShadowGeneratedLocals(t *testing.T) {
 		{"examples", filepath.Join("..", "..", "..", "examples"), "Wire", wireConstNamesProbe},
 		{"wide", filepath.Join("..", "..", "..", "examples128"), "Ludicrous", wideConstNamesProbe},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			runPacketConstNames(t, tc.dir, tc.base, tc.main)
@@ -204,7 +203,7 @@ func generatedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range generatedDefLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				name, _, _ := strings.Cut(fields[0], ":")
@@ -213,7 +212,7 @@ func generatedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range generatedDeclLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				name, _, _ := strings.Cut(fields[0], ":")
@@ -222,7 +221,7 @@ func generatedLocals(t *testing.T, src string) []string {
 		}
 	}
 	for _, m := range generatedForLine.FindAllStringSubmatch(src, -1) {
-		for _, part := range strings.Split(m[1], ",") {
+		for part := range strings.SplitSeq(m[1], ",") {
 			fields := strings.Fields(strings.TrimSpace(part))
 			if len(fields) > 0 {
 				add(fields[0])

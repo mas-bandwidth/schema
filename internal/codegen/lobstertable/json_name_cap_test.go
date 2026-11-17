@@ -134,7 +134,7 @@ func TestLobsterJsonNameCap(t *testing.T) {
 	}
 	out := lobsterrun.Run(t, g.dir, "main.lobster", inputs)
 	got := make(map[string]string, len(rows))
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		name, verdict, ok := strings.Cut(strings.TrimSpace(line), " ")
 		if ok {
 			got[name] = verdict

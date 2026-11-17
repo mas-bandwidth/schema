@@ -549,7 +549,7 @@ func rustPrivateFn(body, name string) string {
 // A disconnected private body must not satisfy the implementation checks.
 func rustFixedLoadRecords(body, name string) string {
 	entry := rustFn(body, name)
-	if !strings.Contains(entry, name+"_records(values, data, plan, remap, report)") {
+	if !strings.Contains(entry, name+"_records(values, data, plan, remap, report, &mut untouched)") {
 		return ""
 	}
 	return rustPrivateFn(body, name+"_records")
@@ -584,7 +584,7 @@ func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 	out := generate(t, valueOnly)
 	body := string(out["probe_fixed.rs"])
 	entry := rustFn(body, "config_fixed_load")
-	if !strings.Contains(entry, "config_fixed_load_records(values, data, plan, remap, report)") {
+	if !strings.Contains(entry, "config_fixed_load_records(values, data, plan, remap, report, &mut untouched)") {
 		t.Fatal("config_fixed_load does not delegate to its record loader")
 	}
 	load := rustPrivateFn(body, "config_fixed_load_records")
@@ -742,7 +742,7 @@ fixed table Fx1
 		t.Error("dest-row writes the named default; the hole is Default, not scatter")
 	}
 	entry := rustFn(fixed, "fx1_fixed_load")
-	if !strings.Contains(entry, "fx1_fixed_load_records(values, data, plan, remap, report)") {
+	if !strings.Contains(entry, "fx1_fixed_load_records(values, data, plan, remap, report, &mut untouched)") {
 		t.Fatal("fx1_fixed_load does not delegate to its record loader")
 	}
 	load := rustPrivateFn(fixed, "fx1_fixed_load_records")

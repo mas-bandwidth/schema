@@ -13,12 +13,12 @@ import (
 )
 
 // TestEveryDefinedControlIsInThePlan is the rule the pull-request leg rests on.
-// The leg's matrix comes out of make/negative-controls.json, and this test holds
-// that file against the Makefile and its includes: a control the makefiles define
-// and the plan does not carry fails here, and so does a control the plan names
-// and no makefile defines. Adding a negative control therefore costs one line in
-// the plan, and forgetting that line is a red test rather than a control that
-// runs nowhere.
+// The leg's matrix comes out of make/negative-controls.json and its entries in
+// make/negative-controls.d, and this test holds that plan against the Makefile
+// and its includes: a control the makefiles define and the plan does not carry
+// fails here, and so does a control the plan names and no makefile defines.
+// Adding a negative control therefore costs one entry file, and forgetting it
+// is a red test rather than a control that runs nowhere.
 func TestEveryDefinedControlIsInThePlan(t *testing.T) {
 	root := testRoot(t)
 	defs, err := enumerate(root)
@@ -37,7 +37,7 @@ func TestEveryDefinedControlIsInThePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, target := range missing {
-		t.Errorf("%s is defined and the pull-request leg does not run it: add it to a group in %s, or to the exclusion list with a reason", target, manifestPath)
+		t.Errorf("%s is defined and the pull-request leg does not run it: add it to a group with a new file %s/%s.json, or to the exclusion list of %s with a reason", target, entriesDir, target, manifestPath)
 	}
 	for _, target := range stale {
 		t.Errorf("%s is named in %s and no makefile defines it: drop the line", target, manifestPath)

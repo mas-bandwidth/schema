@@ -111,6 +111,8 @@ type tableGen struct {
 	retainIndex   string
 	retainArm     bool
 	regional      bool
+	elides        bool   // the field read being emitted is one its writer elides at its default
+	sink          string // the element read's not-at-default flag (canonical.go)
 	armOffset     *int64
 	viewPacket    map[string]int
 	viewUnions    map[string]int
@@ -262,7 +264,7 @@ const (
 // files of its own, so leaving one out is leaving its files out, and what is
 // left is exactly what GenerateLineage emits for the forms that remain.
 func GenerateOmitting(u *ir.Unit, lineage map[string][]FixedLineageEntry, omit Form) (map[string][]byte, error) {
-	out, forms, err := generateForms(u, lineage, DefaultSurfaces())
+	out, forms, err := generateForms(u, lineage, DefaultSurfaces(), true)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +298,7 @@ func GenerateLineageSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 	if err := refuseUndeclaredSurface(u, s); err != nil {
 		return nil, err
 	}
-	out, _, err := generateForms(u, lineage, s)
+	out, _, err := generateForms(u, lineage, s, true)
 	return out, err
 }
 
@@ -419,7 +421,7 @@ func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
 
 // generateForms is the whole output, and the optional form each file belongs
 // to (0 for the core).
-func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces) (map[string][]byte, map[string]Form, error) {
+func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, prune bool) (map[string][]byte, map[string]Form, error) {
 	// the Go escape (SPEC.md §4.6): a table named with a Go word is emitted
 	// under its escaped spelling; a unit without one is returned as it is
 	if esc := goEscapeTables(u); esc != u {
@@ -658,7 +660,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		}
 		maps.Copy(out, view)
 	}
-	return out, forms, goname.RespellFiles(out) // every identifier in Go's initialisms
+	return finishForms(out, forms, u, prune) // every identifier in Go's initialisms
 }
 
 // emitForm assembles one optional form's buffer into its own file, when the
@@ -991,6 +993,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	firstUse    tableFirstUse // the form-1 load's first-use count (canonical.go)
 	// LayoutHash is THE FILE'S hash, set by the layout refusals
 	// (docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
 	// layout.
@@ -1003,7 +1006,7 @@ type TableReport struct {
 // meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
 // OneVerdict).
 func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
-	if r == nil || r.Refusal != TableRefuseOk { return }
+	if r == nil { return }; r.firstUse = tableFirstUse{}; if r.Refusal != TableRefuseOk { return }
 	r.Refusal, r.Field = reason, field
 	if r.Reason == "" { r.Reason = reason.Error(); if field != "" { r.Reason += ": " + field } }
 }
@@ -1057,7 +1060,7 @@ type TableFieldInfo struct {
 	Counted  bool   // a <Name>Count/<Name>Length int32 companion exists
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
+	ArrayMin, ArrayBound int32 // counted minimum; capacity / string max length; 0 otherwise
 	Offset        uint32 // unsafe.Offsetof the storage member
 	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
 	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
@@ -1275,7 +1278,7 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 		}
 	}
 }
-`
+` + tableFirstUseSource
 }
 
 // tableKeyedAccessor is the enum-keyed array's one indexing helper
@@ -1424,9 +1427,12 @@ func GenerateRuntime(u *ir.Unit, lineage map[string][]FixedLineageEntry, rt Runt
 // RuntimeShared, §8.4's default, cuts the shared declarations and aliases them
 // to SharedRuntimeImport.
 func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surfaces, rt Runtime) (map[string][]byte, error) {
-	out, err := GenerateLineageSurface(u, lineage, s)
-	if err != nil || rt == RuntimeStandalone || len(out) == 0 {
+	out, err := generateRuntimeForms(u, lineage, s)
+	if err != nil {
 		return out, err
+	}
+	if rt == RuntimeStandalone || len(out) == 0 {
+		return pruneRuntimeForms(out, u)
 	}
 	sr, err := loadSharedRuntime()
 	if err != nil {
@@ -1467,7 +1473,7 @@ func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 		}
 		out[other] = formatted
 	}
-	return out, nil
+	return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 }
 
 // SharedRuntimeFiles is the shared package's source, keyed by file name.
@@ -1714,7 +1720,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}
-		files, err := GenerateLineage(u, nil)
+		files, _, err := generateForms(u, nil, DefaultSurfaces(), false)
 		if err != nil {
 			return nil, fmt.Errorf("shared runtime probe: %w", err)
 		}

@@ -268,9 +268,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// §5.1): a quantized float past its range is the message form's to
 		// clamp, and the writers hold row 10 where the table says they do.
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		g.csClampBoth(expr, formatFloat32(f.FMin), formatFloat32(f.FMax), ind)
+		g.csCompressedFloat(expr, formatFloat32(f.FMin), formatFloat32(f.FMax), "0.0f", ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.csClampBoth(expr, formatFloat64(f.FMin), formatFloat64(f.FMax), ind)
+		g.csCompressedFloat(expr, formatFloat64(f.FMin), formatFloat64(f.FMax), "0.0", ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -425,6 +425,21 @@ func fixedWriterClampEnds(f *ir.Field, widthBytes int, lo, hi *big.Int) (low, hi
 // count reads the value the wire carried and not the one the clamp just wrote.
 func (g *tableGen) csClampBoth(expr, lo, hi, ind string) {
 	g.csClampBothAs(expr, expr, lo, hi, ind)
+}
+
+// csCompressedFloat is a compressed float's read-side bound (docs/SPEC-TABLES.md
+// §3.3, A COMPRESSED FLOAT'S SPECIAL VALUES): a value below min or above max
+// counts, and a -0 lands as +0, the value 0 itself, keeping no sign bit and
+// counting nothing. A PLAIN float's -0 is carried bit-exact and never reaches
+// this rule. The write check keeps the ordinary refusal bound; only a read
+// canonicalizes, exactly as the reference leg's bounds pass does.
+func (g *tableGen) csCompressedFloat(expr, lo, hi, zero, ind string) {
+	if g.fixedWriteCheck {
+		g.csClampBoth(expr, lo, hi, ind)
+		return
+	}
+	g.pf("%sif (%s < %s || %s > %s) { clamped++; } else if (%s == 0) { %s = %s; }\n",
+		ind, expr, lo, expr, hi, expr, expr, zero)
 }
 
 // csClampBothAs is csClampBoth with the COMPARED operand spelled apart from the

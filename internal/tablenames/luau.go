@@ -32,7 +32,7 @@ var luauModuleKeys = map[string][]string{
 	"schema_cookread.luau":  {"Check", "CheckWhole", "layout", "open"},
 	"schema_fixed.luau":     {"check", "fixed_layout", "load", "loadWalk", "read", "save"},
 	"schema_json.luau":      {"FromJson", "fromJsonWalk", "SetFlags", "ToJson"},
-	"schema_load.luau":      {"ReadStrict", "ReadStrictVariable", "load", "loadWalk", "resetReport"},
+	"schema_load.luau":      {"ReadStrict", "ReadStrictVariable", "load", "loadWalk", "resetReport", "resetWalkCount", "walkCount"},
 	"schema_message.luau": {
 		"AnnounceRead", "LoadMessages", "loadMessagesWalk", "MeasureMessages", "NewVocabulary", "SaveMessages",
 		"announceRead",
@@ -40,7 +40,7 @@ var luauModuleKeys = map[string][]string{
 	"schema_refusal.luau":  {"ReadStrict", "ReadStrictNames"},
 	"schema_retain.luau":   {"LoadRetain", "loadRetainWalk", "SaveRetain"},
 	"schema_save.luau":     {"measure", "save"},
-	"schema_tables.luau":   {"keyed", "knownId", "lookup", "lookupTypeId", "table", "union", "wireIds"},
+	"schema_tables.luau":   {"keyed", "knownId", "lookup", "lookupTypeId", "table", "tableId", "tableIds", "union", "wireIds"},
 	"schema_text.luau":     {"LoadText", "SaveText"},
 	"schema_textform.luau": {"EditTextForm", "LoadTextForm", "SaveTextForm", "SetFlags", "TimestampOK"},
 	"schema_view.luau":     {"UnitView"},

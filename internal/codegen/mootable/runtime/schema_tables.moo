@@ -68,8 +68,8 @@ export type FieldDescriptor = {
 -- A TableDescriptor is one table, map entry, or packet type a table reaches
 -- by value: its node type id (§3.1), its declared class (§2.2), its
 -- integrity trailer when declared (§2.14), what a pointer walk from it may
--- place (§3.1), its fields in declared order, and the constructor of a fresh
--- value.
+-- place (§3.1), the table type ids this unit declares (§3.1), its fields in
+-- declared order, and the constructor of a fresh value.
 export type TableDescriptor = {
 	name: string,
 	id: string,
@@ -80,6 +80,7 @@ export type TableDescriptor = {
 	jsonArray: boolean?,
 	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },
+	declared: { string },
 	fields: { FieldDescriptor },
 	doc: string, -- the declaration's own `///` block, DocNone when none (§8.1)
 	tags: { string }?, -- and its tags, in DECLARED order
@@ -152,6 +153,7 @@ function S.table(d: TableDescriptor): TableDescriptor
 	freezeList(d.tags)
 	table.freeze(d.place.tables :: any)
 	table.freeze(d.place :: any)
+	table.freeze(d.declared :: any)
 	table.freeze(d :: any)
 	register(d.name, d)
 	return d

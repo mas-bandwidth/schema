@@ -102,23 +102,26 @@ table Root {
 	}
 }
 
-// The pinned list_damaged_child_reads_on vector: a damaged first placement ends
-// there, and the list reads on to a later placement carrying non-finite bits,
-// which refuses the read.
+// A duplicate child field refuses wire_damaged. Its separately pinned twin
+// has a valid earlier element and a NaN child, which refuses non_finite_float.
 func TestRustDamagedListFuzzRegression(t *testing.T) {
-	slowtest.Gate(t, "rustc (preserved damaged-list fuzz input)")
+	slowtest.Gate(t, "rustc (damaged and non-finite list child controls)")
 	keyedRequireRustc(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
 	u := generateUnit(t, repo, []string{"tables/lists"})
-	wire, err := os.ReadFile(filepath.Join(repo, "testdata/wire/tables/fuzz-vectors/list_damaged_child_reads_on.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := fmt.Sprintf(`for retaining in [false,true] {let wire=vec!%s;let mut report=TableReport::default();let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };let result=if retaining {save_load_retain(&wire,&mut store,&mut report)} else {save_load(&wire,&mut report)};assert!(result.is_none() && report.refused && !report.non_finite_float.is_empty(),"retaining={} {:?}",retaining,report);assert!(store.bytes.is_empty() && store.ids.is_empty());}`, rustByteVector(wire))
-	if out, err := rustConstructProbe(t, u, body); err != nil {
-		t.Fatalf("native: %v\n%s", err, out)
+	for _, tc := range []struct{ name, reason string }{{"list_damaged_child_reads_on", "WireDamaged"}, {"list_nan_child", "NonFiniteFloat"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			wire, err := os.ReadFile(filepath.Join(repo, "testdata/wire/tables/fuzz-vectors", tc.name+".bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := fmt.Sprintf(`for retaining in [false,true] {let wire=vec!%s;let mut report=TableReport::default();let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };let result=if retaining {save_load_retain(&wire,&mut store,&mut report)} else {save_load(&wire,&mut report)};assert!(result.is_none() && report.err() == Some(TableReason::%s),"retaining={} {:?}",retaining,report);assert!(store.bytes.is_empty() && store.ids.is_empty());}`, rustByteVector(wire), tc.reason)
+			if out, err := rustConstructProbe(t, u, body); err != nil {
+				t.Fatalf("native: %v\n%s", err, out)
+			}
+		})
 	}
 }

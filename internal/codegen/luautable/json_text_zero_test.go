@@ -22,7 +22,8 @@ import (
 // map[string(8)]int32 key and a map[int32]int32 key, with the zero at the
 // front, middle and end. A `\u0001` control in the same place reads clean and
 // round-trips, and a zero the read only SKIPS (an unknown key's value, or an
-// object key naming no field) is not the event.
+// object key naming no field) refuses too: a skipped string is held to the
+// text rules of a placed one (docs/SPEC-TABLES.md §16.3).
 //
 // Every expected verdict, reason, wire and text comes from schema-go's own
 // engine (internal/tabletext and internal/tablewire) over the same unit,
@@ -131,7 +132,8 @@ table Root
 		}
 	}
 
-	// a zero the read only SKIPS stores nothing and is not the event
+	// a zero the read only SKIPS is held to the placed-value text rule and
+	// refuses the read (docs/SPEC-TABLES.md §16.3)
 	skipped := []string{
 		strings.TrimSuffix(base, "}") + `,"zz":"a\u0000b"}`,
 		strings.TrimSuffix(base, "}") + `,"t\u0000":"x"}`,
@@ -139,28 +141,12 @@ table Root
 	for _, text := range skipped {
 		inst := model.New(st)
 		var rep tabletext.Report
-		if !model.Read(inst, []byte(text), &rep) || rep.Refused || rep.Unknown != 1 {
-			t.Fatalf("%s: the Go reference did not skip the zero (%+v)", text, rep)
-		}
-		wantText, err := model.Write(inst)
-		if err != nil {
-			t.Fatalf("%s: the Go reference ToJson: %v", text, err)
-		}
-		wantWire, err := tablewire.Encode(model, inst)
-		if err != nil {
-			t.Fatalf("%s: the Go reference wire: %v", text, err)
+		if model.Read(inst, []byte(text), &rep) || !rep.Refused {
+			t.Fatalf("%s: the Go reference did not refuse the skipped zero (%+v)", text, rep)
 		}
 		got := runJsonTextZeroProbe(t, g, text)
-		if got.malformed || got.reason != "" || got.unknown != rep.Unknown {
-			t.Errorf("%s: Luau reports malformed=%v reason=%q unknown=%d, want a clean read with unknown=%d",
-				text, got.malformed, got.reason, got.unknown, rep.Unknown)
-			continue
-		}
-		if got.text != hexBytes(append(wantText, '\n')) {
-			t.Errorf("%s: Luau ToJson is %s, want %s", text, got.text, hexBytes(append(wantText, '\n')))
-		}
-		if got.wire != hexBytes(wantWire) {
-			t.Errorf("%s: Luau Save is %s, want %s", text, got.wire, hexBytes(wantWire))
+		if !got.malformed {
+			t.Errorf("%s: Luau reports malformed=%v reason=%q, want a refusal", text, got.malformed, got.reason)
 		}
 	}
 }

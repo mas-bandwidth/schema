@@ -51,6 +51,16 @@ var (
 // conformance row names it rather than restating the version.
 const dotnetPinFile = ".github/dotnet-version"
 
+// The Unity dialect (test/unity/UnityDialect.props): the one property file a
+// library imports to compile generated Unity code, and the framework it must
+// then target.
+const (
+	unityDialectProps = "UnityDialect.props"
+	unityTFM          = "netstandard2.1"
+)
+
+var unityDialect = regexp.MustCompile(`<Import\s+Project="[^"]*/UnityDialect\.props"\s*/>`)
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs("../..")
@@ -190,6 +200,17 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 			return nil
 		}
 		projects++
+		// A library compiled in the Unity dialect targets the surface Unity
+		// exposes, netstandard2.1, not the SDK pin (docs/UNITY.md); the pinned
+		// SDK builds it, and its .NET host beside it targets the pin.
+		if unityDialect.MatchString(string(src)) {
+			for _, m := range found {
+				if got := strings.TrimSpace(m[1]); got != unityTFM {
+					t.Errorf("%s imports %s and targets %s: a Unity dialect library targets %s", rel, unityDialectProps, got, unityTFM)
+				}
+			}
+			return nil
+		}
 		for _, m := range found {
 			if got := strings.TrimSpace(m[1]); got != want {
 				t.Errorf("%s targets %s while %s pins %s: certification would run on an SDK no workflow installs (issue #470)", rel, got, dotnetPinFile, pin)
@@ -444,8 +465,22 @@ func TestModernizeRunsOnEveryPullRequest(t *testing.T) {
 	if strings.Contains(cond, "full-ci") {
 		t.Errorf("ci-fast.yml's lint-fast job gates on the full-ci label (%q): a pull request into fixed-table-form skips it, so a modernize red lands with nothing able to see it until the push (issue #1424)", cond)
 	}
-	if !strings.Contains(body, "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@") {
+	// the fast lane runs the fleet's installed v0.23.0 binary (a `go run` build
+	// of the tool ran past the two-minute cap); ci-full.yml's pin is the same
+	// version, and a runner without the binary is a loud red, never a skip
+	lint := yamlJobs(body)["lint-fast"]
+	if !strings.Contains(lint, "- name: modernize") || !strings.Contains(lint, "modernize ./...") {
 		t.Error("ci-fast.yml's lint-fast no longer carries the modernize step — it must run on every pull request, as ci-full.yml's lint job runs it on the push (issue #1424)")
+	}
+	if !strings.Contains(lint, `modernize-0\.23\.0/`) || !strings.Contains(lint, "tool missing: modernize 0.23.0") {
+		t.Error("ci-fast.yml's modernize step must refuse, by name, a runner whose modernize is not the pinned v0.23.0")
+	}
+	full, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-full.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(full), "modernize/cmd/modernize@v0.23.0") {
+		t.Error("ci-full.yml's modernize pin is not v0.23.0, the version ci-fast.yml's fleet binary is held to: bump both together")
 	}
 }
 
@@ -1124,7 +1159,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1205,7 +1240,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1332,6 +1367,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
+		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
@@ -1341,6 +1377,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
 		"ci-full.yml:cpp-lock",
@@ -1358,6 +1395,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:pr-select",
 		"ci-full.yml:proof",
 		"ci-full.yml:shape-gate",
+		"ci-full.yml:unity",
 		"ci-full.yml:vuln",
 		"cla.yml:caa",
 		"leg.yml:leg-matrix",
@@ -1369,8 +1407,10 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
 		"promotion-tag.yml:tag",
+		"python-leg.yml:plan",
 		"python-leg.yml:test",
 		"release.yml:release",
+		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",
