@@ -2,6 +2,7 @@ package gotable
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -18,6 +19,9 @@ fixed table Root {
  elems [2]int32 | min = 0, max = 10
  pick Pick
  items [2..3]int32
+ wide int128 | min = 0, max = 100
+ fix fixed(48, 16) | min = -10, max = 10
+ ufix ufixed(48, 16) | min = 0, max = 10
 }`
 
 // Every value-taking writer and measure agrees with the engine. A refusal
@@ -56,6 +60,16 @@ func TestGoWritersHoldRangeAndCountMin(t *testing.T) {
 		{"count on min", "v.ItemsCount=2", true, func(v *tabletext.Instance) { field(v, "items").Count = 2 }},
 		{"count past max", "v.ItemsCount=4", false, func(v *tabletext.Instance) { field(v, "items").Count = 4 }},
 		{"count on max", "v.ItemsCount=3", true, func(v *tabletext.Instance) { field(v, "items").Count = 3 }},
+		{"int128 high", "v.Wide=serialize.Int128From64(101)", false, func(v *tabletext.Instance) { field(v, "wide").Cell.Wide = big.NewInt(101) }},
+		{"int128 max", "v.Wide=serialize.Int128From64(100)", true, func(v *tabletext.Instance) { field(v, "wide").Cell.Wide = big.NewInt(100) }},
+		{"int128 low", "v.Wide=serialize.Int128From64(-1)", false, func(v *tabletext.Instance) { field(v, "wide").Cell.Wide = big.NewInt(-1) }},
+		{"int128 min", "v.Wide=serialize.Int128From64(0)", true, func(v *tabletext.Instance) { field(v, "wide").Cell.Wide = big.NewInt(0) }},
+		{"fixed high", "v.Fix=(10<<16)+1", false, func(v *tabletext.Instance) { field(v, "fix").Cell.Wide = big.NewInt((10 << 16) + 1) }},
+		{"fixed max", "v.Fix=10<<16", true, func(v *tabletext.Instance) { field(v, "fix").Cell.Wide = big.NewInt(10 << 16) }},
+		{"fixed low", "v.Fix=(-10<<16)-1", false, func(v *tabletext.Instance) { field(v, "fix").Cell.Wide = big.NewInt((-10 << 16) - 1) }},
+		{"fixed min", "v.Fix=-(10<<16)", true, func(v *tabletext.Instance) { field(v, "fix").Cell.Wide = big.NewInt(-(10 << 16)) }},
+		{"ufixed high", "v.Ufix=(10<<16)+1", false, func(v *tabletext.Instance) { field(v, "ufix").Cell.Wide = big.NewInt((10 << 16) + 1) }},
+		{"ufixed max", "v.Ufix=10<<16", true, func(v *tabletext.Instance) { field(v, "ufix").Cell.Wide = big.NewInt(10 << 16) }},
 	}
 	oldUnit := unitOf(t, strings.Replace(writerRangeMinSchema, "[2..3]", "[..3]", 1))
 	oldModel := tabletext.NewModel(oldUnit)
@@ -86,7 +100,7 @@ func TestGoWritersHoldRangeAndCountMin(t *testing.T) {
 		rows = append(rows, fmt.Sprintf("{%q,%v,func(v *Root){%s}},", c.name, c.reads, c.edit))
 	}
 	probe := `package probe
-import("bytes";"encoding/binary";"reflect";"testing")
+import("bytes";"encoding/binary";"reflect";"testing";serialize "github.com/mas-bandwidth/serialize.go/v2")
 func baseline() Root {var v Root;RootReset(&v);v.Ru=1;v.Pick.Type=PickTypeAmount;v.ItemsCount=2;v.Items[0]=3;v.Items[1]=4;return v}
 func TestEveryWriter(t *testing.T){
  t.Parallel()

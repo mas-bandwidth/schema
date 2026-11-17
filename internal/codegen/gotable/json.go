@@ -982,7 +982,7 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 			if value < f.RangeUintMin || value > f.RangeUintMax { return false }
 		}
 	}
- if f.Kind>=18 && f.Kind<=29 {if tableJSONWideIntegerKind(f.Kind){out.put('"')};tableJSONWriteWide(out,storage,f);if tableJSONWideIntegerKind(f.Kind){out.put('"')};return true}
+ if f.Kind>=18 && f.Kind<=29 {if !tableJSONWideInContract(storage,f){return false};if tableJSONWideIntegerKind(f.Kind){out.put('"')};tableJSONWriteWide(out,storage,f);if tableJSONWideIntegerKind(f.Kind){out.put('"')};return true}
  if f.Kind==36 {return tableJSONWriteTimestamp(out,storage)}
 	if f.Arms != nil {
 		// a union is an object with ONE key, the arm's name; None is {}
