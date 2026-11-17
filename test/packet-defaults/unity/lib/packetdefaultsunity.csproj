@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The generated units this harness drives, in the Unity dialect
+       (test/unity/UnityDialect.props). -->
+  <Import Project="../../../unity/UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>packetdefaultsunity</AssemblyName>
+    <DefaultsDir Condition="'$(DefaultsDir)' == ''">$(MSBuildThisFileDirectory)../../../../build/packet-defaults/unity/defaults</DefaultsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(DefaultsDir)/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../../../build/packet-defaults/unity/plain/*.cs" />
+  </ItemGroup>
+
+</Project>
