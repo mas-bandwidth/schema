@@ -1030,6 +1030,12 @@ public final class TableVariable {
             if (at < 0) {
                 return DAMAGED;
             }
+            // AN EMPTY NODE TABLE IS NOT THE ONE ENCODING (§3.1): a writer
+            // reaching no node writes none of them, and one reaching any writes
+            // at least one record.
+            if (declared == 0) {
+                return DAMAGED;
+            }
             off = at;
             // a record is three bytes at the least, so the walk is bounded by
             // the node table's own length whatever count it declares
@@ -1184,11 +1190,17 @@ public final class TableVariable {
             }
             // then each payload
             p = off;
+            boolean nodeTableSeen = false;
             while (true) {
                 long ref = leb(p, end);
                 p = at;
                 if (ref == 0) {
                     return true;
+                }
+                // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a writer
+                // appends it after the root's own fields, before the terminator.
+                if (nodeTableSeen) {
+                    return damage();
                 }
                 use(ref);
                 long id = ids[(int) ref - 1];
@@ -1206,6 +1218,7 @@ public final class TableVariable {
                     table[0] = at;
                     table[1] = at + (int) n;
                     p = table[1];
+                    nodeTableSeen = true;
                     continue;
                 }
                 p = payload(p, end, kind);

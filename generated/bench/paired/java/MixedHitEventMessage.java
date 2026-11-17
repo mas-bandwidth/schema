@@ -74,6 +74,7 @@ public final class MixedHitEventMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, MixedHitEventFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -90,6 +91,11 @@ public final class MixedHitEventMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xb7bc9ac0 && idLo == 0x15a25050) {
+                if (0 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 7 || elemKind != 0) {
@@ -104,6 +110,7 @@ public final class MixedHitEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v1 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 12);
                     if (r.err) {
@@ -112,10 +119,23 @@ public final class MixedHitEventMessage {
                     }
                     v.targetId = (int) (v1);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.targetId != 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7f6308be && idLo == 0x8ab37fc0) {
+                if (1 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 1;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -130,6 +150,7 @@ public final class MixedHitEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v2 = TableMessage.readSigned(r, entry.shape, 0L, 4095L, true);
                     if (r.err) {
@@ -138,10 +159,23 @@ public final class MixedHitEventMessage {
                     }
                     v.damage = (int) (v2);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.damage != 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x01fbc365 && idLo == 0xb059b925) {
+                if (2 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 2;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -156,6 +190,7 @@ public final class MixedHitEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v3 = TableMessage.readSigned(r, entry.shape, 0L, 7L, true);
                     if (r.err) {
@@ -164,10 +199,23 @@ public final class MixedHitEventMessage {
                     }
                     v.hitKind = (int) (v3);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.hitKind != 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x12616790 && idLo == 0x8c9aa52d) {
+                if (3 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 3;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 1 || elemKind != 0) {
@@ -182,6 +230,7 @@ public final class MixedHitEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v4 = r.get(1);
                     if (r.err) {
@@ -190,10 +239,22 @@ public final class MixedHitEventMessage {
                     }
                     v.crit = (v4 != 0L);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.crit != false)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.damaged = true;
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;
