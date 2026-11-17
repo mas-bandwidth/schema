@@ -89,7 +89,7 @@ func TestGoPointerTargetBlobKindRefused(t *testing.T) {
 	t.Run("negative control: an unchecked target type goes red on the three closure witness rows", func(t *testing.T) {
 		t.Parallel()
 		out, err := runGeneratedUnit(t, witnessUnit, blobKindProbe(witnessUnit.Package, witnesses), plantGenerated(t, "the target-type check removed",
-			`if e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"");return}`, `if false{return}`), "-v")
+			"if e.TypeID != target {", "if false {"), "-v")
 		if err == nil {
 			t.Fatalf("NEGATIVE CONTROL FAILED: an unchecked target type left the gate green\n%s", out)
 		}
@@ -408,14 +408,14 @@ func blobKindCleanReadBack(m *tabletext.Model, root string, wire []byte) []strin
 // declared slot naming it reads null and the record counts unknown.
 func plantRootClosureBlobRule(t *testing.T) func(map[string][]byte) {
 	return plantGenerated(t, "the root-closure blob rule",
-		"{directory[k]=TableNodeDirEntry{tableNodeBlobAway,id}}", "{directory[k].TypeID=0}")
+		"directory[k] = TableNodeDirEntry{tableNodeBlobAway, id}", "directory[k].TypeID = 0")
 }
 
 // plantOrphanBlobAccepted edits a copy of the generated reader so a blob
 // record no pointer names passes the load's walk.
 func plantOrphanBlobAccepted(t *testing.T) func(map[string][]byte) {
 	return plantGenerated(t, "the orphan blob refusal removed",
-		"if e.Offset&tableNodeBlobSeen==0{return TableRefuseWireDamaged}", "if false{return TableRefuseWireDamaged}")
+		"if e.Offset&tableNodeBlobSeen == 0 {", "if false {")
 }
 
 func plantGenerated(t *testing.T, what, from, to string) func(map[string][]byte) {
