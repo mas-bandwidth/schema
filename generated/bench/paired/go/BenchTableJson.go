@@ -580,6 +580,9 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		}
 	}
 	if f.Kind >= 18 && f.Kind <= 29 {
+		if !tableJSONWideInContract(storage, f) {
+			return false
+		}
 		if tableJSONWideIntegerKind(f.Kind) {
 			out.put('"')
 		}
@@ -2594,6 +2597,14 @@ func (v tableJSONWide) fraction(n int) tableJSONWide {
 		v[1] &= uint64(1)<<(n-64) - 1
 	}
 	return v
+}
+func tableJSONWideInContract(storage unsafe.Pointer, f *TableFieldInfo) bool {
+	if !f.WideRange {
+		return true
+	}
+	signed := tableJSONWideSigned(f.Kind)
+	v := tableJSONWideLoad(storage, f.ElemSize, signed)
+	return v.cmp(tableJSONWide(f.WideMin), signed) >= 0 && v.cmp(tableJSONWide(f.WideMax), signed) <= 0
 }
 func tableJSONWriteWide(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo) {
 	signed := tableJSONWideSigned(f.Kind)
