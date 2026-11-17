@@ -17,7 +17,7 @@ printf '%s\n' "$support" | while IFS= read -r target; do
     # Group matching compiler tests into deterministic namespace shards.
     # Keep the local/nightly aggregate, but bound every per-commit row.
     listed=$(go test -tags schema_leg_python -list Python ./compiler)
-    names=$(printf '%s\n' "$listed" | { grep -E '^(Test|Example|Fuzz)[A-Za-z0-9_]*$' || true; })
+    names=$(printf '%s\n' "$listed" | awk '/^(Test|Example|Fuzz)[A-Za-z0-9_]*$/ { print }')
     [ -n "$names" ] || { echo "no Python compiler tests discovered" >&2; exit 1; }
     selected=$(printf '%s\n' "$names" | while IFS= read -r test; do
       if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$support" | grep -qx python-ci-required-shape-0; then
@@ -43,7 +43,7 @@ while IFS= read -r package; do
   corpus=false
   case "$package" in */internal/codegen/pythontable|*/internal/codegen/pythontable/*) corpus=true ;; esac
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
-  names=$(printf '%s\n' "$tests" | { grep -E '^(Test|Example|Fuzz)[A-Za-z0-9_]*$' || true; })
+  names=$(printf '%s\n' "$tests" | awk '/^(Test|Example|Fuzz)[A-Za-z0-9_]*$/ { print }')
   # These fixed proof tests are delegated to the support row shards above.
   # Keeping a monolithic parent in an automatic package shard would
   # still hit the two-minute limit. New test names remain auto-discovered.

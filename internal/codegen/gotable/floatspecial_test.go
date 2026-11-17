@@ -494,9 +494,10 @@ func TestVar(t *testing.T) {
 // A HAND-BUILT WIRE: one float payload flipped to a special value, in every
 // float position of both classes — a float32 field, a float64 field, a
 // counted array's element, a fixed array's element and a union arm. A finite
-// value lands as its bits, except a +0 that leaves a field (or a whole fixed
-// array) at its declared default: that spelling no writer produces, so the
-// read refuses it. A NaN or an infinity is refused by the tolerant read, the
+// value lands as its bits; a +0 that leaves a field (or a whole fixed array)
+// at its declared default lands too, and rewrites as the current writer's
+// bytes, which elide it (docs/rulings.json reads-refuse-non-canonical, the
+// 2026-11-15 compatibility correction). A NaN or an infinity is refused by the tolerant read, the
 // strict read and the builder read alike, naming its own field, and lands
 // nothing.
 func TestFlippedPayload(t *testing.T) {
@@ -542,8 +543,28 @@ func TestFlippedPayload(t *testing.T) {
 			b.Shutdown()
 			if c.finite {
 				if c.b32 == 0 && c.b64 == 0 && s.elidesZero {
-					if ok || strictErr == nil || vErr == nil || bok {
-						t.Errorf("flip %s %s: ok %v strict %v var strict %v builder %v %+v; want the refusal at a field's declared default", s.field, c.name, ok, strictErr, vErr, bok, brep)
+					// form 1 carries no writer build or Required/optional
+					// declaration, so a field stored at its declared default
+					// reads, and rewrites as the current writer's bytes
+					if !ok || s.bits(&got) != 0 || strictErr != nil || vErr != nil || !bok {
+						t.Errorf("flip %s %s: ok %v landed %#x strict %v var strict %v builder %v %+v; want the declared default to land", s.field, c.name, ok, s.bits(&got), strictErr, vErr, bok, brep)
+						continue
+					}
+					var r0 Root
+					RootReset(&r0)
+					rwant := make([]byte, rootForm1Measure(&r0))
+					rootForm1Save(&r0, rwant)
+					ragain := make([]byte, rootForm1Measure(&got))
+					if rootForm1Save(&got, ragain) != int64(len(ragain)) || !bytes.Equal(ragain, rwant) || bytes.Equal(ragain, wire) {
+						t.Errorf("flip %s %s: root rewrite %x, want the current writer's bytes %x (stored %x)", s.field, c.name, ragain, rwant, wire)
+					}
+					var v0 Var
+					VarReset(&v0)
+					vwant := make([]byte, VarMeasure(&v0))
+					VarSave(&v0, vwant)
+					vagain := make([]byte, VarMeasure(vstrict))
+					if VarSave(vstrict, vagain) != int64(len(vagain)) || !bytes.Equal(vagain, vwant) || bytes.Equal(vagain, vwire) {
+						t.Errorf("flip %s %s: var rewrite %x, want the current writer's bytes %x (stored %x)", s.field, c.name, vagain, vwant, vwire)
 					}
 					continue
 				}

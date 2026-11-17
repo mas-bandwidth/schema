@@ -429,6 +429,12 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 			}
 		}
 		g.messageAccept(f, ir.TableFieldEntry(f), " ")
+		if ir.TableWireScalarKind(f) == tkUnion && f.Array == ir.ArrayNone && f.KeyEnum == "" && !st.IsMapEntry() {
+			// §3.3(c): a writer elides a union FIELD at None at every build, so
+			// arm reference 0 stored at one is refused whatever build announced
+			// it. A None element of an array of unions is positional and reads.
+			g.pf(" {TableBitReader arm=r->bits;uint64_t arm_ref=0;if(!table_bit_get(&arm,&arm_ref,r->vocabulary->ref_bits)||arm_ref==0)goto damaged;}\n")
+		}
 		dst, count := "value->"+f.Name, "value->"+f.Name+"_count"
 		if f.Array == ir.ArrayNone {
 			count = "value->" + f.Name + "_length"

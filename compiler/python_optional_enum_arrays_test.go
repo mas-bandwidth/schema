@@ -70,7 +70,10 @@ print("ok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := "    if value < 0 or value > len(fd.variant_ids):\n"
+	// The variant check is the descriptor's value-to-wire-id dict
+	// (docs/port-python/table-idtable.md); without it the save's own lookup
+	// of the unnamed value misses with a KeyError.
+	before := "    if value != 0 and value not in fd.wire_of:\n"
 	if !strings.Contains(string(src), before) {
 		t.Fatal("enum negative control target missing")
 	}
@@ -78,7 +81,7 @@ print("ok")
 		t.Fatal(err)
 	}
 	_, stderr, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)
-	if err == nil || !strings.Contains(stderr, "IndexError") {
+	if err == nil || !strings.Contains(stderr, "KeyError") {
 		t.Fatalf("enum negative control did not fail: %v\n%s", err, stderr)
 	}
 }

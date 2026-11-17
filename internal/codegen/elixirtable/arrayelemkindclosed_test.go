@@ -62,9 +62,11 @@ end
 		if _, err := os.Stat(wire); err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
+		// Scene has table pointers, so a lawful load's value is the root plus
+		// its node directory.
 		fmt.Fprintf(&probe, `
 case Graphdemo.Table.load("Scene", File.read!(%q)) do
-  {:ok, value, %%{reason: ""}} when is_map(value) -> ElemKindProbe.check(%t, %q <> ": read, want refused")
+  {:ok, {root, nodes}, %%{reason: ""}} when is_map(root) and is_tuple(nodes) -> ElemKindProbe.check(%t, %q <> ": read, want refused")
   {:error, _why, %%{reason: reason}} when reason != "" -> ElemKindProbe.check(%t, %q <> ": refused, want read")
   other -> ElemKindProbe.check(false, %q <> ": unexpected " <> inspect(other, limit: 8))
 end

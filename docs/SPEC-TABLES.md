@@ -20273,10 +20273,13 @@ that data the same way"* / *"and each implementation MUST write out the exact
 same bytes, so there needs to be some specification for how iteration is done
 on write, and in what order etc. that is cross language."*
 
-The reader-side sections now hold a writer to one order rather than leave it
-free: field order inside a body and the id table's first-use order are part of
-the READ contract (§3), and a body or a table out of them is refused, not
-re-encoded. **A CONFORMING WRITER HAS NO
+A writer emits a body's fields in the WRITING build's declaration order
+(§22.2). A variable-file reader checks observable first-use ID order and
+rejects duplicate fields within a body; it does not compare body field order
+with its own declaration (§3). A message reader compares field references
+with its own declaration order only under a matching full announced shape
+and build version (§3.3(b)). Lawful file reordering remains a rewrite case
+(§22.7). **A CONFORMING WRITER HAS NO
 FREEDOM AT ALL**: every spelling a reader refuses is pinned below
 to one answer, so a value has one canonical byte string per form, and two
 implementations that follow this section produce it byte for byte. Each step

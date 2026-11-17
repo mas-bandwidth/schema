@@ -6653,6 +6653,10 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_load_message_body(tabledemo_tab
  if(!tabledemo_table_message_skip(r,entry))goto damaged;
  break;
  }}
+ {tabledemo_table_bit_reader_t arm=r->bits;
+ uint64_t arm_ref=0;
+ if(!tabledemo_table_bit_get(&arm,&arm_ref,r->vocabulary->ref_bits)||arm_ref==0)goto damaged;
+ }
  if(!schema_tabledemo_effect_wire_message_load_(r,&value->effect))return 0;
  if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
  tabledemo_table_bit_writer_t default_writer=tabledemo_table_bit_writer(NULL,INT64_MAX);
