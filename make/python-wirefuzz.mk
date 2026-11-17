@@ -6,7 +6,7 @@
 # the CI planner to schedule the two pins, modes and arms independently.
 PYTHON_WIRE_FUZZ_DIR ?= build/python-wirefuzz
 PYTHON_WIRE_FUZZ_ROWS := $(foreach pin,current floor,$(foreach mode,normal dev,$(foreach arm,plain mixed retain,python-wirefuzz-$(pin)-$(mode)-$(arm))))
-PYTHON_WIRE_FUZZ_CI_SHARDS := 0 1 2 3
+PYTHON_WIRE_FUZZ_CI_SHARDS := 0 1 2 3 4 5 6 7
 PYTHON_WIRE_FUZZ_CI_ROWS := $(foreach row,$(PYTHON_WIRE_FUZZ_ROWS),$(foreach shard,$(PYTHON_WIRE_FUZZ_CI_SHARDS),$(row)-shard-$(shard)))
 .PHONY: $(PYTHON_WIRE_FUZZ_ROWS) $(PYTHON_WIRE_FUZZ_CI_ROWS)
 python-wirefuzz-ci-list:
@@ -24,8 +24,9 @@ python-wirefuzz-$(1)-$(2)-$(3): build/conformance-harness build/conformance-pyth
 endef
 $(foreach pin,current floor,$(foreach mode,normal dev,$(foreach arm,plain mixed retain,$(eval $(call python_wirefuzz_row,$(pin),$(mode),$(arm))))))
 
-# CI splits each original stream by stable mutant index into four shards, so
-# each row stays inside the two-minute per-commit bound. Every shard retains
+# CI splits each original stream by stable mutant index into eight shards, so
+# each row stays well inside the two-minute per-commit bound (at four shards
+# the slowest row took 106 s on a fleet runner). Every shard retains
 # the full roster and original N and seed; the support plan requires each one.
 define python_wirefuzz_ci_shard
 python-wirefuzz-$(1)-$(2)-$(3)-shard-$(4): build/conformance-harness build/conformance-python python-toolchain-check

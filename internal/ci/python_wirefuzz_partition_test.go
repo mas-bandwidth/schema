@@ -3,14 +3,16 @@ package ci
 import (
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// The 48 real support rows replace only the expensive omnibus; focused
-// pipe and planted control tests must remain in the discovered package shards.
+// The 96 real support rows (twelve interpreter, mode and arm streams, eight
+// shards each) replace only the expensive omnibus; focused pipe and planted
+// control tests must remain in the discovered package shards.
 func TestPythonCIWireFuzzStandalonePartition(t *testing.T) {
 	slowtest.Gate(t, "Python wire-fuzz CI plan")
 	out := pythonCIPlan(t)
@@ -25,8 +27,8 @@ func TestPythonCIWireFuzzStandalonePartition(t *testing.T) {
 	for _, pin := range []string{"current", "floor"} {
 		for _, mode := range []string{"normal", "dev"} {
 			for _, arm := range []string{"plain", "mixed", "retain"} {
-				for _, shard := range []string{"0", "1", "2", "3"} {
-					want["python-wirefuzz-"+pin+"-"+mode+"-"+arm+"-shard-"+shard] = 0
+				for shard := range 8 {
+					want["python-wirefuzz-"+pin+"-"+mode+"-"+arm+"-shard-"+strconv.Itoa(shard)] = 0
 				}
 			}
 		}
