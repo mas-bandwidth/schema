@@ -911,7 +911,8 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !RangedSignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !RangedSignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -2668,7 +2669,8 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !RangedUnsignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !RangedUnsignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -3935,7 +3937,8 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !RangedWidthsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !RangedWidthsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -4968,10 +4971,10 @@ func RangedSignedFixedMeasure(count int64) int64 {
 }
 
 // RangedSignedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func RangedSignedFixedSave(values []RangedSigned, buffer []byte) int64 {
 	need := RangedSignedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5090,6 +5093,11 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5274,10 +5282,10 @@ func RangedUnsignedFixedMeasure(count int64) int64 {
 }
 
 // RangedUnsignedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func RangedUnsignedFixedSave(values []RangedUnsigned, buffer []byte) int64 {
 	need := RangedUnsignedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5396,6 +5404,11 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5542,10 +5555,10 @@ func RangedWidthsFixedMeasure(count int64) int64 {
 }
 
 // RangedWidthsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func RangedWidthsFixedSave(values []RangedWidths, buffer []byte) int64 {
 	need := RangedWidthsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5664,6 +5677,11 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5704,7 +5722,7 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 // RangedSignedTableFields is RangedSigned's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var RangedSignedTableFields = []TableFieldInfo{
 	{Name: "i8_span", JSON: "i8_span", TypeName: "int8", DeclaredTypeName: "int8", ID: 0x48121511bf702eb5, Kind: 2, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -128.0, RangeMax: 127.0, RangeIntMin: -128, RangeIntMax: 127, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5716,7 +5734,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i8_low", JSON: "i8_low", TypeName: "int8", DeclaredTypeName: "int8", ID: 0x942bfe3168090f7d, Kind: 2, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -128.0, RangeMax: 126.0, RangeIntMin: -128, RangeIntMax: 126, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5728,7 +5746,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i8_high", JSON: "i8_high", TypeName: "int8", DeclaredTypeName: "int8", ID: 0xd182acd105b55dd1, Kind: 2, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 2, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -127.0, RangeMax: 127.0, RangeIntMin: -127, RangeIntMax: 127, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5740,7 +5758,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i8_inside", JSON: "i8_inside", TypeName: "int8", DeclaredTypeName: "int8", ID: 0xef9ded23c8912a81, Kind: 2, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I8Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I8Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 3, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -127.0, RangeMax: 126.0, RangeIntMin: -127, RangeIntMax: 126, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5752,7 +5770,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i16_span", JSON: "i16_span", TypeName: "int16", DeclaredTypeName: "int16", ID: 0xb655574ea23760b4, Kind: 3, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -32768.0, RangeMax: 32767.0, RangeIntMin: -32768, RangeIntMax: 32767, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5764,7 +5782,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i16_low", JSON: "i16_low", TypeName: "int16", DeclaredTypeName: "int16", ID: 0xd217b3af8d7a2bde, Kind: 3, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 6, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -32768.0, RangeMax: 32766.0, RangeIntMin: -32768, RangeIntMax: 32766, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5776,7 +5794,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i16_high", JSON: "i16_high", TypeName: "int16", DeclaredTypeName: "int16", ID: 0x90652f70c9127900, Kind: 3, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -32767.0, RangeMax: 32767.0, RangeIntMin: -32767, RangeIntMax: 32767, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5788,7 +5806,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i16_inside", JSON: "i16_inside", TypeName: "int16", DeclaredTypeName: "int16", ID: 0x6a659d7c354db158, Kind: 3, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I16Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I16Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 10, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -32767.0, RangeMax: 32766.0, RangeIntMin: -32767, RangeIntMax: 32766, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5800,7 +5818,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i32_span", JSON: "i32_span", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xe693bd88532c91d6, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -2.147483648e+09, RangeMax: 2.147483647e+09, RangeIntMin: -2147483648, RangeIntMax: 2147483647, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5812,7 +5830,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i32_low", JSON: "i32_low", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x65ee827cf99fbb4, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -2.147483648e+09, RangeMax: 2.147483646e+09, RangeIntMin: -2147483648, RangeIntMax: 2147483646, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5824,7 +5842,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i32_high", JSON: "i32_high", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xc9b121c4c2a186ee, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -2.147483647e+09, RangeMax: 2.147483647e+09, RangeIntMin: -2147483647, RangeIntMax: 2147483647, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5836,7 +5854,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i32_inside", JSON: "i32_inside", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xd363dfa465acf27a, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I32Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I32Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -2.147483647e+09, RangeMax: 2.147483646e+09, RangeIntMin: -2147483647, RangeIntMax: 2147483646, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5848,7 +5866,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i64_span", JSON: "i64_span", TypeName: "int64", DeclaredTypeName: "int64", ID: 0x7549c70700c49d6f, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64Span)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -9.223372036854776e+18, RangeMax: 9.223372036854776e+18, RangeIntMin: -9223372036854775808, RangeIntMax: 9223372036854775807, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5860,7 +5878,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i64_low", JSON: "i64_low", TypeName: "int64", DeclaredTypeName: "int64", ID: 0x1cce6617419771db, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64Low)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -9.223372036854776e+18, RangeMax: 9.223372036854776e+18, RangeIntMin: -9223372036854775808, RangeIntMax: 9223372036854775806, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5872,7 +5890,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i64_high", JSON: "i64_high", TypeName: "int64", DeclaredTypeName: "int64", ID: 0x3b54fa60620b5597, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64High)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -9.223372036854776e+18, RangeMax: 9.223372036854776e+18, RangeIntMin: -9223372036854775807, RangeIntMax: 9223372036854775807, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5884,7 +5902,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "i64_inside", JSON: "i64_inside", TypeName: "int64", DeclaredTypeName: "int64", ID: 0xd308fcb98ece5d23, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedSigned{}.I64Inside)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.I64Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 56, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -9.223372036854776e+18, RangeMax: 9.223372036854776e+18, RangeIntMin: -9223372036854775807, RangeIntMax: 9223372036854775806, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5896,7 +5914,7 @@ var RangedSignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "edges", JSON: "edges", TypeName: "int16", DeclaredTypeName: "int16", ID: 0xc70cde6b85b6197d, Kind: 3, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RangedSigned{}.Edges)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.Edges[0])), CountOffset: uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RangedSigned{}.Edges)), ElemSize: uint32(unsafe.Sizeof(RangedSigned{}.Edges[0])), CountOffset: uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 64, CookElemSize: 2, CookCountOffset: 72, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -32768.0, RangeMax: 32767.0, RangeIntMin: -32768, RangeIntMax: 32767, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5926,7 +5944,7 @@ func RangedSignedTableType() *TableTypeInfo { return &RangedSignedTableInfo }
 // RangedUnsignedTableFields is RangedUnsigned's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var RangedUnsignedTableFields = []TableFieldInfo{
 	{Name: "u8_span", JSON: "u8_span", TypeName: "uint8", DeclaredTypeName: "uint8", ID: 0xf8897557f37c021, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeUintMin: 0, RangeUintMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5938,7 +5956,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u8_low", JSON: "u8_low", TypeName: "uint8", DeclaredTypeName: "uint8", ID: 0x2e17553f8200a2a1, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 254.0, RangeUintMin: 0, RangeUintMax: 254, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5950,7 +5968,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u8_high", JSON: "u8_high", TypeName: "uint8", DeclaredTypeName: "uint8", ID: 0xa0e5c60df9301b7d, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 2, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 255.0, RangeUintMin: 1, RangeUintMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5962,7 +5980,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u8_inside", JSON: "u8_inside", TypeName: "uint8", DeclaredTypeName: "uint8", ID: 0x1cb2c073a6f5844d, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U8Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U8Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 3, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 254.0, RangeUintMin: 1, RangeUintMax: 254, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5974,7 +5992,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u16_span", JSON: "u16_span", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0x4ca0c150b1790960, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, RangeUintMin: 0, RangeUintMax: 65535, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5986,7 +6004,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u16_low", JSON: "u16_low", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0xf252136836b04cb2, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 6, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65534.0, RangeUintMin: 0, RangeUintMax: 65534, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5998,7 +6016,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u16_high", JSON: "u16_high", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0x4f37e1f216e7610c, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 65535.0, RangeUintMin: 1, RangeUintMax: 65535, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6010,7 +6028,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u16_inside", JSON: "u16_inside", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0xd176b605978f3304, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U16Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U16Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 10, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 65534.0, RangeUintMin: 1, RangeUintMax: 65534, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6022,7 +6040,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u32_span", JSON: "u32_span", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0x200b924de7479cda, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4.294967295e+09, RangeUintMin: 0, RangeUintMax: 4294967295, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6034,7 +6052,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u32_low", JSON: "u32_low", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xa53d2f2a31b5acb0, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4.294967294e+09, RangeUintMin: 0, RangeUintMax: 4294967294, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6046,7 +6064,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u32_high", JSON: "u32_high", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0x9759be8ea1a4e3d2, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 4.294967295e+09, RangeUintMin: 1, RangeUintMax: 4294967295, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6058,7 +6076,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u32_inside", JSON: "u32_inside", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0x8dc515fc082e3c0e, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U32Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U32Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 4.294967294e+09, RangeUintMin: 1, RangeUintMax: 4294967294, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6070,7 +6088,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u64_span", JSON: "u64_span", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0xbeecef11dbdf8973, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Span)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64Span)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1.8446744073709552e+19, RangeUintMin: 0, RangeUintMax: 18446744073709551615, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6082,7 +6100,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u64_low", JSON: "u64_low", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0x117ad66e0fff227, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Low)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64Low)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1.8446744073709552e+19, RangeUintMin: 0, RangeUintMax: 18446744073709551614, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6094,7 +6112,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u64_high", JSON: "u64_high", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0xf2b45af3b50689db, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64High)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64High)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 1.8446744073709552e+19, RangeUintMin: 1, RangeUintMax: 18446744073709551615, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6106,7 +6124,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "u64_inside", JSON: "u64_inside", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0x713e12017eebcaf7, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.U64Inside)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.U64Inside)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 56, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 1.8446744073709552e+19, RangeUintMin: 1, RangeUintMax: 18446744073709551614, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6118,7 +6136,7 @@ var RangedUnsignedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "counts", JSON: "counts", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0xc341febe5aae51e5, Kind: 9, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.Counts)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.Counts[0])), CountOffset: uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RangedUnsigned{}.Counts)), ElemSize: uint32(unsafe.Sizeof(RangedUnsigned{}.Counts[0])), CountOffset: uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), PresentOffset: 0xffffffff,
 		CookOffset: 64, CookElemSize: 8, CookCountOffset: 96, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1.8446744073709552e+19, RangeUintMin: 0, RangeUintMax: 18446744073709551615, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6148,7 +6166,7 @@ func RangedUnsignedTableType() *TableTypeInfo { return &RangedUnsignedTableInfo 
 // RangedWidthsTableFields is RangedWidths's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var RangedWidthsTableFields = []TableFieldInfo{
 	{Name: "b8", JSON: "b8", TypeName: "bits(8)", DeclaredTypeName: "bits(8)", ID: 0x8a60c07b54d8dc7, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B8)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B8)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B8)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B8)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeUintMin: 0, RangeUintMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6160,7 +6178,7 @@ var RangedWidthsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "b16", JSON: "b16", TypeName: "bits(16)", DeclaredTypeName: "bits(16)", ID: 0xff95701912ad97be, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B16)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B16)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B16)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B16)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, RangeUintMin: 0, RangeUintMax: 65535, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6172,7 +6190,7 @@ var RangedWidthsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "b32", JSON: "b32", TypeName: "bits(32)", DeclaredTypeName: "bits(32)", ID: 0xff9c5c1912b39470, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B32)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B32)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B32)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B32)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4.294967295e+09, RangeUintMin: 0, RangeUintMax: 4294967295, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6184,7 +6202,7 @@ var RangedWidthsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "b64", JSON: "b64", TypeName: "bits(64)", DeclaredTypeName: "bits(64)", ID: 0xff92701912ab61e7, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B64)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B64)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B64)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B64)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1.8446744073709552e+19, RangeUintMin: 0, RangeUintMax: 18446744073709551615, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6196,7 +6214,7 @@ var RangedWidthsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "b12", JSON: "b12", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", ID: 0xff95741912ad9e8a, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B12)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B12)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B12)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B12)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6208,7 +6226,7 @@ var RangedWidthsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "b48", JSON: "b48", TypeName: "bits(48)", DeclaredTypeName: "bits(48)", ID: 0xff8b681912a535a1, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B48)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B48)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RangedWidths{}.B48)), ElemSize: uint32(unsafe.Sizeof(RangedWidths{}.B48)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 2.81474976710655e+14, RangeUintMin: 0, RangeUintMax: 281474976710655, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

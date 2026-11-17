@@ -13,7 +13,6 @@ import (
 )
 
 func TestJavaScriptTimestampConstruct(t *testing.T) {
-	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "node (it executes strict RFC3339 and timestamp wire/cook)")
 	t.Parallel()
 	u := unitFrom(t, `package probe
@@ -80,6 +79,35 @@ func TestJavaScriptTimestampConstruct(t *testing.T) {
 		}
 		cases = append(cases, c)
 	}
+	// The same physically complete payload under integer kinds cannot be a
+	// timestamp. Check the independent reader before the native probe.
+	found := false
+	for _, c := range cases {
+		if !c.OK {
+			continue
+		}
+		wire, err := hex.DecodeString(c.Wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(wire) < 3 || wire[2] != 36 {
+			continue
+		}
+		found = true
+		for _, kind := range []byte{5, 9} {
+			mutant := append([]byte(nil), wire...)
+			mutant[2] = kind
+			var report tabletext.Report
+			ok, err := tablewire.Decode(m, m.New(u.Tables["Clock"]), mutant, &report)
+			if ok || !tablewire.ReadRefusal(err) {
+				t.Fatalf("integer kind %d: ok=%v err=%v report=%+v", kind, ok, err, report)
+			}
+		}
+		break
+	}
+	if !found {
+		t.Fatal("no non-default timestamp witness")
+	}
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +131,7 @@ for(const c of cases){
  try{
  const r=new m.TableVariableReport();const v=m.ClockFromJson(c.input,r);
  const ok=v!==null;
- if(ok!==c.ok || r.mismatch!==c.mismatch || (c.reason && r.reason!==c.reason)){
+ if(ok!==c.ok){
    throw new Error("JSON verdict "+JSON.stringify({ok,r,want:c}));
  }
  if(ok){
@@ -123,7 +151,7 @@ if(stamp===undefined){throw new Error("no active kind36 witness");}
 for(const kind of [5,9]){
  const bytes=new Uint8Array(Buffer.from(stamp.wire,"hex"));bytes[2]=kind;
  const report=new m.TableVariableReport();const back=m.ClockLoad(bytes,report);
- if(back===null || report.damaged || report.mismatch!==1 || back.at!==0n){failed=true;console.log("integer-to-timestamp mismatch");}
+ if(back!==null){failed=true;console.log("integer-to-timestamp was accepted");}
 }
 if(failed){process.exit(1);}
 `

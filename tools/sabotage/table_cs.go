@@ -37,7 +37,7 @@ func init() {
 
 // THE FINITE RULE'S THREE BLADES (docs/SPEC-TABLES.md §3.3), one per control
 // mode of test/cs-tables/finite-negative-control: the form-1 read's raw-bits
-// test, the fixed read's finite pass, and the form-1 writer's refusal. Each
+// test, the fixed read's finite pass, and the form-1 writer's debug assert. Each
 // keeps its line compiling warning-free and turns only its own vector red.
 func init() {
 	sabotages["table-cs-finite-read"] = []edit{{
@@ -57,8 +57,8 @@ func init() {
 		new: `g.pf("        if (finite_why != null && report == null) // SABOTAGED: the fixed read keeps a NaN\n        {\n")`,
 	}}
 	sabotages["table-cs-finite-write"] = []edit{{
-		old: `if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, f.GetRaw(value, i)); }`,
-		new: `if (f.Kind == 10 || f.Kind == 11) { return f.GetRaw != null; } // SABOTAGED: the writer emits a NaN`,
+		old: `if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }`,
+		new: `if (f.Kind == 10 || f.Kind == 11) { return f.GetRaw != null; } // SABOTAGED: the writer's debug assert is gone`,
 	}}
 }
 
@@ -101,8 +101,8 @@ func init() {
 	// §2.5: the native region writer numbers the graph without the shared-blob
 	// refusal, so a blob two slots name is written.
 	sabotages["table-cs-region-blob-shared"] = []edit{{
-		old: `if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true); if (!ids.Graph.Valid) { return -1; } }`,
-		new: `if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator); if (!ids.Graph.Valid) { return -1; } } // SABOTAGED: shared blobs written`,
+		old: `if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true, true); if (!ids.Graph.Valid) { return -1; } }`,
+		new: `if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, false, true); if (!ids.Graph.Valid) { return -1; } } // SABOTAGED: shared blobs written`,
 	}}
 	// I7: the magic no longer refuses, so a cook of the other byte order is
 	// refused later and not by name.

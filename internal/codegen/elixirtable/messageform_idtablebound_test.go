@@ -32,6 +32,9 @@ func TestElixirAnnouncementIdTableBound(t *testing.T) {
 	u := messageLoadUnit(t, root, units["backenddemo"])
 	ann := tablewire.Announce(u)
 	ids := idTableBoundIds(ann)
+	// the lawful ten-entry file the repeated_id row damages, by naming its
+	// first id again in its last entry
+	ten := idTableBoundReferenced(ann, idTableBoundGrown(ids, 10))
 
 	rows := []struct {
 		name string
@@ -39,9 +42,9 @@ func TestElixirAnnouncementIdTableBound(t *testing.T) {
 		want string
 	}{
 		{"unit_announcement", ann, "ok"},
-		{"at_bound", idTableBoundFile(ann, idTableBoundGrown(ids, ir.TableWireIdTableBound)), "ok"},
-		{"over_bound", idTableBoundFile(ann, idTableBoundGrown(ids, ir.TableWireIdTableBound+1)), "refused"},
-		{"repeated_id", idTableBoundFile(ann, idTableBoundRepeated(idTableBoundGrown(ids, 10))), "refused"},
+		{"at_bound", idTableBoundReferenced(ann, idTableBoundGrown(ids, ir.TableWireIdTableBound)), "ok"},
+		{"over_bound", idTableBoundReferenced(ann, idTableBoundGrown(ids, ir.TableWireIdTableBound+1)), "refused"},
+		{"repeated_id", idTableBoundFile(ten, idTableBoundRepeated(idTableBoundIds(ten))), "refused"},
 	}
 
 	dir := t.TempDir()
@@ -115,6 +118,28 @@ func idTableBoundRepeated(ids []uint64) []uint64 {
 	out := append([]uint64(nil), ids...)
 	out[len(out)-1] = out[0]
 	return out
+}
+
+// idTableBoundReferenced is the announcement with its id table replaced by
+// ids, a table that keeps the announcement's own entries first: every entry
+// past them is referenced by one unknown u8 field appended to the root body
+// in table order, so the table is exactly the body's first-use order
+// (docs/SPEC-TABLES.md §3) and a reader refuses it only for its size or a
+// repeated entry.
+func idTableBoundReferenced(ann []byte, ids []uint64) []byte {
+	own := idTableBoundIds(ann)
+	body := ann[:len(ann)-8-len(own)*8]
+	// the root body's terminator is its last byte; the fields go before it
+	out := append([]byte(nil), body[:len(body)-1]...)
+	for ref := len(own) + 1; ref <= len(ids); ref++ {
+		out = binary.AppendUvarint(out, uint64(ref))
+		out = append(out, byte(ir.TableKindU8), 0)
+	}
+	out = append(out, 0)
+	for _, id := range ids {
+		out = binary.LittleEndian.AppendUint64(out, id)
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
 }
 
 // idTableBoundFile replaces the announcement's id table with ids.

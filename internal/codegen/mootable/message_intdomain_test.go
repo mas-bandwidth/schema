@@ -22,10 +22,7 @@ import (
 // nothing; one inside it lands exactly. The verdict is the contract
 // (docs/rulings.json refusal-verdict-only): never a reason name.
 
-// Each field declares a default of 1, so no batch below writes a field at its
-// default: the kind's own ends and the planted 0 are all values a conforming
-// writer writes, never elides (docs/SPEC-TABLES.md §3.3 (a)).
-const intDomainSchema = "package probe\n\nfixed table Ints\n{\n    i int8 = 1\n    j int32 = 1\n    u uint8 = 1\n}\n"
+const intDomainSchema = "package probe\n\nfixed table Ints\n{\n    i int8\n    j int32\n    u uint8\n}\n"
 
 // intDomainEnd is one field's announced ranged packing and the offset the
 // batch writes at that width. The value the read reconstructs is base plus
@@ -233,7 +230,12 @@ func intDomainWire(t *testing.T, u *ir.Unit, fields []intDomainField, ends map[s
 		}
 		parts = append(parts, intDomainPart{slot: f.slot, bits: e.bits, offset: e.offset})
 	}
-	ann = intDomainAnnounce(ir.BuildVersion(u), entries)
+	// A sender that re-declares the fields ranged is another build of the
+	// record, so the batch announces another build version. Under the reader's
+	// own, a value at its declared default (the uint8's minimum, 0) is a field
+	// its writer elides and is refused (§3.3), which is not the kind rule this
+	// test holds.
+	ann = intDomainAnnounce(ir.BuildVersion(u)+1, entries)
 	msg = intDomainBatch(ir.TableMessageRefBits(len(entries)), parts)
 	return ann, msg
 }

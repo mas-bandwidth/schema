@@ -104,7 +104,7 @@ local announced = M.AnnounceRead(v, inputs.announcement, rep)
 
 	out := strings.TrimSpace(string(luaurun.Run(t, genDir, "main.luau", inputs)))
 	got := map[int]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		var index int
 		var verdict string
 		if _, err := fmt.Sscanf(line, "%d %s", &index, &verdict); err != nil {

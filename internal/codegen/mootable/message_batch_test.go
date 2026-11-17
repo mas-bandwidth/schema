@@ -309,8 +309,11 @@ print("fixed-only-ok")
 // (testdata/wire/tables/backend_batch_damaged_second_message.bin, as re-pinned
 // over the message closure) with one bit set, byte 6's high bit, so a body
 // names a field twice; the Go engine refuses it on its repeated-id check, the
-// emitted reader refuses it, and the reader with the repeated-id check (and
-// the field-order check a repeated field also breaks) patched out accepts it.
+// emitted reader refuses it, and the reader with the repeated-id check patched
+// out accepts it. A field named twice is also a field out of its declaration
+// order (§3.3), so the field-order check is patched out beside it; the
+// repeated-id check runs before the order check, so the control still proves
+// the repeated-id check refuses this batch on its own.
 func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
@@ -342,9 +345,7 @@ func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the repeated-id anchor is not in table_message.moo exactly once")
 	}
-	// a field named twice is also a field out of its declaration order (§3.3
-	// (b)), so the order check is patched out beside the repeated-id check
-	const order = "if hit.k <= lastK then"
+	const order = "if same and hit.k <= lastK then"
 	if strings.Count(src, order) != 1 {
 		t.Fatal("the field-order anchor is not in table_message.moo exactly once")
 	}

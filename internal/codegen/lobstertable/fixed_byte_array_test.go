@@ -61,7 +61,8 @@ let count = bytearray.RowFixedLoad(rows, wire, plan, schema_rt.TableReport {})
 assert count == 1
 let back = rows[0]
 print("typed " + string(back.Loadout == bytes and back.Live == substring(bytes, 0, 2) + schema_rt.zeros(2) and back.LiveCount == 2 and back.Keyed == substring(bytes, 2, 2) and back.Nested.Loadout == bytes and back.OptionalPresent and back.Optional.Loadout == bytes and back.Choice.Values == bytes and back.Ranged == row.Ranged))
-print("trusted " + string(bytearray.RowFixedDecode(wire)[0].Loadout == bytes))
+let again = [bytearray.NewRow()]
+print("trusted " + string(bytearray.RowFixedLoad(again, wire, plan, schema_rt.TableReport {}) == 1 and again[0].Loadout == bytes))
 let rec = schema_rt.load("Row", wire, schema_rt.LoadReport {})
 assert rec
 let values = schema_rt.slot_named(rec, "loadout").elems

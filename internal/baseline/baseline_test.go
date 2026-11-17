@@ -864,6 +864,21 @@ func TestVanishedMemberWithNoSuccessor(t *testing.T) {
 	}
 }
 
+func TestBaselineAllowsOptionalEvolution(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, edited string }{
+		{"plain to optional", replace(t, "    boost   Buff", "    boost   ?Buff")},
+		{"optional to plain", replace(t, "    gunner ?Buff", "    gunner Buff")},
+		{"new optional field", replace(t, "    hits    int32", "    hits    int32\n    added   ?Buff")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := diff(t, tc.edited, baseline.DefaultTokenPolicy); len(got) != 0 {
+				t.Errorf("expected no findings, got:%s", summary(got))
+			}
+		})
+	}
+}
+
 // TestAbsorbedEdits is the other half of the gate: everything the table wire
 // handles on its own must pass in SILENCE. A baseline that cries wolf is a
 // baseline someone deletes.
@@ -883,9 +898,7 @@ func TestAbsorbedEdits(t *testing.T) {
 		{"a bounded array made fixed", replace(t, "slots   [..Slots]int32", "slots   [Slots]int32")},
 		{"a field moved under a guard", replace(t, "    hits    int32", "    gate    bool\n    if gate\n    {\n        hits int32\n    }")},
 		{"a table added", baseSrc + "\ntable Extra\n{\n    x int32 = 1\n}\n"},
-		// T, ?T and *T are one framing (docs/SPEC-TABLES.md §3.1): presence is
-		// recorded in the file and judged on nothing
-		{"a field made optional", replace(t, "    boost   Buff", "    boost   ?Buff")},
+		// Removing optional passes: a plain writer elides its default (§4.1).
 		{"an optional field made plain", replace(t, "    gunner ?Buff", "    gunner Buff")},
 		// a keyed array's bound is its enum's size: growing the enum grows the
 		// array, and the slots ride by variant NAME, so nothing moves

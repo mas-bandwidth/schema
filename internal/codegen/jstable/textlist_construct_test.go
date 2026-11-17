@@ -86,6 +86,20 @@ func TestJavaScriptTextListConstruct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Both paths refuse the complete value when the reader's count, element
+	// or total bound is exceeded. The Go oracle is independent of the JS leg.
+	for _, root := range []string{"Lists", "Totals"} {
+		v := model.New(u.Tables[root])
+		var textReport tabletext.Report
+		if model.Read(v, []byte(input), &textReport) || !textReport.Refused {
+			t.Fatalf("%s Go JSON must refuse over-bound input: %+v", root, textReport)
+		}
+		var wireReport tabletext.Report
+		ok, err := tablewire.Decode(model, model.New(u.Tables[root]), wire, &wireReport)
+		if ok || err == nil || !wireReport.Refused {
+			t.Fatalf("%s Go wire must refuse over-bound input: %v %+v", root, err, wireReport)
+		}
+	}
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -121,16 +135,14 @@ for(const c of spec.rows){
  const rv=m[c.root+"LoadRetain"](bytes(c.wire),retain,rp);
  expect(rv!==null&&hex(m[c.root+"SaveRetain"](rv,retain,rp))===c.wire,"retain "+c.root);
 }
-const vals=v=>Object.fromEntries(["a","b","c","d"].map(k=>[k,v[k].map(x=>x.value)]));
-const expected={a:["éé","a","z"],b:[null,"éé","abc"],c:["éé","a","z"],d:[null,"éé","abc","x"]};
-const totalExpected={a:["éé","a"],b:[null,"éé"],c:["éé","a"],d:[null,"éé"]};
+
 for(const mode of ["json","wire"]){
  const r=new m.TableVariableReport(),t=new m.TableVariableReport();
  const plain=mode==="json"?m.ListsFromJson(spec.input,r):m.ListsLoad(bytes(spec.wide),r);
  const limited=mode==="json"?m.TotalsFromJson(spec.input,t):m.TotalsLoad(bytes(spec.wide),t);
- expect(plain!==null&&JSON.stringify(vals(plain))===JSON.stringify(expected)&&r.oor===6,"element/count clamps "+mode+" "+JSON.stringify(r)+" "+JSON.stringify(plain));
- expect(limited!==null&&JSON.stringify(vals(limited))===JSON.stringify(totalExpected)&&t.oor===(mode==="wire"?10:8),"total prefix "+mode+" "+JSON.stringify(t)+" "+JSON.stringify(limited));
- expect(t.oorField==="Totals.a","first named clamp "+mode+" "+t.oorField);
+ expect(plain===null&&!r.damaged&&r.oor>0,"element/count refusal "+mode+" "+JSON.stringify(r));
+ expect(limited===null&&!t.damaged&&t.oor>0,"total refusal "+mode+" "+JSON.stringify(t));
+ expect(t.oorField==="Totals.a","first named refusal "+mode+" "+t.oorField);
 }
 for(const root of ["Lists","Totals"]){
  for(const field of ["a","b","c","d"]){
@@ -164,3 +176,57 @@ expect(emptyReq!==null&&hex(m.RequiredSave(emptyReq))===hex(m.RequiredSave(req))
 expect(!("ListsATextSave" in m)&&!("ListsATextOpen" in m),"synthetic record exposed as root");
 console.log("TEXT LIST OK");
 `
+
+// Prove that the strict read probes detect the old tolerant outcome: erasing
+// the out-of-range part of the strict verdict must expose a partial value in
+// both the wire and JSON readers.
+func TestJavaScriptTextListStrictNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "node (text list strict negative control)")
+	u := unitFrom(t, `package probe
+ table Wide { values []string(8) }
+ table Narrow { values []string(8) | total=5 }
+ `)
+	model := tabletext.NewModel(u)
+	input := `{"values":["abc","abc"]}`
+	wide := model.New(u.Tables["Wide"])
+	var r tabletext.Report
+	if !model.Read(wide, []byte(input), &r) {
+		t.Fatal(r)
+	}
+	wire, err := tablewire.Encode(model, wide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wr, jr tabletext.Report
+	if ok, err := tablewire.Decode(model, model.New(u.Tables["Narrow"]), wire, &wr); ok || err == nil || !wr.Refused {
+		t.Fatalf("Go wire did not refuse: %v %+v", err, wr)
+	}
+	if model.Read(model.New(u.Tables["Narrow"]), []byte(input), &jr) || !jr.Refused {
+		t.Fatalf("Go JSON did not refuse: %+v", jr)
+	}
+	files, err := generateVariableFiles(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := runtimeHome(u) + "Variable.js"
+	spec := map[string]string{"input": input, "wire": hex.EncodeToString(wire)}
+	script := `
+import {readFileSync} from "node:fs";import {pathToFileURL} from "node:url";
+const c=JSON.parse(readFileSync(process.argv[2],"utf8")),m=await import(pathToFileURL(process.argv[3]).href);
+const wire=m.NarrowLoad(new Uint8Array(Buffer.from(c.wire,"hex")),new m.TableVariableReport());
+const json=m.NarrowFromJson(c.input,new m.TableVariableReport());
+console.log("wire="+(wire===null?"refused":"accepted")+" json="+(json===null?"refused":"accepted"));
+`
+	if out := runJSConstructProbe(t, files, home, script, spec); !strings.Contains(out, "wire=refused json=refused") {
+		t.Fatalf("positive: %s", out)
+	}
+	const anchor = "return report.mismatch + report.oor + report.repeated + report.sharedBlob;"
+	src := string(files[home])
+	if strings.Count(src, anchor) != 1 {
+		t.Fatalf("negative control anchor count %d", strings.Count(src, anchor))
+	}
+	files[home] = []byte(strings.Replace(src, anchor, "return report.mismatch + report.repeated + report.sharedBlob;", 1))
+	if out := runJSConstructProbe(t, files, home, script, spec); !strings.Contains(out, "wire=accepted json=accepted") {
+		t.Fatalf("negative control did not expose both partial reads: %s", out)
+	}
+}

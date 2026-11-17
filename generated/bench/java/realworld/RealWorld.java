@@ -604,6 +604,9 @@ public final class RealWorld {
         assert value.f003Int >= -835897;
         assert value.f003Int <= 835897;
         assert value.f004Cf32 - value.f004Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f004Cf32 >= 0.0f;
+        assert value.f004Cf32 <= 2000.0f;
         assert value.f005Uint >= 0;
         assert value.f005Uint <= 7316;
         assert value.f006Int >= -1513;
@@ -641,6 +644,9 @@ public final class RealWorld {
         assert value.f026Bits >= 0;
         assert value.f026Bits <= 511;
         assert value.f027Cf32 - value.f027Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f027Cf32 >= -2.0f;
+        assert value.f027Cf32 <= 2.0f;
         assert value.f028Bits >= 0;
         assert value.f028Bits <= 15;
         assert value.f030F32 - value.f030F32 == 0.0f; // finite: NaN and both infinities fail this
@@ -694,21 +700,39 @@ public final class RealWorld {
         assert value.f060Bits >= 0;
         assert value.f060Bits <= 255;
         assert value.f061Cf32 - value.f061Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f061Cf32 >= -90.0f;
+        assert value.f061Cf32 <= 90.0f;
         assert value.f062Uint >= 0;
         assert value.f062Uint <= 503;
         assert value.f064Uint >= 0;
         assert value.f064Uint <= 299;
         assert value.f065Cf32 - value.f065Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f065Cf32 >= 0.0f;
+        assert value.f065Cf32 <= 30.0f;
         assert value.f066Ufixed >= 0;
         assert value.f066Ufixed <= 32768;
         assert value.f067Cf32 - value.f067Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f067Cf32 >= -100.0f;
+        assert value.f067Cf32 <= 100.0f;
         assert value.f068Cf32 - value.f068Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f068Cf32 >= 0.0f;
+        assert value.f068Cf32 <= 2000.0f;
         assert value.f069Bits >= 0;
         assert value.f069Bits <= 2047;
         assert value.f070Uint >= 0;
         assert value.f070Uint <= 2;
         assert value.f071Cf32 - value.f071Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f071Cf32 >= 0.0f;
+        assert value.f071Cf32 <= 10.0f;
         assert value.f072Cf32 - value.f072Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        // inside [min, max] before quantizing (SPEC §5.1 row 10)
+        assert value.f072Cf32 >= 0.0f;
+        assert value.f072Cf32 <= 100.0f;
         assert value.f073Int >= -4;
         assert value.f073Int <= 4;
         if (value.f074Bool) {

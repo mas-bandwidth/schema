@@ -33,18 +33,17 @@ table ListNode
 // cNodeRecordTerminatorWire is the pinned framing vector's byte script: the
 // root body names a record of `ListNode { value = 2 }`, and with extra the
 // record's L holds the terminator and one byte after it. The id table is the
-// one the vector names: value, name, next, the reserved node-table id, and the
+// canonical first-use order: value, next, the reserved node-table id, and the
 // record's type id.
 func cNodeRecordTerminatorWire(t *testing.T, u *ir.Unit, extra bool) []byte {
 	t.Helper()
 	ids := []uint64{
 		ir.TableWireId("value"),
-		ir.TableWireId("name"),
 		ir.TableWireId("next"),
 		ir.TableNodeWireId,
 		ir.TableWireId(u.Tables["ListNode"].WireName()),
 	}
-	record := []byte{5, 0, 1, byte(ir.TableKindI32)}
+	record := []byte{4, 0, 1, byte(ir.TableKindI32)}
 	record = binary.LittleEndian.AppendUint32(record, 2)
 	record = append(record, 0)
 	if extra {
@@ -55,8 +54,8 @@ func cNodeRecordTerminatorWire(t *testing.T, u *ir.Unit, extra bool) []byte {
 	var body []byte
 	body = append(body, 1, byte(ir.TableKindI32))
 	body = binary.LittleEndian.AppendUint32(body, 1)
-	body = append(body, 3, byte(ir.TableKindPointer), 2)
-	body = append(body, 4, byte(ir.TableKindString), byte(len(nodeTable)))
+	body = append(body, 2, byte(ir.TableKindPointer), 2)
+	body = append(body, 3, byte(ir.TableKindString), byte(len(nodeTable)))
 	body = append(body, nodeTable...)
 	body = append(body, 0)
 	wire := append([]byte{1}, body...)
@@ -199,7 +198,7 @@ func TestCNodeRecordEndsAtTerminatorNegativeControl(t *testing.T) {
     return failures != 0;
 `, cBytes(cNodeRecordTerminatorWire(t, u, true)))
 	mutate := func(files map[string][]byte) error {
-		const check = "if(body.offset!=body.size)"
+		const check = "if(!nodes->refused && body.offset!=body.size)"
 		hit := false
 		for name, data := range files {
 			if bytes.Contains(data, []byte(check)) {

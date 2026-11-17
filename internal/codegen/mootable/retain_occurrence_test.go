@@ -107,9 +107,7 @@ func (b *wb) finish() []byte {
 }
 
 // inner writes a whole `Inner` body behind its length: the known `value`
-// where value >= 0, then the unknown `future` where future >= 0. A value of
-// 0 is the field's declared default, which a conforming writer elides
-// (docs/SPEC-TABLES.md §3, §4), so the lists number their elements from 1.
+// where value >= 0, then the unknown `future` where future >= 0.
 func (b *wb) innerBody(value, future int, damage bool) {
 	at := b.openLen()
 	if value >= 0 {
@@ -139,7 +137,7 @@ func (b *wb) outer(damage, _ bool) {
 	at := b.openLen()
 	b.field("inner", ir.TableKindTable)
 	b.innerBody(1, 7, false)
-	b.list("pair", 2, func(i int) { b.innerBody(i+1, 40+i, false) })
+	b.list("pair", 2, func(i int) { b.innerBody(i, 40+i, false) })
 	b.end()
 	if damage {
 		b.body = append(b.body, 0xAA, 0xBB)
@@ -234,21 +232,21 @@ func occurrenceWires() map[string]func(b *wb) {
 		"damaged parent then replaced":      func(b *wb) { b.outer(true, false); b.outer(false, false); b.end() },
 		"sound parent":                      func(b *wb) { b.outer(false, false); b.end() },
 		"kids twice, fewer": func(b *wb) {
-			b.list("kids", 4, func(i int) { b.innerBody(i+1, 40+i, false) })
-			b.list("kids", 2, func(i int) { b.innerBody(i+1, -1, false) })
+			b.list("kids", 4, func(i int) { b.innerBody(i, 40+i, false) })
+			b.list("kids", 2, func(i int) { b.innerBody(i, -1, false) })
 			b.end()
 		},
 		"kids twice, more": func(b *wb) {
-			b.list("kids", 2, func(i int) { b.innerBody(i+1, 40+i, false) })
-			b.list("kids", 4, func(i int) { b.innerBody(i+1, 50+i, false) })
+			b.list("kids", 2, func(i int) { b.innerBody(i, 40+i, false) })
+			b.list("kids", 4, func(i int) { b.innerBody(i, 50+i, false) })
 			b.end()
 		},
 		"kids once, damaged element": func(b *wb) {
-			b.list("kids", 3, func(i int) { b.innerBody(i+1, 40+i, i == 1) })
+			b.list("kids", 3, func(i int) { b.innerBody(i, 40+i, i == 1) })
 			b.end()
 		},
 		"grid twice": func(b *wb) {
-			b.list("grid", 3, func(i int) { b.innerBody(i+1, 60+i, false) })
+			b.list("grid", 3, func(i int) { b.innerBody(i, 60+i, false) })
 			b.list("grid", 1, func(i int) { b.innerBody(9, -1, false) })
 			b.end()
 		},
@@ -405,9 +403,8 @@ func sortStrings(s []string) {
 	}
 }
 
-// TestMooRetainDamagedParentDiscardsTheWholeLoad pins the damaged-parent vector
-// (its pair elements numbered from 1, as every occurrence wire numbers them), and
-// holds the §4 refusal rather than its old partial save.
+// TestMooRetainDamagedParentDiscardsTheWholeLoad preserves the original
+// damaged-parent vector, but holds the §4 refusal rather than its old partial save.
 func TestMooRetainDamagedParentDiscardsTheWholeLoad(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
@@ -416,7 +413,7 @@ func TestMooRetainDamagedParentDiscardsTheWholeLoad(t *testing.T) {
 	b.outer(true, false)
 	b.end()
 	wire := b.finish()
-	const wantWire = "01010d34020d0d03040100000004040700000000050e1e0d020d030401000000040428000000000d0304020000000404290000000000aabb00d41b5e8f67ede6308792885f8f064c2dea0ce83094fde47c5630b3ead46180d8319a88eb0d2569030500000000000000"
+	const wantWire = "01010d34020d0d03040100000004040700000000050e1e0d020d030400000000040428000000000d0304010000000404290000000000aabb00d41b5e8f67ede6308792885f8f064c2dea0ce83094fde47c5630b3ead46180d8319a88eb0d2569030500000000000000"
 	if got := hex.EncodeToString(wire); got != wantWire {
 		t.Fatalf("the vector moved: %s", got)
 	}

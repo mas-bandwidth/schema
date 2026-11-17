@@ -351,7 +351,8 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1004,7 +1005,8 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -1827,7 +1829,8 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -2951,6 +2954,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBody(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -3035,6 +3042,7 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3047,6 +3055,13 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 							return false
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
+					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -3153,7 +3168,8 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -4002,6 +4018,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if len(elem.Buffer) == 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					if !ShipEntryLoadBodyRetain(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
@@ -4089,6 +4109,7 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 						}
 						continue
 					}
+					slotDefault := true
 					elem.Path = r.Path.step(3, uint32(int(slot)-1))
 					if !elem.Has(tableKindBytes(elemKind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4102,6 +4123,13 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 							return false
 						}
 						value.Thresholds[int(slot)-1] = int32(v)
+					}
+					if value.Thresholds[int(slot)-1] != 0 {
+						slotDefault = false
+					}
+					if slotDefault {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
 					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4808,10 +4836,10 @@ func GunnerSettingsFixedMeasure(count int64) int64 {
 }
 
 // GunnerSettingsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func GunnerSettingsFixedSave(values []GunnerSettings, buffer []byte) int64 {
 	need := GunnerSettingsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -4930,6 +4958,11 @@ func GunnerSettingsFixedLoad(values []GunnerSettings, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5096,10 +5129,10 @@ func ShipEntryFixedMeasure(count int64) int64 {
 }
 
 // ShipEntryFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func ShipEntryFixedSave(values []ShipEntry, buffer []byte) int64 {
 	need := ShipEntryFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5218,6 +5251,11 @@ func ShipEntryFixedLoad(values []ShipEntry, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5378,10 +5416,10 @@ func GlobalSettingsFixedMeasure(count int64) int64 {
 }
 
 // GlobalSettingsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func GlobalSettingsFixedSave(values []GlobalSettings, buffer []byte) int64 {
 	need := GlobalSettingsFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5500,6 +5538,11 @@ func GlobalSettingsFixedLoad(values []GlobalSettings, data []byte, plan []TableF
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5774,10 +5817,10 @@ func PackConfigFixedMeasure(count int64) int64 {
 }
 
 // PackConfigFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func PackConfigFixedSave(values []PackConfig, buffer []byte) int64 {
 	need := PackConfigFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -5896,6 +5939,11 @@ func PackConfigFixedLoad(values []PackConfig, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -5944,7 +5992,7 @@ func PackConfigFixedLoad(values []PackConfig, data []byte, plan []TableFixedEntr
 // GunnerSettingsTableFields is GunnerSettings's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GunnerSettingsTableFields = []TableFieldInfo{
 	{Name: "reaction", JSON: "reaction", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5956,7 +6004,7 @@ var GunnerSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tracking", JSON: "tracking", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5968,7 +6016,7 @@ var GunnerSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "callsign", JSON: "callsign", TypeName: "string", DeclaredTypeName: "string", ID: 0x5bc44627b9848818, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 24, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Callsign)), CountOffset: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 24, Offset: uint32(unsafe.Offsetof(GunnerSettings{}.Callsign)), ElemSize: uint32(unsafe.Sizeof(GunnerSettings{}.Callsign)), CountOffset: uint32(unsafe.Offsetof(GunnerSettings{}.CallsignLength)), PresentOffset: 0xffffffff,
 		CookOffset: 5, CookElemSize: 1, CookCountOffset: 32, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -5998,7 +6046,7 @@ func GunnerSettingsTableType() *TableTypeInfo { return &GunnerSettingsTableInfo 
 // ShipEntryTableFields is ShipEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ShipEntryTableFields = []TableFieldInfo{
 	{Name: "display_name", JSON: "name", TypeName: "string", DeclaredTypeName: "string", ID: 0x2d21d7cd66bd5a5d, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.DisplayName)), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayName)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.DisplayName)), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.DisplayNameLength)), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 36, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6010,7 +6058,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "health", JSON: "health", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Health)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Health)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6022,7 +6070,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "mass", JSON: "mass", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Mass)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 44, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6034,7 +6082,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "hardpoints", JSON: "hardpoints", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x95d0cce09ca82b73, Kind: 4, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Hardpoints[0])), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Hardpoints)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Hardpoints[0])), CountOffset: uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 4, CookCountOffset: 64, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 8.0, RangeIntMin: 0, RangeIntMax: 8, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6046,7 +6094,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "gunner", JSON: "gunner", TypeName: "GunnerSettings", DeclaredTypeName: "GunnerSettings", ID: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)),
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ShipEntry{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(ShipEntry{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)),
 		CookOffset: 68, CookElemSize: 36, CookCountOffset: 4294967295, CookPresentOffset: 104,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6072,7 +6120,7 @@ func ShipEntryTableType() *TableTypeInfo { return &ShipEntryTableInfo }
 // GlobalSettingsTableFields is GlobalSettings's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GlobalSettingsTableFields = []TableFieldInfo{
 	{Name: "tick_rate", JSON: "tick_rate", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xa65f859b617deaf3, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.TickRate)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.TickRate)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.TickRate)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 240.0, RangeUintMin: 1, RangeUintMax: 240, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6084,7 +6132,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "difficulty", JSON: "difficulty", TypeName: "Difficulty", DeclaredTypeName: "Difficulty", ID: 0x467f35a74c6e4a70, Kind: 30, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.Difficulty)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.Difficulty)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.Difficulty)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6096,7 +6144,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "build_note", JSON: "build_note", TypeName: "string", DeclaredTypeName: "string", ID: 0x14ec921cc2549d60, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 48, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.BuildNote)), CountOffset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 48, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNote)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.BuildNote)), CountOffset: uint32(unsafe.Offsetof(GlobalSettings{}.BuildNoteLength)), PresentOffset: 0xffffffff,
 		CookOffset: 5, CookElemSize: 1, CookCountOffset: 56, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6108,7 +6156,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "spawn_delays", JSON: "spawn_delays", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9ae5613b0051271, Kind: 10, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.SpawnDelays[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 3, Offset: uint32(unsafe.Offsetof(GlobalSettings{}.SpawnDelays)), ElemSize: uint32(unsafe.Sizeof(GlobalSettings{}.SpawnDelays[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 60, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6138,7 +6186,7 @@ func GlobalSettingsTableType() *TableTypeInfo { return &GlobalSettingsTableInfo 
 // PackConfigTableFields is PackConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var PackConfigTableFields = []TableFieldInfo{
 	{Name: "version", JSON: "version", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xbb62c62c9808ea37, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Version)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Version)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Version)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Version)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6150,7 +6198,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "settings", JSON: "settings", TypeName: "GlobalSettings", DeclaredTypeName: "GlobalSettings", ID: 0x7fb43557b54149ce, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Settings)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Settings)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PackConfig{}.Settings)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Settings)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 72, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6162,7 +6210,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: GlobalSettingsTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ships", JSON: "ships", TypeName: "ShipEntry", DeclaredTypeName: "ShipEntry", ID: 0x294a5c4913e1ad44, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(ShipTypeMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Ships)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Ships[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: int32(ShipTypeMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Ships)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Ships[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 76, CookElemSize: 108, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6174,7 +6222,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: ShipEntryTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "thresholds", JSON: "thresholds", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x9cda940a344e1571, Kind: 4, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(DifficultyMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Thresholds[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: int32(DifficultyMax), Offset: uint32(unsafe.Offsetof(PackConfig{}.Thresholds)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Thresholds[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 400, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6186,7 +6234,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "reserves", JSON: "reserves", TypeName: "ShipEntry", DeclaredTypeName: "ShipEntry", ID: 0x77707fccd201c228, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(PackConfig{}.Reserves)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Reserves[0])), CountOffset: uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 3, Offset: uint32(unsafe.Offsetof(PackConfig{}.Reserves)), ElemSize: uint32(unsafe.Sizeof(PackConfig{}.Reserves[0])), CountOffset: uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 412, CookElemSize: 108, CookCountOffset: 736, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

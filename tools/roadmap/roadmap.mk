@@ -13,15 +13,40 @@ SBCL ?= sbcl
 ROADMAP_BASE ?= origin/main
 ROADMAP_HANDTEXT = go run ./tools/roadmap/cmd/roadmap-handtext
 ROADMAP_NC_DIR = build/roadmap-negative-control
+ROADMAP_DATA_DIR = build/roadmap-data-check
 
-.PHONY: roadmap roadmap-check roadmap-check-negative-control roadmap-original-nine-check roadmap-test
+# A CARD NEVER COMMITS ROADMAP.md. Two cards' renders touch adjacent rows and
+# the same "complete" line, so a card adds or edits only its own evidence file
+# under docs/roadmap-evidence/ and runs `make roadmap-check`: the data
+# renders (every id a task, every state and evidence well formed) into a copy
+# of the page under $(ROADMAP_DATA_DIR), and the committed page and its hand
+# text pass the block and authorship checks. It passes whether or not the
+# committed page is current, so it is the gate on every pull request and
+# every push to main (.github/workflows/roadmap.yml), and a card naming it in
+# its DONE-WHEN is not red for the page main has yet to re-render.
+# roadmap-data-check is the same target under the name schema#3967 gave it.
+# The page itself is re-rendered on main in one commit (`make roadmap`);
+# `make roadmap-page-check` holds the committed tables to the render, nightly,
+# on dispatch, and for whoever re-renders the page.
+.PHONY: roadmap roadmap-check roadmap-data-check roadmap-page-check roadmap-check-negative-control roadmap-original-nine-check roadmap-test
 roadmap:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp ROADMAP.md
 
+roadmap-page-check:
+	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-page-check REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
+	$(SBCL) --script tools/roadmap/render.lisp --check docs/roadmap.sexp ROADMAP.md
+	$(ROADMAP_HANDTEXT) -page ROADMAP.md
+	$(ROADMAP_HANDTEXT) -base $(ROADMAP_BASE)
+	ROADMAP_PAGE_CHECK=1 go test -count=1 -run '^TestRoadmapIsGeneratedFromTheData$$' ./tools/roadmap/
+
+roadmap-data-check: roadmap-check
+
 roadmap-check:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-check REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
-	$(SBCL) --script tools/roadmap/render.lisp --check docs/roadmap.sexp ROADMAP.md
+	@mkdir -p $(ROADMAP_DATA_DIR)
+	cp ROADMAP.md $(ROADMAP_DATA_DIR)/ROADMAP.md
+	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp $(ROADMAP_DATA_DIR)/ROADMAP.md
 	$(ROADMAP_HANDTEXT) -page ROADMAP.md
 	$(ROADMAP_HANDTEXT) -base $(ROADMAP_BASE)
 

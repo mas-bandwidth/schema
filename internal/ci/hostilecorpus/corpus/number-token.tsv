@@ -1,0 +1,21 @@
+# schema shared hostile-input corpus — the number-token copies
+# The shared corpus's copies of testdata/conformance/tables/JSON-HOSTILE-NUMBER-TOKEN.txt
+# (docs/SPEC-TABLES.md §16.2, docs/rulings.json json-wide-integers-refuse-number-token):
+# each writes a wide integer as a bare number token, which refuses kind_mismatch,
+# so every row refuses. Each has its string twin in manifest.tsv, the row
+# named <case>-string. A separate manifest because the ports' runners move to
+# it one leg at a time, once the leg's own reader refuses the bare token.
+# name	carrier	schema	table	input	provenance	verdict	reason	digest
+conformance-fixed-at-bound	text	tables/scalars	SimState	inputs/conformance-fixed-at-bound.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/fixed-at-bound/SimState.json	refuse	damaged	-
+conformance-fixed-integral-token	text	tables/scalars	SimState	inputs/conformance-fixed-integral-token.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/fixed-integral-token/SimState.json	refuse	damaged	-
+conformance-fixed-nested-type	text	tables/scalars	SimState	inputs/conformance-fixed-nested-type.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/fixed-nested-type/SimState.json	refuse	damaged	-
+conformance-int128-beyond-int64	text	tables/scalars	SimState	inputs/conformance-int128-beyond-int64.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/int128-beyond-int64/SimState.json	refuse	damaged	-
+conformance-int128-over-range	text	tables/scalars	SimState	inputs/conformance-int128-over-range.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/int128-over-range/SimState.json	refuse	damaged	-
+conformance-num-int64-extremes	text	tables/examples	RootConfig	inputs/conformance-num-int64-extremes.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/num-int64-extremes/RootConfig.json	refuse	damaged	-
+conformance-num-int64-min	text	tables/examples	RootConfig	inputs/conformance-num-int64-min.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/num-int64-min/RootConfig.json	refuse	damaged	-
+conformance-num-int64-past-extremes	text	tables/examples	RootConfig	inputs/conformance-num-int64-past-extremes.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/num-int64-past-extremes/RootConfig.json	refuse	damaged	-
+conformance-num-uint64-max	text	tables/examples	RootConfig	inputs/conformance-num-uint64-max.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/num-uint64-max/RootConfig.json	refuse	damaged	-
+conformance-num-uint64-two-to-63	text	tables/examples	RootConfig	inputs/conformance-num-uint64-two-to-63.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/num-uint64-two-to-63/RootConfig.json	refuse	damaged	-
+conformance-uint128-max	text	tables/scalars	SimState	inputs/conformance-uint128-max.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/uint128-max/SimState.json	refuse	damaged	-
+conformance-uint128-negative	text	tables/scalars	SimState	inputs/conformance-uint128-negative.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/uint128-negative/SimState.json	refuse	damaged	-
+conformance-uint128-over	text	tables/scalars	SimState	inputs/conformance-uint128-over.json	conformance hostile vector testdata/conformance/tables/json-hostile-number-token/uint128-over/SimState.json	refuse	damaged	-

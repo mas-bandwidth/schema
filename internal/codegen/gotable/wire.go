@@ -24,7 +24,7 @@ const tableIDCapacity = %d
 const tableIDBuckets = %d
 const tableWireBytesID uint64 = 0x%016x
 const tableWireStringID uint64 = 0x%016x
-`, n, buckets, ir.TableWireId("bytes"), ir.TableWireId("string")) + source + tableWireCheckSource
+`, n, buckets, ir.TableWireId("bytes"), ir.TableWireId("string")) + source + tableWireCheckSource + tableFirstUseReaderSource
 	// A unit with a node table carries the map on its reader: a pointer inside a
 	// slot the reader cannot name still names its target, and the graph walk
 	// starts there too (docs/SPEC-TABLES.md §4, §6.5).
@@ -337,6 +337,7 @@ func (r *TableReader) Leb() (uint64, bool) {
 
 func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 	if ref == 0 || ref > uint64(len(r.Ids)/8) { return 0, false }
+	r.meetFirstUse(ref)
 	return binary.LittleEndian.Uint64(r.Ids[(ref-1)*8:]), true
 }
 

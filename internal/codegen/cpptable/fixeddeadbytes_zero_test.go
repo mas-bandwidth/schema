@@ -144,7 +144,6 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 	corpus := cppFixedCorpus(t)
 	probe := cppFixedDeadBytesProbe(t)
 	for _, vec := range fixedvector.DeadBytes {
-		vec := vec
 		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			want, err := fixedvector.Read(corpus, vec.File)

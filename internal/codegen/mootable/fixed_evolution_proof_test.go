@@ -1012,7 +1012,7 @@ func TestMooFixedEvolutionText(t *testing.T) {
 // field on its own, nothing landed and no counter moved; at its ends and in
 // range it lands. A compressed float rides as the float32 itself — saved
 // unquantized, a value past its range refused out_of_range on read, -0.0
-// landing as written — and its resolution is in the digest under 'Q', so a
+// landing as +0 — and its resolution is in the digest under 'Q', so a
 // finer or a dropped triple reads the old writer's bits unchanged. The
 // negative control drops the reader's range check and requires the forged
 // value to land.
@@ -1081,7 +1081,7 @@ func TestMooFixedEvolutionScalarBounds(t *testing.T) {
 		{0x40800000, refusedField("out_of_range", false, "Reading.aim"), ""},
 		{0xbf800000, "ok 1 u0 k0 c0 w0 d0 -", "0xBF800000"},
 		{0x40000000, "ok 1 u0 k0 c0 w0 d0 -", "0x40000000"},
-		{0x80000000, "ok 1 u0 k0 c0 w0 d0 -", "0x80000000"},
+		{0x80000000, "ok 1 u0 k0 c0 w0 d0 -", "0x00000000"},
 	} {
 		f := clone(saved)
 		binary.LittleEndian.PutUint32(f[at:], c.bits)

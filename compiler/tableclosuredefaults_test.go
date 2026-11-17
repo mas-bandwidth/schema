@@ -15,12 +15,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// Packet construction starts a positive-minimum count at that minimum (SPEC
-// 4.2). Table readers instead restore an absent array as empty: the file writer
-// elides count zero (SPEC-TABLES 3, 4). A closure type's packet constructor must
-// not change what an absent table field or reset means, including through nested
-// backing slots. Fixed files use legal positive counts and form 3; unused form-3
-// array slots are slack, so their declared marker default is checked after reset.
+// Construction starts a positive-minimum count at that minimum (SPEC 4.2),
+// recursively through table closures. Go and the reference engine use that rule
+// for absent fields and reset; the other leg controls retain their current
+// construction behavior. Fixed files use legal positive counts and form 3;
+// unused form-3 array slots remain zero slack.
 func TestTableClosureCountDefaults(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, `package probe
@@ -43,8 +42,8 @@ fixed table Root {
 	value := model.New(u.Tables["Root"])
 	empty := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0} // form, terminator, zero trailer entries
 	got, err := tablewire.Encode(model, value)
-	if err == nil || len(got) != 0 || !strings.Contains(err.Error(), "count 0 under its minimum 1") {
-		t.Fatalf("default table with a count under its minimum wrote %x, %v", got, err)
+	if err != nil || len(got) == 0 || got[0] != 3 {
+		t.Fatalf("born table did not write a fixed file: %x, %v", got, err)
 	}
 	if !model.Read(value, []byte(`{"payload":{"leaf":{"values":[0]},"rows":[{"values":[0]}]}}`), &tabletext.Report{}) {
 		t.Fatal("minimal legal value did not place")
@@ -52,6 +51,9 @@ fixed table Root {
 	minimal, err := tablewire.Encode(model, value)
 	if err != nil || len(minimal) == 0 || minimal[0] != 3 {
 		t.Fatalf("minimal fixed file: %x, %v", minimal, err)
+	}
+	if !bytes.Equal(got, minimal) {
+		t.Fatal("fresh closure differs from explicit birth defaults")
 	}
 	var report tabletext.Report
 	if !model.Read(value, []byte(`{"payload":{"leaf":{"values":[9]},"rows":[{"values":[4,5]}]}}`), &report) {
@@ -223,7 +225,7 @@ func TestDefaults(t *testing.T) {
  var value Root
  var leaf Leaf
  var report TableReport
- if !LeafLoad(&leaf,empty,&report) || leaf.ValuesCount!=0 || leaf.Marker!=7 {t.Fatalf("leaf defaults: %+v",leaf)}
+ if !LeafLoad(&leaf,empty,&report) || leaf.ValuesCount!=1 || leaf.Marker!=7 {t.Fatalf("leaf defaults: %+v",leaf)}
  for i:=0;i<8;i++ {
   wire:=minimal; a,b:=int32(1),int32(1)
   if i%2==0 {wire=full;a=1;b=2}
@@ -237,8 +239,8 @@ func TestDefaults(t *testing.T) {
   if RootFixedMeasure(1)!=int64(len(wire)) || RootFixedSave([]Root{value},saved)!=int64(len(wire)) || !bytes.Equal(saved,wire) {t.Fatal("wire mismatch")}
  }
  RootReset(&value)
- if value.Payload.Leaf.ValuesCount!=0 || value.Payload.RowsCount!=0 || value.Payload.Rows[1].ValuesCount!=0 || value.Payload.Rows[1].Marker!=7 {t.Fatal("reset")}
- if !RootFromJSON(&value,[]byte("{}"),&report)||value.Payload.Leaf.ValuesCount!=0||value.Payload.RowsCount!=0||value.Payload.Rows[1].ValuesCount!=0 {t.Fatal("json defaults")}
+ if value.Payload.Leaf.ValuesCount!=1 || value.Payload.RowsCount!=1 || value.Payload.Rows[1].ValuesCount!=1 || value.Payload.Rows[1].Marker!=7 {t.Fatal("reset")}
+ if !RootFromJSON(&value,[]byte("{}"),&report)||value.Payload.Leaf.ValuesCount!=1||value.Payload.RowsCount!=1||value.Payload.Rows[1].ValuesCount!=1 {t.Fatal("json defaults")}
 }
 `
 

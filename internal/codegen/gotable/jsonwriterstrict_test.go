@@ -201,12 +201,10 @@ func writeStorage(t *testing.T, name string, v *Root) {
 
 func TestStorage(t *testing.T) {
 	fill := func(v *Root) {
-		v.S[0] = 0x00
+		v.S[0] = 0x01
 		v.S[1] = 0x1f
 		v.S[2] = 0x7f
 		v.SLength = 3
-		v.W[0] = 0
-		v.WLength = 1
 		v.G = math.MaxFloat32
 		v.B[0] = 0x00
 		v.B[1] = 0xff
@@ -222,7 +220,7 @@ func TestStorage(t *testing.T) {
 	fill(&v1)
 	v1.F = math.Copysign(0, -1)
 	writeStorage(t, "out1", &v1)
-	// storage that is not text: ill-formed UTF-8, then an unpaired surrogate
+	// storage that is not text: ill-formed UTF-8, then a zero byte (§16.3, W8)
 	var v2 Root
 	RootReset(&v2)
 	fill(&v2)
@@ -231,7 +229,7 @@ func TestStorage(t *testing.T) {
 	var v3 Root
 	RootReset(&v3)
 	fill(&v3)
-	v3.W[0] = 0xd800
+	v3.S[0] = 0x00
 	writeStorage(t, "out3", &v3)
 }
 `
@@ -266,7 +264,7 @@ func runStorageStrict(t *testing.T, edit func(map[string][]byte)) string {
 // side writes: the conformance corpus, the text differential's 200 random
 // instances (both the generated ToJSON and the engine's unpack text), and
 // storage built in code: text with every control spelling writes strict, and
-// ill-formed UTF-8 or an unpaired surrogate refuses the write (§16.14 W0).
+// ill-formed UTF-8 or a zero byte refuses the write (§16.14 W0, W8).
 func TestGoJsonWriterIsStrict(t *testing.T) {
 	t.Parallel()
 
@@ -351,8 +349,7 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 				t.Fatalf("%s: a U+FFFD was written; nothing is replaced:\n%s", name, data)
 			}
 			for _, want := range []string{
-				"\"s\": \"\\u0000\\u001f\x7f\"",
-				"\"w\": \"\\u0000\"",
+				"\"s\": \"\\u0001\\u001f\x7f\"",
 			} {
 				if !bytes.Contains(data, []byte(want)) {
 					t.Fatalf("%s: missing %q:\n%s", name, want, data)

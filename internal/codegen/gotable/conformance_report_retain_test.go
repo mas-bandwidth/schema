@@ -408,7 +408,7 @@ func TestGoDriverReportAndRetainNegativeControl(t *testing.T) {
 			root,
 			"test/conformance/go/retain.go",
 			`r.Nodes.Mark(index)`,
-			`if r.Nested && index > 0 && int(index) <= len(r.Nodes.Entries) { r.Nodes.Entries[index-1].Offset &^= 1 << 63 } // SABOTAGED: unknown nested kind-17 pointers do not mark target nodes`,
+			`_ = index; if r.Nested { for i := range r.Nodes.Entries { if e := &r.Nodes.Entries[i]; e.Offset != ^uint64(0) && e.Offset&(1<<62) == 0 { e.Offset &^= 1 << 63 } } } // SABOTAGED: unknown nested kind-17 pointers do not mark the record they sit in`,
 		)
 		wrong := goDriverCheckAll(t, root, bin, reports, retains)
 		want := []string{
@@ -419,4 +419,60 @@ func TestGoDriverReportAndRetainNegativeControl(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: removing markUnknownNodeRefs produced %v, want %v", wrong, want)
 		}
 	})
+}
+
+// The envelope is a variable root distinct from fixed ToolMessage. All three
+// pins must reach its generated reader: missing dispatch is not a refusal.
+func TestGoDriverToolEnvelope(t *testing.T) {
+	root := goConformanceRoot(t)
+	bin := goBuildDriver(t, root, "")
+	var manifest strings.Builder
+	for _, name := range []string{"nested_arm_exact", "nested_arm_trailing", "nested_arm_trailing_top"} {
+		fmt.Fprintf(&manifest, "report %s messagedemo ToolEnvelope testdata/wire/tables/%s.bin\n", name, name)
+	}
+	manifest.WriteString("report fixed_previous_form messagedemo ToolMessage testdata/wire/tables/nested_arm_exact.bin\n")
+	path := filepath.Join(t.TempDir(), "MANIFEST.txt")
+	if err := os.WriteFile(path, []byte(manifest.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := goDriverRunSurface(t, root, bin, path, "report")
+	for _, name := range []string{"nested_arm_exact", "nested_arm_trailing", "nested_arm_trailing_top", "fixed_previous_form"} {
+		t.Run(name, func(t *testing.T) {
+			answer, err := os.ReadFile(filepath.Join(out, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			head, body, found := strings.Cut(string(answer), "\n")
+			if !found {
+				t.Fatalf("missing verdict: %q", answer)
+			}
+			if name != "nested_arm_exact" {
+				if !strings.HasSuffix(head, ",refused") || body != "" {
+					t.Fatalf("expected refusal without value: %q", answer)
+				}
+				if _, err := os.Stat(filepath.Join(out, name+".wire")); !os.IsNotExist(err) {
+					t.Fatalf("refused read wrote wire: %v", err)
+				}
+				return
+			}
+			var value struct {
+				Sequence uint32
+				Body     struct{ Origin struct{ Pid uint32 } }
+			}
+			if !strings.HasSuffix(head, ",read") || json.Unmarshal([]byte(body), &value) != nil || value.Sequence != 41 || value.Body.Origin.Pid != 5 {
+				t.Fatalf("wrong exact-frame value: %q", answer)
+			}
+			got, err := os.ReadFile(filepath.Join(out, name+".wire"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/nested_arm_exact.bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatal("exact-frame canonical save differs")
+			}
+		})
+	}
 }

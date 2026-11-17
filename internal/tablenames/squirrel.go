@@ -101,7 +101,7 @@ var squirrelModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.nut)": squirrelUnitModuleKeys,
 	"the runtime files (schema_table_*.nut), each its own module table": {
 		"noteStringOrigin", "stringIdentity",
-		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create",
+		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create", "deadNotZero",
 		"DefaultLimits", "Destroy", "EditTextForm", "FixedWidened", "FromJson", "fromJsonWalk", "LoadMessages",
 		"LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",
 		"ReadStrictNames", "Rows", "SaveMessages", "SaveRetain", "SaveText", "SaveTextForm",

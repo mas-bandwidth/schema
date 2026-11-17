@@ -115,11 +115,14 @@ end
 function _M.WriteRenderSprite(stream, v)
   if math.type(v.SortKey) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.SortKey }, 64) then return false end -- the storage width
-  if math.type(v.MeshId) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.MeshId) ~= "integer" or v.MeshId < 0 or v.MeshId > 4294967295 then return false end
   if not stream:serializeBits({ value = v.MeshId }, 32) then return false end -- the storage width
-  if math.type(v.MaterialId) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.MaterialId) ~= "integer" or v.MaterialId < 0 or v.MaterialId > 4294967295 then return false end
   if not stream:serializeBits({ value = v.MaterialId }, 32) then return false end -- the storage width
-  if math.type(v.Layer) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Layer) ~= "integer" or v.Layer < 0 or v.Layer > 255 then return false end
   if not stream:serializeBits({ value = v.Layer }, 8) then return false end -- the storage width
   if math.type(v.Team) ~= "integer" or v.Team < 0 or v.Team > 2 then return false end
   if not stream:serializeBits({ value = v.Team }, 2) then return false end -- the enum value
@@ -128,9 +131,13 @@ end
 
 -- type RenderBlock (SPEC §6.1: the wire order is the declared order)
 function _M.WriteRenderBlock(stream, v)
-  if math.type(v.WorkerIndex) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.WorkerIndex) ~= "integer" or v.WorkerIndex < 0 or v.WorkerIndex > 4294967295 then return false end
   if not stream:serializeBits({ value = v.WorkerIndex }, 32) then return false end -- the storage width
-  if math.type(v.SpriteCountHint) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.SpriteCountHint) ~= "integer" or v.SpriteCountHint < 0 or v.SpriteCountHint > 4294967295 then
+    return false
+  end
   if not stream:serializeBits({ value = v.SpriteCountHint }, 32) then return false end -- the storage width
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.SpritesCount) ~= "integer" or v.SpritesCount < 0 or v.SpritesCount > 64 then return false end

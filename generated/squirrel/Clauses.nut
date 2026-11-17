@@ -744,6 +744,7 @@ _M.WriteStrs <- function(stream, value) {
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
   if (typeof value.S != "blob" || typeof value.SLength != "integer" || value.SLength < 0 || value.SLength > 8 || value.SLength > value.S.len()) return false;
+  if (!_validText(value.S, value.SLength)) return false;
   _h.value = value.SLength;
   if (!stream.serializeBits(_h, 4)) return false;
   if (!stream.serializeBytes(_usedBytes(value.S, value.SLength))) return false;

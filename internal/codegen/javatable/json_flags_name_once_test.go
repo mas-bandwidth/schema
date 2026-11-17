@@ -34,7 +34,7 @@ func TestJavaJsonFlagsNameOnce(t *testing.T) {
 		name, unit, root, text, verdict, unknown string
 	}
 	var rows []row
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

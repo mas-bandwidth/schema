@@ -62,7 +62,7 @@ local function skip(r: any, kind: number): boolean
 	end
 	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			return false
 		end
 		r.at += n
@@ -78,7 +78,7 @@ local function skip(r: any, kind: number): boolean
 			end
 			r_u8(r)
 			local n = r_leb(r)
-			if r.bad or r.at + n > r.e then
+			if r.bad or n > r.e - r.at then
 				return false
 			end
 			r.at += n
@@ -206,7 +206,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 				break
 			end
 			local n = r_leb(w)
-			if w.bad or w.at + n > w.e then
+			if w.bad or n > w.e - w.at then
 				bad = true
 				break
 			end
@@ -240,7 +240,7 @@ local function node_table_scan(bytes: buffer, ids: { string }, endpos: number, r
 			return nil
 		end
 		local tlen = r_leb(rec)
-		if rec.bad or rec.at + tlen > rec.e then
+		if rec.bad or tlen > rec.e - rec.at then
 			damage(report)
 			return nil
 		end
@@ -259,6 +259,7 @@ end
 -- THE LINK: each descriptor learns its fields by id, once (§3, §8.1).
 local byIdCache: { [any]: { [string]: any } } = {}
 local typeCache: { [any]: { [string]: any } } = {}
+local declaredCache: { [any]: { [string]: boolean } } = {}
 
 local function fields_by_id(desc: any): { [string]: any }
 	local m = byIdCache[desc]
@@ -289,15 +290,25 @@ local function place_types(desc: any): { [string]: any }
 	return m
 end
 
+-- THE TYPES THIS READER DECLARES (§3.1): every table of the unit, reachable
+-- from this root or not, so a record it placed no storage for is still told
+-- apart from a newer writer's type. A record of one that a pointer names at
+-- the wrong type is damage; only a type outside this set reads null.
+local function declared_types(desc: any): { [string]: boolean }
+	local m = declaredCache[desc]
+	if m == nil then
+		local built: { [string]: boolean } = {}
+		for _, id in desc.declared do
+			built[id] = true
+		end
+		declaredCache[desc] = built
+		return built
+	end
+	return m
+end
+
 local _table: { string } = {}
 local _pending: { any } = {}
--- what the last enum read named on the wire, for the field-at-default rule
--- (§3, §4): the variant's index, 0 for the None reference, -1 for a variant
--- this build cannot name or has deprecated, which no default rule judges
-local _enumWire = -1
--- whether the last keyed array read carried no slot, or a slot at the
--- default its writer elides (§3.2)
-local _keyedAtDefault = false
 local _nodes: { any } = {}
 local _rootValue: any = nil
 local _rootDesc: any = nil
@@ -431,13 +442,11 @@ local read_union: any
 -- number.
 local function enum_read(fd: any, r: any, report: any): (any, boolean)
 	local ref = r_leb(r)
-	_enumWire = -1
 	if r.bad then
 		damage(report)
 		return nil, false
 	end
 	if ref == 0 then
-		_enumWire = 0
 		return 0, true
 	end
 	if ref > #_table then
@@ -450,7 +459,6 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 			if v[3] == true then
 				return fd.def or 0, true
 			end
-			_enumWire = i
 			return i, true
 		end
 	end
@@ -559,7 +567,7 @@ local function scan_key(keyfd: any, body: any, entry: any): (any, boolean, boole
 					end
 				elseif keyfd.s == "str" or keyfd.s == "text" then
 					local n = r_leb(scan)
-					if scan.bad or scan.at + n > scan.e then
+					if scan.bad or n > scan.e - scan.at then
 						return keyVal, kindBad, entryWidened, false
 					end
 					if not V.utf8(scan.b, scan.at, n) then
@@ -584,7 +592,7 @@ end
 
 local function read_map_inner(fd: any, r: any, report: any, v: any): boolean
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return false
 	end
@@ -633,7 +641,7 @@ local function read_map_inner(fd: any, r: any, report: any, v: any): boolean
 		local hasLast = false
 		for _ = 1, count do
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then
+			if sub.bad or elemLen > sub.e - sub.at then
 				damage(report)
 				break
 			end
@@ -788,35 +796,9 @@ end
 
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. Key variant k lands at index k.
--- AN ELEMENT AT ITS DEFAULT (§3, §5): the value a reader prefills and a
--- writer elides a keyed slot at (table_save.moo elem_is_default)
-local function elem_default(e: any, val: any): boolean
-	local s = e.s
-	if s == "bool" then
-		return val == false or val == nil
-	end
-	if s == "int" or s == "float" then
-		return V.sameStorage(e, val, e.def)
-	end
-	if s == "enum" then
-		return val == 0 or val == nil
-	end
-	if s == "ptr" or s == "sblob" or s == "bblob" then
-		return not val
-	end
-	if s == "union" then
-		return type(val) ~= "table" or val.Type == 0
-	end
-	if s == "str" or s == "text" then
-		return val == nil or val == ""
-	end
-	return false
-end
-
 local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
-	_keyedAtDefault = false
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return false
 	end
@@ -850,8 +832,6 @@ local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 			report.widened += 1
 		end
 		local e = fd.e
-		-- A KEYED ARRAY WITH NO SLOT IS NOT WRITTEN (§3.2)
-		_keyedAtDefault = count == 0
 		for _ = 1, count do
 			local key = r_leb(sub)
 			if sub.bad then
@@ -873,7 +853,7 @@ local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 				end
 			end
 			local elemLen = r_leb(sub)
-			if sub.bad or sub.at + elemLen > sub.e then
+			if sub.bad or elemLen > sub.e - sub.at then
 				damage(report)
 				break
 			end
@@ -910,13 +890,6 @@ local function read_keyed_inner(fd: any, r: any, report: any, v: any): boolean
 			if payload.at ~= payload.e then
 				damage(report)
 				break
-			end
-			-- A SLOT AT ITS DEFAULT IS NOT WRITTEN (§3.2): a table slot whose body
-			-- is its terminator alone, an enum slot naming None, or a value the
-			-- reader prefills; a variant this build cannot name is judged by none
-			local atDef = if e.s == "tab" then elemLen == 1 elseif e.s == "enum" then _enumWire == 0 else elem_default(e, x)
-			if atDef then
-				_keyedAtDefault = true
 			end
 			if dst ~= nil and x ~= nil then
 				if type(dst) == "buffer" then
@@ -1023,7 +996,7 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 	if fd.s == "bytes" then
 		-- bytes(N) rides as an array of u8 (§2.5); a body shorter than its
 		-- count is damage, never a payload cut to what the body holds
-		if sub.at + keep > sub.e then
+		if keep > sub.e - sub.at then
 			damage(report)
 			return false
 		end
@@ -1097,7 +1070,7 @@ end
 -- the header is read against the PARENT buffer (§2.9).
 local function read_array(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return false, false
 	end
@@ -1142,7 +1115,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(report)
 			return false
 		end
@@ -1173,7 +1146,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	elseif s == "str" or s == "text" then
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(report)
 			return false
 		end
@@ -1298,7 +1271,7 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 	local kind = r_u8(r)
 	local lpos = r.at
 	local n = r_leb(r)
-	if r.bad or r.at + n > r.e then
+	if r.bad or n > r.e - r.at then
 		damage(report)
 		return done(u, false)
 	end
@@ -1381,7 +1354,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "str" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(_report)
 			return false
 		end
@@ -1401,7 +1374,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "text" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(_report)
 			return false
 		end
@@ -1434,7 +1407,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		return true
 	elseif s == "tab" then
 		local n = r_leb(r)
-		if r.bad or r.at + n > r.e then
+		if r.bad or n > r.e - r.at then
 			damage(_report)
 			return false
 		end
@@ -1496,6 +1469,7 @@ local function resolve(report: any)
 	if not _numberingGood then
 		return
 	end
+	local declared = declared_types(_rootDesc)
 	local landed: { [any]: boolean } = {}
 	local prior = _ctx
 	for _, p in _pending do
@@ -1539,6 +1513,23 @@ local function resolve(report: any)
 						value = n.v
 					else
 						kind_mismatch(report)
+					end
+				elseif n ~= nil then
+					-- A RECORD THIS ROOT DOES NOT PLACE (§3.1): of a type the
+					-- reader cannot name at all it reads null, counted unknown
+					-- once; of a type the reader DECLARES, or a blob, that is
+					-- not the slot's target it is a wrong-type pointer target,
+					-- damage (§6.5).
+					local want: string = ""
+					if p.d.s == "sblob" then
+						want = StringBlobId
+					elseif p.d.s == "bblob" then
+						want = BytesBlobId
+					else
+						want = S.lookup(p.d.t).id
+					end
+					if n.tid ~= want and (declared[n.tid] or n.tid == StringBlobId or n.tid == BytesBlobId) then
+						damage(report)
 					end
 				end
 			end
@@ -1720,111 +1711,8 @@ local function guard_holds(fd: any, v: any): boolean
 	return true
 end
 
--- a field's place in its declaration order, which is the order a conforming
--- writer emits a body's fields in (§3)
-local posCache: { [any]: { [string]: number } } = {}
-
-local function field_positions(desc: any): { [string]: number }
-	local m = posCache[desc]
-	if m == nil then
-		local built: { [string]: number } = {}
-		for i, f in desc.fields do
-			built[f.id] = i
-		end
-		posCache[desc] = built
-		return built
-	end
-	return m
-end
-
--- A FIELD ITS WRITER ELIDES (§3, §3.1, §3.2, §4): the save writes no header
--- for a value its declaration stores by absence (table_save.moo write_field),
--- so a body that carries one is a spelling no conforming writer of a lawful
--- lineage produces, and a changed default is the lineage check's refusal, so
--- the writer's default is this reader's. A `| required` field and a present
--- optional always ride; a field under a false guard is the guard's rule. The
--- framing spellings are read off the payload at `at`: a null pointer (index
--- 0), the None arm (reference 0) and an empty nested body (L 1, its
--- terminator alone). The rest are read off the value the field landed.
-local function writer_elides(fd: any, kind: number, b: buffer, at: number, e: number, v: any): boolean
-	if fd.required == true or fd.present ~= nil or v == nil or not guard_holds(fd, v) then
-		return false
-	end
-	if kind == 17 or kind == 15 or kind == 13 then
-		local x = V.leb(b, at, e)
-		return x == (if kind == 13 then 1 else 0)
-	end
-	local s = fd.s
-	local val = v[fd.slot]
-	if s == "bool" then
-		return (val == true) == (fd.def == true)
-	elseif s == "int" or s == "float" then
-		return V.sameStorage(fd, val, fd.def)
-	elseif s == "enum" then
-		return _enumWire == fd.def
-	elseif s == "str" or s == "text" then
-		return (if val == nil then "" else val) == (fd.def or "")
-	elseif s == "bytes" then
-		local n = v[fd.slot .. "Length"]
-		local d = fd.def or ""
-		if type(val) ~= "buffer" then
-			return #d == 0
-		end
-		if type(n) ~= "number" then
-			n = buffer.len(val)
-		end
-		return n == #d and buffer.readstring(val, 0, n) == d
-	elseif s == "map" or (s == "arr" and (fd.array == "list" or fd.array == "counted")) then
-		-- an empty map, list or counted array: the count on the wire, L, the
-		-- element kind, then the count
-		local n, p = V.leb(b, at, e)
-		if n == nil or p >= e then
-			return false
-		end
-		return V.leb(b, p + 1, e) == 0
-	elseif s == "arr" then
-		if fd.array == "keyed" then
-			return _keyedAtDefault
-		end
-		-- a fixed array of tables always rides: position is identity there
-		if fd.e.s == "tab" then
-			return false
-		end
-		if fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob" then
-			-- a pointer slot resolves after the walk, so its null is read off
-			-- the wire: L, the element kind, the count, then each index
-			local n, p = V.leb(b, at, e)
-			if n == nil or p >= e then
-				return false
-			end
-			local count, q = V.leb(b, p + 1, e)
-			if count == nil then
-				return false
-			end
-			for _ = 1, count do
-				local index, nxt = V.leb(b, q, e)
-				if index == nil or index ~= 0 then
-					return false
-				end
-				q = nxt
-			end
-			return true
-		end
-		for i = 1, fd.bound do
-			local x = if type(val) == "buffer" then buffer.readu8(val, i - 1) elseif type(val) == "table" then val[i] else nil
-			if not elem_default(fd.e, x) then
-				return false
-			end
-		end
-		return true
-	end
-	return false
-end
-
 read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	local byId = fields_by_id(desc)
-	local pos = field_positions(desc)
-	local lastPos = 0
 	local seen: { [string]: boolean } = {}
 	-- A FIELD ID TWICE IN ONE BODY IS DAMAGE, whether this reader can name it
 	-- or not (§3; docs/plans/strict-only.md decision 5)
@@ -1868,17 +1756,6 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			return false
 		end
 		met[id] = true
-		-- A BODY'S FIELDS FOLLOW THE WRITER'S DECLARATION ORDER (§3): a field
-		-- this reader names, met after one declared later, is a spelling no
-		-- conforming writer emits
-		local p = pos[id]
-		if p ~= nil then
-			if p <= lastPos then
-				damage(_report)
-				return false
-			end
-			lastPos = p
-		end
 		local handled = false
 		if id == NodeTableId then
 			if nested then
@@ -1926,17 +1803,8 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 					end
 				end
 			else
-				local at = r.at
-				local unknownBefore, changedBefore = _report.unknown, _report.kindChanged
 				local ok, selected = read_field(fd, r, v)
 				if not ok then
-					return false
-				end
-				-- a value this build cannot wholly name (an unknown variant, arm
-				-- or slot, an element of another kind) is a newer writer's, and
-				-- no default rule judges it
-				if selected ~= false and _report.unknown == unknownBefore and _report.kindChanged == changedBefore and writer_elides(fd, kind, r.b, at, r.e, v) then
-					damage(_report)
 					return false
 				end
 				seen[id] = true
@@ -2044,7 +1912,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 				if not V.utf8(rec.body, 0, buffer.len(rec.body)) then
 					-- §3.1: a refused record KEEPS ITS INDEX as a placeholder
 					damage(report)
-					_nodes[#_nodes + 1] = { kind = "x" }
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "s", blob = rec.body }
 				end
@@ -2058,7 +1926,7 @@ local function readOpened(root: string, bytes: buffer, report: any): any
 					if _retain ~= nil then
 						_retain.lost(report) -- a node record of a type this build cannot place (§6.6)
 					end
-					_nodes[#_nodes + 1] = { kind = "x" }
+					_nodes[#_nodes + 1] = { kind = "x", tid = tid }
 				else
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = nc.new(), body = rec.body }
 				end

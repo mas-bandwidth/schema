@@ -238,15 +238,14 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.emitMessageKeyed(f, entry, pass)
 
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n",
-			name, name, f.Type.Size, messageBad(pass))
-		g.pf("    if ( value.%s_length > 0 )\n    {\n", name)
+		g.storageAssert("    ", "value."+name+"_length", f.Type.Size)
+		g.emitBytesDefaultLocal(f)
+		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")
 	case f.CountedOnWire():
-		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return %s; } // storage invariant\n",
-			name, name, f.ArrayBound, messageBad(pass))
+		g.storageAssert("    ", "value."+name+"_count", f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", name)
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageArray(f, entry, fmt.Sprintf("value.%s_count", name), "value."+name+"[%s]", "        ", pass)
@@ -410,6 +409,12 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 	default:
 		width := msgValueBits(shape.Elem, inner)
 		if pass == messagePassMeasure {
+			if _, flags := f.Type.Ref.(*ir.Flags); flags && width < 64 {
+				// The arithmetic measure otherwise never visits scalar elements.
+				// Keep this validation loop entirely out of release builds.
+				g.pf("#ifndef NDEBUG\n%s", loop)
+				g.pf("%s    schema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // message flags domain, debug only (§5.1)\n%s}\n#endif\n", ind, elem, width, ind)
+			}
 			if int(shape.Elem) == tkF32 || int(shape.Elem) == tkF64 {
 				// THE WRITER'S FINITE RULE over every element (§3.3): the
 				// measure refuses what the save refuses
@@ -446,6 +451,12 @@ func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messag
 // its storage width, a `flags` mask at its declared W bits.
 func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMessageShape, expr, ind string, pass messagePass) {
 	width := msgValueBits(kind, shape)
+	if _, flags := f.Type.Ref.(*ir.Flags); flags && width < 64 {
+		// File and cook masks retain all storage bits; a message may carry
+		// only its announced width. This is writer misuse, checked in debug
+		// like the packet writer (SPEC.md §5.1; SPEC-TABLES.md §3.3).
+		g.pf("%sschema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // message flags domain, debug only (§5.1)\n", ind, expr, width)
+	}
 	if int(kind) == tkF32 || int(kind) == tkF64 {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3), a compressed float's too, before it is quantized: the measure
@@ -516,7 +527,7 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string, pass messagePass) {
 	switch {
 	case f.Type.Kind == ir.TString && !f.Type.TextUnbounded():
-		g.pf("%sif ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n", ind, f.Name, f.Name, f.Type.Size, messageBad(pass))
+		g.storageAssert(ind, "value."+f.Name+"_length", f.Type.Size)
 		g.emitMessageTextPayload(f, entry, expr, "value."+f.Name+"_length", ind, pass)
 	case f.Array != ir.ArrayNone:
 		count := strconv.FormatInt(f.ArrayBound, 10)
@@ -577,12 +588,12 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 	value, count := armValue(base, v), armCount(base, v)
 	switch {
 	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes:
-		g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, af.Type.Size, messageBad(pass))
+		g.storageAssert(ind, count, af.Type.Size)
 		g.emitMessageTextPayload(af, entry, value, count, ind, pass)
 	case af.Array != ir.ArrayNone:
 		n := strconv.FormatInt(af.ArrayBound, 10)
 		if af.Array == ir.ArrayCounted {
-			g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, af.ArrayBound, messageBad(pass))
+			g.storageAssert(ind, count, af.ArrayBound)
 			n = count
 		}
 		g.emitMessageArray(af, entry, n, value+"[%s]", ind, pass)
