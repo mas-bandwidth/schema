@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Unity leg's conformance driver frame (test/conformance/README.md):
+       a .NET host, never compiled in the Unity dialect, that loads each
+       generated unit's schemaunit.dll (unit/schemaunit.csproj) and answers
+       the surfaces the table core carries. -->
+  <Import Project="../../unity/HostDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>unityconformance</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/*.cs" />
+  </ItemGroup>
+
+</Project>
