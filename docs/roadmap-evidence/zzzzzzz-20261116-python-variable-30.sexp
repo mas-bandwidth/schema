@@ -93,6 +93,16 @@
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
  :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
 
+(:id "port/python/vt/defaults-and-table-rename" :state :done
+ :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/evolution_test.go: TestPythonVtEvolution" "internal/codegen/pythontable/evolution_test.go: TestPythonVtEvolutionNegativeControl")
+ :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
+ :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
+
+(:id "port/python/vt/renames" :state :done
+ :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/evolution_test.go: TestPythonVtEvolution" "internal/codegen/pythontable/evolution_test.go: TestPythonVtEvolutionNegativeControl")
+ :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
+ :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
+
 (:id "port/python/vt/id-table-wire" :state :done
  :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/id_order_test.go: TestPythonIDOrder" "internal/codegen/pythontable/id_order_test.go: TestPythonIDOrderUnknownGraphCpp")
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
