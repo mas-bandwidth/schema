@@ -178,7 +178,7 @@ func TestJsPointerTargetBlobKindRefused(t *testing.T) {
 			}
 			// The engine is the oracle: it refuses the row wire_damaged.
 			var report tabletext.Report
-			if ok, _ := tablewire.Decode(m, m.New(m.Lookup(c.Reader)), wire, &report); ok || !report.Refused || report.Reason != tablewire.ReasonWireDamaged {
+			if ok, _ := tablewire.Decode(m, m.New(m.Lookup(c.Reader)), wire, &report); ok || !report.Refused || !strings.HasPrefix(report.Reason, tablewire.ReasonWireDamaged+":") {
 				t.Fatalf("%s: the engine does not refuse wire_damaged: %+v", name, report)
 			}
 			measure, _, refused := tablewire.FileRegionMeasure(u, findTable(t, u, c.Reader), wire)
