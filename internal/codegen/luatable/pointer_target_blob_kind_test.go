@@ -19,6 +19,7 @@
 package luatable
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -380,6 +381,17 @@ end
 		wires := luarun.HexLines(t, luarun.Run(t, dir, "main.lua", map[string][]byte{"module": []byte(ModuleName(u))}))
 		if len(wires) != 12 {
 			t.Fatalf("the save probe printed %d wires, want 12", len(wires))
+		}
+		// each root's saves come null, empty, set, each as (save, retaining
+		// save): the three blobs must really reach the wire, so no two of one
+		// save path's three wires are equal
+		for base := 0; base < 12; base += 6 {
+			for path := range 2 {
+				null, empty, set := wires[base+path], wires[base+2+path], wires[base+4+path]
+				if bytes.Equal(null, empty) || bytes.Equal(null, set) || bytes.Equal(empty, set) {
+					t.Errorf("save %d path %d: the null, empty and set saves are not three wires: %x %x %x", base/6, path, null, empty, set)
+				}
+			}
 		}
 		for i, wire := range wires {
 			root := "Text"
