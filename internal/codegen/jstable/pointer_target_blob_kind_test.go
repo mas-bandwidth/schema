@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,9 +28,12 @@ import (
 // and counted unknown; a blob record no pointer reaches is damage.
 //
 // The same test holds the leg's writers to never emitting a blob record no
-// pointer reaches: a save and a retaining save of each root's blob set and null
-// is decoded by the engine's own read, which must accept it with nothing
-// unknown. The negative control plants the old root-closure "can name" rule in
+// pointer reaches: a save and a retaining save of each root's blob set, empty
+// and null is decoded by the engine's own read, which must accept it with
+// nothing unknown. Rows 8, 9 and 10 of the pointer-target feature witnesses (a
+// table, a bytes and a string record outside the root's closure, named from a
+// declared slot) are encoded by the engine and must be refused wire_damaged by
+// Load and LoadRetain, as the engine refuses them. The negative control plants the old root-closure "can name" rule in
 // a copy of the generated reader, and text-names-bytes must then read.
 func TestJsPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
@@ -101,27 +105,7 @@ func TestJsPointerTargetBlobKindRefused(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		probe := `
-for (const row of ` + string(encoded) + `) {
-  const wire = new Uint8Array(readFileSync(row.wire));
-  const r = new m.TableVariableReport();
-  const v = m[row.root + "Load"](wire, r);
-  const retain = new m.TableVariableRetain(new Uint8Array(1 << 16), new Array(256));
-  const rr = new m.TableVariableReport();
-  const rv = m[row.root + "LoadRetain"](wire, retain, rr);
-  if (row.read) {
-    if (v === null || r.err() !== null) { fail(row.case + ": Load expected read, got refusal: " + JSON.stringify(r)); }
-    if (rv === null || rr.err() !== null) { fail(row.case + ": LoadRetain expected read, got refusal: " + JSON.stringify(rr)); }
-    if (row.unknown >= 0 && r.unknown !== row.unknown) { fail(row.case + ": Load unknown " + r.unknown + ", want " + row.unknown); }
-    if (row.unknown >= 0 && rr.unknown !== row.unknown) { fail(row.case + ": LoadRetain unknown " + rr.unknown + ", want " + row.unknown); }
-  } else {
-    if (v !== null || r.err() !== "wire_damaged") { fail(row.case + ": Load expected wire_damaged, got " + JSON.stringify(r)); }
-    if (rv !== null || rr.err() !== "wire_damaged" || retain.used !== 0 || retain.count !== 0) { fail(row.case + ": LoadRetain expected wire_damaged with its store empty: " + JSON.stringify(rr)); }
-  }
-  const measure = Number(m[row.root + "LoadMeasure"](wire));
-  if (measure !== row.measure) { fail(row.case + ": LoadMeasure " + measure + ", want " + row.measure); }
-}
-`
+		probe := jsLoadVerdictProbe(encoded)
 		out, err := jsBlobKindProbe(t, u, filesByUnit[unit], probe, nil)
 		if err != nil {
 			t.Fatalf("%s: node probe failed: %v\n%s", unit, err, out)
@@ -155,26 +139,89 @@ for (const row of ` + string(encoded) + `) {
 		})
 	}
 
+	t.Run("the flipped feature-witness rows refuse", func(t *testing.T) {
+		const witnesses = "testdata/conformance/feature-witnesses/pointer-targets"
+		data, err := os.ReadFile(filepath.Join(repo, witnesses, "cases.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		type witnessCase struct {
+			Name, Writer, Reader string
+			Input                json.RawMessage
+			KindMismatch         int `json:"kind_mismatch"`
+		}
+		var cases []witnessCase
+		if err := json.Unmarshal(data, &cases); err != nil {
+			t.Fatal(err)
+		}
+		u := loadUnitForMeasure(t, repo, witnesses)
+		m := tabletext.NewModel(u)
+		files := map[string][]byte{}
+		var rows []row
+		for _, name := range []string{"table outside root closure", "bytes outside root closure", "string outside root closure"} {
+			i := slices.IndexFunc(cases, func(c witnessCase) bool { return c.Name == name })
+			if i < 0 {
+				t.Fatalf("cases.json has no row %q", name)
+			}
+			c := cases[i]
+			if c.KindMismatch == 0 {
+				t.Fatalf("%s: cases.json reads this row; the ruling refuses it", name)
+			}
+			v := m.New(m.Lookup(c.Writer))
+			var r tabletext.Report
+			if !m.Read(v, c.Input, &r) || !r.Silent() {
+				t.Fatalf("%s: the writer's input does not read: %+v", name, r)
+			}
+			wire, err := tablewire.Encode(m, v)
+			if err != nil {
+				t.Fatalf("%s: Encode: %v", name, err)
+			}
+			// The engine is the oracle: it refuses the row wire_damaged.
+			var report tabletext.Report
+			if ok, _ := tablewire.Decode(m, m.New(m.Lookup(c.Reader)), wire, &report); ok || !report.Refused || report.Reason != tablewire.ReasonWireDamaged {
+				t.Fatalf("%s: the engine does not refuse wire_damaged: %+v", name, report)
+			}
+			measure, _, refused := tablewire.FileRegionMeasure(u, findTable(t, u, c.Reader), wire)
+			if refused {
+				measure = -1
+			}
+			file := strings.ReplaceAll(name, " ", "-") + ".bin"
+			files[file] = wire
+			rows = append(rows, row{Case: name, Root: c.Reader, Wire: file, Unknown: -1, Measure: measure})
+		}
+		encoded, err := json.Marshal(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out, err := jsBlobKindProbe(t, u, files, jsLoadVerdictProbe(encoded), nil); err != nil {
+			t.Fatalf("node probe failed: %v\n%s", err, out)
+		}
+	})
+
 	t.Run("the leg's writers emit no unreachable blob record", func(t *testing.T) {
 		unit := order[0]
 		u := loadUnitForMeasure(t, repo, unit)
 		m := tabletext.NewModel(u)
+		// Set false leaves the blob null; Set true stores Value, as a string
+		// for Text and as hex-decoded bytes for Bin ("" is the empty blob).
 		type writerCase struct {
 			Name  string `json:"name"`
 			Root  string `json:"root"`
 			Field string `json:"field"`
-			Text  string `json:"text"`
-			Bytes string `json:"bytes"`
+			Set   bool   `json:"set"`
+			Value string `json:"value"`
 		}
 		cases := []writerCase{
-			{Name: "Text-set", Root: "Text", Field: "body", Text: "hello"},
+			{Name: "Text-set", Root: "Text", Field: "body", Set: true, Value: "hello"},
+			{Name: "Text-empty", Root: "Text", Field: "body", Set: true},
 			{Name: "Text-null", Root: "Text", Field: "body"},
-			{Name: "Bin-set", Root: "Bin", Field: "data", Bytes: "68656c6c6f"},
+			{Name: "Bin-set", Root: "Bin", Field: "data", Set: true, Value: "68656c6c6f"},
+			{Name: "Bin-empty", Root: "Bin", Field: "data", Set: true},
 			{Name: "Bin-null", Root: "Bin", Field: "data"},
 		}
 		out := runJSConstructProbe(t, mustGenerateVariable(t, u), runtimeHome(u)+"Variable.js", jsBlobKindWriterProbe, cases)
 		saved := map[string][2]string{}
-		for _, line := range strings.Split(out, "\n") {
+		for line := range strings.SplitSeq(out, "\n") {
 			f := strings.Fields(line)
 			if len(f) == 4 && f[0] == "SAVE" {
 				saved[f[1]] = [2]string{f[2], f[3]}
@@ -202,7 +249,40 @@ for (const row of ` + string(encoded) + `) {
 				}
 			}
 		}
+		for _, root := range []string{"Text", "Bin"} {
+			if saved[root+"-empty"][0] == saved[root+"-null"][0] {
+				t.Errorf("%s: the empty blob saved the same wire as null; the probe did not set it", root)
+			}
+		}
 	})
+}
+
+// jsLoadVerdictProbe is the node probe for verdict rows (case, root, wire,
+// read, unknown, measure): each wire file runs through Load, LoadRetain and
+// LoadMeasure, and a refused row must be refused wire_damaged with the
+// retaining store left empty.
+func jsLoadVerdictProbe(rows []byte) string {
+	return `
+for (const row of ` + string(rows) + `) {
+  const wire = new Uint8Array(readFileSync(row.wire));
+  const r = new m.TableVariableReport();
+  const v = m[row.root + "Load"](wire, r);
+  const retain = new m.TableVariableRetain(new Uint8Array(1 << 16), new Array(256));
+  const rr = new m.TableVariableReport();
+  const rv = m[row.root + "LoadRetain"](wire, retain, rr);
+  if (row.read) {
+    if (v === null || r.err() !== null) { fail(row.case + ": Load expected read, got refusal: " + JSON.stringify(r)); }
+    if (rv === null || rr.err() !== null) { fail(row.case + ": LoadRetain expected read, got refusal: " + JSON.stringify(rr)); }
+    if (row.unknown >= 0 && r.unknown !== row.unknown) { fail(row.case + ": Load unknown " + r.unknown + ", want " + row.unknown); }
+    if (row.unknown >= 0 && rr.unknown !== row.unknown) { fail(row.case + ": LoadRetain unknown " + rr.unknown + ", want " + row.unknown); }
+  } else {
+    if (v !== null || r.err() !== "wire_damaged") { fail(row.case + ": Load expected wire_damaged, got " + JSON.stringify(r)); }
+    if (rv !== null || rr.err() !== "wire_damaged" || retain.used !== 0 || retain.count !== 0) { fail(row.case + ": LoadRetain expected wire_damaged with its store empty: " + JSON.stringify(rr)); }
+  }
+  const measure = Number(m[row.root + "LoadMeasure"](wire));
+  if (measure !== row.measure) { fail(row.case + ": LoadMeasure " + measure + ", want " + row.measure); }
+}
+`
 }
 
 // jsBlobKindProbe writes the unit's variable module, optionally patched, and
@@ -267,8 +347,7 @@ const m=await import(pathToFileURL(process.argv[3]).href);
 const hex=b=>b==null?"null":Buffer.from(b).toString("hex");
 for(const c of cases){
   const v=new m[c.root]();
-  if(c.text!==""){v[c.field]=c.text;}
-  if(c.bytes!==""){v[c.field]=new Uint8Array(Buffer.from(c.bytes,"hex"));}
+  if(c.set){v[c.field]=c.root==="Bin"?new Uint8Array(Buffer.from(c.value,"hex")):c.value;}
   const saved=m[c.root+"Save"](v);
   if(saved===null){console.log("FAIL "+c.name+" Save refused");continue;}
   const store=new m.TableVariableRetain(new Uint8Array(1<<16), new Array(256));
