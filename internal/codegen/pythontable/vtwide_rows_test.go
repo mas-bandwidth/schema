@@ -231,7 +231,7 @@ func TestPythonVtWideRows(t *testing.T) {
 
 // TestPythonVtWideRowsNegativeControl plants, one at a time, a fault in a copy
 // of the emitted runtime: the uint128 width (the form-1 instance goes red) and
-// the fixed form's integer signedness (the form-3 instances go red).
+// the fixed form's 128-bit read width (the form-3 instances go red).
 //
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtWideRowsNegativeControl(t *testing.T) {
@@ -245,9 +245,9 @@ func TestPythonVtWideRowsNegativeControl(t *testing.T) {
 		{"uint128-width", func(t *testing.T, files map[string][]byte) {
 			wideRowEdit(t, files, "_schema/kind_int.py", "    19: 16,", "    19: 8,")
 		}, "widelist_wide"},
-		{"fixed-signedness", func(t *testing.T, files map[string][]byte) {
+		{"fixed-wide-width", func(t *testing.T, files map[string][]byte) {
 			wideRowEdit(t, files, "_schema/fixedform.py", `return int.from_bytes(data[at:at + width], "little", signed=signed)`,
-				`return int.from_bytes(data[at:at + width], "little", signed=False)`)
+				`return int.from_bytes(data[at:at + (8 if width == 16 else width)], "little", signed=signed)`)
 		}, "scalars_edges"},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {

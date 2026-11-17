@@ -34,6 +34,6 @@
   `scalars_edges_as_2`, `field_scalar_widen` and the previous-form rows) are
   the widening cell's, and stay green there. The control plants the `uint128`
   width in `kind_int.py` (the form-1 instance goes red) and the fixed form's
-  signed read in `fixedform.py` (the form-3 instances go red), each in a copy
-  of the emitted runtime. The wide kinds add no hot path of their own: they
-  ride the integer codec the table core's bench already measures.
+  128-bit read width in `fixedform.py` (the form-3 instances go red), each in a
+  copy of the emitted runtime. The wide kinds add no hot path of their own:
+  they ride the integer codec the table core's bench already measures.
