@@ -433,6 +433,15 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	m.Printf("  table = %v,\n", st.IsTable)
 	m.Printf("  fixed = %v,\n", st.FixedDeclared)
 	m.Printf("  variable = %v,\n", variable)
+	// THE BLOB KINDS THIS ROOT'S CLOSURE REACHES, which is the set it can
+	// PLACE: a blob record of a kind it lacks is still a type every reader
+	// can NAME (docs/SPEC-TABLES.md §3.1), so a declared slot naming it at
+	// the wrong kind is damage, while a record reached only from a field
+	// this reader does not declare is counted unknown. The two facts are
+	// separate; the load reads both.
+	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
+	m.Printf("  blobBytes = %v,\n", bytesBlob)
+	m.Printf("  blobString = %v,\n", stringBlob)
 	// a map's generated entry counts its key's widening ONCE for the map
 	// (docs/SPEC-TABLES.md §2.8), so its own body skips the per-field event
 	m.Printf("  mapentry = %v,\n", st.IsMapEntry())
