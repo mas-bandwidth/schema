@@ -1736,7 +1736,9 @@ final class TableWireReader {
     limit = tableEnd;
     pos = tableStart;
     final count = readLeb();
-    if (count == null) {
+    // AN EMPTY NODE TABLE is one no writer produces (§3.1; docs/rulings.json
+    // reads-refuse-non-canonical): a wire with no record carries no table.
+    if (count == null || count == 0) {
       limit = bodyLimit;
       report.refuse('wire_damaged');
       nodeTableGood = false;
@@ -2861,6 +2863,14 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	// decision 5; internal/tablewire wirecheck, the Go leg's seen bitmap in
 	// internal/codegen/gotable/read.go): the read refuses the whole load.
 	g.pf("\tfinal seenRefs = <int>{};\n")
+	variableRoot := ir.VariableTables(g.unit)[n]
+	if variableRoot {
+		// THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1; docs/rulings.json
+		// reads-refuse-non-canonical): a field after it is a node table out of
+		// its place, refused in the same walk (internal/tablewire/wirecheck.go
+		// body).
+		g.pf("\tvar nodeTableSeen = false;\n")
+	}
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null) { r.report.refuse('wire_damaged'); return; }\n")
@@ -2870,6 +2880,9 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 		g.pf("\t\t\treturn;\n\t\t}\n")
 	} else {
 		g.pf("\t\tif (ref == 0) return;\n")
+	}
+	if variableRoot {
+		g.pf("\t\tif (nodeTableSeen) { r.report.refuse('wire_damaged'); return; }\n")
 	}
 	g.pf("\t\tif (!seenRefs.add(ref)) { r.report.refuse('wire_damaged'); return; }\n")
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
@@ -2882,10 +2895,11 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	// (a fixed-class body) counts it unknown like any other id it does not
 	// know, which is §4's counter, so it falls to the switch below; inside a
 	// nested body it is malformed in either class.
-	if ir.VariableTables(g.unit)[n] {
+	if variableRoot {
 		g.pf("\t\tif (id == _kNodeTableId) {\n")
 		g.pf("\t\t\tif (nested) { r.report.refuse('wire_damaged'); return; }\n")
 		g.pf("\t\t\tif (!r.skipKind(kind)) { r.report.refuse('wire_damaged'); return; }\n")
+		g.pf("\t\t\tnodeTableSeen = true;\n")
 		g.pf("\t\t\tcontinue;\n")
 		g.pf("\t\t}\n")
 	} else {
