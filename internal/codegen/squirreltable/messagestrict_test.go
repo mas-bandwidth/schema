@@ -463,10 +463,13 @@ func runMessageStrict(t *testing.T, rows []messageStrictRow, control [2]string) 
 	fmt.Fprintf(&script, "local I=dofile(\"inputs.nut\",true);local T=dofile(\"schema_module.nut\",true).require(%q);\n", squirreltable.ModuleName(u))
 	for _, row := range rows {
 		v := &messageStrictVocab{u: u, entries: tablewire.MessageVocabulary(u)}
-		if row.peer != nil {
-			row.peer(v)
-		}
 		inputs[row.name+"_ann"] = announcementWithEntries(u, v.entries)
+		if row.peer != nil {
+			// a peer that announces a field this record does not declare is
+			// another build (docs/SPEC-TABLES.md §3.3 (b))
+			row.peer(v)
+			inputs[row.name+"_ann"] = announcementAtBuild(v.entries, ir.BuildVersion(u)^1)
+		}
 		inputs[row.name+"_batch"] = row.batch(v)
 		fmt.Fprintf(&script, `{ local v={};local ar={};if(!T.AnnounceRead(v,I[%q],ar))print(%q+": announce "+ar.reason+"\n");else{local out=[T.Root(),T.Root(),T.Root()];out[0].A=111;out[1].A=222;out[2].A=333;local rr={};local n=T.RootLoadMessages(out,v,I[%q],rr);print(%q+": "+n+" "+(rr.refused?rr.reason:"accepted")+" "+out[0].A+" "+out[1].A+" "+out[2].A+"\n");if(%q=="good")print("good values: "+out[0].R+" "+out[0].Aim+" "+out[0].S+" "+out[0].Xs.len()+":"+out[0].Xs[0]+","+out[0].Xs[1]+" "+out[0].K[1]+" "+out[0].P.Type+":"+out[0].P.Count+"\n");} }
 `, row.name+"_ann", row.name, row.name+"_batch", row.name, row.name)

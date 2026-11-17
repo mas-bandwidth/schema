@@ -55,12 +55,19 @@ func appendMessageLEB(dst []byte, value uint64) []byte {
 	return append(dst, byte(value))
 }
 func announcementWithEntries(u *ir.Unit, entries []ir.TableVocabularyEntry) []byte {
+	return announcementAtBuild(entries, ir.BuildVersion(u))
+}
+
+// announcementAtBuild is an announcement of entries under the given build
+// version: a peer that announces a field this reader's record does not
+// declare is another build (docs/SPEC-TABLES.md §3.3 (b)).
+func announcementAtBuild(entries []ir.TableVocabularyEntry, build uint64) []byte {
 	words := ir.TableVocabularyBytes(entries)
 	body := []byte{byte(ir.TableKindU8)}
 	body = appendMessageLEB(body, uint64(len(words)))
 	body = append(body, words...)
 	out := []byte{ir.TableWireForm, 1, byte(ir.TableKindU64)}
-	out = binary.LittleEndian.AppendUint64(out, ir.BuildVersion(u))
+	out = binary.LittleEndian.AppendUint64(out, build)
 	out = append(out, 2, byte(ir.TableKindArray))
 	out = appendMessageLEB(out, uint64(len(body)))
 	out = append(out, body...)
@@ -77,7 +84,7 @@ func announcementWithPeerEntry(u *ir.Unit, entry ir.TableVocabularyEntry) ([]byt
 	} else {
 		entries = append(entries, entry)
 	}
-	return announcementWithEntries(u, entries), len(entries)
+	return announcementAtBuild(entries, ir.BuildVersion(u)^1), len(entries)
 }
 func announcementWithChangedEntry(u *ir.Unit, target, replacement ir.TableVocabularyEntry) []byte {
 	entries := tablewire.MessageVocabulary(u)
