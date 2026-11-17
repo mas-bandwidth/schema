@@ -457,8 +457,9 @@ func damageAwareFileSpellings(u *ir.Unit, root *ir.Struct, data []byte) (map[str
 			clean.spots[i].value = 0
 		}
 	}
+	refs := refsByScope(&clean)
 	for key, scope := range scopes {
-		if scope.owner != nil && len(bodyStoredDefaults(scope.owner, data, &clean, key)) > 0 {
+		if scope.owner != nil && len(bodyStoredDefaultsAt(scope.owner, data, &clean, refs[key])) > 0 {
 			out["stored-default"] = true
 		}
 	}
