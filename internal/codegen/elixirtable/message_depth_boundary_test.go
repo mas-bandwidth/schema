@@ -248,7 +248,7 @@ func runElixirDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []d
 	fmt.Fprintf(&body, "        Process.put(:failed, true)\n")
 	fmt.Fprintf(&body, "    end\n  end\n\n")
 	fmt.Fprintf(&body, "  def run do\n")
-	fmt.Fprintf(&body, "    {:ok, vocab} = M.announce_read(%s)\n", depthBoundaryElixirBinaryLiteral(ann))
+	fmt.Fprintf(&body, "    {:ok, announced} = M.announce_read(%s)\n    {:ok, vocab} = M.for_root(announced, \"Root\")\n", depthBoundaryElixirBinaryLiteral(ann))
 	for _, tc := range cases {
 		fmt.Fprintf(&body, "    check_case(%q, vocab, %s, %v)\n", tc.name, depthBoundaryElixirBinaryLiteral(tc.wire), tc.expectOK)
 	}

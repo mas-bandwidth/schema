@@ -90,7 +90,7 @@ defmodule Probe do
   def run do
     vocab =
       case M.announce_read(M.announce()) do
-        {:ok, v} -> v
+        {:ok, v} -> elem(M.for_root(v, "Probe"), 1)
         other -> raise "announce_read refused the unit's own announcement: #{inspect(other)}"
       end
 

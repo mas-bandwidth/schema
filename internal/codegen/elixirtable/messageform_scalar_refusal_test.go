@@ -244,13 +244,20 @@ func declaredIntSpans(u *ir.Unit) map[[2]uint64][2]*big.Int {
 // kept value writes and reads back equal.
 func probeScalarOffShape(t *testing.T, u *ir.Unit, rows []scalarOffShapeRow) {
 	t.Helper()
+	// The rows are entries anywhere in the closure, so the probe reads as a
+	// peer at another build: each value is judged by its announced shape, and
+	// no root's record is held (docs/SPEC-TABLES.md §3.3).
+	ann := filepath.Join(t.TempDir(), "announce.bin")
+	writeOtherBuildAnnouncement(t, u, ann)
 	var body strings.Builder
-	body.WriteString(`    vocab =
-      case M.announce_read(M.announce()) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the unit's own announcement: #{inspect(other)}"
+	fmt.Fprintf(&body, `    vocab =
+      with {:ok, v} <- M.announce_read(File.read!(file())),
+           {:ok, bound} <- M.for_root(v, %q) do
+        bound
+      else
+        other -> raise "announce_read refused the announcement: #{inspect(other)}"
       end
-`)
+`, messageRoots(u)[0])
 	for _, row := range rows {
 		for _, v := range row.refused {
 			value := v.String()
@@ -279,7 +286,6 @@ func probeScalarOffShape(t *testing.T, u *ir.Unit, rows []scalarOffShapeRow) {
 		}
 	}
 
-	ann := filepath.Join(t.TempDir(), "announce.bin")
 	out, err := runMessageProbe(t, u, ann, body.String())
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)

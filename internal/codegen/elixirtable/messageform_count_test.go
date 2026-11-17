@@ -65,7 +65,8 @@ fixed table Root
   end
 
   def run do
-    {:ok, vocab} = M.announce_read(M.announce())
+    {:ok, announced} = M.announce_read(M.announce())
+    {:ok, vocab} = M.for_root(announced, "Root")
     items = %d
     value = %d
     rows = fn n -> List.duplicate([{value, 7}], n) end

@@ -13,7 +13,8 @@
 #   wire              <Unit>.Table.load/2; a form-3 input (first byte 3) of a
 #                     root declared fixed: <Unit>.<File>Fixed.<root>_fixed_load/2
 #   wire_retain       <Unit>.Table.load_retain/4
-#   message           <Unit>.TableMessage.announce_read/1 then load_messages/3 (capacity 1)
+#   message           <Unit>.TableMessage.announce_read/1, for_root/2 to the case's
+#                     root, then load_messages/3 (capacity 1)
 #   message_novocab   load_messages(nil, input)
 #   announce          <Unit>.TableMessage.announce_read/1
 #   announce_second   announce_read/1 twice on one vocabulary
@@ -347,19 +348,20 @@ run = fn carrier, schema, table, payload ->
     "message" ->
       mod = Map.fetch!(tables, schema)
       message = Map.fetch!(messages, schema)
-      {:ok, vocab} = message.announce_read(message.announce())
+      {:ok, announced} = message.announce_read(message.announce())
 
-      case message.load_messages(vocab, payload, 1) do
-        {:ok, [[]] = values} ->
-          # the batch's one body sets no field: the decoded value is the table's
-          # defaults, and from_json/2 is where the port states them.
-          {:ok, defaults, _report} = mod.from_json(table, "{}")
+      # a message read is bound to its root record (docs/SPEC-TABLES.md §3.3)
+      with {:ok, vocab} <- message.for_root(announced, table),
+           {:ok, [[]] = values} <- message.load_messages(vocab, payload, 1) do
+        # the batch's one body sets no field: the decoded value is the table's
+        # defaults, and from_json/2 is where the port states them.
+        {:ok, defaults, _report} = mod.from_json(table, "{}")
 
-          after_accept.({:accept, digest.(mod, table, defaults)}, fn ->
-            message.measure_messages(vocab, values)
-            message.save_messages(vocab, values)
-          end)
-
+        after_accept.({:accept, digest.(mod, table, defaults)}, fn ->
+          message.measure_messages(vocab, values)
+          message.save_messages(vocab, values)
+        end)
+      else
         {:ok, values} ->
           {:unhandled_decoded_value, values}
 

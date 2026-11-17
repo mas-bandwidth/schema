@@ -120,11 +120,8 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Parallel()
 		u := messageLoadUnit(t, root, units["backenddemo"])
 		ann := filepath.Join(root, connections["backenddemo"].path)
-		body := `    vocab =
-      case M.announce_read(File.read!(file())) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
-      end
+		body := `    {:ok, announced} = M.announce_read(File.read!(file()))
+    {:ok, vocab} = M.for_root(announced, "LoginRequest")
 
     check({:error, :no_vocabulary} == M.load_messages(M.new(), <<>>), "load with no vocabulary decoded")
     check({:error, :no_vocabulary} == M.measure_messages(M.new(), []), "measure with no vocabulary answered")
@@ -151,11 +148,9 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Parallel()
 		u := messageLoadUnit(t, root, units["backenddemo"])
 		ann := filepath.Join(root, connections["backenddemo"].path)
-		body := `    vocab =
-      case M.announce_read(File.read!(file())) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
-      end
+		body := `    {:ok, announced} = M.announce_read(File.read!(file()))
+    {:ok, vocab} = M.for_root(announced, "LoginRequest")
+    {:ok, store} = M.for_root(announced, "StorePurchase")
 
     # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
     # (docs/SPEC-TABLES.md §3.3, §4): the reference pins a three-body
@@ -167,7 +162,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
     # trailing pad to the byte boundary is not zero" (§3.3).
     {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("login_full_bad_pad_message.bin")))
     # "BYTES AFTER THE PAD ARE MALFORMED" (§3.3).
-    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("store_full_trailing_byte_message.bin")))
+    {:malformed, 0, []} = M.load_messages(store, File.read!(golden("store_full_trailing_byte_message.bin")))
 
     # "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does
     # not know is a REFUSAL by name and never damage." (docs/SPEC-TABLES.md §3.3)
@@ -254,11 +249,8 @@ func TestMessageFormBatchElixir(t *testing.T) {
 // body against the values the form-1 instance's pinned text pins, SaveMessages
 // the values back, and MeasureMessages the length.
 func roundTripBody(row messageBatchRow, expected string) string {
-	b := `    vocab =
-      case M.announce_read(File.read!(file())) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
-      end
+	b := `    {:ok, announced} = M.announce_read(File.read!(file()))
+    {:ok, vocab} = M.for_root(announced, "` + row.root + `")
 
     # "THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE ... loading either form and
     # saving the other, which reproduces the other's pinned bytes", and "a
@@ -710,7 +702,7 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
           raise "count-driven zero-progress materialization"
         end
 
-        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)`
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth, sub)`
 	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
 }
 
@@ -771,9 +763,13 @@ const boundsElixirHelpers = `
         2, 0, 0, 0, 0, 0, 0, 0>>
   end
 
+  # a hand-built announcement at build version 0, bound to a root of the unit:
+  # another build's batch, whose fields the root's record does not judge
   defp read!(words) do
-    case M.announce_read(announce(words)) do
-      {:ok, vocab} -> vocab
+    with {:ok, vocab} <- M.announce_read(announce(words)),
+         {:ok, bound} <- M.for_root(vocab, "LoginRequest") do
+      bound
+    else
       other -> raise "announce_read #{inspect(other)}"
     end
   end

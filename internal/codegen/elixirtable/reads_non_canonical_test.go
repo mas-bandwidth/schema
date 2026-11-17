@@ -113,11 +113,11 @@ func TestElixirReadsRefuseNonCanonical(t *testing.T) {
 			}
 			schema := filepath.Join(root, "test", "non-canonical", "NonCanonical.schema")
 			announcement := filepath.Join(vector, "announcement.bin")
-			module := "Noncanonical"
+			module, table := "Noncanonical", "Message"
 			if strings.HasPrefix(row.file, "../message-one-encoding/") {
 				schema = filepath.Join(root, "test", "message-one-encoding", "One.schema")
 				announcement = filepath.Join(root, "testdata", "wire", "message-one-encoding", "announcement.bin")
-				module = "Messageone"
+				module, table = "Messageone", "One"
 			}
 			var probe string
 			switch row.form {
@@ -131,7 +131,7 @@ func TestElixirReadsRefuseNonCanonical(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				probe = elixirNonCanonicalMessageProbe(module, ann, data, row.verdict == "read", row.spelling != "union-arm-zero")
+				probe = elixirNonCanonicalMessageProbe(module, table, ann, data, row.verdict == "read", row.spelling != "union-arm-zero")
 			case "announcement":
 				if row.verdict != "read" {
 					t.Fatalf("%s: an announcement row must read", row.file)
@@ -180,7 +180,7 @@ fixed table Root
 	if err != nil {
 		t.Fatal(err)
 	}
-	probe := elixirNonCanonicalMessageProbe("Messagenone", tablewire.Announce(u), batch, true, true)
+	probe := elixirNonCanonicalMessageProbe("Messagenone", "Root", tablewire.Announce(u), batch, true, true)
 	out, err := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe)
 	if err != nil || !strings.Contains(out, "ELIXIR_NON_CANONICAL_OK") || strings.Contains(out, "warning:") {
 		t.Fatalf("a None element of an array of unions: %v\n%s", err, out)
@@ -248,14 +248,16 @@ end
 	return b.String()
 }
 
-// elixirNonCanonicalMessageProbe runs one batch through the message load
-// twice: under the announcement as written, where the manifest's verdict holds
-// and a read re-saves to the same bytes, and under another build version
-// (docs/SPEC-TABLES.md §3.3). There a field at a default and fields out of
-// order are lawful evolution and read, re-saving to a batch that reads back to
-// the same bytes; a union field written with arm reference 0 (§3.3 (c)) is
-// refused at every build.
-func elixirNonCanonicalMessageProbe(module string, announcement, data []byte, read, otherBuildRead bool) string {
+// elixirNonCanonicalMessageProbe runs one batch through the message load bound
+// to root twice: under the announcement as written, where the manifest's
+// verdict holds and a read re-saves to the same bytes, and under another build
+// version (docs/SPEC-TABLES.md §3.3). There a field at a default and fields out
+// of order are lawful evolution and read, re-saving under that build to the
+// same bytes, while this build's bound write refuses the same bodies exactly
+// where this build's read refuses the batch; a union field written with arm
+// reference 0 (§3.3 (c)) is refused at every build. The root-less read
+// answers :no_root.
+func elixirNonCanonicalMessageProbe(module, root string, announcement, data []byte, read, otherBuildRead bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "import Bitwise\nalias %s.TableMessage, as: M\n", module)
 	b.WriteString(elixirNonCanonicalCheck)
@@ -264,7 +266,9 @@ announcement = Base.decode16!(%q, case: :lower)
 wire = Base.decode16!(%q, case: :lower)
 want = %t
 other_want = %t
-{:ok, vocab} = M.announce_read(announcement)
+{:ok, announced} = M.announce_read(announcement)
+check.({:error, :no_root} == M.load_messages(announced, wire), "the root-less load_messages read a batch")
+{:ok, vocab} = M.for_root(announced, %q)
 case M.load_messages(vocab, wire) do
   {:ok, values} ->
     check.(want, "load_messages read a non-canonical batch")
@@ -280,19 +284,18 @@ case M.load_messages(other, wire) do
   {:ok, values} ->
     check.(other_want, "other build: load_messages read a union field at arm 0")
     if other_want do
-      case M.save_messages(other, values) do
-        {:ok, out} ->
-          case M.load_messages(vocab, out) do
-            {:ok, again} -> check.({:ok, out} == M.save_messages(vocab, again), "other build: the rewrite is not canonical")
-            refused -> check.(false, "other build: the rewrite does not read: " <> inspect(refused))
-          end
-        refused -> check.(false, "other build: save_messages answered " <> inspect(refused))
+      check.({:ok, wire} == M.save_messages(other, values), "other build: save_messages is not the batch's bytes")
+      own = M.save_messages(vocab, values)
+      if want do
+        check.({:ok, wire} == own, "own build: save_messages is not the batch's bytes")
+      else
+        check.({:error, :invalid_value} == own, "own build: save_messages wrote a batch its read refuses: " <> inspect(own))
       end
     end
   refused ->
     check.(not other_want, "other build: load_messages refused a lawful batch: " <> inspect(refused))
 end
-`, hex.EncodeToString(announcement), hex.EncodeToString(data), read, otherBuildRead)
+`, hex.EncodeToString(announcement), hex.EncodeToString(data), read, otherBuildRead, root)
 	b.WriteString(elixirNonCanonicalEnd)
 	return b.String()
 }

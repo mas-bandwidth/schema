@@ -114,7 +114,7 @@ defmodule Probe do
 
     vocab =
       case M.announce_read(Base.decode16!(announcement, case: :lower)) do
-        {:ok, v} -> v
+        {:ok, v} -> elem(M.for_root(v, "Probe"), 1)
         other -> raise "announce_read refused the announcement: #{inspect(other)}"
       end
 
@@ -127,7 +127,7 @@ defmodule Probe do
   def control(label, announcement, batch) do
     vocab =
       case M.announce_read(Base.decode16!(announcement, case: :lower)) do
-        {:ok, v} -> v
+        {:ok, v} -> elem(M.for_root(v, "Probe"), 1)
         other -> raise "announce_read refused the announcement: #{inspect(other)}"
       end
 

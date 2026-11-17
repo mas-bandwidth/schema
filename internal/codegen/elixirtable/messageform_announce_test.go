@@ -325,6 +325,19 @@ func messageLoadUnit(t *testing.T, root string, paths []string) *ir.Unit {
 	return u
 }
 
+// writeOtherBuildAnnouncement writes the unit's own vocabulary announced under
+// another build version: a peer whose record this reader does not hold, so a
+// bound read or write judges each value by its announced shape alone, never by
+// the root's record (docs/SPEC-TABLES.md §3.3). Probes about a value's shape
+// over a whole corpus unit read through it.
+func writeOtherBuildAnnouncement(t *testing.T, u *ir.Unit, file string) {
+	t.Helper()
+	ann := depthBoundaryEncodeAnnouncement(ir.BuildVersion(u)^1, ir.TableVocabularyBytes(tablewire.MessageVocabulary(u)))
+	if err := os.WriteFile(file, ann, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // runMessageProbe generates the table library and runs one generated probe
 // against the announcement surface alone. The surface is SELF-CONTAINED: the
 // `TableMessage` module names no packet module and no fixed-form module, so the

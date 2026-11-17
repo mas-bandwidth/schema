@@ -75,7 +75,7 @@ func TestElixirSkippedValueIsValidated(t *testing.T) {
 		}
 	}
 	if needsVocab {
-		fmt.Fprintf(&body, "    vocab =\n      case M.announce_read(File.read!(%s)) do\n        {:ok, v} -> v\n        other -> raise \"announce_read refused the reference's announcement: #{inspect(other)}\"\n      end\n", elixirString(announcement))
+		fmt.Fprintf(&body, "    vocab =\n      case M.announce_read(File.read!(%s)) do\n        {:ok, v} -> elem(M.for_root(v, \"Root\"), 1)\n        other -> raise \"announce_read refused the reference's announcement: #{inspect(other)}\"\n      end\n", elixirString(announcement))
 	}
 
 	for _, row := range rows {
