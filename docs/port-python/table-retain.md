@@ -31,6 +31,15 @@ For the 131,109-byte result, save peaks were 278,778 and 278,945 bytes,
 respectively, including the bytearray and returned bytes. It does not measure
 the ordinary decoder's value and node storage.
 
+The conformance driver answers both retention surfaces
+(`test/conformance/python/surfaces/`). `retain` loads every `retain` row of
+`testdata/conformance/tables/MANIFEST.txt` at the row's two capacities and
+answers the known value, which `TestPythonRetainReadSurface` compares with
+`retain-values/<case>.json` on both pinned interpreters. `retain-save` writes the
+retained save, which `TestPythonRetainManifestSave` compares byte for byte with
+the pinned save of each row that names one. Their controls plant a retaining load that answers a
+default root and a save that raises inside the driver.
+
 On the RT1/RT2 fixture (one load plus one save, Linux, five samples of 100
 round trips), the best plain/retaining times were 177,768/1,040,063 ns on
 CPython 3.11.18 and 166,464/912,850 ns on CPython 3.15.2. These figures include
