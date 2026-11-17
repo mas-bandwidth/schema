@@ -63,8 +63,18 @@
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
  :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
 
+(:id "port/python/vt/union-table-arms" :state :done
+ :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/pythontable_unions_test.go: TestPythonVtUnions" "internal/codegen/pythontable/pythontable_unions_test.go: TestPythonVtUnionsNegativeControl")
+ :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
+ :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
+
 (:id "port/python/vt/pointer-arrays" :state :done
  :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/pointerarrays_test.go: TestPythonVtPointerArrays" "internal/codegen/pythontable/pointerarrays_cpp_test.go: TestPythonVtPointerArraysCppIdentity")
+ :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
+ :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
+
+(:id "port/python/vt/union-arrays" :state :done
+ :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/pythontable_unions_test.go: TestPythonVtUnions" "internal/codegen/pythontable/pythontable_unions_test.go: TestPythonVtUnionsNegativeControl")
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
  :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
 
@@ -75,6 +85,11 @@
 
 (:id "port/python/vt/maps" :state :done
  :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/vtmaps_test.go: TestPythonVtMaps" "internal/codegen/pythontable/vtmaps_test.go: TestPythonVtMapsNegativeControl")
+ :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
+ :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
+
+(:id "port/python/vt/union-arms-any" :state :done
+ :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/pythontable_unions_test.go: TestPythonVtUnions" "internal/codegen/pythontable/pythontable_unions_test.go: TestPythonVtUnionsNegativeControl")
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
  :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
 
