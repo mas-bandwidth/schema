@@ -313,27 +313,62 @@ func TestSpecBlobTargetOutsideClosureRefused(t *testing.T) {
 		if msg, err := run.CombinedOutput(); err != nil {
 			t.Fatalf("running the generator: %v\n%s", err, msg)
 		}
-		written, err := filepath.Glob(filepath.Join(out, "*.bin"))
-		if err != nil {
-			t.Fatal(err)
+		for _, p := range blobKindReproductionProblems(dir, out) {
+			t.Error(p)
 		}
-		if len(written) != len(blobKindRows) {
-			t.Errorf("the generator wrote %d vectors, want %d", len(written), len(blobKindRows))
-		}
-		for _, row := range blobKindRows {
-			committed, err := os.ReadFile(filepath.Join(dir, row.file))
-			if err != nil {
-				t.Fatalf("%s: %v", row.file, err)
+
+		// NEGATIVE CONTROL: a copy of the committed vectors with one byte of
+		// text-names-bytes.bin flipped must fail the reproduction check, by
+		// that file's name.
+		t.Run("negative control: a corrupted committed vector", func(t *testing.T) {
+			planted := t.TempDir()
+			for _, row := range blobKindRows {
+				data, err := os.ReadFile(filepath.Join(dir, row.file))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if row.file == "text-names-bytes.bin" {
+					data[len(data)/2] ^= 0xFF
+				}
+				if err := os.WriteFile(filepath.Join(planted, row.file), data, 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
-			regenerated, err := os.ReadFile(filepath.Join(out, row.file))
-			if err != nil {
-				t.Fatalf("the generator wrote no %s: %v", row.file, err)
+			problems := blobKindReproductionProblems(planted, out)
+			if len(problems) != 1 || !strings.Contains(problems[0], "text-names-bytes.bin") {
+				t.Errorf("the reproduction check did not name the corrupted vector: %q", problems)
 			}
-			if !bytes.Equal(committed, regenerated) {
-				t.Errorf("%s: the generator no longer reproduces the committed vector:\n committed %x\ngenerated %x", row.file, committed, regenerated)
-			}
-		}
+		})
 	})
+}
+
+// blobKindReproductionProblems names every blob-kind vector the generator's
+// output in `generated` does not reproduce byte for byte from `committed`.
+func blobKindReproductionProblems(committed, generated string) []string {
+	var problems []string
+	written, err := filepath.Glob(filepath.Join(generated, "*.bin"))
+	if err != nil {
+		return []string{err.Error()}
+	}
+	if len(written) != len(blobKindRows) {
+		problems = append(problems, fmt.Sprintf("the generator wrote %d vectors, want %d", len(written), len(blobKindRows)))
+	}
+	for _, row := range blobKindRows {
+		want, err := os.ReadFile(filepath.Join(committed, row.file))
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %v", row.file, err))
+			continue
+		}
+		got, err := os.ReadFile(filepath.Join(generated, row.file))
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("the generator wrote no %s: %v", row.file, err))
+			continue
+		}
+		if !bytes.Equal(want, got) {
+			problems = append(problems, fmt.Sprintf("%s: the generator no longer reproduces the committed vector:\n committed %x\ngenerated %x", row.file, want, got))
+		}
+	}
+	return problems
 }
 
 // blobKindRows are the blob-kind vectors, exactly, in manifest order.

@@ -81,16 +81,41 @@ func TestEnginePointerTargetBlobKind(t *testing.T) {
 				if err != nil {
 					t.Fatalf("%s.%s=%q: Encode: %v", c.root, c.field, data, err)
 				}
-				for _, d := range pointerTargetDecoders {
-					var report tabletext.Report
-					ok, err := d.read(m, m.New(m.Lookup(c.root)), wire, &report)
-					if !ok || err != nil || report.Refused || report.Unknown != 0 {
-						t.Errorf("%s.%s=%q (%s): the engine's own save does not read back clean: %v %+v", c.root, c.field, data, d.name, err, report)
-					}
+				for _, p := range cleanReadBackProblems(m, c.root, wire) {
+					t.Errorf("%s.%s=%q: the engine's own save does not read back clean: %s", c.root, c.field, data, p)
 				}
 			}
 		}
 	})
+	// NEGATIVE CONTROL: the criterion above has a blade. A wire carrying a
+	// blob record no pointer reaches fails it (refused), and so does a wire
+	// that reads with a record counted unknown.
+	t.Run("negative control: an orphan blob and an unknown record fail the writer criterion", func(t *testing.T) {
+		for _, file := range []string{"text-orphan-bytes.bin", "text-unknown-field-bytes.bin"} {
+			wire, err := os.ReadFile(filepath.Join(dir, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cleanReadBackProblems(m, "Text", wire)) != len(pointerTargetDecoders) {
+				t.Errorf("%s: the writer criterion passed a wire it must refuse", file)
+			}
+		}
+	})
+}
+
+// cleanReadBackProblems names each read (strict, retaining) of `wire` at
+// `root` that is not accepted with nothing unknown: what a conforming
+// writer's own save must always answer.
+func cleanReadBackProblems(m *tabletext.Model, root string, wire []byte) []string {
+	var problems []string
+	for _, d := range pointerTargetDecoders {
+		var report tabletext.Report
+		ok, err := d.read(m, m.New(m.Lookup(root)), wire, &report)
+		if !ok || err != nil || report.Refused || report.Unknown != 0 {
+			problems = append(problems, fmt.Sprintf("(%s) %v %+v", d.name, err, report))
+		}
+	}
+	return problems
 }
 
 func TestEnginePointerTargetWitnesses(t *testing.T) {
