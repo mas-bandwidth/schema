@@ -20,9 +20,11 @@ package pythontable
 //	construct  the Go engine's wire of the JSON text round-trips byte for byte
 //
 // A refused read leaves the caller's buffer and report as they were. A root
-// declared `fixed table` reads form 3 alone (docs/SPEC-TABLES.md §3.4), so the
-// manifest's keyed instances are form-3 files and their form-1 copies are
-// previous_form refusals, held here too.
+// declared `fixed table` reads form 3 alone (docs/SPEC-TABLES.md §3.4), so its
+// instances are form-3 files and their form-1 copies are previous_form
+// refusals, held here too; each accepted one gets the variable copy above.
+// The map rows' roots (mapdemo Depth and Slots) are declared `table`, so they
+// are read in their declared form 1 and get no separate copy.
 //
 // TestPythonVtKeyedRowsNegativeControl plants a keyed fault in a COPY of the
 // emitted runtime, once in the variable form's keyed writer and once in the

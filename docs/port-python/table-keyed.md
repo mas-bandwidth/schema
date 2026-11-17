@@ -32,11 +32,13 @@
   arrays inside map values. Each is read then written under both pinned
   interpreters: an instance saves back byte for byte with its measure its
   length, a report row answers reports.txt's verdict, and a refusal leaves the
-  caller's buffer and report as they were. The manifest's keyed roots are
-  `fixed table`s, so their instances are form-3 files read through the fixed
-  form; each accepted one is also read on form 1, the engine's variable-form
-  bytes of the same value at the same root declared variable, so the keyed
-  body (kind 16) is held on the manifest's own data. luatable's construct for
+  caller's buffer and report as they were. A root declared `fixed table` is
+  read as form 3, and each accepted instance at such a root is also read on
+  form 1, the engine's variable-form bytes of the same value at the same root
+  declared variable, so the keyed body (kind 16) is held on the manifest's
+  own data. The map rows' roots (`Depth` and `Slots` in mapdemo) are declared
+  `table`, so they are read in their declared form 1 and get no separate
+  copy. luatable's construct for
   the row (`unions_maps_keyed`) rides beside them. The manifest found no gap
   in `kind_keyed.py`. `TestPythonVtKeyedRowsNegativeControl`
   (`make python-vt-keyed-rows-negative-control`) writes the variable form's
