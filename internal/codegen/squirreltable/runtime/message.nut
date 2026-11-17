@@ -297,7 +297,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   if(state.bad||state.at!=bodyEnd||state.nextRef!=ids.len()+1||versionCount!=1||wordsCount!=1){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   local parsed=parseVocabulary(words);
   if(!parsed[2]){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
-  setSlot(v,"Ids",parsed[0]);setSlot(v,"Entries",parsed[1]);setSlot(v,"Words",words);v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
+  setSlot(v,"Ids",parsed[0]);setSlot(v,"Entries",parsed[1]);v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
   v.BuildVersion<-build;setSlot(v,"Announced",true);return true;
 };
 
@@ -850,20 +850,13 @@ local ownVocab = function(T) {
   }
   return T._ownMessageVocab;
 };
-local sameOwnEntry = function(T, v, entry) {
-  if (!("Words" in v) || v.Words == null) return false;
+// THE SENDER ANNOUNCED THIS READER'S OWN BUILD VERSION (docs/SPEC-TABLES.md
+// §3.3 (a), (b)): every default and every record's field order is digested
+// into it, so there, and only there, this reader's declaration is the
+// sender's, and a default or an order can be judged
+local sameBuild = function(T, v) {
   local own = ownVocab(T);
-  if (!("Announced" in own) || !own.Announced || v.BuildVersion != own.BuildVersion) return false;
-  local n = entry.End - entry.Start;
-  foreach (oe in own.Entries) {
-    if (oe.Id != entry.Id || oe.Kind != entry.Kind || (oe.End - oe.Start) != n) continue;
-    local same = true;
-    for (local i = 0; i < n; i++) {
-      if (v.Words[entry.Start + i] != own.Words[oe.Start + i]) { same = false; break; }
-    }
-    if (same) return true;
-  }
-  return false;
+  return ("Announced" in own) && own.Announced && v.BuildVersion == own.BuildVersion;
 };
 
 readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false) {
@@ -887,7 +880,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false
   if(fd.shape=="tab"){
     local child=T.Descriptors[fd.table].make(),startBits=r.bits;
     readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);
-    if(!r.bad && atField && r.bits-startBits==v.RefBits && sameOwnEntry(T,v,entry)){r.bad=true;return;}
+    if(!r.bad && atField && r.bits-startBits==v.RefBits && sameBuild(T,v)){r.bad=true;return;}
     owner[member]=child;return;
   }
   if(fd.shape=="union"){
@@ -922,23 +915,17 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false
     // A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3); an element under
     // a key this reader does not name is read under the element declaration
     // and dropped, counted unknown
-    if(atField&&n==0&&sameOwnEntry(T,v,entry)){r.bad=true;return;}
-    local a=owner[member],keys=[],lastIndex=-1;
+    // A KEYED FIELD WITH NO SLOT IS ITS DEFAULT, which the writer elides
+    // (§3.3 (a)); judged only under this reader's own build version
+    if(atField&&n==0&&sameBuild(T,v)){r.bad=true;return;}
+    local a=owner[member],keys=[];
     for(local i=0;i<n;i++){
       local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}
       local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||reservedId(ke.Id)||keys.find(ke.Id)!=null){r.bad=true;return;}
       keys.append(ke.Id);
       local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}
-      if(index>=0){if(index<lastIndex){r.bad=true;return;}lastIndex=index;}
-      local depBefore=r.depCount,unkBefore=r.unknown;
       readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;
-      if(index<0){r.unknown++;}else{
-        if(sameOwnEntry(T,v,entry)&&!(fd.elem.shape=="float"&&element.Shape.Packing==2)&&r.depCount==depBefore&&r.unknown==unkBefore){
-          local slotAtDef=(fd.elem.shape=="enum")?r.enumAtDefault:defaultValue(fd.elem,holder.value,a);
-          if(slotAtDef){r.bad=true;return;}
-        }
-        a[index]=holder.value;
-      }
+      if(index<0)r.unknown++;else a[index]=holder.value;
     }
     owner[member]=a;return;
   }
@@ -985,7 +972,11 @@ readBody = function(T, v, r, d, value, depth) {
   if(depth>128){r.bad=true;return;}
   // A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
   // or unknown
-  local seen=[],lastOrdinal=-1;
+  // UNDER THIS READER'S OWN BUILD VERSION THE BODY IS IN THE RECORD'S
+  // DECLARATION ORDER AND CARRIES ONLY FIELDS THE RECORD DECLARES (§3.3 (b));
+  // under another build neither is judged: a field may have been lawfully
+  // reordered, and one this reader cannot name is skipped and counted (§4)
+  local seen=[],lastOrdinal=-1,ordered=sameBuild(T,v);
   for(;;){
     local ref=get(r,v.RefBits);if(r.bad||ref==0)return;
     if(ref>v.Count){r.bad=true;return;}
@@ -993,8 +984,11 @@ readBody = function(T, v, r, d, value, depth) {
     if(reservedId(id)||seen.find(id)!=null){r.bad=true;return;}
     seen.append(id);
     local fd=(id in d.byId)?d.byId[id]:null;
-    if(fd==null){r.unknown++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
-    if(fd.ordinal<lastOrdinal){r.bad=true;return;}
+    if(fd==null){
+      if(ordered){r.bad=true;return;}
+      r.unknown++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;
+    }
+    if(ordered&&fd.ordinal<lastOrdinal){r.bad=true;return;}
     lastOrdinal=fd.ordinal;
     // AN ANNOUNCED KIND THAT IS NOT THE DECLARED ONE AND NOT A WIDENING
     // REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3, §4), kind_mismatch
@@ -1006,7 +1000,10 @@ readBody = function(T, v, r, d, value, depth) {
     r.enumAtDefault=false;
     readPayload(T,v,r,fd,value,fd.member,depth+1,entry,!fd.optional&&!("required" in fd && fd.required));
     if(r.bad)return;
-    if(c==0&&!fd.optional&&!("required" in fd && fd.required)&&fd.shape!="tab"&&fd.shape!="union"&&sameOwnEntry(T,v,entry)&&!(fd.shape=="float"&&entry.Shape.Packing==2)&&r.depCount==depBefore&&r.unknown==unkBefore){
+    // A FIELD STORED AT ITS DECLARED DEFAULT (§3.3 (a)), by the writer's own
+    // rule (defaultValue); a nested table, a keyed array and a union are
+    // judged where they are read
+    if(c==0&&!fd.optional&&!("required" in fd && fd.required)&&fd.shape!="tab"&&fd.shape!="union"&&!(fd.shape=="arr"&&fd.keyvariants!=null)&&ordered&&!(fd.shape=="float"&&entry.Shape.Packing==2)&&r.depCount==depBefore&&r.unknown==unkBefore){
       local atDef=(fd.shape=="enum")?r.enumAtDefault:defaultValue(fd,value[fd.member],value);
       if(atDef){r.bad=true;return;}
     }

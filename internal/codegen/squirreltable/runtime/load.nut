@@ -214,64 +214,6 @@ local widenF32 = function(bits) {
   return casti2f(high);
 };
 
-local narrowF32Bits = function(x) {
-  local b = castf2i(x);
-  local sign = (b >>> 63) & 1;
-  local exp = (b >>> 52) & 0x7ff;
-  local mant = b & 0xfffffffffffff;
-  if (exp == 0x7ff) {
-    if (mant == 0) return (sign << 31) | 0x7f800000;
-    local payload = (mant >>> 29) & 0x007fffff;
-    if (payload == 0) payload = 0x00400000;
-    return (sign << 31) | 0x7f800000 | payload;
-  }
-  if (exp == 0) return sign << 31;
-  local e = exp - 1023;
-  if (e < -126) {
-    local s = -e - 97;
-    if (s >= 54) return sign << 31;
-    local N = 0x10000000000000 | mant;
-    local half = 1 << (s - 1);
-    local q = (N + half) >>> s;
-    if (((N & ((1 << s) - 1)) == half) && (q & 1)) q = q - 1;
-    if (q == 0x800000) return (sign << 31) | 0x00800000;
-    return (sign << 31) | q;
-  }
-  if (e > 127) return (sign << 31) | 0x7f800000;
-  local half = 1 << 28;
-  local m = (mant + half) >>> 29;
-  if (((mant & 0x1fffffff) == half) && (m & 1)) m = m - 1;
-  if (m == 0x800000) {
-    m = 0;
-    e = e + 1;
-    if (e > 127) return (sign << 31) | 0x7f800000;
-  }
-  return (sign << 31) | ((e + 127) << 23) | m;
-};
-
-// A scalar stored at the declared default its writer elides (docs/SPEC-TABLES.md §3, §4).
-local scalarAtDefault = function(d, val) {
-  if (d.shape == "float") {
-    if (typeof val != "float" && typeof val != "integer") return false;
-    if (d.f32 && d.fmin != null) {
-      local a = narrowF32Bits(val.tofloat()), b = narrowF32Bits(d.def.tofloat());
-      return a == b || ((a & 0x7fffffff) == 0 && (b & 0x7fffffff) == 0);
-    }
-    if (d.f32) return narrowF32Bits(val.tofloat()) == narrowF32Bits(d.def.tofloat());
-    return castf2i(val.tofloat()) == castf2i(d.def.tofloat());
-  }
-  if (d.shape == "int" || d.shape == "flags") {
-    if (d.width == 16) {
-      return typeof val == "array" && typeof d.def == "array" &&
-             val.len() == 2 && d.def.len() == 2 &&
-             val[0] == d.def[0] && val[1] == d.def[1];
-    }
-    return typeof val == "integer" && val == d.def;
-  }
-  if (d.shape == "bool") return typeof val == "bool" && val == d.def;
-  return val == d.def;
-};
-
 // a scalar at the WIRE kind's width, sign-extended where the kind is signed
 local readPrim = function(r, kind, ...) {
   local report = vargv.len() > 0 ? vargv[0] : null;
@@ -511,7 +453,6 @@ local nodeScan = function(bytes, table, end, report) {
     if (ref == 0) break;
     if (ref > table.len()) break;
     if (w.at >= w.end) break;
-    if (present) { bad = true; break; }
     local id = table[ref - 1];
     local kind = u8(w);
     if (id == NODE_TABLE_ID) {
@@ -530,7 +471,7 @@ local nodeScan = function(bytes, table, end, report) {
   if (!present) return [];
   local rec = newReader(bytes, at, at + len);
   local count = leb(rec);
-  if (rec.bad || count == 0) { report.bodyDamaged = true; return null; }
+  if (rec.bad) { report.bodyDamaged = true; return null; }
   local raw = [];
   while (rec.at < rec.end) {
     local tref = leb(rec);
@@ -591,6 +532,9 @@ local wcDamage = function(c) {
   return false;
 };
 
+// THE ID TABLE IS IN FIRST-USE ORDER AND EVERY ENTRY IS USED (docs/SPEC-TABLES.md
+// §3): each reference is at most the next unused one, and the walk's end
+// checks that every entry was reached
 local wcUse = function(c, ref) {
   if (ref > c.nextRef) c.badOrder = true;
   else if (ref == c.nextRef) c.nextRef++;
@@ -792,6 +736,7 @@ local wcStep = function(c, stack, f) {
       if (ref < 0) return wcDamage(c);
       local at = c.pos;
       if (ref == 0) return at == end ? wcClose(c, stack, f) : wcDamage(c);
+      // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1)
       if (f.root && c.table != null) return wcDamage(c);
       if (ref > c.ids.len()) return wcDamage(c);
       wcUse(c, ref);
@@ -923,6 +868,7 @@ local wireCheck = function(b, at, end, ids, announcement) {
   if (c.table != null) {
     local te = c.table[1];
     local declared = wcLeb(c, c.table[0], te);
+    // AN EMPTY NODE TABLE IS NEVER WRITTEN (§3.1)
     if (declared <= 0) { wcDamage(c); return c; }
     local off = c.pos;
     local recs = [];
@@ -983,8 +929,6 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
   if (report.countRefusal) return false;
   local carried = {};
   local idsSeen = {};
-  local lastOrdinal = -1;
-  local afterNodeTable = false;
   for (;;) {
     local ref = leb(r);
     if (r.bad) { report.bodyDamaged = true; return false; }
@@ -1002,7 +946,6 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
     if (r.at >= r.end) { report.bodyDamaged = true; return false; }
     local kind = u8(r);
     local id = table[ref - 1];
-    if (afterNodeTable) { report.bodyDamaged = true; return false; }
     if (id in idsSeen) { report.bodyDamaged = true; return false; }
     idsSeen[id] <- true;
     if (id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID) {
@@ -1012,7 +955,6 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
     if (id == NODE_TABLE_ID) {
       if (nested) { report.bodyDamaged = true; return false; }
       if (c.variable) {
-        afterNodeTable = true;
         if (!skipField(r, kind)) { report.bodyDamaged = true; return false; }
         continue;
       }
@@ -1036,8 +978,6 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       continue;
     }
     local fd = c.byId[id];
-    if (fd.ordinal < lastOrdinal) { report.bodyDamaged = true; return false; }
-    lastOrdinal = fd.ordinal;
     carried[fd.member] <- true;
     if (kind != fd.kind) {
       if (widens(kind, fd.kind)) {
@@ -1066,18 +1006,12 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
 
 readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, selection = null) {
   local shape = fd.shape;
-  local atField = wireKind == null && !fd.optional && !fd.required;
   if (shape == "bool" || shape == "int" || shape == "float" || shape == "flags") {
     local kind = wireKind == null ? fd.kind : wireKind;
     local x = readPrim(r, kind, report);
     if (x == null || r.bad) { report.bodyDamaged = true; return false; }
     if (refuseNonFinite(fd, x, st)) return true;
-    local oorBefore = report.oor;
     x = rangeScalar(fd, kind, x, report);
-    if (atField && report.oor == oorBefore && scalarAtDefault(fd, x)) {
-      report.bodyDamaged = true;
-      return false;
-    }
     v[fd.member] = x;
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
@@ -1101,7 +1035,6 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
       while (cut > 0 && ((r.b[cut + r.at] & 0xc0) == 0x80)) cut--;
       v[fd.member] = utf8Decode(r.b, r.at, cut).s;
     } else {
-      if (atField && dec.s == fd.def) { report.bodyDamaged = true; return false; }
       v[fd.member] = dec.s;
     }
     r.at += L;
@@ -1111,10 +1044,8 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
   if (shape == "enum") {
     local ref = leb(r);
     if (r.bad) { report.bodyDamaged = true; return false; }
-    if (ref == 0) {
-      if (atField && fd.def == null) { report.bodyDamaged = true; return false; }
-      v[fd.member] = null;
-    } else {
+    if (ref == 0) { v[fd.member] = null; }
+    else {
       if (ref > table.len()) { report.bodyDamaged = true; return false; }
       local id = table[ref - 1];
       local name = null, dep = false;
@@ -1132,7 +1063,6 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
         // unknown (docs/SPEC-TABLES.md §2.15)
         v[fd.member] = fd.def;
       } else {
-        if (atField && name == fd.def) { report.bodyDamaged = true; return false; }
         v[fd.member] = name;
       }
     }
@@ -1142,7 +1072,6 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
   if (shape == "ptr" || shape == "sblob" || shape == "bblob") {
     local index = leb(r);
     if (r.bad) { report.bodyDamaged = true; return false; }
-    if (atField && index == 0) { report.bodyDamaged = true; return false; }
     local target = null;
     if (shape == "ptr") target = tableDesc(T, fd.table);
     st.pending.append({ holder = v, key = fd.member, index = index, fd = fd, target = target, field = fd.name });
@@ -1152,7 +1081,6 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
   if (shape == "tab") {
     local L = leb(r);
     if (r.bad || r.at + L > r.end) { report.bodyDamaged = true; return false; }
-    if (atField && L == 1 && (r.b[r.at] & 0xff) == 0) { report.bodyDamaged = true; return false; }
     local sub = newReader(r.b, r.at, r.at + L);
     local inst = tableDesc(T, fd.table).make();
     v[fd.member] = inst;
@@ -1168,11 +1096,6 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
     return true;
   }
   if (shape == "union") {
-    if (atField && r.at < r.end && (r.b[r.at] & 0xff) == 0) {
-      r.at++;
-      report.bodyDamaged = true;
-      return false;
-    }
     local u = unionDesc(T, fd.table);
     local inst = u.make();
     v[fd.member] = inst;
@@ -1181,11 +1104,7 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
     return ok;
   }
   if (shape == "bytes" || shape == "arr") {
-    local prevAt = ("atField" in st) ? st.atField : false;
-    st.atField <- atField;
-    local ok = readFieldArray(fd, r, T, table, v, report, st, selection);
-    st.atField = prevAt;
-    return ok;
+    return readFieldArray(fd, r, T, table, v, report, st, selection);
   }
   if (shape == "map") {
     return readMapField(fd, r, T, table, v, report, st);
@@ -1297,10 +1216,6 @@ readMapField = function(fd, r, T, table, v, report, st) {
     r.at = end;
     return false;
   }
-  if (!fd.optional && !fd.required && count == 0) {
-    report.bodyDamaged = true;
-    return false;
-  }
   local ed = tableDesc(T, fd.entry);
   local arr = [];
   local last = null;
@@ -1379,8 +1294,6 @@ readMapField = function(fd, r, T, table, v, report, st) {
 readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.bodyDamaged = true; return false; }
-  local atField = ("atField" in st) && st.atField;
-  st.atField <- false;
   local end = r.at + L;
   local sel = ARRAY_SELECTED;
   // THE HEADER LIES INSIDE ITS OWN L, and no byte is left inside the L after
@@ -1398,7 +1311,7 @@ readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
     return false;
   }
   local sub = newReader(r.b, hr.at, end);
-  sel = readArrayElems(fd, sub, ek, count, T, table, v, report, st, atField);
+  sel = readArrayElems(fd, sub, ek, count, T, table, v, report, st);
   if (sel == ARRAY_SELECTED && sub.at != end) { report.bodyDamaged = true; return false; }
   r.at = end;
   if (selection != null) selection.selected = sel == ARRAY_SELECTED;
@@ -1422,7 +1335,7 @@ local textTotalKeeps = function(fd, out, spent, report) {
   return false;
 };
 
-readArrayElems = function(fd, r, ek, count, T, table, v, report, st, atField = false) {
+readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
   local want = fd.shape == "bytes" ? 6 : fd.elem.kind;
   if (ek != want) {
     if (!widens(ek, want)) {
@@ -1448,18 +1361,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st, atField = f
       if (r.at >= r.end) { report.bodyDamaged = true; break; }
       out.writen(u8(r), 'b');
     }
-    if (atField && !report.bodyDamaged && count <= fd.bound && out.len() == fd.def.len()) {
-      local sameDef = true;
-      for (local i = 0; i < out.len(); i++) {
-        if ((out[i] & 0xff) != (fd.def[i] & 0xff)) { sameDef = false; break; }
-      }
-      if (sameDef) { report.bodyDamaged = true; return ARRAY_SELECTED; }
-    }
     v[fd.member] = out;
-    return ARRAY_SELECTED;
-  }
-  if (atField && (fd.list || fd.counted || fd.kind == 16) && count == 0) {
-    report.bodyDamaged = true;
     return ARRAY_SELECTED;
   }
   if (fd.elem.shape == "tab" && fd.elem.kind == 12) {
@@ -1490,7 +1392,6 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st, atField = f
     out = v[fd.member];
     if (out == null || out.len() == 0) out = array(fd.bound, fd.elem.def);
     local refsSeen = {};
-    local lastSlot = -1;
     for (local i = 0; i < count; i++) {
       local keyRef = leb(r);
       if (r.bad || keyRef == 0 || keyRef > table.len()) { report.bodyDamaged = true; break; }
@@ -1516,8 +1417,6 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st, atField = f
         r.at += elen;
         continue;
       }
-      if (slot < lastSlot) { report.bodyDamaged = true; break; }
-      lastSlot = slot;
       local sr = newReader(r.b, r.at, r.at + elen);
       local res = readKeyedElem(fd, fd.elem, sr, ek, T, table, out, slot, report, st);
       if (report.countRefusal) break;
@@ -1527,10 +1426,6 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st, atField = f
     v[fd.member] = out;
     return ARRAY_SELECTED;
   }
-  local oorBefore = report.oor;
-  local unkBefore = report.unknown;
-  local pendStart = st.pending.len();
-  st.elemDep <- false;
   local spent = [0];
   for (local i = 0; i < keep; i++) {
     local reached = r.at < r.end;
@@ -1549,30 +1444,6 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st, atField = f
     if (fd.textlist != 0 && out.len() > placed && !textTotalKeeps(fd, out, spent, report)) break;
   }
   if (!fd.list && !fd.counted) {
-    if (atField && ek == want && !report.bodyDamaged && fd.elem.shape != "tab" &&
-        count == fd.bound && out.len() == fd.bound &&
-        report.oor == oorBefore && report.unknown == unkBefore && !st.elemDep) {
-      local allDef = true;
-      local e = fd.elem;
-      if (e.shape == "union") {
-        for (local i = 0; i < out.len(); i++) {
-          if (out[i] != null && out[i].Type != null && out[i].Type != 0) { allDef = false; break; }
-        }
-      } else if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
-        for (local i = pendStart; i < st.pending.len(); i++) {
-          if (st.pending[i].index != 0) { allDef = false; break; }
-        }
-      } else {
-        for (local i = 0; i < out.len(); i++) {
-          if (!scalarAtDefault(e, out[i])) { allDef = false; break; }
-        }
-      }
-      if (allDef) {
-        st.pending.resize(pendStart);
-        report.bodyDamaged = true;
-        return ARRAY_SELECTED;
-      }
-    }
     // A FIXED [N] ARRAY KEEPS ITS N SLOTS (docs/SPEC-TABLES.md §2.9, §4): the
     // decoded prefix lands first, and a slot the body did not reach keeps the
     // value it held. The prefix array is the one kept, because a pointer
@@ -1594,7 +1465,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st, atField = f
 readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
   if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
     local index = leb(sr);
-    if (sr.bad || sr.at != sr.end || index == 0) { report.bodyDamaged = true; return [null, false]; }
+    if (sr.bad || sr.at != sr.end) { report.bodyDamaged = true; return [null, false]; }
     local target = e.shape == "ptr" ? tableDesc(T, e.table) : null;
     st.pending.append({ holder = out, key = slot, index = index, fd = e,
       target = target, field = fd.name });
@@ -1603,10 +1474,7 @@ readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
   if (e.shape == "enum") {
     local ref = leb(sr);
     if (sr.bad) { report.bodyDamaged = true; return [null, false]; }
-    if (ref == 0) {
-      if (e.def == null) { report.bodyDamaged = true; return [null, false]; }
-      return [null, true];
-    }
+    if (ref == 0) return [null, true];
     if (ref > table.len()) { report.bodyDamaged = true; return [null, false]; }
     local id = table[ref - 1];
     local name = null, dep = false;
@@ -1618,16 +1486,12 @@ readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
       // AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS (§6.6): the field is the
       // reader's, so a retained copy would write its id a second time
       if (st.retain != null) report.retainLost = report.retainLost + 1;
-    } else if (!dep && name == e.def) {
-      report.bodyDamaged = true;
-      return [null, false];
     }
     // a DEPRECATED VARIANT READS AS THE ELEMENT'S DEFAULT
     // (docs/SPEC-TABLES.md §2.15)
     return [dep ? e.def : name, true];
   }
   if (e.shape == "tab") {
-    if (sr.end - sr.at == 1 && (sr.b[sr.at] & 0xff) == 0) { report.bodyDamaged = true; return [null, false]; }
     local d = tableDesc(T, e.table);
     local inst = d.make();
     bodyRead(d, sr, T, table, inst, report, st, true);
@@ -1638,9 +1502,7 @@ readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
   local x = readPrim(sr, ek, report);
   if (x == null || sr.bad) { report.bodyDamaged = true; return [null, false]; }
   if (refuseNonFinite(e, x, st)) return [0.0, true];
-  local oorBefore = report.oor;
   x = rangeScalar(e, ek, x, report);
-  if (ek == e.kind && report.oor == oorBefore && scalarAtDefault(e, x)) { report.bodyDamaged = true; return [null, false]; }
   return [x, true];
 };
 
@@ -1672,7 +1534,6 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     }
     // an ELEMENT reads the element default when the variant is deprecated
     // (docs/SPEC-TABLES.md §2.15)
-    if (dep && ("elemDep" in st)) st.elemDep = true;
     out.append(dep ? e.def : name);
     return true;
   }
