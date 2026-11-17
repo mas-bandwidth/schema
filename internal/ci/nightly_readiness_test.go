@@ -69,9 +69,40 @@ func TestNightlyReadinessCannotPublishPassAfterFailure(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\nprintf '"+revision+"\\n'\n"), 0700); err != nil {
 					t.Fatal(err)
 				}
+				var identityEnv []string
+				if tc.lang != "cpp" {
+					// Stage the real identity helper with ordinary file metadata;
+					// the readiness program stays synthetic and keeps every outcome.
+					helper := filepath.Join(dir, "test/conformance/fixed-corpus-identity.py")
+					data, err := os.ReadFile(filepath.Join(repoRoot(t), "test/conformance/fixed-corpus-identity.py"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(helper, data, 0600); err != nil {
+						t.Fatal(err)
+					}
+					reference, consumer := filepath.Join(dir, "shared"), filepath.Join(dir, "build")
+					for _, root := range []string{reference, consumer} {
+						for _, name := range []string{"fixedform-corpus/manifest.txt", "fixedform-corpus/ordinary.bin", "fixedform-bench-corpus/bench_fixed.bin", "fixedform-bench-corpus/bench_fixed.oracle.json"} {
+							path := filepath.Join(root, name)
+							if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+								t.Fatal(err)
+							}
+							if err := os.WriteFile(path, []byte("ordinary synthetic metadata\n"), 0600); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					receipt := filepath.Join(dir, "identity.json")
+					if out, err := exec.Command("python3", helper, "snapshot", reference, receipt).CombinedOutput(); err != nil {
+						t.Fatalf("identity snapshot: %v\n%s", err, out)
+					}
+					identityEnv = []string{"SHARED_FIXED_REFERENCE=" + reference, "SHARED_FIXED_RECEIPT=" + receipt}
+				}
 				cmd := exec.Command("bash", "-c", script)
 				cmd.Dir = dir
 				cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+				cmd.Env = append(cmd.Env, identityEnv...)
 				out, err := cmd.CombinedOutput()
 				if (err == nil) != run.pass {
 					t.Fatalf("run%+v: exit=%v output=%s", run, err, out)
