@@ -22,14 +22,17 @@ save on a pinned retained-record vector; the shared Go oracle must report a
 value mismatch, on both pinned interpreters. This focused control does not by
 itself establish the full roster or seeded release runs.
 
-The pull-request support plan partitions the full-roster gate into twelve
-independent rows: current and floor interpreters, normal and development
-modes, and plain, mixed-builder and retaining arms. Each row runs every
-applicable enumerated mutation and pinned vector plus `N` random mutations at
-`SEED`; neither roster nor count is reduced by the partition. Defaults are
-`N=100000` and `SEED=24845619678`. The partition control removes an arm from
-a copied make fragment and requires the coverage check to identify the gap.
-The nightly target uses the same rows at `N=500000` for the default seed and
-seed 2. Release-tier plain and retain runs additionally require seeds 1, 2 and
-3 at `N=100000`. Row timings and the release-tier registration are not yet
-established by this draft.
+The full-roster gate has twelve streams: current and floor interpreters,
+normal and development modes, and plain, mixed-builder and retaining arms.
+Each stream runs every applicable enumerated mutation and pinned vector plus
+`N` random mutations at `SEED`; defaults are `N=100000` and
+`SEED=24845619678`. `make tables-python-wire-fuzz` runs the twelve streams
+whole. The pull-request support plan splits each stream by stable mutant
+index into eight shards (`PYTHON_WIRE_FUZZ_CI_SHARDS`), 96 rows in all; the
+shards together keep the roster, seed and `N` of the whole stream. At four
+shards the slowest row took 106 s of a fleet runner's two-minute bound, so
+the plan uses eight. The partition control removes an arm from a copied make
+fragment and requires the coverage check to identify the gap. The nightly
+target runs the whole streams at `N=500000` for the default seed and seed 2.
+The release gate (`make tables-wire-fuzz-release-python`) runs the plain and
+retain arms at seeds 1, 2 and 3 with `N=100000`.
