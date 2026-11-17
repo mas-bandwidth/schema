@@ -46,21 +46,46 @@ func TestEnumCollectionReferencesElixir(t *testing.T) {
 	}
 	for _, field := range []string{"choice", "choices", "items", "bounded", "slots", "keyed"} {
 		for _, c := range cases {
-			ref := c.ref
-			ids := []uint64{ir.TableWireId(field), ir.TableWireId(u.Enums["Mode"].VariantWireNameOf("A")), ir.TableWireId("foreign")}
+			// The id table holds exactly the ids the body references, in the
+			// order the body first uses them (docs/SPEC-TABLES.md §3): the
+			// field, then a keyed slot's key or a union's arm, then the value.
+			var ids []uint64
+			idRef := func(name string) byte {
+				id := ir.TableWireId(name)
+				for i, have := range ids {
+					if have == id {
+						return byte(i + 1)
+					}
+				}
+				ids = append(ids, id)
+				return byte(len(ids))
+			}
+			variantA := u.Enums["Mode"].VariantWireNameOf("A")
+			idRef(field)
 			kind := byte(14)
 			payload := []byte{30, 1}
 			if field == "keyed" {
 				kind = 16
-				payload = append(payload, 2)
+				payload = append(payload, idRef(variantA))
+			}
+			var armRef byte
+			if field == "choice" || field == "choices" {
+				armRef = idRef("mode")
+			}
+			ref := c.ref
+			switch c.name {
+			case "declared":
+				ref = []byte{idRef(variantA)}
+			case "foreign":
+				ref = []byte{idRef("foreign")}
+			case "above_table":
+				ref = []byte{byte(len(ids) + 1)}
+			}
+			if field == "keyed" {
 				payload = binary.AppendUvarint(payload, uint64(len(ref)))
 			}
 			if field == "choice" || field == "choices" {
-				ids = append(ids, ir.TableWireId("mode"))
-				if c.name == "above_table" {
-					ref = []byte{5}
-				}
-				arm := binary.AppendUvarint([]byte{4, 30}, uint64(len(ref)))
+				arm := binary.AppendUvarint([]byte{armRef, 30}, uint64(len(ref)))
 				if field == "choice" {
 					kind = 15
 					payload = arm
