@@ -239,6 +239,18 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3, §4),
 	// known or unknown: this body's own seen level starts clear.
 	g.pf("  r.seenReset();\n")
+	// UNDER THE READER'S OWN BUILD VERSION the sender's record is this one
+	// (docs/SPEC-TABLES.md §3.3 (a), (b); docs/rulings.json
+	// reads-refuse-non-canonical): its declaration order, its defaults and its
+	// fields are this reader's, so a field out of that order, a field stored at
+	// its default and a field the record does not declare are spellings no
+	// conforming writer produces. Under another build none of the three is
+	// judged. nextField is one past the ordinal of the last declared field
+	// this body carried.
+	g.pf("  final sameBuild = r.vocabulary.buildVersion == tableBuildVersion;\n")
+	if len(st.Fields) > 0 {
+		g.pf("  var nextField = 0;\n")
+	}
 	g.pf("  while (true) {\n")
 	g.pf("    final ref = r.bits.get(r.vocabulary.refBits);\n")
 	g.pf("    if (r.bits.failed) { r.report.Damage(); return false; }\n")
@@ -257,11 +269,24 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	g.pf("    final shape = entry.shape;\n")
 	g.pf("    if (shape == null) { r.report.Damage(); return false; }\n")
 	g.pf("    switch (entry.id) {\n")
-	for _, f := range st.Fields {
+	for i, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
+		expr := "value." + dartName(f.Name)
 		g.pf("      case %s: {\n", dartU64Literal(entry.Id))
+		g.pf("        if (sameBuild && nextField > %d) { r.report.Damage(); return false; } // out of the writer's order (§3.3)\n", i)
+		g.pf("        nextField = %d;\n", i+1)
 		g.emitMessageCompatibility(f, entry, "entry", "shape", "        ")
-		g.emitMessageReadValue(f, entry, "value."+dartName(f.Name), "        ", "shape", "entry.kind")
+		held := g.messageHoldsElision(f, entry)
+		if held && messageNamesUnknown(f) {
+			g.pf("        final unknownAt = r.report.unknown;\n")
+			if _, nested := f.Type.Ref.(*ir.Struct); nested {
+				g.pf("        final bitsAt = r.bits.offset;\n")
+			}
+		}
+		g.emitMessageReadValue(f, entry, expr, "        ", "shape", "entry.kind")
+		if held {
+			g.emitMessageElidedCheck(f, expr, "        ")
+		}
 		g.pf("        break;\n      }\n")
 	}
 	g.pf("      default:\n")
@@ -272,11 +297,69 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// walk does (internal/tablewire/messagedecode.go: `Unknown++`, `skip(entry)`,
 	// `continue`). The reference was resolved, reserved-checked and recorded
 	// above, so an unknown entry met twice is the same damage as a known one.
+	g.pf("        if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)\n")
 	g.pf("        r.report.unknown++;\n")
 	g.pf("        if (!tableMessageSkipEntry(r, entry)) {\n")
 	g.pf("          r.report.Damage();\n          return false;\n        }\n")
 	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
+}
+
+// messageHoldsElision reports whether a body field is held to its writer's
+// elision (emitSaveMessageBody's messageRides; docs/SPEC-TABLES.md §3.3, §4,
+// a field stored at its default): every field that elides at all, but an
+// optional one, whose presence is its payload, and a compressed float, whose
+// writer rides on the value before its step rounds.
+func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyEntry) bool {
+	if f.Type.Optional || f.Array == ir.ArrayFixed || f.KeyEnum != "" {
+		return false
+	}
+	return !(f.Type.Kind == ir.TFloat32 && entry.Shape.Packing == ir.TableMessageQuantized)
+}
+
+// emitMessageElidedCheck refuses a field the read just decoded at a value its
+// writer's own elision test would not have written: a spelling no conforming
+// writer produces (docs/rulings.json reads-refuse-non-canonical), the union's
+// arm reference 0 included. A nested body is judged on the bits it took (its
+// terminator alone is the all-default body its writer elides), and a field
+// whose read met a name this reader cannot place (an enum variant, a union
+// arm, a nested field) reads its default lawfully and is not held to it.
+//
+// The default a field elides at is the sender's, which this reader knows only
+// under its own build version (sameBuild; §3.3 (a)). A UNION field's arm
+// reference 0 is its own spelling, refused at every build (§3.3 (c)); a None
+// element of an array of unions is positional and never reaches here.
+func (g *fixedModule) emitMessageElidedCheck(f *ir.Field, expr, ind string) {
+	gate := "sameBuild && "
+	if _, union := f.Type.Ref.(*ir.Union); union && messageNamesUnknown(f) {
+		gate = ""
+	}
+	if !messageNamesUnknown(f) {
+		rides := g.messageRides(f, expr, ind)
+		g.pf("%sif (%s!(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, gate, rides)
+		return
+	}
+	rides := ""
+	if _, nested := f.Type.Ref.(*ir.Struct); nested {
+		rides = "r.bits.offset - bitsAt > r.vocabulary.refBits"
+	} else {
+		rides = g.messageRides(f, expr, ind)
+	}
+	g.pf("%sif (%sr.report.unknown == unknownAt && !(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, gate, rides)
+}
+
+// messageNamesUnknown reports whether a single field's read can meet a name
+// this reader cannot place, and so read its default lawfully: an enum's
+// variant, a union's arm, a nested body's field.
+func messageNamesUnknown(f *ir.Field) bool {
+	if f.Type.Kind != ir.TNamed || f.Array != ir.ArrayNone || f.IsList() || f.IsMap() {
+		return false
+	}
+	switch f.Type.Ref.(type) {
+	case *ir.Struct, *ir.Union, *ir.Enum:
+		return true
+	}
+	return false
 }
 
 // emitMessageCompatibility refuses an announced kind that is neither the
