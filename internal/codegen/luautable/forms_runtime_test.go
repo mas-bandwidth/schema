@@ -105,12 +105,12 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 // ids (retainids.go, docs/SPEC-TABLES.md §6.6), and again when the announcement
 // became the message closure's alone: a unit with no fixed table announces an
 // empty vocabulary (docs/SPEC-TABLES.md §3.3), and again when every table module
-// began registering the table type ids a pointer slot declares (§3.1), and
-// again when every table module began registering the unit's build version
-// (§3.3). Refreshed for WireLaw 3 / BuildVersionForm 6: the only emission
-// changes are the protocol identity and announcement build words, not the
-// declarations.
-const wantUndeclaredSchemaDigest = "d1b5130166af328e5d4f2e54a3b31fb8df3a53c5026dd38bd4bc574a47163bb3"
+// began registering the table type ids a pointer slot declares (§3.1). A unit
+// with no fixed table registers no build version (§3.3), so that registration
+// leaves this digest where it was. Refreshed for WireLaw 3 / BuildVersionForm
+// 6: the only emission changes are the protocol identity and announcement
+// build words, not the declarations.
+const wantUndeclaredSchemaDigest = "f3f17d1ea9d78bab5e51fd68e8d4b6cf655b9e1e482962587e878351d67f5e22"
 
 // schemaModuleDigest hashes the named schema-dependent modules of a unit —
 // name then bytes, in sorted name order — so an edit to either is pinned

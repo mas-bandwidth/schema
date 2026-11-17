@@ -243,10 +243,11 @@ func TestLuauEveryTypeHasAViewNegativeControl(t *testing.T) {
 // when the announcement's tail lost its third blob id with wide text (§3.3),
 // when the announcement moved to the message closure's vocabulary (0e0f4b5bc,
 // §3.3), and when the module began declaring its table type ids (258708e08,
-// §3.1), and when it began registering the unit's build version (§3.3).
+// §3.1). The probe unit declares no fixed table, so the build version a fixed
+// table registers for the message form (§3.3) leaves it where it was.
 // Refreshed for the deliberate WireLaw 3 / BuildVersionForm 6 transition:
 // only protocol identity and announcement build words changed.
-const wantTableDigest = "538bf6fe8a37e597944dbd28f3253f53b272a3ea405fbcb67e60095d3518cde7"
+const wantTableDigest = "0ad731512f0efcd8bed679ef4c3c20e17d129907c821f6ffbdc2b4e8c72410f1"
 
 // declaredViewNames is every `type`, `union`, `enum` and `flags` the unit
 // declares, the set §8.2 says every one of has a view.
