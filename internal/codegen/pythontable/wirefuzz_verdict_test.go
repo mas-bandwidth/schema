@@ -108,6 +108,10 @@ func TestPythonWireFuzzCIPartition(t *testing.T) {
 	}
 }
 
+// wireFuzzCIShards is the number of CI shards per interpreter, mode and arm
+// (PYTHON_WIRE_FUZZ_CI_SHARDS in make/python-wirefuzz.mk).
+const wireFuzzCIShards = 8
+
 func wireFuzzPartitionIssue(rows, support []string) string {
 	count := func(values []string, want string) int {
 		n := 0
@@ -118,14 +122,14 @@ func wireFuzzPartitionIssue(rows, support []string) string {
 		}
 		return n
 	}
-	if len(rows) != 48 {
-		return fmt.Sprintf("wire-fuzz partition has %d rows, want 48", len(rows))
+	if want := 12 * wireFuzzCIShards; len(rows) != want {
+		return fmt.Sprintf("wire-fuzz partition has %d rows, want %d", len(rows), want)
 	}
 	for _, pin := range []string{"current", "floor"} {
 		for _, mode := range []string{"normal", "dev"} {
 			for _, arm := range []string{"plain", "mixed", "retain"} {
-				for _, shard := range []string{"0", "1", "2", "3"} {
-					row := "python-wirefuzz-" + pin + "-" + mode + "-" + arm + "-shard-" + shard
+				for shard := range wireFuzzCIShards {
+					row := fmt.Sprintf("python-wirefuzz-%s-%s-%s-shard-%d", pin, mode, arm, shard)
 					if count(rows, row) != 1 || count(support, row) != 1 {
 						return "missing or duplicate wire-fuzz support row " + row
 					}
@@ -169,7 +173,8 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 		}
 		return strings.Fields(string(out))
 	}
-	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != "wire-fuzz partition has 32 rows, want 48" {
+	want := fmt.Sprintf("wire-fuzz partition has %d rows, want %d", 8*wireFuzzCIShards, 12*wireFuzzCIShards)
+	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != want {
 		t.Fatalf("partition fault escaped: %q", issue)
 	}
 }
