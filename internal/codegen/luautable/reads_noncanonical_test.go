@@ -192,7 +192,6 @@ func TestLuauReadsRefuseNonCanonical(t *testing.T) {
 	}
 
 	for _, row := range rows {
-		row := row
 		t.Run(row.file, func(t *testing.T) {
 			t.Parallel()
 			unit, rootName, announcement := "noncanonical", "Root", ""
