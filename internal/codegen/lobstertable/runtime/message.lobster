@@ -1007,11 +1007,15 @@ def message_body(m:MessageRead, rec:Record) -> bool:
     let v = m.v
     let slots = message_slots_of(message_facts.fields, rec.d.name)
     let seen:[int] = []
-    // THE WRITER'S DECLARATION ORDER (§3.3, §4): the announcement gives every
-    // record's fields in writer order, so a body's references must rise,
-    // unknown fields included — a field this reader cannot name still has its
-    // place in that order.
-    var last_ref = 0
+    // THE SENDER'S BUILD VERSION IS THIS READER'S OWN (§3.3 (a), (b)): every
+    // field's default and every record's field order are digested into the
+    // build version, so there, and only there, this reader's declaration is
+    // the sender's. A body is then held to the declaration order, a field the
+    // record does not declare is refused, and a field at the default the
+    // writer elides is refused. Under another build version the sender may
+    // have reordered or re-defaulted lawfully, so none of the three is judged.
+    let same_build = v.build_version == message_facts.build_version
+    var last_index = -1
     var body_fields = 0
     while true:
         let ref, ok = mb_get(m.bits, v.ref_bits)
@@ -1028,10 +1032,6 @@ def message_body(m:MessageRead, rec:Record) -> bool:
                         return message_refuse(rep, "missing_required")
             m.body_fields = body_fields
             return true
-        // A repeated reference is left to the duplicate check below.
-        if ref < last_ref:
-            return message_refuse(rep, "wire_damaged")
-        last_ref = ref
         body_fields++
         let e = message_entry(v, ref)
         if not e or not ult(e.id, message_vocabulary_id):
@@ -1046,11 +1046,16 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             if at < 0 and sl.fd.id == e.id:
                 at = i
         if at < 0:
+            if same_build:
+                return message_refuse(rep, "wire_damaged")
             rep.unknown++
             if not message_skip(m, e.shape, e.element, 0):
                 rep.malformed = true
                 return false
             continue
+        if same_build and at <= last_index:
+            return message_refuse(rep, "wire_damaged")
+        last_index = at
         let sl = rec.fields[at]
         let f = sl.fd
         let mine = message_own_entry(slots, at)
@@ -1073,19 +1078,20 @@ def message_body(m:MessageRead, rec:Record) -> bool:
         if not message_value(m, sl, e):
             return false
         // A BY-VALUE BODY THAT NAMED NO FIELD IS THE BODY A WRITER ELIDES
-        // (§3.3 (a)): its field is at its declared default. A required field
-        // never elides and a present optional always rides.
-        if f.s == "tab" and not f.required and f.present == "" and m.body_fields == 0:
+        // (§3.3 (a)): its field is at its declared default, judged under this
+        // reader's own build version. A required field never elides and a
+        // present optional always rides.
+        if same_build and f.s == "tab" and not f.required and f.present == "" and m.body_fields == 0:
             return message_refuse(rep, "wire_damaged")
         if strict_reason(rep) != "":
             return false
         if f.present != "":
             sl.present = true
         // A FIELD WRITTEN AT THE DEFAULT THE WRITER ELIDES IS NON-CANONICAL
-        // (§3.3 (a)): a changed default is refused by the lineage check, so
-        // every lawful writer's default for a field this reader names under
-        // the same announced shape is the reader's own, at any build version.
-        if message_same_encoding(e, mine) and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
+        // (§3.3 (a)): the reader knows the sender's default only under the
+        // same announced shape and the same build version; a field met under
+        // another build version reads as today.
+        if same_build and message_same_encoding(e, mine) and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
             return message_refuse(rep, "wire_damaged")
         if widened:
             rep.widened++

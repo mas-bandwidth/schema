@@ -1054,11 +1054,6 @@ class PointerShape : Shape
         if not ok:
             r.st.report.malformed = true
             return false
-        // AN EXPLICIT NULL POINTER IS NON-CANONICAL (§3.1, §4): null elides,
-        // except a `| required` null pointer, whose index 0 is its one
-        // spelling (§22.2).
-        if index == 0 and not sl.fd.required:
-            return read_refuse(r.st.report, "wire_damaged")
         return resolve_cell(r, sl.cell, sl.fd, index)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
         let index, ok = leb(r)
@@ -1113,11 +1108,6 @@ let string_shape = register_shape(StringShape { key: "str" })
 def nested_body(r:Reader, sl:Slot, i:int) -> bool:
     let n, ok = leb(r)
     if not ok or not has(r, n):
-        return read_refuse(r.st.report, "wire_damaged")
-    // A BY-VALUE BODY THAT IS ITS TERMINATOR ALONE IS ELIDED by a conforming
-    // writer (§3, §4), so a field that carries one is non-canonical. A
-    // required field never elides, and a PRESENT optional always rides (§2.3).
-    if i < 0 and not sl.fd.required and sl.fd.present == "" and n <= 1:
         return read_refuse(r.st.report, "wire_damaged")
     let rec = new_record(table_of(if i < 0: sl.fd.t else: elem_of(sl.fd).t))
     if i < 0:
@@ -1357,7 +1347,7 @@ def arm_read(r:Reader, cell:Value, a:FieldDescriptor, tag:int, n:int) -> bool:
     cell.arm = fv
     return true
 
-def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, field:bool) -> bool:
+def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
     // A UNION WRITTEN AGAIN takes the earlier arm's retained fields with it
     // (Go's forgetArm), and the discard moves no counter
     forget_value(cell)
@@ -1369,12 +1359,6 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, field:bool) -> bool:
         rep.malformed = true
         return false
     if ref == 0:
-        // A UNION FIELD WRITTEN WITH ARM REFERENCE 0 IS NON-CANONICAL (§3,
-        // §4): None elides, except a `| required` union, whose None is its
-        // one spelling (§22.2). An array element's None is positional and
-        // stays lawful.
-        if field and not fd.required:
-            return read_refuse(rep, "wire_damaged")
         reset_union(cell)
         return true
     let arm_id, named = rid(r, ref)
@@ -1440,7 +1424,7 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, field:bool) -> bool:
 
 class UnionShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
-        return union_cell(r, sl.cell, sl.fd, true)
+        return union_cell(r, sl.cell, sl.fd)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
         // an element of an array of unions is an arm header, reset the
         // moment its arm id is read (§3)
@@ -1449,9 +1433,9 @@ class UnionShape : Shape
             return false
         sl.elems[i].i = 0
         sl.elems[i].tab = nil
-        return union_cell(r, sl.elems[i], elem_of(sl.fd), false)
+        return union_cell(r, sl.elems[i], elem_of(sl.fd))
     def arm(r:Reader, fv:Slot, n:int) -> bool:
-        return union_cell(r, fv.cell, fv.fd, false)
+        return union_cell(r, fv.cell, fv.fd)
 
 let union_shape = register_shape(UnionShape { key: "union" })
 
@@ -1587,10 +1571,11 @@ def load_elem_is_default(d:FieldDescriptor, kind:int, v:Value) -> bool:
     return false
 
 // load_field_elides is whether a conforming writer would have ELIDED this
-// field at the value the read landed (§3, §4). A required field never
-// elides, and a present optional always rides; a union field's arm 0 and a
-// pointer field's null are refused where they are read, and a by-value body
-// is judged by its length in nested_body.
+// field at the value the read landed (§3.3 (a)); the message read judges a
+// field by it under its own build version. A required field never elides,
+// and a present optional always rides; a union field's arm 0 is refused
+// where it is read, and a by-value body is judged by the field count it
+// named.
 def load_field_elides(f:FieldDescriptor, sl:Slot) -> bool:
     if f.required:
         return false
@@ -1623,13 +1608,12 @@ def load_field_elides(f:FieldDescriptor, sl:Slot) -> bool:
         return false
     return load_is_default(f, sl.cell)
 
-// slot_by_id is the slot a field id names in a record and its declared
-// position, or nil and -1.
-def slot_by_id(rec:Record, id:int) -> Slot?, int:
-    for(rec.fields) sl, i:
+// slot_by_id is the slot a field id names in a record, or nil.
+def slot_by_id(rec:Record, id:int) -> Slot?:
+    for(rec.fields) sl:
         if sl.fd.id == id:
-            return sl, i
-    return nil, -1
+            return sl
+    return nil
 
 // mark_seen records that this body NAMED the slot's field (§2.3): a required
 // field the body names is not missing, whatever its kind or value.
@@ -1655,10 +1639,6 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
     let seen:[bool] = []
     for(rec.fields):
         push(seen, false)
-    // THE WRITER'S DECLARATION ORDER (§3, §4): every named field must appear
-    // after the one before it. A field this reader cannot name is evolution
-    // and keeps no place here, so it does not move the mark.
-    var last_index = -1
     while true:
         if r.st.count_refused:
             return false
@@ -1705,7 +1685,7 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             if not skip(r, kind):
                 return read_refuse(rep, "wire_damaged")
             continue
-        let found, found_index = slot_by_id(rec, id)
+        let found = slot_by_id(rec, id)
         if not found:
             rep.unknown++
             let at0 = r.off
@@ -1727,21 +1707,14 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             continue
         let sl = found
         let f = sl.fd
-        // FIELDS OUT OF THE WRITER'S DECLARATION ORDER ARE NON-CANONICAL
-        // (§3, §4): a conforming writer emits them in declaration order.
-        if found_index <= last_index:
-            return read_refuse(rep, "wire_damaged")
-        last_index = found_index
         if kind != f.k:
             if widens(kind, f.k):
                 if not scalar_at(r, sl.cell, f, f.k, kind):
                     return false
-                if f.present != "":
-                    sl.present = true
-                if f.present == "" and load_field_elides(f, sl):
-                    return read_refuse(rep, "wire_damaged")
                 if not entry or f.name != "key":
                     rep.widened++
+                if f.present != "":
+                    sl.present = true
                 mark_seen(rec, sl, seen)
                 continue
             return read_refuse(rep, "kind_mismatch")
@@ -1754,11 +1727,6 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             return false
         if f.present != "" and f.s != "arr":
             sl.present = true
-        // A FIELD STORED AT ITS DECLARED DEFAULT IS NON-CANONICAL (§3, §4):
-        // a conforming writer elides it. A union's arm 0 and a pointer's
-        // null were refused where they were read.
-        if f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
-            return read_refuse(rep, "wire_damaged")
     return false
 
 // THE ID TABLE (§3; Go's trailer): the final eight bytes are the entry
