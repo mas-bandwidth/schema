@@ -162,7 +162,9 @@ func tableOpenMixSlot(id uint64) uint32 {
 
 // TestCTableOpenDistinctnessVerdict is the same verdict as pairwise: a
 // repeated id is damage and refuses, distinct ids including a hash-slot
-// collision and a count above the 256-slot bound are not.
+// collision and a count above the 256-slot bound are not. Each id rides as an
+// unknown field of the body, so every entry is used and the table is in
+// first-use order (docs/SPEC-TABLES.md §3) whatever the ids are.
 func TestCTableOpenDistinctnessVerdict(t *testing.T) {
 	var collideA, collideB uint64
 	found := false
@@ -196,6 +198,14 @@ static int load_ids(const uint64_t *ids, uint64_t n, TableReport *report)
     Leaf value;
     CHECK(n <= 257);
     buf[o++] = 1;
+    /* every entry is referenced, in first-use order, by an unknown u8 field */
+    for ( i = 0; i < n; i++ ) {
+        uint64_t ref = i + 1;
+        while ( ref >= 0x80 ) { buf[o++] = (uint8_t)(ref | 0x80); ref >>= 7; }
+        buf[o++] = (uint8_t)ref;
+        buf[o++] = 6;
+        buf[o++] = 0;
+    }
     buf[o++] = 0;
     for ( i = 0; i < n; i++ ) { put_le64(buf + o, ids[i]); o += 8; }
     put_le64(buf + o, n); o += 8;
@@ -420,16 +430,28 @@ fixed table Root {
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
 int main(void) {
  Root value; TableReport report;
- const char * first="{\"small\":18446744073709551615,\"bounded\":18446744073709551615,\"debt\":-9223372036854775808}";
- const char * second="{\"small\":-1e30,\"bounded\":-1e30}";
+ const char * first="{\"small\":18446744073709551615,\"bounded\":\"18446744073709551615\",\"debt\":\"-9223372036854775808\"}";
+ const char * second="{\"small\":-1e30}";
  memset(&report,0,sizeof(report));
  CHECK(!root_from_json(&value,first,(int64_t)strlen(first),&report));
  CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
  memset(&report,0,sizeof(report));
  CHECK(!root_from_json(&value,second,(int64_t)strlen(second),&report));
- CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+ CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH);
  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
+ // Each domain gets its own document so an earlier small field cannot mask it.
+ const char * outside[]={"{\"bounded\":\"-1\"}","{\"bounded\":\"18446744073709551616\"}","{\"debt\":\"9223372036854775808\"}","{\"debt\":\"-9223372036854775809\"}"};
+ for (size_t i=0;i<sizeof(outside)/sizeof(outside[0]);i++) {
+  memset(&report,0,sizeof(report));
+  CHECK(!root_from_json(&value,outside[i],(int64_t)strlen(outside[i]),&report));
+  CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+  CHECK(value.small == 0 && value.bounded == 0 && value.debt == 0);
+ }
+ const char * edges="{\"small\":255,\"bounded\":\"18446744073709551615\",\"debt\":\"-9223372036854775808\"}";
+ memset(&report,0,sizeof(report));
+ CHECK(root_from_json(&value,edges,(int64_t)strlen(edges),&report));
+ CHECK(!report.refused && value.small==255 && value.bounded==UINT64_MAX && value.debt==INT64_MIN);
  return 0;
 }
 `)

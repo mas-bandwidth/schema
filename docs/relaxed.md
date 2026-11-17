@@ -31,25 +31,6 @@ relaxed cell whose slug has no entry here.
   `make/cs.mk`. Real fix: the engine and every reader refuse nonzero dead
   bytes (the maintainer's ruling: absent-optional dead bytes are refused);
   then drop the flag. WIP: `fix/main-red/dead-bytes`.
-- `relax/unknown-arm-text-c`: the C wire fuzz (`make tables-c-wire-fuzz`,
-  `tables-c-retain`, and the release gate's C runs) passes
-  `--relax-vector unknown_arm_text_nul` (`C_RELAX_VECTORS` in `make/c.mk`).
-  The pinned vector (testdata/wire/tables/fuzz-vectors/INDEX.txt) is an arm
-  that streamdemo.Feed's union cannot name, of the text kind, whose text holds
-  a NUL. Every read must refuse it (docs/SPEC-TABLES.md §6.5: the strict rules
-  apply to every byte, in fields a reader does not declare too). The C read
-  skips an unknown arm by its L without walking it, and loads. Its divergence
-  is counted, not failed, and if it ever agrees with the oracle the run fails
-  until the flag is dropped. Files: `test/conformance/harness/main.go`,
-  `test/conformance/harness/wirefuzz.go`, `make/c.mk`,
-  `make/wire-fuzz-release.mk`. Real fix: the C read walks an unknown arm's
-  payload by its framing, as Elixir's does since PR 3290; then drop
-  `C_RELAX_VECTORS`. WIP: none.
-- `relax/unknown-arm-text-cpp`: the same vector and the same skip on the C++
-  wire fuzz (`make tables-wire-fuzz`, `tables-wire-fuzz-retain`, and the
-  release gate's C++ runs), through `CPP_RELAX_VECTORS` in the `Makefile`.
-  Real fix: the C++ read walks an unknown arm's payload by its framing; then
-  drop `CPP_RELAX_VECTORS`. WIP: none.
 
 ## Conformance cases and rows
 
@@ -64,46 +45,34 @@ listed case that passes fails the leg until its line is removed.
   (json-base64-canonical), `str-zero-escape-unknown-key` is refused (the
   skipped value is validated), and write-refusal-json `jref_zero_byte` is
   refused (the text writer refuses a zero byte, docs/SPEC.md §5.1 row 8). The
-  Go engine and the Go JSON walk carry all three; the other legs still read
-  the two hostile rows (and some write the zero byte), so their cases are in
+  Go engine and the Go JSON walk carry all three; the legs that still read
+  a hostile row (or write the zero byte) have their cases in
   `test/conformance/relaxed.txt`. The table-base64 harness
-  (`test/table-base64/harness`) expects the canonical rule too, and its C, C++
-  and C# runs pass `-relax <slug>`, which keeps the old accept for the
-  non-canonical cases only (`make/checks/table-base64.mk`). Real fix, per
+  (`test/table-base64/harness`) expects the canonical rule too; its `-relax
+  <slug>` flag, which keeps the old accept for the non-canonical cases only,
+  is no longer passed by the C++ run (2026-11-15) and goes from the C and C# runs with the card sm-a1-main-green-relax-and-conformance (`make/checks/table-base64.mk`). Real fix, per
   leg: its JSON read refuses unpadded Base64 and set pad bits, and validates a
   skipped value; its text writer refuses a zero byte (a debug assert in C,
   C++, C#, Rust, Java and Dart; a refusal in every build elsewhere). Then the
   leg's lines go. WIP: none.
-  - `relax/hostile-rows-c`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-cpp`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings) and in the pack hostile-value gate (`Makefile`, `HOSTILE_ENGINE_RELAXED`).
-  - `relax/hostile-rows-cs`: both hostile rows, jref_zero_byte, table-base64, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-dart`: base64-unpadded only: its hostile row, and its row in the port's hostile-corpus run (carried findings). The str-zero-escape-unknown-key row is refused.
-  - `relax/hostile-rows-elixir`: str-zero-escape-unknown-key, jref_zero_byte, and that row in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
-  - `relax/hostile-rows-go`: the generated Go JSON walk (not the engine)
-    reads str-zero-escape-unknown-key: it does not validate a skipped value.
-    Its hostile-corpus run drops that row from the staged manifest
-    (`make/schema-go-runs-hostile-corpus.mk`). The fix is more than the zero
-    check in `scanText`: the generated tests textzero (a skipped zero reads)
-    and the JSONTestSuite probe (y_string_null_escape) hold the old rule. In the go conformance leg (`test/conformance/relaxed.txt`) it relaxes json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte; the dart and js text-boundary controls do not count their legs' relaxed json-hostile cases (relax/hostile-rows-dart, -js).
-  - `relax/hostile-rows-goose`: both hostile rows.
-  - `relax/hostile-rows-java`: str-zero-escape-unknown-key only, in the conformance leg and in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-js`: both hostile rows, jref_zero_byte, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-lobster`: str-zero-escape-unknown-key, jref_zero_byte, and str-zero-escape-unknown-key in the port's hostile-corpus run (carried finding); the JSON read refuses unpadded Base64 and set pad bits.
-  - `relax/hostile-rows-lua`: str-zero-escape-unknown-key and jref_zero_byte (its JSON read refuses unpadded Base64 and set pad bits).
-  - `relax/hostile-rows-luau`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-moo`: both hostile rows.
-  - `relax/hostile-rows-rust`: both hostile rows, and both rows in the port's hostile-corpus run (carried findings).
-  - `relax/hostile-rows-squirrel`: base64-unpadded only, in the conformance leg and in the port's hostile-corpus run (carried in `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
-- `relax/deprecated-carried`: `test/conformance/go/rows/R20_test.go`, clause 2
-  (`TestRowR20DroppedFieldUnknown`). The header is restored to the
-  maintainer's ruling of 2026-11-10 (a `| deprecated` fixed-form field is
-  carried: "if it's supplied, use the value there, otherwise, use the
-  default"; docs/FIXED-FORM-ALGORITHM.md §5.1; the C++ R20), and the one
-  assertion that the stored value lands (`B == 2`) is commented out, because
-  Go's fixed reader still yields the declared default. Real fix: the ruling's
-  rollout across Go's emitter (`fixedDeprecatedDefault`), the engine
-  (tablewire), Lobster, Go's TestFixedDeprecatedSlotIsTheDeclaredDefault, and
-  docs/SPEC-TABLES.md §3.4, §21.2 and §22.6. WIP: none.
+  Each slug below marked "gated again" has no relaxed site left: its rows
+  passed on main on 2026-11-15 and their relax lines were removed. It stays
+  listed only because `test/proof/in-progress.json` still names its proof
+  cells (`tools/matrix` refuses a relaxed cell whose slug is not listed here);
+  the entry goes with those cells at the next `make proof-write`.
+  - `relax/hostile-rows-c`: gated again (both hostile rows, jref_zero_byte, table-base64; the relaxed.txt lines and the table-base64 flag go with the card sm-a1-main-green-relax-and-conformance).
+  - `relax/hostile-rows-cpp`: gated again (both hostile rows, jref_zero_byte, table-base64, the hostile-corpus run, and the pack hostile-value gate, `Makefile`).
+  - `relax/hostile-rows-cs`: gated again (both hostile rows, jref_zero_byte, table-base64, and the hostile-corpus run; the relaxed.txt lines and the table-base64 flag go with the card sm-a1-main-green-relax-and-conformance).
+  - `relax/hostile-rows-elixir`: gated again (str-zero-escape-unknown-key, jref_zero_byte, and the hostile-corpus run).
+  - `relax/hostile-rows-go`: gated again (json-hostile str-zero-escape-unknown-key and write-refusal-json jref_zero_byte in the go conformance leg, and the row its hostile-corpus run used to drop from the staged manifest, `make/schema-go-runs-hostile-corpus.mk`).
+  - `relax/hostile-rows-goose`: gated again (both hostile rows; the relaxed.txt lines go with the card sm-a1-main-green-relax-and-conformance).
+  - `relax/hostile-rows-java`: neither hostile row is relaxed: the JSON read refuses unpadded Base64 and validates a skipped value, so both are gated in the conformance leg and in the port's hostile-corpus run. Its proof cell (`test/proof/in-progress.json`, surface json-hostile/java) still names the slug while that cell's other json-hostile cases fail; it goes, with this entry, in the change that removes that cell.
+  - `relax/hostile-rows-js`: gated again. The JSON read refuses unpadded base64 and nonzero pad bits, and validates skipped values; the writer refuses zero bytes.
+  - `relax/hostile-rows-lobster`: gated again (jref_zero_byte). The JSON read refuses unpadded Base64 and set pad bits, and validates a skipped value, so neither hostile row is relaxed.
+  - `relax/hostile-rows-lua`: gated again (str-zero-escape-unknown-key and jref_zero_byte); the JSON read validates skipped values and refuses invalid Base64.
+  - `relax/hostile-rows-luau`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run).
+  - `relax/hostile-rows-moo`: gated again (both hostile rows).
+  - `relax/hostile-rows-squirrel`: gated again (base64-unpadded, in the conformance leg and in the port's hostile-corpus run, `internal/ci/schema_squirrel_runs_hostile_corpus_test.go`); the JSON walk refuses a U+0000 in an object key or a skipped string (read.go scanKey).
 
 ## Negative controls
 
@@ -113,19 +82,6 @@ listed case that passes fails the leg until its line is removed.
   two new nightly groups, `js-write-refusal` and `lobster-write-refusal`,
   unmeasured. Real fix: measure them and move each group to the pull-request
   tier. WIP: none.
-- `relax/rust-cookwrite-test-red`: `tables-rust-cook-write-negative-control`
-  moved from `rust-conformance-walk` to the nightly group
-  `rust-cook-write-test`. The suite it plants into, `TestCookWriteRust`
-  (`internal/codegen/rusttable/cookwrite_rust_test.go`), is red on main
-  without the plant. Two causes are fixed in the same PR: the
-  featurewitnesses unit was not mapped, and the test's crate left out
-  `integrity_runtime.rs`. Two remain: the test reads every cook-write row from
-  its instance's wire, so a recipe row (`input=<json> share=<from>:<to>`,
-  blob_shared, whose wire is refused by design) fails, as moo's and JS's tests
-  do not; and the cook probe panics on a row whose form-1 load the Rust leg
-  refuses. Real fix: build recipe rows from their input JSON, and skip or
-  answer the rows the Rust leg cannot load; then return the control to
-  `rust-conformance-walk`. WIP: none.
 - `relax/nc-elixir-wire-fuzz-array-tail`: the group `elixir-wire-fuzz`
   (`tables-elixir-wire-fuzz-negative-control`, registered by PR 3290) moved
   from the pull-request tier to nightly. Two causes, both measured in main CI
@@ -149,17 +105,14 @@ listed case that passes fails the leg until its line is removed.
 - `relax/cook-dead-slots-zero-ports`: since #3424 (fixed-dead-bytes-are-zero)
   the tool and the C writer leave a counted array's slots past its count zero,
   and #3486 regenerated the five cook-write fixtures (archive, loadout_full,
-  profile_elide, root_default, root_full) to match; the C++ and Go cook writers
-  still write the element defaults (the C++ reference behind
-  `tables-tool-cook-differential` too). Files: internal/codegen/gotable/cookwrite_test.go,
-  whose `TestCookWriterMatchesIndependentLayout/fixed` skips (the Go writer
-  writes the defaults the tool now zeroes). Real fix: every cook writer zeroes
-  the dead slots, and the Go case runs again.
+  profile_elide, root_default, root_full) to match. Real fix: every cook
+  writer zeroes the dead slots.
   The same slug relaxes the ten cook-write cases (the five rows, both orders)
-  of the conformance legs cpp, cs, dart, go, elixir, goose, js, lobster, luau,
-  moo and squirrel in `test/conformance/relaxed.txt`: each still writes
-  the element defaults into dead counted slots (CI full 43656719730). C and the
-  tool are right. WIP: none.
+  of the conformance leg goose
+  in `test/conformance/relaxed.txt`: each still writes
+  the element defaults into dead counted slots (CI full 43656719730). C, JS
+  (its ten cases pass and are gated again, 2026-11-15), Go and the tool are
+  right. WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 
@@ -239,6 +192,13 @@ goose, squirrel, lua, elixir, luau, cs, lobster) stay per commit because the
 proof job reads their results; their time is mostly the un-walled artifact
 download, not a walled step.
 
+## Go tests (2026-11-15)
+
+Relaxed on 2026-11-15 to get the fast lane green on `main` after a day of
+landings with no gate; each site carries `RELAXED 2026-11-15 (get main
+green)` and its slug.
+
+
 ## Proof cells
 
 Each proof cell below is red at main 3b43e7075, computed from every conformance
@@ -248,23 +208,10 @@ list; each line names its cells and why they are red. The write-refusal proof
 slugs are each leg answering the four write-refusal surfaces; I15 on elixir is
 PR 3290. WIP for every proof slug: none unless named here.
 
-- `relax/proof-blob-shared-elixir`: 2 cell(s), red at main 18bd2eebb (CI
-  full 43637319296): `surface cook-write / elixir` (2 case(s) answered absent
-  with no ruling: cook-write/blob_shared, cook-write/blob_shared-be) and
-  `cases blobdemo / elixir` (cook-write/blob_shared). PR 3290 made Elixir's
-  load strict, and a blob named from two slots is refused (§2.5); since then
-  the driver answers the blob_shared cook-write recipe row
-  (`input=<json> share=<from>:<to>`) absent. Real fix: the Elixir driver
-  answers that recipe row (the same open gap as relax/rust-cookwrite-test-red
-  on the Rust side).
-
-- `relax/proof-cook-write-java`: 1 cell(s): `surface cook-write / java` (60 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/chain_optional and 57 more). Real fix: the leg answers cook-write for every unit.
 - `relax/proof-i15-elixir`: 1 cell(s): `porting I15 / elixir` (❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot o...). Real fix: the porting register's I15 cell for elixir is proven (docs/PORTING.md).
 - `relax/proof-i3-luau`: 1 cell(s): `porting I3 / luau` (❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)). Real fix: the porting register's I3 cell for luau is proven (docs/PORTING.md).
 - `relax/proof-i3-moo`: 1 cell(s): `porting I3 / moo` (❌ #381 — partial: `tables-moo-block-forgery-fuzz` and its negative control validate production BlockOpen over 8,000 mutants of two block...). Real fix: the porting register's I3 cell for moo is proven (docs/PORTING.md).
 - `relax/proof-i3-squirrel`: 1 cell(s): `porting I3 / squirrel` (❌ #413 (the block and cook forgery batteries ride the conformance surfaces; no forgery fuzzer walks what it opened)). Real fix: the porting register's I3 cell for squirrel is proven (docs/PORTING.md).
-- `relax/proof-json-java`: 15 cell(s): `surface json-read / java` (60 case(s) answered absent with no ruling: json-read/archive, json-read/chain_optional, json-read/chain_optional_empty and 57 more); `surface json-write / java` (61 case(s) answered absent with no ruling: json-write/archive.json, json-write/chain_optional.json, json-write/chain_optional_empty.json and...); `cases tblv1 / java` (6 case(s) answered absent with no ruling: cook-write/v1_cfg, cook-write/v1_seams, json-read/v1_cfg and 3 more); `cases tblv2 / java` (6 case(s) answered absent with no ruling: cook-write/v2_cfg, cook-write/v2_seams, json-read/v2_cfg and 3 more); `cases tblp1 / java` (6 case(s) answered absent with no ruling: cook-write/chain_value, cook-write/chain_value_empty, json-read/chain_value and 3 more); `cases tblp3 / java` (6 case(s) answered absent with no ruling: cook-write/chain_optional, cook-write/chain_optional_empty, json-read/chain_optional and 3 more); `cases messagedemo / java` (30 case(s) answered absent with no ruling: cook-write/message_ack, cook-write/message_arm_edits, cook-write/message_arms and 27 more); `cases tblm1 / java` (5 case(s) answered absent with no ruling: cook-write/m1_open, json-read/m1_open, json-read/m1_save and 2 more); `cases tblm2 / java` (5 case(s) answered absent with no ruling: cook-write/m2_open, json-read/m2_close, json-read/m2_open and 2 more); `cases tblr1 / java` (4 case(s) answered absent with no ruling: json-read/r1_cfg, json-read/r1_ping, json-write/r1_cfg.json and 1 more); `cases tblr2 / java` (2 case(s) answered absent with no ruling: json-read/r2_cfg, json-write/r2_cfg.json); `cases scalars / java` (9 case(s) answered absent with no ruling: cook-write/scalars_default, cook-write/scalars_edges, cook-write/scalars_full and 6 more); `cases backenddemo / java` (14 case(s) answered absent with no ruling: json-read/login_default, json-read/login_full, json-read/match_default and 11 more); `cases vocabdemo / java` (6 case(s) answered absent with no ruling: json-read/peer_b, json-read/vocab_low, json-read/vocab_wide and 3 more); `cases vocab9demo / java` (4 case(s) answered absent with no ruling: json-read/vocab9_low, json-read/vocab9_wide, json-write/vocab9_low.json and 1 more). Real fix: the Java leg answers the JSON surfaces.
-- `relax/proof-rust-fixed-roots`: 21 cell(s): `surface wire / rust` (4 case(s) answered absent with no ruling: wire/feature_array_root, wire/feature_full, wire/feature_key_order and 1 more); `surface report / rust` (1 case(s) answered absent with no ruling: report/text_total_and_count); `surface json-read / rust` (64 case(s) answered absent with no ruling: json-read/archive, json-read/chain_optional, json-read/chain_optional_empty and 61 more); `surface json-write / rust` (65 case(s) answered absent with no ruling: json-write/archive.json, json-write/chain_optional.json, json-write/chain_optional_empty.json and...); `surface json-hostile / rust` (4 case(s) answered absent with no ruling: json-hostile/text-total-after-clamp, json-hostile/text-total-and-count, json-hostile/text-total-at...); `surface cook-write / rust` (64 case(s) answered absent with no ruling: cook-write/archive, cook-write/archive-be, cook-write/blob_shared and 61 more); `cases featurewitnesses / rust` (18 case(s) answered absent with no ruling: cook-write/feature_full, json-hostile/text-total-after-clamp, json-hostile/text-total-and-count a...); `cases tblv1 / rust` (6 case(s) answered absent with no ruling: cook-write/v1_cfg, cook-write/v1_seams, json-read/v1_cfg and 3 more); `cases tblv2 / rust` (6 case(s) answered absent with no ruling: cook-write/v2_cfg, cook-write/v2_seams, json-read/v2_cfg and 3 more); `cases tblp1 / rust` (6 case(s) answered absent with no ruling: cook-write/chain_value, cook-write/chain_value_empty, json-read/chain_value and 3 more); `cases tblp3 / rust` (6 case(s) answered absent with no ruling: cook-write/chain_optional, cook-write/chain_optional_empty, json-read/chain_optional and 3 more); `cases messagedemo / rust` (30 case(s) answered absent with no ruling: cook-write/message_ack, cook-write/message_arm_edits, cook-write/message_arms and 27 more); `cases blobdemo / rust` (1 case(s) answered absent with no ruling: cook-write/blob_shared); `cases tblm1 / rust` (5 case(s) answered absent with no ruling: cook-write/m1_open, json-read/m1_open, json-read/m1_save and 2 more); `cases tblm2 / rust` (5 case(s) answered absent with no ruling: cook-write/m2_open, json-read/m2_close, json-read/m2_open and 2 more); `cases tblr1 / rust` (4 case(s) answered absent with no ruling: json-read/r1_cfg, json-read/r1_ping, json-write/r1_cfg.json and 1 more); `cases tblr2 / rust` (2 case(s) answered absent with no ruling: json-read/r2_cfg, json-write/r2_cfg.json); `cases scalars / rust` (9 case(s) answered absent with no ruling: cook-write/scalars_default, cook-write/scalars_edges, cook-write/scalars_full and 6 more); `cases backenddemo / rust` (14 case(s) answered absent with no ruling: json-read/login_default, json-read/login_full, json-read/match_default and 11 more); `cases vocabdemo / rust` (6 case(s) answered absent with no ruling: json-read/peer_b, json-read/vocab_low, json-read/vocab_wide and 3 more); `cases vocab9demo / rust` (4 case(s) answered absent with no ruling: json-read/vocab9_low, json-read/vocab9_wide, json-write/vocab9_low.json and 1 more). Real fix: the Rust driver reads and writes the declared fixed roots (now form 3 instances, a187ff158 and PR 3282) on every surface: text, cook-write, report and the feature witnesses, instead of answering them absent.
 - `relax/proof-write-refusal-dart`: 5 cell(s): `surface write-refusal / dart` (19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 mo...); `surface write-refusal-fixed / dart` (19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fr...); `surface write-refusal-message / dart` (13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/...); `surface write-refusal-json / dart` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / dart` (39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 mo...). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
 - `relax/proof-write-refusal-goose`: 5 cell(s): `surface write-refusal / goose` (19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 mo...); `surface write-refusal-fixed / goose` (19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fr...); `surface write-refusal-message / goose` (13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/...); `surface write-refusal-json / goose` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / goose` (39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 mo...). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).
 - `relax/proof-write-refusal-java`: 5 cell(s): `surface write-refusal / java` (19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 mo...); `surface write-refusal-fixed / java` (19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fr...); `surface write-refusal-message / java` (13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/...); `surface write-refusal-json / java` (1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte); `cases tabledemo / java` (87 case(s) answered absent with no ruling: cook-write/archive, cook-write/keyed_config, cook-write/keyed_default and 84 more). Real fix: the leg answers the write-refusal surfaces (docs/SPEC.md §5.1: the write contract; assert legs in debug, refusing legs in every build).

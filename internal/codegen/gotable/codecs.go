@@ -456,7 +456,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		if f.Array != ir.ArrayNone {
 			g.pf("clear(value.%s[:])\n", name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("value.%sCount=0\n", name)
+				g.pf("value.%sCount=%d\n", name, f.BornCount())
 			}
 		} else {
 			g.pf("value.%s=0\n", name)
@@ -474,20 +474,20 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		base := arrayBase("value.", f)
 		g.pf("\tfor i := range %s {\n\t\t%sReset(&%s[i])\n\t}\n", base, f.Type.Name, base)
 		if f.Array == ir.ArrayCounted {
-			g.pf("\tvalue.%sCount = 0\n", name)
+			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
 	case f.Array != ir.ArrayNone && isUnionRef(f.Type):
 		base := arrayBase("value.", f)
 		g.pf("\tfor i := range %s {\n\t\t%s[i].Type = %sTypeNone\n\t}\n", base, base, f.Type.Name)
 		if f.Array == ir.ArrayCounted {
-			g.pf("\tvalue.%sCount = 0\n", name)
+			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
 	case f.Array != ir.ArrayNone:
 		// a scalar element's array zeroes whatever the field's own default
 		// says — the same rule the C++ ` = {}` and the C# Array.Clear state
 		g.pf("\tclear(%s[:])\n", arrayBase("value.", f))
 		if f.Array == ir.ArrayCounted {
-			g.pf("\tvalue.%sCount = 0\n", name)
+			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
 	default:
 		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {
@@ -663,6 +663,10 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
+	minimum := "0"
+	if f.Array == ir.ArrayCounted {
+		minimum = strconv.FormatInt(f.ArrayMin, 10)
+	}
 
 	elemSize := fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s))", g.storageName(st.Name), name)
 	if isArray && !f.IsList() && !f.IsMap() {
@@ -821,8 +825,8 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	}
 	g.pf("\t{Name: %q, Json: %q, TypeName: %q, DeclaredTypeName:%q, Id: 0x%04x, Kind: %d, IsArray: %v, Counted: %v, Optional: %v,\n",
 		f.Name, json, tableFieldTypeName(f), ir.TableTypeSpelling(f), id, kind, isArray, counted, f.Type.Optional)
-	g.pf("\t\tArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
-		bound, offset, elemSize, countOffset, presentOffset)
+	g.pf("\t\tArrayMin: %s, ArrayBound: %s, Offset: %s, ElemSize: %s, CountOffset: %s, PresentOffset: %s,\n",
+		minimum, bound, offset, elemSize, countOffset, presentOffset)
 	if g.viewPacket == nil {
 		g.emitCookFieldColumns(st, f)
 	}

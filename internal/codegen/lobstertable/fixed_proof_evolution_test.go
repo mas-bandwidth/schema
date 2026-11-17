@@ -178,7 +178,11 @@ else:
     let decoded:[%[1]s.%[2]s] = []
     for(count) i:
         push(decoded, r[i])
-%[4]s    assert write_file("out.bin", %[1]s.%[2]sFixedSave(decoded))
+%[4]s    let resaved = %[1]s.%[2]sFixedSave(decoded)
+    if resaved == "":
+        print("RESAVE refused")
+    else:
+        assert write_file("out.bin", resaved)
 `, pkg, root, capacity, indentLobsterProof(dump.String(), "    "))
 	out, resaved := lobsterEvolutionRun(t, files, script, map[string][]byte{"in.bin": wire})
 	fields := map[string]string{}
@@ -213,6 +217,12 @@ else:
 				t.Fatalf("invalid native field %q", line)
 			}
 			fields[key] = val
+		}
+		// <T>FixedSave is the checked writer: a record a planted break let
+		// the read land off its contract is refused on the way back out, and
+		// the empty re-save matches no file.
+		if line == "RESAVE refused" && resaved == nil {
+			resaved = []byte{}
 		}
 	}
 	if count >= 0 && resaved != nil {

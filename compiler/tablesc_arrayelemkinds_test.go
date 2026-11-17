@@ -22,18 +22,26 @@ func TestCTableArrayElementKindsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// array_elem_kind_mismatch is a well-framed vector of test/tables/R1.schema
+	// whose root is Cfg (one array field of element kind 4, int32, where Cfg's
+	// grades declares 30, enum), so it is read against Cfg, as the C++ table
+	// leg reads it.
+	cfg, err := New().Load([]string{filepath.Join("..", "test", "tables", "R1.schema")})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := map[string]bool{
-		"array_elem_kind_32_count_2": false,
-		"array_elem_kind_31_count_1": false,
-		"array_elem_kind_16_count_1": false,
+		"array_elem_kind_32_count_2":    false,
+		"array_elem_kind_31_count_1":    false,
+		"array_elem_kind_16_count_1":    false,
 		"array_elem_unassigned_count_0": false,
-		"array_elem_reserved_count_0": false,
-		"array_elem_zero_count_0": false,
-		"array_elem_kind_17_count_0": true,
-		"array_elem_kind_17_count_1": true,
-		"array_elem_kind_mismatch": false,
-		"array_elem_terminator_early": false,
-		"array_elem_L_past_body": false,
+		"array_elem_reserved_count_0":   false,
+		"array_elem_zero_count_0":       false,
+		"array_elem_kind_17_count_0":    true,
+		"array_elem_kind_17_count_1":    true,
+		"array_elem_kind_mismatch":      false,
+		"array_elem_terminator_early":   false,
+		"array_elem_L_past_body":        false,
 	}
 	wires, err := filepath.Glob(filepath.Join("..", "testdata", "wire", "tables", "framing", "array_elem_*.bin"))
 	if err != nil {
@@ -81,9 +89,31 @@ int main(void)
     return 0;
 }
 `, octets.String(), verdict)
+		unit := u
+		if name == "array_elem_kind_mismatch" {
+			unit = cfg
+			source = fmt.Sprintf(`#include "R1Table.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %%d: %%s\n", __LINE__, #x); return 1; } } while (0)
+static const uint8_t wire[] = { %s };
+int main(void)
+{
+    TableReport report;
+    Cfg value;
+    int ok;
+    cfg_reset(&value);
+    memset(&report, 0, sizeof(report));
+    ok = cfg_load(&value, wire, (int64_t)sizeof(wire), &report);
+    CHECK(!ok && report.refused);
+    return 0;
+}
+`, octets.String())
+		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			runCTableWireProbe(t, u, source)
+			runCTableWireProbe(t, unit, source)
 		})
 	}
 	for name := range want {

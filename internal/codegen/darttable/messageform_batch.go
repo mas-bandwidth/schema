@@ -239,10 +239,15 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3, §4),
 	// known or unknown: this body's own seen level starts clear.
 	g.pf("  r.seenReset();\n")
-	// THE WRITER'S ORDER IS THE READER'S RULE (docs/SPEC-TABLES.md §3.3, §4;
-	// docs/rulings.json reads-refuse-non-canonical): nextField is one past
-	// the ordinal of the last declared field this body carried. An unknown
-	// field's place is its newer writer's and is not judged.
+	// UNDER THE READER'S OWN BUILD VERSION the sender's record is this one
+	// (docs/SPEC-TABLES.md §3.3 (a), (b); docs/rulings.json
+	// reads-refuse-non-canonical): its declaration order, its defaults and its
+	// fields are this reader's, so a field out of that order, a field stored at
+	// its default and a field the record does not declare are spellings no
+	// conforming writer produces. Under another build none of the three is
+	// judged. nextField is one past the ordinal of the last declared field
+	// this body carried.
+	g.pf("  final sameBuild = r.vocabulary.buildVersion == tableBuildVersion;\n")
 	if len(st.Fields) > 0 {
 		g.pf("  var nextField = 0;\n")
 	}
@@ -268,7 +273,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 		entry := ir.TableFieldEntry(f)
 		expr := "value." + dartName(f.Name)
 		g.pf("      case %s: {\n", dartU64Literal(entry.Id))
-		g.pf("        if (nextField > %d) { r.report.Damage(); return false; } // out of the writer's order (§3.3)\n", i)
+		g.pf("        if (sameBuild && nextField > %d) { r.report.Damage(); return false; } // out of the writer's order (§3.3)\n", i)
 		g.pf("        nextField = %d;\n", i+1)
 		g.emitMessageCompatibility(f, entry, "entry", "shape", "        ")
 		held := g.messageHoldsElision(f, entry)
@@ -292,6 +297,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// walk does (internal/tablewire/messagedecode.go: `Unknown++`, `skip(entry)`,
 	// `continue`). The reference was resolved, reserved-checked and recorded
 	// above, so an unknown entry met twice is the same damage as a known one.
+	g.pf("        if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)\n")
 	g.pf("        r.report.unknown++;\n")
 	g.pf("        if (!tableMessageSkipEntry(r, entry)) {\n")
 	g.pf("          r.report.Damage();\n          return false;\n        }\n")
@@ -318,10 +324,19 @@ func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyE
 // terminator alone is the all-default body its writer elides), and a field
 // whose read met a name this reader cannot place (an enum variant, a union
 // arm, a nested field) reads its default lawfully and is not held to it.
+//
+// The default a field elides at is the sender's, which this reader knows only
+// under its own build version (sameBuild; §3.3 (a)). A UNION field's arm
+// reference 0 is its own spelling, refused at every build (§3.3 (c)); a None
+// element of an array of unions is positional and never reaches here.
 func (g *fixedModule) emitMessageElidedCheck(f *ir.Field, expr, ind string) {
+	gate := "sameBuild && "
+	if _, union := f.Type.Ref.(*ir.Union); union && messageNamesUnknown(f) {
+		gate = ""
+	}
 	if !messageNamesUnknown(f) {
 		rides := g.messageRides(f, expr, ind)
-		g.pf("%sif (!(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, rides)
+		g.pf("%sif (%s!(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, gate, rides)
 		return
 	}
 	rides := ""
@@ -330,7 +345,7 @@ func (g *fixedModule) emitMessageElidedCheck(f *ir.Field, expr, ind string) {
 	} else {
 		rides = g.messageRides(f, expr, ind)
 	}
-	g.pf("%sif (r.report.unknown == unknownAt && !(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, rides)
+	g.pf("%sif (%sr.report.unknown == unknownAt && !(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, gate, rides)
 }
 
 // messageNamesUnknown reports whether a single field's read can meet a name
@@ -346,7 +361,6 @@ func messageNamesUnknown(f *ir.Field) bool {
 	}
 	return false
 }
-
 
 // emitMessageCompatibility refuses an announced kind that is neither the
 // declared one nor a widening (docs/SPEC-TABLES.md §3.3, §4), counting one

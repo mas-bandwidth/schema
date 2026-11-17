@@ -133,7 +133,8 @@ def check_write(name:string, want:string, wbits:int, write):
     let got, bits = wire(write)
     row("write " + name, got == want and bits == wbits)
 
-// the reader consumes exactly the README's bits from its constant
+// the body read consumes exactly the README's bits from its constant, and
+// the one end check follows
 def check_read(name:string, data:string, wbits:int, read):
     let r = serialize_read_stream_padded(data)
     let ok = read(r)
@@ -167,19 +168,19 @@ check_write("empty-none", "", 0) w: packetvoid.WriteEmpty(w, packetvoid.NewEmpty
 
 let m = packetvoid.NewMixed()
 m.Type = packetvoid.MixedTypePayload
-check_read("mixed-none", "\x00", 2) r: packetvoid.ReadMixed(r, m) and m.Type == packetvoid.MixedTypeNone
-check_read("mixed-ping", "\x01", 2) r: packetvoid.ReadMixed(r, m) and m.Type == packetvoid.MixedTypePing
-check_read("mixed-payload", "\x52", 7) r: packetvoid.ReadMixed(r, m) and m.Type == packetvoid.MixedTypePayload and m.Payload.EntriesCount == 0 and m.Payload.Marker == 5
+check_read("mixed-none", "\x00", 2) r: packetvoid.read_body_Mixed(r, m) and m.Type == packetvoid.MixedTypeNone
+check_read("mixed-ping", "\x01", 2) r: packetvoid.read_body_Mixed(r, m) and m.Type == packetvoid.MixedTypePing
+check_read("mixed-payload", "\x52", 7) r: packetvoid.read_body_Mixed(r, m) and m.Type == packetvoid.MixedTypePayload and m.Payload.EntriesCount == 0 and m.Payload.Marker == 5
 let f = packetvoid.NewFrame()
-check_read("frame", "\xcd", 8) r: packetvoid.ReadFrame(r, f) and f.Lead == 5 and f.Choice.Type == packetvoid.MixedTypePing and f.Tail == 6
+check_read("frame", "\xcd", 8) r: packetvoid.read_body_Frame(r, f) and f.Lead == 5 and f.Choice.Type == packetvoid.MixedTypePing and f.Tail == 6
 let b = packetvoid.NewBatch()
-check_read("batch", "\x05", 4) r: packetvoid.ReadBatch(r, b) and b.ValuesCount == 1 and b.Values[0].Type == packetvoid.MixedTypePing
+check_read("batch", "\x05", 4) r: packetvoid.read_body_Batch(r, b) and b.ValuesCount == 1 and b.Values[0].Type == packetvoid.MixedTypePing
 let tg = packetvoid.NewTags()
-check_read("tags-pong", "\x02", 2) r: packetvoid.ReadTags(r, tg) and tg.Type == packetvoid.TagsTypePong
+check_read("tags-pong", "\x02", 2) r: packetvoid.read_body_Tags(r, tg) and tg.Type == packetvoid.TagsTypePong
 let sg = packetvoid.NewSingle()
-check_read("single-ack", "\x01", 1) r: packetvoid.ReadSingle(r, sg) and sg.Type == packetvoid.SingleTypeAck
+check_read("single-ack", "\x01", 1) r: packetvoid.read_body_Single(r, sg) and sg.Type == packetvoid.SingleTypeAck
 let em = packetvoid.NewEmpty()
-check_read("empty-none", "", 0) r: packetvoid.ReadEmpty(r, em) and em.Type == packetvoid.EmptyTypeNone
+check_read("empty-none", "", 0) r: packetvoid.read_body_Empty(r, em) and em.Type == packetvoid.EmptyTypeNone
 
 // every selection constructs a fresh payload at its defaults
 var fresh = true

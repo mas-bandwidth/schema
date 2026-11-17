@@ -171,6 +171,9 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 		present := pieces[len(pieces)-1].Offset
 		w.pl(1, "%s::cook_put(b, at + %d, if %sPresent { 1 } else { 0 }, 1, big);", rt, present, src)
 		w.cl(1, "%sPresent = %s;", dst, ride)
+		// an absent optional's payload is storage the walk does not reach:
+		// the zero-filled extent already holds it (§7.6)
+		w.pl(1, "if %sPresent {", src)
 	}
 	switch {
 	case t.Kind == ir.TString || t.Kind == ir.TBytes:
@@ -187,8 +190,14 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 			w.cl(1, "if %s { %sCount = %s::cook_loaded_count(vals, %s, %d); }", ride, dst, rt, slot, f.ArrayBound)
 		}
 		i := w.fresh("idx")
-		w.pl(1, "for %s in %d {", i, f.ArrayBound)
-		w.cl(1, "for %s in %d {", i, f.ArrayBound)
+		slots := fmt.Sprintf("%d", f.ArrayBound)
+		if f.Array == ir.ArrayCounted {
+			// a slot past the live count is storage the walk does not reach:
+			// the zero-filled extent already holds it (§7.6)
+			slots = src + "Count as! i64"
+		}
+		w.pl(1, "for %s in %s {", i, slots)
+		w.cl(1, "for %s in %s {", i, slots)
 		es := w.fresh("el")
 		w.cl(2, "let %s = %s::cook_loaded_elem(vals, %s, %s);", es, rt, slot, i)
 		w.value(f, src+"["+i+"]", dst+"["+i+"]", fmt.Sprintf("%d + %s * %d", pieces[0].Offset, i, facts.ElemSize), es, 2)
@@ -196,6 +205,9 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 		w.cl(1, "}")
 	default:
 		w.value(f, src, dst, fmt.Sprint(pieces[0].Offset), slot, 1)
+	}
+	if t.Optional {
+		w.pl(1, "}")
 	}
 }
 
@@ -268,9 +280,6 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 		case *ir.Struct:
 			rTyp := w.g.TypeRef(r.Name, r.IsTable)
 			switch {
-			case f.Type.Optional && f.Array == ir.ArrayNone && f.KeyEnum == "":
-				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
-				w.pl(ind, "if %sPresent { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", src, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
 			case f.Array == ir.ArrayCounted:
 				lb := strings.LastIndexByte(src, '[')
 				arr, idx := src[:lb], strings.TrimSuffix(src[lb+1:], "]")
@@ -335,8 +344,14 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 				w.cl(ind+1, "if %s::cook_loaded_rode(vals, %s) { %sCount = %s::cook_loaded_count(vals, %s, %d); }", rt, payload, d, rt, payload, af.ArrayBound)
 			}
 			i := w.fresh("idx")
-			w.pl(ind+1, "for %s in %d {", i, af.ArrayBound)
-			w.cl(ind+1, "for %s in %d {", i, af.ArrayBound)
+			slots := fmt.Sprintf("%d", af.ArrayBound)
+			if af.Array == ir.ArrayCounted {
+				// a slot past the live count is storage the walk does not
+				// reach: the zero-filled extent already holds it (§7.6)
+				slots = a + "Count as! i64"
+			}
+			w.pl(ind+1, "for %s in %s {", i, slots)
+			w.cl(ind+1, "for %s in %s {", i, slots)
 			es := w.fresh("el")
 			w.cl(ind+2, "let %s = %s::cook_loaded_elem(vals, %s, %s);", es, rt, payload, i)
 			w.value(&af, a+"["+i+"]", d+"["+i+"]", fmt.Sprintf("%s + %d + %s * %d", at, armOffset+pieces[0].Offset, i, facts.ElemSize), es, ind+2)
@@ -347,7 +362,9 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 			present := pieces[len(pieces)-1].Offset
 			w.pl(ind+1, "%s::cook_put(b, at + %s + %d, if %sPresent { 1 } else { 0 }, 1, big);", rt, at, armOffset+present, a)
 			w.cl(ind+1, "%sPresent = %s::cook_loaded_rode(vals, %s);", d, rt, payload)
+			w.pl(ind+1, "if %sPresent {", a)
 			w.value(&af, a, d, fmt.Sprintf("%s + %d", at, armOffset+pieces[0].Offset), payload, ind+1)
+			w.pl(ind+1, "}")
 		default:
 			w.value(&af, src+"."+arm, dst+"."+arm, fmt.Sprintf("%s + %d", at, armOffset+pieces[0].Offset), payload, ind+1)
 		}

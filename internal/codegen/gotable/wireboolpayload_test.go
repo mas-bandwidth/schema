@@ -88,7 +88,10 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 		if offset < 0 || offset >= len(bad) || bad[offset] != 0xfe {
 			t.Fatalf("bad %s payload not set at %d: %x", field, offset, bad)
 		}
-		buf := aligned(t, bad)
+		// the region is sized from the clean wire of the same length: the
+		// damaged wire's own measure refuses, and a region that small would
+		// stop the load at allocation before it reaches the bool payload
+		buf := aligned(t, clean)
 		if buf == nil {
 			t.Fatal("malformed wire has no load region")
 		}

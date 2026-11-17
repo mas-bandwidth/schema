@@ -491,7 +491,12 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		e.p(ind+1, "}")
 		e.p(ind, "}")
 	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
-		e.p(ind, "if %s != 0 {", pl.length)
+		if len(f.DefBytes) == 0 {
+			e.p(ind, "if %s != 0 {", pl.length)
+		} else {
+			// elided only when the length AND the bytes are the default's
+			e.p(ind, "if !schema_rt::msg_text_is(%s, %s, %s) {", pl.val, pl.length, stringLit(string(f.DefBytes)))
+		}
 		header(ind + 1)
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:

@@ -24,16 +24,15 @@ func fileHasStrings(f *ir.File) bool {
 	return false
 }
 
-// emitUtf8Validator emits the well-formedness check the READ path runs:
+// emitUtf8Validator emits the well-formedness check both paths use:
 // a string(N) payload that is not well-formed UTF-8 fails the read, in every
-// build mode, and the refusal is terminal (SPEC §4.7). The check is
+// build mode, and the refusal is terminal (SPEC §4.7), while the write path
+// asserts it under the leg's debug mechanism (SPEC §5.1 row 8). The check is
 // generated-code validation because no serialize primitive performs it and
-// three targets have no runtime at all. There is no write-side twin: §5 puts
-// text well-formedness on the reader rather than on a write assert some
-// targets carry and others do not. Guarded per package: the validator lives
-// inside namespace <package>, so each unit in a translation unit needs its own
-// copy exactly once — several wire headers of one package can land in one
-// translation unit.
+// three targets have no runtime at all. Guarded per package: the validator
+// lives inside namespace <package>, so each unit in a translation unit needs
+// its own copy exactly once — several wire headers of one package can land in
+// one translation unit.
 func (g *gen) emitUtf8Validator() {
 	guard := "SCHEMA_" + strings.ToUpper(g.unit.Package) + "_UTF8_VALID_DEFINED"
 	g.pf("#ifndef %s\n#define %s\n", guard, guard)

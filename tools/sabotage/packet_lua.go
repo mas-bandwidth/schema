@@ -48,4 +48,11 @@ func init() {
 	m.Printf("  return true -- SABOTAGED: the end check removed\n")`,
 		},
 	}
+	sabotages["packet-write-text-lua-utf8"] = []edit{{
+		old: `  if not utf8valid(v.Text) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)`,
+		new: `  -- SABOTAGED: the UTF-8 write check is absent`,
+	}, {
+		old: `  if string.find(v.Text, "\0", 1, true) then return false end -- interior null (SPEC §5.1 row 8)`,
+		new: `  -- SABOTAGED: the interior-null write check is absent`,
+	}}
 }

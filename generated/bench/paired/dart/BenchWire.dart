@@ -719,17 +719,6 @@ final class TableWireReader {
   // record (a record no slot targets is never walked, exactly as in
   // internal/tablewire's body walk).
   final Set<int> trailingBodies;
-  // nodeTypeRefs holds each placed record's type reference, in index order,
-  // for the id table's first-use walk (wireFramingBad).
-  List<int> nodeTypeRefs = <int>[];
-  // _useNext is the id-table reference a first use names next while the
-  // framing walk holds the table's order (wireFramingBad), 0 otherwise, and
-  // _useBad records a reference that named an entry before its turn.
-  int _useNext = 0;
-  bool _useBad = false;
-  // idsNotFirstUse is the id-table verdict wireFramingBad's walk reached:
-  // true when an entry was named before its turn or no reference named it.
-  bool idsNotFirstUse = false;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -1253,7 +1242,6 @@ final class TableWireReader {
     var read = 0;
     var framed = true;
     final scanTypes = <int>[];
-    final scanRefs = <int>[];
     final scanBytes = <Uint8List>[];
     while (pos < tableEnd) {
       final typeRef = readLeb();
@@ -1275,7 +1263,6 @@ final class TableWireReader {
       scanBytes.add(Uint8List.fromList(data.sublist(pos, pos + blen)));
       pos += blen;
       scanTypes.add(refToId[typeRef] ?? 0);
-      scanRefs.add(typeRef);
       read++;
     }
     if (!framed || pos != tableEnd || read != count) {
@@ -1302,8 +1289,6 @@ final class TableWireReader {
           nodeTypes.add(typeId);
         }
         nodes.add(bytes);
-        nodeTypeRefs.add(scanRefs[i]);
-
         decoded.add(null);
       }
     }
@@ -1450,7 +1435,7 @@ final class TableWireReader {
   // _wirePayload walks one payload of kind at off in buf, adding every
   // kind-17 index it meets to out; it answers the offset past the payload,
   // or -1 when the framing cannot be walked.
-  int _wirePayload(Uint8List buf, int off, int kind, List<int> out, int depth) {
+  int _wirePayload(Uint8List buf, int off, int kind, List<int> out, int depth, [List<int>? order]) {
     switch (kind) {
       case 1:
       case 2:
@@ -1468,14 +1453,14 @@ final class TableWireReader {
       case 10:
       case 22:
       case 27:
-        return off + 4 <= buf.length && _wireScalar(buf.sublist(off, off + 4), kind) ? off + 4 : -1;
+        return off + 4 <= buf.length && ((order != null && kind == 10) || _wireScalar(buf.sublist(off, off + 4), kind)) ? off + 4 : -1;
       case 5:
       case 9:
       case 11:
       case 23:
       case 28:
       case 36:
-        return off + 8 <= buf.length && _wireScalar(buf.sublist(off, off + 8), kind) ? off + 8 : -1;
+        return off + 8 <= buf.length && ((order != null && kind == 11) || _wireScalar(buf.sublist(off, off + 8), kind)) ? off + 8 : -1;
       case 18:
       case 19:
       case 24:
@@ -1489,13 +1474,13 @@ final class TableWireReader {
       case 30:
         final p = _wireLeb(buf, off);
         if (p == null || p.$1 < 0 || p.$1 > entryCount) return -1;
-        if (p.$1 != 0) _use(p.$1);
+        _wireUse(order, p.$1);
         return p.$2;
       case 15:
         final arm = _wireLeb(buf, off);
         if (arm == null || arm.$1 < 0 || arm.$1 > entryCount) return -1;
         if (arm.$1 == 0) return arm.$2;
-        _use(arm.$1);
+        _wireUse(order, arm.$1);
         if (arm.$2 >= buf.length) return -1;
         final akind = buf[arm.$2];
         final alen = _wireLeb(buf, arm.$2 + 1);
@@ -1505,9 +1490,9 @@ final class TableWireReader {
         // another union is one level deeper; a scalar arm adds none (§4).
         if (_structuralKind(akind)) {
           if (depth >= _kBinaryMaxDepth) return -1;
-          return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1) ? end : -1;
+          return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1, order) ? end : -1;
         }
-        return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
+        return _wireContent(buf.sublist(alen.$2, end), akind, out, depth, order) ? end : -1;
       case 12:
       case 13:
       case 14:
@@ -1517,14 +1502,14 @@ final class TableWireReader {
         final p = _wireLeb(buf, off);
         if (p == null || p.$1 < 0 || p.$1 > buf.length - p.$2) return -1;
         final end = p.$2 + p.$1;
-        return _wireContent(buf.sublist(p.$2, end), kind, out, depth) ? end : -1;
+        return _wireContent(buf.sublist(p.$2, end), kind, out, depth, order) ? end : -1;
     }
     return -1;
   }
 
   // _wireContent walks the length-bounded content of kinds 12-16 and 31-32
   // exactly as _wirePayload framed it.
-  bool _wireContent(Uint8List b, int kind, List<int> out, int depth) {
+  bool _wireContent(Uint8List b, int kind, List<int> out, int depth, [List<int>? order]) {
     switch (kind) {
       case 12:
         return _lebValid(b, 0, b.length);
@@ -1532,7 +1517,7 @@ final class TableWireReader {
       case 32:
         return kind != 32 || b.isEmpty;
       case 13:
-        return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
+        return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1, order);
       case 14:
         if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
         // THE ELEMENT KIND IS CLOSED, judged under any count, a count of 0
@@ -1540,9 +1525,11 @@ final class TableWireReader {
         if (!_arrayElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
+        // Defer an unsupported count to the normal reader, which owns its refusal.
+        if (order != null && head.$1 > 0x7fffffff) return false;
         var off = head.$2;
         for (var i = 0; i < head.$1; i++) {
-          off = _wirePayload(b, off, b[0], out, depth + 1);
+          off = _wirePayload(b, off, b[0], out, depth + 1, order);
           if (off < 0) return false;
         }
         return off == b.length;
@@ -1553,41 +1540,31 @@ final class TableWireReader {
         if (!_keyedElementKindAllowed(b[0])) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
+        // Defer an unsupported count to the normal reader, which owns its refusal.
+        if (order != null && head.$1 > 0x7fffffff) return false;
         var off = head.$2;
         final seenKeys = <int>{};
         for (var i = 0; i < head.$1; i++) {
           final key = _wireLeb(b, off);
           if (key == null || key.$1 < 1 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
-          _use(key.$1);
+          _wireUse(order, key.$1);
           final len = _wireLeb(b, key.$2);
           if (len == null || len.$1 < 0 || len.$1 > b.length - len.$2) return false;
-          if (!_wireContent(b.sublist(len.$2, len.$2 + len.$1), b[0], out, depth + 1)) return false;
+          if (!_wireContent(b.sublist(len.$2, len.$2 + len.$1), b[0], out, depth + 1, order)) return false;
           off = len.$2 + len.$1;
         }
         return off == b.length;
       case 17:
       case 30:
       case 15:
-        return _wirePayload(b, 0, kind, out, depth) == b.length;
+        return _wirePayload(b, 0, kind, out, depth, order) == b.length;
     }
-    return _wirePayload(b, 0, kind, out, depth) == b.length;
-  }
-
-  // _use notes one id-table reference in wire order while wireFramingBad
-  // holds the table's order: the next new entry advances the turn, an entry
-  // already named is a later use, and one past the turn is out of order.
-  void _use(int ref) {
-    if (_useNext == 0) return;
-    if (ref == _useNext) {
-      _useNext++;
-    } else if (ref > _useNext) {
-      _useBad = true;
-    }
+    return _wirePayload(b, 0, kind, out, depth, order) == b.length;
   }
 
   // _wireBody walks one body to its terminator, adding every kind-17 index
   // to out. The root body's node-table field is skipped, not walked.
-  bool _wireBody(Uint8List buf, bool root, List<int> out, int depth) {
+  bool _wireBody(Uint8List buf, bool root, List<int> out, int depth, [List<int>? order]) {
     var off = 0;
     // A repeated field id in one body is damage (internal/tablewire/
     // wirecheck.go body). The root body is exempt here: its own load
@@ -1599,9 +1576,9 @@ final class TableWireReader {
       if (ref == null) return false;
       off = ref.$2;
       if (ref.$1 == 0) return off == buf.length;
-      _use(ref.$1);
       final id = refToId[ref.$1];
       if (id == null || (!root && !seenIds.add(id)) || off >= buf.length) return false;
+      _wireUse(order, ref.$1);
       final kind = buf[off];
       off++;
       if (id == _kBuildVersionId || id == _kVocabularyId) return false;
@@ -1614,7 +1591,7 @@ final class TableWireReader {
         off = len.$2 + len.$1;
         continue;
       }
-      off = _wirePayload(buf, off, kind, out, depth);
+      off = _wirePayload(buf, off, kind, out, depth, order);
       if (off < 0) return false;
     }
   }
@@ -1760,6 +1737,36 @@ final class TableWireReader {
     return false;
   }
 
+  // The declaration-free wire walk records each reference's first use. A
+  // partial walk leaves framing and semantic refusals to the ordinary reader.
+  void _wireUse(List<int>? order, int ref) {
+    if (order == null || ref == 0) return;
+    if (ref > order[0]) { order[1] = 1; }
+    if (ref == order[0]) { order[0]++; }
+  }
+
+  bool wireIdOrderBad() {
+    final probe = TableWireReader(data, data.length);
+    if (probe.open() != 0) return false;
+    probe.scanNodeTable();
+    if (!probe.nodeTableGood) return false;
+    final end = data.length - (probe.entryCount * 8 + 8);
+    if (end < 1 || end > data.length) return false;
+    final order = <int>[1, 0];
+    final sink = <int>[];
+    if (!probe._wireBody(data.sublist(1, end), true, sink, 0, order)) return false;
+    final refs = <int, int>{for (final e in probe.refToId.entries) e.value: e.key};
+    for (var i = 0; i < probe.nodes.length; i++) {
+      final typeId = probe.nodeTypes[i];
+      final ref = refs[typeId];
+      if (ref == null) return false;
+      probe._wireUse(order, ref);
+      if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
+      if (!probe._wireBody(probe.nodes[i], false, sink, 0, order)) return false;
+    }
+    return order[1] != 0 || order[0] != probe.entryCount + 1;
+  }
+
   // wireFramingBad reports whether the wire-alone framing walk
   // (internal/tablewire/wirecheck.go checkBody) cannot frame the root body
   // or any placed record body whole: a payload that does not end where its
@@ -1767,38 +1774,19 @@ final class TableWireReader {
   // elements, or a body whose terminator is not its last byte are damage
   // (docs/SPEC-TABLES.md §4), in fields this reader declares and in fields
   // it only skips alike.
-  //
-  // THE SAME WALK HOLDS THE ID TABLE TO FIRST-USE ORDER, EVERY ENTRY USED
-  // (docs/SPEC-TABLES.md §3; docs/rulings.json reads-refuse-non-canonical):
-  // it meets every reference — a field's, an enum variant's, a union arm's,
-  // a keyed slot's and a node record's type — in the wire's own order, the
-  // root body first and the node table, its last field, after it, so an
-  // entry named before its turn, or one no reference names, is a table no
-  // conforming writer produces. The walk stays one pass over the input: the
-  // framing verdict is its answer, and this one lands on idsNotFirstUse.
   bool wireFramingBad() {
     if (entryCount == 0 || data.isEmpty || data[0] != 1) return false;
     final bodyEnd = data.length - (entryCount * 8 + 8);
     if (bodyEnd < 1 || bodyEnd > data.length) return false;
     final sink = <int>[];
-    _useNext = 1;
-    _useBad = false;
-    try {
-      if (!_wireBody(data.sublist(1, bodyEnd), true, sink, 0)) return true;
-      for (var rec = 0; rec < nodes.length; rec++) {
-        if (rec < nodeTypeRefs.length) _use(nodeTypeRefs[rec]);
-        final typeId = nodeTypes[rec];
-        if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
-        if (!_wireBody(nodes[rec], false, sink, 0)) return true;
-      }
-      idsNotFirstUse = _useBad || _useNext != entryCount + 1;
-      return false;
-
-    } finally {
-      _useNext = 0;
+    if (!_wireBody(data.sublist(1, bodyEnd), true, sink, 0)) return true;
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final typeId = nodeTypes[rec];
+      if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
+      if (!_wireBody(nodes[rec], false, sink, 0)) return true;
     }
+    return false;
   }
-
 }
 
 // _kindWidens reports whether a payload kind is a smaller kind on the same
@@ -3203,7 +3191,6 @@ void fixedTableWireSaveBody(TableWireWriter w, FixedTable v) {
 
 void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
   final seenRefs = <int>{};
-  var nextField = 0;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
@@ -3217,8 +3204,6 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
     if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case 2593226102015223570:
-        if (nextField > 0) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 1;
         {
           var value = v.entityId;
           switch (kind) {
@@ -3240,13 +3225,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 4095)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.entityId = value;
         }
         break;
       case -3797881157997612786:
-        if (nextField > 1) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 2;
         {
           var value = v.posX;
           switch (kind) {
@@ -3274,13 +3256,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
           }
           if (value < -16383) { r.report.refuse('out_of_range'); return; }
           if (value > 16383) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.posX = value;
         }
         break;
       case -3797880058485984575:
-        if (nextField > 2) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 3;
         {
           var value = v.posY;
           switch (kind) {
@@ -3308,13 +3287,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
           }
           if (value < -16383) { r.report.refuse('out_of_range'); return; }
           if (value > 16383) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.posY = value;
         }
         break;
       case -3797883357020869208:
-        if (nextField > 3) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 4;
         {
           var value = v.posZ;
           switch (kind) {
@@ -3342,13 +3318,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
           }
           if (value < -16383) { r.report.refuse('out_of_range'); return; }
           if (value > 16383) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.posZ = value;
         }
         break;
       case -5382489739573192984:
-        if (nextField > 4) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 5;
         {
           var value = v.yaw;
           switch (kind) {
@@ -3370,13 +3343,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 511)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.yaw = value;
         }
         break;
       case 6028620492700434865:
-        if (nextField > 5) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 6;
         {
           var value = v.pitch;
           switch (kind) {
@@ -3398,13 +3368,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 511)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.pitch = value;
         }
         break;
       case 7849183398884077159:
-        if (nextField > 6) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 7;
         {
           var value = v.velX;
           switch (kind) {
@@ -3432,13 +3399,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
           }
           if (value < -2048) { r.report.refuse('out_of_range'); return; }
           if (value > 2047) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.velX = value;
         }
         break;
       case 7849182299372448948:
-        if (nextField > 7) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 8;
         {
           var value = v.velY;
           switch (kind) {
@@ -3466,13 +3430,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
           }
           if (value < -2048) { r.report.refuse('out_of_range'); return; }
           if (value > 2047) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.velY = value;
         }
         break;
       case 7849185597907333581:
-        if (nextField > 8) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 9;
         {
           var value = v.velZ;
           switch (kind) {
@@ -3500,13 +3461,10 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
           }
           if (value < -2048) { r.report.refuse('out_of_range'); return; }
           if (value > 2047) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.velZ = value;
         }
         break;
       case 9181103189905877455:
-        if (nextField > 9) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 10;
         {
           var value = v.health;
           switch (kind) {
@@ -3534,18 +3492,14 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 1000) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.health = value;
         }
         break;
       case -6866282850657997311:
-        if (nextField > 10) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 11;
         if (kind != 30) { r.report.refuse('kind_mismatch'); return; }
         {
           final ref2 = r.readLeb();
           if (ref2 == null) { r.report.refuse('wire_damaged'); return; }
-          if (ref2 == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (ref2 == 0) { v.weapon = MixedWeapon.none; break; }
           final vid = r.refToId[ref2];
           if (vid == null) { r.report.refuse('wire_damaged'); return; }
@@ -3570,8 +3524,6 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         }
         break;
       case 9179190079975030720:
-        if (nextField > 11) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 12;
         {
           var value = v.damage;
           switch (kind) {
@@ -3607,31 +3559,18 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
             default:
               r.report.refuse('kind_mismatch'); return;
           }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.damage = value;
         }
         break;
       case 1271228688681418151:
-        if (nextField > 12) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 13;
         if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
         if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
-        {
-          final flag = r.readBool();
-          if (!flag) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
-          v.moving = flag;
-        }
+        v.moving = r.readBool();
         break;
       case 8535675692938965450:
-        if (nextField > 13) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 14;
         if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
         if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
-        {
-          final flag = r.readBool();
-          if (!flag) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
-          v.firing = flag;
-        }
+        v.firing = r.readBool();
         break;
       default:
         r.report.unknown++;
@@ -3668,7 +3607,6 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
 
 void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
   final seenRefs = <int>{};
-  var nextField = 0;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
@@ -3682,8 +3620,6 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
     if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -9175110139929313435:
-        if (nextField > 0) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 1;
         {
           var value = v.statId;
           switch (kind) {
@@ -3695,13 +3631,10 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 255)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.statId = value;
         }
         break;
       case 5910805692604981441:
-        if (nextField > 1) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 2;
         {
           var value = v.delta;
           switch (kind) {
@@ -3729,7 +3662,6 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
           }
           if (value < -512) { r.report.refuse('out_of_range'); return; }
           if (value > 511) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.delta = value;
         }
         break;
@@ -3768,7 +3700,6 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
 
 void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) {
   final seenRefs = <int>{};
-  var nextField = 0;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
@@ -3782,8 +3713,6 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
     if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -5207116919359778736:
-        if (nextField > 0) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 1;
         {
           var value = v.targetId;
           switch (kind) {
@@ -3805,13 +3734,10 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 4095)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.targetId = value;
         }
         break;
       case 9179190079975030720:
-        if (nextField > 1) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 2;
         {
           var value = v.damage;
           switch (kind) {
@@ -3839,13 +3765,10 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 4095) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.damage = value;
         }
         break;
       case 142922654710085925:
-        if (nextField > 2) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 3;
         {
           var value = v.hitKind;
           switch (kind) {
@@ -3873,20 +3796,13 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 7) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.hitKind = value;
         }
         break;
       case 1324453635955533101:
-        if (nextField > 3) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 4;
         if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
         if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
-        {
-          final flag = r.readBool();
-          if (!flag) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
-          v.crit = flag;
-        }
+        v.crit = r.readBool();
         break;
       default:
         r.report.unknown++;
@@ -3923,7 +3839,6 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
 
 void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested) {
   final seenRefs = <int>{};
-  var nextField = 0;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
@@ -3937,8 +3852,6 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
     if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -6556890747741999708:
-        if (nextField > 0) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 1;
         {
           var value = v.channel;
           switch (kind) {
@@ -3966,13 +3879,10 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 3) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.channel = value;
         }
         break;
       case -292263051557875678:
-        if (nextField > 1) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 2;
         {
           var value = v.speaker;
           switch (kind) {
@@ -3994,7 +3904,6 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 4095)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.speaker = value;
         }
         break;
@@ -4033,7 +3942,6 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
 
 void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool nested) {
   final seenRefs = <int>{};
-  var nextField = 0;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
@@ -4047,8 +3955,6 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
     if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -7025667724851298986:
-        if (nextField > 0) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 1;
         {
           var value = v.itemId;
           switch (kind) {
@@ -4070,13 +3976,10 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 1023)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.itemId = value;
         }
         break;
       case -9145686598410475159:
-        if (nextField > 1) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 2;
         {
           var value = v.amount;
           switch (kind) {
@@ -4104,7 +4007,6 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 255) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.amount = value;
         }
         break;
@@ -4161,7 +4063,6 @@ bool _benchMixedLoadoutFixed(TableWireReader p, BenchMixed v, int elemKind, int 
 
 void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
   final seenRefs = <int>{};
-  var nextField = 0;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
@@ -4175,8 +4076,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
     if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case -6181000666011064152:
-        if (nextField > 0) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 1;
         {
           var value = v.sequence;
           switch (kind) {
@@ -4198,13 +4097,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 65535)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.sequence = value;
         }
         break;
       case 990229364654832702:
-        if (nextField > 1) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 2;
         {
           var value = v.ackSequence;
           switch (kind) {
@@ -4232,13 +4128,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 65535) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.ackSequence = value;
         }
         break;
       case -7228825333587644925:
-        if (nextField > 2) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 3;
         {
           var value = v.ackBits;
           switch (kind) {
@@ -4265,13 +4158,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 4294967295)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.ackBits = value;
         }
         break;
       case -5199487799206016251:
-        if (nextField > 3) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 4;
         {
           var value = v.sessionId;
           switch (kind) {
@@ -4307,13 +4197,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             default:
               r.report.refuse('kind_mismatch'); return;
           }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.sessionId = value;
         }
         break;
       case 7889067272199050878:
-        if (nextField > 4) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 5;
         {
           var value = v.clientId;
           switch (kind) {
@@ -4339,13 +4226,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             default:
               r.report.refuse('kind_mismatch'); return;
           }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.clientId = value;
         }
         break;
       case 8334276637232054488:
-        if (nextField > 5) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 6;
         {
           var value = v.nonce;
           switch (kind) {
@@ -4383,13 +4267,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           }
           if (_u64Below(value, 0)) { r.report.refuse('out_of_range'); return; }
           if (_u64Above(value, -1)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.nonce = value;
         }
         break;
       case 4534679873638431877:
-        if (nextField > 6) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 7;
         {
           var value = v.worldTime;
           switch (kind) {
@@ -4427,13 +4308,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           }
           if (value < -1000000000000) { r.report.refuse('out_of_range'); return; }
           if (value > 1000000000000) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.worldTime = value;
         }
         break;
       case 8916005070914257170:
-        if (nextField > 7) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 8;
         {
           var value = v.frameTick;
           switch (kind) {
@@ -4470,13 +4348,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 281474976710655)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.frameTick = value;
         }
         break;
       case 4343163795393112518:
-        if (nextField > 8) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 9;
         {
           BigInt? value;
           switch (kind) {
@@ -4492,26 +4367,21 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             var x = value;
             if (x < BigInt.zero) { r.report.refuse('out_of_range'); }
             if (x > BigInt.parse('16776960')) { r.report.refuse('out_of_range'); }
-            if (x == BigInt.zero) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
             v.serverTime = x;
           }
         }
         break;
       case -7828083326636031446:
-        if (nextField > 9) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 10;
         if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
-          if (end - r.pos < 2) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
           if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
           if (elemKind != 13) { r.report.refuse('kind_mismatch'); r.pos = end; break; }
-          if (count == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <MixedEntity>[];
           var keep = count;
@@ -4533,20 +4403,16 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         }
         break;
       case -1268998401975805620:
-        if (nextField > 10) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 11;
         if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
-          if (end - r.pos < 2) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
           if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
           if (elemKind != 13) { r.report.refuse('kind_mismatch'); r.pos = end; break; }
-          if (count == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (r.retain != null) { for (final old in v.stats) { r.retain!.forget(old); } }
           v.stats = <MixedStat>[];
           var keep = count;
@@ -4568,34 +4434,24 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         }
         break;
       case 3329809749115557776:
-        if (nextField > 11) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 12;
         if (kind != 15) { r.report.refuse('kind_mismatch'); return; }
-        if (r.pos < r.limit && r.data[r.pos] == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
         if (!_mixedEventLoadArm(r, v.gameEvent)) { r.report.refuse('wire_damaged'); return; }
         break;
       case 6294288958393922979:
-        if (nextField > 12) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 13;
         if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
-          if (end - r.pos < 2) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
           if (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }
-          final unknownAt = r.report.unknown;
           _benchMixedLoadoutFixed(TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end), v, elemKind, count);
-          if (!r.report.refused && r.report.unknown == unknownAt && !v.loadout.any((e) => e != 0)) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           r.pos = end;
         }
         break;
       case 1415871171432867950:
-        if (nextField > 13) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 14;
         if (kind != 12) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
@@ -4603,21 +4459,16 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           if (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.playerName = ''; r.pos += len; break; }
           final keep = _textBoundary(r.data, r.pos, len, 15);
           if (keep != len) { r.report.refuse('length_over_bound'); return; }
-          final text = _decodeText(r.data, r.pos, r.pos + keep);
-          if (text == '') { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
-          v.playerName = text;
+          v.playerName = _decodeText(r.data, r.pos, r.pos + keep);
           r.pos += len;
         }
         break;
       case -3478843999652550171:
-        if (nextField > 14) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 15;
         if (kind != 14) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
           final end = r.pos + len;
-          if (end - r.pos < 2) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (end - r.pos < 2) { r.pos = end; break; }
           final elemKind = r.readByte();
           final count = r.readLeb();
@@ -4629,16 +4480,12 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           var take = keep;
           if (take > arr.limit - arr.pos) take = arr.limit - arr.pos;
           if (take < keep) r.report.refuse('wire_damaged');
-          final bytes = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));
-          if (bytes == '') { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
-          v.payload = bytes;
+          v.payload = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));
           if (arr.pos + take != arr.limit) { r.report.refuse('wire_damaged'); }
           r.pos = end;
         }
         break;
       case -2616736631205226807:
-        if (nextField > 15) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 16;
         {
           var d = v.aimX;
           switch (kind) {
@@ -4650,7 +4497,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (!(_f32Bits(d) != 0)) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (d < -1) { r.report.refuse('out_of_range'); return; }
           if (d > 1) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
@@ -4658,8 +4504,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         }
         break;
       case -2616737730716855018:
-        if (nextField > 16) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 17;
         {
           var d = v.aimY;
           switch (kind) {
@@ -4671,7 +4515,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (!(_f32Bits(d) != 0)) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (d < -1) { r.report.refuse('out_of_range'); return; }
           if (d > 1) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
@@ -4679,8 +4522,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         }
         break;
       case -2616738830228483229:
-        if (nextField > 17) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 18;
         {
           var d = v.aimZ;
           switch (kind) {
@@ -4692,7 +4533,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (!(_f32Bits(d) != 0)) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           if (d < -1) { r.report.refuse('out_of_range'); return; }
           if (d > 1) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
@@ -4700,8 +4540,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         }
         break;
       case -7138431908913683369:
-        if (nextField > 18) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 19;
         {
           var d = v.recoil;
           switch (kind) {
@@ -4713,13 +4551,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (!(_f32Bits(d) != 0)) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.recoil = d;
         }
         break;
       case 6535842126802938884:
-        if (nextField > 19) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 20;
         {
           var d = v.drift;
           switch (kind) {
@@ -4736,13 +4571,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (!(d != 0 || d.isNegative)) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.drift = d;
         }
         break;
       case -6686572760759554282:
-        if (nextField > 20) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 21;
         {
           BigInt? value;
           switch (kind) {
@@ -4776,14 +4608,11 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           }
           {
             var x = value;
-            if (x == BigInt.zero) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
             v.wideKey = x;
           }
         }
         break;
       case -3018575613315307966:
-        if (nextField > 21) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 22;
         {
           BigInt? value;
           switch (kind) {
@@ -4819,14 +4648,11 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             var x = value;
             if (x < BigInt.parse('-1267650600228229401496703205376')) { r.report.refuse('out_of_range'); }
             if (x > BigInt.parse('1267650600228229401496703205376')) { r.report.refuse('out_of_range'); }
-            if (x == BigInt.zero) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
             v.flux = x;
           }
         }
         break;
       case -4669986463835551831:
-        if (nextField > 22) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 23;
         {
           BigInt? value;
           switch (kind) {
@@ -4842,14 +4668,11 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             var x = value;
             if (x < BigInt.zero) { r.report.refuse('out_of_range'); }
             if (x > BigInt.parse('64000')) { r.report.refuse('out_of_range'); }
-            if (x == BigInt.zero) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
             v.ping = x;
           }
         }
         break;
       case 6200723483573899615:
-        if (nextField > 23) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 24;
         {
           var value = v.crcHint;
           switch (kind) {
@@ -4876,24 +4699,15 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (_u64Above(value, 16777215)) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.crcHint = value;
         }
         break;
       case -4574933642144545166:
-        if (nextField > 24) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 25;
         if (kind != 1) { r.report.refuse('kind_mismatch'); return; }
         if (!r.has(1)) { r.report.refuse('wire_damaged'); return; }
-        {
-          final flag = r.readBool();
-          if (flag) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
-          v.hasExtra = flag;
-        }
+        v.hasExtra = r.readBool();
         break;
       case -204370544148493463:
-        if (nextField > 25) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 26;
         {
           var value = v.extra;
           switch (kind) {
@@ -4921,13 +4735,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 255) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.extra = value;
         }
         break;
       case 8651444298976115966:
-        if (nextField > 26) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 27;
         {
           var value = v.idleTicks;
           switch (kind) {
@@ -4955,7 +4766,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           }
           if (value < 0) { r.report.refuse('out_of_range'); return; }
           if (value > 15) { r.report.refuse('out_of_range'); return; }
-          if (value == 0) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           v.idleTicks = value;
         }
         break;
@@ -4995,7 +4805,6 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
 void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
   var seenValue = false;
   final seenRefs = <int>{};
-  var nextField = 0;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.refuse('wire_damaged'); return; }
@@ -5009,13 +4818,10 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
     if (id == _kNodeTableId && nested) { r.report.refuse('wire_damaged'); return; }
     switch (id) {
       case 8999596768310594794:
-        if (nextField > 0) { r.report.refuse('wire_damaged'); return; } // out of the writer's order (§4)
-        nextField = 1;
         if (kind != 13) { r.report.refuse('kind_mismatch'); return; }
         {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.refuse('wire_damaged'); return; }
-          if (len == 1) { r.report.refuse('wire_damaged'); return; } // a field stored at its default (§4)
           final sub = TableWireReader.sub(r, r.pos, r.pos + len);
           if (seenValue) { r.retain?.forget(v.value); v.value = BenchMixed(); }
           seenValue = true;
@@ -5148,6 +4954,7 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.refuse('wire_damaged'); return FixedTable(); }
+  if (verdict == 0 && r.wireIdOrderBad()) { r.report.refuse('wire_damaged'); return FixedTable(); }
   try {
     r.pos = 1;
     fixedTableWireLoadBody(r, v, false);
@@ -5169,7 +4976,6 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   if (r.wireCycle()) { r.report.refuse('wire_damaged'); }
   if (r.wireStringBlobBad()) { r.report.refuse('wire_damaged'); }
   if (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }
-  if (r.idsNotFirstUse) { r.report.refuse('wire_damaged'); }
   if (r.wireBlobShared()) { r.report.refuse('blob_shared'); }
   if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return FixedTable();
@@ -5666,7 +5472,7 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
 }
 
 // _jsonWideIntField reads one int field whose storage is wider than 32 bits
-// (§16.2): it accepts the string form and the number form, and either one
+// (§16.2): it accepts only the string form, whose contents
 // must be an integer token — digits with an optional minus, no fraction, no
 // exponent, no negative zero. The value never passes through a double, and its
 // range is tested on the exact value.
@@ -5674,10 +5480,6 @@ int _jsonWideIntField(dynamic val, TableTextReport r, int? lo, int? hi, bool uns
   String? token;
   if (val is String) {
     token = val;
-  } else if (val is int) {
-    token = val.toString();
-  } else if (val is _JNum) {
-    token = val.token;
   }
   if (token == null || !_jsonIntegerToken(token)) {
     r.refuse('kind_mismatch');
@@ -6461,9 +6263,9 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
       return def;
     }
     token = val;
-  } else if (val is int) {
+  } else if (!wide && val is int) {
     token = val.toString();
-  } else if (val is _JNum) {
+  } else if (!wide && val is _JNum) {
     token = val.token;
   }
   if (token == null) {

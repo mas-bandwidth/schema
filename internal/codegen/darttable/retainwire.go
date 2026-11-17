@@ -604,6 +604,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.refuse('wire_damaged'); retain.reset(); return %s(); }\n", n)
+	g.pf("\tif (verdict == 0 && r.wireIdOrderBad()) { r.report.refuse('wire_damaged'); retain.reset(); return %s(); }\n", n)
 	g.pf("\ttry {\n")
 	g.pf("\t\tr.scanNodeTable();\n")
 	g.pf("\t\tr.pos = 1;\n")
@@ -631,11 +632,6 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tif (r.wireCycle()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireStringBlobBad()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }\n")
-	// an id table out of first-use order, or with an entry no reference
-	// names, is a spelling no conforming writer produces (§3), judged by
-	// that same walk
-	g.pf("\tif (r.idsNotFirstUse) { r.report.refuse('wire_damaged'); }\n")
-
 	g.pf("\tif (r.wireBlobShared()) { r.report.refuse('blob_shared'); }\n")
 	g.pf("\tif (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing

@@ -739,6 +739,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%s    stream.serialize_bool(&mut bool_value)?;\n%s}\n", ind, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			g.writeCompressedFloatRangeAssert(name, f, ind)
 			// a temp so the wire quantization cannot write back into the input
 			g.pf("%s{\n%s    let mut compressed_value = %s;\n", ind, ind, name)
 			g.pf("%s    stream.serialize_compressed_float_precomputed(&mut compressed_value, %s)?;%s\n%s}\n",
@@ -756,6 +757,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// Interior nulls are writer misuse; the read side rejects them (§4.7).
 		g.writeAssert(ind, fmt.Sprintf("%s_length >= 0 && %s_length <= %d", name, name, f.Type.Size),
 			fmt.Sprintf("%s_length out of range [0, %d]", assertLabel(name), f.Type.Size))
+		if f.Type.Kind == ir.TString {
+			// ill-formed text is caller misuse on write (SPEC §5.1 row 8): the
+			// read side's own checks, as debug asserts over the used bytes
+			g.writeAssert(ind, fmt.Sprintf("!%s[..%s_length as usize].contains(&0)", name, name),
+				fmt.Sprintf("%s holds a zero byte", assertLabel(name)))
+			g.writeAssert(ind, fmt.Sprintf("std::str::from_utf8(&%s[..%s_length as usize]).is_ok()", name, name),
+				fmt.Sprintf("%s is not well-formed UTF-8", assertLabel(name)))
+		}
 		g.emitWriteRangedFold32(name+"_length", false, "0", true,
 			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), " // the length guards the slice (§6.3)", ind)
 		// the write side borrows the used bytes in place: WriteStream::write_bytes
@@ -782,6 +791,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%swrite_%s(stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}
+}
+
+func (g *gen) writeCompressedFloatRangeAssert(name string, f *ir.Field, ind string) {
+	lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
+	g.writeAssert(ind, fmt.Sprintf("%s.is_finite() && %s >= %s && %s <= %s", name, name, lo, name, hi), fmt.Sprintf("%s out of range [%s, %s]", assertLabel(name), lo, hi))
 }
 
 // compressedFloatArgs renders the constant arguments of the runtime's

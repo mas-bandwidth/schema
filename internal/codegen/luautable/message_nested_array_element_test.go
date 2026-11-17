@@ -151,7 +151,7 @@ func appendBits(dst []byte, bitLen int, value uint64, width int) ([]byte, int) {
 	for (bitLen+width+7)/8 > len(dst) {
 		dst = append(dst, 0)
 	}
-	for i := 0; i < width; i++ {
+	for i := range width {
 		if value&(uint64(1)<<uint(i)) != 0 {
 			at := bitLen + i
 			dst[at/8] |= 1 << uint(at%8)

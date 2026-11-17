@@ -54,15 +54,15 @@ func TestSpecPacketWriteRefusesOffRangeCompressedFloat(t *testing.T) {
 
 	header := ""
 	for line := range strings.SplitSeq(spec, "\n") {
-		if strings.HasPrefix(line, "| leg | `FixedSave` | `SaveMessages` | packet `Write`") {
+		if strings.HasPrefix(line, "Each leg's `FixedSave`, `SaveMessages` and packet `Write`") {
 			header = line
 			break
 		}
 	}
 	if header == "" {
-		t.Fatal("docs/SPEC.md §5.1 no longer holds the FixedSave / SaveMessages / packet Write table")
+		t.Fatal("docs/SPEC.md §5.1 no longer holds the FixedSave / SaveMessages / packet Write list")
 	}
-	if strings.Contains(header, "(rows 1–7)") || !strings.Contains(header, "10)") {
+	if !strings.Contains(header, "(rows 1–8, 10 and 11)") {
 		t.Errorf("SPEC §5.1: the packet Write column header %q does not cover row 10", header)
 	}
 	mustState(t, "SPEC §5.1 strict-only", oneLine(spec),

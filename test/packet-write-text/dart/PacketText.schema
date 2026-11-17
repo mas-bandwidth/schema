@@ -1,0 +1,6 @@
+package packetwritetext
+
+type Text
+{
+    content string(8)
+}
