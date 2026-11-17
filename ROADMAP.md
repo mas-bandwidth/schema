@@ -153,11 +153,7 @@ Variable tables have pointers to other tables, maps and other features that give
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-<<<<<<< HEAD
-| complete | 100% | 96% | 100% | 96% | 100% | 100% | 96% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 9% |
-=======
-| complete | 100% | 96% | 100% | 96% | 100% | 100% | 96% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 12% |
->>>>>>> 812d67ceafab5c646f734c5fb59094cf0f647921
+| complete | 100% | 96% | 100% | 96% | 100% | 100% | 96% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 15% |
 
 [Source data](docs/roadmap.sexp)
 
