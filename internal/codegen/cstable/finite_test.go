@@ -9,7 +9,7 @@ import (
 // (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
 // same rule as packets") on this leg: the refusal reason, the field's name on
 // its descriptor, the bit-compare elision that lets a -0 ride under a +0
-// default, the typed writer's refusal, and the fixed form's finite pass on read
+// default, the typed writer's debug assert, and the fixed form's finite pass on read
 // and on write. The behaviour itself is held by the C# leg
 // (test/cs-tables/src/FiniteChecks.cs) and its negative control
 // (test/cs-tables/finite-negative-control).
@@ -33,20 +33,23 @@ fixed table T
 		// elision compares BITS, so -0 rides under +0 and +0 under 1.5's bits
 		"BitConverter.SingleToUInt32Bits(v.V) != 0x00000000u",
 		"BitConverter.DoubleToUInt64Bits(v.W) != 0x3ff8000000000000ul",
-		// the typed writer refuses before collect, so measure and save answer -1
-		"if (!float.IsFinite(v.V)) return false;",
-		"if (!double.IsFinite(v.W)) return false;",
-		// the fixed form's finite pass, on read and on write
+		// the typed writer's check is a debug assert (docs/SPEC.md §5.1)
+		"System.Diagnostics.Debug.Assert(float.IsFinite(v.V));",
+		"System.Diagnostics.Debug.Assert(double.IsFinite(v.W));",
+		// the fixed form's finite pass: a refusal on read, a debug assert on write
 		"public static string TFixedFiniteBody(T value)",
 		`if (!float.IsFinite(value.Arr[i])) return "T.arr";`,
 		"string finite_why = TFixedFiniteBody(values[k]);",
-		"if (TFixedFiniteBody(values[k]) != null) { return -1; }",
+		"System.Diagnostics.Debug.Assert(TFixedFiniteBody(values[k]) == null);",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the emitted source does not carry %q", want)
 		}
 	}
-	for _, retired := range []string{"WidenF32", "TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw)"} {
+	for _, retired := range []string{"WidenF32", "TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw)",
+		// a release-build write refusal is not this leg's mechanism (docs/SPEC.md §5.1)
+		"if (!float.IsFinite(v.V)) return false;", "if (TFixedFiniteBody(values[k]) != null) { return -1; }",
+		"return !NonFiniteBits(f.Kind, f.GetRaw(value, i));"} {
 		if strings.Contains(src, retired) {
 			t.Errorf("the emitted source still carries the retired %q", retired)
 		}

@@ -463,7 +463,9 @@ typedef struct bench_table_reader_t
     const uint8_t * ids;
 
     uint64_t id_count;
-    const uint8_t ** first_use;
+    /* Only the declaration-free prepass tracks trailer first-use order.
+       Semantic decoders may revisit the same bytes in several phases. */
+    uint64_t * next_ref;
     int nested;
 } bench_table_reader_t;
 
@@ -490,39 +492,6 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE uint64_t bench_table_reader_id_at
     uint64_t lo = (uint64_t) e[0] | (uint64_t) e[1] << 8 | (uint64_t) e[2] << 16 | (uint64_t) e[3] << 24;
     uint64_t hi = (uint64_t) e[4] | (uint64_t) e[5] << 8 | (uint64_t) e[6] << 16 | (uint64_t) e[7] << 24;
     return lo | ( hi << 32 );
-}
-/* THE ID TABLE IS IN FIRST-USE ORDER, EVERY ENTRY USED (docs/SPEC-TABLES.md
-   §3, §4). A read that holds the rule hands its reader an array of one slot
-   an entry; the walks the read already makes note, at each reference they
-   meet, where in the wire it sits, and the earliest place wins. A graph read
-   places node records before it reads the root, so the walks do not meet
-   references in wire order; the earliest place of each is the wire's own
-   order all the same. At the end of the read every entry must have been met,
-   and the entries' first places must rise with their positions. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_reader_use( const bench_table_reader_t * r, uint64_t ref )
-{
-    if ( r->first_use != NULL && ref != 0 && ref <= r->id_count )
-    {
-        const uint8_t * at = r->buffer + r->offset;
-        if ( r->first_use[ref-1] == NULL || at < r->first_use[ref-1] ) { r->first_use[ref-1] = at; }
-    }
-}
-static SCHEMA_UNUSED void bench_table_reader_hold_first_use( bench_table_reader_t * r, const uint8_t ** at )
-{
-    uint64_t i;
-    for ( i = 0; i < r->id_count; i++ ) { at[i] = NULL; }
-    r->first_use = at;
-}
-static SCHEMA_UNUSED int bench_table_reader_first_use_holds( const bench_table_reader_t * r )
-{
-    uint64_t i;
-    if ( r->first_use == NULL ) { return 1; }
-    for ( i = 0; i < r->id_count; i++ )
-    {
-        if ( r->first_use[i] == NULL ) { return 0; }
-        if ( i > 0 && r->first_use[i] <= r->first_use[i-1] ) { return 0; }
-    }
-    return 1;
 }
 /* Rejected numbers do not consume input: the containing body's exact extent
    must still be able to detect the damaged spelling. */
@@ -619,6 +588,15 @@ static SCHEMA_UNUSED int bench_table_skip_utf8( const uint8_t * p, uint64_t n )
 static SCHEMA_UNUSED int bench_table_skip_value( bench_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
 static SCHEMA_UNUSED int64_t bench_table_skip_body( bench_table_reader_t r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int bench_table_skip_array( bench_table_reader_t * sub, int keyed, int64_t nodes, int depth );
+/* A successfully read payload must claim its whole frame. During the
+   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   semantic failures that stopped the walk earlier still take their own path. */
+static SCHEMA_UNUSED int bench_table_skip_whole( bench_table_reader_t sub, const bench_table_reader_t * read )
+{
+    if ( read->offset == sub.size ) { return 1; }
+    if ( sub.next_ref != NULL ) { *sub.next_ref = UINT64_MAX; }
+    return 0;
+}
 static SCHEMA_UNUSED int bench_table_skip_framed( bench_table_reader_t sub, uint8_t kind, int64_t nodes, int depth )
 {
     switch ( kind )
@@ -636,13 +614,13 @@ static SCHEMA_UNUSED int bench_table_skip_framed( bench_table_reader_t sub, uint
         {
             bench_table_reader_t rr = sub;
             if ( !bench_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return bench_table_skip_whole( sub, &rr );
         }
         default:
         {
             bench_table_reader_t rr = sub;
             if ( !bench_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
-            return rr.offset == sub.size;
+            return bench_table_skip_whole( sub, &rr );
         }
     }
 }
@@ -656,7 +634,10 @@ static SCHEMA_UNUSED int64_t bench_table_skip_body( bench_table_reader_t r, int6
         if ( !bench_table_reader_leb( &r, &ref ) ) { return -1; }
         if ( ref == 0 ) { return r.offset; }
         if ( ref > r.id_count || ref > 4096 || !bench_table_reader_has( &r, 1 ) ) { return -1; }
-        bench_table_reader_use( &r, ref );
+        if ( r.next_ref != NULL ) {
+            if ( ref > *r.next_ref ) { *r.next_ref = UINT64_MAX; return -1; }
+            if ( ref == *r.next_ref ) { (*r.next_ref)++; }
+        }
         if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
         seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
         id = bench_table_reader_id_at( &r, ref ); kind = bench_table_reader_get8( &r );
@@ -665,6 +646,22 @@ static SCHEMA_UNUSED int64_t bench_table_skip_body( bench_table_reader_t r, int6
         {
             bench_table_reader_t payload;
             if ( !root || kind != 12 || !bench_table_reader_span( &r, &payload ) ) { return -1; }
+            if ( r.next_ref != NULL ) {
+                uint64_t count, records = 0;
+                if ( !bench_table_reader_leb( &payload, &count ) ) { return -1; }
+                while ( payload.offset < payload.size ) {
+                    uint64_t type_ref, type_id; bench_table_reader_t body;
+                    if ( !bench_table_reader_leb( &payload, &type_ref ) || type_ref == 0 || type_ref > payload.id_count ) { return -1; }
+                    if ( type_ref > *r.next_ref ) { *r.next_ref = UINT64_MAX; return -1; }
+                    if ( type_ref == *r.next_ref ) { (*r.next_ref)++; }
+                    type_id = bench_table_reader_id_at( &payload, type_ref );
+                    if ( !bench_table_reader_span( &payload, &body ) ) { return -1; }
+                    if ( type_id != UINT64_C(0x2f2ec0474f1c4fe4) && type_id != UINT64_C(0x704be0d8faaffc58) &&
+                         bench_table_skip_body( body, nodes, 0, 0 ) != body.size ) { return -1; }
+                    records++;
+                }
+                if ( records != count ) { return -1; }
+            }
             continue;
         }
         if ( !bench_table_skip_value( &r, kind, nodes, depth ) ) { return -1; }
@@ -691,7 +688,10 @@ static SCHEMA_UNUSED int bench_table_skip_array( bench_table_reader_t * sub, int
         {
             uint64_t key; bench_table_reader_t elem;
             if ( !bench_table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
-            bench_table_reader_use( sub, key );
+            if ( sub->next_ref != NULL ) {
+                if ( key > *sub->next_ref ) { *sub->next_ref = UINT64_MAX; return 0; }
+                if ( key == *sub->next_ref ) { (*sub->next_ref)++; }
+            }
             if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
             seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
             if ( !bench_table_reader_span( sub, &elem ) ) { return 0; }
@@ -714,14 +714,21 @@ static SCHEMA_UNUSED int bench_table_skip_value( bench_table_reader_t * r, uint8
             return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
         case 30:
             if ( !bench_table_reader_leb( r, &n ) ) { return 0; }
-            bench_table_reader_use( r, n );
-            return n <= r->id_count;
+            if ( n > r->id_count ) { return 0; }
+            if ( n && r->next_ref != NULL ) {
+                if ( n > *r->next_ref ) { *r->next_ref = UINT64_MAX; return 0; }
+                if ( n == *r->next_ref ) { (*r->next_ref)++; }
+            }
+            return 1;
         case 15:
         {
             uint64_t ref; uint8_t arm_kind; bench_table_reader_t arm;
             if ( !bench_table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
-            bench_table_reader_use( r, ref );
             if ( ref == 0 ) { return 1; }
+            if ( r->next_ref != NULL ) {
+                if ( ref > *r->next_ref ) { *r->next_ref = UINT64_MAX; return 0; }
+                if ( ref == *r->next_ref ) { (*r->next_ref)++; }
+            }
             if ( !bench_table_reader_has( r, 1 ) ) { return 0; }
             arm_kind = bench_table_reader_get8( r );
             if ( !bench_table_reader_span( r, &arm ) ) { return 0; }
@@ -809,6 +816,23 @@ static SCHEMA_UNUSED int bench_table_wire_open( bench_table_reader_t * r, const 
                 if ( seen[slot] == id ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 slot = (slot + 1) & 8191u;
             }
+        }
+    }
+    /* Every trailer identity occurs, in first-use order, over the whole
+       file: unknown fields, enum values, keyed slots, union arms and node
+       records included (SPEC-TABLES section 3). Keep this prepass local so
+       repeated semantic reads never advance its cursor. */
+    {
+        uint64_t next_ref = 1;
+        bench_table_reader_t order = *r;
+        int64_t end;
+        order.next_ref = &next_ref;
+        end = bench_table_skip_body( order, INT64_MAX - 1, 0, 1 );
+        /* Payloads that stopped early still take the semantic reader's
+           refusal. Judge identity order, unused entries after a complete
+           walk, and unclaimed tails of successfully read frames here. */
+        if ( next_ref == UINT64_MAX || (end == order.size && next_ref - 1 != r->id_count) ) {
+            report->refused=1; report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
         }
     }
     /* Root slack invalidates the whole file before any overlay. A stopped
@@ -1315,7 +1339,8 @@ static SCHEMA_UNUSED int bench_table_fixed_dead_refuses( const bench_table_fixed
                 {
                     for ( q = 0; q < count; ++q )
                     {
-                        if ( plan[q].arm != 0 && plan[q].guard == p->src && plan[q].arg == tag )
+                        if ( plan[q].arm != 0 && plan[q].guard == p->src && plan[q].arg == tag &&
+                             bench_table_fixed_entry_runs( &plan[q], q, guarded, src, guard_pool ) )
                         {
                             arm = plan[q].arm;
                             break;
@@ -1721,15 +1746,30 @@ typedef struct bench_table_fixed_lineage_plan_t
 /* THE PREFILL ITSELF: the declared defaults, into the ranges named and nowhere
    else. The default image is the caller's own storage, reset once per read
    rather than once per record. */
-static SCHEMA_UNUSED void bench_table_fixed_fill_run( const bench_table_fixed_fill_t * fill, int32_t count,
+static SCHEMA_UNUSED int bench_table_fixed_fill_fits( const bench_table_fixed_fill_t * fill, int32_t count, size_t bytes )
+{
+    int32_t i;
+    if ( count < 0 || ( count > 0 && fill == NULL ) ) { return 0; }
+    for ( i = 0; i < count; ++i )
+    {
+        if ( fill[i].dst > bytes || fill[i].size > bytes - fill[i].dst ) { return 0; }
+    }
+    return 1;
+}
+
+static SCHEMA_UNUSED int bench_table_fixed_fill_run( const bench_table_fixed_fill_t * fill, int32_t count,
                                                 const uint8_t * SCHEMA_TABLE_RESTRICT defaults,
-                                                uint8_t * SCHEMA_TABLE_RESTRICT dst )
+                                                uint8_t * SCHEMA_TABLE_RESTRICT dst, size_t bytes )
 {
     int32_t i;
     for ( i = 0; i < count; ++i )
     {
+        /* A FILL NAMES NATIVE STORAGE, not a wire extent. Bind both sides to
+           the actual default/destination object before forming a pointer. */
+        if ( fill[i].dst > bytes || fill[i].size > bytes - fill[i].dst ) { return 0; }
         bench_table_fixed_copy_run( dst + fill[i].dst, defaults + fill[i].dst, fill[i].size );
     }
+    return 1;
 }
 
 /* table_fixed_entry_lands is the bytes of the READER'S OWN STORAGE one entry
@@ -3151,6 +3191,17 @@ static SCHEMA_UNUSED void bench_table_cook_header(uint8_t * raw,uint64_t version
 #define SCHEMA_BENCH_TABLE_MESSAGE
 enum { BENCH_K_TABLE_MESSAGE_REF_BITS_HERE=7, BENCH_K_TABLE_MESSAGE_ENTRIES_HERE=70, BENCH_K_TABLE_ANNOUNCE_BYTES=887, BENCH_K_TABLE_MESSAGE_BATCH_MAX=256 };
 static const uint8_t BENCH_K_TABLE_ANNOUNCE[BENCH_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0x52,0xa8,0xbf,0x78,0x93,0x55,0xd3,0x41,0x02,0x0e,0xcf,0x06,0x06,0xcc,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,0xae,0x9b,0x08,0x01,0x20,0x00,0x05,0x0b,0x59,0x0a,0x65,0xb5,0xd7,0xb7,0x09,0x00,0x7e,0x96,0x95,0xd0,0xe2,0x98,0x7b,0x6d,0x08,0x00,0xd8,0xc0,0x0d,0xd6,0x71,0x4c,0xa9,0x73,0x09,0x01,0x40,0x00,0x85,0xfc,0x54,0xbe,0x51,0x6b,0xee,0x3e,0x05,0x01,0x29,0xff,0xbf,0xa8,0xca,0x9a,0x3a,0x12,0x01,0x6d,0x7b,0x5f,0x03,0xbc,0x7b,0x09,0x01,0x30,0x00,0xc6,0x69,0xbe,0xf9,0x75,0x04,0x46,0x3c,0x16,0x01,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x2a,0x82,0xb3,0x7b,0xb0,0x0f,0x5d,0x93,0x0e,0x01,0x08,0x0d,0x4c,0x99,0xb1,0x45,0xad,0x9c,0x63,0xee,0x0e,0x00,0x50,0x0d,0x90,0x57,0xaa,0x21,0x53,0xdc,0x35,0x2e,0x0f,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0e,0x04,0x04,0x06,0x00,0x6e,0xe8,0xf8,0x2c,0x54,0x2f,0xa6,0x13,0x0c,0x0f,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0x10,0x06,0x00,0xc9,0x96,0x42,0xe2,0xe5,0x7b,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x16,0x95,0x42,0xe2,0xe5,0x7a,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x63,0x93,0x42,0xe2,0xe5,0x79,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x57,0xe4,0xe2,0xf7,0xff,0x31,0xef,0x9c,0x0a,0x00,0x04,0x6c,0x1f,0x34,0xc9,0xf9,0xb3,0x5a,0x0b,0x16,0xaf,0x1f,0x46,0x80,0x85,0x34,0xa3,0x13,0x00,0x42,0x26,0xaf,0x08,0x79,0xdd,0x1b,0xd6,0x12,0x01,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf0,0xff,0xff,0xff,0xa9,0x07,0x33,0xc5,0x0d,0xe0,0x30,0xbf,0x1a,0x01,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x51,0xd8,0xcc,0x27,0x65,0x0d,0x56,0x08,0x01,0x18,0x00,0x72,0x86,0xfd,0x6c,0x17,0x92,0x82,0xc0,0x01,0x69,0xcb,0x79,0xa9,0x12,0xee,0x29,0xfd,0x04,0x01,0x08,0x00,0xfe,0xbc,0x8c,0xaa,0xc0,0x1a,0x10,0x78,0x04,0x01,0x04,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0d,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x04,0x01,0x02,0x00,0x22,0xd0,0xeb,0x96,0x4d,0xac,0xf1,0xfb,0x07,0x01,0x0c,0x00,0x12,0x67,0xe3,0x78,0x66,0xfd,0xfc,0x23,0x07,0x01,0x0c,0x00,0x0e,0x31,0x67,0x76,0x35,0x37,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xc1,0x32,0x67,0x76,0x35,0x38,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xa8,0x2d,0x67,0x76,0x35,0x35,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xe8,0x16,0x8e,0x79,0x19,0x8e,0x4d,0xb5,0x07,0x01,0x09,0x00,0xb1,0xc1,0x0c,0xa9,0x65,0xf6,0xa9,0x53,0x07,0x01,0x09,0x00,0x67,0xee,0x60,0xeb,0xb6,0xe6,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xb4,0xec,0x60,0xeb,0xb6,0xe5,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcd,0xf1,0x60,0xeb,0xb6,0xe8,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x04,0x01,0x0a,0x00,0x01,0x6e,0x2c,0x5f,0x20,0x10,0xb6,0xa0,0x1e,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x09,0x01,0x08,0x00,0xa7,0x3d,0x24,0xd1,0xc1,0x4f,0xa4,0x11,0x01,0xca,0x31,0x90,0x9b,0xd1,0xcf,0x74,0x76,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x07,0x01,0x0c,0x00,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x04,0x01,0x0c,0x00,0x25,0xb9,0x59,0xb0,0x65,0xc3,0xfb,0x01,0x04,0x01,0x03,0x00,0x2d,0xa5,0x9a,0x8c,0x90,0x67,0x61,0x12,0x01,0x56,0xbd,0x4f,0x86,0x6d,0xd0,0x7f,0x9e,0x07,0x01,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x08,0x00,0x65,0xbf,0x6d,0x86,0xf0,0x75,0xab,0x80,0x06,0x01,0x08,0x00,0xc1,0xa0,0x13,0xec,0x75,0x66,0x07,0x52,0x04,0x01,0x0a,0xff,0x07,0x0c,0xcf,0x66,0x27,0xe1,0xee,0x90,0xa7,0x00,0x76,0x84,0xda,0x35,0xa8,0xef,0xbf,0x9f,0x00,0x95,0x8a,0x92,0x83,0x17,0xbb,0x8b,0x18,0x00,0xf1,0x72,0xf2,0xc2,0xb9,0x67,0x36,0x2c,0x00,0xf6,0x55,0xd7,0x00,0x1b,0xb4,0xa8,0x0c,0x00,0x4e,0x1a,0xb2,0xfa,0x19,0xc8,0x5f,0x98,0x00,0x55,0x6a,0x08,0xc3,0x47,0x04,0x9d,0x22,0x00,0x9d,0x8f,0x22,0xa7,0x49,0x7b,0x1c,0x01,0x00,0x5f,0xe1,0x23,0x11,0x6e,0x56,0xf7,0x89,0x00,0x69,0x44,0x3b,0x8b,0x31,0x25,0x7f,0x8d,0x00,0x16,0x78,0x5b,0x28,0xcc,0x0d,0xcd,0xd9,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0x17,0x92,0x12,0x41,0xc3,0x3b,0xe5,0x35,0x00,0x31,0x88,0xde,0xb0,0x2f,0x28,0xc8,0x2c,0x00,0x34,0xb3,0x8c,0xbc,0x21,0xda,0xba,0x20,0x00,0xaa,0x80,0x06,0x30,0x19,0x28,0x73,0x33,0x0d,0x8b,0x34,0x5b,0x0b,0x91,0x8d,0xa3,0xf2,0x0d,0x65,0xb7,0xec,0x86,0x1c,0xa4,0xa3,0x9f,0x0d,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t BENCH_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[]={0xa8,0x28,0xf5,0x81,0xa4,0xac,0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,0xae,0x9b,0x08,0x01,0x20,0x00,0x05,0x0b,0x59,0x0a,0x65,0xb5,0xd7,0xb7,0x09,0x00,0x7e,0x96,0x95,0xd0,0xe2,0x98,0x7b,0x6d,0x08,0x00,0xd8,0xc0,0x0d,0xd6,0x71,0x4c,0xa9,0x73,0x09,0x01,0x40,0x00,0x85,0xfc,0x54,0xbe,0x51,0x6b,0xee,0x3e,0x05,0x01,0x29,0xff,0xbf,0xa8,0xca,0x9a,0x3a,0x12,0x01,0x6d,0x7b,0x5f,0x03,0xbc,0x7b,0x09,0x01,0x30,0x00,0xc6,0x69,0xbe,0xf9,0x75,0x04,0x46,0x3c,0x16,0x01,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x2a,0x82,0xb3,0x7b,0xb0,0x0f,0x5d,0x93,0x0e,0x01,0x08,0x0d,0x4c,0x99,0xb1,0x45,0xad,0x9c,0x63,0xee,0x0e,0x00,0x50,0x0d,0x90,0x57,0xaa,0x21,0x53,0xdc,0x35,0x2e,0x0f,0xa3,0xb5,0xbb,0x86,0x75,0xce,0x59,0x57,0x0e,0x04,0x04,0x06,0x00,0x6e,0xe8,0xf8,0x2c,0x54,0x2f,0xa6,0x13,0x0c,0x0f,0xe5,0xe9,0xb5,0x63,0xd0,0xa9,0xb8,0xcf,0x0e,0x00,0x10,0x06,0x00,0xc9,0x96,0x42,0xe2,0xe5,0x7b,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x16,0x95,0x42,0xe2,0xe5,0x7a,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x63,0x93,0x42,0xe2,0xe5,0x79,0xaf,0xdb,0x0a,0x02,0x00,0x00,0x80,0xbf,0x00,0x00,0x80,0x3f,0x0a,0xd7,0x23,0x3c,0x57,0xe4,0xe2,0xf7,0xff,0x31,0xef,0x9c,0x0a,0x00,0x04,0x6c,0x1f,0x34,0xc9,0xf9,0xb3,0x5a,0x0b,0x16,0xaf,0x1f,0x46,0x80,0x85,0x34,0xa3,0x13,0x00,0x42,0x26,0xaf,0x08,0x79,0xdd,0x1b,0xd6,0x12,0x01,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf0,0xff,0xff,0xff,0xa9,0x07,0x33,0xc5,0x0d,0xe0,0x30,0xbf,0x1a,0x01,0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x5f,0x51,0xd8,0xcc,0x27,0x65,0x0d,0x56,0x08,0x01,0x18,0x00,0x72,0x86,0xfd,0x6c,0x17,0x92,0x82,0xc0,0x01,0x69,0xcb,0x79,0xa9,0x12,0xee,0x29,0xfd,0x04,0x01,0x08,0x00,0xfe,0xbc,0x8c,0xaa,0xc0,0x1a,0x10,0x78,0x04,0x01,0x04,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0d,0xa4,0xed,0xca,0xd5,0x9a,0x3e,0x01,0xa5,0x04,0x01,0x02,0x00,0x22,0xd0,0xeb,0x96,0x4d,0xac,0xf1,0xfb,0x07,0x01,0x0c,0x00,0x12,0x67,0xe3,0x78,0x66,0xfd,0xfc,0x23,0x07,0x01,0x0c,0x00,0x0e,0x31,0x67,0x76,0x35,0x37,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xc1,0x32,0x67,0x76,0x35,0x38,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xa8,0x2d,0x67,0x76,0x35,0x35,0x4b,0xcb,0x04,0x01,0x0f,0xfd,0xff,0x01,0xe8,0x16,0x8e,0x79,0x19,0x8e,0x4d,0xb5,0x07,0x01,0x09,0x00,0xb1,0xc1,0x0c,0xa9,0x65,0xf6,0xa9,0x53,0x07,0x01,0x09,0x00,0x67,0xee,0x60,0xeb,0xb6,0xe6,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xb4,0xec,0x60,0xeb,0xb6,0xe5,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcd,0xf1,0x60,0xeb,0xb6,0xe8,0xed,0x6c,0x04,0x01,0x0c,0xff,0x1f,0xcf,0xa9,0x8b,0x28,0xb5,0xd4,0x69,0x7f,0x04,0x01,0x0a,0x00,0x01,0x6e,0x2c,0x5f,0x20,0x10,0xb6,0xa0,0x1e,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x09,0x01,0x08,0x00,0xa7,0x3d,0x24,0xd1,0xc1,0x4f,0xa4,0x11,0x01,0xca,0x31,0x90,0x9b,0xd1,0xcf,0x74,0x76,0x01,0x50,0x50,0xa2,0x15,0xc0,0x9a,0xbc,0xb7,0x07,0x01,0x0c,0x00,0xc0,0x7f,0xb3,0x8a,0xbe,0x08,0x63,0x7f,0x04,0x01,0x0c,0x00,0x25,0xb9,0x59,0xb0,0x65,0xc3,0xfb,0x01,0x04,0x01,0x03,0x00,0x2d,0xa5,0x9a,0x8c,0x90,0x67,0x61,0x12,0x01,0x56,0xbd,0x4f,0x86,0x6d,0xd0,0x7f,0x9e,0x07,0x01,0x0a,0x00,0x69,0x69,0xb1,0xa2,0x7e,0xfe,0x13,0x81,0x04,0x01,0x08,0x00,0x65,0xbf,0x6d,0x86,0xf0,0x75,0xab,0x80,0x06,0x01,0x08,0x00,0xc1,0xa0,0x13,0xec,0x75,0x66,0x07,0x52,0x04,0x01,0x0a,0xff,0x07,0x0c,0xcf,0x66,0x27,0xe1,0xee,0x90,0xa7,0x00,0x76,0x84,0xda,0x35,0xa8,0xef,0xbf,0x9f,0x00,0x95,0x8a,0x92,0x83,0x17,0xbb,0x8b,0x18,0x00,0xf1,0x72,0xf2,0xc2,0xb9,0x67,0x36,0x2c,0x00,0xf6,0x55,0xd7,0x00,0x1b,0xb4,0xa8,0x0c,0x00,0x4e,0x1a,0xb2,0xfa,0x19,0xc8,0x5f,0x98,0x00,0x55,0x6a,0x08,0xc3,0x47,0x04,0x9d,0x22,0x00,0x9d,0x8f,0x22,0xa7,0x49,0x7b,0x1c,0x01,0x00,0x5f,0xe1,0x23,0x11,0x6e,0x56,0xf7,0x89,0x00,0x69,0x44,0x3b,0x8b,0x31,0x25,0x7f,0x8d,0x00,0x16,0x78,0x5b,0x28,0xcc,0x0d,0xcd,0xd9,0x00,0x76,0x52,0xff,0xa8,0xae,0x16,0xdc,0x04,0x00,0x17,0x92,0x12,0x41,0xc3,0x3b,0xe5,0x35,0x00,0x31,0x88,0xde,0xb0,0x2f,0x28,0xc8,0x2c,0x00,0x34,0xb3,0x8c,0xbc,0x21,0xda,0xba,0x20,0x00,0xaa,0x80,0x06,0x30,0x19,0x28,0x73,0x33,0x0d,0x8b,0x34,0x5b,0x0b,0x91,0x8d,0xa3,0xf2,0x0d,0x65,0xb7,0xec,0x86,0x1c,0xa4,0xa3,0x9f,0x0d,};
+static const int32_t BENCH_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[]={0,12,24,36,46,56,68,85,97,124,136,148,157,170,180,193,215,237,259,269,278,288,315,342,354,363,375,387,396,408,420,432,446,460,474,486,498,511,524,537,549,558,570,579,588,600,612,624,633,645,657,669,682,691,700,709,718,727,736,745,754,763,772,781,790,799,808,817,826,835,844,};
+static SCHEMA_UNUSED uint16_t bench_table_message_own_slot(const uint8_t * raw,int64_t length)
+{
+ int32_t i;
+ for(i=0;i<BENCH_K_TABLE_MESSAGE_ENTRIES_HERE;i++) {
+  int32_t start=BENCH_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[i],n=BENCH_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[i+1]-start;
+  if(length==n && !memcmp(raw,BENCH_K_TABLE_MESSAGE_ENTRY_KEY_BYTES+start,(size_t)n))return (uint16_t)(i+1);
+ }
+ return 0;
+}
 
 typedef struct bench_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; } bench_table_bit_writer_t;
 typedef struct bench_table_bit_reader_t { const uint8_t * buffer; int64_t bits,offset; } bench_table_bit_reader_t;
@@ -3324,6 +3375,7 @@ typedef struct bench_table_message_entry_t {
  float qmin,qdelta;uint32_t qcount;float elem_qmin,elem_qdelta;uint32_t elem_qcount;
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
+ uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
 } bench_table_message_entry_t;
 typedef struct bench_table_message_shape_facts_t {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -3507,11 +3559,13 @@ static SCHEMA_UNUSED int bench_table_announce_once(bench_table_vocabulary_t * v,
   entry->max=at;
   count++;
  }
- /* Resolve the accepted spans into the caller's final 96-byte entries. */
+ /* Resolve accepted spans, retaining their exact own-entry proof. */
  at=0;
  {int64_t i;
- for(i=0;i<count;i++)if(!bench_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
- }
+ for(i=0;i<count;i++){int64_t began=at;
+  if(!bench_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
+  v->entries[i].own_slot=bench_table_message_own_slot(words+began,at-began);
+ }}
  v->count=count;
  v->ref_bits=bench_table_bits_required(0,count);
  v->announced=1;
@@ -3599,6 +3653,7 @@ static SCHEMA_UNUSED int bench_table_message_skip_body(bench_table_message_reade
  int64_t ref;
   if(!bench_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
+  if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
      reference is bounded where the file form bounds it, so the bitset fits. */
   ref=entry-r->vocabulary->entries+1;
@@ -3635,7 +3690,7 @@ static SCHEMA_UNUSED int bench_table_message_skip(bench_table_message_reader_t *
  /* a node reference: no fixed body holds one */
  case 15:
   if(!bench_table_message_ref(r,&entry,0))return 0;
-  return entry==NULL || (entry->kind!=0 && bench_table_message_skip_deeper(r,entry));
+  return entry==NULL || (entry->id<UINT64_C(0xfffffffffffffffd) && entry->kind!=0 && bench_table_message_skip_deeper(r,entry));
  case 12:
   /* A SKIPPED STRING IS HELD TO WHAT A READ OF IT HOLDS (§3.3, §4): its length
      is inside the announced bound and its bytes are well-formed UTF-8 with no
@@ -3920,7 +3975,7 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_message_body(bench_table_mes
 static SCHEMA_UNUSED int bench_mixed_chat_event_load_message_body(bench_table_message_reader_t *,bench_mixed_chat_event_t *);
 static SCHEMA_UNUSED int bench_mixed_pickup_event_load_message_body(bench_table_message_reader_t *,bench_mixed_pickup_event_t *);
 static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message_reader_t *,bench_bench_mixed_t *);
-static SCHEMA_UNUSED int schema_bench_mixed_event_wire_message_load_(bench_table_message_reader_t *,bench_mixed_event_t *,int);
+static SCHEMA_UNUSED int schema_bench_mixed_event_wire_message_load_(bench_table_message_reader_t *,bench_mixed_event_t *);
 static SCHEMA_UNUSED int schema_bench_mixed_event_wire_message_save_(bench_table_bit_writer_t * w,const bench_mixed_event_t * value)
 {
  switch(value->type) {
@@ -3944,14 +3999,13 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_message_save_(bench_table
  default: return 0;
  } return !w->overflow;
 }
-static SCHEMA_UNUSED int schema_bench_mixed_event_wire_message_load_(bench_table_message_reader_t * r,bench_mixed_event_t * value,int element)
+static SCHEMA_UNUSED int schema_bench_mixed_event_wire_message_load_(bench_table_message_reader_t * r,bench_mixed_event_t * value)
 {
  const bench_table_message_entry_t * entry;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  value->type=0;
- if(entry==NULL){if(!element)goto damaged;
- return 1;
- }if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto damaged;
+ if(entry==NULL)return 1;
+ if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto damaged;
  switch(entry->id){
  case UINT64_C(0x33732819300680aa): {
  if(!(entry->kind==13 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,13)){r->report->widened++;
@@ -4075,8 +4129,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_load_( bench_table_reader
 {
     uint64_t ref; uint8_t kind; bench_table_reader_t arm;
     if ( !bench_table_reader_leb( r, &ref ) || ref > r->id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-    bench_table_reader_use( r, ref );
-    if ( ref == 0 ) { if ( element == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } value->type = 0; return 1; }
+    if ( ref == 0 ) { value->type = 0; return 1; }
     if ( element ) { value->type = 0; }
     if ( !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     kind = bench_table_reader_get8( r );
@@ -4111,7 +4164,10 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_load_( bench_table_reader
             value->type = BENCH_MIXED_EVENT_TYPE_PICKUP;
             break;
         }
-        default: r->report->unknown++; break;
+        default:
+            r->report->unknown++;
+            if ( !bench_table_skip_framed( arm, kind, 0, kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+            break;
     }
     return 1;
 }
@@ -4262,7 +4318,6 @@ static SCHEMA_UNUSED int64_t bench_mixed_entity_save( const bench_mixed_entity_t
 static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r, bench_mixed_entity_t * value )
 {
     bench_mixed_entity_reset( value );
-    int32_t last_field = -1;
     uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
@@ -4270,7 +4325,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
         if ( !bench_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-        bench_table_reader_use( r, ref );
         id = bench_table_reader_id_at( r, ref ); kind = bench_table_reader_get8( r );
         if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
@@ -4278,7 +4332,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
         {
             case 0x23fcfd6678e36712ull: /* entity_id */
             {
-                if ( 0 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 0;
                 if ( kind != 7 )
                 {
                     if ( bench_table_kind_widens( kind, 7 ) )
@@ -4305,7 +4358,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->entity_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4319,12 +4371,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(12) width clamp */
                     value->entity_id = decoded_v;
                 }
-                if ( !r->report->refused && value->entity_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xcb4b37357667310eull: /* pos_x */
             {
-                if ( 1 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 1;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -4362,7 +4412,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->pos_x == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4377,12 +4426,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     else if ( decoded_v > 16383 ) { decoded_v = 16383; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->pos_x = decoded_v;
                 }
-                if ( !r->report->refused && value->pos_x == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xcb4b3835766732c1ull: /* pos_y */
             {
-                if ( 2 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 2;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -4420,7 +4467,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->pos_y == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4435,12 +4481,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     else if ( decoded_v > 16383 ) { decoded_v = 16383; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->pos_y = decoded_v;
                 }
-                if ( !r->report->refused && value->pos_y == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xcb4b353576672da8ull: /* pos_z */
             {
-                if ( 3 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 3;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -4478,7 +4522,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->pos_z == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4493,12 +4536,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     else if ( decoded_v > 16383 ) { decoded_v = 16383; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->pos_z = decoded_v;
                 }
-                if ( !r->report->refused && value->pos_z == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xb54d8e19798e16e8ull: /* yaw */
             {
-                if ( 4 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 4;
                 if ( kind != 7 )
                 {
                     if ( bench_table_kind_widens( kind, 7 ) )
@@ -4525,7 +4566,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->yaw == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4539,12 +4579,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     if ( decoded_v > 511ull ) { decoded_v = 511ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(9) width clamp */
                     value->yaw = decoded_v;
                 }
-                if ( !r->report->refused && value->yaw == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x53a9f665a90cc1b1ull: /* pitch */
             {
-                if ( 5 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 5;
                 if ( kind != 7 )
                 {
                     if ( bench_table_kind_widens( kind, 7 ) )
@@ -4571,7 +4609,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->pitch == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4585,12 +4622,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     if ( decoded_v > 511ull ) { decoded_v = 511ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(9) width clamp */
                     value->pitch = decoded_v;
                 }
-                if ( !r->report->refused && value->pitch == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x6cede6b6eb60ee67ull: /* vel_x */
             {
-                if ( 6 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 6;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -4628,7 +4663,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->vel_x == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4643,12 +4677,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     else if ( decoded_v > 2047 ) { decoded_v = 2047; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->vel_x = decoded_v;
                 }
-                if ( !r->report->refused && value->vel_x == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x6cede5b6eb60ecb4ull: /* vel_y */
             {
-                if ( 7 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 7;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -4686,7 +4718,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->vel_y == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4701,12 +4732,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     else if ( decoded_v > 2047 ) { decoded_v = 2047; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->vel_y = decoded_v;
                 }
-                if ( !r->report->refused && value->vel_y == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x6cede8b6eb60f1cdull: /* vel_z */
             {
-                if ( 8 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 8;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -4744,7 +4773,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->vel_z == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4759,12 +4787,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     else if ( decoded_v > 2047 ) { decoded_v = 2047; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->vel_z = decoded_v;
                 }
-                if ( !r->report->refused && value->vel_z == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x7f69d4b5288ba9cfull: /* health */
             {
-                if ( 9 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 9;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -4802,7 +4828,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->health == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4817,23 +4842,19 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     else if ( decoded_v > 1000 ) { decoded_v = 1000; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->health = decoded_v;
                 }
-                if ( !r->report->refused && value->health == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xa0b610205f2c6e01ull: /* weapon */
             {
-                if ( 10 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 10;
                 if ( kind != 30 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
                     if ( !bench_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                     break;
                 }
-                int32_t unknown_before = r->report->unknown;
                 {
                     uint64_t variant_ref;
                     if ( !bench_table_reader_leb( &(*r), &variant_ref ) || variant_ref > (*r).id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-                    bench_table_reader_use( &(*r), variant_ref );
                     if ( variant_ref == 0 ) { value->weapon = BENCH_MIXED_WEAPON_NONE; }
                     else
                     {
@@ -4858,12 +4879,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                         }
                     }
                 }
-                if ( !r->report->refused && r->report->unknown == unknown_before && value->weapon == BENCH_MIXED_WEAPON_NONE ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x7f6308be8ab37fc0ull: /* damage */
             {
-                if ( 11 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 11;
                 if ( kind != 9 )
                 {
                     if ( bench_table_kind_widens( kind, 9 ) )
@@ -4902,7 +4921,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->damage == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -4915,12 +4933,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     uint64_t decoded_v = (uint64_t) bench_table_reader_get64( &(*r) );
                     value->damage = decoded_v;
                 }
-                if ( !r->report->refused && value->damage == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x11a44fc1d1243da7ull: /* moving */
             {
-                if ( 12 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 12;
                 if ( kind != 1 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -4933,12 +4949,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     if ( bool_byte > 1 ) { r->report->refused = true; }
                     value->moving = bool_byte != 0;
                 }
-                if ( !r->report->refused && value->moving == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x7674cfd19b9031caull: /* firing */
             {
-                if ( 13 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 13;
                 if ( kind != 1 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -4951,7 +4965,6 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     if ( bool_byte > 1 ) { r->report->refused = true; }
                     value->firing = bool_byte != 0;
                 }
-                if ( !r->report->refused && value->firing == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             default:
@@ -4968,16 +4981,14 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
    anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int bench_mixed_entity_load( bench_mixed_entity_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole; const uint8_t * first_use[4096];
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     bench_mixed_entity_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
-    bench_table_reader_hold_first_use( &r, first_use );
     whole = bench_mixed_entity_load_body( &r, value );
-    if ( whole && !report->refused && !bench_table_reader_first_use_holds( &r ) ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; whole = 0; } /* an id table out of first-use order (§3, §4) */
     if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_entity_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
     if ( bench_table_report_finish( report, whole ) ) { bench_mixed_entity_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
@@ -5089,6 +5100,8 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body(bench_table_bit_wr
  { /* damage */
  if(!(value->damage == 0)) {
   bench_table_bit_put(w,42,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert(((uint64_t)(value->damage) >> 8) == 0);
+  /* message flags domain, debug only (§5.1) */
   bench_table_bit_put(w,(uint64_t)(value->damage)-UINT64_C(0),8);
  }
  }
@@ -5142,16 +5155,28 @@ static SCHEMA_UNUSED int64_t bench_mixed_entity_save_messages(const bench_mixed_
 }
 static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_message_reader_t * r,bench_mixed_entity_t * value)
 {
- int32_t last_field=-1;
+ uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  bench_mixed_entity_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
+ int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x23fcfd6678e36712): {
- if(0<=last_field)goto damaged;
- last_field=0;
+ int same_shape=same_build && entry->own_slot==31;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5166,12 +5191,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->entity_id=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->entity_id == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->entity_id == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xcb4b37357667310e): {
- if(1<=last_field)goto damaged;
- last_field=1;
+ int same_shape=same_build && entry->own_slot==32;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5189,12 +5222,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->pos_x=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->pos_x == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->pos_x == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xcb4b3835766732c1): {
- if(2<=last_field)goto damaged;
- last_field=2;
+ int same_shape=same_build && entry->own_slot==33;
+ if(same_shape && 3<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=3;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5212,12 +5253,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->pos_y=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->pos_y == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->pos_y == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xcb4b353576672da8): {
- if(3<=last_field)goto damaged;
- last_field=3;
+ int same_shape=same_build && entry->own_slot==34;
+ if(same_shape && 4<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=4;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5235,12 +5284,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->pos_z=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->pos_z == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->pos_z == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xb54d8e19798e16e8): {
- if(4<=last_field)goto damaged;
- last_field=4;
+ int same_shape=same_build && entry->own_slot==35;
+ if(same_shape && 5<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=5;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5255,12 +5312,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->yaw=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->yaw == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->yaw == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x53a9f665a90cc1b1): {
- if(5<=last_field)goto damaged;
- last_field=5;
+ int same_shape=same_build && entry->own_slot==36;
+ if(same_shape && 6<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=6;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5275,12 +5340,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->pitch=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->pitch == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->pitch == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x6cede6b6eb60ee67): {
- if(6<=last_field)goto damaged;
- last_field=6;
+ int same_shape=same_build && entry->own_slot==37;
+ if(same_shape && 7<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=7;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5298,12 +5371,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->vel_x=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->vel_x == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->vel_x == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x6cede5b6eb60ecb4): {
- if(7<=last_field)goto damaged;
- last_field=7;
+ int same_shape=same_build && entry->own_slot==38;
+ if(same_shape && 8<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=8;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5321,12 +5402,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->vel_y=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->vel_y == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->vel_y == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x6cede8b6eb60f1cd): {
- if(8<=last_field)goto damaged;
- last_field=8;
+ int same_shape=same_build && entry->own_slot==39;
+ if(same_shape && 9<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=9;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5344,12 +5433,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->vel_z=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->vel_z == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->vel_z == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x7f69d4b5288ba9cf): {
- if(9<=last_field)goto damaged;
- last_field=9;
+ int same_shape=same_build && entry->own_slot==40;
+ if(same_shape && 10<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=10;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5367,18 +5464,25 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   }
   value->health=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->health == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->health == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xa0b610205f2c6e01): {
- if(10<=last_field)goto damaged;
- last_field=10;
+ int same_shape=same_build && entry->own_slot==41;
+ if(same_shape && 11<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=11;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==30 && entry->elem_kind==0)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  }}
- int32_t unknown_before=r->report->unknown;
  { const bench_table_message_entry_t * named;
  if(!bench_table_message_ref(r,&named,1)) goto damaged;
   if(named==NULL) value->weapon=BENCH_MIXED_WEAPON_NONE;
@@ -5417,12 +5521,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   r->report->unknown++;
   break;
   } }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&r->report->unknown==unknown_before&&value->weapon == BENCH_MIXED_WEAPON_NONE)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->weapon == BENCH_MIXED_WEAPON_NONE)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x7f6308be8ab37fc0): {
- if(11<=last_field)goto damaged;
- last_field=11;
+ int same_shape=same_build && entry->own_slot==42;
+ if(same_shape && 12<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=12;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5434,12 +5546,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
   (void)hi;
   value->damage=(bench_mixed_damage_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->damage == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->damage == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x11a44fc1d1243da7): {
- if(12<=last_field)goto damaged;
- last_field=12;
+ int same_shape=same_build && entry->own_slot==43;
+ if(same_shape && 13<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=13;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5449,12 +5569,20 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
  if(!bench_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->moving=lo!=0;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->moving == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->moving == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x7674cfd19b9031ca): {
- if(13<=last_field)goto damaged;
- last_field=13;
+ int same_shape=same_build && entry->own_slot==44;
+ if(same_shape && 14<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=14;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5464,10 +5592,16 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
  if(!bench_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->firing=lo!=0;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->firing == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->firing == 0)))goto damaged;
+ }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  } }
@@ -5571,7 +5705,6 @@ static SCHEMA_UNUSED int64_t bench_mixed_stat_save( const bench_mixed_stat_t * v
 static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, bench_mixed_stat_t * value )
 {
     bench_mixed_stat_reset( value );
-    int32_t last_field = -1;
     uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
@@ -5579,7 +5712,6 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, b
         if ( !bench_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-        bench_table_reader_use( r, ref );
         id = bench_table_reader_id_at( r, ref ); kind = bench_table_reader_get8( r );
         if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
@@ -5587,7 +5719,6 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, b
         {
             case 0x80ab75f0866dbf65ull: /* stat_id */
             {
-                if ( 0 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 0;
                 if ( kind != 6 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -5599,12 +5730,10 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, b
                     uint8_t decoded_v = (uint8_t) bench_table_reader_get8( &(*r) );
                     value->stat_id = decoded_v;
                 }
-                if ( !r->report->refused && value->stat_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x52076675ec13a0c1ull: /* delta */
             {
-                if ( 1 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 1;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -5642,7 +5771,6 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, b
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->delta == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -5657,7 +5785,6 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, b
                     else if ( decoded_v > 511 ) { decoded_v = 511; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->delta = decoded_v;
                 }
-                if ( !r->report->refused && value->delta == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             default:
@@ -5674,16 +5801,14 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, b
    anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int bench_mixed_stat_load( bench_mixed_stat_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole; const uint8_t * first_use[4096];
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     bench_mixed_stat_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
-    bench_table_reader_hold_first_use( &r, first_use );
     whole = bench_mixed_stat_load_body( &r, value );
-    if ( whole && !report->refused && !bench_table_reader_first_use_holds( &r ) ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; whole = 0; } /* an id table out of first-use order (§3, §4) */
     if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_stat_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
     if ( bench_table_report_finish( report, whole ) ) { bench_mixed_stat_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
@@ -5742,16 +5867,28 @@ static SCHEMA_UNUSED int64_t bench_mixed_stat_save_messages(const bench_mixed_st
 }
 static SCHEMA_UNUSED int bench_mixed_stat_load_message_body(bench_table_message_reader_t * r,bench_mixed_stat_t * value)
 {
- int32_t last_field=-1;
+ uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  bench_mixed_stat_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
+ int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x80ab75f0866dbf65): {
- if(0<=last_field)goto damaged;
- last_field=0;
+ int same_shape=same_build && entry->own_slot==51;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5766,12 +5903,20 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_message_body(bench_table_message_
   }
   value->stat_id=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->stat_id == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->stat_id == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x52076675ec13a0c1): {
- if(1<=last_field)goto damaged;
- last_field=1;
+ int same_shape=same_build && entry->own_slot==52;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -5789,10 +5934,16 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_message_body(bench_table_message_
   }
   value->delta=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->delta == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->delta == 0)))goto damaged;
+ }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  } }
@@ -5920,7 +6071,6 @@ static SCHEMA_UNUSED int64_t bench_mixed_hit_event_save( const bench_mixed_hit_e
 static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t * r, bench_mixed_hit_event_t * value )
 {
     bench_mixed_hit_event_reset( value );
-    int32_t last_field = -1;
     uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
@@ -5928,7 +6078,6 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
         if ( !bench_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-        bench_table_reader_use( r, ref );
         id = bench_table_reader_id_at( r, ref ); kind = bench_table_reader_get8( r );
         if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
@@ -5936,7 +6085,6 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
         {
             case 0xb7bc9ac015a25050ull: /* target_id */
             {
-                if ( 0 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 0;
                 if ( kind != 7 )
                 {
                     if ( bench_table_kind_widens( kind, 7 ) )
@@ -5963,7 +6111,6 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->target_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -5977,12 +6124,10 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                     if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(12) width clamp */
                     value->target_id = decoded_v;
                 }
-                if ( !r->report->refused && value->target_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x7f6308be8ab37fc0ull: /* damage */
             {
-                if ( 1 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 1;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -6020,7 +6165,6 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->damage == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -6035,12 +6179,10 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                     else if ( decoded_v > 4095 ) { decoded_v = 4095; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->damage = decoded_v;
                 }
-                if ( !r->report->refused && value->damage == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x01fbc365b059b925ull: /* hit_kind */
             {
-                if ( 2 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 2;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -6078,7 +6220,6 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->hit_kind == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -6093,12 +6234,10 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                     else if ( decoded_v > 7 ) { decoded_v = 7; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->hit_kind = decoded_v;
                 }
-                if ( !r->report->refused && value->hit_kind == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x126167908c9aa52dull: /* crit */
             {
-                if ( 3 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 3;
                 if ( kind != 1 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -6111,7 +6250,6 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                     if ( bool_byte > 1 ) { r->report->refused = true; }
                     value->crit = bool_byte != 0;
                 }
-                if ( !r->report->refused && value->crit == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             default:
@@ -6128,16 +6266,14 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
    anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int bench_mixed_hit_event_load( bench_mixed_hit_event_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole; const uint8_t * first_use[4096];
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     bench_mixed_hit_event_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
-    bench_table_reader_hold_first_use( &r, first_use );
     whole = bench_mixed_hit_event_load_body( &r, value );
-    if ( whole && !report->refused && !bench_table_reader_first_use_holds( &r ) ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; whole = 0; } /* an id table out of first-use order (§3, §4) */
     if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_hit_event_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
     if ( bench_table_report_finish( report, whole ) ) { bench_mixed_hit_event_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
@@ -6208,16 +6344,28 @@ static SCHEMA_UNUSED int64_t bench_mixed_hit_event_save_messages(const bench_mix
 }
 static SCHEMA_UNUSED int bench_mixed_hit_event_load_message_body(bench_table_message_reader_t * r,bench_mixed_hit_event_t * value)
 {
- int32_t last_field=-1;
+ uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  bench_mixed_hit_event_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
+ int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xb7bc9ac015a25050): {
- if(0<=last_field)goto damaged;
- last_field=0;
+ int same_shape=same_build && entry->own_slot==45;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -6232,12 +6380,20 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_message_body(bench_table_mes
   }
   value->target_id=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->target_id == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->target_id == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x7f6308be8ab37fc0): {
- if(1<=last_field)goto damaged;
- last_field=1;
+ int same_shape=same_build && entry->own_slot==46;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -6255,12 +6411,20 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_message_body(bench_table_mes
   }
   value->damage=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->damage == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->damage == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x01fbc365b059b925): {
- if(2<=last_field)goto damaged;
- last_field=2;
+ int same_shape=same_build && entry->own_slot==47;
+ if(same_shape && 3<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=3;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -6278,12 +6442,20 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_message_body(bench_table_mes
   }
   value->hit_kind=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->hit_kind == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->hit_kind == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x126167908c9aa52d): {
- if(3<=last_field)goto damaged;
- last_field=3;
+ int same_shape=same_build && entry->own_slot==48;
+ if(same_shape && 4<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=4;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -6293,10 +6465,16 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_message_body(bench_table_mes
  if(!bench_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->crit=lo!=0;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->crit == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->crit == 0)))goto damaged;
+ }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  } }
@@ -6400,7 +6578,6 @@ static SCHEMA_UNUSED int64_t bench_mixed_chat_event_save( const bench_mixed_chat
 static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t * r, bench_mixed_chat_event_t * value )
 {
     bench_mixed_chat_event_reset( value );
-    int32_t last_field = -1;
     uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
@@ -6408,7 +6585,6 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
         if ( !bench_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-        bench_table_reader_use( r, ref );
         id = bench_table_reader_id_at( r, ref ); kind = bench_table_reader_get8( r );
         if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
@@ -6416,7 +6592,6 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
         {
             case 0xa5013e9ad5caeda4ull: /* channel */
             {
-                if ( 0 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 0;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -6454,7 +6629,6 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->channel == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -6469,12 +6643,10 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
                     else if ( decoded_v > 3 ) { decoded_v = 3; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->channel = decoded_v;
                 }
-                if ( !r->report->refused && value->channel == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xfbf1ac4d96ebd022ull: /* speaker */
             {
-                if ( 1 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 1;
                 if ( kind != 7 )
                 {
                     if ( bench_table_kind_widens( kind, 7 ) )
@@ -6501,7 +6673,6 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->speaker == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -6515,7 +6686,6 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
                     if ( decoded_v > 4095ull ) { decoded_v = 4095ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(12) width clamp */
                     value->speaker = decoded_v;
                 }
-                if ( !r->report->refused && value->speaker == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             default:
@@ -6532,16 +6702,14 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
    anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int bench_mixed_chat_event_load( bench_mixed_chat_event_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole; const uint8_t * first_use[4096];
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     bench_mixed_chat_event_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
-    bench_table_reader_hold_first_use( &r, first_use );
     whole = bench_mixed_chat_event_load_body( &r, value );
-    if ( whole && !report->refused && !bench_table_reader_first_use_holds( &r ) ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; whole = 0; } /* an id table out of first-use order (§3, §4) */
     if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_chat_event_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
     if ( bench_table_report_finish( report, whole ) ) { bench_mixed_chat_event_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
@@ -6600,16 +6768,28 @@ static SCHEMA_UNUSED int64_t bench_mixed_chat_event_save_messages(const bench_mi
 }
 static SCHEMA_UNUSED int bench_mixed_chat_event_load_message_body(bench_table_message_reader_t * r,bench_mixed_chat_event_t * value)
 {
- int32_t last_field=-1;
+ uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  bench_mixed_chat_event_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
+ int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xa5013e9ad5caeda4): {
- if(0<=last_field)goto damaged;
- last_field=0;
+ int same_shape=same_build && entry->own_slot==29;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -6627,12 +6807,20 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_message_body(bench_table_me
   }
   value->channel=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->channel == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->channel == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xfbf1ac4d96ebd022): {
- if(1<=last_field)goto damaged;
- last_field=1;
+ int same_shape=same_build && entry->own_slot==30;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -6647,10 +6835,16 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_message_body(bench_table_me
   }
   value->speaker=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->speaker == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->speaker == 0)))goto damaged;
+ }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  } }
@@ -6754,7 +6948,6 @@ static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_save( const bench_mixed_pi
 static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_t * r, bench_mixed_pickup_event_t * value )
 {
     bench_mixed_pickup_event_reset( value );
-    int32_t last_field = -1;
     uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
@@ -6762,7 +6955,6 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
         if ( !bench_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-        bench_table_reader_use( r, ref );
         id = bench_table_reader_id_at( r, ref ); kind = bench_table_reader_get8( r );
         if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
@@ -6770,7 +6962,6 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
         {
             case 0x9e7fd06d864fbd56ull: /* item_id */
             {
-                if ( 0 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 0;
                 if ( kind != 7 )
                 {
                     if ( bench_table_kind_widens( kind, 7 ) )
@@ -6797,7 +6988,6 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->item_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -6811,12 +7001,10 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
                     if ( decoded_v > 1023ull ) { decoded_v = 1023ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(10) width clamp */
                     value->item_id = decoded_v;
                 }
-                if ( !r->report->refused && value->item_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x8113fe7ea2b16969ull: /* amount */
             {
-                if ( 1 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 1;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -6854,7 +7042,6 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->amount == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -6869,7 +7056,6 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
                     else if ( decoded_v > 255 ) { decoded_v = 255; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->amount = decoded_v;
                 }
-                if ( !r->report->refused && value->amount == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             default:
@@ -6886,16 +7072,14 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
    anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int bench_mixed_pickup_event_load( bench_mixed_pickup_event_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole; const uint8_t * first_use[4096];
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     bench_mixed_pickup_event_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
-    bench_table_reader_hold_first_use( &r, first_use );
     whole = bench_mixed_pickup_event_load_body( &r, value );
-    if ( whole && !report->refused && !bench_table_reader_first_use_holds( &r ) ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; whole = 0; } /* an id table out of first-use order (§3, §4) */
     if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_pickup_event_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
     if ( bench_table_report_finish( report, whole ) ) { bench_mixed_pickup_event_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
@@ -6954,16 +7138,28 @@ static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_save_messages(const bench_
 }
 static SCHEMA_UNUSED int bench_mixed_pickup_event_load_message_body(bench_table_message_reader_t * r,bench_mixed_pickup_event_t * value)
 {
- int32_t last_field=-1;
+ uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  bench_mixed_pickup_event_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
+ int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0x9e7fd06d864fbd56): {
- if(0<=last_field)goto damaged;
- last_field=0;
+ int same_shape=same_build && entry->own_slot==49;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -6978,12 +7174,20 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_message_body(bench_table_
   }
   value->item_id=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->item_id == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->item_id == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x8113fe7ea2b16969): {
- if(1<=last_field)goto damaged;
- last_field=1;
+ int same_shape=same_build && entry->own_slot==50;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -7001,10 +7205,16 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_message_body(bench_table_
   }
   value->amount=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->amount == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->amount == 0)))goto damaged;
+ }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  } }
@@ -7476,7 +7686,6 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_save( const bench_bench_mixed_t *
 static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, bench_bench_mixed_t * value )
 {
     bench_bench_mixed_reset( value );
-    int32_t last_field = -1;
     uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
@@ -7484,7 +7693,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
         if ( !bench_table_reader_leb( r, &ref ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !bench_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-        bench_table_reader_use( r, ref );
         id = bench_table_reader_id_at( r, ref ); kind = bench_table_reader_get8( r );
         if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
@@ -7492,7 +7700,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
         {
             case 0xaa38aca481f528a8ull: /* sequence */
             {
-                if ( 0 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 0;
                 if ( kind != 7 )
                 {
                     if ( bench_table_kind_widens( kind, 7 ) )
@@ -7518,7 +7725,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->sequence == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7531,12 +7737,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     uint16_t decoded_v = (uint16_t) bench_table_reader_get16( &(*r) );
                     value->sequence = decoded_v;
                 }
-                if ( !r->report->refused && value->sequence == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x0dbe005c56697c3eull: /* ack_sequence */
             {
-                if ( 1 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 1;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -7574,7 +7778,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->ack_sequence == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7589,12 +7792,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     else if ( decoded_v > 65535 ) { decoded_v = 65535; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->ack_sequence = decoded_v;
                 }
-                if ( !r->report->refused && value->ack_sequence == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x9bae0da8b829ee03ull: /* ack_bits */
             {
-                if ( 2 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 2;
                 if ( kind != 8 )
                 {
                     if ( bench_table_kind_widens( kind, 8 ) )
@@ -7628,7 +7829,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->ack_bits == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7641,12 +7841,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     uint32_t decoded_v = (uint32_t) bench_table_reader_get32( &(*r) );
                     value->ack_bits = decoded_v;
                 }
-                if ( !r->report->refused && value->ack_bits == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xb7d7b5650a590b05ull: /* session_id */
             {
-                if ( 3 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 3;
                 if ( kind != 9 )
                 {
                     if ( bench_table_kind_widens( kind, 9 ) )
@@ -7685,7 +7883,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->session_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7698,12 +7895,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     uint64_t decoded_v = (uint64_t) bench_table_reader_get64( &(*r) );
                     value->session_id = decoded_v;
                 }
-                if ( !r->report->refused && value->session_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x6d7b98e2d095967eull: /* client_id */
             {
-                if ( 4 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 4;
                 if ( kind != 8 )
                 {
                     if ( bench_table_kind_widens( kind, 8 ) )
@@ -7735,7 +7930,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->client_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7748,12 +7942,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     uint32_t decoded_v = (uint32_t) bench_table_reader_get32( &(*r) );
                     value->client_id = decoded_v;
                 }
-                if ( !r->report->refused && value->client_id == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x73a94c71d60dc0d8ull: /* nonce */
             {
-                if ( 5 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 5;
                 if ( kind != 9 )
                 {
                     if ( bench_table_kind_widens( kind, 9 ) )
@@ -7792,7 +7984,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->nonce == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7805,12 +7996,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     uint64_t decoded_v = (uint64_t) bench_table_reader_get64( &(*r) );
                     value->nonce = decoded_v;
                 }
-                if ( !r->report->refused && value->nonce == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x3eee6b51be54fc85ull: /* world_time */
             {
-                if ( 6 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 6;
                 if ( kind != 5 )
                 {
                     if ( bench_table_kind_widens( kind, 5 ) )
@@ -7857,7 +8046,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->world_time == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7872,12 +8060,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     else if ( decoded_v > 1000000000000ll ) { decoded_v = 1000000000000ll; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->world_time = decoded_v;
                 }
-                if ( !r->report->refused && value->world_time == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x7bbc035f7b6d0112ull: /* frame_tick */
             {
-                if ( 7 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 7;
                 if ( kind != 9 )
                 {
                     if ( bench_table_kind_widens( kind, 9 ) )
@@ -7920,7 +8106,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->frame_tick == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -7934,12 +8119,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     if ( decoded_v > 281474976710655ull ) { decoded_v = 281474976710655ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(48) width clamp */
                     value->frame_tick = decoded_v;
                 }
-                if ( !r->report->refused && value->frame_tick == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x3c460475f9be69c6ull: /* server_time */
             {
-                if ( 8 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 8;
                 if ( kind != 22 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -7953,12 +8136,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     else if ( decoded_v > 16776960 ) { decoded_v = 16776960; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->server_time = decoded_v;
                 }
-                if ( !r->report->refused && value->server_time == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x935d0fb07bb3822aull: /* entities */
             {
-                if ( 9 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 9;
                 if ( kind != 14 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -7998,12 +8179,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
-                if ( !r->report->refused && value->entities_count == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xee639cad45b1994cull: /* stats */
             {
-                if ( 10 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 10;
                 if ( kind != 14 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8043,12 +8222,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
-                if ( !r->report->refused && value->stats_count == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x2e35dc5321aa5790ull: /* game_event */
             {
-                if ( 11 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 11;
                 if ( kind != 15 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8060,7 +8237,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
             }
             case 0x5759ce7586bbb5a3ull: /* loadout */
             {
-                if ( 12 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 12;
                 if ( kind != 14 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8103,12 +8279,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
-                { int default_rides = 0; int32_t default_at; for ( default_at = 0; default_at < 4; default_at++ ) { if ( !( value->loadout[default_at] == 0 ) ) { default_rides = 1; break; } } if ( !r->report->refused && !default_rides ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */ }
                 break;
             }
             case 0x13a62f542cf8e86eull: /* player_name */
             {
-                if ( 13 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 13;
                 if ( kind != 12 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8124,12 +8298,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                 keep = (uint64_t) sub.size;
                 if ( keep > 15 ) { keep = bench_table_wire_utf8_clamp( sub.buffer, keep, 15 ); r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                 memcpy( value->player_name, sub.buffer, (size_t) keep ); value->player_name[keep] = 0; value->player_name_length = (int32_t) keep;
-                if ( !r->report->refused && value->player_name_length == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xcfb8a9d063b5e9e5ull: /* payload */
             {
-                if ( 14 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 14;
                 if ( kind != 14 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8174,12 +8346,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
-                if ( !r->report->refused && value->payload_length == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xdbaf7be5e24296c9ull: /* aim_x */
             {
-                if ( 15 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 15;
                 if ( kind != 10 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8198,12 +8368,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         value->aim_x = decoded_f;
                     }
                 }
-                if ( !r->report->refused && value->aim_x == 0.0f ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xdbaf7ae5e2429516ull: /* aim_y */
             {
-                if ( 16 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 16;
                 if ( kind != 10 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8222,12 +8390,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         value->aim_y = decoded_f;
                     }
                 }
-                if ( !r->report->refused && value->aim_y == 0.0f ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xdbaf79e5e2429363ull: /* aim_z */
             {
-                if ( 17 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 17;
                 if ( kind != 10 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8246,12 +8412,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         value->aim_z = decoded_f;
                     }
                 }
-                if ( !r->report->refused && value->aim_z == 0.0f ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x9cef31fff7e2e457ull: /* recoil */
             {
-                if ( 18 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 18;
                 if ( kind != 10 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8264,12 +8428,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     if ( !bench_table_bits_finite32( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
                     else { value->recoil = bench_table_bits_to_float( decoded_bits ); }
                 }
-                if ( !r->report->refused && bench_table_float_to_bits( value->recoil ) == bench_table_float_to_bits( 0.0f ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x5ab3f9c9341f6c04ull: /* drift */
             {
-                if ( 19 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 19;
                 if ( kind != 11 )
                 {
                     if ( bench_table_kind_widens( kind, 11 ) )
@@ -8297,7 +8459,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( bench_table_double_to_bits( value->drift ) == bench_table_double_to_bits( 0.0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -8311,12 +8472,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     if ( !bench_table_bits_finite64( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
                     else { value->drift = bench_table_bits_to_double( decoded_bits ); }
                 }
-                if ( !r->report->refused && bench_table_double_to_bits( value->drift ) == bench_table_double_to_bits( 0.0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xa3348580461faf16ull: /* wide_key */
             {
-                if ( 20 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 20;
                 if ( kind != 19 )
                 {
                     if ( bench_table_kind_widens( kind, 19 ) )
@@ -8365,7 +8524,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( serialize_uint128_equal( value->wide_key, serialize_uint128_make( 0ull, 0ull ) ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -8377,12 +8535,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                 serialize_uint128_t decoded_wide;
                 decoded_wide.lo = bench_table_reader_get64( &(*r) ); decoded_wide.hi = bench_table_reader_get64( &(*r) );
                 value->wide_key = decoded_wide;
-                if ( !r->report->refused && serialize_uint128_equal( value->wide_key, serialize_uint128_make( 0ull, 0ull ) ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xd61bdd7908af2642ull: /* flux */
             {
-                if ( 21 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 21;
                 if ( kind != 18 )
                 {
                     if ( bench_table_kind_widens( kind, 18 ) )
@@ -8475,7 +8631,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( serialize_int128_equal( value->flux, serialize_int128_make( 0ull, 0ull ) ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -8495,12 +8650,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     if ( serialize_int128_compare( decoded_wide, bound ) > 0 ) { decoded_wide = bound; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                 }
                 value->flux = decoded_wide;
-                if ( !r->report->refused && serialize_int128_equal( value->flux, serialize_int128_make( 0ull, 0ull ) ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xbf30e00dc53307a9ull: /* ping */
             {
-                if ( 22 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 22;
                 if ( kind != 26 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8513,12 +8666,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     if ( decoded_v > 64000 ) { decoded_v = 64000; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->ping = decoded_v;
                 }
-                if ( !r->report->refused && value->ping == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x560d6527ccd8515full: /* crc_hint */
             {
-                if ( 23 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 23;
                 if ( kind != 8 )
                 {
                     if ( bench_table_kind_widens( kind, 8 ) )
@@ -8553,7 +8704,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->crc_hint == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -8567,12 +8717,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     if ( decoded_v > 16777215ull ) { decoded_v = 16777215ull; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; } /* bits(24) width clamp */
                     value->crc_hint = decoded_v;
                 }
-                if ( !r->report->refused && value->crc_hint == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xc08292176cfd8672ull: /* has_extra */
             {
-                if ( 24 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 24;
                 if ( kind != 1 )
                 {
                     r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
@@ -8585,12 +8733,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     if ( bool_byte > 1 ) { r->report->refused = true; }
                     value->has_extra = bool_byte != 0;
                 }
-                if ( !r->report->refused && value->has_extra == 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0xfd29ee12a979cb69ull: /* extra */
             {
-                if ( 25 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 25;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -8628,7 +8774,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->extra == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -8643,12 +8788,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     else if ( decoded_v > 255 ) { decoded_v = 255; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->extra = decoded_v;
                 }
-                if ( !r->report->refused && value->extra == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             case 0x78101ac0aa8cbcfeull: /* idle_ticks */
             {
-                if ( 26 <= last_field ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } last_field = 26;
                 if ( kind != 4 )
                 {
                     if ( bench_table_kind_widens( kind, 4 ) )
@@ -8686,7 +8829,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             }
                             default: r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0;
                         }
-                        if ( value->idle_ticks == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                         r->report->widened++;
                         break;
                     }
@@ -8701,7 +8843,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     else if ( decoded_v > 15 ) { decoded_v = 15; r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                     value->idle_ticks = decoded_v;
                 }
-                if ( !r->report->refused && value->idle_ticks == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; return 0; } /* a field stored at its default (§4) */
                 break;
             }
             default:
@@ -8718,16 +8859,14 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
    anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int bench_bench_mixed_load( bench_bench_mixed_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole; const uint8_t * first_use[4096];
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
     bench_bench_mixed_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     non_finite_before = report->non_finite_floats;
-    bench_table_reader_hold_first_use( &r, first_use );
     whole = bench_bench_mixed_load_body( &r, value );
-    if ( whole && !report->refused && !bench_table_reader_first_use_holds( &r ) ) { report->refused=1, report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; whole = 0; } /* an id table out of first-use order (§3, §4) */
     if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_bench_mixed_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
     if ( bench_table_report_finish( report, whole ) ) { bench_bench_mixed_reset( value ); return 0; } /* a refusal discards the whole load (§4) */
     return 1;
@@ -9065,16 +9204,28 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_save_messages(const bench_bench_m
 }
 static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message_reader_t * r,bench_bench_mixed_t * value)
 {
- int32_t last_field=-1;
+ uint8_t seen[512];
+ int same_build=r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE;
+ int32_t last_field_ord=0;
+ (void)last_field_ord;
  bench_bench_mixed_reset(value);
+ memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
+ int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
+ ref=entry-r->vocabulary->entries+1;
+ if(ref<1||ref>4096)goto damaged;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
  switch(entry->id){
  case UINT64_C(0xaa38aca481f528a8): {
- if(0<=last_field)goto damaged;
- last_field=0;
+ int same_shape=same_build && entry->own_slot==1;
+ if(same_shape && 1<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=1;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==7 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9089,12 +9240,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->sequence=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->sequence == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->sequence == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x0dbe005c56697c3e): {
- if(1<=last_field)goto damaged;
- last_field=1;
+ int same_shape=same_build && entry->own_slot==2;
+ if(same_shape && 2<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=2;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9112,12 +9271,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->ack_sequence=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->ack_sequence == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->ack_sequence == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x9bae0da8b829ee03): {
- if(2<=last_field)goto damaged;
- last_field=2;
+ int same_shape=same_build && entry->own_slot==3;
+ if(same_shape && 3<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=3;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9132,12 +9299,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->ack_bits=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->ack_bits == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->ack_bits == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xb7d7b5650a590b05): {
- if(3<=last_field)goto damaged;
- last_field=3;
+ int same_shape=same_build && entry->own_slot==4;
+ if(same_shape && 4<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=4;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9149,12 +9324,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   (void)hi;
   value->session_id=(uint64_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->session_id == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->session_id == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x6d7b98e2d095967e): {
- if(4<=last_field)goto damaged;
- last_field=4;
+ int same_shape=same_build && entry->own_slot==5;
+ if(same_shape && 5<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=5;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9169,12 +9352,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->client_id=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->client_id == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->client_id == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x73a94c71d60dc0d8): {
- if(5<=last_field)goto damaged;
- last_field=5;
+ int same_shape=same_build && entry->own_slot==6;
+ if(same_shape && 6<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=6;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9186,12 +9377,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   (void)hi;
   value->nonce=(uint64_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->nonce == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->nonce == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x3eee6b51be54fc85): {
- if(6<=last_field)goto damaged;
- last_field=6;
+ int same_shape=same_build && entry->own_slot==7;
+ if(same_shape && 7<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=7;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==5 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,5)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9209,12 +9408,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->world_time=(int64_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->world_time == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->world_time == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x7bbc035f7b6d0112): {
- if(7<=last_field)goto damaged;
- last_field=7;
+ int same_shape=same_build && entry->own_slot==8;
+ if(same_shape && 8<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=8;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9229,12 +9436,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->frame_tick=(uint64_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->frame_tick == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->frame_tick == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x3c460475f9be69c6): {
- if(8<=last_field)goto damaged;
- last_field=8;
+ int same_shape=same_build && entry->own_slot==9;
+ if(same_shape && 9<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=9;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==22 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,22)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9252,12 +9467,25 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->server_time=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->server_time == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->server_time == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x935d0fb07bb3822a): {
- if(9<=last_field)goto damaged;
- last_field=9;
+ int same_shape=same_build && entry->own_slot==10;
+ if(same_shape && 10<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=10;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
+ bench_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!bench_table_bit_get(&original,&original_count,bench_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && bench_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9277,12 +9505,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }if(walk<n && !bench_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->entities_count=(int32_t)kept;
  }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->entities_count==0)goto damaged;
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0xee639cad45b1994c): {
- if(10<=last_field)goto damaged;
- last_field=10;
+ int same_shape=same_build && entry->own_slot==11;
+ if(same_shape && 11<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=11;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
+ bench_table_bit_reader_t original=r->bits;
+ uint64_t original_count=0;
+ if(same_shape){if(!bench_table_bit_get(&original,&original_count,bench_table_bits_required(entry->min,entry->max)))goto damaged;
+ original_count+=(uint64_t)entry->min;
+ }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && bench_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9302,23 +9538,35 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }if(walk<n && !bench_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->stats_count=(int32_t)kept;
  }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->stats_count==0)goto damaged;
+ if(same_shape && original_count==0)goto damaged;
  break;
  }
  case UINT64_C(0x2e35dc5321aa5790): {
- if(11<=last_field)goto damaged;
- last_field=11;
+ int same_shape=same_build && entry->own_slot==12;
+ if(same_shape && 12<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=12;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==15 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,15)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  }}
- if(!schema_bench_mixed_event_wire_message_load_(r,&value->game_event,0))return 0;
+ if(!schema_bench_mixed_event_wire_message_load_(r,&value->game_event))return 0;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(value->game_event.type!=BENCH_MIXED_EVENT_TYPE_NONE))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x5759ce7586bbb5a3): {
- if(12<=last_field)goto damaged;
- last_field=12;
+ int same_shape=same_build && entry->own_slot==13;
+ if(same_shape && 13<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=13;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==6)){if(entry->kind==14 && bench_table_kind_widens(entry->elem_kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9345,17 +9593,25 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
    }
   }if(walk<n && !bench_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
  }
- { int32_t slot_at;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
  int rides=0;
- for(slot_at=0;slot_at<4;slot_at++){ if(!(value->loadout[slot_at] == 0)){rides=1;
+ { int32_t i;
+ for(i=0;i<4;i++) if(!(value->loadout[i] == 0)) { rides=1;
  break;
- } } if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&!rides)goto damaged;
+ } }
+ if(!(rides))goto damaged;
  }
  break;
  }
  case UINT64_C(0x13a62f542cf8e86e): {
- if(13<=last_field)goto damaged;
- last_field=13;
+ int same_shape=same_build && entry->own_slot==14;
+ if(same_shape && 14<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=14;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9375,12 +9631,21 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
   value->player_name_length=(int32_t)kept;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->player_name_length == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
+ if(!(value->player_name_length != 0))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xcfb8a9d063b5e9e5): {
- if(14<=last_field)goto damaged;
- last_field=14;
+ int same_shape=same_build && entry->own_slot==15;
+ if(same_shape && 15<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=15;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==6)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,14)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9395,12 +9660,21 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
   value->payload_length=(int32_t)kept;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->payload_length == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
+ if(!(value->payload_length != 0))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xdbaf7be5e24296c9): {
- if(15<=last_field)goto damaged;
- last_field=15;
+ int same_shape=same_build && entry->own_slot==16;
+ if(same_shape && 16<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=16;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9425,12 +9699,14 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
   }value->aim_x=decoded;
   } }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->aim_x == 0.0f)goto damaged;
  break;
  }
  case UINT64_C(0xdbaf7ae5e2429516): {
- if(16<=last_field)goto damaged;
- last_field=16;
+ int same_shape=same_build && entry->own_slot==17;
+ if(same_shape && 17<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=17;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9455,12 +9731,14 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
   }value->aim_y=decoded;
   } }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->aim_y == 0.0f)goto damaged;
  break;
  }
  case UINT64_C(0xdbaf79e5e2429363): {
- if(17<=last_field)goto damaged;
- last_field=17;
+ int same_shape=same_build && entry->own_slot==18;
+ if(same_shape && 18<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=18;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9485,12 +9763,14 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
   }value->aim_z=decoded;
   } }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->aim_z == 0.0f)goto damaged;
  break;
  }
  case UINT64_C(0x9cef31fff7e2e457): {
- if(18<=last_field)goto damaged;
- last_field=18;
+ int same_shape=same_build && entry->own_slot==19;
+ if(same_shape && 19<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=19;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==10 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,10)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9511,12 +9791,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  }
   if(finite){value->recoil=decoded;
   } }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&bench_table_float_to_bits( value->recoil ) == bench_table_float_to_bits( 0.0f ))goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(bench_table_float_to_bits( value->recoil ) == bench_table_float_to_bits( 0.0f ))))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x5ab3f9c9341f6c04): {
- if(19<=last_field)goto damaged;
- last_field=19;
+ int same_shape=same_build && entry->own_slot==20;
+ if(same_shape && 20<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=20;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9537,12 +9825,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  }
   if(finite){value->drift=decoded;
   } }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&bench_table_double_to_bits( value->drift ) == bench_table_double_to_bits( 0.0 ))goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(bench_table_double_to_bits( value->drift ) == bench_table_double_to_bits( 0.0 ))))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xa3348580461faf16): {
- if(20<=last_field)goto damaged;
- last_field=20;
+ int same_shape=same_build && entry->own_slot==21;
+ if(same_shape && 21<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=21;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==19 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,19)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9555,12 +9851,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   decoded.hi=hi;
   value->wide_key=decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&serialize_uint128_equal( value->wide_key, serialize_uint128_make( 0ull, 0ull ) ))goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(serialize_uint128_equal( value->wide_key, serialize_uint128_make( 0ull, 0ull ) ))))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xd61bdd7908af2642): {
- if(21<=last_field)goto damaged;
- last_field=21;
+ int same_shape=same_build && entry->own_slot==22;
+ if(same_shape && 22<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=22;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==18 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,18)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9581,12 +9885,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   } }
   value->flux=decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&serialize_int128_equal( value->flux, serialize_int128_make( 0ull, 0ull ) ))goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(serialize_int128_equal( value->flux, serialize_int128_make( 0ull, 0ull ) ))))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xbf30e00dc53307a9): {
- if(22<=last_field)goto damaged;
- last_field=22;
+ int same_shape=same_build && entry->own_slot==23;
+ if(same_shape && 23<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=23;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==26 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,26)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9601,12 +9913,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->ping=(uint16_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->ping == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->ping == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x560d6527ccd8515f): {
- if(23<=last_field)goto damaged;
- last_field=23;
+ int same_shape=same_build && entry->own_slot==24;
+ if(same_shape && 24<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=24;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9621,12 +9941,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->crc_hint=(uint32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->crc_hint == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->crc_hint == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xc08292176cfd8672): {
- if(24<=last_field)goto damaged;
- last_field=24;
+ int same_shape=same_build && entry->own_slot==25;
+ if(same_shape && 25<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=25;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9636,12 +9964,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  if(!bench_table_message_number(r,entry,&lo,&hi))goto damaged;
   value->has_extra=lo!=0;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->has_extra == 1)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->has_extra == 1)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0xfd29ee12a979cb69): {
- if(25<=last_field)goto damaged;
- last_field=25;
+ int same_shape=same_build && entry->own_slot==26;
+ if(same_shape && 26<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=26;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9659,12 +9995,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->extra=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->extra == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->extra == 0)))goto damaged;
+ }
  break;
  }
  case UINT64_C(0x78101ac0aa8cbcfe): {
- if(26<=last_field)goto damaged;
- last_field=26;
+ int same_shape=same_build && entry->own_slot==27;
+ if(same_shape && 27<=last_field_ord)goto damaged;
+ if(same_shape)last_field_ord=27;
+ int32_t unknown_before=r->report->unknown;
+ (void)unknown_before;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && bench_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
  if(!bench_table_message_skip(r,entry))goto damaged;
@@ -9682,10 +10026,16 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }
   value->idle_ticks=(int32_t)decoded;
   }
- if(!r->report->refused&&r->vocabulary->build_version==SCHEMA_BENCH_BUILD_VERSION_VALUE&&value->idle_ticks == 0)goto damaged;
+ if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
+ bench_table_bit_writer_t default_writer=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t * w=&default_writer;
+ (void)w;
+ if(!(!(value->idle_ticks == 0)))goto damaged;
+ }
  break;
  }
- default:r->report->unknown++;
+ default:if(same_build && entry->own_slot!=0)goto damaged;
+ r->report->unknown++;
  if(!bench_table_message_skip(r,entry))goto damaged;
  break;
  } }
@@ -10069,8 +10419,11 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
         (*damaged)++;
     }
     (*out_of_range) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
+    value->aim_x = value->aim_x + 0.0f;
     (*out_of_range) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
+    value->aim_y = value->aim_y + 0.0f;
     (*out_of_range) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
+    value->aim_z = value->aim_z + 0.0f;
     (*out_of_range) += (int) ( bench_table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( bench_table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
     (*out_of_range) += ( value->ping > 64000 );
     /* bits(24) width clamp */

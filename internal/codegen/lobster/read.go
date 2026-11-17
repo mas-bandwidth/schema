@@ -12,9 +12,14 @@
 // rules latch through stream.fail: a const that is not its value and set
 // reserved bits are value_out_of_range, a ranged offset in the bit headroom
 // is value_out_of_range, a string(N) payload is embedded_nul or invalid_utf8.
-// Every Read<Name> answers false on any refusal. A packet reader calls
-// stream.serialize_end() after the top-level object; it refuses trailing
-// bytes (trailing_data) and set padding (nonzero_padding).
+// Every Read<Name> answers false on any refusal.
+//
+// READ TERMINATION (SPEC §5). Every Read<Name> is the one-packet read: it
+// reads the type's body, read_body_<Name>, and then calls the runtime's
+// stream.serialize_end(), which refuses a whole byte left over
+// (trailing_data) and set unused bits in the final byte (nonzero_padding).
+// The end check runs once, after the top-level object: a nested type inside
+// generated code reads through its read_body_<Name>, which never ends.
 //
 // Storage is the §6.1 storage principle: a record is a class instance and a
 // read fills its pre-allocated buffers in place, so the unused tail of a
@@ -75,11 +80,31 @@ func readPart(g *Gen) error {
 	return nil
 }
 
-// readRef names a declaration's emitted reader, requiring its module when
-// the declaration lives in another file.
+// readRef names a declaration's emitted body reader, the read a nested value
+// takes (it does not end the packet), requiring its module when the
+// declaration lives in another file.
 func (g *Gen) readRef(name string) string {
 	g.Import(g.moduleOf(name, false))
-	return "Read" + name
+	return readBodyName(name)
+}
+
+// readBodyName is a type's body reader. It is lower case, so it never meets
+// a Read<Name>, a Write<Name> or a New<Name>.
+func readBodyName(name string) string {
+	return "read_body_" + name
+}
+
+// emitReadEntry emits the public one-packet read (SPEC §5, read
+// termination): the type's body, then the runtime's end check, once, after
+// the top-level object.
+func emitReadEntry(g *Gen, name string) {
+	g.Pf("// Read%s reads one packet holding value: its body, then the packet's end\n", name)
+	g.Pf("// (SPEC §5), which refuses a whole byte left over and set unused bits in\n")
+	g.Pf("// the final byte. A refusal latches the stream with its reason and answers\n")
+	g.Pf("// false.\n")
+	g.Pf("def Read%s(stream:serialize_read_stream, value:%s) -> bool:\n", name, name)
+	g.Pf("    if not %s(stream, value): return false\n", readBodyName(name))
+	g.Pf("    return stream.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)\n\n")
 }
 
 // newRef names a declaration's constructor, requiring its module.
@@ -191,24 +216,27 @@ func (r *readBody) decls() string {
 	return b.String()
 }
 
-// emitReadStruct is one type's reader: the wire tree of st.Items in order,
-// with the untaken side of each branch zeroed (SPEC §5).
+// emitReadStruct is one type's reader: the body, the wire tree of st.Items
+// in order with the untaken side of each branch zeroed (SPEC §5), then the
+// public one-packet read over it.
 func emitReadStruct(g *Gen, st *ir.Struct) {
 	r := &readBody{bulk: ir.AlignedFixedByteArrays(st)}
 	emitReadItems(g, r, st.Items, "    ")
-	g.Pf("// Read%s decodes the wire into value, filling its pre-allocated storage\n", st.Name)
-	g.Pf("// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A\n")
-	g.Pf("// refusal latches the stream with its reason and answers false.\n")
-	g.Pf("def Read%s(stream:serialize_read_stream, value:%s) -> bool:\n", st.Name, st.Name)
+	g.Pf("// %s decodes the wire into value, filling its pre-allocated\n", readBodyName(st.Name))
+	g.Pf("// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).\n")
+	g.Pf("// It does not end the packet. A refusal latches the stream with its reason\n")
+	g.Pf("// and answers false.\n")
+	g.Pf("def %s(stream:serialize_read_stream, value:%s) -> bool:\n", readBodyName(st.Name), st.Name)
 	if r.b.Len() == 0 {
 		g.Pf("    // no wire bits: an empty body, or every field a zero-bit degenerate\n")
 		g.Pf("    // range; a failed stream still refuses (Reader Obligations)\n")
 		g.Pf("    return stream.ok()\n\n")
-		return
+	} else {
+		g.Pf("%s", r.decls())
+		g.Pf("%s", r.b.String())
+		g.Pf("    return true\n\n")
 	}
-	g.Pf("%s", r.decls())
-	g.Pf("%s", r.b.String())
-	g.Pf("    return true\n\n")
+	emitReadEntry(g, st.Name)
 }
 
 // emitReadUnion is a one-of reader (SPEC §4.8): the tag in [0, Max], whose
@@ -218,12 +246,14 @@ func emitReadStruct(g *Gen, st *ir.Struct) {
 func emitReadUnion(g *Gen, d *ir.Union) {
 	r := &readBody{}
 	tag := d.Name + "Type"
-	g.Pf("// Read%s decodes the %s tag and its selected arm (SPEC §4.8); a tag\n", d.Name, tag)
-	g.Pf("// past the arms is refused, and the selected arm is constructed fresh.\n")
-	g.Pf("def Read%s(stream:serialize_read_stream, value:%s) -> bool:\n", d.Name, d.Name)
+	g.Pf("// %s decodes the %s tag and its selected arm (SPEC §4.8); a\n", readBodyName(d.Name), tag)
+	g.Pf("// tag past the arms is refused, and the selected arm is constructed fresh.\n")
+	g.Pf("// It does not end the packet.\n")
+	g.Pf("def %s(stream:serialize_read_stream, value:%s) -> bool:\n", readBodyName(d.Name), d.Name)
 	if d.Max == 0 {
 		g.Pf("    value.Type = %s // zero wire bits — only None exists (SPEC §4.8)\n", VariantName(tag, "None"))
 		g.Pf("    return stream.ok()\n\n")
+		emitReadEntry(g, d.Name)
 		return
 	}
 	v := r.int()
@@ -242,6 +272,7 @@ func emitReadUnion(g *Gen, d *ir.Union) {
 	g.Pf("%s", r.decls())
 	g.Pf("%s", r.b.String())
 	g.Pf("\n")
+	emitReadEntry(g, d.Name)
 }
 
 // emitFreshArm constructs a selected arm's payload at its declared defaults

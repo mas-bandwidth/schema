@@ -161,7 +161,24 @@ func (m Manifest) covered() (map[string]string, error) {
 	return seen, nil
 }
 
-// loadManifest reads the plan from the repository root.
+// entriesDir holds one small file per added control, relative to the
+// repository root: make/negative-controls.d/<control>.json. Each names an
+// existing group of manifestPath and the targets it adds to that group, so
+// two changes that each add a control add two files and never edit the same
+// lines of manifestPath. The plan is manifestPath with every entry's targets
+// appended to its group, entries read in file-name order.
+const entriesDir = "make/negative-controls.d"
+
+// Entry is one file of entriesDir.
+type Entry struct {
+	// Group is the name of the manifestPath group the targets join.
+	Group string `json:"group"`
+	// Targets are the make targets the entry adds to that group.
+	Targets []string `json:"targets"`
+}
+
+// loadManifest reads the plan from the repository root: manifestPath, with
+// the targets of every entriesDir file appended to the group it names.
 func loadManifest(root string) (Manifest, error) {
 	var m Manifest
 	body, err := os.ReadFile(filepath.Join(root, manifestPath))
@@ -171,7 +188,50 @@ func loadManifest(root string) (Manifest, error) {
 	if err := json.Unmarshal(body, &m); err != nil {
 		return m, fmt.Errorf("%s: %w", manifestPath, err)
 	}
+	if err := m.addEntries(root); err != nil {
+		return m, err
+	}
 	return m, nil
+}
+
+// addEntries appends every entriesDir file's targets to its group. An entry
+// that does not parse, carries an unknown field, names no target, or names a
+// group manifestPath does not hold is refused, so a typo cannot quietly take
+// a control off the plan.
+func (m *Manifest) addEntries(root string) error {
+	files, err := filepath.Glob(filepath.Join(root, entriesDir, "*.json"))
+	if err != nil {
+		return err
+	}
+	sort.Strings(files)
+	for _, file := range files {
+		rel := filepath.ToSlash(filepath.Join(entriesDir, filepath.Base(file)))
+		body, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		var e Entry
+		dec := json.NewDecoder(strings.NewReader(string(body)))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&e); err != nil {
+			return fmt.Errorf("%s: %w", rel, err)
+		}
+		if len(e.Targets) == 0 {
+			return fmt.Errorf("%s names no target", rel)
+		}
+		found := false
+		for i := range m.Groups {
+			if m.Groups[i].Name == e.Group {
+				m.Groups[i].Targets = append(m.Groups[i].Targets, e.Targets...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("%s: no group named %q in %s", rel, e.Group, manifestPath)
+		}
+	}
+	return nil
 }
 
 // reconcile holds the manifest against the makefiles. It returns the controls

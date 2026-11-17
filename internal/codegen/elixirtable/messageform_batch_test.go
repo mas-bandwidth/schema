@@ -23,6 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -386,9 +387,9 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 		}
 		return fmt.Sprintf("%q", s), true
 	case f.Type.Kind == ir.TInt:
-		n, ok := raw.(json.Number)
+		n, ok := jsonInteger(raw)
 		if !ok {
-			t.Fatalf("integer field %s holds %T, want a number", f.Name, raw)
+			t.Fatalf("integer field %s holds %T, want a number or a string of digits", f.Name, raw)
 		}
 		def := "0"
 		if f.HasDefault && f.DefInt != nil {
@@ -441,9 +442,9 @@ func expectedKeyedElement(t *testing.T, u *ir.Unit, slots map[string]uint64, f *
 	}
 	switch f.Type.Kind {
 	case ir.TInt:
-		n, ok := raw.(json.Number)
+		n, ok := jsonInteger(raw)
 		if !ok {
-			t.Fatalf("keyed field %s element holds %T, want a number", f.Name, raw)
+			t.Fatalf("keyed field %s element holds %T, want a number or a string of digits", f.Name, raw)
 		}
 		return n.String()
 	case ir.TNamed:
@@ -1158,3 +1159,19 @@ const boundsDeclaredFn = boundsElixirHelpers + `
   end
 
 `
+
+// jsonInteger reads a JSON integer either way the text form carries one: a
+// number, or for a kind wider than 32 bits a string of the same decimal digits
+// (docs/SPEC-TABLES.md §16.2, docs/rulings.json json-wide-integers-are-strings).
+func jsonInteger(raw any) (json.Number, bool) {
+	switch v := raw.(type) {
+	case json.Number:
+		return v, true
+	case string:
+		if _, ok := new(big.Int).SetString(v, 10); !ok {
+			return "", false
+		}
+		return json.Number(v), true
+	}
+	return "", false
+}

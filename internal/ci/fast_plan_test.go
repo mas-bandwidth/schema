@@ -184,6 +184,18 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			files: "docs/USAGE.md",
 			want:  `no|./internal/goldens|[]`,
 		},
+		{
+			// a card's targets live in their own make/<lang>-<topic>.mk,
+			// which selects its leg as make/<lang>.mk does
+			name:  "elixir card make file",
+			files: "make/elixir-packet-write-text.mk",
+			want:  `no|./internal/codegen/elixirtable|["elixir"]`,
+		},
+		{
+			name:  "c card make file",
+			files: "make/c-packet-write-text.mk",
+			want:  `no|./internal/codegen/ctable|["c"]`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())

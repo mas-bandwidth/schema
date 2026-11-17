@@ -30,12 +30,11 @@ table ListNode
 }
 `
 
-// cNodeRecordTerminatorWire is the framing vector's byte script: the root
-// body names a record of `ListNode { value = 2 }`, and with extra the
-// record's L holds the terminator and one byte after it. The id table is in
-// first-use order with every entry used (docs/SPEC-TABLES.md §3): value,
-// next, the reserved node-table id, and the record's type id. The empty name
-// rides nowhere, so it names no entry.
+// cNodeRecordTerminatorWire is the pinned framing vector's byte script: the
+// root body names a record of `ListNode { value = 2 }`, and with extra the
+// record's L holds the terminator and one byte after it. The id table is the
+// canonical first-use order: value, next, the reserved node-table id, and the
+// record's type id.
 func cNodeRecordTerminatorWire(t *testing.T, u *ir.Unit, extra bool) []byte {
 	t.Helper()
 	ids := []uint64{
@@ -199,7 +198,7 @@ func TestCNodeRecordEndsAtTerminatorNegativeControl(t *testing.T) {
     return failures != 0;
 `, cBytes(cNodeRecordTerminatorWire(t, u, true)))
 	mutate := func(files map[string][]byte) error {
-		const check = "if(body.offset!=body.size)"
+		const check = "if(!nodes->refused && body.offset!=body.size)"
 		hit := false
 		for name, data := range files {
 			if bytes.Contains(data, []byte(check)) {

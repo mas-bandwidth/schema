@@ -219,6 +219,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	firstUse    tableFirstUse // the form-1 load's first-use count (canonical.go)
 	// LayoutHash is THE FILE'S hash, set by the layout refusals
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
 	// layout.
@@ -231,7 +232,11 @@ type TableReport struct {
 // meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
 // OneVerdict).
 func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
-	if r == nil || r.Refusal != TableRefuseOk {
+	if r == nil {
+		return
+	}
+	r.firstUse = tableFirstUse{}
+	if r.Refusal != TableRefuseOk {
 		return
 	}
 	r.Refusal, r.Field = reason, field
@@ -292,11 +297,11 @@ type TableFieldInfo struct {
 	Counted            bool  // a <Name>Count/<Name>Length int32 companion exists
 	Optional           bool  // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	ArrayMin, ArrayBound int32  // counted minimum; capacity / string max length; 0 otherwise
+	Offset               uint32 // unsafe.Offsetof the storage member
+	ElemSize             uint32 // unsafe.Sizeof the member (element size for arrays)
+	CountOffset          uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset        uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits         uint8 // fixed-point binary scale
 	WideRange        bool
@@ -502,41 +507,6 @@ func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
 		tableJSONSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
 	}
 }
-func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
-	if f.Kind == 12 {
-		for i := 0; i < len(a.text) && i < len(b.text); i++ {
-			if a.text[i] < b.text[i] {
-				return -1
-			}
-			if a.text[i] > b.text[i] {
-				return 1
-			}
-		}
-		if len(a.text) < len(b.text) {
-			return -1
-		}
-		if len(a.text) > len(b.text) {
-			return 1
-		}
-		return 0
-	}
-	if f.Kind >= 2 && f.Kind <= 5 {
-		if int64(a.raw) < int64(b.raw) {
-			return -1
-		}
-		if int64(a.raw) > int64(b.raw) {
-			return 1
-		}
-		return 0
-	}
-	if a.raw < b.raw {
-		return -1
-	}
-	if a.raw > b.raw {
-		return 1
-	}
-	return 0
-}
 
 // A guarded group rides only when its guard reads true — the wire's own elision
 // (§4), carried into the text so a text and a wire written from one instance
@@ -576,6 +546,49 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 			return false
 		}
 	}
+}
+
+type tableFirstUse struct {
+	usePhase          uint8 // 0 not counting, 1 the node records, 2 the root body
+	useNodes, useRoot tableFirstUseRun
+}
+
+type tableFirstUseRun struct{ useHigh, useJump uint64 }
+
+func (u *tableFirstUseRun) useMeet(ref uint64) {
+	if ref > u.useHigh {
+		if ref != u.useHigh+1 {
+			u.useJump = ref
+		}
+		u.useHigh = ref
+	}
+}
+
+// tableFirstUseCount starts counting one part of a load's walk: 1 the node
+// records, which starts the count afresh, and 2 the root body; 0 stops it.
+func tableFirstUseCount(r *TableReport, phase uint8) {
+	if phase != 2 {
+		r.firstUse = tableFirstUse{}
+	}
+	r.firstUse.usePhase = phase
+}
+
+func tableFirstUseMeet(r *TableReport, ref uint64) {
+	switch r.firstUse.usePhase {
+	case 1:
+		r.firstUse.useNodes.useMeet(ref)
+	case 2:
+		r.firstUse.useRoot.useMeet(ref)
+	}
+}
+
+// tableFirstUseWhole answers the count's verdict over an id table of n
+// entries, and stops it.
+func tableFirstUseWhole(r *TableReport, n uint64) bool {
+	u := r.firstUse
+	r.firstUse = tableFirstUse{}
+	root, nodes := u.useRoot, u.useNodes
+	return root.useJump <= 1 && (nodes.useHigh <= root.useHigh || nodes.useJump <= root.useHigh+1) && max(root.useHigh, nodes.useHigh) == n
 }
 
 // TableRefuseReason is the typed error shared by file and accelerator failures.
@@ -919,8 +932,6 @@ func (r *TableReport) Err() error {
 
 const tableIDCapacity = 78
 const tableIDBuckets = 256
-const tableWireBytesID uint64 = 0x2f2ec0474f1c4fe4
-const tableWireStringID uint64 = 0x704be0d8faaffc58
 
 // TableIds interns the writer's ids in first-use order. Bucket links are
 // one-based so its zero value is ready to use, including for hash zero.
@@ -1269,6 +1280,7 @@ func (r *TableReader) Resolve(ref uint64) (uint64, bool) {
 	if ref == 0 || ref > uint64(len(r.Ids)/8) {
 		return 0, false
 	}
+	r.meetFirstUse(ref)
 	return binary.LittleEndian.Uint64(r.Ids[(ref-1)*8:]), true
 }
 
@@ -1491,30 +1503,19 @@ func tableUTF8Valid(data []byte) bool {
 	return hi&0x8080808080808080 == 0 || utf8.Valid(data)
 }
 
-func tableUTF8Clamp(data []byte, n int64) int64 {
-	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 {
-		n--
-	}
-	return n
-}
-
 // tableBinaryMaxDepth is the binary nesting bound (mas-bandwidth/schema docs/SPEC-TABLES.md §4,
 // binary_max_depth): a root body or a node record is level 0, each table,
 // array or keyed body one level deeper, and level 129 refuses.
 const tableBinaryMaxDepth = 128
 
 type tableWireCheck struct {
-	depth   int32
-	ids     int
-	nodes   uint64
-	records TableReader
-	graph   []uint64
-	release bool
-	head    uint64
-	gen     uint32
-	reason  TableRefuseReason
-	mark    func(uint64)
-	stamp   [4097]uint32
+	depth  int32
+	ids    uint64
+	nodes  uint64
+	gen    uint32
+	reason TableRefuseReason
+	mark   func(uint64)
+	stamp  [4097]uint32
 }
 
 func (c *tableWireCheck) fail(reason TableRefuseReason) bool {
@@ -1542,25 +1543,6 @@ func (c *tableWireCheck) edge(index uint64) bool {
 	if index == 1 || index > c.nodes+1 {
 		return c.fail(TableRefuseWireDamaged)
 	}
-	if c.graph == nil {
-		return true
-	}
-	at := &c.graph[2*(index-1)]
-	if !c.release {
-		if uint32(*at) == ^uint32(0) {
-			return c.fail(TableRefuseWireDamaged)
-		}
-		*at++
-		return true
-	}
-	if uint32(*at) == 0 {
-		return c.fail(TableRefuseWireDamaged)
-	}
-	*at--
-	if uint32(*at) == 0 {
-		*at |= c.head << 32
-		c.head = index + 1
-	}
 	return true
 }
 
@@ -1583,7 +1565,7 @@ func (c *tableWireCheck) body(r TableReader, root bool) (int64, bool) {
 		if ref == 0 {
 			break
 		}
-		if ref > uint64(c.ids) || !probe.Has(1) {
+		if ref > c.ids || !probe.Has(1) {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 		if c.stamp[ref] == gen {
@@ -1652,8 +1634,11 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 30:
 		ref, ok := r.Leb()
-		if !ok || ref > uint64(c.ids) {
+		if !ok || ref > c.ids {
 			return 0, c.fail(TableRefuseWireDamaged)
+		}
+		if ref != 0 {
+			r.meetFirstUse(ref)
 		}
 	case 15:
 		return c.union(r)
@@ -1729,7 +1714,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 	if count > math.MaxInt32 {
 		return 0, c.fail(TableRefuseCountOverExtentCap)
 	}
-	if count > uint64(len(sub.Buffer))-uint64(sub.Offset) {
+	if sub.Offset < 0 || count > uint64(len(sub.Buffer))-uint64(sub.Offset) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	if !keyed {
@@ -1747,7 +1732,7 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 	probe := sub
 	for range count {
 		key, ok := probe.Leb()
-		if !ok || key == 0 || key > uint64(c.ids) {
+		if !ok || key == 0 || key > c.ids {
 			return 0, c.fail(TableRefuseWireDamaged)
 		}
 		if c.stamp[key] == gen {
@@ -1759,7 +1744,8 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 		}
 	}
 	for range count {
-		sub.Leb()
+		key, _ := sub.Leb()
+		sub.meetFirstUse(key)
 		elem, _ := sub.Body()
 		if !c.framed(elem, kind) {
 			return 0, false
@@ -1772,12 +1758,13 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 // arm's kind and its L-framed payload.
 func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	ref, ok := r.Leb()
-	if !ok || ref > uint64(c.ids) {
+	if !ok || ref > c.ids {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	if ref == 0 {
 		return r.Offset, true
 	}
+	r.meetFirstUse(ref)
 	if !r.Has(1) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
@@ -1805,143 +1792,12 @@ func (c *tableWireCheck) union(r TableReader) (int64, bool) {
 	return r.Offset, true
 }
 
-// record walks the node record at offset in the node table: a blob's bytes, or
-// a table body of any type, named or not.
-func (c *tableWireCheck) record(at int64) bool {
-	r := c.records
-	r.Offset = at
-	ref, _ := r.Leb()
-	id, _ := r.Resolve(ref)
-	body, _ := r.Body()
-	switch id {
-	case tableWireBytesID:
-		return true
-	case tableWireStringID:
-		return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
-	}
-	return c.framed(body, 13)
-}
-
-// tableWireVerify holds every wire-alone condition over an opened file
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): the root body, the node table and every
-// record in it, and the pointer graph. scratch holds two words per node,
-// at the node index less one (record i of the table is node i+1); a nil or
-// short scratch is allocated here, which only a file with a node table needs.
-func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
-	var c tableWireCheck
-	c.ids = len(r.Ids) / 8
-	// the node table, found by the root's headers: a declared count, then that
-	// many records, each a type reference and an L-framed body, filling the field
-	probe := r
-	probe.Offset = 0
-	for {
-		ref, ok := probe.Leb()
-		if !ok || ref == 0 {
-			break
-		}
-		id, ok := probe.Resolve(ref)
-		if !ok || !probe.Has(1) {
-			break
-		}
-		kind := probe.Get8()
-		if id == 0xffffffffffffffff && kind == 12 {
-			payload, ok := probe.Body()
-			if !ok {
-				break
-			}
-			count, ok := payload.Leb()
-			if !ok || count > uint64(len(payload.Buffer)) {
-				return TableRefuseWireDamaged
-			}
-			c.records = payload
-			c.nodes = count
-			break
-		}
-		if !probe.Skip(kind) {
-			break
-		}
-	}
-	if c.nodes > 0 {
-		if uint64(len(scratch)) < 2*(c.nodes+1) {
-			scratch = make([]uint64, 2*(c.nodes+1))
-		}
-		c.graph = scratch[:2*(c.nodes+1)]
-		clear(c.graph)
-		rec := c.records
-		for i := uint64(2); i <= c.nodes+1; i++ {
-			c.graph[2*(i-1)+1] = uint64(rec.Offset & 0x7fffffffffffffff)
-			ref, ok := rec.Leb()
-			if !ok {
-				return TableRefuseWireDamaged
-			}
-			if _, ok := rec.Resolve(ref); !ok {
-				return TableRefuseWireDamaged
-			}
-			if _, ok := rec.Body(); !ok {
-				return TableRefuseWireDamaged
-			}
-		}
-		if rec.Offset != int64(len(rec.Buffer)) {
-			return TableRefuseWireDamaged
-		}
-	}
-	// the first pass: every check, and each record's in-degree
-	root := r
-	root.Offset = 0
-	if end, ok := c.body(root, true); !ok || end != int64(len(root.Buffer)) {
-		return c.failed()
-	}
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if !c.record(int64(c.graph[2*(i-1)+1])) {
-			return c.failed()
-		}
-	}
-	if c.nodes == 0 {
-		return TableRefuseOk
-	}
-	// a blob named twice is shared, and a record no pointer names is unreachable
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]&0xffffffff) > 1 {
-			rec := c.records
-			rec.Offset = int64(c.graph[2*(i-1)+1] & 0x7fffffffffffffff)
-			ref, _ := rec.Leb()
-			if id, _ := rec.Resolve(ref); id == tableWireBytesID || id == tableWireStringID {
-				return TableRefuseBlobShared
-			}
-		}
-	}
-	for i := uint64(2); i <= c.nodes+1; i++ {
-		if uint32(c.graph[2*(i-1)]&0xffffffff) == 0 {
-			return TableRefuseWireDamaged
-		}
-	}
-	// Kahn's algorithm from the root: a record a cycle holds is never released
-	c.release = true
-	if _, ok := c.body(root, true); !ok {
-		return c.failed()
-	}
-	visited := uint64(0)
-	for c.head != 0 {
-		i := c.head - 1
-		c.head = c.graph[2*(i-1)] >> 32
-		c.graph[2*(i-1)] &= 0xffffffff
-		visited++
-		if !c.record(int64(c.graph[2*(i-1)+1])) {
-			return c.failed()
-		}
-	}
-	if visited != c.nodes {
-		return TableRefuseWireDamaged
-	}
-	return TableRefuseOk
-}
-
 // tableWireSkipValue walks one unknown payload with the wire-alone rules while
 // the body read skips it, so a field this reader cannot name is still held to
 // every condition the wire alone decides (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
 func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	var c tableWireCheck
-	c.ids = len(r.Ids) / 8
+	c.ids = uint64(len(r.Ids)) / 8
 	c.depth = r.Depth
 	c.nodes = 0 // tableWireSkipNodes
 	at, ok := c.value(*r, kind)
@@ -1954,7 +1810,7 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 }
 func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 	var c tableWireCheck
-	c.ids = len(r.Ids) / 8
+	c.ids = uint64(len(r.Ids)) / 8
 	c.depth = r.Depth
 	if arm && (kind == 13 || kind == 14 || kind == 16) {
 		c.depth--
@@ -1965,23 +1821,6 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 		return false
 	}
 	return true
-}
-
-// tableWireRecordCheck walks one node record whose type this reader does not
-// name, so no LoadBody reaches it, with the same wire-alone rules the body read
-// applies to a record it does name (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5). nodes is the
-// table's record count, which bounds every pointer index; mark, when not nil,
-// names a record a pointer reaches so the graph walk starts there too.
-func tableWireRecordCheck(body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
-	var c tableWireCheck
-	c.ids = ids
-	c.nodes = nodes
-	c.mark = mark
-	end, ok := c.body(body, false)
-	if !ok || end != int64(len(body.Buffer)) {
-		return c.failed()
-	}
-	return c.reason
 }
 
 // tableOpenChecked opens a form-1 file and answers the report as a refusal for
@@ -2030,6 +1869,13 @@ func tableRefused(r *TableReport) {
 		r.Refuse(TableRefuseWireDamaged, "")
 	}
 	r.Unknown, r.Widened, r.Retained, r.RetainLost = 0, 0, 0, 0
+	r.firstUse = tableFirstUse{}
+}
+
+func (r *TableReader) meetFirstUse(ref uint64) {
+	if r.Report != nil {
+		tableFirstUseMeet(r.Report, ref)
+	}
 }
 
 // TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
@@ -2051,9 +1897,14 @@ type TableMessageShape struct {
 	QMin, QDelta  float32
 	QCount        uint32
 }
+
+// An entry also keeps, in the caller's storage, the first slot announcing its
+// id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID             uint64
-	Shape, Element TableMessageShape
+	ID                    uint64
+	Shape, Element        TableMessageShape
+	bodyFirst, bodySeenAt uint64
+	bodySeenBelow         [2]uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -2064,6 +1915,7 @@ type TableVocabulary struct {
 	Announced, Refused bool
 	MaxBytes           int64
 	Strict             bool
+	bodyClock          uint64
 }
 type TableMessageReader struct {
 	Bits       TableBitReader
@@ -2107,6 +1959,7 @@ const (
 	tableFixedWidenF
 	tableFixedBool
 	tableFixedTag
+	tableFixedSlack
 )
 
 const (
@@ -2117,7 +1970,7 @@ const (
 // tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
 // Meta); its Aux is the source bytes of the payload behind it. A count entry's
 // Aux is the source bytes of one element. The pre-scan reads both to know
-// which bytes are slack (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+// dead bytes that must be zero (fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4).
 const tableFixedPresent uint8 = 1
 
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
@@ -2207,10 +2060,6 @@ type TableFixedDst struct {
 	Dst, Stride, Aux, Min uint32
 	Counted, Arg, Meta    uint8
 }
-
-// Arg's high bit marks a deprecated destination field: every compiled lineage
-// plan leaves it uncovered so the reset-image prefill supplies its default.
-const tableFixedDstDeprecated uint8 = 0x80
 
 type tableFixedPlan struct {
 	Entries []TableFixedEntry
@@ -2466,15 +2315,15 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 	return tableFixedPlan{Entries: raw[:n], Count: int32(n), Split: split}
 }
 
-func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
-func tableFixedPut16(b []byte, v uint16)       { binary.LittleEndian.PutUint16(b, v) }
-func tableFixedPut32(b []byte, v uint32)       { binary.LittleEndian.PutUint32(b, v) }
-func tableFixedPut64(b []byte, v uint64)       { binary.LittleEndian.PutUint64(b, v) }
-func tableFixedPutF32(b []byte, v float32)     { tableFixedPut32(b, math.Float32bits(v)) }
-func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64bits(v)) }
-func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
-func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
-func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
+func tableFixedPut8(b []byte, v uint8)     { b[0] = v }
+func tableFixedPut16(b []byte, v uint16)   { binary.LittleEndian.PutUint16(b, v) }
+func tableFixedPut32(b []byte, v uint32)   { binary.LittleEndian.PutUint32(b, v) }
+func tableFixedPut64(b []byte, v uint64)   { binary.LittleEndian.PutUint64(b, v) }
+func tableFixedPutF32(b []byte, v float32) { tableFixedPut32(b, math.Float32bits(v)) }
+func tableFixedPutF64(b []byte, v float64) { tableFixedPut64(b, math.Float64bits(v)) }
+
+func tableFixedGet32(b []byte) uint32 { return binary.LittleEndian.Uint32(b) }
+func tableFixedGet64(b []byte) uint64 { return binary.LittleEndian.Uint64(b) }
 
 func tableFixedCopyRun(d, s []byte, n uint32) {
 	if n == 0 {
@@ -2688,8 +2537,8 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
 // text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-// with no zero byte for string. bytes(N) carries no text rule at all, and slack past the used units is
-// unspecified and never a refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
+// with no zero byte for string. bytes(N) carries no text rule. Every byte past used units is dead;
+// the pre-scan refuses non-zero as wire_damaged (fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
 // is the clamped length in the flavour's own units. THE STRING RULE IS THE
 // PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
 // interior zero (mas-bandwidth/schema internal/codegen/golang/functions.go, the TString arm), so
@@ -2745,8 +2594,8 @@ func tableFixedUTF8Ok(p []byte) bool {
 }
 
 // tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
-// bool, tag and ordinal entries, run before the caller's storage is touched. A
-// count or a text length past the PLAN's bound refuses by name —
+// bool, tag, ordinal and dead-span entries, run before the caller's storage is
+// touched. A count or a text length past the PLAN's bound refuses by name —
 // count_over_bound / length_over_bound — an ill-formed payload refuses
 // text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
 // tag or ordinal past its set out_of_range (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4,
@@ -2755,11 +2604,12 @@ func tableFixedUTF8Ok(p []byte) bool {
 // written. It walks each entry under its own guards, writes nothing and moves
 // no counter.
 //
-// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
-// SLACK RULE): the bytes past a counted array's count and under an absent
-// optional's present byte are slack, unspecified on read and never a refusal.
-// Each count and present byte it reads adds the slack behind it to dead, and an
-// entry inside dead is not asked.
+// EVERY DEAD BYTE IS ZERO (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero;
+// mas-bandwidth/schema docs/SPEC-TABLES.md §3.4; mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3): an
+// absent optional's payload, a counted array's slots past its count, a text's
+// units past its used length, and an inactive union arm. A dead range is
+// checked here before anything lands, and a non-zero one is wire_damaged. Each
+// count or optional range is added to dead, and an entry inside one is not asked.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
 	var deadBuf [64][2]uint32
 	dead := deadBuf[:0]
@@ -2788,13 +2638,20 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseCountOverBound.Error()
 			}
 			if p.Aux != 0 && uint32(v) < p.Size {
-				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
+				span, zero := tableFixedDeadSpan(src, p.Src+4+uint32(v)*p.Aux, p.Src+4+p.Size*p.Aux)
+				if !zero {
+					return TableRefuseWireDamaged.Error()
+				}
+				dead = append(dead, span)
 			}
 		case tableFixedText:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			capn := p.Size
 			if v < 0 || uint32(v) > capn {
 				return TableRefuseLengthOverBound.Error()
+			}
+			if _, zero := tableFixedDeadSpan(src, p.Src+4+uint32(v), p.Src+4+capn); !zero {
+				return TableRefuseWireDamaged.Error()
 			}
 			if tableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 				return TableRefuseTextIllFormed.Error()
@@ -2809,9 +2666,21 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 					return TableRefuseWireDamaged.Error()
 				}
 				if p.Meta == tableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
-					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
+					span, zero := tableFixedDeadSpan(src, p.Src+k+1, p.Src+k+1+p.Aux)
+					if !zero {
+						return TableRefuseWireDamaged.Error()
+					}
+					dead = append(dead, span)
 				}
 			}
+		case tableFixedSlack:
+			// an inactive union arm: the bytes under tag 0 to the widest arm's
+			// span, or those past a narrower taken arm
+			if _, zero := tableFixedDeadSpan(src, p.Src, p.Src+p.Size); !zero {
+				return TableRefuseWireDamaged.Error()
+			}
+			// No active entry reads a union's dead tail: its arm guards
+			// already exclude it, so it needs no dead-span bookkeeping.
 		case tableFixedTag:
 			// a union tag past the reader's arm count names no arm (§4.6)
 			var tag uint64
@@ -2843,6 +2712,35 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		}
 	}
 	return ""
+}
+
+// tableFixedAllZero is whether every byte of a dead range is zero, the
+// writer's image (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero).
+func tableFixedAllZero(b []byte) bool {
+	for _, c := range b {
+		if c != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// tableFixedDeadSpan checks a dead range for zero and answers it clamped to the
+// record the plan is read against. A plan entry past its own record is refused
+// whole when the plan is laid down; the clamp here keeps a damaged plan from
+// reading past the buffer, and reads no byte twice.
+func tableFixedDeadSpan(src []byte, from, to uint32) ([2]uint32, bool) {
+	end := uint32(len(src))
+	if from > end {
+		from = end
+	}
+	if to > end {
+		to = end
+	}
+	if from > to {
+		from = to
+	}
+	return [2]uint32{from, to}, tableFixedAllZero(src[from:to])
 }
 
 // tableFixedDead is whether src offset at lies in one of the slack spans the
@@ -3133,12 +3031,12 @@ func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
 	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
 	// worth of them — are layout_malformed and not one of the seven.
-	if int32(len(bytes)) < tableFixedLayoutHeaderBytes {
+	if int64(len(bytes)) < int64(tableFixedLayoutHeaderBytes) {
 		return out, "layout_malformed"
 	}
 	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := tableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+	if count == 0 || count > 0x7fffffff || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
 		return out, "layout_count_mismatch"
 	}
 	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
@@ -3186,7 +3084,8 @@ type tableFixedCompiler struct {
 	chainAt   uint32
 	chainLaid bool
 	report    *TableReport
-	// unlawful is a writer field whose kind moved off every ladder: no plan
+	// unlawful is a removed writer field, arm or variant, a narrowed span,
+	// or a kind moved off every ladder: no plan
 	// is laid, and a file under the entry's hash refuses layout_malformed
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4).
 	unlawful bool
@@ -3314,12 +3213,36 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-// census is whether THIS entry is the first time the writer's field is seen:
-// an array's element subtree is compiled once per element and the unknown
-// count is ONCE PER FIELD PER ENDPOINT (§5.4), so only element 0 censuses.
+// A lawful older writer names only fields, arms and variants the reader retains.
+// Deprecation retains the slot and its name; removing it cannot leave source
+// bytes outside the check pass (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2, §5.8 rule 6).
+func tableFixedChildrenNamed(theirs tableFixedLayoutView, ti int32, mine tableFixedLayoutView, mi int32) bool {
+	tc := ti + 1
+	for range tableFixedEntryAt(theirs, ti).Children {
+		mc := mi + 1
+		named := false
+		for range tableFixedEntryAt(mine, mi).Children {
+			if tableFixedEntryAt(theirs, tc).ID == tableFixedEntryAt(mine, mc).ID {
+				named = true
+				break
+			}
+			mc += tableFixedSubtree(mine, mc)
+		}
+		if !named {
+			return false
+		}
+		tc += tableFixedSubtree(theirs, tc)
+	}
+	return true
+}
+
 func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
+	if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+		c.unlawful = true
+		return
+	}
 	myChild := mi + 1
 	for range me.Children {
 		mc := tableFixedEntryAt(mine, myChild)
@@ -3336,32 +3259,12 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		}
 		myChild += tableFixedSubtree(mine, myChild)
 	}
-	tcAt := ti + 1
-	for range te.Children {
-		tc := tableFixedEntryAt(theirs, tcAt)
-		named := false
-		mcAt := mi + 1
-		for range me.Children {
-			if tableFixedEntryAt(mine, mcAt).ID == tc.ID {
-				named = true
-				break
-			}
-			mcAt += tableFixedSubtree(mine, mcAt)
-		}
-		if !named && census && c.report != nil {
-			c.report.Unknown++
-		}
-		tcAt += tableFixedSubtree(theirs, tcAt)
-	}
 }
 
 func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint64, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
-	if d.Arg&tableFixedDstDeprecated != 0 {
-		return
-	}
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
 	if te.Kind != me.Kind && !(me.Kind == 35) {
@@ -3403,12 +3306,22 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if d.Counted != 0 {
 			head = 4
 		}
+		// A required count word past the writer's field reaches beyond its
+		// record; refuse before subtracting the head from an unsigned size.
+		if te.Size < head {
+			c.tooLarge = true
+			return
+		}
 		var theirN, myN uint32
 		if tel.Size != 0 {
 			theirN = (te.Size - head) / tel.Size
 		}
 		if mel.Size != 0 {
 			myN = (me.Size - head) / mel.Size
+		}
+		if theirN > myN {
+			c.unlawful = true
+			return
 		}
 		theirBase := theirAt + head
 		n := theirN
@@ -3426,11 +3339,20 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
 		}
 	case 16:
+		if !tableFixedChildrenNamed(theirs, ti+1, mine, mi+1) {
+			c.unlawful = true
+			return
+		}
 		tkey := tableFixedEntryAt(theirs, ti+1)
 		mkey := tableFixedEntryAt(mine, mi+1)
 		tel := ti + 1 + tableFixedSubtree(theirs, ti+1)
 		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
 		tee := tableFixedEntryAt(theirs, tel)
+		mee := tableFixedEntryAt(mine, mel)
+		if te.Size/tee.Size > me.Size/mee.Size {
+			c.unlawful = true
+			return
+		}
 		for k := range mkey.Children {
 			keyID := tableFixedEntryAt(mine, mi+2+int32(k)).ID
 			for j := range tkey.Children {
@@ -3442,20 +3364,16 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			}
 		}
 	case 15:
+		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+			c.unlawful = true
+			return
+		}
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
-		// THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed
-		// BEFORE c.argW is retuned below so it is stamped at the OUTER width:
-		// None answers to the OUTER tag (bill §12.7). Every tag value below is
-		// written under THEIR tag's guard, so a record naming an arm this build
-		// does not have — or a tag past the writer's arm set entirely — landed
-		// no tag at all from the plan and was answered by the prefill. That
-		// answer was right and silent: DstSize carries THE WRITER'S ARM COUNT
-		// for this one entry, and the read loop counts a clamp for a raw tag
-		// past that set, so the compiled plan counts what the identity plan's
-		// decode bound counts (schema#1254, §5.4, §5.8 row 12). Entries apply in
-		// push order, so the arm that matches overwrites this one and it stands
-		// when none does.
+		// None goes down first, guarded only by the outer arm. Each matched
+		// writer arm then overwrites it with the reader's ordinal. A missing
+		// writer arm makes the lineage unlawful above; a tag outside the
+		// writer's set refuses in the check pass, before any record lands.
 		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Guard: guard, Op: tableFixedConst, Arg: arg}
 		if te.Children > 0 && te.Children <= 255 {
 			none.DstSize = uint8(te.Children)
@@ -3468,6 +3386,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if theirTag >= 1 && theirTag <= 8 {
 			c.argW = uint8(theirTag)
 		}
+		span := te.Size - theirTag
 		myArm := mi + 1
 		for k := range me.Children {
 			ma := tableFixedEntryAt(mine, myArm)
@@ -3485,6 +3404,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 					c.chainLaid = false
 					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
 					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
+					if ta.Size < span {
+						// THE BYTES PAST A NARROWER TAKEN ARM ARE DEAD.
+						tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag + ta.Size, Size: span - ta.Size, Guard: theirAt, Op: tableFixedSlack})
+					}
 					c.chain = c.chain[:len(c.chain)-1]
 					c.chainAt, c.chainLaid = savedAt, savedLaid
 					break
@@ -3493,12 +3416,27 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			}
 			myArm += tableFixedSubtree(mine, myArm)
 		}
+		// TAG 0 NAMES NO ARM: the whole widest arm's span is dead
+		// (mas-bandwidth/schema docs/rulings.json fixed-dead-bytes-are-zero; mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md
+		// §3.1, §4.5).
+		if span > 0 {
+			savedAt, savedLaid := c.chainAt, c.chainLaid
+			c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: 0, ArgW: c.argW})
+			c.chainLaid = false
+			tableFixedPush(c, TableFixedEntry{Src: theirAt + theirTag, Size: span, Guard: theirAt, Op: tableFixedSlack})
+			c.chain = c.chain[:len(c.chain)-1]
+			c.chainAt, c.chainLaid = savedAt, savedLaid
+		}
 		c.argW = savedW
 	case 30:
 		// A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened
 		// (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH ordinal takes the remap
 		// table.
 		if te.Size < me.Size {
+			if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+				c.unlawful = true
+				return
+			}
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
 				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)})
 			return
@@ -3511,6 +3449,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		n := te.Children
 		if n > tableFixedRemapMax {
 			c.overflow = true
+			return
+		}
+		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
+			c.unlawful = true
 			return
 		}
 		m := make([]uint16, n)
@@ -3529,6 +3471,10 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		e.Aux = tableFixedLayTable(c, m, int32(n))
 		tableFixedPush(c, e)
 	case 12:
+		if te.Size > me.Size {
+			c.unlawful = true
+			return
+		}
 		units := me.Size - 4
 		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
@@ -4784,7 +4730,8 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TableEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TableEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -5023,7 +4970,8 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TableStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TableStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -5067,7 +5015,7 @@ func TableMixedReset(value *TableMixed) {
 	for i := range value.Entities {
 		TableEntityReset(&value.Entities[i])
 	}
-	value.EntitiesCount = 0
+	value.EntitiesCount = 1
 	for i := range value.Stats {
 		TableStatReset(&value.Stats[i])
 	}
@@ -5214,14 +5162,29 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 			return false
 		}
-		if value.EntitiesCount > 0 {
+		allBirth := value.EntitiesCount == 1
+		if allBirth {
+			for i := 0; i < 1; i++ {
+				mark := w.Ids.Count
+				n := TableEntityMeasureBody(&value.Entities[i], w.Ids)
+				w.Ids.Truncate(mark)
+				if n < 0 {
+					return false
+				}
+				allBirth = n <= 1
+				if !allBirth {
+					break
+				}
+			}
+		}
+		if !allBirth {
 			if ref := w.Ids.refAtHit(46, 0x935d0fb07bb3822a); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
-			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+			if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 				return false
 			}
 			{
@@ -6058,6 +6021,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 					r.Report.Refuse(TableRefuseKindMismatch, "TableMixed.entities")
 					return false
 				}
+				if count < 1 {
+					r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
+					return false
+				}
 				if count > 8 {
 					r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
 					return false
@@ -6727,7 +6694,8 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TableMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TableMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -7065,7 +7033,8 @@ func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) b
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TableHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TableHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -7310,7 +7279,8 @@ func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport)
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TableChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TableChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -7555,7 +7525,8 @@ func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableRep
 		*read = TableReport{}
 	}
 	r, verdict := tableOpenChecked(data, read)
-	if verdict != TableOpenOk || !TablePickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+	tableFirstUseCount(read, 2)
+	if verdict != TableOpenOk || !TablePickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(read, uint64(len(r.Ids)/8)) || read.Refused() {
 		if verdict == TableOpenOk {
 			read.Verdict = TableOpenDamaged
 		}
@@ -7899,6 +7870,8 @@ func TableMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		{ // arm chat, ordinal 2
 			guardAt := n
 			n += TableChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Chat)))
+			out[n] = TableFixedEntry{Src: es + 1 + 8, Size: 5, Guard: es, Arg: 2, ArgW: 1, Op: tableFixedSlack} // past the narrower arm
+			n++
 			for q := guardAt; q < n; q++ {
 				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
 			}
@@ -7906,10 +7879,15 @@ func TableMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		{ // arm pickup, ordinal 3
 			guardAt := n
 			n += TablePickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(TableEvent{}.Pickup)))
+			out[n] = TableFixedEntry{Src: es + 1 + 8, Size: 5, Guard: es, Arg: 3, ArgW: 1, Op: tableFixedSlack} // past the narrower arm
+			n++
 			for q := guardAt; q < n; q++ {
 				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
 			}
 		}
+		out[n] = TableFixedEntry{Src: es + 1, Size: 13, Guard: es, Arg: 0, ArgW: 1, Op: tableFixedSlack} // the inactive arm span
+		links[n] = append(links[n], TableFixedGuardLink{Guard: es, Arg: 0, ArgW: 1})
+		n++
 	}
 	for i := range uint32(4) {
 		es := src + 1124 + i*1
@@ -8006,7 +7984,11 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	tableFixedPut64(b[26:], uint64(value.Nonce))
 	tableFixedPut64(b[34:], uint64(value.WorldTime))
 	tableFixedPut64(b[42:], uint64(value.FrameTick))
-	tableFixedPutF32(b[50:], value.ServerTime)
+	if value.ServerTime == 0 {
+		tableFixedPutF32(b[50:], 0)
+	} else {
+		tableFixedPutF32(b[50:], value.ServerTime)
+	}
 	tableFixedPut32(b[54:], uint32(value.EntitiesCount))
 	{
 		livei := min(max(int64(value.EntitiesCount), 0), 8)
@@ -8041,14 +8023,30 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	copy(b[1128:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
 	tableFixedPut32(b[1147:], uint32(value.PayloadLength))
 	copy(b[1147:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
-	tableFixedPutF32(b[1167:], value.AimX)
-	tableFixedPutF32(b[1171:], value.AimY)
-	tableFixedPutF32(b[1175:], value.AimZ)
+	if value.AimX == 0 {
+		tableFixedPutF32(b[1167:], 0)
+	} else {
+		tableFixedPutF32(b[1167:], value.AimX)
+	}
+	if value.AimY == 0 {
+		tableFixedPutF32(b[1171:], 0)
+	} else {
+		tableFixedPutF32(b[1171:], value.AimY)
+	}
+	if value.AimZ == 0 {
+		tableFixedPutF32(b[1175:], 0)
+	} else {
+		tableFixedPutF32(b[1175:], value.AimZ)
+	}
 	tableFixedPutF32(b[1179:], value.Recoil)
 	tableFixedPutF64(b[1183:], value.Drift)
 	tableFixedPut64(b[1191:], uint64(value.WideKey))
 	tableFixedPut64(b[1199:], uint64(value.Flux))
-	tableFixedPutF32(b[1207:], value.Ping)
+	if value.Ping == 0 {
+		tableFixedPutF32(b[1207:], 0)
+	} else {
+		tableFixedPutF32(b[1207:], value.Ping)
+	}
 	tableFixedPut32(b[1211:], uint32(value.CrcHint))
 	{
 		p := uint8(0)
@@ -8732,10 +8730,10 @@ func TableEntityFixedMeasure(count int64) int64 {
 }
 
 // TableEntityFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
 	need := TableEntityFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -8854,6 +8852,11 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -8988,10 +8991,10 @@ func TableStatFixedMeasure(count int64) int64 {
 }
 
 // TableStatFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
 	need := TableStatFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9110,6 +9113,11 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -9326,7 +9334,7 @@ var TableMixedFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), 0, 0, 0, 0, 0, 0}, // idle_ticks
 }
 
-var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 311)
+var TableMixedFixedPlan = tableFixedBuildPlan(TableMixedFixedLeaves, 314)
 
 var TableMixedFixedKnown = []TableFixedKnownLayout{
 	{
@@ -9468,10 +9476,10 @@ func TableMixedFixedMeasure(count int64) int64 {
 }
 
 // TableMixedFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
-// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+// buffer too short or a batch outside its declared contract (§3.1); see FixedSaveReason.
 func TableMixedFixedSave(values []TableMixed, buffer []byte) int64 {
 	need := TableMixedFixedMeasure(int64(len(values)))
-	if int64(len(buffer)) < need {
+	if len(values) == 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	for k := range values {
@@ -9591,6 +9599,11 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 		return -1
 	}
 	n := rest / recordBytes
+	if n == 0 {
+		report.Refuse(TableRefuseWireDamaged, "")
+		report.Reason = TableRefuseTruncated.Error()
+		return -1
+	}
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, TableRefuseBatchTooLarge.Error())
 	}
@@ -9639,7 +9652,7 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 // TableEntityTableFields is TableEntity's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableEntityTableFields = []TableFieldInfo{
 	{Name: "entity_id", JSON: "entity_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", ID: 0x23fcfd6678e36712, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.EntityID)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.EntityID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.EntityID)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.EntityID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9651,7 +9664,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "pos_x", JSON: "pos_x", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xcb4b37357667310e, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, RangeIntMin: -16383, RangeIntMax: 16383, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9663,7 +9676,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "pos_y", JSON: "pos_y", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xcb4b3835766732c1, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, RangeIntMin: -16383, RangeIntMax: 16383, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9675,7 +9688,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "pos_z", JSON: "pos_z", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xcb4b353576672da8, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.PosZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.PosZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -16383.0, RangeMax: 16383.0, RangeIntMin: -16383, RangeIntMax: 16383, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9687,7 +9700,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "yaw", JSON: "yaw", TypeName: "bits(9)", DeclaredTypeName: "bits(9)", ID: 0xb54d8e19798e16e8, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Yaw)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Yaw)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Yaw)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Yaw)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, RangeUintMin: 0, RangeUintMax: 511, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9699,7 +9712,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "pitch", JSON: "pitch", TypeName: "bits(9)", DeclaredTypeName: "bits(9)", ID: 0x53a9f665a90cc1b1, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Pitch)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Pitch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Pitch)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Pitch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 511.0, RangeUintMin: 0, RangeUintMax: 511, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9711,7 +9724,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "vel_x", JSON: "vel_x", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x6cede6b6eb60ee67, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelX)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, RangeIntMin: -2048, RangeIntMax: 2047, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9723,7 +9736,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "vel_y", JSON: "vel_y", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x6cede5b6eb60ecb4, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelY)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 28, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, RangeIntMin: -2048, RangeIntMax: 2047, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9735,7 +9748,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "vel_z", JSON: "vel_z", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x6cede8b6eb60f1cd, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.VelZ)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.VelZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 32, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -2048.0, RangeMax: 2047.0, RangeIntMin: -2048, RangeIntMax: 2047, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9747,7 +9760,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "health", JSON: "health", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x7f69d4b5288ba9cf, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Health)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Health)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 36, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9759,7 +9772,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "weapon", JSON: "weapon", TypeName: "TableWeapon", DeclaredTypeName: "TableWeapon", ID: 0xa0b610205f2c6e01, Kind: 30, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Weapon)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Weapon)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Weapon)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Weapon)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 15,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9771,7 +9784,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "damage", JSON: "damage", TypeName: "TableDamage", DeclaredTypeName: "TableDamage", ID: 0x7f6308be8ab37fc0, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 7,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9783,7 +9796,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "moving", JSON: "moving", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x11a44fc1d1243da7, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Moving)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Moving)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Moving)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Moving)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 56, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9795,7 +9808,7 @@ var TableEntityTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "firing", JSON: "firing", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x7674cfd19b9031ca, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Firing)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Firing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEntity{}.Firing)), ElemSize: uint32(unsafe.Sizeof(TableEntity{}.Firing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 57, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9821,7 +9834,7 @@ func TableEntityTableType() *TableTypeInfo { return &TableEntityTableInfo }
 // TableStatTableFields is TableStat's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableStatTableFields = []TableFieldInfo{
 	{Name: "stat_id", JSON: "stat_id", TypeName: "bits(8)", DeclaredTypeName: "bits(8)", ID: 0x80ab75f0866dbf65, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.StatID)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.StatID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.StatID)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.StatID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeUintMin: 0, RangeUintMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9833,7 +9846,7 @@ var TableStatTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "delta", JSON: "delta", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x52076675ec13a0c1, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.Delta)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.Delta)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableStat{}.Delta)), ElemSize: uint32(unsafe.Sizeof(TableStat{}.Delta)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -512.0, RangeMax: 511.0, RangeIntMin: -512, RangeIntMax: 511, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9859,7 +9872,7 @@ func TableStatTableType() *TableTypeInfo { return &TableStatTableInfo }
 // TableMixedTableFields is TableMixed's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableMixedTableFields = []TableFieldInfo{
 	{Name: "protocol_magic", JSON: "protocol_magic", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0x6a5a70d91aa115fd, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ProtocolMagic)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ProtocolMagic)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ProtocolMagic)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ProtocolMagic)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9871,7 +9884,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "sequence", JSON: "sequence", TypeName: "bits(16)", DeclaredTypeName: "bits(16)", ID: 0xaa38aca481f528a8, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Sequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Sequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Sequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Sequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, RangeUintMin: 0, RangeUintMax: 65535, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9883,7 +9896,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ack_sequence", JSON: "ack_sequence", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xdbe005c56697c3e, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckSequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckSequence)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckSequence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, RangeIntMin: 0, RangeIntMax: 65535, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9895,7 +9908,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ack_bits", JSON: "ack_bits", TypeName: "bits(32)", DeclaredTypeName: "bits(32)", ID: 0x9bae0da8b829ee03, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckBits)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckBits)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AckBits)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AckBits)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4.294967295e+09, RangeUintMin: 0, RangeUintMax: 4294967295, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9907,7 +9920,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "session_id", JSON: "session_id", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0xb7d7b5650a590b05, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.SessionID)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.SessionID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.SessionID)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.SessionID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9919,7 +9932,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "client_id", JSON: "client_id", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0x6d7b98e2d095967e, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ClientID)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ClientID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ClientID)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ClientID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9931,7 +9944,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "nonce", JSON: "nonce", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0x73a94c71d60dc0d8, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Nonce)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Nonce)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Nonce)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Nonce)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 9.223372036854776e+18, RangeUintMin: 1, RangeUintMax: 9223372036854775807, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9943,7 +9956,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "world_time", JSON: "world_time", TypeName: "int64", DeclaredTypeName: "int64", ID: 0x3eee6b51be54fc85, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.WorldTime)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.WorldTime)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.WorldTime)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -1e+12, RangeMax: 1e+12, RangeIntMin: -1000000000000, RangeIntMax: 1000000000000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9955,7 +9968,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "frame_tick", JSON: "frame_tick", TypeName: "bits(48)", DeclaredTypeName: "bits(48)", ID: 0x7bbc035f7b6d0112, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.FrameTick)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.FrameTick)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.FrameTick)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 2.81474976710655e+14, RangeUintMin: 0, RangeUintMax: 281474976710655, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9967,7 +9980,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "server_time", JSON: "server_time", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x3c460475f9be69c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ServerTime)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.ServerTime)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.ServerTime)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 56, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 65535.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9979,7 +9992,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "entities", JSON: "entities", TypeName: "TableEntity", DeclaredTypeName: "TableEntity", ID: 0x935d0fb07bb3822a, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(TableMixed{}.Entities)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Entities[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 1, ArrayBound: 8, Offset: uint32(unsafe.Offsetof(TableMixed{}.Entities)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Entities[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 64, CookElemSize: 64, CookCountOffset: 576, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -9991,7 +10004,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: TableEntityTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "stats", JSON: "stats", TypeName: "TableStat", DeclaredTypeName: "TableStat", ID: 0xee639cad45b1994c, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 80, Offset: uint32(unsafe.Offsetof(TableMixed{}.Stats)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Stats[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 80, Offset: uint32(unsafe.Offsetof(TableMixed{}.Stats)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Stats[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), PresentOffset: 0xffffffff,
 		CookOffset: 580, CookElemSize: 8, CookCountOffset: 1220, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10003,7 +10016,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: TableStatTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "game_event", JSON: "game_event", TypeName: "TableEvent", DeclaredTypeName: "TableEvent", ID: 0x2e35dc5321aa5790, Kind: 15, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.GameEvent)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.GameEvent)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1224, CookElemSize: 20, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10039,7 +10052,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "loadout", JSON: "loadout", TypeName: "uint8", DeclaredTypeName: "uint8", ID: 0x5759ce7586bbb5a3, Kind: 6, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(TableMixed{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Loadout[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 4, Offset: uint32(unsafe.Offsetof(TableMixed{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Loadout[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1244, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10051,7 +10064,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "player_name", JSON: "player_name", TypeName: "string", DeclaredTypeName: "string", ID: 0x13a62f542cf8e86e, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 15, Offset: uint32(unsafe.Offsetof(TableMixed{}.PlayerName)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.PlayerName)), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.PlayerNameLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 15, Offset: uint32(unsafe.Offsetof(TableMixed{}.PlayerName)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.PlayerName)), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.PlayerNameLength)), PresentOffset: 0xffffffff,
 		CookOffset: 1248, CookElemSize: 1, CookCountOffset: 1264, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10063,7 +10076,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "payload", JSON: "payload", TypeName: "bytes", DeclaredTypeName: "bytes", ID: 0xcfb8a9d063b5e9e5, Kind: 6, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TableMixed{}.Payload)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.PayloadLength)), PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TableMixed{}.Payload)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(TableMixed{}.PayloadLength)), PresentOffset: 0xffffffff,
 		CookOffset: 1268, CookElemSize: 1, CookCountOffset: 1284, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10075,7 +10088,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "aim_x", JSON: "aim_x", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xdbaf7be5e24296c9, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimX)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimX)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimX)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1288, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -1.0, RangeMax: 1.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10087,7 +10100,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "aim_y", JSON: "aim_y", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xdbaf7ae5e2429516, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimY)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimY)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimY)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1292, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -1.0, RangeMax: 1.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10099,7 +10112,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "aim_z", JSON: "aim_z", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xdbaf79e5e2429363, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimZ)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.AimZ)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.AimZ)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1296, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -1.0, RangeMax: 1.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10111,7 +10124,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "recoil", JSON: "recoil", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9cef31fff7e2e457, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Recoil)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Recoil)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Recoil)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Recoil)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1300, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10123,7 +10136,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "drift", JSON: "drift", TypeName: "float64", DeclaredTypeName: "float64", ID: 0x5ab3f9c9341f6c04, Kind: 11, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Drift)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Drift)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Drift)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Drift)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1304, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10135,7 +10148,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "wide_key", JSON: "wide_key", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0xa3348580461faf16, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.WideKey)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.WideKey)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.WideKey)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.WideKey)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1312, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10147,7 +10160,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "flux", JSON: "flux", TypeName: "int64", DeclaredTypeName: "int64", ID: 0xd61bdd7908af2642, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Flux)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Flux)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Flux)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Flux)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1320, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: -1e+18, RangeMax: 1e+18, RangeIntMin: -1000000000000000000, RangeIntMax: 1000000000000000000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10159,7 +10172,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ping", JSON: "ping", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xbf30e00dc53307a9, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Ping)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Ping)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Ping)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Ping)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1328, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 250.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10171,7 +10184,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "crc_hint", JSON: "crc_hint", TypeName: "bits(24)", DeclaredTypeName: "bits(24)", ID: 0x560d6527ccd8515f, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.CrcHint)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.CrcHint)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.CrcHint)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1332, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1.6777215e+07, RangeUintMin: 0, RangeUintMax: 16777215, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10183,7 +10196,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "has_extra", JSON: "has_extra", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xc08292176cfd8672, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.HasExtra)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.HasExtra)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.HasExtra)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.HasExtra)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1336, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10195,7 +10208,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "extra", JSON: "extra", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xfd29ee12a979cb69, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Extra)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Extra)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.Extra)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.Extra)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1340, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeIntMin: 0, RangeIntMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10207,7 +10220,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "idle_ticks", JSON: "idle_ticks", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x78101ac0aa8cbcfe, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.IdleTicks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.IdleTicks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1344, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 15.0, RangeIntMin: 0, RangeIntMax: 15, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10233,7 +10246,7 @@ func TableMixedTableType() *TableTypeInfo { return &TableMixedTableInfo }
 // TableHitEventTableFields is TableHitEvent's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableHitEventTableFields = []TableFieldInfo{
 	{Name: "target_id", JSON: "target_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", ID: 0xb7bc9ac015a25050, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10245,7 +10258,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "damage", JSON: "damage", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x7f6308be8ab37fc0, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeIntMin: 0, RangeIntMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10257,7 +10270,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "hit_kind", JSON: "hit_kind", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x1fbc365b059b925, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.HitKind)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.HitKind)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10269,7 +10282,7 @@ var TableHitEventTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "crit", JSON: "crit", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x126167908c9aa52d, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Crit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Crit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10295,7 +10308,7 @@ func TableHitEventTableType() *TableTypeInfo { return &TableHitEventTableInfo }
 // TableChatEventTableFields is TableChatEvent's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TableChatEventTableFields = []TableFieldInfo{
 	{Name: "channel", JSON: "channel", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xa5013e9ad5caeda4, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 3.0, RangeIntMin: 0, RangeIntMax: 3, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10307,7 +10320,7 @@ var TableChatEventTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "speaker", JSON: "speaker", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", ID: 0xfbf1ac4d96ebd022, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Speaker)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Speaker)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10333,7 +10346,7 @@ func TableChatEventTableType() *TableTypeInfo { return &TableChatEventTableInfo 
 // TablePickupEventTableFields is TablePickupEvent's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TablePickupEventTableFields = []TableFieldInfo{
 	{Name: "item_id", JSON: "item_id", TypeName: "bits(10)", DeclaredTypeName: "bits(10)", ID: 0x9e7fd06d864fbd56, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, RangeUintMin: 0, RangeUintMax: 1023, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10345,7 +10358,7 @@ var TablePickupEventTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "amount", JSON: "amount", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeIntMin: 0, RangeIntMax: 255, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10378,7 +10391,7 @@ func init() {
 			value := (*TableEvent)(storage)
 			TableHitEventReset(&value.Hit)
 		}, Field: TableFieldInfo{Name: "hit", JSON: "hit", TypeName: "TableHitEvent", DeclaredTypeName: "TableHitEvent", ID: 0x33732819300680aa, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Hit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Hit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			CookOffset: 4, CookElemSize: 16, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10394,7 +10407,7 @@ func init() {
 			value := (*TableEvent)(storage)
 			TableChatEventReset(&value.Chat)
 		}, Field: TableFieldInfo{Name: "chat", JSON: "chat", TypeName: "TableChatEvent", DeclaredTypeName: "TableChatEvent", ID: 0xf2a38d910b5b348b, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Chat)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Chat)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			CookOffset: 4, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -10410,7 +10423,7 @@ func init() {
 			value := (*TableEvent)(storage)
 			TablePickupEventReset(&value.Pickup)
 		}, Field: TableFieldInfo{Name: "pickup", JSON: "pickup", TypeName: "TablePickupEvent", DeclaredTypeName: "TablePickupEvent", ID: 0x9fa3a41c86ecb765, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Pickup)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Pickup)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Pickup)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Pickup)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			CookOffset: 4, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,

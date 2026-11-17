@@ -76,7 +76,8 @@ const tableVariableWireSource = `
                 else if (f.Kind == 15)
                 {
                     object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                    if (tag > (ulong)f.EnumMax) { return false; }
+                    // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                     if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
                 }
                 else if (f.Kind == 17)

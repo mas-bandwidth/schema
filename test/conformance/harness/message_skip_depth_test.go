@@ -12,7 +12,9 @@ import (
 // The vectors are a batch of one LoginRequest body whose only field is the
 // announced union arm Payload.login (a kind-13 entry LoginRequest does not
 // declare), each skipped body holding that entry again. The field's skip is
-// depth 0 and the Nth nested body is depth N.
+// depth 0 and the Nth nested body is depth N. These synthetic unknown fields
+// arrive under another sender build; under the reader's own build an
+// undeclared field is refused before its skip depth is relevant (§3.3(b)).
 //
 // The test rebuilds both batches from the unit's own announcement, so the
 // pinned files cannot drift from what they claim to be, and holds the oracle
@@ -31,6 +33,8 @@ func TestLimitMessageSkipDepthVectors(t *testing.T) {
 	if len(entries) < login || entries[login-1].Id != 0x03c75db6e18f29d2 || entries[login-1].Kind != 13 {
 		t.Fatalf("announcement entry %d is no longer Payload.login (kind 13): the vectors must be rebuilt", login)
 	}
+	sameBuild := root.vocabulary
+	evolved := evolvedMessageVocabulary(t, root.model.Unit)
 	for _, tc := range []struct {
 		name     string
 		levels   int
@@ -45,6 +49,15 @@ func TestLimitMessageSkipDepthVectors(t *testing.T) {
 		if !bytes.Equal(built, pinned) {
 			t.Errorf("%s: the pinned file is not %d nested bodies of entry %d", tc.name, tc.levels, login)
 		}
+		root.vocabulary = sameBuild
+		same, err := root.oracle(pinned)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if same.accepted || !same.report.Refused {
+			t.Errorf("%s: an undeclared field under the reader's own build must refuse", tc.name)
+		}
+		root.vocabulary = evolved
 		answer, err := root.oracle(pinned)
 		if err != nil {
 			t.Fatal(err)

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The committed corpus (generated/unity, generated/unity-ludicrous) in the
+       Unity dialect. UnityGeneratedDir is overridable so a negative control can
+       point it at a planted copy. -->
+  <Import Project="../UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>schemaunity</AssemblyName>
+    <UnityGeneratedDir Condition="'$(UnityGeneratedDir)' == ''">$(MSBuildThisFileDirectory)../../../generated/unity</UnityGeneratedDir>
+    <UnityLudicrousDir Condition="'$(UnityLudicrousDir)' == ''">$(MSBuildThisFileDirectory)../../../generated/unity-ludicrous</UnityLudicrousDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(UnityGeneratedDir)/*.cs" />
+    <Compile Include="$(UnityLudicrousDir)/*.cs" />
+  </ItemGroup>
+
+</Project>

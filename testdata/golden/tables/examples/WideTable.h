@@ -1495,6 +1495,7 @@ struct TableStrict
     // reach a node: a fixed reader cannot, so a non-null pointer is damage
     bool pointers;
     TableRefuseReason refusal;
+    uint64_t next_ref;
 };
 
 // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4): a framed payload is one
@@ -1512,7 +1513,7 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
 inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int depth );
 
 // a fixed-width kind's payload size in bytes, 0 for the framed kinds: the same
-// closed set TableKindWidth carries for the width, but for the skip rule's own
+// closed set the kind-width helper carries, but for the skip rule's own
 // set — a pointer (17), an enum (30) and a union (15) are framed, not fixed
 inline int32_t TableStrictWidth( uint8_t kind )
 {
@@ -1585,7 +1586,10 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
         uint64_t ref = 0;
         if ( !r.getleb( ref ) ) { return false; }
         if ( ref == 0 ) { return r.offset == n; } // the terminator is the body's last byte (L3)
+        if ( root && s.node_table_present ) { return false; }
         if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; } // F9
+        if ( ref > s.next_ref ) { return false; }
+        if ( ref == s.next_ref ) { s.next_ref++; }
         const uint64_t id = s.ids->at( ref );
         if ( !TableStrictSeen( seen, ref ) ) { return false; } // R5: one field id twice in one body
         if ( !r.has( 1 ) ) { return false; }
@@ -1596,6 +1600,11 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
             if ( !root || kind != 12 ) { return false; }
             uint64_t len = 0;
             if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
+            {
+                TableReader nt( r.buffer + r.offset, (int64_t) len, &ignored, s.ids );
+                uint64_t node_count = 0;
+                if ( !nt.getleb( node_count ) || node_count == 0 ) { return false; }
+            }
             s.node_table = r.buffer + r.offset;
             s.node_table_bytes = (int64_t) len;
             s.node_table_present = true;
@@ -1675,7 +1684,13 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         case 30: // an enum: a variant reference into the id table
         {
             uint64_t ref = 0;
-            return r.getleb( ref ) && ( s.ids == NULL || ref <= (uint64_t) s.ids->count );
+            if ( !r.getleb( ref ) || ( s.ids != NULL && ref > (uint64_t) s.ids->count ) ) { return false; }
+            if ( ref != 0 )
+            {
+                if ( ref > s.next_ref ) { return false; }
+                if ( ref == s.next_ref ) { s.next_ref++; }
+            }
+            return true;
         }
         case 15:
             return TableStrictUnion( s, r, depth );
@@ -1699,6 +1714,8 @@ inline bool TableStrictUnion( TableStrict & s, TableReader & r, int depth )
     if ( !r.getleb( ref ) ) { return false; }
     if ( ref == 0 ) { return true; } // the empty arm carries nothing
     if ( s.ids == NULL || ref > (uint64_t) s.ids->count || !r.has( 1 ) ) { return false; }
+    if ( ref > s.next_ref ) { return false; }
+    if ( ref == s.next_ref ) { s.next_ref++; }
     const uint8_t kind = r.get8();
     uint64_t len = 0;
     if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
@@ -1751,6 +1768,8 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     {
         uint64_t key = 0;
         if ( !r.getleb( key ) || key == 0 || s.ids == NULL || key > (uint64_t) s.ids->count ) { return false; } // H7
+        if ( key > s.next_ref ) { return false; }
+        if ( key == s.next_ref ) { s.next_ref++; }
         if ( !TableStrictSeen( seen, key ) ) { return false; } // the same keyed slot twice
         uint64_t len = 0;
         if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
@@ -4478,6 +4497,12 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
         if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( entry.kind == 15 )
+        {
+            TableBitReader peek = r;
+            uint64_t arm = 0;
+            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+        }
         if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }
@@ -5625,7 +5650,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
         }
     }
-    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG.
+    // EVERY UNION TAG'S INACTIVE SPAN, ONCE PER TAG. A NESTED tag is judged
+    // only while every tag outside it selects the arm it sits in: under any
+    // other outer arm its bytes are that arm's live payload, or the outer
+    // tag's own dead span, which the outer tag's check holds to zero.
     for ( int32_t i = 0; i < count; ++i )
     {
         const TableFixedEntry & e = plan[i];
@@ -5634,6 +5662,11 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( j > 0 )
+                {
+                    const TableFixedGuardLink & outer = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + ( j - 1 ) * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, outer.guard, outer.argw ) != outer.arg ) { break; }
+                }
                 if ( TableFixedTagSeen( plan, i, l.guard, guard_pool ) ) { continue; }
                 if ( TableFixedInAbsentPayload( plan, count, src, (int64_t) l.guard ) ) { continue; }
                 if ( !TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool ) )
@@ -5645,7 +5678,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else
         {
-            if ( e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
+            // guard2 is the OUTER tag of a two-lane entry, guard the inner one.
+            const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
+                                     TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
+            if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
                  !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
                  !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
@@ -8291,11 +8327,12 @@ struct TableNodeScan
     bool present;              // the root body carries a node table at all
     bool damaged;
     const TableIdTable * ids;
+    uint64_t type_ref;
 };
 
 inline TableNodeScan TableNodeScanBegin( const uint8_t * body, int64_t size, TableReport * report, const TableIdTable * ids )
 {
-    TableNodeScan s = { TableReader( body, size, report, ids ), NULL, 0, 0, false, 0, 0, false, false, ids };
+    TableNodeScan s = { TableReader( body, size, report, ids ), NULL, 0, 0, false, 0, 0, false, false, ids, 0 };
     return s;
 }
 
@@ -8362,6 +8399,7 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
         s.damaged = true; // a type id reference of 0, or one past the table
         return false;
     }
+    s.type_ref = ref;
     type_id = s.ids->at( ref );
     // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
     // MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3): the node table, the build
@@ -8785,6 +8823,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     s.node_table_present = false;
     s.pointers = true;
     s.refusal = wire_damaged;
+    s.next_ref = 1;
     if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }
     int64_t records = 0;
     if ( s.node_table_present )
@@ -8796,6 +8835,8 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
         TableNodeScan scan = TableNodeScanBegin( body, body_bytes, &ignored, &table );
         while ( TableNodeScanNext( scan, type_id, rec, len ) )
         {
+            if ( scan.type_ref > s.next_ref ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+            if ( scan.type_ref == s.next_ref ) { s.next_ref++; }
             // a blob record is its bytes; the graph check reads its text (§3.1)
             if ( type_id != kTableBytesTypeId && type_id != kTableStringTypeId )
             {
@@ -8804,6 +8845,12 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
             records++;
         }
         if ( !TableNodeScanWhole( scan ) ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
+    }
+    if ( s.next_ref - 1 != (uint64_t) table.count )
+    {
+        report->damaged = true;
+        report->refuse_reason = wire_damaged;
+        return false;
     }
     TableNodeDirEntry * scratch = (TableNodeDirEntry *) schema_allocate( ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( scratch == NULL ) { report->damaged = true; return false; }
@@ -9314,6 +9361,11 @@ inline void TableRetainIdsWrite( TableWriter & w, const TableRetainIds & ids )
 // small stated constant and nothing more.
 static const int32_t kTableRetainWalkDepthMax = 128;
 
+// Reference-zero None/terminators use a forbidden inner ID as their PRIVATE
+// sentinel. Hash zero remains an ordinary ID, and neither representation's
+// fixed width nor any emitted wire byte changes.
+static const uint64_t kTableRetainNoId = kTableNodeTableFieldId;
+
 // the three RESERVED ids (§3.1, §3.3). One inside a retained record's payload
 // would be re-emitted into a nested body, where it is malformed, so meeting
 // one drops the record.
@@ -9377,9 +9429,8 @@ inline bool TableRetainInLebRead( TableRetainIn & s, uint64_t & value )
 
 // one REFERENCE resolved to the id it names. A zero reference is the wire's
 // own "no id", the enum's None and the union's empty arm, and rides as the
-// id zero. A reference above the entry count, a reference at an id-table entry
-// of zero, and a reference at a reserved id are each damage the plain read
-// never looked at, and each drops the record.
+// private sentinel. A nonzero reference naming hash zero is an ordinary ID.
+// A reference above the entry count or at a reserved ID drops the record.
 inline bool TableRetainInRef( TableRetainIn & s, bool zero_allowed )
 {
     uint64_t ref = 0;
@@ -9387,12 +9438,12 @@ inline bool TableRetainInRef( TableRetainIn & s, bool zero_allowed )
     if ( ref == 0 )
     {
         if ( !zero_allowed ) { return false; }
-        TableRetainInId( s, 0 );
+        TableRetainInId( s, kTableRetainNoId );
         return true;
     }
     if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; }
     const uint64_t id = s.ids->at( ref );
-    if ( id == 0 || TableRetainReservedId( id ) ) { return false; }
+    if ( TableRetainReservedId( id ) ) { return false; }
     TableRetainInId( s, id );
     return true;
 }
@@ -9450,12 +9501,11 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 uint64_t ref = 0;
                 const int64_t mark = s.at;
                 if ( !TableRetainInLebRead( s, ref ) ) { return -1; }
-                // THE TERMINATOR IS A REFERENCE, and a reference in the
-                // resolved form is a fixed eight-byte id: the zero that ends a
-                // body rides at the width every other one does.
+                // Keep reference-zero terminators distinct from field hash 0,
+                // at the same fixed width as every resolved ID.
                 if ( ref == 0 )
                 {
-                    TableRetainInId( s, 0 );
+                    TableRetainInId( s, kTableRetainNoId );
                     break;
                 }
                 s.at = mark;
@@ -9873,7 +9923,7 @@ inline bool TableRetainOutRef( TableRetainOut & s )
     if ( s.at + 8 > s.size ) { return false; }
     const uint64_t id = TableRetainRead64( s.in + s.at );
     s.at += 8;
-    if ( id == 0 )
+    if ( id == kTableRetainNoId )
     {
         TableRetainOutLeb( s, 0 );
         return true;
@@ -9932,7 +9982,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             {
                 if ( s.at + 8 > end ) { return false; }
                 const uint64_t id = TableRetainRead64( s.in + s.at );
-                if ( id == 0 )
+                if ( id == kTableRetainNoId )
                 {
                     s.at += 8;
                     TableRetainOutLeb( s, 0 );
@@ -10076,7 +10126,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( s.at + 8 > s.size ) { return false; }
             const uint64_t arm = TableRetainRead64( s.in + s.at );
             if ( !TableRetainOutRef( s ) ) { return false; }
-            if ( arm == 0 ) { break; }
+            if ( arm == kTableRetainNoId ) { break; }
             if ( s.at >= s.size ) { return false; }
             const uint8_t arm_kind = s.in[s.at++];
             TableRetainOutRaw( s, &arm_kind, 1 );
@@ -10648,15 +10698,15 @@ TABLEDEMO_TABLE_INLINE bool WideBlobLoadBodyRetain( TableReader & r, WideBlob & 
 inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
         bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
@@ -10678,14 +10728,14 @@ inline int64_t WideBlobMeasure( const WideBlob & value )
 
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, const WideBlob & value )
 {
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
@@ -10695,7 +10745,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
         w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
@@ -11136,7 +11186,7 @@ inline bool WideBlobLoad( WideBlob & value, const uint8_t * buffer, int64_t byte
 inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
 {
     int64_t bits = 0;
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11144,7 +11194,7 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.label_length * 8;
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11152,7 +11202,7 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
         bits += TableAlignBits( at + bits );
         bits += (int64_t) value.payload_length * 8;
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -11169,7 +11219,7 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value )
 {
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.put( 101, kTableMessageRefBitsHere );
@@ -11177,7 +11227,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.label, value.label_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         w.put( 102, kTableMessageRefBitsHere );
@@ -11185,7 +11235,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.payload, value.payload_length );
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         w.put( 103, kTableMessageRefBitsHere );
@@ -11207,6 +11257,8 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
 {
     WideBlobReset( value );
     uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const bool same_build = vocabulary.build_version == BuildVersion;
+    int32_t last_field_ord = 0;
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -11244,6 +11296,13 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
         {
             case 0x39f7fcec8fcb623dull: // label
             {
+                const bool same_shape = same_build && entry.kind == 12 && entry.elem_kind == 0;
+                if ( same_shape && 1 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 1; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11271,6 +11330,11 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         report->damaged = true;
                         return false;
                     }
+                    if ( same_shape && n == 0 )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 70000 );
                     if ( (uint64_t) kept < n )
                     {
@@ -11286,6 +11350,13 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
             }
             case 0xcfb8a9d063b5e9e5ull: // payload
             {
+                const bool same_shape = same_build && entry.kind == 14 && entry.elem_kind == 6;
+                if ( same_shape && 2 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 2; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11303,6 +11374,11 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 {
                     uint64_t n = 0;
                     if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( same_shape && n == 0 )
                     {
                         report->damaged = true;
                         return false;
@@ -11327,6 +11403,13 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
             }
             case 0xe3b1ca6a3b48dddcull: // samples
             {
+                const bool same_shape = same_build && entry.kind == 14 && entry.elem_kind == 7;
+                if ( same_shape && 3 <= last_field_ord )
+                {
+                    report->damaged = true;
+                    return false;
+                }
+                if ( same_shape ) { last_field_ord = 3; }
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
                 // A RANGE that moved is not one: the shapes differ and the entry
                 // carries the SENDER's, so the field decodes and clamps (§4).
@@ -11412,6 +11495,11 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
+                    if ( same_shape && n == 0 )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     if ( entry.elem_kind == 6 && !r.align() )
                     {
                         report->damaged = true;
@@ -11463,6 +11551,7 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 break;
             }
             default:
+                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
                 {
@@ -11584,15 +11673,15 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
 inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
         bytes += TableLebBytes( ids.ref_at( 122, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return -1; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
@@ -11607,14 +11696,14 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
 
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.label_length < 0 || value.label_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
-    if ( value.payload_length < 0 || value.payload_length > 70000 ) { return false; } // storage invariant
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
@@ -11624,7 +11713,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetain
         w.putleb( (uint64_t) value.payload_length );
         w.raw( value.payload, value.payload_length );
     }
-    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; } // storage invariant
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.samples_count > 0 )
     {
         const uint64_t ref_samples = ids.ref_at( 136, 0xe3b1ca6a3b48dddcull );
@@ -12045,8 +12134,9 @@ inline bool WideBlobCookBody( uint8_t * at, const WideBlob & value, TableByteOrd
     table_cook_put( at + 70004, (uint64_t) (uint32_t) value.label_length, 4, order );
     table_cook_bytes( at + 70008, value.payload, value.payload_length, 70000 );
     table_cook_put( at + 140008, (uint64_t) (uint32_t) value.payload_length, 4, order );
-    // all 70000 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
-    for ( int32_t i = 0; i < 70000; i++ )
+    // 70000 slots of storage, value.samples_count live: a slot past the count keeps the extent's zero (§7.2)
+    schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
+    for ( int32_t i = 0; i < value.samples_count; i++ )
     {
         table_cook_put( at + 140012 + i * 2, (uint64_t) value.samples[i], 2, order );
     }

@@ -159,7 +159,7 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 	if g.retain {
 		g.pf("    table_retain_discard(retention,0,0);\n")
 	}
-	g.pf("    if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    table_reader_use( r, ref );\n    if ( ref == 0 ) { if ( element == 0 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; } value->type = 0; return 1; }\n    if ( element ) { value->type = 0; }\n    if ( !table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    kind = table_reader_get8( r );\n    if ( !table_reader_span( r, &arm ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    value->type = 0;\n    switch ( table_reader_id_at( r, ref ) )\n    {\n")
+	g.pf("    if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    if ( ref == 0 ) { value->type = 0; return 1; }\n    if ( element ) { value->type = 0; }\n    if ( !table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    kind = table_reader_get8( r );\n    if ( !table_reader_span( r, &arm ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n    value->type = 0;\n    switch ( table_reader_id_at( r, ref ) )\n    {\n")
 	for ordinal, v := range un.Variants {
 		g.pf("        case 0x%016xull:\n        {\n", ir.TableWireId(v.WireName()))
 		k := armWireKind(v)
@@ -180,9 +180,7 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 			g.wireReadArm(v, armValue("(*value)", v), "            ")
 			g.wireRefusalCheck("            ")
 		}
-		if k != tkUnion {
-			g.pf("            if ( arm.offset != arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
-		}
+		g.pf("            if ( arm.offset != arm.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n")
 		g.pf("            if ( kind != %d ) { r->report->widened++; }\n", k)
 		g.pf("            value->type = %s;\n", enumConst(un.Name+"Type", v.Name))
 		if !v.Void() && ir.ArmWireFixedWidth(v.F) > 0 {
@@ -190,7 +188,18 @@ func (g *tableGen) emitUnionWire(un *ir.Union) {
 		}
 		g.pf("            break;\n        }\n")
 	}
-	g.pf("%s", "        default: "+g.unknownEvent()+" break;\n    }\n    return 1;\n}\n\n")
+	// AN UNKNOWN ARM IS WALKED, NOT ONLY FRAMED (docs/SPEC-TABLES.md §4,
+	// §6.5): the value reads empty, but its payload is held to the rules a
+	// read of it would hold, exactly as an unknown field's payload is, and
+	// damage inside it refuses the whole load. A structural arm is one level
+	// deeper, as the engine's union walk counts it.
+	nodes := "0"
+	if g.anyVariable {
+		nodes = "( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 )"
+	}
+	g.pf("        default:\n            %s\n", g.unknownEvent())
+	g.pf("            if ( !table_skip_framed( arm, kind, %s, kind == 13 || kind == 14 || kind == 15 || kind == 16 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", nodes)
+	g.pf("            break;\n    }\n    return 1;\n}\n\n")
 }
 
 // An arm's L is its field payload's frame: no second length surrounds it.
@@ -258,12 +267,12 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 		}
 		g.wireReadFieldPayload(f, kind, dst, "arm")
 	case k == tkUnion:
-		g.pf("%sif ( !%s( &arm, &%s, 2 ) ) {\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
+		g.pf("%sif ( !%s( &arm, &%s, 0 ) ) {\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
 		g.wireRefusalCheck(ind + "    ")
 		g.pf("%s    %s }\n", ind, bad)
 	default:
 		// A short payload is confined to this arm and leaves it unset.
-		g.wireScalarRead(f, dst, "arm", "kind", ind, "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto bad_arm_"+v.Name+";", false)
+		g.wireScalarRead(f, dst, "arm", "kind", ind, "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto bad_arm_"+v.Name+";")
 		g.pf("%sgoto read_arm_%s;\n%sbad_arm_%s: break;\n%sread_arm_%s: ;\n", ind, v.Name, ind, v.Name, ind, v.Name)
 	}
 }

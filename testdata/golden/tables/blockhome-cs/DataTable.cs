@@ -29,7 +29,7 @@ namespace Blockhome
 
         public static bool ArmorPlateCollectTyped(ArmorPlate v, ref TableWire.Ids ids)
         {
-            if (!double.IsFinite(v.Thickness)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Thickness));
             if (BitConverter.DoubleToUInt64Bits(v.Thickness) != 0x0000000000000000ul && !ids.Add(0xdbae65ca25b4f315ul)) return false;
             if (v.Material != 0 && !ids.Add(0x026f7568983161e0ul)) return false;
             if (v.Layer != 0 && !ids.Add(0x84e39fec29768c56ul)) return false;
@@ -140,7 +140,7 @@ namespace Blockhome
             TableFieldInfo[] fields = ArmorConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!float.IsFinite(v.Rating)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Rating));
             if (BitConverter.SingleToUInt32Bits(v.Rating) != 0x00000000u && !ids.Add(0x4e79ecbefe5ff4d0ul)) return false;
             if (v.Tier != 0 && !ids.Add(0x1e6f84ef2eb65989ul)) return false;
             return true;
@@ -250,7 +250,7 @@ namespace Blockhome
         public static bool FiringGroupCollectTyped(FiringGroup v, ref TableWire.Ids ids)
         {
             if (v.Barrel != 0 && !ids.Add(0x8ece059ad360b651ul)) return false;
-            if (!float.IsFinite(v.Cooldown)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Cooldown));
             if (BitConverter.SingleToUInt32Bits(v.Cooldown) != 0x00000000u && !ids.Add(0xdc2cbe6953343d48ul)) return false;
             return true;
         }
@@ -378,7 +378,7 @@ namespace Blockhome
                     if (!FiringGroupCollectTyped(v.MissileGroups[i_1], ref ids)) return false;
                 }
             }
-            if (!float.IsFinite(v.ReloadSeconds)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.ReloadSeconds));
             if (BitConverter.SingleToUInt32Bits(v.ReloadSeconds) != 0x00000000u && !ids.Add(0xad9b64728ea52486ul)) return false;
             if (v.GunnerId != 0 && !ids.Add(0xbd9be53180256e02ul)) return false;
             return true;

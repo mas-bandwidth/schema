@@ -706,7 +706,7 @@ namespace Blockdemo
             if (v.CameraId != 0 && !ids.Add(0x9f61700f084ab92eul)) return false;
             if (v.CameraType != 0 && !ids.Add(0x336d3dc7fffd0c9bul)) return false;
             if (v.TargetObjectId != 0 && !ids.Add(0x6a0c6a156952b9c2ul)) return false;
-            if (!float.IsFinite(v.Fov)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Fov));
             if (BitConverter.SingleToUInt32Bits(v.Fov) != 0x00000000u && !ids.Add(0xdcb27c18fed9e15cul)) return false;
             return true;
         }
@@ -841,7 +841,7 @@ namespace Blockdemo
             if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
             if (v.ObjectId != 0 && !ids.Add(0x0bdab42c07f19812ul)) return false;
             if (v.TargetObjectId != 0 && !ids.Add(0x6a0c6a156952b9c2ul)) return false;
-            if (!float.IsFinite(v.Thrust)) return false;
+            System.Diagnostics.Debug.Assert(float.IsFinite(v.Thrust));
             if (BitConverter.SingleToUInt32Bits(v.Thrust) != 0x00000000u && !ids.Add(0xcfd587cb3100cd73ul)) return false;
             if (v.ObjectSequence != 0 && !ids.Add(0x5de0015285763c46ul)) return false;
             if (!TableWire.CollectField(v, fields[7], ref ids)) return false;
@@ -1401,7 +1401,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderStaticPropTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.Scale)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Scale));
             if (BitConverter.DoubleToUInt64Bits(v.Scale) != 0x0000000000000000ul && !ids.Add(0x6aacb9fbb71a1d91ul)) return false;
             if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
             if (v.StaticPropId != 0 && !ids.Add(0xd23da7ab574b95c3ul)) return false;
@@ -1532,7 +1532,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderCosmeticPropTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.Scale)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Scale));
             if (BitConverter.DoubleToUInt64Bits(v.Scale) != 0x0000000000000000ul && !ids.Add(0x6aacb9fbb71a1d91ul)) return false;
             if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
             if (v.CosmeticPropId != 0 && !ids.Add(0xb66e4449e56b2e26ul)) return false;
@@ -1668,7 +1668,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderLaserTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.T)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.T));
             if (BitConverter.DoubleToUInt64Bits(v.T) != 0x0000000000000000ul && !ids.Add(0xaf63e94c860202a3ul)) return false;
             if (v.LaserId != 0 && !ids.Add(0xcd29c05f390294ecul)) return false;
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
@@ -1791,7 +1791,7 @@ namespace Blockdemo
             TableFieldInfo[] fields = RenderExplosionTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
-            if (!double.IsFinite(v.T)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.T));
             if (BitConverter.DoubleToUInt64Bits(v.T) != 0x0000000000000000ul && !ids.Add(0xaf63e94c860202a3ul)) return false;
             if (v.ExplosionId != 0 && !ids.Add(0xfd7f3fa0b16ed778ul)) return false;
             if (v.ParentObjectId != 0 && !ids.Add(0x0bee7b3cb4046c93ul)) return false;
@@ -1914,11 +1914,11 @@ namespace Blockdemo
 
         public static bool RenderVector3CollectTyped(RenderVector3 v, ref TableWire.Ids ids)
         {
-            if (!double.IsFinite(v.X)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.X));
             if (BitConverter.DoubleToUInt64Bits(v.X) != 0x0000000000000000ul && !ids.Add(0xaf63f54c86021707ul)) return false;
-            if (!double.IsFinite(v.Y)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Y));
             if (BitConverter.DoubleToUInt64Bits(v.Y) != 0x0000000000000000ul && !ids.Add(0xaf63f44c86021554ul)) return false;
-            if (!double.IsFinite(v.Z)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Z));
             if (BitConverter.DoubleToUInt64Bits(v.Z) != 0x0000000000000000ul && !ids.Add(0xaf63f74c86021a6dul)) return false;
             return true;
         }
@@ -2024,13 +2024,13 @@ namespace Blockdemo
 
         public static bool RenderQuaternionCollectTyped(RenderQuaternion v, ref TableWire.Ids ids)
         {
-            if (!double.IsFinite(v.X)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.X));
             if (BitConverter.DoubleToUInt64Bits(v.X) != 0x0000000000000000ul && !ids.Add(0xaf63f54c86021707ul)) return false;
-            if (!double.IsFinite(v.Y)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Y));
             if (BitConverter.DoubleToUInt64Bits(v.Y) != 0x0000000000000000ul && !ids.Add(0xaf63f44c86021554ul)) return false;
-            if (!double.IsFinite(v.Z)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.Z));
             if (BitConverter.DoubleToUInt64Bits(v.Z) != 0x0000000000000000ul && !ids.Add(0xaf63f74c86021a6dul)) return false;
-            if (!double.IsFinite(v.W)) return false;
+            System.Diagnostics.Debug.Assert(double.IsFinite(v.W));
             if (BitConverter.DoubleToUInt64Bits(v.W) != 0x3ff0000000000000ul && !ids.Add(0xaf63ea4c86020456ul)) return false;
             return true;
         }
@@ -3732,7 +3732,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCameraFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderCameraFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderCameraFixedFiniteBody(values[k]) == null); }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderCameraFixedHash);
@@ -4464,7 +4464,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderShipFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderShipFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderShipFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderShipFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -5157,7 +5157,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderTurretFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderTurretFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderTurretFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderTurretFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -5862,7 +5862,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderMissileFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderMissileFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderMissileFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderMissileFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -6570,7 +6570,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderDynamicPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderDynamicPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderDynamicPropFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderDynamicPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -7279,7 +7279,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderStaticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderStaticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderStaticPropFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderStaticPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -7995,7 +7995,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderCosmeticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderCosmeticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -8686,7 +8686,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderLaserFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderLaserFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderLaserFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderLaserFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)
@@ -9392,7 +9392,7 @@ namespace Blockdemo
             System.Diagnostics.Debug.Assert(values.Length > 0, "a fixed-form file holds at least one record");
             long need = RenderExplosionFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
-            for (int k = 0; k < values.Length; ++k) { if (RenderExplosionFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderExplosionFixedFiniteBody(values[k]) == null); }
             for (int k = 0; k < values.Length; ++k)
             {
                 System.Diagnostics.Debug.Assert(RenderExplosionFixedWriteAdmits(values[k])); // the write contract, debug only (docs/SPEC.md §5.1)

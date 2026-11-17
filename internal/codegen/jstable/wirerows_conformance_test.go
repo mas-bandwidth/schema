@@ -53,7 +53,7 @@ func TestWireRowsConformanceJavaScript(t *testing.T) {
 	// must be named too. A check that passes both plantings guards nothing.
 	t.Run("reversed_witness", func(t *testing.T) {
 		t.Parallel()
-		for _, dropped := range []string{"streamdemo/Feed", "listdemo/Save", "tbla2/Root", "backenddemo/LoginRequest"} {
+		for _, dropped := range []string{"streamdemo/Feed", "listdemo/Save", "tbla2/Root", "backenddemo/LoginRequest", "messagedemo/ToolEnvelope"} {
 			if !slices.Contains(driver, dropped) {
 				t.Fatalf("the witness pair %s is not in the driver's wireRows table", dropped)
 			}

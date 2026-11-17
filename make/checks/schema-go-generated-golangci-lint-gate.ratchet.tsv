@@ -16,6 +16,6 @@ example	errcheck	-	402
 example	gosec	G115	47
 ludicrous	errcheck	-	58
 ludicrous	gosec	G115	1
-tables	errcheck	-	130
-tables	gosec	G103	4773
-tables	gosec	G115	7156
+tables	errcheck	-	110
+tables	gosec	G103	4613
+tables	gosec	G115	6727

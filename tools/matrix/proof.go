@@ -53,6 +53,7 @@ const (
 	conformanceManifestPath = "testdata/conformance/tables/MANIFEST.txt"
 	portingPath             = "docs/PORTING.md"
 	controlsPath            = "make/negative-controls.json"
+	controlsEntriesDir      = "make/negative-controls.d"
 	rulingsPath             = "docs/rulings.json"
 	proofPath               = "test/proof/proof.json"
 	inProgressPath          = "test/proof/in-progress.json"
@@ -504,12 +505,40 @@ func LoadControls(root string) (Controls, error) {
 		return nil, fmt.Errorf("%s: %w", controlsPath, err)
 	}
 	out := Controls{}
+	jobs := map[string]string{}
 	for _, g := range m.Groups {
 		job := "CI full / negative controls (" + g.Name + ")"
 		if g.When == "nightly" {
 			job = "Certify / negative controls, nightly (" + g.Name + ")"
 		}
+		jobs[g.Name] = job
 		for _, t := range g.Targets {
+			out[t] = job
+		}
+	}
+	// A control added by its own file in make/negative-controls.d joins the
+	// group it names, as tools/negativecontrols reads the plan.
+	files, err := filepath.Glob(filepath.Join(root, controlsEntriesDir, "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		body, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		var e struct {
+			Group   string   `json:"group"`
+			Targets []string `json:"targets"`
+		}
+		if err := json.Unmarshal(body, &e); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		job, ok := jobs[e.Group]
+		if !ok {
+			return nil, fmt.Errorf("%s: no group named %q in %s", file, e.Group, controlsPath)
+		}
+		for _, t := range e.Targets {
 			out[t] = job
 		}
 	}

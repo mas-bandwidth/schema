@@ -97,6 +97,9 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 	canonicalFor := func(row nonCanonicalRow) string {
 		switch row.form {
 		case "variable":
+			if row.spelling == "field-at-default" || row.spelling == "explicit-null-pointer" || row.spelling == "union-arm-zero" {
+				return filepath.Join("canonical", row.file)
+			}
 			return "variable-canonical.bin"
 		case "message":
 			if strings.HasPrefix(row.file, "../message-one-encoding/") {
@@ -126,8 +129,14 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 				t.Errorf("%s: canonical save: %v", row.file, err)
 				continue
 			}
-			if !bytes.Equal(saved, data) {
-				t.Errorf("%s: canonical save is not the same bytes", row.file)
+			// A readable file may use a lawful older declaration order.
+			// Its value must still save to the canonical counterpart exactly.
+			canonical, err := os.ReadFile(filepath.Join(vector, canonicalFor(row)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(saved, canonical) {
+				t.Errorf("%s: save does not match its canonical value counterpart", row.file)
 			}
 		case row.form == "message" && row.verdict == "read":
 			announcement, err := os.ReadFile(filepath.Join(vector, "announcement.bin"))
@@ -195,22 +204,32 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 		if b, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generator: %v\n%s", err, b)
 		}
-		for _, e := range entries {
+		if err := filepath.WalkDir(vector, func(path string, e os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
 			if e.IsDir() {
-				continue
+				return nil
 			}
-			committed, err := os.ReadFile(filepath.Join(vector, e.Name()))
+			name, err := filepath.Rel(vector, path)
 			if err != nil {
-				t.Fatal(err)
+				return err
 			}
-			regenerated, err := os.ReadFile(filepath.Join(out, e.Name()))
+			committed, err := os.ReadFile(path)
 			if err != nil {
-				t.Errorf("the generator wrote no %s: %v", e.Name(), err)
-				continue
+				return err
+			}
+			regenerated, err := os.ReadFile(filepath.Join(out, name))
+			if err != nil {
+				t.Errorf("the generator wrote no %s: %v", name, err)
+				return nil
 			}
 			if !bytes.Equal(committed, regenerated) {
-				t.Errorf("the generator did not reproduce %s:\n committed   %x\n regenerated %x", e.Name(), committed, regenerated)
+				t.Errorf("the generator did not reproduce %s", name)
 			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
 		}
 	})
 }
