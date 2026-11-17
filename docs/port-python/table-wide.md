@@ -33,7 +33,11 @@
   forms. The report rows in the same units (`scalars_full_as_2`,
   `scalars_edges_as_2`, `field_scalar_widen` and the previous-form rows) are
   the widening cell's, and stay green there. The control plants the `uint128`
-  width in `kind_int.py` (the form-1 instance goes red) and the fixed form's
-  128-bit read width in `fixedform.py` (the form-3 instances go red), each in a
-  copy of the emitted runtime. The wide kinds add no hot path of their own:
+  width in `kind_int.py` (`widelist_wide`, the form-1 instance, goes red) and
+  the fixed form's 128-bit read width in `fixedform.py` (`scalars_full` and
+  `scalars_edges` go red), each in a copy of the emitted runtime, and requires
+  every row it names red. `scalars_default` is not guarded by the second
+  control: every 128-bit value in it (`reach`, `mass`, `flux` and `entity_id`
+  zero, `energy` its default -250) fits in 64 bits, so the planted 8-byte read
+  gives the same value. The wide kinds add no hot path of their own:
   they ride the integer codec the table core's bench already measures.

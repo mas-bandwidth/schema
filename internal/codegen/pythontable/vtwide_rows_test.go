@@ -14,8 +14,9 @@ package pythontable
 // list here.
 //
 // TestPythonVtWideRowsNegativeControl plants, one at a time, a fault in a COPY
-// of the emitted runtime: the 128-bit integer width (the variable instance
-// goes red) and the fixed form's signed read (the form-3 instances go red).
+// of the emitted runtime: the uint128 width (the variable instance goes red)
+// and the fixed form's 128-bit read width (scalars_full and scalars_edges go
+// red; see the control for why scalars_default is not guarded by it).
 
 import (
 	"fmt"
@@ -231,7 +232,11 @@ func TestPythonVtWideRows(t *testing.T) {
 
 // TestPythonVtWideRowsNegativeControl plants, one at a time, a fault in a copy
 // of the emitted runtime: the uint128 width (the form-1 instance goes red) and
-// the fixed form's 128-bit read width (the form-3 instances go red).
+// the fixed form's 128-bit read width (scalars_full and scalars_edges go red).
+// scalars_default is not guarded by the second control: every 128-bit value in
+// it (reach, mass, flux and entity_id 0, energy its default -250) fits in 64
+// bits, so the planted 8-byte read gives the same value and the row stays
+// green. Each control requires every row it names red.
 //
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtWideRowsNegativeControl(t *testing.T) {
@@ -240,26 +245,35 @@ func TestPythonVtWideRowsNegativeControl(t *testing.T) {
 	for _, ctl := range []struct {
 		name   string
 		mutate func(*testing.T, map[string][]byte)
-		row    string
+		rows   []string
 	}{
 		{"uint128-width", func(t *testing.T, files map[string][]byte) {
 			wideRowEdit(t, files, "_schema/kind_int.py", "    19: 16,", "    19: 8,")
-		}, "widelist_wide"},
+		}, []string{"widelist_wide"}},
 		{"fixed-wide-width", func(t *testing.T, files map[string][]byte) {
 			wideRowEdit(t, files, "_schema/fixedform.py", `return int.from_bytes(data[at:at + width], "little", signed=signed)`,
 				`return int.from_bytes(data[at:at + (8 if width == 16 else width)], "little", signed=signed)`)
-		}, "scalars_edges"},
+		}, []string{"scalars_full", "scalars_edges"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
 			repo := filepath.Join("..", "..", "..")
 			units, rows := wideRowManifest(t, repo)
 			fails, _ := wideRowFailures(t, rows, units, ctl.mutate)
-			joined := strings.Join(fails, "\n")
-			if !strings.Contains(joined, ctl.row) {
-				t.Fatalf("%s: NEGATIVE CONTROL FAILED: %s stayed green (findings: %s)", ctl.name, ctl.row, joined)
+			for _, row := range ctl.rows {
+				red := false
+				for _, f := range fails {
+					if strings.HasPrefix(f, row+" ") {
+						red = true
+					}
+				}
+				if !red {
+					t.Fatalf("%s: NEGATIVE CONTROL FAILED: %s stayed green (findings: %s)", ctl.name, row, strings.Join(fails, "\n"))
+				}
 			}
-			t.Logf("%s: %d findings, first %s", ctl.name, len(fails), fails[0])
+			for _, f := range fails {
+				t.Logf("%s: %s", ctl.name, f)
+			}
 		})
 	}
 }

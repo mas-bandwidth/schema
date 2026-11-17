@@ -6,9 +6,9 @@
 # TestPythonVtWideRows holds every manifest instance whose unit carries a wide
 # scalar (fixed(I, F), ufixed(I, F), int128, uint128) to the one read on
 # read-then-write under both pinned interpreters: a fixed-declared root as form
-# 3, a variable root as form 1. The negative control plants a wide width and
-# the fixed form's signed read in a COPY of the emitted runtime and requires
-# its rows red by name; it is registered in
+# 3, a variable root as form 1. The negative control plants the uint128 width
+# and the fixed form's 128-bit read width in a COPY of the emitted runtime and
+# requires its rows red by name; it is registered in
 # make/negative-controls.d/python-vt-wide-rows-negative-control.json.
 PYTHON_CI_SUPPORT_GROUPS += python-vt-wide-rows python-vt-wide-rows-negative-control
 
