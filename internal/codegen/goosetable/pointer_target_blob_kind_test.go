@@ -10,11 +10,17 @@ package goosetable_test
 // not declare, is skipped as evolution and read (counted unknown), and a
 // record no pointer reaches is damage.
 //
-// The vectors are testdata/wire/pointer-target-type/blobkind; every row runs
-// through the plain and the retaining read, and a read row's report is held to
-// the manifest's unknown count. The same program saves a Text and a Bin value,
-// with the blob set and with it null, plain and retaining, so the leg's own
-// writer is held to never emitting a blob record no pointer reaches.
+// The vectors are testdata/wire/pointer-target-type/blobkind and every row of
+// testdata/conformance/feature-witnesses/pointer-targets/cases.json (whose
+// rows "table outside root closure", "bytes outside root closure" and "string
+// outside root closure" are refusals under that ruling), with the reference
+// engine as the oracle for the witness rows. Every row runs through the plain
+// and the retaining read, and a read row's report is held to its unknown
+// count. Only the verdict is compared; a refusal's reason is logged, never
+// compared (docs/rulings.json refusal-verdict-only). The same program saves a
+// Text and a Bin value, with the blob null, empty and set, plain and
+// retaining, so the leg's own writer is held to never emitting a blob record
+// no pointer reaches.
 //
 // TestGoosePointerTargetBlobKindRefused also carries the negative control: a
 // copy of the runtime with the old root-closure rule planted ("can name" a
@@ -23,6 +29,8 @@ package goosetable_test
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,11 +50,13 @@ import (
 type blobKindCase struct {
 	name, unit, root, file, verdict string
 	unknown                         int // -1 when the row does not pin one
+	wire                            []byte
 }
 
 func blobKindCases(t *testing.T) []blobKindCase {
 	t.Helper()
-	path := filepath.Join(root, "testdata", "wire", "pointer-target-type", "blobkind", "MANIFEST.tsv")
+	dir := filepath.Join(root, "testdata", "wire", "pointer-target-type", "blobkind")
+	path := filepath.Join(dir, "MANIFEST.tsv")
 	mf, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("blob-kind manifest: %v", err)
@@ -74,6 +84,9 @@ func blobKindCases(t *testing.T) []blobKindCase {
 			}
 			row.unknown = n
 		}
+		if row.wire, err = os.ReadFile(filepath.Join(dir, row.file)); err != nil {
+			t.Fatalf("%s: %v", row.file, err)
+		}
 		rows = append(rows, row)
 	}
 	if err := sc.Err(); err != nil {
@@ -85,10 +98,81 @@ func blobKindCases(t *testing.T) []blobKindCase {
 	return rows
 }
 
+// pointerWitnessUnit is the feature witnesses' unit, as blobKindUnit loads it.
+const pointerWitnessUnit = "testdata/conformance/feature-witnesses/pointer-targets"
+
+// pointerWitnessRefused are the rows the blob-target ruling flipped to
+// refusals; the engine must refuse each, or the gate is not testing them.
+var pointerWitnessRefused = []string{"table outside root closure", "bytes outside root closure", "string outside root closure"}
+
+// pointerWitnessCases are the feature-witness rows as cases the probe reads:
+// each row's input saved by the engine at its writer root, and the verdict
+// and unknown count the engine's strict and retaining reads give at its
+// reader root (they must agree with each other and with the row's counters).
+func pointerWitnessCases(t *testing.T, m *tabletext.Model) []blobKindCase {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, pointerWitnessUnit, "cases.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		Name, Writer, Reader string
+		Input                json.RawMessage
+		KindMismatch         int `json:"kind_mismatch"`
+		Unknown              int
+	}
+	if err := json.Unmarshal(data, &rows); err != nil {
+		t.Fatal(err)
+	}
+	refused := map[string]bool{}
+	var out []blobKindCase
+	for i, row := range rows {
+		writer, reader := m.Lookup(row.Writer), m.Lookup(row.Reader)
+		if writer == nil || reader == nil {
+			t.Fatalf("%s: no table %q or %q", row.Name, row.Writer, row.Reader)
+		}
+		v := m.New(writer)
+		var r tabletext.Report
+		if !m.Read(v, row.Input, &r) || !r.Silent() {
+			t.Fatalf("%s: the writer's input does not read: %+v", row.Name, r)
+		}
+		wire, err := tablewire.Encode(m, v)
+		if err != nil {
+			t.Fatalf("%s: Encode: %v", row.Name, err)
+		}
+		var strict, retaining tabletext.Report
+		sok, _ := tablewire.Decode(m, m.New(reader), wire, &strict)
+		retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
+		rok, _ := tablewire.DecodeRetain(m, m.New(reader), wire, &retain, &retaining)
+		sRefused, rRefused := !sok || strict.Refused, !rok || retaining.Refused
+		if sRefused != rRefused || (!sRefused && strict.Unknown != retaining.Unknown) {
+			t.Fatalf("%s: the engine's strict (%+v) and retaining (%+v) reads disagree", row.Name, strict, retaining)
+		}
+		if sRefused != (row.KindMismatch > 0) || (!sRefused && strict.Unknown != row.Unknown) {
+			t.Fatalf("%s: the engine answers %+v, cases.json says kind_mismatch %d unknown %d", row.Name, strict, row.KindMismatch, row.Unknown)
+		}
+		c := blobKindCase{
+			name: fmt.Sprintf("witness-%d", i+1), unit: pointerWitnessUnit, root: row.Reader,
+			file: fmt.Sprintf("witness-%d.bin", i+1), verdict: "read", unknown: strict.Unknown, wire: wire,
+		}
+		if sRefused {
+			c.verdict, c.unknown = "refused", -1
+			refused[row.Name] = true
+		}
+		out = append(out, c)
+	}
+	for _, name := range pointerWitnessRefused {
+		if !refused[name] {
+			t.Fatalf("cases.json row %q is not a refusal the engine gives", name)
+		}
+	}
+	return out
+}
+
 // blobKindProbe is the program's per-row body: the plain and retaining reads
-// of one wire, each printing its verdict, unknown count and whether the root's
-// one pointer field is null, and the plain and retaining saves of a wire,
-// each printing its bytes.
+// of one wire, each printing its verdict and either the refusal's reason
+// (logged, never compared) or its unknown count and whether the root's first
+// field is null.
 const blobKindProbe = `
 fn blob_kind_case(name: const u8[:], file: const u8[:], root_name: const u8[:]) {
     let data = input(file);
@@ -101,7 +185,7 @@ fn blob_kind_case(name: const u8[:], file: const u8[:], root_name: const u8[:]) 
         let is_null = vals[slot].bits.lo == 0 && vals[slot].bits.hi == 0 && vals[slot].state != schema_rt::ValPresent;
         write_stdout(str(name, " plain read ", report.unknown, " ", if is_null { "null" } else { "present" }, "\n"));
     } else {
-        write_stdout(str(name, " plain refused\n"));
+        write_stdout(str(name, " plain refused ", schema_rt::load_refusal_name(schema_rt::load_error(report, root)), "_\n"));
     }
     var rvals: schema_rt::LoadVal[>..] = [];
     var rnodes: schema_rt::LoadNode[>..] = [];
@@ -116,7 +200,7 @@ fn blob_kind_case(name: const u8[:], file: const u8[:], root_name: const u8[:]) 
         let is_null = rvals[slot].bits.lo == 0 && rvals[slot].bits.hi == 0 && rvals[slot].state != schema_rt::ValPresent;
         write_stdout(str(name, " retain read ", rreport.unknown, " ", if is_null { "null" } else { "present" }, "\n"));
     } else {
-        write_stdout(str(name, " retain refused\n"));
+        write_stdout(str(name, " retain refused ", schema_rt::load_refusal_name(schema_rt::load_error(rreport, rroot)), "_\n"));
     }
 }
 `
@@ -159,9 +243,9 @@ fn blob_kind_save(name: const u8[:], file: const u8[:], root_name: const u8[:]) 
 
 // blobKindAnswer is one read entry's answer for one vector.
 type blobKindAnswer struct {
-	verdict string
-	unknown int
-	null    bool
+	verdict, reason string
+	unknown         int
+	null            bool
 }
 
 // blobKindSave is one value the leg's own writer must save: a root, a name,
@@ -189,7 +273,6 @@ func blobKindUnit(t *testing.T, unit string) *ir.Unit {
 func blobKindRun(t *testing.T, u *ir.Unit, rows []blobKindCase, saves []blobKindSave, override map[string][]byte) (map[string]blobKindAnswer, map[string][]byte) {
 	t.Helper()
 	files := probeFiles(t, u, override)
-	dir := filepath.Join(root, "testdata", "wire", "pointer-target-type", "blobkind")
 	var main strings.Builder
 	main.WriteString(probePrelude)
 	main.WriteString(blobKindProbe)
@@ -198,11 +281,7 @@ func blobKindRun(t *testing.T, u *ir.Unit, rows []blobKindCase, saves []blobKind
 	}
 	main.WriteString("\nfn main() {\n")
 	for _, row := range rows {
-		wire, err := os.ReadFile(filepath.Join(dir, row.file))
-		if err != nil {
-			t.Fatalf("%s: %v", row.file, err)
-		}
-		files[row.file] = wire
+		files[row.file] = row.wire
 		fmt.Fprintf(&main, "    blob_kind_case(%q, %q, %q);\n", row.name, row.file, row.root)
 	}
 	for _, s := range saves {
@@ -222,8 +301,8 @@ func parseBlobKind(t *testing.T, out []byte) (map[string]blobKindAnswer, map[str
 	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		f := strings.Fields(line)
 		switch {
-		case len(f) == 3 && (f[1] == "plain" || f[1] == "retain") && f[2] == "refused":
-			reads[f[0]+" "+f[1]] = blobKindAnswer{verdict: "refused"}
+		case len(f) == 4 && (f[1] == "plain" || f[1] == "retain") && f[2] == "refused" && strings.HasSuffix(f[3], "_"):
+			reads[f[0]+" "+f[1]] = blobKindAnswer{verdict: "refused", reason: strings.TrimSuffix(f[3], "_")}
 		case len(f) == 5 && (f[1] == "plain" || f[1] == "retain") && f[2] == "read":
 			n, err := strconv.Atoi(f[3])
 			if err != nil {
@@ -241,6 +320,9 @@ func parseBlobKind(t *testing.T, out []byte) (map[string]blobKindAnswer, map[str
 	return reads, saves
 }
 
+// blobKindProblems holds each row's answers to its verdict (and a read row to
+// its unknown count). A refusal's reason is not compared: only the verdict
+// is held across legs (docs/rulings.json refusal-verdict-only).
 func blobKindProblems(rows []blobKindCase, answers map[string]blobKindAnswer) []string {
 	var problems []string
 	for _, row := range rows {
@@ -268,28 +350,30 @@ func blobKindProblems(rows []blobKindCase, answers map[string]blobKindAnswer) []
 	return problems
 }
 
-// blobKindWriters is the engine's own save of each root, the blob set and
-// null: the values the leg's writer must save without an unreachable record.
+// blobKindWriters is the engine's own save of each root, the blob null, empty
+// and set: the values the leg's writer must save without an unreachable
+// record.
 func blobKindWriters(t *testing.T, m *tabletext.Model) []blobKindSave {
 	t.Helper()
 	var out []blobKindSave
 	for _, c := range []struct{ root, field string }{{"Text", "body"}, {"Bin", "data"}} {
-		for _, data := range [][]byte{nil, []byte("hello")} {
+		for _, v := range []struct {
+			tag  string
+			data []byte
+		}{{"null", nil}, {"empty", []byte{}}, {"set", []byte("hello")}} {
 			inst := m.New(m.Lookup(c.root))
-			tag := "null"
-			if data != nil {
+			if v.data != nil {
 				fv, ok := inst.FieldByKey(c.field)
 				if !ok {
 					t.Fatalf("%s has no field %s", c.root, c.field)
 				}
-				fv.Cell.Blob = &tabletext.Blob{Data: data}
-				tag = "set"
+				fv.Cell.Blob = &tabletext.Blob{Data: v.data}
 			}
 			wire, err := tablewire.Encode(m, inst)
 			if err != nil {
-				t.Fatalf("%s.%s=%q: Encode: %v", c.root, c.field, data, err)
+				t.Fatalf("%s.%s=%q: Encode: %v", c.root, c.field, v.data, err)
 			}
-			out = append(out, blobKindSave{name: strings.ToLower(c.root) + "-" + tag + ".bin", root: c.root, wire: wire})
+			out = append(out, blobKindSave{name: strings.ToLower(c.root) + "-" + v.tag + ".bin", root: c.root, wire: wire})
 		}
 	}
 	return out
@@ -341,6 +425,19 @@ func blobKindOldRule(t *testing.T) []byte {
 	return []byte(text)
 }
 
+// logBlobKindReasons logs each refusal's reason, for the reader; the gate
+// compares verdicts only.
+func logBlobKindReasons(t *testing.T, rows []blobKindCase, answers map[string]blobKindAnswer) {
+	t.Helper()
+	for _, row := range rows {
+		for _, entry := range []string{"plain", "retain"} {
+			if a, ok := answers[row.name+" "+entry]; ok && a.verdict == "refused" {
+				t.Logf("%s %s: refused, reason %q", row.name, entry, a.reason)
+			}
+		}
+	}
+}
+
 func TestGoosePointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Goose toolchain (it builds and runs the generated reader)")
@@ -356,6 +453,7 @@ func TestGoosePointerTargetBlobKindRefused(t *testing.T) {
 		m := tabletext.NewModel(u)
 		saves := blobKindWriters(t, m)
 		answers, saved := blobKindRun(t, u, unitRows, saves, nil)
+		logBlobKindReasons(t, unitRows, answers)
 		for _, p := range blobKindProblems(unitRows, answers) {
 			t.Error(p)
 		}
@@ -371,7 +469,29 @@ func TestGoosePointerTargetBlobKindRefused(t *testing.T) {
 				}
 			}
 		}
+		// The probe must really write the blob: a save with the blob empty or
+		// set differs from the save with it null, on both save paths.
+		for _, r := range []string{"text", "bin"} {
+			for _, entry := range []string{"save-plain", "save-retain"} {
+				null := saved[r+"-null.bin "+entry]
+				for _, tag := range []string{"empty", "set"} {
+					if got, ok := saved[r+"-"+tag+".bin "+entry]; ok && bytes.Equal(got, null) {
+						t.Errorf("%s-%s %s: the save is the null save's bytes, so the blob was not written", r, tag, entry)
+					}
+				}
+			}
+		}
 	}
+
+	t.Run("feature witnesses, the engine as oracle", func(t *testing.T) {
+		u := blobKindUnit(t, pointerWitnessUnit)
+		witness := pointerWitnessCases(t, tabletext.NewModel(u))
+		answers, _ := blobKindRun(t, u, witness, nil, nil)
+		logBlobKindReasons(t, witness, answers)
+		for _, p := range blobKindProblems(witness, answers) {
+			t.Error(p)
+		}
+	})
 
 	t.Run("negative control: the old root-closure rule reads text-names-bytes", func(t *testing.T) {
 		const unit = "test/pointer-target-type/blobkind/reader"
