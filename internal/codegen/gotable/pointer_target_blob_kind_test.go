@@ -86,6 +86,29 @@ func TestGoPointerTargetBlobKindRefused(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on text-names-bytes\n%s", out)
 		}
 	})
+	t.Run("negative control: an unchecked target type goes red on the three closure witness rows", func(t *testing.T) {
+		t.Parallel()
+		out, err := runGeneratedUnit(t, witnessUnit, blobKindProbe(witnessUnit.Package, witnesses), plantGenerated(t, "the target-type check removed",
+			`if e.TypeID!=target{r.Refuse(TableRefuseWireDamaged,"");return}`, `if false{return}`), "-v")
+		if err == nil {
+			t.Fatalf("NEGATIVE CONTROL FAILED: an unchecked target type left the gate green\n%s", out)
+		}
+		for _, row := range witnesses {
+			if !bytes.Contains(out, []byte("--- FAIL: TestBlobKind/"+row.name)) {
+				t.Errorf("NEGATIVE CONTROL FAILED: the gate went red, but not on %s\n%s", row.name, out)
+			}
+		}
+	})
+	t.Run("negative control: an accepted orphan goes red on text-orphan-bytes", func(t *testing.T) {
+		t.Parallel()
+		out, err := runGeneratedUnit(t, readerUnit, blobKindProbe(readerUnit.Package, rows), plantOrphanBlobAccepted(t), "-v")
+		if err == nil {
+			t.Fatalf("NEGATIVE CONTROL FAILED: an accepted orphan blob left the gate green\n%s", out)
+		}
+		if !bytes.Contains(out, []byte("--- FAIL: TestBlobKind/text-orphan-bytes")) {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on text-orphan-bytes\n%s", out)
+		}
+	})
 	// A CONFORMING WRITER NEVER EMITS A BLOB RECORD NO POINTER REACHES: the
 	// generated save and retaining save of each root, the blob null, empty
 	// and set, read back through the engine accepted with nothing unknown.
@@ -240,8 +263,11 @@ func blobKindWitnessRows(t *testing.T, root string, m *tabletext.Model) []blobKi
 }
 
 // blobKindProbe is a generated unit test: each row, as a subtest named after
-// it, through every read entry: the two measures, the plain load, the
-// retaining load, the builder load and the strict read.
+// it, through every read entry: the plain load, the retaining load, the
+// builder load and the strict read, each refusing wire_damaged or reading
+// with the pinned unknown count. The two measures size a read row; they are
+// no read, and a record no pointer reaches is a graph condition the load's
+// walk owes, so a refused row's measure is not held.
 func blobKindProbe(pkg string, rows []blobKindRow) string {
 	var s strings.Builder
 	fmt.Fprintf(&s, "package %s\nimport(\"testing\";\"unsafe\")\n", pkg)
@@ -274,10 +300,10 @@ func blobKindProbe(pkg string, rows []blobKindRow) string {
   if v!=nil||!r.Refused(){t.Fatalf("%%s: a refused row read: %%+v",where,r)}
   if r.Err()!=TableRefuseWireDamaged{t.Fatalf("%%s: refused %%v, want wire_damaged",where,r.Err())}
  }
- if n,err:=%[1]sLoadMeasureReason(wire);read {
-  if err!=nil||n<0{t.Fatalf("measure reason refused a read row: %%d %%v",n,err)}
- } else if err==nil||n>=0{t.Fatalf("measure reason read a refused row: %%d %%v",n,err)}
- if n:=%[1]sLoadMeasure(wire);read&&n<0{t.Fatalf("measure refused a read row")}else if !read&&n>=0{t.Fatalf("measure read a refused row: %%d",n)}
+ if read {
+  if n,err:=%[1]sLoadMeasureReason(wire);err!=nil||n<0{t.Fatalf("measure reason refused a read row: %%d %%v",n,err)}
+  if n:=%[1]sLoadMeasure(wire);n<0{t.Fatalf("measure refused a read row")}
+ }
  var r TableReport
  check("load",%[1]sLoad(blobKindAligned(1<<20),wire,&r),&r)
  store:=TableRetain{Bytes:make([]byte,1<<20),Ids:make([]TableRetainID,1024)}
@@ -377,9 +403,32 @@ func blobKindCleanReadBack(m *tabletext.Model, root string, wire []byte) []strin
 }
 
 // plantRootClosureBlobRule edits a copy of the generated reader so a blob
-// record the root's closure lacks is one the reader cannot name.
+// record the root's closure lacks is one the reader cannot name: its directory
+// entry forgets the record's type id, as an unnamed record's does, so a
+// declared slot naming it reads null and the record counts unknown.
 func plantRootClosureBlobRule(t *testing.T) func(map[string][]byte) {
+	return plantGenerated(t, "the root-closure blob rule",
+		"{directory[k]=TableNodeDirEntry{tableNodeBlobAway,id}}", "{directory[k].TypeID=0}")
+}
+
+// plantOrphanBlobAccepted edits a copy of the generated reader so a blob
+// record no pointer names passes the load's walk.
+func plantOrphanBlobAccepted(t *testing.T) func(map[string][]byte) {
+	return plantGenerated(t, "the orphan blob refusal removed",
+		"if e.Offset&tableNodeBlobSeen==0{return TableRefuseWireDamaged}", "if false{return TableRefuseWireDamaged}")
+}
+
+func plantGenerated(t *testing.T, what, from, to string) func(map[string][]byte) {
 	return func(files map[string][]byte) {
-		t.Fatal("negative control: no plant written yet")
+		patched := 0
+		for name, data := range files {
+			if n := bytes.Count(data, []byte(from)); n > 0 {
+				files[name] = bytes.ReplaceAll(data, []byte(from), []byte(to))
+				patched += n
+			}
+		}
+		if patched == 0 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: %s patched nothing", what)
+		}
 	}
 }
