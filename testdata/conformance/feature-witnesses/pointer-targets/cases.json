@@ -175,8 +175,8 @@
     "expected": {
       "left": null
     },
-    "kind_mismatch": 0,
-    "unknown": 1
+    "kind_mismatch": 1,
+    "unknown": 0
   },
   {
     "name": "bytes outside root closure",
@@ -188,8 +188,8 @@
     "expected": {
       "payload": null
     },
-    "kind_mismatch": 0,
-    "unknown": 1
+    "kind_mismatch": 1,
+    "unknown": 0
   },
   {
     "name": "string outside root closure",
@@ -201,7 +201,7 @@
     "expected": {
       "text": null
     },
-    "kind_mismatch": 0,
-    "unknown": 1
+    "kind_mismatch": 1,
+    "unknown": 0
   }
 ]

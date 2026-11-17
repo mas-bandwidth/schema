@@ -126,11 +126,15 @@ func decodeValue(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids 
 		}
 	}
 
-	// THE TYPE IDS THIS ROOT CAN PLACE, which is the set §3.1 means by "a type
-	// id this reader can name": a node record is a POINTER's pointee, so a
-	// table no pointer below this root targets is a node nothing here can
-	// name. The two reserved blob ids sit beside them (§2.5), each placeable
-	// only under a root a pointer of its kind sits below.
+	// THE TYPE IDS THIS ROOT CAN PLACE, which is the set that commands
+	// storage: a node record is a POINTER's pointee, so a table no pointer
+	// below this root targets has no slot here to fill. The two reserved blob
+	// ids sit beside them (§2.5), each placeable only under a root a pointer of
+	// its kind sits below. A record this root cannot place is still one the
+	// reader can NAME when its type is declared or is a reserved blob id
+	// (below): a declared slot naming it at the wrong type refuses, and only a
+	// record reached from fields this reader does not declare is counted
+	// unknown (§3.1; docs/rulings.json blob-target-outside-closure-refused).
 	byTypeId := map[uint64]*ir.Struct{}
 	for _, sd := range ir.PointerReachable(inst.Def) {
 		if def := m.Lookup(sd.Name); def != nil {
@@ -168,7 +172,7 @@ func decodeValue(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids 
 		}
 		sd := byTypeId[rec.TypeId]
 		if sd == nil {
-			report.Unknown++ // a record this reader cannot name keeps its index
+			report.Unknown++ // a record this root cannot place keeps its index
 			if rt != nil {
 				// A NODE RECORD WHOSE TYPE ID THIS READER CANNOT NAME IS AN
 				// EXCLUDED CLASS (docs/SPEC-TABLES.md §6.6)

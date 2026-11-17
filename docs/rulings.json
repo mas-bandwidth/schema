@@ -410,6 +410,25 @@
       "supersedes": [
         "the 2026-10-22 read half of the wide-integer ruling: a wide integer reads \"as a string or a number, the same digits\" (SPEC-TABLES §16.2)"
       ]
+    },
+    {
+      "id": "uncertain-read-refused",
+      "date": "2026-11-17",
+      "quotes": [
+        "if there is ever any uncertainty about how to read something, and it is weird or not a natural case for somebody sending us well formed data, the answer is always reject.",
+        "every time somebody sends us funny, we should have a posture that it's an attempt to hack us.",
+        "We control both the writer and the reader, so anybody who writes bad stuff is attacking us.",
+        "we want to minimize code paths an attacker can exercise externally from our reader."
+      ],
+      "source": "the maintainer, relayed verbatim by the coordinator from the live session of 2026-11-17: the standing principle for every reader question about input no conforming writer emits: it is decided as refuse, the whole read, in every build of every leg; a newer writer's well-formed data (lawful evolution) is not such input and stays accepted"
+    },
+    {
+      "id": "blob-target-outside-closure-refused",
+      "date": "2026-11-17",
+      "quotes": [
+        "if there is ever any uncertainty about how to read something, and it is weird or not a natural case for somebody sending us well formed data, the answer is always reject."
+      ],
+      "source": "the maintainer, relayed verbatim by the coordinator from the live session of 2026-11-17: the standing principle that an uncertain or unnatural read is refused, applied to a blob record outside the root's closure named from a declared slot"
     }
   ]
 }
