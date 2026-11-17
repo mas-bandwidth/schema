@@ -9,21 +9,30 @@ package squirreltable_test
 // or a *T slot naming either) refuses the whole read. A blob record of a kind
 // the root's closure lacks, named only from a field the reader does not
 // declare, reads and counts the field and the record unknown. A record no
-// pointer reaches is damage.
+// pointer reaches is damage. Rows 8, 9 and 10 of
+// testdata/conformance/feature-witnesses/pointer-targets/cases.json (a table,
+// a *bytes and a *string record outside the reader root's closure, named from
+// a declared slot) refuse too, with the engine's reads as the oracle. Only
+// the verdict and the pinned counters are compared; each read's reason is
+// logged (docs/rulings.json refusal-verdict-only).
 //
 // The negative control plants the old rule — a blob is nameable only when the
 // root's closure reaches its kind — in a copy of the generated reader, and the
 // manifest must go red on text-names-bytes. The writer half holds the leg's
-// own save and retaining save of a Text and a Bin value, blob set and null, to
-// a wire the engine reads with nothing unknown: a conforming writer never
-// emits a blob record no pointer reaches.
+// own save and retaining save of a Text and a Bin value, blob null, empty and
+// set, to a wire the engine reads with nothing unknown (a conforming writer
+// never emits a blob record no pointer reaches), and requires the empty and
+// set saves to differ from the null save, so the probe really wrote the blob.
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -72,10 +81,13 @@ func readSquirrelBlobKindRows(t *testing.T, manifest string) []squirrelBlobKindR
 	return rows
 }
 
+// squirrelBlobKindAnswer is one read's answer. The reason is logged, never
+// compared: only a refusal's verdict is held across legs (docs/rulings.json
+// refusal-verdict-only).
 type squirrelBlobKindAnswer struct {
-	read    bool
-	unknown int
-	ptr     string
+	read        bool
+	unknown     int
+	ptr, reason string
 }
 
 const squirrelBlobKindProbe = `local inputs = dofile("inputs.nut", true);
@@ -111,6 +123,9 @@ local fresh = function() {
   return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0,
     bodyDamaged = false, refused = false };
 };
+local reasonOf = function(r) {
+  return ("reason" in r && r.reason != null) ? r.reason : "-";
+};
 local READERS = __READERS__;
 foreach (row in READERS) {
   local member = memberOf(row.root);
@@ -118,12 +133,12 @@ foreach (row in READERS) {
   local r1 = fresh();
   local v1 = R.ReadStrict(T, row.root, wire, r1);
   print("R|" + row.key + "|strict|" + (v1 != null ? "read" : "refused") + "|" +
-    r1.unknown + "|" + ptr(v1, member) + "\n");
+    r1.unknown + "|" + ptr(v1, member) + "|" + reasonOf(r1) + "\n");
   local r2 = fresh();
   local store = { capacity = 1048576, idCapacity = 1024 };
   local v2 = RT.LoadRetain(T, row.root, wire, store, r2);
   print("R|" + row.key + "|retain|" + (v2 != null ? "read" : "refused") + "|" +
-    r2.unknown + "|" + ptr(v2, member) + "\n");
+    r2.unknown + "|" + ptr(v2, member) + "|" + reasonOf(r2) + "\n");
 }
 local WRITERS = __WRITERS__;
 foreach (row in WRITERS) {
@@ -240,6 +255,8 @@ func plantRootClosureBlobRule(t *testing.T, tables map[string][]byte) {
 	tables["schema_table_load.nut"] = []byte(src)
 }
 
+// runSquirrelBlobKindProbe reads the blobkind vectors with the leg's reader
+// and saves the writer cases with the leg's writer.
 func runSquirrelBlobKindProbe(t *testing.T, dir string, rows []squirrelBlobKindRow, patch func(map[string][]byte)) (map[string]squirrelBlobKindAnswer, map[string][]byte) {
 	t.Helper()
 	repo, err := sqrun.RepoRoot()
@@ -248,7 +265,6 @@ func runSquirrelBlobKindProbe(t *testing.T, dir string, rows []squirrelBlobKindR
 	}
 	vectors := filepath.Join(repo, "testdata", "wire", "pointer-target-type", "blobkind")
 	u := loadUnit(t, repo, []string{rows[0].unit})
-	mod := emitSquirrelBlobKindUnit(t, dir, "blobkind", u, patch)
 	input := map[string][]byte{
 		"writer_hello": []byte("hello"),
 		"writer_empty": {},
@@ -260,26 +276,35 @@ func runSquirrelBlobKindProbe(t *testing.T, dir string, rows []squirrelBlobKindR
 		}
 		input[row.name] = wire
 	}
+	return runSquirrelProbe(t, dir, u, rows, input, squirrelBlobKindWriterLiteral(), patch)
+}
+
+// runSquirrelProbe emits u's Squirrel surfaces into dir, reads input[row.name]
+// at row.root for every row through the strict and retaining loads, runs the
+// writer cases, and parses the answers.
+func runSquirrelProbe(t *testing.T, dir string, u *ir.Unit, rows []squirrelBlobKindRow, input map[string][]byte, writers string, patch func(map[string][]byte)) (map[string]squirrelBlobKindAnswer, map[string][]byte) {
+	t.Helper()
+	mod := emitSquirrelBlobKindUnit(t, dir, "blobkind", u, patch)
 	probe := strings.NewReplacer(
 		"__DIR__", "blobkind",
 		"__MOD__", mod,
 		"__READERS__", squirrelBlobKindReaderLiteral(rows),
-		"__WRITERS__", squirrelBlobKindWriterLiteral(),
+		"__WRITERS__", writers,
 	).Replace(squirrelBlobKindProbe)
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(probe))
 	out := string(sqrun.Run(t, dir, "main.nut", input))
 
 	answers := map[string]squirrelBlobKindAnswer{}
 	wires := map[string][]byte{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		f := strings.Split(line, "|")
 		switch {
-		case len(f) == 6 && f[0] == "R":
+		case len(f) == 7 && f[0] == "R":
 			unknown, err := strconv.Atoi(f[4])
 			if err != nil {
 				t.Fatalf("probe line %q: %v", line, err)
 			}
-			answers[f[1]+"|"+f[2]] = squirrelBlobKindAnswer{read: f[3] == "read", unknown: unknown, ptr: f[5]}
+			answers[f[1]+"|"+f[2]] = squirrelBlobKindAnswer{read: f[3] == "read", unknown: unknown, ptr: f[5], reason: f[6]}
 		case len(f) == 4 && f[0] == "W":
 			if f[3] == "null" {
 				wires[f[1]+"|"+f[2]] = nil
@@ -336,6 +361,18 @@ func squirrelBlobKindWriterProblems(t *testing.T, u *ir.Unit, wires map[string][
 	t.Helper()
 	m := tabletext.NewModel(u)
 	var problems []string
+	// A probe whose saves with the blob set or empty equal its save with the
+	// blob null never wrote the blob, and proves nothing about the writer.
+	for _, table := range []string{"Text", "Bin"} {
+		for _, path := range []string{"save", "retain"} {
+			null := wires[table+"-null|"+path]
+			for _, c := range []string{"empty", "value"} {
+				if w := wires[table+"-"+c+"|"+path]; w != nil && null != nil && bytes.Equal(w, null) {
+					problems = append(problems, fmt.Sprintf("%s-%s (%s): the saved wire equals the save with the blob null: the probe did not write the blob", table, c, path))
+				}
+			}
+		}
+	}
 	for _, root := range []struct{ table, field string }{{"Text", "body"}, {"Bin", "data"}} {
 		for _, c := range []string{"null", "empty", "value"} {
 			key := root.table + "-" + c
@@ -361,6 +398,84 @@ func squirrelBlobKindWriterProblems(t *testing.T, u *ir.Unit, wires map[string][
 	return problems
 }
 
+// squirrelPointerWitness is one row of
+// testdata/conformance/feature-witnesses/pointer-targets/cases.json.
+type squirrelPointerWitness struct {
+	Name, Writer, Reader string
+	Input                json.RawMessage
+	KindMismatch         int `json:"kind_mismatch"`
+	Unknown              int
+}
+
+// squirrelWitnessRows are the feature-witness rows a blob or table record
+// outside the reader root's closure flipped to refusals (rows 8, 9 and 10).
+var squirrelWitnessRows = []struct {
+	index int
+	name  string
+}{
+	{8, "table outside root closure"},
+	{9, "bytes outside root closure"},
+	{10, "string outside root closure"},
+}
+
+// squirrelWitnessVectors encodes witness rows 8, 9 and 10 at their writer
+// root with the engine, holds the engine's own strict and retaining reads at
+// the reader root to the row's verdict (the oracle), and returns the rows and
+// wires for the leg's reader.
+func squirrelWitnessVectors(t *testing.T, u *ir.Unit, cases []byte) ([]squirrelBlobKindRow, map[string][]byte) {
+	t.Helper()
+	var all []squirrelPointerWitness
+	if err := json.Unmarshal(cases, &all); err != nil {
+		t.Fatal(err)
+	}
+	m := tabletext.NewModel(u)
+	var rows []squirrelBlobKindRow
+	input := map[string][]byte{}
+	for _, w := range squirrelWitnessRows {
+		if w.index > len(all) || all[w.index-1].Name != w.name {
+			t.Fatalf("cases.json row %d is not %q", w.index, w.name)
+		}
+		c := all[w.index-1]
+		if c.KindMismatch == 0 {
+			t.Fatalf("cases.json row %d (%s) reads; this test holds it refused", w.index, c.Name)
+		}
+		writer, reader := m.Lookup(c.Writer), m.Lookup(c.Reader)
+		if writer == nil || reader == nil {
+			t.Fatalf("%s: no table %q or %q", c.Name, c.Writer, c.Reader)
+		}
+		v := m.New(writer)
+		var r tabletext.Report
+		if !m.Read(v, c.Input, &r) || !r.Silent() {
+			t.Fatalf("%s: the writer's input does not read: %+v", c.Name, r)
+		}
+		wire, err := tablewire.Encode(m, v)
+		if err != nil {
+			t.Fatalf("%s: Encode: %v", c.Name, err)
+		}
+		var strict tabletext.Report
+		if ok, _ := tablewire.Decode(m, m.New(reader), wire, &strict); ok || !strict.Refused {
+			t.Fatalf("%s: the engine's strict read accepts the row: %+v", c.Name, strict)
+		}
+		var retained tabletext.Report
+		retain := tablewire.Retain{Capacity: 8192, IdCapacity: 1024}
+		if ok, _ := tablewire.DecodeRetain(m, m.New(reader), wire, &retain, &retained); ok || !retained.Refused {
+			t.Fatalf("%s: the engine's retaining read accepts the row: %+v", c.Name, retained)
+		}
+		key := fmt.Sprintf("witness-%d", w.index)
+		rows = append(rows, squirrelBlobKindRow{name: key, root: c.Reader, verdict: "refused", unknown: -1})
+		input[key] = wire
+	}
+	return rows, input
+}
+
+func logSquirrelBlobKindAnswers(t *testing.T, answers map[string]squirrelBlobKindAnswer) {
+	t.Helper()
+	for _, k := range slices.Sorted(maps.Keys(answers)) {
+		a := answers[k]
+		t.Logf("%s: %s, unknown %d, pointer %s, reason %s", k, squirrelBlobKindVerdict(a.read), a.unknown, a.ptr, a.reason)
+	}
+}
+
 func TestSquirrelPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
 	repo, err := sqrun.RepoRoot()
@@ -381,7 +496,22 @@ func TestSquirrelPointerTargetBlobKindRefused(t *testing.T) {
 	u := loadUnit(t, repo, []string{rows[0].unit})
 	t.Run("every row answers its verdict", func(t *testing.T) {
 		answers, _ := runSquirrelBlobKindProbe(t, t.TempDir(), rows, nil)
+		logSquirrelBlobKindAnswers(t, answers)
 		for _, p := range squirrelBlobKindReadProblems(rows, answers) {
+			t.Error(p)
+		}
+	})
+	t.Run("feature-witness rows 8, 9 and 10 refuse", func(t *testing.T) {
+		const witnesses = "testdata/conformance/feature-witnesses/pointer-targets"
+		cases, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(witnesses), "cases.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		wu := loadUnit(t, repo, []string{witnesses})
+		wrows, input := squirrelWitnessVectors(t, wu, cases)
+		answers, _ := runSquirrelProbe(t, t.TempDir(), wu, wrows, input, "[]", nil)
+		logSquirrelBlobKindAnswers(t, answers)
+		for _, p := range squirrelBlobKindReadProblems(wrows, answers) {
 			t.Error(p)
 		}
 	})
