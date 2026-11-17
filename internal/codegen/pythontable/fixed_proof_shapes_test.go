@@ -170,7 +170,8 @@ func TestPythonFixedProofShapesText(t *testing.T) {
 		{"length above bound", func(b []byte) { binary.LittleEndian.PutUint32(b[body:], 9) }, "length_over_bound"},
 		{"negative length", func(b []byte) { binary.LittleEndian.PutUint32(b[body:], ^uint32(0)) }, "length_over_bound"},
 		{"invalid utf8", func(b []byte) { b[body+4] = 0xff }, "text_ill_formed"},
-		{"embedded zero", func(b []byte) { b[body+5] = 0 }, "text_ill_formed"},
+		// "a\0" is well-formed UTF-8, so only the NUL rule refuses it.
+		{"embedded zero", func(b []byte) { b[body+4], b[body+5] = 'a', 0 }, "text_ill_formed"},
 		{"nonzero dead byte", func(b []byte) { b[body+6] = 0xff }, "wire_damaged"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
