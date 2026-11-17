@@ -12,10 +12,17 @@ package elixirtable
 //     (frame_repeat_last_wins);
 //  4. an array body under two bytes (array_L0_inert).
 //
+// And the id table's first-use order (docs/SPEC-TABLES.md §3): an
+// engine-written wire with an unused entry after the last, an unused entry in
+// the middle, and two used entries swapped, each refused by load/2,
+// variable_load/2 and load_retain/4, the engine refusing the same bytes for
+// that reason first (firstUseBreaks).
+//
 // The Go engine is the oracle on the same bytes before the generated Elixir is
 // asked, and every unmodified wire still loads and re-saves byte for byte.
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -177,4 +184,86 @@ func TestElixirPlainLoadHoldsStrictFraming(t *testing.T) {
 	if err != nil || !strings.Contains(cfgOut, "ELIXIR_PLAIN_LOAD_STRICT_OK") || strings.Contains(cfgOut, "warning:") {
 		t.Fatalf("the plain framing read does not hold the strict framing: %v\n%s", err, cfgOut)
 	}
+
+	// THE ID TABLE IS IN FIRST-USE ORDER (docs/SPEC-TABLES.md §3): a lawful
+	// wire the engine writes, then broken one way each, every break refused by
+	// the plain and the retaining load alike, and by the engine first.
+	orderUnit := unitFrom(t, "package idorder\n\ntable Order\n{\n    a int32\n    b int32\n    c int32\n}\n")
+	orderModel := tabletext.NewModel(orderUnit)
+	inst := orderModel.New(orderModel.Lookup("Order"))
+	var text tabletext.Report
+	if !orderModel.Read(inst, []byte(`{"a": 1, "b": 2, "c": 3}`), &text) {
+		t.Fatalf("the lawful order value does not read: %+v", text)
+	}
+	lawful, err := tablewire.Encode(orderModel, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trailing, middle, swapped := firstUseBreaks(t, lawful)
+	orderCases := []plainStrictCase{
+		{label: "first_use_lawful", wire: lawful, want: true, roundTrip: true, retain: true},
+		{label: "first_use_unused_trailing", wire: trailing, want: false, retain: true},
+		{label: "first_use_unused_middle", wire: middle, want: false, retain: true},
+		{label: "first_use_swapped", wire: swapped, want: false, retain: true},
+	}
+	for _, c := range orderCases {
+		plainStrictOracle(t, orderModel, "Order", c)
+		var report tabletext.Report
+		ok, err := tablewire.DecodeRetain(orderModel, orderModel.New(orderModel.Lookup("Order")), c.wire, &tablewire.Retain{Capacity: 4096, IdCapacity: 256}, &report)
+		if ok != c.want {
+			t.Fatalf("%s retaining oracle: ok=%v err=%v, want %v", c.label, ok, err, c.want)
+		}
+		if !c.want && (tablewire.RefusalReason(err) != "wire_damaged" || !strings.Contains(err.Error(), "first-use order")) {
+			t.Fatalf("%s: the engine refuses for another reason: %v", c.label, err)
+		}
+	}
+	orderOut, err := runArmProbe(t, elixirBinary(t), generateElixir(t, orderUnit), plainStrictProbe("Idorder.Table", "Order", orderCases))
+	if err != nil || !strings.Contains(orderOut, "ELIXIR_PLAIN_LOAD_STRICT_OK") || strings.Contains(orderOut, "warning:") {
+		t.Fatalf("the variable read does not hold the id table to first-use order: %v\n%s", err, orderOut)
+	}
+}
+
+// firstUseBreaks takes an engine-written wire of three int32 fields (each a
+// one-byte reference, kind 4 and four bytes, references 1, 2, 3 in first-use
+// order) and breaks its id table three ways, each a table no conforming
+// writer produces: an unused entry after the last, an unused entry between
+// two used ones (the later references renumbered past it), and the first two
+// entries swapped (their references swapped with them, so every field keeps
+// its identity and payload and only the table's order differs).
+func firstUseBreaks(t *testing.T, lawful []byte) (trailing, middle, swapped []byte) {
+	t.Helper()
+	n := int(binary.LittleEndian.Uint64(lawful[len(lawful)-8:]))
+	start := len(lawful) - 8 - 8*n
+	body := lawful[1:start]
+	var ids []uint64
+	for i := range n {
+		ids = append(ids, binary.LittleEndian.Uint64(lawful[start+8*i:]))
+	}
+	if n != 3 || len(body) != 19 || body[18] != 0 {
+		t.Fatalf("the lawful wire is not three fields and a terminator: % x", lawful)
+	}
+	for i := range 3 {
+		if body[6*i] != byte(i+1) || body[6*i+1] != byte(ir.TableKindI32) {
+			t.Fatalf("field %d is not reference %d at kind int32: % x", i, i+1, body)
+		}
+	}
+	unused := ir.TableWireId("first_use_unused_entry")
+	for unused == ids[0] || unused == ids[1] || unused == ids[2] {
+		unused++
+	}
+	wire := func(body []byte, ids ...uint64) []byte {
+		w := append([]byte{ir.TableWireForm}, body...)
+		for _, id := range ids {
+			w = binary.LittleEndian.AppendUint64(w, id)
+		}
+		return binary.LittleEndian.AppendUint64(w, uint64(len(ids)))
+	}
+	trailing = wire(body, ids[0], ids[1], ids[2], unused)
+	shifted := append([]byte(nil), body...)
+	shifted[6], shifted[12] = 3, 4
+	middle = wire(shifted, ids[0], unused, ids[1], ids[2])
+	crossed := append([]byte(nil), body...)
+	crossed[0], crossed[6] = 2, 1
+	swapped = wire(crossed, ids[1], ids[0], ids[2])
+	return trailing, middle, swapped
 }
