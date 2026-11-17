@@ -123,11 +123,6 @@
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
  :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
 
-(:id "port/python/vt/cards" :state :done
- :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/cards_test.go: TestPythonCards and facade/identity controls")
- :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
- :note "2026-11-16: pinned Linux both-pin package, unfiltered public manifest, applicable planted controls and compiler gates pass on the source-equivalent tested revisions recorded in docs/validation/2026-11-16-python-variable-leaves.md; cards and changed binding interactions also pass on the assembled source. This stacked candidate is not a claim that prerequisite PRs have landed.")
-
 (:id "port/python/vt/enum-keyed-arrays" :state :done
  :evidence ("docs/validation/2026-11-16-python-variable-leaves.md: exact per-leaf source, test and multi-revision receipts" "internal/codegen/pythontable/vtkeyed_test.go: TestPythonVtKeyed" "internal/codegen/pythontable/vtkeyed_test.go: TestPythonVtKeyedNegativeControl" "internal/codegen/pythontable/keyed_flags_test.go: TestPythonKeyedFlags and TestPythonKeyedFlagsNegativeControl" "internal/codegen/pythontable/flags_widen_audit_test.go: TestPythonAuditWidenFlags and TestPythonAuditWidenFlagsContainers")
  :tested-revision "f5acc48a62f69fd53075d31ebb13d0d6dd313d35"
