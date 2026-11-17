@@ -35,12 +35,14 @@ table Root {
 	scalar := func(v uint32) []byte {
 		return binary.LittleEndian.AppendUint32(nil, v)
 	}
-	layerBody := func(w *keyedOnceBuilder, n uint32) []byte {
-		field := w.ref(ir.TableFieldWireId(layer.Fields[0]))
-		body := append([]byte(nil), field...)
-		body = append(body, byte(ir.TableKindU32))
-		body = binary.LittleEndian.AppendUint32(body, n)
-		return append(body, 0)
+	layerBody := func(n uint32) func(*keyedOnceBuilder) []byte {
+		return func(w *keyedOnceBuilder) []byte {
+			field := w.ref(ir.TableFieldWireId(layer.Fields[0]))
+			body := append([]byte(nil), field...)
+			body = append(body, byte(ir.TableKindU32))
+			body = binary.LittleEndian.AppendUint32(body, n)
+			return append(body, 0)
+		}
 	}
 	makeWire := func(flagSlots func(*keyedOnceBuilder) []keyedOnceSlot, bankSlots func(*keyedOnceBuilder) []keyedOnceSlot) []byte {
 		w := &keyedOnceBuilder{}
@@ -54,7 +56,7 @@ table Root {
 		return []keyedOnceSlot{{key: low, elem: scalar(1)}, {key: high, elem: scalar(2)}}
 	}
 	cleanBanks := func(w *keyedOnceBuilder) []keyedOnceSlot {
-		return []keyedOnceSlot{{key: low, elem: layerBody(w, 3)}, {key: high, elem: layerBody(w, 4)}}
+		return []keyedOnceSlot{{key: low, build: layerBody(3)}, {key: high, build: layerBody(4)}}
 	}
 	cases := []struct {
 		name string
@@ -66,7 +68,7 @@ table Root {
 			return []keyedOnceSlot{{key: low, elem: scalar(1)}, {key: low, elem: scalar(2)}}
 		}, cleanBanks), false},
 		{"repeated_table_key", makeWire(cleanFlags, func(w *keyedOnceBuilder) []keyedOnceSlot {
-			return []keyedOnceSlot{{key: low, elem: layerBody(w, 3)}, {key: low, elem: layerBody(w, 4)}}
+			return []keyedOnceSlot{{key: low, build: layerBody(3)}, {key: low, build: layerBody(4)}}
 		}), false},
 		{"repeated_unnamed_key", makeWire(func(w *keyedOnceBuilder) []keyedOnceSlot {
 			return []keyedOnceSlot{{key: low, elem: scalar(1)}, {key: unknown, elem: scalar(2)}, {key: unknown, elem: scalar(3)}}
@@ -125,6 +127,9 @@ int main(void)
 type keyedOnceSlot struct {
 	key  uint64
 	elem []byte
+	// Nested bodies intern their IDs only when their bytes are written,
+	// after the field header and keyed slot reference (§3 first-use order).
+	build func(*keyedOnceBuilder) []byte
 }
 
 type keyedOnceBuilder struct {
@@ -156,8 +161,12 @@ func (w *keyedOnceBuilder) keyed(f *ir.Field, elemKind int, slots []keyedOnceSlo
 	inner = keyedOnceLEB(inner, uint64(len(slots)))
 	for _, s := range slots {
 		inner = append(inner, w.ref(s.key)...)
-		inner = keyedOnceLEB(inner, uint64(len(s.elem)))
-		inner = append(inner, s.elem...)
+		elem := s.elem
+		if s.build != nil {
+			elem = s.build(w)
+		}
+		inner = keyedOnceLEB(inner, uint64(len(elem)))
+		inner = append(inner, elem...)
 	}
 	w.body = append(w.body, fieldRef...)
 	w.body = append(w.body, byte(ir.TableKindKeyed))

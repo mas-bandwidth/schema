@@ -162,7 +162,6 @@ func TestGooseFixedAbsentRecordOptionalIsZero(t *testing.T) {
 		{"test/tables/V1.schema", "v1_cfg.bin"},
 		{"test/tables/V2.schema", "v2_cfg.bin"},
 	} {
-		c := c
 		t.Run(c.file, func(t *testing.T) {
 			t.Parallel()
 			u := fixedUnit(t, c.schema)
@@ -301,7 +300,7 @@ func testNestedAbsentRecordOptional(t *testing.T) {
 		files[seed] = img
 		fmt.Fprintf(&loads, "    probe_%s(%q);\n", r.name, seed)
 		for _, fl := range r.flags {
-			for k := int64(0); k < extra; k++ {
+			for k := range extra {
 				if img[at+fl+k] != 0 {
 					t.Fatalf("%s: the lawful record's absent extra is not zero (record byte %d is %d)", r.name, fl+k, img[at+fl+k])
 				}
@@ -372,7 +371,7 @@ func absentExtraSpan(t *testing.T, u *ir.Unit, data []byte) (int64, int64) {
 		if !f.Type.Optional || at+size > int64(len(data)) {
 			t.Fatalf("Cfg.extra is not an optional inside the seed's record")
 		}
-		for k := int64(0); k < size; k++ {
+		for k := range size {
 			if data[at+k] != 0 {
 				t.Fatalf("the seed's Cfg.extra is not absent with a zero payload (byte %d is %d)", at+k, data[at+k])
 			}

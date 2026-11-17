@@ -38,6 +38,14 @@ func regionRow[T, R, A, C any, O ~uint8](unit, root string,
 			v := value.(*regionValue[T])
 			n := loadMeasure(wire)
 			if n < 0 {
+				// the measure refused the wire: run the load with no region so
+				// the unit's own report carries the refused verdict
+				var r R
+				v.root = load(nil, wire, &r)
+				*rep = snap(&r)
+				if e, ok := any(&r).(interface{ Err() error }); ok {
+					rep.err = e.Err()
+				}
 				v.root = nil
 				return false
 			}

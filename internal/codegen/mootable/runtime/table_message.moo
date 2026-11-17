@@ -1150,7 +1150,9 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		return encodeKeyed(c, fd, entry, val)
 	end
 	if s == "str" then
-		if val == nil or val == "" then
+		-- elided only at the declared default, length and bytes both: a value
+		-- of the default's length rides, and so does "" under a non-empty one
+		if val == nil or val == (fd.def or "") then
 			return true
 		end
 		wref(c, entry.slot)
@@ -1160,7 +1162,9 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		return fail(c, "invalid_value", fd) -- unbounded text: the form spells no capacity for it
 	end
 	if s == "bytes" then
-		if (v[fd.slot .. "Length"] or 0) == 0 then
+		local n = v[fd.slot .. "Length"] or 0
+		local def = fd.def or ""
+		if n == #def and (n == 0 or (type(val) == "buffer" and n <= buffer.len(val) and buffer.readstring(val, 0, n) == def)) then
 			return true
 		end
 		wref(c, entry.slot)
@@ -1808,12 +1812,14 @@ local function decodeEnum(t: any, e: any, element: boolean): (any, boolean)
 	for i, pair in e.vs do
 		if pair[2] == en.id then
 			if pair[3] == true then
+				t.subst += 1
 				return if element then 0 else (e.def or 0), true
 			end
 			return i, true
 		end
 	end
 	t.report.unknown += 1
+	t.subst += 1
 	return 0, true
 end
 
@@ -2034,6 +2040,7 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	end
 	if tag == 0 then
 		t.report.unknown += 1
+		t.subst += 1
 		return u, skipEntry(t, entry.kind, entry.shape, 0)
 	end
 	local arm = un.arms[tag]
@@ -2056,12 +2063,63 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	return u, decodeField(t, arm, entry, u)
 end
 
+-- A FIELD ITS WRITER ELIDES (docs/SPEC-TABLES.md §3.3; docs/rulings.json
+-- reads-refuse-non-canonical): whether this build's writer (encodeField) leaves
+-- out a field holding what the read landed, judged by the writer's own tests
+-- (atDefault, elemDefault) so the reader and the writer cannot disagree. A
+-- nested body and a keyed array elide by what rode: `used` is the bits the
+-- field's payload took, so a body that is its terminator alone and a keyed
+-- array of no slot are read off the wire. The caller judges only a field that
+-- is neither optional nor required.
+local function messageElides(t: any, fd: any, entry: any, v: any, used: number): boolean
+	local s = fd.s
+	local val = v[fd.slot]
+	if s == "arr" and fd.array == "keyed" then
+		return used == bitsReq(0, entry.shape.max)
+	elseif s == "str" then
+		return val == nil or val == (fd.def or "")
+	elseif s == "bytes" then
+		local n = v[fd.slot .. "Length"] or 0
+		local def = fd.def or ""
+		return n == #def and (n == 0 or (type(val) == "buffer" and n <= buffer.len(val) and buffer.readstring(val, 0, n) == def))
+	elseif s == "arr" then
+		if fd.array == "counted" then
+			return liveCount(fd, v, val) == 0
+		elseif fd.e.s == "tab" then
+			return false
+		end
+		for i = 1, fd.bound do
+			if not elemDefault(fd.e, elemAt(val, i)) then
+				return false
+			end
+		end
+		return true
+	elseif s == "union" then
+		return type(val) ~= "table" or val.Type == 0
+	elseif s == "tab" then
+		return used == t.v.refBits
+	elseif s == "enum" or s == "bool" or s == "int" or s == "float" then
+		return atDefault(fd, val)
+	end
+	return false
+end
+
 -- one body: fields until the zero reference (body)
 decodeBody = function(t: any, d: any, v: any): boolean
 	local byId = fieldsById(d)
 	-- A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
 	-- name it or not (docs/plans/strict-only.md decision 5)
 	local seen: { [string]: boolean } = {}
+	-- A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (§3.3; docs/rulings.json
+	-- reads-refuse-non-canonical), judged only under this reader's own build
+	-- version, where its declaration IS the sender's: every field the sender's
+	-- record declares is one this record declares, the fields ride in this
+	-- record's declaration order, and no field rides at the default its writer
+	-- elides. Under another build version the sender may lawfully have added or
+	-- reordered fields or moved a default, so none of the three is judged there.
+	local same = t.same
+	-- the declaration index of the last field this body carried
+	local lastK = 0
 	while true do
 		local ref, ok = reference(t)
 		if not ok then
@@ -2077,12 +2135,21 @@ decodeBody = function(t: any, d: any, v: any): boolean
 		seen[entry.id] = true
 		local hit = byId[entry.id]
 		if hit == nil then
+			-- A FIELD THE RECORD DOES NOT DECLARE AT THE READER'S OWN BUILD VERSION
+			if same then
+				return dmal(t)
+			end
 			t.report.unknown += 1
 			if not skipEntry(t, entry.kind, entry.shape, 0) then
 				return dmal(t)
 			end
 			continue
 		end
+		-- FIELDS OUT OF THE WRITER'S DECLARATION ORDER
+		if same and hit.k <= lastK then
+			return dmal(t)
+		end
+		lastK = hit.k
 		local fd = hit.fd
 		local mine = mineEntry(slotOf(d, hit.k))
 		if entry.kind ~= mine.kind or entry.shape.elem ~= mine.shape.elem then
@@ -2099,8 +2166,15 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			-- THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT and refuses
 			return refuseRead(t, "kind_mismatch")
 		end
+		local off, subst, nonFinite = t.r.off, t.subst, t.report.nonFinite
 		if not decodeField(t, fd, entry, v) then
 			return false
+		end
+		-- A FIELD STORED AT ITS DECLARED DEFAULT: a field whose read substituted
+		-- a value (a deprecated or unknown variant, an unknown arm, a non-finite
+		-- float) is not judged
+		if same and fd.present == nil and not fd.required and t.subst == subst and t.report.nonFinite == nonFinite and messageElides(t, fd, entry, v, t.r.off - off) then
+			return dmal(t)
 		end
 		if fd.present ~= nil and fd.s ~= "arr" then
 			v[fd.present] = true
@@ -2159,7 +2233,10 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 		refuse(rep, "batch_too_large")
 		return count, {}
 	end
-	local t: any = { r = r, v = v, report = rep, indexBits = 0 }
+	-- the batch's announced build version against this build's own (the unit's
+	-- announcement, registered by MS.unit)
+	local same = v.buildVersion ~= nil and v.buildVersion == home.buildVersion
+	local t: any = { r = r, v = v, report = rep, indexBits = 0, same = same, subst = 0 }
 	local values = {}
 	local whole = true
 	for i = 1, count do

@@ -45,6 +45,7 @@ var cppFramingStrictRows = []string{
 	"array_L1_inert",
 	"array_elements_past_count",
 	"frame_repeat_last_wins",
+	"frame_unreferenced_entry",
 	"frame_unknown_id_length",
 	"frame_unknown_id_reference",
 	"keyed_slots_past_count",
@@ -93,7 +94,8 @@ func cppFramingUnknownWireRows(t *testing.T, root string) []cppFramingRow {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const prefix = "\x01\x10\x0d\x03\xaa\xbb\xcc"
+	// the unknown field is id-table slot 1, its first use (first-use order)
+	const prefix = "\x01\x01\x0d\x03\xaa\xbb\xcc"
 	if !bytes.HasPrefix(base, []byte(prefix)) {
 		t.Fatal("framing fixture no longer starts with the unknown field to replace")
 	}
@@ -106,7 +108,7 @@ func cppFramingUnknownWireRows(t *testing.T, root string) []cppFramingRow {
 		{"frame_unknown_keyed_count_over_cap", []byte{16, 6, 1, 0x80, 0x80, 0x80, 0x80, 8}},
 		{"frame_unknown_float_non_finite", []byte{10, 0, 0, 0xc0, 0x7f}},
 	} {
-		wire := append(append([]byte{1, 16}, tc.payload...), base[len(prefix):]...)
+		wire := append(append([]byte{1, 1}, tc.payload...), base[len(prefix):]...)
 		path := filepath.Join(t.TempDir(), tc.name+".bin")
 		if err := os.WriteFile(path, wire, 0o600); err != nil {
 			t.Fatal(err)

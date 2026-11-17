@@ -711,6 +711,62 @@ public final class BenchBitsVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert (v.b7 & 0xffffffffL) <= 0x7fL : "BenchBits.b7";
+        assert (v.b13 & 0xffffffffL) <= 0x1fffL : "BenchBits.b13";
+        assert (v.b23 & 0xffffffffL) <= 0x7fffffL : "BenchBits.b23";
+        assert (v.b3 & 0xffffffffL) <= 0x7L : "BenchBits.b3";
+        assert (v.b11 & 0xffffffffL) <= 0x7ffL : "BenchBits.b11";
+        assert (v.b19 & 0xffffffffL) <= 0x7ffffL : "BenchBits.b19";
+        assert Long.compareUnsigned(v.b48, 0xffffffffffffL) <= 0 : "BenchBits.b48";
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -720,6 +776,7 @@ public final class BenchBitsVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -755,7 +812,7 @@ public final class BenchBitsVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -1052,7 +1109,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b48");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.b48));
+        b.append('"');
         return first;
     }
 
@@ -1222,7 +1281,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7fL);
+                        long placed = in.integer(false, false, 0L, 0x7fL);
                         if (!in.rejected) {
                             v.b7 = (int) placed;
                         }
@@ -1243,7 +1302,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x1fffL);
+                        long placed = in.integer(false, false, 0L, 0x1fffL);
                         if (!in.rejected) {
                             v.b13 = (int) placed;
                         }
@@ -1264,7 +1323,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7fffffL);
+                        long placed = in.integer(false, false, 0L, 0x7fffffL);
                         if (!in.rejected) {
                             v.b23 = (int) placed;
                         }
@@ -1285,7 +1344,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7L);
+                        long placed = in.integer(false, false, 0L, 0x7L);
                         if (!in.rejected) {
                             v.b3 = (int) placed;
                         }
@@ -1306,7 +1365,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffffL);
                         if (!in.rejected) {
                             v.b32 = (int) placed;
                         }
@@ -1327,7 +1386,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7ffL);
+                        long placed = in.integer(false, false, 0L, 0x7ffL);
                         if (!in.rejected) {
                             v.b11 = (int) placed;
                         }
@@ -1348,7 +1407,7 @@ public final class BenchBitsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x7ffffL);
+                        long placed = in.integer(false, false, 0L, 0x7ffffL);
                         if (!in.rejected) {
                             v.b19 = (int) placed;
                         }
@@ -1363,13 +1422,14 @@ public final class BenchBitsVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[7] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffL);
                         if (!in.rejected) {
                             v.b48 = placed;
                         }

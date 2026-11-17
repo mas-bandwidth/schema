@@ -1615,16 +1615,15 @@ build/wire-fuzz-c: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.
 build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) test/c-tables/wire_fuzz_main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $@ -lm
 
-# RELAXED 2026-11-14 (maintainer: get main green): the C read skips an unknown
-# union arm without walking it, so the pinned vector unknown_arm_text_nul
-# loads; C_RELAX_VECTORS keeps it counted, not failed, in the C wire fuzz.
-# re-enable: relax/unknown-arm-text-c
-C_RELAX_VECTORS := --relax-vector unknown_arm_text_nul
-
+# The ASan leg turns leak detection off: LeakSanitizer suspends threads with
+# ptrace to walk the still-reachable set, and a sandbox that denies ptrace
+# turns that into a fatal error at exit after every mutant has already run
+# (a harness crash, not a divergence and not a leak). AddressSanitizer and
+# UBSan stay on; only the leak report is off.
 .PHONY: tables-c-wire-fuzz
 tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N) $(C_RELAX_VECTORS)
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) $(C_RELAX_VECTORS) --failed build/wire-fuzz/failed-c-asan.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-plain.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
+	ASAN_OPTIONS=detect_leaks=0 sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-plain-asan.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
 
 
@@ -1645,7 +1644,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
+	@grep -qE 'read acceptance differs: the leg says true, the oracle says false|the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
 	@echo 'C wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-c: tables-c-wire-fuzz-negative-control
@@ -1806,8 +1805,8 @@ tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-a
 	sh test/slowgate/proof tables-c-retain \
 		'TestCTableRetainFile TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName' \
 		./compiler -run '^TestCTableRetain' -count=1
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) $(C_RELAX_VECTORS) --failed build/wire-fuzz/failed-c-retain.bin
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) $(C_RELAX_VECTORS) --failed build/wire-fuzz/failed-c-retain-asan.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-retain.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-c-retain-asan.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
 tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
@@ -2085,10 +2084,11 @@ test-c: tables-c-discard
 # 2026-10-31). The C check is Kahn's algorithm over the load's directory
 # (table_cycle_acyclic, internal/codegen/ctable/graph.go), using temporary
 # 1-based directory indices during construction and resolving offsets once
-# acyclicity holds. The first control drops the cycle verdict in a copy of
-# graph.go so a cyclic graph loads, and TestCyclicWireIsRefusedC must go red on
-# it: its reachable-cycle case leaves no record for the reachability rule to
-# refuse first, so the cycle verdict alone gates it. The linear control stacks a
+# acyclicity holds. The wire graph's DFS also refuses a back edge before the
+# stored graph is checked. The first control drops BOTH cycle verdicts in a
+# copy of graph.go so a cyclic graph loads, and TestCyclicWireIsRefusedC must
+# go red on it. Its reachable-cycle case leaves no record for the reachability
+# rule to refuse first. The linear control stacks a
 # node at every slot naming it rather than the last, and
 # TestDiamondChainLoadsLinearC must go red on it.
 C_CYCLE_NC := build/c-cycle-nc
@@ -2105,9 +2105,12 @@ tables-c-cycle-negative-control:
 	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
 	@n=$$(grep -F -c 'if ( !c.broken && c.processed == c.vertices )' internal/codegen/ctable/graph.go); \
 		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the C cycle verdict appears $$n times, expected exactly 1"; exit 1; fi
+	@w=$$(grep -F -c 'if ( marks[child] == 1 ) { ok = 0; goto done; }' internal/codegen/ctable/graph.go); \
+		if [ "$$w" != "1" ]; then echo "NEGATIVE CONTROL: the C wire cycle verdict appears $$w times, expected exactly 1"; exit 1; fi
 	@m=$$(grep -F -c 'cycle: a reachable cycle loaded' internal/codegen/ctable/discard_test.go); \
 		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's reachable refusal appears $$m times, expected exactly 1"; exit 1; fi
-	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
+	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the stored cycle verdict is gone */#' \
+		-e 's#if ( marks\[child\] == 1 ) { ok = 0; goto done; }#if ( marks[child] == 1 ) { continue; } /* NEGATIVE CONTROL: a wire back edge is accepted */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
@@ -2115,14 +2118,14 @@ tables-c-cycle-negative-control:
 		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
 	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC)$$' \
 			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
+		echo "NEGATIVE CONTROL FAILED: both C cycle verdicts are gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
 	fi
 	@grep -q "cycle: a reachable cycle loaded" $(C_CYCLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(C_CYCLE_NC)/log; exit 1; }
 	@grep -m1 "reachable cycle" $(C_CYCLE_NC)/log
-	@echo "negative control: removing the C cycle verdict turns the cycle gate RED"
+	@echo "negative control: removing both C cycle verdicts turns the cycle gate RED"
 tables-c-cycle-linear-negative-control:
 	@rm -rf $(C_CYCLE_LINEAR_NC) && mkdir -p $(C_CYCLE_LINEAR_NC)
 	@sed -e 's#if ( degree == 1 ) { table_cycle_push( c, p ); } /\* the last slot naming it: its descent is free \*/#table_cycle_push( c, p ); /* NEGATIVE CONTROL: entered once per path */#' \
@@ -2349,3 +2352,18 @@ packet-write-text-c-negative-control: packet-write-text-c
 	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
 
 test-c: packet-write-text-c packet-write-text-c-negative-control
+
+# Hash-zero IDs are ordinary retained identities, distinct from wire None.
+.PHONY: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control
+tables-c-retain-hashzero:
+	@mkdir -p build/c-retain-hashzero
+	@SCHEMA_SLOW=1 go test -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZero$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/positive.log 2>&1 || { cat build/c-retain-hashzero/positive.log; exit 1; }
+	@grep -q -- '--- PASS: TestCRetainNestedHashZero ' build/c-retain-hashzero/positive.log || { cat build/c-retain-hashzero/positive.log; exit 1; }
+	@echo 'C retention: hash-zero identities and None round-trip'
+
+tables-c-retain-hashzero-negative-control: tables-c-retain-hashzero
+	@SCHEMA_SLOW=1 go test -count=1 -v -timeout 120s -run '^TestCRetainNestedHashZeroNegativeControl$$' ./internal/codegen/ctable/ > build/c-retain-hashzero/control.log 2>&1 || { cat build/c-retain-hashzero/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestCRetainNestedHashZeroNegativeControl ' build/c-retain-hashzero/control.log || { cat build/c-retain-hashzero/control.log; exit 1; }
+	@echo 'C retention: removing the hash-zero escape breaks each zero-ID vector'
+
+test-c tables-c: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control

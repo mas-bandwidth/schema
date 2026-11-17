@@ -39,6 +39,12 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "python" {
+			if err != nil {
+				t.Fatalf("python refused scalar table defaults: %v", err)
+			}
+			continue // semantic read, write and negative controls: TestPythonDriverScalarValueDefaults
+		}
 		if target == "goose" {
 			gooseCarriesTableWire(t, out, err)
 			continue
@@ -335,6 +341,11 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 	u := unitFromSource(t, fixedValueDefaultsUnit)
 	c := New()
 	for _, target := range c.Targets() {
+		// Packet types only. The Unity table backend is a named follow-on,
+		// so a fixed table's prefill is not this target's surface.
+		if target == "unity" {
+			continue
+		}
 		out, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Errorf("%s refused a fixed table's string, bytes and flags defaults: %v", target, err)
@@ -386,6 +397,10 @@ func TestFX1GeneratesOnEveryLeg(t *testing.T) {
 	u := unitFromSource(t, string(src))
 	c := New()
 	for _, target := range c.Targets() {
+		// Packet types only. The Unity table backend is a named follow-on.
+		if target == "unity" {
+			continue
+		}
 		if _, err := c.Generate(u, target, Options{}); err != nil {
 			t.Errorf("%s refused FX1 (label string(8) = \"fx\"): %v", target, err)
 		}

@@ -104,9 +104,14 @@ fixed table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
 int main(void) {
  TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);
  TableReport report={0};uint8_t bytes[kTableAnnounceBytes];
- if(sizeof(TableMessageEntry)!=96)return 2;
+ /* The own slot adds only its naturally aligned storage to the decode facts. */
+ struct EntryAlignment { char tag; TableMessageEntry entry; };
+ size_t alignment=offsetof(struct EntryAlignment,entry);
+ size_t expected=(96+sizeof(entries[0].own_slot)+alignment-1)/alignment*alignment;
+ if(offsetof(TableMessageEntry,own_slot)!=96 || sizeof(TableMessageEntry)!=expected)return 2;
  if(announce(bytes,sizeof(bytes))!=sizeof(bytes))return 1;
   if(!announce_read(&v,bytes,sizeof(bytes),&report)){fprintf(stderr,"own announcement refused\n");return 1;}
+ if(v.count!=2 || !entries[0].own_slot || !entries[1].own_slot || entries[0].own_slot==entries[1].own_slot)return 3;
 	return 0;
 }`)
 }

@@ -1870,11 +1870,6 @@ local NAMES: { [string]: string } = {
 	duplicate = "malformed",
 }
 
--- a report at rest, in schema_load.luau's shape (docs/SPEC-TABLES.md §4)
-local function fresh(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0, blobShared = 0 }
-end
-
 local function moved(report: any, k: string): boolean
 	if k == "malformed" then return report.malformed == true end
 	return report[k] > 0
@@ -1929,17 +1924,6 @@ local function leb(b: buffer, at: number, e: number): (number?, number)
 		s = s + 7
 	end
 	return nil, at
-end
-
-local function lebBytes(n: number): string
-	local out = {}
-	repeat
-		local x = n % 0x80
-		n = (n - x) / 0x80
-		if n > 0 then x = x + 0x80 end
-		out[#out + 1] = string.char(x)
-	until n == 0
-	return table.concat(out)
 end
 
 -- the end of one payload of `kind` at `at`, or nil when it does not fit: the

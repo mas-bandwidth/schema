@@ -395,7 +395,7 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 		t.Fatalf("read lists.go: %v", err)
 	}
 	int32ExtentCap := int32GuardOperand(t, string(listsBytes))
-	blobCapGuard := extractRegexpUint(t, string(regionBytes), `len\(body\.Buffer\)\)>(0x[0-9a-fA-F]+)`, "blob_cap_guard")
+	blobCapGuard := extractRegexpUint(t, string(regionBytes), `length>(0x[0-9a-fA-F]+)`, "blob_cap_guard")
 	blobCapExtent := extractRegexpUint(t, string(unboundedBytes), `uint64\(n\)>(0x[0-9a-fA-F]+)`, "blob_cap_extent_guard")
 	if blobCapGuard != blobCapExtent {
 		t.Fatalf("blob capacity guards disagree: regions=%d unboundedtext=%d", blobCapGuard, blobCapExtent)
