@@ -400,15 +400,9 @@ def _placeable(root: type[Any]) -> frozenset[int]:
             continue
         visited.add(desc.name)
         for field in _reached_fields(desc.fields):
-<<<<<<< HEAD
-            if field.codec == "bytes_blob" and not entry:
-                out.add(_BYTES_WIRE_TYPE_ID)
-            elif field.codec == "string_blob" and not entry:
-=======
             if field.codec == "bytes_blob":
                 out.add(_BYTES_WIRE_TYPE_ID)
             elif field.codec == "string_blob":
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
                 out.add(_STRING_WIRE_TYPE_ID)
             if not field.target:
                 continue

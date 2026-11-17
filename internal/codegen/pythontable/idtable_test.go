@@ -91,8 +91,8 @@ var idtableConstructs = []idtableConstruct{
 	{"defaulted", "Defaulted", `{"hue":"Red"}`},
 	{"defaulted_default", "Defaulted", `{}`},
 	{"nested", "Nested", `{"mood":"Loud","tag":-4}`},
-	{"outer", "Outer", `{"live":true,"hue":"Blue","inner":{"mood":"Calm","tag":9},"total":18446744073709551615}`},
-	{"chain", "Chain", `{"hue":"Blue","score":9,"next":{"hue":"Red","score":0}}`},
+	{"outer", "Outer", `{"live":true,"hue":"Blue","inner":{"mood":"Calm","tag":9},"total":"18446744073709551615"}`},
+	{"chain", "Chain", `{"hue":"Blue","score":"9","next":{"hue":"Red","score":"0"}}`},
 	{"wide", "Wide", `{"hue":"Green","mask":21}`},
 	{"pair", "Pair", `{"first":"Red","second":"Red"}`},
 	{"alone_default", "Alone", `{}`},
@@ -435,7 +435,7 @@ func TestPythonVtIdtableNegativeControl(t *testing.T) {
 	}{
 		// the enum codec references the wrong variant id: no saved enum field
 		// is the canonical wire's.
-		{"enum-variant", "idtable/_schema/kind_enum.py", "w.varint(ctx.idref(wire_id))", "w.varint(ctx.idref(wire_id) + 1)", "idtable_alone"},
+		{"enum-variant", "idtable/_schema/kind_enum.py", "w.varint(ctx.idref(fd.wire_of[value]))", "w.varint(ctx.idref(fd.wire_of[value]) + 1)", "idtable_alone"},
 		// the reader drops kind 32's zero-length rule and steps past the
 		// payload anyway: a payload-free field with a nonzero L reads where the
 		// wire is damage.
@@ -443,17 +443,17 @@ func TestPythonVtIdtableNegativeControl(t *testing.T) {
 		// the enum codec drops its past-table check: a known enum field whose
 		// reference is past the id table indexes off the table instead of
 		// refusing wire_damaged.
-		{"enum-read-past", "idtable/_schema/kind_enum.py", "        if reference > len(ctx.ids):\n            raise Refused(\"wire_damaged\", \"a variant reference is past the id table\")\n", "", "idtable_known_enum_ref_past"},
+		{"enum-read-past", "idtable/_schema/kind_enum.py", "        ordinal = fd.value_of.get(r.id_at(reference))\n", "        ordinal = fd.value_of.get(ctx.ids[reference - 1])\n", "idtable_known_enum_ref_past"},
 		// the reader's kind-30 skip drops its past-table check: an unknown
 		// enum field whose reference is past the id table reads.
-		{"skip-read-past", "idtable/_schema/load.py", "        if reader.varint() > len(ctx.ids):\n            raise Refused(\"wire_damaged\", \"a variant reference past the id table\")\n", "        reader.varint()\n", "idtable_enum_ref_past"},
+		{"skip-read-past", "idtable/_schema/load.py", "        if reference:\n            reader.id_at(reference)\n", "        if reference:\n            reader.id_at(reference if reference <= len(ctx.ids) else 1)\n", "idtable_enum_ref_past"},
 		// the skip walk reads an unknown array's enum elements without checking
 		// them: an element reference past the id table reads where the engine
 		// refuses.
-		{"array-read-past", "idtable/_schema/load.py", "        _skip_payload(reader, element, ctx, depth)\n", "        reader.varint() if element == 30 else _skip_payload(reader, element, ctx, depth)\n", "idtable_unknown_enum_array_past"},
-		// the enum codec validates nothing: an out-of-range enum value reaches
-		// the write instead of raising InvalidValue.
-		{"enum-validate", "idtable/_schema/kind_enum.py", "    def validate(self, fd: FieldDesc, value: Any, path: str) -> None:\n", "    def validate(self, fd: FieldDesc, value: Any, path: str) -> None:\n        return\n", "idtable_write_bad_enum"},
+		{"array-read-past", "idtable/_schema/load.py", "        _skip_payload(reader, element, ctx, depth)\n", "        reader.id_at(min(reader.varint(), len(ctx.ids))) if element == 30 else _skip_payload(reader, element, ctx, depth)\n", "idtable_unknown_enum_array_past"},
+		// the enum codec's range check is dropped: an out-of-range enum value
+		// reaches the write instead of raising InvalidValue.
+		{"enum-validate", "idtable/_schema/kind_enum.py", "    if value != 0 and value not in fd.wire_of:\n        raise InvalidValue(path, f\"{value} names no variant\")\n", "", "idtable_write_bad_enum"},
 	} {
 		t.Run(control.name, func(t *testing.T) {
 			t.Parallel()

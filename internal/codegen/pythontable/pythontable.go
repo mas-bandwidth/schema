@@ -221,7 +221,6 @@ type filePlan struct {
 	unions       []*ir.Union
 	packets      []*ir.Struct
 	packetUnions []*ir.Union
-	enums        []*ir.Enum
 }
 
 // filePlans groups everything one generated module holds by the schema file
@@ -263,10 +262,6 @@ func filePlans(u *ir.Unit) []*filePlan {
 			case *ir.Union:
 				plan := get(f.Base)
 				plan.packetUnions = append(plan.packetUnions, d)
-			case *ir.Enum:
-				// the packet core emits the enum's class; the package exports it
-				plan := get(f.Base)
-				plan.enums = append(plan.enums, d)
 			}
 		}
 	}
@@ -1345,16 +1340,6 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 			sort.Strings(unions)
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(unions, ", "))
 		}
-<<<<<<< HEAD
-		enums := make([]string, 0, len(plan.enums))
-		for _, e := range plan.enums {
-			enums = append(enums, e.Name)
-			names = append(names, e.Name)
-		}
-		if len(enums) > 0 {
-			sort.Strings(enums)
-			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(enums, ", "))
-=======
 		// the file's constants, enums and flags sets, which the packet host
 		// emits into the module, ride beside its classes
 		if decls := valueDecls(fileFor(u, plan.base)); len(decls) > 0 {
@@ -1364,7 +1349,6 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 				names = append(names, valueDeclName(d))
 			}
 			fmt.Fprintf(&b, "from .%s import %s\n", plan.base, strings.Join(values, ", "))
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
 		}
 	}
 	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n", u.ProtocolId)

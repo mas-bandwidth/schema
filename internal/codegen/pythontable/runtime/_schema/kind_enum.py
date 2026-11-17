@@ -23,14 +23,18 @@ from . import kinds
 from .descriptor import FieldDesc
 
 
+def _check(fd: FieldDesc, value: Any, path: str) -> None:
+    if type(value) is not int:
+        raise InvalidValue(path, "not an int")
+    if value != 0 and value not in fd.wire_of:
+        raise InvalidValue(path, f"{value} names no variant")
+    if value in fd.deprecated:
+        raise InvalidValue(path, f"{value} names a deprecated variant; a strict write refuses it")
+
+
 class _Enum:
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None:
-        if type(value) is not int:
-            raise InvalidValue(path, "not an int")
-        if value != 0 and value not in fd.wire_of:
-            raise InvalidValue(path, f"{value} names no variant")
-        if value in fd.deprecated:
-            raise InvalidValue(path, f"{value} names a deprecated variant; a strict write refuses it")
+        _check(fd, value, path)
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
         return self.read_element(r, fd, ctx)
@@ -39,35 +43,27 @@ class _Enum:
         reference = r.varint()
         if reference == 0:
             return 0
-        if reference > len(ctx.ids):
-            raise Refused("wire_damaged", "a variant reference is past the id table")
-        value = fd.value_of.get(ctx.ids[reference - 1])
-        if value is None:
+        ordinal = fd.value_of.get(r.id_at(reference))
+        if ordinal is None:
             ctx.unknown += 1
             return 0
-        if value in fd.deprecated:
+        if ordinal in fd.deprecated:
             return fd.default
-        return value
+        return ordinal
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         # the save validated the whole value first: a nonzero value names a
         # variant, so the lookup cannot miss.
         w.varint(ctx.idref(fd.field_id))
         w.byte(fd.kind)
-<<<<<<< HEAD
-        if value != 0:
-            wire_id = fd.wire_of[value]
-            w.varint(ctx.idref(wire_id))
-=======
         self.write_element(w, fd, value, ctx)
 
     def write_element(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         _check(fd, value, fd.name)
         if value == 0:
             w.varint(0)
->>>>>>> f21ed2ad0370caa9b8a18426125e142bc259a48f
             return
-        w.varint(0)
+        w.varint(ctx.idref(fd.wire_of[value]))
 
 
 kinds.register("enum", _Enum())
