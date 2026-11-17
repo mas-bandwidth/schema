@@ -89,7 +89,7 @@ func TestGoFixedCorpusPipelineKeepsCompleteTestRecipe(t *testing.T) {
 			t.Errorf("producer misses %s", want)
 		}
 	}
-	for _, want := range []string{"needs: [plan, go-fixed-corpus]", "needs.go-fixed-corpus.result == 'skipped'", "actions/download-artifact@", "matrix.make == 'tables-go-fixedform'", "tools/go-ci-corpus.sh verify", "make -o tables-fixedform-corpus tables-go-fixedform"} {
+	for _, want := range []string{"needs: [plan, go-fixed-corpus, go-generated-support]", "needs.go-fixed-corpus.result == 'skipped'", "actions/download-artifact@", "matrix.make == 'tables-go-fixedform'", "tools/go-ci-corpus.sh verify", "make -o tables-fixedform-corpus tables-go-fixedform"} {
 		if !strings.Contains(tests, want) {
 			t.Errorf("test pipeline misses %s", want)
 		}

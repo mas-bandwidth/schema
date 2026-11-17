@@ -561,19 +561,20 @@ func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
 // ciEvent models a GitHub Actions trigger context for static workflow admission
 // and branch-routing tests. Never execute untrusted fork code to test policy.
 type ciEvent struct {
-	Name           string   // "pull_request", "push", "schedule", "workflow_dispatch"
-	Branch         string   // target branch for push, or base_ref for pull_request
-	HeadRef        string   // head_ref for pull_request
-	Repo           string   // github.repository, e.g. "mas-bandwidth/schema"
-	HeadRepo       string   // github.event.pull_request.head.repo.full_name
-	Labels         []string // pull_request labels
-	PlanPkgs       string   // needs.plan.outputs.packages
-	PlanLegs       string   // needs.plan.outputs.legs
-	PlanRows       string   // needs.plan.outputs.rows
-	PlanResult     string   // needs.plan.result, success when omitted
-	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
-	PRPins         string   // needs.pr-select.outputs.pins (ci-full.yml)
-	PRCS           string   // needs.pr-select.outputs.cs (ci-full.yml)
+	Name            string   // "pull_request", "push", "schedule", "workflow_dispatch"
+	Branch          string   // target branch for push, or base_ref for pull_request
+	HeadRef         string   // head_ref for pull_request
+	Repo            string   // github.repository, e.g. "mas-bandwidth/schema"
+	HeadRepo        string   // github.event.pull_request.head.repo.full_name
+	Labels          []string // pull_request labels
+	PlanPkgs        string   // needs.plan.outputs.packages
+	PlanLegs        string   // needs.plan.outputs.legs
+	PlanRows        string   // needs.plan.outputs.rows
+	PlanResult      string   // needs.plan.result, success when omitted
+	GoCorpusResult  string   // needs.go-fixed-corpus.result, success when omitted
+	GoSupportResult string   // needs.go-generated-support.result, success when omitted
+	PRPins          string   // needs.pr-select.outputs.pins (ci-full.yml)
+	PRCS            string   // needs.pr-select.outputs.cs (ci-full.yml)
 }
 
 type selfHostedJob struct {
@@ -945,6 +946,11 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	case "needs.plan.result":
 		if ev.PlanResult != "" {
 			return ev.PlanResult, nil
+		}
+		return "success", nil
+	case "needs.go-generated-support.result":
+		if ev.GoSupportResult != "" {
+			return ev.GoSupportResult, nil
 		}
 		return "success", nil
 	case "needs.go-fixed-corpus.result":
@@ -1386,6 +1392,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:block-gate",
 		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:go-fixed-corpus",
+		"ci-fast.yml:go-generated-support",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",

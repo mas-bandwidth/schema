@@ -788,9 +788,42 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # These jobs emit only the complete checked-schema Go support closure.
+  # The test rows compile one package, so each consumes every producer group.
+  go-generated-support:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (contains(needs.plan.outputs.rows, '"make":"conformance-go-rows-a"') || contains(needs.plan.outputs.rows, '"make":"conformance-go-rows-b"'))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [base, evolution, collections]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: emit one complete Go support group
+        env:
+          GROUP: ${{ matrix.group }}
+        run: sh tools/go-ci-support.sh produce "$GROUP"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-generated-support-${{ github.run_id }}-${{ github.sha }}-${{ matrix.group }}
+          path: build/go-support-artifact-${{ matrix.group }}/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
   go-test-touched:
-    needs: [plan, go-fixed-corpus]
-    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && (needs.go-fixed-corpus.result == 'success' || (needs.go-fixed-corpus.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"'))) && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)))
+    needs: [plan, go-fixed-corpus, go-generated-support]
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && (needs.go-generated-support.result == 'success' || (needs.go-generated-support.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"conformance-go-rows-a"') && !contains(needs.plan.outputs.rows, '"make":"conformance-go-rows-b"'))) && (needs.go-fixed-corpus.result == 'success' || (needs.go-fixed-corpus.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"'))) && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)))
     name: go-test-touched (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -957,6 +990,22 @@ jobs:
         if: matrix.make == 'tables-go-fixedform'
         run: sh tools/go-ci-corpus.sh verify
 
+      - name: discard previous Go support outputs
+        if: matrix.make == 'conformance-go-rows-a' || matrix.make == 'conformance-go-rows-b'
+        run: rm -rf build/tables-generated-go build/tables-generated-go-framing build/go-support-*.revision build/go-support-*.runtime build/go-support-*.sha256
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: matrix.make == 'conformance-go-rows-a' || matrix.make == 'conformance-go-rows-b'
+        with:
+          pattern: go-generated-support-${{ github.run_id }}-${{ github.sha }}-*
+          merge-multiple: true
+          path: build
+      - name: every Go support group belongs to this checkout
+        if: matrix.make == 'conformance-go-rows-a' || matrix.make == 'conformance-go-rows-b'
+        run: |
+          for group in base evolution collections; do
+            sh tools/go-ci-support.sh verify "$group"
+          done
+
       - name: the gotable make rows
         if: matrix.make != ''
         env:
@@ -968,8 +1017,8 @@ jobs:
               # The verified artifact stages this exact producer prerequisite;
               # keep the full original slow-gate test recipe, not a subset.
               make -o tables-fixedform-corpus tables-go-fixedform ;;
-            conformance-go-rows-a) make conformance-go-rows-a ;;
-            conformance-go-rows-b) make conformance-go-rows-b ;;
+            conformance-go-rows-a) make -o build/tables-generated-go/.stamp conformance-go-rows-a ;;
+            conformance-go-rows-b) make -o build/tables-generated-go/.stamp conformance-go-rows-b ;;
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac
 
