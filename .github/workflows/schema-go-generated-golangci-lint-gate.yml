@@ -5,6 +5,14 @@ name: schema Go generated golangci-lint gate
 # every push (on a pull request: ci-fast.yml lang-lint, by path); the table corpus is heavier and runs nightly and
 # on demand. The lens is a ratchet: the pinned counts live in
 # make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv.
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -17,6 +25,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
   SERIALIZE_GO_TAG: v2.1.1
 
 jobs:
@@ -26,7 +36,6 @@ jobs:
     # the checker: both are fleet-installed and pinned below.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ["self-hosted", "Linux", "X64", "fleet", "schema"]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

@@ -270,10 +270,18 @@ The same split is in [SECURITY.md](SECURITY.md).
   it does not run on macOS. Its merge gate (`plan`, `lint-fast`, `block-gate`
   and `go-test-touched`) runs on GitHub's hosted `ubuntu-latest`, so a merge
   never waits on the fleet; the per-leg `leg-gate` matrix runs on the fleet.
-- Every self-hosted job carries `timeout-minutes` and runs its steps through
+- Every self-hosted job runs its steps through
   [`tools/pgroup`](../tools/pgroup/main.go), which kills each step's whole process
   group when the step ends, so a child a test left running cannot hold a
-  runner.
+  runner. A job that runs on a push or a pull request carries
+  `timeout-minutes` of two or less. A nightly job carries none (the owner,
+  2026-11-16: "Nightly runs don't have a timeout... they can run as long as
+  they need."): every go test in it runs with `-timeout 0`, GitHub's
+  360-minute job limit is the only backstop, and the `verdict` job of
+  `ci-full.yml` and `certify.yml` reads a cancelled or skipped job as red.
+  Each Go test row of `ci-full.yml` records `go test -json` and runs
+  [`tools/gotestreport`](../tools/gotestreport/main.go), which names every test
+  that never reported and every package past the `-timeout` its command named.
 - [`.github/workflows/ci-full.yml`](../.github/workflows/ci-full.yml) runs on a
   push to `main`, `dev`, or `fixed-table-form`, on its nightly schedule
   (`10 7 * * *`), on `workflow_dispatch`, and on a pull request into those

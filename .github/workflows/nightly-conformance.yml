@@ -32,6 +32,14 @@ name: Nightly conformance
 # This workflow runs on its schedule and explicit dispatch only. A pull request
 # editing it receives structural fast checks; it does not launch this sweep.
 
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -46,6 +54,8 @@ concurrency:
 # The sibling pins ci-full.yml, ci-fast.yml and certify.yml carry; the four
 # files and leg.yml move together.
 env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
@@ -62,8 +72,6 @@ jobs:
   registry:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # measured on the last 25 runs: 5-19 s, 72 s at worst
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -96,9 +104,7 @@ jobs:
     # measured: 120-296 s green on the old fleet; on a hetzner runner sharing
     # its host with a second job the C++ driver builds alone ran past 15
     # minutes; the reds ran 18-35 min (main, 2026-11-02..04), inside the
-    # shared regression step, whose go test is bounded as well, so the bound
-    # is 50
-    timeout-minutes: 50
+    # shared regression step. No bound: the nightly rule in the header.
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -139,8 +145,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/nightly/shared-regressions
-          go test -json -timeout=10m -count=1 ./internal/tabletext ./internal/tablewire ./tools/fixedtwin 2>&1 | tee build/nightly/shared-regressions/packages.jsonl
-          go test -json -timeout=10m -count=1 ./test/conformance/harness -run '^TestUnboundedTextOracle' 2>&1 | tee build/nightly/shared-regressions/corpus.jsonl
+          go test -json -timeout=0 -count=1 ./internal/tabletext ./internal/tablewire ./tools/fixedtwin 2>&1 | tee build/nightly/shared-regressions/packages.jsonl
+          go test -json -timeout=0 -count=1 ./test/conformance/harness -run '^TestUnboundedTextOracle' 2>&1 | tee build/nightly/shared-regressions/corpus.jsonl
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -263,9 +269,8 @@ jobs:
     name: port (${{ matrix.lang }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # measured: 25-229 s per language green; the red elixir row runs its
-    # whole readiness gate in 31-33 min (main, 2026-11-03..04), so the bound
-    # is 50
-    timeout-minutes: 50
+    # whole readiness gate in 31-33 min (main, 2026-11-03..04). No bound: the
+    # nightly rule in the header.
     env:
       SHARED_FIXED_REFERENCE: build/nightly/cpp-corpus/build
       SHARED_FIXED_RECEIPT: build/nightly/report/fixedform-corpus-identity.json
@@ -489,8 +494,6 @@ jobs:
     needs: [cpp-writes, port]
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # measured: 11-38 s
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

@@ -15,6 +15,14 @@ name: schema moo nightly fuzz
 # HEAVY WORK NEVER RIDES A PUSH. The nightly job is the only one that fuzzes
 # at depth.
 
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -31,6 +39,8 @@ permissions:
   contents: read
 
 env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
   SERIALIZE_GO_TAG: v2.0.1
 
 jobs:
@@ -38,7 +48,6 @@ jobs:
     name: wiring
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -49,13 +58,12 @@ jobs:
         with:
           go-version-file: go.mod
       - name: wiring
-        run: go test ./internal/ci -count=1 -timeout 600s -run TestSchemaMooNightlyFuzzWiring
+        run: go test ./internal/ci -count=1 -timeout 0 -run TestSchemaMooNightlyFuzzWiring
 
   nightly:
     name: nightly fuzz
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 45
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

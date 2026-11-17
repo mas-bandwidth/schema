@@ -21,6 +21,14 @@ name: Certify
 # emitters, run this file on the branch first:
 #   gh workflow run certify.yml --ref <branch>
 
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # main is certified daily (and govulncheck sees new CVEs), and on demand:
   #   gh workflow run certify.yml --ref main
@@ -50,6 +58,8 @@ concurrency:
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
@@ -82,13 +92,16 @@ jobs:
   # the cap by eight minutes; run 35329874611 on 2026-09-18 was cut at 60:00
   # with `make test` still running, and so were four inline-gate legs and
   # release-gates (tables-go-release). The suite grew into the cap, which is the
-  # same growth issue #1025 measures in `go test ./...` (0:37 -> 5:34..9:10), so
-  # the remedy is the suite's cost or a bench we own — NOT a larger number on
-  # this line. A cap raised to fit a growing suite stops meaning anything.
+  # same growth issue #1025 measures in `go test ./...` (0:37 -> 5:34..9:10).
+  #
+  # NOW, 2026-11-16: the cap is gone (the nightly rule in the header). The run
+  # finishes and reports every test; the growth that cap used to show is still
+  # read, after the fact: each go test package past the -timeout its command
+  # names is OVER BUDGET in tools/gotestreport, and the verdict job below reads
+  # this job red if it fails or is cut by GitHub's 360-minute backstop.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -314,13 +327,13 @@ jobs:
   # which is what `tables-java-release` was before this job. On a tree that
   # carries none the matrix is empty and the leg job is skipped.
   #
-  # ONE LEG PER TARGET. The five targets the tree carries outrun one job's
-  # hour together (run 33831179695 was cancelled at 60 minutes, and a
-  # cancelled gate proves nothing), so each target gets a job of its own with
-  # the hour to itself, and a failing language is named by its job.
+  # ONE LEG PER TARGET. The targets together outran one job's old hour (run
+  # 33831179695 was cancelled at 60 minutes, and a cancelled gate proves
+  # nothing), so each target gets a job of its own: they run side by side, no
+  # job carries a cap now (the nightly rule in the header), and a failing
+  # language is named by its job.
   release-targets:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -348,7 +361,6 @@ jobs:
     if: needs.release-targets.outputs.targets != '[]'
     name: release-gates (${{ matrix.target }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 60
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -502,14 +514,14 @@ jobs:
   # build-time artifact to gate — faking one would be a green light that
   # proves nothing.
   #
-  # The timeout covers the full `make test` precondition, the adversarial
-  # selftest and the inline leg. In run 34080317818, the Ubuntu Go job hit
-  # the 40-minute cap during `make test`, before reaching either inline check.
-  # Match the full test job's 60-minute budget; every precondition and check
-  # remains in place, and the job still has a bounded execution time.
+  # Each leg runs the full `make test` precondition, the adversarial selftest
+  # and the inline leg. In run 34080317818 the Ubuntu Go job was cut by its old
+  # 40-minute cap during `make test`, before reaching either inline check; no
+  # job carries a cap now (the nightly rule in the header), so every leg
+  # reaches its inline check, and the verdict job reads a leg cut by GitHub's
+  # backstop as red.
   inline-gate:
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -689,7 +701,6 @@ jobs:
   # here under `make vuln-strict`; the block on the step says why.
   vuln:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -714,9 +725,10 @@ jobs:
       # RED after three attempts where the direct PR scan cannot even retry a
       # transient blip.
       #
-      # INSIDE THE 10-MINUTE CAP with room to spare: 3 x 35 s of scan plus the
-      # 15 s and 45 s sleeps is 2:45 worst case; the cap remains for a scan that
-      # hangs instead of failing.
+      # 3 x 35 s of scan plus the 15 s and 45 s sleeps is 2:45 worst case. The
+      # old 10-minute cap is gone (the nightly rule in the header): a scan that
+      # hangs instead of failing runs to GitHub's 360-minute backstop, reads
+      # cancelled, and the verdict job reads that red.
       - name: govulncheck
         run: make vuln-strict
 
@@ -731,7 +743,6 @@ jobs:
   # the target fetches at its pin.
   release-differential:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 20
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -765,7 +776,6 @@ jobs:
   # rather than a typed list.
   negative-controls-nightly-matrix:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -790,7 +800,6 @@ jobs:
     name: negative controls, nightly (${{ matrix.name }})
     needs: negative-controls-nightly-matrix
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 60
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -945,9 +954,9 @@ jobs:
   # exactly one matrix entry — a new <lang> directory with a driver and a
   # ci.json — and nothing in this file moves. The same workflow is what
   # ci.yml's conformance pair calls inline; here it is the certification
-  # path's view, run nightly and on demand under the same per-row timeout
-  # the conformance leg carries in ci.yml, so a row that goes red on its own
-  # fails the job rather than timing out the day.
+  # path's view, run nightly and on demand with no per-row cap (the nightly
+  # rule in the header; leg.yml carries none), so a row that goes red fails
+  # on its own, and the verdict job reads every row.
   schema-legs:
     name: schema legs (certify)
     uses: ./.github/workflows/leg.yml
@@ -968,7 +977,6 @@ jobs:
   big-endian:
     name: big-endian (${{ matrix.leg }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -1022,3 +1030,41 @@ jobs:
 
       - name: ${{ matrix.target }}
         run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+
+  # THE VERDICT. With no caps (the nightly rule in the header), the one way a
+  # job stops short is GitHub's 360-minute backstop, which records it
+  # CANCELLED, and a job whose need failed is SKIPPED. Neither may read green
+  # or vanish: this job needs every other job, runs always(), and fails on any
+  # result but success. The one skip that is not red is release-gates when the
+  # tree carries no release target (its matrix would be empty). A run that is
+  # itself cancelled skips it (!cancelled(), so a superseded run never queues
+  # it for a runner) and reads cancelled, which is not green either.
+  # internal/ci/nightly_test.go holds this job to every job in the file.
+  verdict:
+    if: always() && !cancelled()
+    needs: [test, release-targets, release-gates, inline-gate, vuln, release-differential, negative-controls-nightly-matrix, negative-controls-nightly, schema-legs, big-endian]
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      # no checkout, so tools/pgroup is not here: plain bash
+      - name: every job of this run succeeded (failed, cancelled or skipped is red)
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
+          bad=$(jq -r 'to_entries[]
+            | select(.value.result != "success")
+            | select((.key == "release-gates" and .value.result == "skipped"
+                and $all["release-targets"].result == "success"
+                and $all["release-targets"].outputs.targets == "[]") | not)
+            | "\(.key): \(.value.result)"' --argjson all "$NEEDS" <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error::not every job of this run succeeded:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "every job succeeded"

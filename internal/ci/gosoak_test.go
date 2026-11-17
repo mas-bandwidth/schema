@@ -48,42 +48,26 @@ func goReleaseSoak(t *testing.T, root string) time.Duration {
 	return time.Duration(float64(time.Hour) * float64(release) / float64(hour))
 }
 
-// certifyJobTimeouts maps every top-level job name in certify.yml to its
-// timeout-minutes value; a job with no timeout is absent.
-func certifyJobTimeouts(data string) map[string]time.Duration {
-	out := map[string]time.Duration{}
-	var cur string
-	for raw := range strings.SplitSeq(data, "\n") {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if jobKeyRe.MatchString(raw) {
-			cur = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(raw), ":"))
-			continue
-		}
-		if val, ok := strings.CutPrefix(trimmed, "timeout-minutes:"); ok {
-			n, err := strconv.Atoi(strings.TrimSpace(val))
-			if err != nil {
-				continue
-			}
-			out[cur] = time.Duration(n) * time.Minute
-		}
-	}
-	return out
-}
+// releaseSoakBudget is the -timeout the tables-go-release recipe names for
+// its soak's go test.
+var releaseSoakBudget = regexp.MustCompile(`go test [^\n]*-timeout (\S+) -soak-iterations \$\(TABLES_GO_RELEASE_SOAK_ITERATIONS\)`)
 
-// TestGoReleaseSoakFitsItsCertifyJob keeps the soak the Go release gate runs
-// inside the certification cap, so the release-gates job finishes instead of
-// being killed at its timeout. certify.yml's own note (2026-09-18) is explicit
-// that the cap is NOT raised to fit a growing suite ("a cap raised to fit a
-// growing suite stops meaning anything"); the soak must therefore shrink to fit.
+// TestGoReleaseSoakFitsItsBudget keeps the soak the Go release gate runs
+// inside the budget its go test names, so a soak that has grown reads red.
 //
-// Two clauses:
-//   - no timeout-minutes in certify.yml may exceed the 60-minute certification cap;
-//   - the job that runs tables-go-release (release-gates) must allow the soak
-//     plus a stated 15-minute pre-soak allowance without reaching its timeout.
-func TestGoReleaseSoakFitsItsCertifyJob(t *testing.T) {
+// The certification job that runs it used to carry a 60-minute cap, and the
+// soak was sized to fit it (certify.yml's note, 2026-09-18: a cap raised to
+// fit a growing suite stops meaning anything). The nightly has no cap now
+// (the owner, 2026-11-16: "Nightly runs don't have a timeout... they can run
+// as long as they need."), so the soak runs to the end and the budget is read
+// after it: tools/pgroup lifts the recipe's -timeout in the nightly and
+// records it, and tools/gotestreport names the package OVER BUDGET when its
+// test binary ran past it. This test keeps that budget meaningful:
+//
+//   - certify.yml carries no timeout-minutes (no cap cuts the soak short);
+//   - the soak plus a stated 15-minute pre-soak allowance fits the -timeout
+//     the recipe names, so a green soak is inside its budget by design.
+func TestGoReleaseSoakFitsItsBudget(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
@@ -91,40 +75,31 @@ func TestGoReleaseSoakFitsItsCertifyJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read certify.yml: %v", err)
 	}
-	body := string(cf)
-
-	// Clause 1 — the cap. Every timeout-minutes must sit at or under 60; the
-	// cap is the certification contract and is never raised for a growing suite.
-	reserved := 0
-	for _, l := range lines("certify.yml", body) {
-		if !strings.HasPrefix(l.text, "timeout-minutes:") {
-			continue
-		}
-		val := strings.TrimSpace(strings.TrimPrefix(l.text, "timeout-minutes:"))
-		n, err := strconv.Atoi(val)
-		if err != nil {
-			t.Errorf("%s: timeout-minutes: %q is not an integer", l.where, val)
-			continue
-		}
-		if n > 60 {
-			t.Errorf("%s: timeout-minutes %d is above the 60-minute certification cap — a cap raised to fit a growing suite stops meaning anything (certify.yml note, 2026-09-18)", l.where, n)
-		}
-		reserved++
-	}
-	if reserved == 0 {
-		t.Fatal("certify.yml carries no timeout-minutes — this gate would pass over an empty set")
-	}
-
-	// Clause 2 — the soak fits. The job that runs tables-go-release must leave
-	// room for the soak plus a stated 15-minute pre-soak allowance.
-	soak := goReleaseSoak(t, root)
-	const allowance = 15 * time.Minute
-
-	gate, ok := certifyJobTimeouts(body)["release-gates"]
-	if !ok {
+	if _, ok := yamlJobs(string(cf))["release-gates"]; !ok {
 		t.Fatal("certify.yml has no release-gates job — the job that runs tables-go-release is missing")
 	}
-	if need := soak + allowance; need >= gate {
-		t.Errorf("tables-go-release passes a %v soak to TestSoak (TABLES_GO_RELEASE_SOAK_ITERATIONS as a share of TABLES_GO_SOAK_ITERATIONS' hour) plus a %v pre-soak allowance = %v, but the release-gates job allows %v — the soak does not fit and the job will be killed at the cap", soak, allowance, need, gate)
+	for _, l := range lines("certify.yml", string(cf)) {
+		if strings.HasPrefix(l.text, "timeout-minutes:") {
+			t.Errorf("%s: certify.yml carries timeout-minutes; a nightly run has no timeout, it runs as long as it needs", l.where)
+		}
+	}
+
+	gomk, err := os.ReadFile(filepath.Join(root, "make", "go.mk"))
+	if err != nil {
+		t.Fatalf("read make/go.mk: %v", err)
+	}
+	m := releaseSoakBudget.FindStringSubmatch(string(gomk))
+	if m == nil {
+		t.Fatal("the tables-go-release soak's go test names no -timeout in make/go.mk — the report would hold it to go test's 10m default")
+	}
+	budget, err := time.ParseDuration(m[1])
+	if err != nil || budget <= 0 {
+		t.Fatalf("the tables-go-release soak's -timeout %q is not a positive duration", m[1])
+	}
+
+	soak := goReleaseSoak(t, root)
+	const allowance = 15 * time.Minute
+	if need := soak + allowance; need >= budget {
+		t.Errorf("tables-go-release passes a %v soak to TestSoak (TABLES_GO_RELEASE_SOAK_ITERATIONS as a share of TABLES_GO_SOAK_ITERATIONS' hour) plus a %v pre-soak allowance = %v, but its go test names -timeout %v — the soak does not fit its budget and the nightly report will name it OVER BUDGET", soak, allowance, need, budget)
 	}
 }

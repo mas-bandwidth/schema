@@ -89,6 +89,28 @@ name: CI full
 # The fix is to rebase the branch; the mitigation is below on `cpp-lock`, which
 # no longer skips itself on the workflow_dispatch runs a worker falls back to.
 
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+#
+# WHAT THE CAPS USED TO DETECT, AND WHAT DETECTS IT NOW. On 2026-11-13, 11-15
+# and 11-16 the go-test (unit-codegen) row was cancelled at its 15-minute cap
+# with no per-test verdict, which hid nine red tests in
+# internal/codegen/gotable for days. A cap cut the run short; nothing here does
+# now. The go-test rows set PGROUP_GO_TEST_JSON, so each row's outermost
+# `go test` records its event stream line by line, and a last step that runs
+# whatever happened (tools/gotestreport) names every failed test, every test
+# that never reported (the row cut short at the backstop), the slowest tests,
+# and goes red when a package's test binary ran past the -timeout its command
+# named (go test's 10m default when it named none), which is what caught a
+# hang or a blow-up before: now only AFTER every test has reported. The streams are kept as each row's go-test-json artifact. The
+# `verdict` job at the end fails when any job's result is not success, so a
+# cancelled or skipped row can never read green.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -117,6 +139,8 @@ concurrency:
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
   PGROUP_WALL: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '110s' || '' }}
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
@@ -141,19 +165,13 @@ jobs:
   # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
   # so a job without them would report green over a check that never ran.
   #
-  # FIFTEEN MINUTES, NOT TEN, and the number is measured rather than padded.
-  # This job is where the fixed form's versioning suites hang — Go, C and Rust,
-  # each one a generator that compiles a probe per row per column — and they
-  # arrived on three separate branches that each fit under ten on their own.
-  # Run 34585071032 put the Go and Rust pair at 9m15s of a 10m cap; the C leg
-  # lands in the same job on this merge, and the sum does not fit. A job that a
-  # green run already sits at 92% of turns the next leg's arrival into a
-  # cancellation with nothing red inside it, which is what happened one door
-  # over in `pins` on 34584793329. Raising the budget keeps every gate and
-  # costs a runner minute; trimming the suites would cost a column of §5.
-  # The Dart and Elixir legs land in this same job on their own branches, each
-  # another generator running a probe per row per column; fifteen is the budget
-  # they share.
+  # NO CAP, AND A REPORT. A capped job that a green run already sits near
+  # turns the next suite's arrival into a cancellation with nothing red inside
+  # it (run 34585071032 put the Go and Rust versioning pair at 9m15s of a 10m
+  # cap; `pins` was cancelled that way on 34584793329; unit-codegen at its 15m
+  # cap on 2026-11-13, 11-15 and 11-16). So no row carries one: each row's
+  # outermost go test records its -json stream (PGROUP_GO_TEST_JSON), and the
+  # report step at the end of the job reads it whatever happened.
   go-test:
     # Runs on a pull request only when it comes from this repository and
     # carries the `full-ci` label; on a merge, the nightly and a dispatch it
@@ -164,10 +182,13 @@ jobs:
     name: go-test (${{ matrix.group }})
     # THE FLEET'S RUNNERS, as ci-fast's runs into main use (standing rule,
     # 2026-10-21: every CI job on fleet runners, never GitHub-hosted). On a
-    # hosted two-core runner the SCHEMA_SLOW=1 gotable package passed the
-    # 10-minute test timeout; the gate is not loosened to fit that runner.
+    # hosted two-core runner the SCHEMA_SLOW=1 gotable package ran past ten
+    # minutes; with no cap it would finish there too, only later.
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 15
+    env:
+      # each row's outermost go test records its -json stream here (the
+      # header's report); runner.temp is the job's own, never a past run's
+      PGROUP_GO_TEST_JSON: ${{ runner.temp }}/go-test-json
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -227,7 +248,7 @@ jobs:
     # sum) sets the wall.
     #
     # WHY unit-rest WAS CUT AGAIN (2026-10-27). On run 40596125566 the one
-    # unit-rest row ran 14m55s against this 15-minute cap: the complement's
+    # unit-rest row ran 14m55s against the job's then 15-minute cap: the complement's
     # `go test` took 7m26s, nearly all of it ./compiler (441 s; the next
     # package, internal/fuzz, was 79 s and internal/goldens 77 s), the
     # accounting's plain `go test ./...` took 6m22s more, and the Java
@@ -235,9 +256,7 @@ jobs:
     # row. So ./compiler is two rows split by test name, the accounting is two
     # rows split by package, and the Java suite is the versioning row's alone.
     # internal/codegen/elixirtable is a row of its own: its allocation test is
-    # load-sensitive, and alone it is 4m35s, which would put unit-rest over
-    # half its cap. Which
-    # row runs which package and which test is held by
+    # load-sensitive, and alone it is 4m35s. Which row runs which package and which test is held by
     # tools/slowgatescan's TestCIFullGoTestRunsEveryTestExactlyOnce: a test
     # that no row selects, or that two rows select, is red there by name.
     strategy:
@@ -1179,6 +1198,27 @@ jobs:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
 
+      # THE ROW'S REPORT, whatever happened above (always(): a failed step, a
+      # cancellation, the backstop). It reads the -json streams the row's
+      # outermost go test recorded and names every failed test, every test
+      # that started and never reported, and the slowest; it is red for a
+      # test or package that never reported, and for a package whose test
+      # binary ran past the -timeout its go test named (go test's 10m default
+      # when it named none): the detection the lifted limits gave, applied
+      # only after every test has reported. A test failure stays the test
+      # step's verdict.
+      - name: report every test this row ran, and each package's named budget
+        if: always()
+        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_JSON"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: go-test-json-${{ matrix.group }}
+          path: ${{ runner.temp }}/go-test-json
+          if-no-files-found: ignore
+          retention-days: 7
+
   # THE GENERATED TREE IS CURRENT (issue #30). The committed generated/ tree is
   # what this repo treats as ground truth — findings are receipted against its
   # line numbers — so a compiler change that moves the emitted text and leaves
@@ -1243,13 +1283,14 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     name: legs under their build tags (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         group: [ moo-compiler, moo-table, goose ]
     env:
       PGROUP_WALL: ''
+      # the go-test job's record and report, for these rows too
+      PGROUP_GO_TEST_JSON: ${{ runner.temp }}/go-test-json
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1308,6 +1349,19 @@ jobs:
         if: matrix.group == 'goose' && github.event_name == 'schedule'
         run: make test-goose-tagged-harness
 
+      # the go-test job's report step, whatever happened above
+      - name: report every test this row ran, and each package's named budget
+        if: always()
+        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_JSON"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: go-test-json-tagged-${{ matrix.group }}
+          path: ${{ runner.temp }}/go-test-json
+          if-no-files-found: ignore
+          retention-days: 7
+
   # THE PR SELECTION for the two jobs below that still start on an unlabelled
   # pull request, `pins` and `cs-tables`: the owner, 2026-11-15: heavy suite
   # failure on main is fine, like a hierarchical merge. A whole-tree guard
@@ -1330,7 +1384,6 @@ jobs:
   pr-select:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1419,7 +1472,6 @@ jobs:
     name: generated (${{ matrix.row }})
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -1490,17 +1542,13 @@ jobs:
   # `go test ./...`, which is the duplicate of go-test's and the first place
   # to look if this job ever wants the time back.
   #
-  # AND IT GREW INTO THE CAP, which is why the budget below is 15 and no
-  # longer 10. The duplicate `go test ./...` is now the whole of this job:
-  # 419s of the base's 9m01s total on run 34585071032, and the C leg's own
-  # tests carried it to 478s of 9m50s on 34584793329 — which is past a
+  # IT ONCE GREW INTO ITS CAP. The duplicate `go test ./...` was the whole of
+  # this job: 419s of the base's 9m01s total on run 34585071032, and the C
+  # leg's own tests carried it to 478s of 9m50s on 34584793329, past the then
   # 10-minute cap, so the job was cancelled MID-`go test` with nothing red in
-  # it and every other job in the run green. A cap that a passing job sits at
-  # 90% of reports the next leg's tests as a failure of the leg, so it is
-  # raised here rather than paid for by trimming what the pins prove. The
-  # paragraph above still names the real remedy: that closing `go test ./...`
-  # duplicates the go-test job and is the time to reclaim when someone wants
-  # it, which is a change to `update-goldens` and belongs to its own diff.
+  # it and every other job in the run green. That is the failure the nightly
+  # rule in the header removes: no cap now, so a slow job finishes and says
+  # what it found.
   # SHARDED BY PIN FAMILY FOR THE 2-MINUTE FLEET RULE. On main, the single
   # `pins` job was killed at the 120s per-commit fleet cap (133s wall: 24s on
   # `make dist-lua` plus Luau/Goose/Lobster installs, then 85s capped / 302s
@@ -1541,7 +1589,6 @@ jobs:
     if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.pins == 'yes' || contains(github.event.pull_request.labels.*.name, 'full-ci'))))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     name: pins (${{ matrix.row }})
-    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -1657,7 +1704,6 @@ jobs:
     # hosted), so an ephemeral fleet runner starts warm.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1718,7 +1764,6 @@ jobs:
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1972,7 +2017,6 @@ jobs:
     if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
     needs: conformance
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2024,7 +2068,6 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     name: C# fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2132,8 +2175,8 @@ jobs:
   # change with N. Measured on a workstation: 43 s per arm, 88 s for the two in
   # one make call, so each arm is its own matrix row (make/js.mk's
   # tables-js-wire-fuzz-plain and -retain, the two halves of
-  # tables-js-wire-fuzz-all) to keep a row well inside its five minutes once
-  # the setup is paid. Node comes from the same pin the js
+  # tables-js-wire-fuzz-all), so the two run side by side once the setup is
+  # paid. Node comes from the same pin the js
   # conformance row reads (test/conformance/js/ci.json), and NODE=node is that
   # row's env, so make/js.mk's repo-local dist/ default is not used here.
   # Its negative control, tables-js-wire-fuzz-negative-control, rides in the
@@ -2145,7 +2188,6 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     name: JavaScript fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2225,7 +2267,6 @@ jobs:
     if: github.event_name != 'push' && github.event_name != 'pull_request'
     name: Dart fuzz (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2337,7 +2378,6 @@ jobs:
     needs: pr-select
     if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && (needs.pr-select.outputs.cs == 'yes' || contains(github.event.pull_request.labels.*.name, 'full-ci'))))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2426,7 +2466,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     strategy:
       fail-fast: false
       # ONE PIECE PER ROW (issue #684). The pieces share nothing but bin/schema
@@ -2561,7 +2600,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2679,7 +2717,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2723,10 +2760,11 @@ jobs:
       # nightly in certify.yml runs `make vuln-strict` and goes RED on the same
       # outage, so an outage is never green everywhere at once.
       #
-      # INSIDE THE 10-MINUTE CAP with room to spare: the scan measures 35 s on
-      # this runner and 9.4 s on a 64-core bench, so three attempts and two
-      # sleeps is 3 x 35 s + 15 s + 45 s = 2:45 worst case. The cap is there for
-      # a scan that HANGS instead of failing, and it still ends the job.
+      # The scan measures 35 s on this runner and 9.4 s on a 64-core bench, so
+      # three attempts and two sleeps is 3 x 35 s + 15 s + 45 s = 2:45 worst
+      # case. A scan that HANGS instead of failing used to end at a 10-minute
+      # cap; under the nightly rule it runs to GitHub's 360-minute backstop,
+      # the job reads cancelled, and the `verdict` job turns the run red.
       - name: govulncheck
         run: make vuln
 
@@ -2739,7 +2777,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: windows-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -2824,7 +2861,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: windows-2025
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -2974,7 +3010,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -3023,7 +3058,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -3163,7 +3197,6 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -3213,11 +3246,10 @@ jobs:
     name: negative controls (${{ matrix.name }})
     needs: negative-controls-matrix
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # THE RULE, ENFORCING ITSELF. Every row here is cut to 120 s of control
-    # time and pays about 25 s of checkout, sibling clones and first build on
-    # top, so five minutes is generous and a row that reaches it is a row that
-    # left the rule. A ceiling wide enough to hide that is not a timeout.
-    timeout-minutes: 5
+    # Every row here is cut to 120 s of control time and pays about 25 s of
+    # checkout, sibling clones and first build on top. It used to carry a
+    # five-minute cap; under the nightly rule a slow row finishes, and the
+    # log says which control took the time.
     env:
       PGROUP_WALL: ''
     defaults:
@@ -3434,3 +3466,41 @@ jobs:
             grep -nE "$cause" controls.log || echo "no refusal or failure line in controls.log; read the log above"
           fi
           exit $status
+
+  # THE VERDICT. With no caps, a row ends one of three ways besides success:
+  # failure, cancelled (by a person, or at GitHub's 360-minute backstop), or
+  # skipped (a job whose `needs` did not succeed). GitHub reads only the first
+  # as red, so this job reads every result and is red unless each job
+  # succeeded. The one skip it accepts is pr-select off a pull request, which
+  # is that job's design. always() runs it after a job failed or was cut at
+  # the backstop; !cancelled() skips it only when the run itself is cancelled
+  # (so a superseded run never queues it for a runner), and such a run reads
+  # cancelled, which is not green either.
+  # internal/ci/nightly_test.go holds `needs` to every other job here.
+  verdict:
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [go-test, leg-tagged, pr-select, generated, pins, conformance-matrix, conformance, proof, cs-fuzz, js-fuzz, dart-fuzz, cs-tables, big-endian, lint, vuln, windows, msvc, shape-gate, cpp-lock, negative-controls-matrix, negative-controls]
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      # no checkout, so tools/pgroup is not here: plain bash
+      - name: every job of this run succeeded (failed, cancelled or skipped is red)
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
+          bad=$(jq -r --arg event "$EVENT" 'to_entries[]
+            | select(.value.result != "success")
+            | select((.key == "pr-select" and .value.result == "skipped" and $event != "pull_request") | not)
+            | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error::not every job of this run succeeded:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "every job succeeded"

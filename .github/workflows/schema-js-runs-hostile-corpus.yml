@@ -10,6 +10,14 @@ name: schema-js-runs-hostile-corpus
 # on schedule and workflow_dispatch because it certifies the gate has a blade
 # rather than the corpus's content.
 
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -18,6 +26,8 @@ on:
   workflow_dispatch:
 
 env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
   GOFLAGS: -mod=readonly
   NOVA_TEST_NO_HOST: '1'
   SERIALIZE_JS_TAG: v2.0.1
@@ -28,7 +38,6 @@ jobs:
     # it can reach one.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, schema]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -56,7 +65,6 @@ jobs:
   negative-control:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64, schema]
-    timeout-minutes: 15
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

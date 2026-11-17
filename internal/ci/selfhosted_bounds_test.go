@@ -16,16 +16,21 @@ import (
 // busy. `bash -e {0}` is what GitHub runs when a step names no shell.
 const pgroupShell = "go run ./tools/pgroup -- bash -e {0}"
 
-// maxFleetMinutes is the largest timeout a fleet job may carry. Every bound
-// in the tree is sized from measured durations and is well under it; a job
-// that needs more is a job to split, not a cap to raise.
+// maxFleetMinutes is the largest timeout a fleet job outside the nightly may
+// carry. Every bound in the tree is sized from measured durations and is well
+// under it; a job that needs more is a job to split, not a cap to raise.
 const maxFleetMinutes = 60
 
 // checkSelfHostedBounds holds every job that can run on a self-hosted runner
-// to the two rules that keep a runner from being held: an explicit, bounded
-// `timeout-minutes`, and steps that run under pgroupShell. A step may name
-// its own shell only before the checkout (tools/pgroup is not there yet) or
-// when it runs only on a hosted runner.
+// to the rules that keep a runner from being held: steps that run under
+// pgroupShell, and, outside the nightly, an explicit, bounded
+// `timeout-minutes`. A step may name its own shell only before the checkout
+// (tools/pgroup is not there yet) or when it runs only on a hosted runner.
+//
+// A NIGHTLY JOB CARRIES NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+// have a timeout... they can run as long as they need."), so the timeout rule
+// is not asked of a nightlyWorkflow's jobs; nightlyNoTimeoutErrors holds them
+// to having none, and GitHub's 360-minute job limit is their backstop.
 func checkSelfHostedBounds(wfs map[string]string) []string {
 	var errs []string
 	for _, sh := range enumerateSelfHostedJobs(wfs) {
@@ -62,6 +67,8 @@ func checkSelfHostedBounds(wfs map[string]string) []string {
 			}
 		}
 		switch n, err := strconv.Atoi(minutes); {
+		case nightlyWorkflow(sh.Workflow):
+			// no timeout here: nightlyNoTimeoutErrors holds that
 		case !hasTimeout:
 			errs = append(errs, fmt.Sprintf("%s has no timeout-minutes: a hung step holds its runner for up to six hours, and longer when the runner loses the job", sh.Key()))
 		case err != nil:
@@ -123,8 +130,9 @@ func shellOverrides(key, body string) []string {
 }
 
 // TestEverySelfHostedJobIsBounded: every job that can land on a self-hosted
-// runner carries an explicit timeout and runs its steps in a process group
-// pgroup kills, so no hung job or leftover child holds a fleet runner.
+// runner runs its steps in a process group pgroup kills, so no leftover child
+// holds a fleet runner, and every one outside the nightly carries an explicit
+// timeout.
 func TestEverySelfHostedJobIsBounded(t *testing.T) {
 	t.Parallel()
 	wfs := workflows(t, repoRoot(t))
@@ -143,21 +151,27 @@ func TestEverySelfHostedJobIsBounded(t *testing.T) {
 func TestSelfHostedBoundsNegativeControls(t *testing.T) {
 	t.Parallel()
 	wfs := workflows(t, repoRoot(t))
-	const wf = "schema-squirrel-nightly-fuzz.yml"
-	base, ok := wfs[wf]
-	if !ok {
-		t.Fatalf("%s is the workflow these controls mutate", wf)
+	// release.yml is dispatch-only and outside the nightly, so it keeps its
+	// bound; the nightly squirrel fuzz carries none and keeps the shell rule.
+	const bounded, nightly = "release.yml", "schema-squirrel-nightly-fuzz.yml"
+	if nightlyWorkflow(bounded) || !nightlyWorkflow(nightly) {
+		t.Fatalf("the controls need %s outside the nightly and %s in it", bounded, nightly)
 	}
 	cases := []struct {
-		name, old, new, want string
+		wf, name, old, new, want string
 	}{
-		{"timeout removed", "    timeout-minutes: 20\n", "", "schema-squirrel-nightly-fuzz.yml:fuzz has no timeout-minutes"},
-		{"timeout from an expression", "    timeout-minutes: 20\n", "    timeout-minutes: ${{ inputs.minutes }}\n", "is not a literal number of minutes"},
-		{"timeout past the cap", "    timeout-minutes: 20\n", "    timeout-minutes: 600\n", "timeout-minutes 600 is outside"},
-		{"default shell removed", "    timeout-minutes: 20\n    defaults:\n      run:\n        shell: " + pgroupShell + "\n", "    timeout-minutes: 20\n", "schema-squirrel-nightly-fuzz.yml:fuzz runs its steps under \"\""},
-		{"a step opts out after checkout", "      - run: make schema-squirrel-nightly-fuzz\n", "      - run: make schema-squirrel-nightly-fuzz\n        shell: bash\n", "names shell \"bash\" after the checkout"},
+		{bounded, "timeout removed", "    timeout-minutes: 20\n", "", "release.yml:release has no timeout-minutes"},
+		{bounded, "timeout from an expression", "    timeout-minutes: 20\n", "    timeout-minutes: ${{ inputs.minutes }}\n", "is not a literal number of minutes"},
+		{bounded, "timeout past the cap", "    timeout-minutes: 20\n", "    timeout-minutes: 600\n", "timeout-minutes 600 is outside"},
+		{nightly, "default shell removed", "  fuzz:\n    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'\n    runs-on: [self-hosted, Linux, X64, fleet, schema]\n    defaults:\n      run:\n        shell: " + pgroupShell + "\n", "  fuzz:\n    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'\n    runs-on: [self-hosted, Linux, X64, fleet, schema]\n", "schema-squirrel-nightly-fuzz.yml:fuzz runs its steps under \"\""},
+		{nightly, "a step opts out after checkout", "      - run: make schema-squirrel-nightly-fuzz\n", "      - run: make schema-squirrel-nightly-fuzz\n        shell: bash\n", "names shell \"bash\" after the checkout"},
 	}
 	for _, c := range cases {
+		wf := c.wf
+		base, ok := wfs[wf]
+		if !ok {
+			t.Fatalf("%s is a workflow these controls mutate", wf)
+		}
 		if !strings.Contains(base, c.old) {
 			t.Fatalf("%s: %s no longer carries %q", c.name, wf, c.old)
 		}

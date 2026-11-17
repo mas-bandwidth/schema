@@ -1,4 +1,12 @@
 name: Lobster fixed proof qualification
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -7,10 +15,13 @@ on:
     - cron: '23 6 * * *'
 permissions:
   contents: read
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
 jobs:
   native:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 30
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -29,7 +40,7 @@ jobs:
           fi
           make dist-lobster
       - name: Check action pins
-        run: go test ./internal/ci -run "^TestEveryActionIsPinnedToACommit$" -count=1 -timeout 600s
+        run: go test ./internal/ci -run "^TestEveryActionIsPinnedToACommit$" -count=1 -timeout 0
       - name: Build the C++ fixed-form corpus
         run: make -j4 tables-fixedform-corpus
       - name: Compare the four fixed-proof gates with the live C++ oracle
@@ -38,10 +49,9 @@ jobs:
           SCHEMA_REQUIRE_CORPUS: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^(TestLobsterFixedProofSuiteValues|TestLobsterFixedProofSuiteNegativeControl|TestLobsterFixedProofEvolution|TestLobsterFixedNestedUnionGuardNames)$' -count=1 -timeout 600s -v
+          go test ./internal/codegen/lobstertable -run '^(TestLobsterFixedProofSuiteValues|TestLobsterFixedProofSuiteNegativeControl|TestLobsterFixedProofEvolution|TestLobsterFixedNestedUnionGuardNames)$' -count=1 -timeout 0 -v
   baseline:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 15
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -60,4 +70,4 @@ jobs:
           fi
           make dist-lobster
       - name: Check workflow, source goldens and table emitter
-        run: go test ./internal/ci ./internal/goldens ./internal/codegen/lobstertable -count=1 -timeout 600s
+        run: go test ./internal/ci ./internal/goldens ./internal/codegen/lobstertable -count=1 -timeout 0

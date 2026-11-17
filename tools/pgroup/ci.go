@@ -9,8 +9,9 @@ import (
 // PerCommitWall is the per-step budget a per-commit (push or pull_request)
 // CI run gives every step: per-commit jobs finish in two minutes, so a step
 // gets 110s and the remaining seconds are the runner's own overhead. A
-// schedule or workflow_dispatch run sets no PGROUP_WALL and keeps the long
-// budget its job timeout-minutes names.
+// schedule or workflow_dispatch run sets no PGROUP_WALL and has no wall at
+// all: a nightly run has no timeout (the owner, 2026-11-16), and GitHub's
+// 360-minute job limit is its only backstop.
 const PerCommitWall = 110 * time.Second
 
 // wallBudget resolves the effective wall: the -wall flag when set, else the

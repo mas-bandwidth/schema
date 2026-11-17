@@ -31,6 +31,11 @@
 //   - -wall elapses: the budget is named on stderr, the group gets SIGTERM,
 //     after -grace SIGKILL, and pgroup exits 124.
 //
+// NIGHTLY GO TEST HAS NO TIMEOUT. With PGROUP_GO_TEST_TIMEOUT set, the
+// command runs with a `go` shim first on its PATH that gives every `go test`
+// that -timeout instead of the one it named, and with PGROUP_GO_TEST_JSON
+// set the outermost `go test` also records its event stream (goshim.go).
+//
 // A process that leaves the group on purpose (setsid, Setpgid) is outside
 // this; nothing the repository runs under CI does.
 //
@@ -47,6 +52,10 @@ import (
 )
 
 func main() {
+	// Started as `go`, this is the nightly's go test shim (goshim.go).
+	if isGoShim(os.Args[0]) {
+		os.Exit(goShim(os.Args[1:]))
+	}
 	fs := flag.NewFlagSet("pgroup", flag.ExitOnError)
 	wall := fs.Duration("wall", 0, "kill the group after this long (0: no budget)")
 	grace := fs.Duration("grace", 10*time.Second, "how long a stopped group gets before SIGKILL")
@@ -65,7 +74,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "pgroup: %v\n", err)
 		os.Exit(2)
 	}
+	cleanup, err := prepareGoShim()
+	if err != nil {
+		// A nightly that asked for no test timeout must not silently run
+		// with one: refuse to run, as for a bad PGROUP_WALL.
+		fmt.Fprintf(os.Stderr, "pgroup: %v\n", err)
+		os.Exit(2)
+	}
 	code, err := run(fs.Args(), wallDur, *grace, wallLabel, ciPolicy)
+	cleanup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgroup: %v\n", err)
 	}

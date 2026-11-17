@@ -9,6 +9,14 @@ name: python leg nightly
 # A GITHUB-HOSTED RUNNER: the job runs the repository's own code against
 # pinned tools and holds no secret.
 
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   schedule:
     - cron: '17 6 * * *'
@@ -21,11 +29,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
 jobs:
   macos:
     name: make test-python (macos-latest)
     runs-on: macos-latest
-    timeout-minutes: 20
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

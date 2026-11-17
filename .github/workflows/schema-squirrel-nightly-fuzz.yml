@@ -9,12 +9,22 @@ name: Schema squirrel nightly fuzz
 # docs/SPEC-TABLES.md §4.2). The campaign itself is
 # `make schema-squirrel-nightly-fuzz` (make/schema-squirrel-nightly-fuzz.mk):
 # the port's seeded mutation differential over the tables conformance corpus,
-# bounded by SQUIRREL_FUZZ_SECONDS, go test's -timeout (inside ten minutes a night).
+# bounded by its mutant count (SQUIRREL_FUZZ_MUTANTS) and seed. The recipe's
+# -timeout $(SQUIRREL_FUZZ_SECONDS)s bounds a workstation run; here the nightly
+# rule below lifts it, so a slow night finishes and reports rather than dying.
 #
 # IT IS NIGHTLY, NEVER PER PUSH. Nothing about a search that runs for minutes
 # belongs on the iteration path (owner's rule: CI that runs per commit finishes
 # in one to two minutes). The pull-request job below is the REPLAY half only:
 # the harness's own structural checks, no fuzzing, no foreign toolchain.
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -29,13 +39,16 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
 jobs:
   # THE FAST HALF: the target, the corpus file and the control exist and the
   # planted patterns are refused. Pure Go, no sq, no corpus build.
   harness:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -49,7 +62,7 @@ jobs:
             echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
             exit 1
           fi
-      - run: go test -count=1 -timeout 600s ./internal/ci -run '^TestSquirrelNightlyFuzz'
+      - run: go test -count=1 -timeout 0 ./internal/ci -run '^TestSquirrelNightlyFuzz'
 
   # THE NIGHTLY CAMPAIGN on the fleet's schema runners, where the pinned sq is
   # already installed by the toolchains role. A missing tool is named, never
@@ -57,7 +70,6 @@ jobs:
   fuzz:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 20
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
