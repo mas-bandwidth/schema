@@ -730,6 +730,19 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< 6
     v = f32_bits(value_f007f32)
     scratch = scratch ||| v <<< 18
+
+    if not is_integer(value_f008u64) do
+      raise ArgumentError, "value.f008u64 is not an integer"
+    end
+
+    if value_f008u64 < 0 do
+      raise ArgumentError, "value.f008u64 is below the wire minimum"
+    end
+
+    if value_f008u64 > 18_446_744_073_709_551_615 do
+      raise ArgumentError, "value.f008u64 is above the wire maximum"
+    end
+
     v = value_f008u64 &&& 0xFFFFFFFF
     sc4 = scratch
     scratch = scratch >>> 48
@@ -939,6 +952,19 @@ defmodule Realworld.RealWorld do
 
     v = value_f028_bits &&& 0xF
     scratch = scratch ||| v <<< 16
+
+    if not is_integer(value_f029i64) do
+      raise ArgumentError, "value.f029i64 is not an integer"
+    end
+
+    if value_f029i64 < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "value.f029i64 is below the wire minimum"
+    end
+
+    if value_f029i64 > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "value.f029i64 is above the wire maximum"
+    end
+
     v = value_f029i64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< 20
     v = value_f029i64 >>> 32 &&& 0xFFFFFFFF
@@ -1289,6 +1315,19 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+
+    if not is_integer(value_f063i64) do
+      raise ArgumentError, "value.f063i64 is not an integer"
+    end
+
+    if value_f063i64 < -9_223_372_036_854_775_808 do
+      raise ArgumentError, "value.f063i64 is below the wire minimum"
+    end
+
+    if value_f063i64 > 9_223_372_036_854_775_807 do
+      raise ArgumentError, "value.f063i64 is above the wire maximum"
+    end
+
     v = value_f063i64 &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1450,6 +1489,18 @@ defmodule Realworld.RealWorld do
           f078_bits: value_f078_bits,
           f079_uint: value_f079_uint
         } = value
+
+        if not is_integer(value_f075u64) do
+          raise ArgumentError, "value.f075u64 is not an integer"
+        end
+
+        if value_f075u64 < 0 do
+          raise ArgumentError, "value.f075u64 is below the wire minimum"
+        end
+
+        if value_f075u64 > 18_446_744_073_709_551_615 do
+          raise ArgumentError, "value.f075u64 is above the wire maximum"
+        end
 
         v = value_f075u64 &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< scratch_bits

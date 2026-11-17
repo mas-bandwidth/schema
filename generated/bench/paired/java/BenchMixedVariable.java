@@ -1499,17 +1499,26 @@ public final class BenchMixedVariable {
         if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_aimX));
             w.put8(10);
-            w.putF32(v.aimX);
+            w.putF32In(
+                    v.aimX,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_aimY));
             w.put8(10);
-            w.putF32(v.aimY);
+            w.putF32In(
+                    v.aimY,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_aimZ));
             w.put8(10);
-            w.putF32(v.aimZ);
+            w.putF32In(
+                    v.aimZ,
+                    Double.longBitsToDouble(0xbff0000000000000L),
+                    Double.longBitsToDouble(0x3ff0000000000000L));
         }
         if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_recoil));
@@ -1560,6 +1569,83 @@ public final class BenchMixedVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert (v.sequence & 0xffffffffL) <= 0xffffL : "BenchMixed.sequence";
+        assert v.ackSequence >= 0 && v.ackSequence <= 65535 : "BenchMixed.ack_sequence";
+        assert Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0 : "BenchMixed.nonce";
+        assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L : "BenchMixed.world_time";
+        assert Long.compareUnsigned(v.frameTick, 0xffffffffffffL) <= 0 : "BenchMixed.frame_tick";
+        assert java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("16776960")) <= 0 : "BenchMixed.server_time";
+        assert v.entities.size() >= 1 && v.entities.size() <= 8 : "BenchMixed.entities";
+        for (int i = 0, n = v.entities.size(); i < n; i++) {
+            MixedEntityVariable.Value e = v.entities.get(i);
+            assert MixedEntityVariable.checkWrite(e, walk);
+        }
+        assert v.stats.size() <= 80 : "BenchMixed.stats";
+        for (int i = 0, n = v.stats.size(); i < n; i++) {
+            MixedStatVariable.Value e = v.stats.get(i);
+            assert MixedStatVariable.checkWrite(e, walk);
+        }
+        assert MixedEventVariable.checkWrite(v.gameEvent, walk);
+        for (int i = 0, n = Math.min(v.loadout.size(), 4); i < n; i++) {
+            int e = v.loadout.get(i);
+            assert (e & 0xffffffffL) <= 0xffL : "BenchMixed.loadout";
+        }
+        assert TableVariable.textWritable(v.playerName, 15) : "BenchMixed.player_name";
+        assert v.payload == null || v.payload.length <= 16 : "BenchMixed.payload";
+        assert TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("-1267650600228229401496703205376")) >= 0 && TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("1267650600228229401496703205376")) <= 0 : "BenchMixed.flux";
+        assert java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("64000")) <= 0 : "BenchMixed.ping";
+        assert (v.crcHint & 0xffffffffL) <= 0xffffffL : "BenchMixed.crc_hint";
+        assert v.extra >= 0 && v.extra <= 255 : "BenchMixed.extra";
+        assert v.idleTicks >= 0 && v.idleTicks <= 15 : "BenchMixed.idle_ticks";
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -1569,6 +1655,7 @@ public final class BenchMixedVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -1604,7 +1691,7 @@ public final class BenchMixedVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -2064,7 +2151,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "session_id");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.sessionId));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2080,7 +2169,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "nonce");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.nonce));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2088,7 +2179,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "world_time");
         b.append(": ");
+        b.append('"');
         b.append(Long.toString(v.worldTime));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2096,7 +2189,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "frame_tick");
         b.append(": ");
+        b.append('"');
         b.append(Long.toUnsignedString(v.frameTick));
+        b.append('"');
         if (!first) {
             b.append(',');
         }
@@ -2244,8 +2339,7 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "wide_key");
         b.append(": ");
         b.append(
-                TableJson.wideText(
-                        TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false), 0, false));
+                "\"" + TableJson.wideText(TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false), 0, false) + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2253,7 +2347,8 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "flux");
         b.append(": ");
-        b.append(TableJson.wideText(TableVariable.wide(v.flux.hi, v.flux.lo, true), 0, false));
+        b.append(
+                "\"" + TableJson.wideText(TableVariable.wide(v.flux.hi, v.flux.lo, true), 0, false) + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2465,7 +2560,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffL);
                         if (!in.rejected) {
                             v.sequence = (int) placed;
                         }
@@ -2486,7 +2581,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 65535);
+                        long placed = in.integer(true, false, 0, 65535);
                         if (!in.rejected) {
                             v.ackSequence = (int) placed;
                         }
@@ -2507,7 +2602,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffffL);
                         if (!in.rejected) {
                             v.ackBits = (int) placed;
                         }
@@ -2522,13 +2617,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[3] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffffffL);
                         if (!in.rejected) {
                             v.sessionId = placed;
                         }
@@ -2549,7 +2645,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffffL);
                         if (!in.rejected) {
                             v.clientId = (int) placed;
                         }
@@ -2564,13 +2660,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[5] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffffffL);
                         if (!in.rejected) {
                             v.nonce = placed;
                         }
@@ -2585,13 +2682,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[6] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -1000000000000L, 1000000000000L);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(true, true, -1000000000000L, 1000000000000L);
                         if (!in.rejected) {
                             v.worldTime = placed;
                         }
@@ -2606,13 +2704,14 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[7] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffffffffL);
+                    if (in.peek() == '"'
+                            || in.peek() == '-'
+                            || (in.peek() >= '0' && in.peek() <= '9')) {
+                        long placed = in.integer(false, true, 0L, 0xffffffffffffL);
                         if (!in.rejected) {
                             v.frameTick = placed;
                         }
@@ -2638,6 +2737,8 @@ public final class BenchMixedVariable {
                                         in,
                                         true,
                                         8,
+                                        false,
+                                        false,
                                         new java.math.BigInteger("0"),
                                         new java.math.BigInteger("16776960"));
                         if (raw != null) v.serverTime = raw.intValue();
@@ -2809,7 +2910,7 @@ public final class BenchMixedVariable {
                                 in.skipValue();
                             } else {
                                 if (ec == '-' || (ec >= '0' && ec <= '9')) {
-                                    v.loadout.add((int) in.integer(false, 0L, 0xffL));
+                                    v.loadout.add((int) in.integer(false, false, 0L, 0xffL));
                                 } else {
                                     in.skipValue();
                                     in.rep.refuse("kind_mismatch");
@@ -2992,8 +3093,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[20] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -3003,6 +3103,8 @@ public final class BenchMixedVariable {
                                         in,
                                         false,
                                         0,
+                                        true,
+                                        true,
                                         new java.math.BigInteger("0"),
                                         new java.math.BigInteger(
                                                 "340282366920938463463374607431768211455"));
@@ -3017,8 +3119,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[21] = true;
-                if (in.peek() != 'n'
-                        && !((in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -3028,6 +3129,8 @@ public final class BenchMixedVariable {
                                         in,
                                         true,
                                         0,
+                                        true,
+                                        true,
                                         new java.math.BigInteger(
                                                 "-1267650600228229401496703205376"),
                                         new java.math.BigInteger(
@@ -3053,6 +3156,8 @@ public final class BenchMixedVariable {
                                         in,
                                         false,
                                         8,
+                                        false,
+                                        false,
                                         new java.math.BigInteger("0"),
                                         new java.math.BigInteger("64000"));
                         if (raw != null) v.ping = raw.intValue();
@@ -3070,7 +3175,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xffffffL);
+                        long placed = in.integer(false, false, 0L, 0xffffffL);
                         if (!in.rejected) {
                             v.crcHint = (int) placed;
                         }
@@ -3112,7 +3217,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 255);
+                        long placed = in.integer(true, false, 0, 255);
                         if (!in.rejected) {
                             v.extra = (int) placed;
                         }
@@ -3133,7 +3238,7 @@ public final class BenchMixedVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 15);
+                        long placed = in.integer(true, false, 0, 15);
                         if (!in.rejected) {
                             v.idleTicks = (int) placed;
                         }
@@ -3158,5 +3263,48 @@ public final class BenchMixedVariable {
             in.bad = true;
             return;
         }
+    }
+
+    /**
+     * carry a BenchMixedFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(BenchMixedFixed.Value fixed) {
+        Value v = new Value();
+        v.sequence = fixed.sequence;
+        v.ackSequence = fixed.ackSequence;
+        v.ackBits = fixed.ackBits;
+        v.sessionId = fixed.sessionId;
+        v.clientId = fixed.clientId;
+        v.nonce = fixed.nonce;
+        v.worldTime = fixed.worldTime;
+        v.frameTick = fixed.frameTick;
+        v.serverTime = fixed.serverTime;
+        for (int i = 0; i < fixed.entitiesCount; i++) {
+            v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
+        }
+        for (int i = 0; i < fixed.statsCount; i++) {
+            v.stats.add(MixedStatVariable.fromFixed(fixed.stats[i]));
+        }
+        v.gameEvent = MixedEventVariable.fromFixed(fixed.gameEvent);
+        for (int i = 0; i < fixed.loadout.length; i++) {
+            v.loadout.add((fixed.loadout[i] & 0xFF));
+        }
+        v.playerName =
+                new String(fixed.playerName, 0, fixed.playerNameLength, StandardCharsets.UTF_8);
+        v.payload = java.util.Arrays.copyOf(fixed.payload, fixed.payloadLength);
+        v.aimX = fixed.aimX;
+        v.aimY = fixed.aimY;
+        v.aimZ = fixed.aimZ;
+        v.recoil = fixed.recoil;
+        v.drift = fixed.drift;
+        v.wideKey = fixed.wideKey;
+        v.flux = fixed.flux;
+        v.ping = (fixed.ping & 0xFFFF);
+        v.crcHint = fixed.crcHint;
+        v.hasExtra = fixed.hasExtra;
+        v.extra = fixed.extra;
+        v.idleTicks = fixed.idleTicks;
+        return v;
     }
 }

@@ -167,15 +167,19 @@ local write_record, write_field_value, write_array, write_ref, present_offset, a
 
 -- write_record writes one record's own storage (§7.2). Unbounded arrays are the
 -- extent walk's (they stay zero here, exactly as regionWriter leaves them).
+-- AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (§7.2; docs/rulings.json
+-- fixed-dead-bytes-are-zero): its presence byte is zero and its payload stays
+-- zero whatever its declared defaults are, which stay a READ rule.
 write_record = function(T, desc, v, base, w, index)
   for _, f in ipairs(desc.fields) do
     local at = base + f.at
     local s = f.shape
+    local present = true
     if f.optional then
-      local present = v ~= nil and v[f.name .. "_present"] == true
+      present = v ~= nil and v[f.name .. "_present"] == true
       put_uint(w, base + present_offset(T, f), present and 1 or 0, 1)
     end
-    if s ~= "map" and not (s == "array" and f.list) then
+    if present and s ~= "map" and not (s == "array" and f.list) then
       -- The extent walk places maps and unbounded arrays.
       local x = field_value(T, f, v)
       if not write_field_value(T, f, x, at, w, index) then return nil end

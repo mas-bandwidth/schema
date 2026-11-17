@@ -1,0 +1,44 @@
+// The Python half of test/packet-void: the same union shapes as Void.schema,
+// with only the field kinds the Python packet core carries today. The bit
+// fields and arrays in Void.schema are later cards (port/python/packet/bits
+// and port/python/packet/fixed-arrays), so Frame uses bool fields and Batch
+// is absent here; every payload-free arm still costs exactly its tag bits.
+package packetvoidpython
+
+type Payload
+{
+    count  int16 = -1
+    marker bool  = true
+}
+
+// The first and last arms have no storage; the middle arm is a type payload.
+union Mixed
+{
+    ping
+    payload Payload
+    pong
+}
+
+// Every arm is payload-free.
+union Tags
+{
+    ping
+    pong
+}
+
+union Single
+{
+    ack
+}
+
+union Empty
+{
+}
+
+// A tag between fields: the bools are one bit each, so the tag is not aligned.
+type Frame
+{
+    lead   bool
+    choice Mixed
+    tail   bool
+}

@@ -1,3 +1,2 @@
 # carried findings: name	slug	input	one line
 # No carried findings; unexpected disagreements and stale entries fail.
-conformance-str-zero-escape-unknown-key	cs-hostile-rows	inputs/conformance-str-zero-escape-unknown-key.json	RELAXED 2026-11-14 (maintainer: get main green): the cs JSON read accepts a zero escape in a skipped value the skipped-value rule refuses; re-enable: relax/hostile-rows-cs

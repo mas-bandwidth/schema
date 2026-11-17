@@ -5,7 +5,7 @@ package mootable_test
 // json-integer-token-only). One small unit holds an int32, an int64, a uint64,
 // a ranged int128, a ranged int64, a wide fixed-point field and a map keyed by
 // uint64. An integer wider than 32 bits is written as a STRING of decimal
-// digits and reads as a string OR a number, the same digits; every integer
+// digits and reads as a string only; every integer
 // takes an integer token only — digits with an optional minus, no fraction, no
 // exponent, not -0 — and its range is tested on the exact value.
 
@@ -88,7 +88,10 @@ func jsonWideVectorsRun(t *testing.T) ([]jsonWideAnswer, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	type row struct{ name, verdict string }
+	type row struct {
+		name, verdict string
+		numberToken   bool
+	}
 	var rows []row
 	inputs := map[string][]byte{}
 	for i, line := range strings.Split(string(data), "\n") {
@@ -114,6 +117,30 @@ func jsonWideVectorsRun(t *testing.T) ([]jsonWideAnswer, []byte) {
 		inputs[name] = body
 		rows = append(rows, row{name: name, verdict: verdict})
 	}
+	numberData, err := os.ReadFile(filepath.Join(dir, "NUMBER-TOKEN.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for line := range strings.SplitSeq(string(numberData), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 5 || f[1] != "Integers" || f[3] != "refused" {
+			t.Fatalf("bad number token row: %q", line)
+		}
+		body, err := os.ReadFile(filepath.Join(dir, f[2]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[f[0]] = body
+		rows = append(rows, row{name: f[0], verdict: f[3], numberToken: true})
+		count++
+	}
+	if count != 13 {
+		t.Fatalf("got %d number token rows, want 13", count)
+	}
 	if len(rows) == 0 {
 		t.Fatal("no manifest rows read; the gate would pass over an empty set")
 	}
@@ -128,7 +155,7 @@ func jsonWideVectorsRun(t *testing.T) ([]jsonWideAnswer, []byte) {
 	local ok = I.IntegersFromJson(v, inputs[name], report)
 	if not ok then
 		hexs("refused")
-		hexs("refused")
+		hexs(report.reason or "")
 		return
 	end
 	hexs("read")
@@ -156,6 +183,9 @@ end
 	answers := make([]jsonWideAnswer, len(rows))
 	for i, r := range rows {
 		answers[i] = jsonWideAnswer{name: r.name, want: r.verdict, verdict: lines[2*i], text: lines[2*i+1]}
+		if r.numberToken && lines[2*i] == "refused" && lines[2*i+1] != "kind_mismatch" {
+			t.Errorf("%s: reason %q, want kind_mismatch", r.name, lines[2*i+1])
+		}
 	}
 	return answers, canonical
 }
@@ -166,8 +196,8 @@ func luaQuote(s string) string {
 }
 
 // TestMooJsonWideIntegersAreStrings holds every vector of the unit: every wide
-// field is written as a string of decimal digits and reads as a string or a
-// number to the same value; every integer field refuses a fraction, an
+// field is written and read as a string of decimal digits; every integer
+// field refuses a fraction, an
 // exponent, -0 and a value one past its range at 2^53 and above.
 func TestMooJsonWideIntegersAreStrings(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the generated text form)")

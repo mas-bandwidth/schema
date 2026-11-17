@@ -189,7 +189,9 @@ func TestCppTextFixedPointTokenExact(t *testing.T) {
 		cppOK := len(raw) > 0 && raw[0] == '1'
 		cppJSON := raw[1:]
 
-		jsonText := []byte(fmt.Sprintf("{%q: %s}", c.field, c.token))
+		// These declarations are 128-bit fixed kinds: JSON carries their
+		// exact decimal as a string (§16.2), while hand-text uses a number.
+		jsonText := []byte(fmt.Sprintf("{%q: %q}", c.field, c.token))
 		inst := m.New(m.Lookup("Root"))
 		var report tabletext.Report
 		engineOK := m.Read(inst, jsonText, &report)

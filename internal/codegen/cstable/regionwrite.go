@@ -38,32 +38,37 @@ const tableRegionWriteSource = `
         {
             NativeValue child = value.Child(f, i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
             System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
-            return TextValid(child.Buffer(text).Slice(0, count));
+            System.Diagnostics.Debug.Assert(TextValid(child.Buffer(text).Slice(0, count)));
+            return true;
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = value.Count(f);
             System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
-            return TextValid(value.Buffer(f).Slice(0, count));
+            System.Diagnostics.Debug.Assert(TextValid(value.Buffer(f).Slice(0, count)));
+            return true;
         }
-        if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
-        if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
-        // a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md §3.3)
-        if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, value.Raw(f, i)); }
+        // every write check is a debug assert (docs/SPEC.md §5.1), as on the
+        // managed writer: a required value off its range, a NaN or an infinity
+        // (docs/SPEC-TABLES.md §3.3), an enum or union tag no variant names
+        if (f.RequiredValidRaw != null) { System.Diagnostics.Debug.Assert(f.RequiredValidRaw(value.Raw(f, i))); }
+        if (f.RequiredValidWide != null) { System.Diagnostics.Debug.Assert(f.RequiredValidWide(value.Wide(f, i))); }
+        if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, value.Raw(f, i))); return true; }
         if (f.Kind == 13) { return RegionCollect(value.Child(f, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
             NativeValue union = value.Child(f, i);
             ulong tag = union.Tag(f);
             if (tag == 0) { return true; }
-            if (tag > (ulong)f.EnumMax || !Named(f.EnumName(tag))) { return false; }
+            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
             return ids.Add(f.VariantId(tag)) && RegionCollectPayload(union.Arm(f), f.Arms.Arms[(int)tag].Field, ref ids);
         }
         if (f.Kind == 30)
         {
             ulong v = value.Raw(f, i);
             if (v == 0) { return true; }
-            return v <= (ulong)f.EnumMax && Named(f.EnumName(v)) && ids.Add(f.VariantId(v));
+            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            return ids.Add(f.VariantId(v));
         }
         return true;
     }
@@ -71,14 +76,15 @@ const tableRegionWriteSource = `
     {
         if (f == null) { return true; } // selected, payload-free arm
         if (f.Counted) { System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
-        if (f.TextTotal > 0 && !TextFitsRegion(value, f)) { return false; }
+        if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFitsRegion(value, f)); }
         if (!f.IsArray) { return RegionCollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < RegionCount(value, f); i++)
         {
             if (f.KeyId != null)
             {
                 if (RegionDefaultElement(value, f, i)) { continue; }
-                if (!Named(f.KeyName((ulong)i + 1)) || !ids.Add(f.KeyId((ulong)i + 1))) { return false; }
+                System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
+                if (!ids.Add(f.KeyId((ulong)i + 1))) { return false; }
             }
             if (!RegionCollectElement(value, f, i, ref ids)) { return false; }
         }
@@ -236,7 +242,7 @@ const tableRegionWriteSource = `
         if (pointer == IntPtr.Zero) { return -1; }
         NativeValue value = new NativeValue((byte*)pointer, 0) { Mutable = mutable };
         RegionIds ids = new RegionIds(vocabulary) { RootType = type };
-        if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true); if (!ids.Graph.Valid) { return -1; } }
+        if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true, true); if (!ids.Graph.Valid) { return -1; } }
         try
         {
             if (!RegionCollect(value, type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }

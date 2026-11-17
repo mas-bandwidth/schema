@@ -349,8 +349,10 @@ public final class Main {
         // 2. Guarded required field and range-constrained required field with no default
         GuardedReqVariable.Value gv = new GuardedReqVariable.Value();
         gv.count = 0;
-        // count is 0 (outside 10..20), so save must refuse!
-        check(GuardedReqVariable.save(gv) == null, "GuardedReq.save refuses out-of-range required count=0");
+        // count is 0 (outside 10..20), so save's debug contract asserts!
+        boolean gvAsserted = false;
+        try { GuardedReqVariable.save(gv); } catch (AssertionError e) { gvAsserted = true; }
+        check(gvAsserted, "GuardedReq.save asserts out-of-range required count=0");
         gv.count = 15;
         byte[] gWireInactive = GuardedReqVariable.save(gv);
         check(gWireInactive != null, "GuardedReq.save succeeds when count=15 and active=false");

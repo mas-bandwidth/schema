@@ -557,10 +557,11 @@ impl<'a> Jr<'a> {
     /// read_name reads a string that NAMES a schema name — an object key
     /// naming a field, an enum variant, a flags element, a union arm, an
     /// &node name — and holds it to §16.2's 255-byte cap after decoding. A
-    /// longer one refuses the read; a map key and a string value are data and
-    /// go through read_text/read_string, never this.
+    /// longer one refuses the read, and so does a U+0000 in it, as in every
+    /// object key (§16.3); a map key and a string value are data and go
+    /// through read_text/read_string, never this.
     pub fn read_name(&mut self) -> Option<String> {
-        let s = self.read_string()?;
+        let s = self.read_text()?;
         if s.len() > 255 {
             self.damaged = true;
             return None;
@@ -631,15 +632,15 @@ impl<'a> Jr<'a> {
     }
     /// An integer field's value (docs/SPEC-TABLES.md §16.2, **Numbers**): an
     /// INTEGER TOKEN only — digits with an optional minus, no fraction, no
-    /// exponent, not -0 — and, for a kind wider than 32 bits, the same digits
-    /// as a JSON string. The value is exact and never passes through a double.
+    /// exponent, not -0 — as a JSON number at up to 32 bits, or a JSON
+    /// string for a wider kind. The value is exact and never passes through a double.
     /// A value of another JSON type, or a token that is not an integer token,
     /// is kind_mismatch, skipped.
-    pub fn read_int(&mut self, allow_string: bool) -> Option<i128> {
+    pub fn read_int(&mut self, string_only: bool) -> Option<i128> {
         let c = self.peek();
         let token: String;
         if c == b'"' {
-            if !allow_string {
+            if !string_only {
                 self.damaged = true;
                 self.skip_value();
                 return None;
@@ -647,7 +648,7 @@ impl<'a> Jr<'a> {
             let Some(s) = self.read_string() else { self.damaged = true; return None; };
             token = s;
         } else {
-            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+            if string_only || matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
                 self.damaged = true;
                 self.skip_value();
                 return None;
@@ -668,19 +669,19 @@ impl<'a> Jr<'a> {
     }
     /// A WIDE value (docs/SPEC-TABLES.md §16.2, §16.14): a 128-bit integer's
     /// exact value, or a fixed(I, F)'s raw integer. An INTEGER takes an
-    /// integer token only — from a number token, or, for a kind wider than 32
-    /// bits, from a JSON string of the same digits. A FIXED value is read
-    /// EXACTLY from a string or a number token whose value the Q I.F grid
+    /// integer token only — from a number token at up to 32 bits, or from a
+    /// JSON string for a wider kind. A FIXED value is read EXACTLY from the
+    /// corresponding number token or string whose value the Q I.F grid
     /// holds — ` + "`2`, `2.0` and `20e-1`" + ` are one value — with no binary
     /// float between, as two's complement in a u128. A digit the grid cannot
     /// hold is kind_mismatch, the wrong shape, never rounded; a magnitude past
     /// 128 bits saturates and counts held; a value of another JSON type is
     /// kind_mismatch, skipped. The caller clamps to the field's raw range.
-    pub fn read_wide(&mut self, signed: bool, frac: u32, integer: bool, allow_string: bool) -> Option<u128> {
+    pub fn read_wide(&mut self, signed: bool, frac: u32, integer: bool, string_only: bool) -> Option<u128> {
         let c = self.peek();
         let token: String;
         if c == b'"' {
-            if !allow_string {
+            if !string_only {
                 self.damaged = true;
                 self.skip_value();
                 return None;
@@ -688,7 +689,7 @@ impl<'a> Jr<'a> {
             let Some(s) = self.read_string() else { self.damaged = true; return None; };
             token = s;
         } else {
-            if matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
+            if string_only || matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
                 self.damaged = true;
                 self.skip_value();
                 return None;
@@ -933,7 +934,7 @@ impl<'a> Jr<'a> {
         }
         match self.b[self.p] {
             b'"' => {
-                let _ = self.read_string();
+                let _ = self.read_text();
             }
              b'{' => {
                  if self.depth > JSON_DEPTH_CAP {
@@ -1891,7 +1892,7 @@ func wideRaw(f *ir.Field, x string) string {
 
 // emitTextReadWide emits the read of a WIDE value — a 128-bit integer or a
 // fixed(I, F) — into dst (docs/SPEC-TABLES.md §16.2): the exact raw integer
-// from any number token (Jr::read_wide), then the field's declared range on
+// from the kind's required JSON token (Jr::read_wide), then the declared range on
 // the RAW scale, or, with none declared, the storage's own, each counted
 // held.
 func emitTextReadWide(b *strings.Builder, f *ir.Field, dst, in string) {

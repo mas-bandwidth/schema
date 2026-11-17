@@ -27,8 +27,9 @@ fi
 	echo "fn conformance_unit() -> schema_rt::LoadUnit { return $ns::TableUnit; }"
 	# THE MESSAGE FORM, one arm per fixed root that carries it (every
 	# generated <Root>LoadMessages): the batch read against the unit's own
-	# announcement into a full batch at defaults, body one saved back. The
-	# load's report is the answer; the save's own report is not.
+	# announcement into a full batch at defaults, and every body the load
+	# delivered saved back. The load's report is the answer; the save's own
+	# report is not.
 	msg_roots=$(cat "$out"/*Table.goose | sed -n 's/^fn \([A-Za-z0-9_]*\)LoadMessages(.*/\1/p')
 	echo "fn conformance_message_root(root: const u8[:]) -> bool {"
 	for r in $msg_roots; do echo "    if root == \"$r\" { return true; }"; done
@@ -41,12 +42,39 @@ fi
 		echo "        var arep = schema_rt::MsgReport { .. };"
 		echo "        if !schema_rt::announce_read(voc, $ns::${r}Announce, arep) { return -1; }"
 		echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
-		echo "        $ns::${r}LoadMessages(values[0..256], voc, data, rep);"
+		echo "        let n = $ns::${r}LoadMessages(values[0..256], voc, data, rep);"
+		echo "        if n < 1 { return -1; }"
 		echo "        var srep = schema_rt::MsgReport { .. };"
-		echo "        return $ns::${r}SaveMessages(values[0..1], out, srep);"
+		echo "        return $ns::${r}SaveMessages(values[0..n], out, srep);"
 		echo "    }"
 	done
 	echo "    return -1;"
+	echo "}"
+	# THE FIXED FORM, one arm per root the unit emits <Root>FixedLoad for
+	# (form byte 3, docs/SPEC-TABLES.md §3.4), routed by the root as the
+	# conformance driver routes it. A ROOT IS ONE RECORD (the oracle's read,
+	# internal/tablewire/fixed.go): the mutant is read with a capacity of one,
+	# so a file of more records is the reader's own batch_too_large, and it is
+	# accepted only when the load returns that one record with no damage and
+	# no reason (a file of none holds no value); exactly the records it
+	# returned are saved back. -2 is a refused load (the report names why, or
+	# the load returned no record), -1 a refused save, else the saved length.
+	fixed_roots=$(cat "$out"/*Table.goose | sed -n 's/^fn \([A-Za-z0-9_]*\)FixedLoad(.*/\1/p')
+	echo "fn conformance_fixed_root(root: const u8[:]) -> bool {"
+	for r in $fixed_roots; do echo "    if root == \"$r\" { return true; }"; done
+	echo "    return false;"
+	echo "}"
+	echo "fn conformance_fixed_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::FixedReport&) -> i64 {"
+	for r in $fixed_roots; do
+		echo "    if root == \"$r\" {"
+		echo "        var values: $ns::$r[1] = [$ns::$r { .. }; 1];"
+		echo "        let n = $ns::${r}FixedLoad(values[0..1], data, rep);"
+		echo "        if n < 1 || rep.damaged || rep.reason != 0 { return -2; }"
+		echo "        if $ns::${r}FixedSave(values[0..n], out) < 0 { return -1; }"
+		echo "        return out.len;"
+		echo "    }"
+	done
+	echo "    return -2;"
 	echo "}"
 } >"$out/conformance_unit.goose"
 cp test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz.build \

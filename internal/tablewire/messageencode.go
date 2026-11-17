@@ -10,6 +10,7 @@
 package tablewire
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -169,7 +170,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		return encodeBitKeyed(e, w, fv, entry)
 
 	case f.Type.Kind == ir.TString:
-		if fv.Count == 0 {
+		if messageElides(e.m, fv, false) {
 			return nil
 		}
 		e.ref(w, entry)
@@ -180,7 +181,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		return nil
 
 	case f.Type.Kind == ir.TBytes:
-		if fv.Count == 0 {
+		if messageElides(e.m, fv, false) {
 			return nil
 		}
 		e.ref(w, entry)
@@ -191,8 +192,24 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		return nil
 
 	case f.CountedOnWire():
-		if fv.Count == 0 {
+		if messageElides(e.m, fv, false) {
 			return nil
+		}
+		if !f.Required && int64(fv.Count) == f.BornCount() {
+			allBirth := true
+			for i := range fv.Count {
+				defaulted, err := bitCellAtDefault(e, f, &fv.Elems[i])
+				if err != nil {
+					return err
+				}
+				if !defaulted {
+					allBirth = false
+					break
+				}
+			}
+			if messageElides(e.m, fv, allBirth) {
+				return nil
+			}
 		}
 		e.ref(w, entry)
 		return encodeBitArray(e, w, fv, entry, fv.Count)
@@ -202,21 +219,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		return encodeBitArray(e, w, fv, entry, int(f.ArrayBound))
 
 	case f.Array == ir.ArrayFixed:
-		rides := false
-		for i := 0; i < int(f.ArrayBound); i++ {
-			if kind == ir.TableKindUnion {
-				if fv.Elems[i].U != 0 {
-					rides = true
-					break
-				}
-				continue
-			}
-			if !cellIsDefaultIn(e.m, f, &fv.Elems[i]) {
-				rides = true
-				break
-			}
-		}
-		if !rides {
+		if messageElides(e.m, fv, false) {
 			return nil
 		}
 		e.ref(w, entry)
@@ -224,7 +227,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 
 	case kind == ir.TableKindUnion:
 		un := tabletext.UnionOf(f)
-		if fv.Cell.U == 0 {
+		if messageElides(e.m, fv, false) {
 			return nil // None elides, and the absence of the field is the None
 		}
 		if int(fv.Cell.U) > len(un.Variants) {
@@ -239,20 +242,20 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 		if err := encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell)); err != nil {
 			return err
 		}
-		if w.bits()-start == 2*e.refBits {
+		if messageElides(e.m, fv, w.bits()-start == 2*e.refBits) {
 			w.truncate(start) // reference plus terminator: an all-default body elides
 		}
 		return nil
 
 	case kind == ir.TableKindEnum:
-		if cellIsDefaultIn(e.m, f, &fv.Cell) {
+		if messageElides(e.m, fv, false) {
 			return nil
 		}
 		e.ref(w, entry)
 		return encodeBitEnum(e, w, f, &fv.Cell)
 
 	default:
-		if cellIsDefaultIn(e.m, f, &fv.Cell) {
+		if messageElides(e.m, fv, false) {
 			return nil
 		}
 		e.ref(w, entry)
@@ -525,22 +528,16 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 		if none {
 			return fmt.Errorf("field %s: a None key names no slot (docs/SPEC-TABLES.md §3.2)", f.Name)
 		}
-		elem := &bitWriter{}
-		if int(shape.Elem) == ir.TableKindTable {
-			sub := *e
-			if err := encodeBitBody(&sub, elem, subInstanceOf(e.m, f, cell)); err != nil {
-				return err
-			}
-			e.missing = sub.missing
-			if elem.bits() <= e.refBits {
-				continue // an all-default slot elides
-			}
-		} else if cellIsDefaultIn(e.m, f, cell) {
-			continue // a default slot elides
+		defaulted, err := bitCellAtDefault(e, f, cell)
+		if err != nil {
+			return err
+		}
+		if defaulted {
+			continue
 		}
 		present = append(present, presentSlot{slot: slot, keyID: keyID})
 	}
-	if len(present) == 0 {
+	if messageElides(e.m, fv, len(present) == 0) {
 		return nil
 	}
 	e.ref(w, entry)
@@ -554,6 +551,20 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 	return nil
 }
 
+// bitCellAtDefault uses the same element default test for counted and keyed arrays.
+func bitCellAtDefault(e *bitEncoder, f *ir.Field, cell *tabletext.Cell) (bool, error) {
+	if ir.TableWireElemKind(f) != ir.TableKindTable {
+		return cellIsDefaultIn(e.m, f, cell), nil
+	}
+	probe := &bitWriter{}
+	sub := *e
+	if err := encodeBitBody(&sub, probe, subInstanceOf(e.m, f, cell)); err != nil {
+		return false, err
+	}
+	e.missing = sub.missing
+	return probe.bits() <= e.refBits, nil
+}
+
 // subInstanceOf is a nested table or type's instance, materialized at its
 // declared defaults when nothing placed one.
 func subInstanceOf(m *tabletext.Model, f *ir.Field, cell *tabletext.Cell) *tabletext.Instance {
@@ -561,6 +572,48 @@ func subInstanceOf(m *tabletext.Model, f *ir.Field, cell *tabletext.Cell) *table
 		return cell.Tab
 	}
 	return m.New(tabletext.StructOf(f))
+}
+
+// messageElides is THE MESSAGE FORM'S ELISION RULE (docs/SPEC-TABLES.md §3.3,
+// §22.2): whether a conforming writer leaves out a field holding fv. ONE
+// FUNCTION, TWO CALLERS, as on the variable form (elides): the writer elides by
+// it (encodeBitField, encodeBitKeyed) and the message read refuses a field
+// stored at it (messagedecode.go). A present `?T` rides whatever it holds; its
+// caller judges that first. A nested table and an enum-keyed array elide by
+// what their body holds, which the caller passes as `empty`: a nested body
+// that is its terminator alone, a keyed array with no slot, or the live
+// birth slots of a positive-minimum counted array all at their defaults.
+func messageElides(m *tabletext.Model, fv *tabletext.Field, empty bool) bool {
+	f := fv.Def
+	kind := ir.TableWireScalarKind(f)
+	switch {
+	case f.KeyEnum != "":
+		return empty
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		return bytes.Equal(fv.Cell.Str, f.DefBytes)
+	case f.CountedOnWire():
+		return fv.Count == 0 || (f.BornCount() > 0 && int64(fv.Count) == f.BornCount() && empty)
+	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:
+		return false // position is identity: a fixed array of tables always rides
+	case f.Array == ir.ArrayFixed:
+		for i := 0; i < int(f.ArrayBound); i++ {
+			if kind == ir.TableKindUnion {
+				if fv.Elems[i].U != 0 {
+					return false
+				}
+				continue
+			}
+			if !cellIsDefaultIn(m, f, &fv.Elems[i]) {
+				return false
+			}
+		}
+		return true
+	case kind == ir.TableKindUnion:
+		return fv.Cell.U == 0 // None elides, and the absence of the field is the None
+	case kind == ir.TableKindTable:
+		return empty
+	}
+	return cellIsDefaultIn(m, f, &fv.Cell)
 }
 
 // cellIsDefaultIn is the writer's elision test, over a model rather than an
