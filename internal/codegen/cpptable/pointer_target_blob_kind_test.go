@@ -10,9 +10,10 @@
 // testdata/wire/pointer-target-type/blobkind/MANIFEST.tsv and the three
 // closure rows of testdata/conformance/feature-witnesses/pointer-targets are
 // read by the engine and by every C++ read of the variable form (the region
-// Load, the retaining Load, the builder Load, the strict read and the
-// measure), and the C++ answer must be the engine's: the verdict, the unknown
-// count and whether the declared pointer reads set. The verdict is the
+// Load, the retaining Load, the builder Load and the strict read), and the C++
+// answer must be the engine's: the verdict, the unknown count and whether the
+// declared pointer reads set; the measure keeps §6.5's two implications. The
+// verdict is the
 // contract and the refusal's name is per-language detail (docs/rulings.json
 // refusal-verdict-only), so the reasons are logged beside it, not compared.
 // The C++ writer's saves (the builder save, the region save and the retaining
@@ -49,7 +50,9 @@ type cppBlobKindCase struct {
 
 // cppBlobKindPaths are the C++ reads of the variable form each case runs
 // through. The strict read reports no counters, so only its verdict and the
-// pointer are compared; the measure answers a verdict alone.
+// pointer are compared; the measure is held to docs/SPEC-TABLES.md §6.5's two
+// implications alone, since it answers from the framing and its own verdict is
+// not the read's.
 var cppBlobKindPaths = []string{"load", "retain", "builder", "strict", "measure"}
 
 // cppBlobKindDecoders are the engine's two reads; they must agree on every case.
@@ -266,7 +269,10 @@ func cppBlobKindProblems(cases []cppBlobKindCase, output string) []string {
 			var bad bool
 			switch {
 			case path == "measure":
-				bad = answer != c.verdict
+				// the measure answers from the framing, so only §6.5's two
+				// implications hold: a measure refusal implies a Load refusal,
+				// and a Load acceptance implies a measure acceptance
+				bad = (answer != "read" && answer != "refused") || (answer == "refused" && c.verdict == "read")
 			case c.verdict == "refused":
 				bad = !strings.HasPrefix(answer, "refused ")
 			case path == "strict":
@@ -460,6 +466,7 @@ func TestCppPointerTargetBlobKindRefused(t *testing.T) {
 			t.Fatalf("probe: %v\n%s", err, out)
 		}
 		problems := cppBlobKindProblems(cases, string(out))
+		t.Logf("the planted rule's answers: %q", problems)
 		if !slices.ContainsFunc(problems, func(p string) bool { return strings.HasPrefix(p, "text-names-bytes (load)") }) {
 			t.Errorf("the planted root-closure rule did not go red on text-names-bytes: %q", problems)
 		}
