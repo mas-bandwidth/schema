@@ -31,3 +31,13 @@ python-fixed-evolution-ci-coverage:
 python-fixed-proof-evolution-negative-control: dist-python
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolution(NegativeControl|Hostile|HostileEnvelope|HostileShapes)$$' ./internal/codegen/pythontable/
 test-python: $(PYTHON_FIXED_EVOLUTION_TARGETS) python-fixed-proof-evolution-negative-control python-fixed-evolution-ci-coverage
+# Every ordered pair of the fixed form's numeric kinds, read by Python and by
+# the live C++ reader built with the same lineage. Needs no corpus, so the
+# tests also run in the automatic package shards.
+.PHONY: python-fixed-proof-evolution-kinds python-fixed-proof-evolution-kinds-negative-control
+python-fixed-proof-evolution-kinds: dist-python
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolutionKindPairs$$' ./internal/codegen/pythontable/
+python-fixed-proof-evolution-kinds-negative-control: dist-python
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofEvolutionKindPairsNegativeControl$$' ./internal/codegen/pythontable/
+test-python: python-fixed-proof-evolution-kinds python-fixed-proof-evolution-kinds-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-fixed-proof-evolution-kinds python-fixed-proof-evolution-kinds-negative-control

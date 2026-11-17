@@ -611,6 +611,13 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 	return out, ""
 }
 
+// fixedPythonWidens is the fixed form's ladder (docs/FIXED-FORM-ALGORITHM.md
+// §1: "2..5, 6..9, 20..24, 25..29, and 10 -> 11", inside a family and upward
+// only), the reference's TableFixedWidens. It is narrower than the variable
+// wire's ir.TableKindWidens: the 128-bit integers, kinds 18 and 19, are on no
+// fixed rung, so an int64 into an int128 is a kind that moved and its lineage
+// entry is refused, as the C++ reference refuses it.
 func fixedPythonWidens(from, to int) bool {
-	return ir.TableKindWidens(from, to) || from >= 20 && from < to && to <= 24 || from >= 25 && from < to && to <= 29
+	inRun := func(lo, hi int) bool { return from >= lo && from < to && to <= hi }
+	return inRun(2, 5) || inRun(6, 9) || inRun(20, 24) || inRun(25, 29) || from == 10 && to == 11
 }

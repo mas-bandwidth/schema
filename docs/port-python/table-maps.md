@@ -8,6 +8,26 @@
   the whole read refuses and returns nothing. `kind_map.py` owns the entry
   framing, the sort and the order check.
 
+### The map row over the manifest
+
+`TestPythonVtMapsRows` (internal/codegen/pythontable/vtmaps_rows_test.go)
+holds the roadmap row `port/python/vt/maps` on every conformance manifest
+instance and report row whose root reaches a map (23 rows over the
+`featurewitnesses`, `mapdemo` and `listdemo` units) and on the two Go-engine
+constructs the other legs' map rows name (`unions_maps_keyed`,
+`optional_map`). Each is read through the strict load and written back under
+both pinned interpreters: accepted and written back byte-identical to the
+canonical wire (an instance's own wire, a report row's engine re-encoding),
+its measure its length and its widened counter the engine's; or refused,
+as the engine or the manifest's `wire-refused` marker refuses it
+(`blob_shared_string`), with the caller's buffer and report untouched. A
+completeness check, which runs without the interpreters, refuses a manifest
+row that reaches a map and is not named. `TestPythonVtMapsRowsNegativeControl`
+plants in a copy of `kind_map.py` the reader's key-order test inverted and
+the writer's entry count one too many, and requires the named rows red under
+each. The row found no gap in `kind_map.py`: no runtime change was needed.
+`make python-vt-maps-rows` runs both.
+
 ### Maps bench
 
 A table that holds a map is variable, so it never takes the straight-line

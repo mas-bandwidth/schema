@@ -143,8 +143,11 @@ func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixed, packages := 0, 0
-	retain := map[string]bool{"python-retain": false, "python-retain-negative-control": false}
+	retain := map[string]bool{"python-retain-0": false, "python-retain-1": false, "python-retain-2": false, "python-retain-3": false, "python-retain-negative-control": false}
 	for _, row := range rows {
+		if row.Target == "python-retain" {
+			t.Errorf("monolithic retention row reintroduced: %+v", row)
+		}
 		if _, ok := retain[row.Target]; ok {
 			if !row.Corpus {
 				t.Errorf("retention row has no reference corpus: %+v", row)

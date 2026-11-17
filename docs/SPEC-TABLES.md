@@ -272,7 +272,9 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, Elixir and Java carry both table wires, form
+these surfaces too. Python carries both classes, form 1 and form 3, JSON,
+retain-unknown, the block form's read and build, and the cook's read and
+write (docs/PORT-PYTHON.md). Rust, Elixir and Java carry both table wires, form
 1 and form 3 (§3.4), beside the block and cook read halves. **Dart and
 JavaScript carry both wires too**, form 1 and form 3 (§3.4): form 3 is
 the FIXED form — the write template, the plan-driven read and the LAYOUT /
@@ -289,8 +291,9 @@ language has a table backend; refusal is scoped to a construct, never the table 
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
 reference, the compiler engine (`internal/tablewire`), C, C#, Go, Dart,
-JavaScript, Rust, Elixir and Java. Section 3.4's FIXED form is carried by the C++ reference, by Go,
-by Rust, by Elixir, by Java, by Dart, and by JavaScript, whose
+JavaScript, Rust, Elixir, Java and Python. Section 3.4's FIXED form is carried by the C++ reference, by Go,
+by Rust, by Elixir, by Java, by Python (`fixed_load`, `fixed_save`;
+docs/port-python/table-fixed-form.md), by Dart, and by JavaScript, whose
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
 OPTIONAL corpus the reference writes at every place a present byte can ride —
@@ -1748,6 +1751,8 @@ reads.
 **Backend status: the C++ REFERENCE and the TOOL carry it; C carries its file
 wire, region and text forms; Go carries `*bytes` and `*string`** with the
 blob-node runtime, the region and cook views and the text form (§8, §16.8).
+Python carries both on its wire, cook and text form
+(docs/port-python/table-blobs.md).
 Every writer of the wire, the message form and the text refuses a blob named
 from two slots by name, `blob_shared`, and the strict read refuses it too
 (§6.5); the remaining ports refuse a unit that declares one, by name (§11), and
@@ -5405,8 +5410,8 @@ pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
 **Backend status for this section: the TOOL, the C++ REFERENCE, C and GO
-write and read it; the other backends refuse a pointered unit's wire by name
-(§11).**
+write and read it, and so does PYTHON; the other backends refuse a pointered
+unit's wire by name (§11).**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -10914,7 +10919,10 @@ the conformance `retain` rows. The reference emits
 `TableRetain`, the three verbs on every variable-class root, the refusal on
 every fixed-class one, `LoadRetainMessages` and `SaveRetainMessages` among
 them (§3.3), and a second family of body functions beside the three the wire
-already had, so `Load`, `Measure` and `Save` are unchanged. What is still owed
+already had, so `Load`, `Measure` and `Save` are unchanged. Python emits
+`TableRetain` and `load_retain`, `measure_retain` and `save_retain` on every
+variable-class root and refusals by name on every fixed-class one, and refuses
+message-form retention by name (docs/port-python/table-retain.md). What is still owed
 is the other seven ports.
 
 ## 7. The cooked form
@@ -10945,8 +10953,8 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 
 `schema cook` writes the file; the runtime only ever points at one.
 
-**Backend status: the TOOL, EVERY READ SIDE, and the C, C++ and Go WRITE sides
-for BOTH classes are built (schema#251).** `schema cook`, `schema cook-check` and
+**Backend status: the TOOL, EVERY READ SIDE, and the C, C++, Go and Python
+WRITE sides for BOTH classes are built (schema#251).** `schema cook`, `schema cook-check` and
 `schema uncook` produce, validate and read back the form below, in both byte
 orders, over the same IR the emitters consume — and `wire → cook → wire` is
 byte-identical over the corpus, which is what proves the accelerator loses no
@@ -15872,11 +15880,15 @@ SceneFromJson( builder, text, text_bytes, &report );
 
 **Backend status for this section: the FIXED class in every table backend —
 C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO,
-Rust and Squirrel — and the VARIABLE class in C and C++ (§16.7).** A pointered unit's text form reads through the builder. In C#, Dart,
+Rust and Squirrel, and Python beside them — and the VARIABLE class in C, C++
+and Python (§16.7).** In C and C++ a pointered unit's text form reads through the builder. In C#, Dart,
 Elixir, Go, Java, JavaScript and Rust the absence is already made one level
 up: a
 pointered unit gets no table source at all (§11), so it has no text form for
-the same reason it has no wire codec.
+the same reason it has no wire codec. Python carries the text form in both
+classes, a pointered unit's included: `T.from_json(text)` reads into the
+generated classes and `value.to_json()` writes a node two pointers name once,
+labelled `"&node"`, and names it by label after.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
