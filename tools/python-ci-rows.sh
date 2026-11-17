@@ -35,7 +35,7 @@ printf '%s\n' "$support" | while IFS= read -r target; do
     continue
   fi
   corpus=false
-  case "$target" in python-fixed-*|python-retain|python-retain-negative-control|python-ci-framing-driver|python-ci-message-applicability|python-reflection-ci-corpus|python-wirefuzz-*|tables-python-wire-fuzz*-negative-control) corpus=true ;; esac
+  case "$target" in python-fixed-*|python-retain-[0-9]*|python-retain-negative-control|python-ci-framing-driver|python-ci-message-applicability|python-reflection-ci-corpus|python-wirefuzz-*|tables-python-wire-fuzz*-negative-control) corpus=true ;; esac
   jq -cn --arg name "$target" --arg target "$target" --argjson corpus "$corpus" '{name:$name,target:$target,package:"",test:"",corpus:$corpus}' >> "$rows"
 done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
