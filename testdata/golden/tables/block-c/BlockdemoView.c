@@ -85,7 +85,7 @@ const blockdemo_unit_view_info_t * schema_blockdemo_unit_view_(void)
         { "MaxTurrets", "Render.schema", "int64", 0, INT64_C(1024), 0.0, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL },
         { "RenderVersion", "Render.schema", "int64", 0, INT64_C(1), 0.0, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-    static const blockdemo_unit_view_info_t info = { "blockdemo", 0x802d031e1b4cdb0cull,
+    static const blockdemo_unit_view_info_t info = { "blockdemo", 0xafe89c387292473cull,
         2, types,
         12, tables,
         6, enums,

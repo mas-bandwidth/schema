@@ -22,7 +22,7 @@ assert p.B.descriptor.forms == ("wire", "block"), "B forms"
 assert p.C.descriptor.forms == ("wire", "json", "block", "cook"), "default forms"
 assert p.A.block is None, "excluded block emitted"
 assert p.B.block is not None and p.C.block is not None, "allowed block missing"
-assert p.A.block_row is not None, "nested row removed"
+assert getattr(p.A, "block_row", None) is not None, "nested row removed"
 try: Begin(p, "A")
 except InvalidValue: pass
 else: raise AssertionError("excluded block builder accepted")
@@ -63,6 +63,7 @@ func TestPythonFormsBlockMetadataNegativeControl(t *testing.T) {
 	for _, tc := range []struct{ anchor, replacement, failure string }{
 		{`forms=("wire",),`, `forms=("wire", "block"),`, "A forms"},
 		{`A.block = None`, `A.block = object()`, "excluded block emitted"},
+		{`A.block_row = BlockRecord(`, `A.discarded_block_row = BlockRecord(`, "nested row removed"},
 	} {
 		files, err := Generate(u)
 		if err != nil {

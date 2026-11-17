@@ -156,7 +156,7 @@ func init() {
 	}}
 }
 
-var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0xba7b344f28584d33,
+var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc5717146f630,
 	NumTypes: 4, Types: []ViewType{
 		{Name: "Attachment", File: "Tables.schema", Table: false, Type: &AttachmentTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Buff", File: "Tables.schema", Table: false, Type: &BuffTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},

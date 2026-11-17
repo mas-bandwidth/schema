@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package ludicrous — protocol id 0xf4a226f4166d919b
+# package ludicrous — protocol id 0xd2ded2cc8a482aa1
 #
 # The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
 # read windows (every intermediate a BEAM small integer), single
@@ -241,7 +241,7 @@ defmodule Ludicrous.Ludicrous do
   sides at the same id speak identical bits; there is no other versioning.
   """
   @spec protocol_id() :: non_neg_integer()
-  def protocol_id, do: 0xF4A226F4166D919B
+  def protocol_id, do: 0xD2DED2CC8A482AA1
 
   @doc "The constant MaxWorldUnits."
   @spec max_world_units() :: integer()

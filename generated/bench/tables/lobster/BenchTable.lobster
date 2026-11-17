@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package benchtable — protocol id 0x0926221bcb6f475f — the Lobster type surface (docs/PORT-LOBSTER.md)
+// package benchtable — protocol id 0x4c9383ebe3cde248 — the Lobster type surface (docs/PORT-LOBSTER.md)
 
 import .schema_runtime
 import .serialize
@@ -18,7 +18,7 @@ class TableEvent
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-let ProtocolId = 659251898228885343
+let ProtocolId = 5517899017621463624
 
 // TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a Lobster enum; a | max = ... headroom value is TableWeapon(v), a value the enum does not name

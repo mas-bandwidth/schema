@@ -106,7 +106,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 // became the message closure's alone: a unit with no fixed table announces an
 // empty vocabulary (docs/SPEC-TABLES.md §3.3), and again when every table module
 // began registering the table type ids a pointer slot declares (§3.1).
-const wantUndeclaredSchemaDigest = "09481d7b333823e1aa3c9b10cb0c4d8329561c7de5bd43b91bbf6340af052512"
+// Refreshed for WireLaw 3 / BuildVersionForm 6: the only emission changes are
+// the protocol identity and announcement build words, not the declarations.
+const wantUndeclaredSchemaDigest = "f3f17d1ea9d78bab5e51fd68e8d4b6cf655b9e1e482962587e878351d67f5e22"
 
 // schemaModuleDigest hashes the named schema-dependent modules of a unit —
 // name then bytes, in sorted name order — so an edit to either is pinned

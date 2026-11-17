@@ -8,6 +8,7 @@
 # make/negative-controls.d/python-block-read-negative-control.json and
 # make/negative-controls.d/python-block-build-negative-control.json.
 .PHONY: python-block-read-negative-control python-block-build-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-block-read-negative-control python-block-build-negative-control
 test-python: python-block-read-negative-control python-block-build-negative-control
 
 python-block-read-negative-control:

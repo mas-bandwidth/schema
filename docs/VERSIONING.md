@@ -548,13 +548,17 @@ commit, and refuses a patch release whose form differs, by name
 (`TestReleaseFormGate`, with `release-form-gate-negative-control` beside it).
 The minor's condition, with the wire and announced, is the release's review.
 
-**3.0.0 moves the form to 5, as a major may.** For the release notes: "the
+**Earlier form-5 amendment, superseded by the pending form-6 amendment below.**
+The earlier planned-major note read: "3.0.0 moves the form to 5, as a major may."
+Its historical release-note wording was: "the
 build version's form is 5: it now covers an array's element kind; cooked files
 from earlier builds are refused, as any build-version change is". Form 5 puts
 an unbounded array's element kind on its line in the cook projection
 (SPEC-TABLES.md §20.2), because without it `[]int32` and `[]float32` shared
 a build version, and a cooked list of one read as the other with no refusal.
-Every unit's build version moves with the form.
+Every unit's build version moves with the form. This paragraph records the
+form-5 rationale; it does not assign a release tag or override the prospective
+form-6 policy below.
 
 ## The same-build forms: cook and block
 
@@ -877,6 +881,34 @@ Across releases, the previous-release differential above proves it.
 records the instances, so the history of "a release moved bits" lives where
 the compatibility rules do.
 
+- **Pending announced minor, fixed-file identity v2; WireLaw 3.** Fixed-file
+  definition identities now bind constraints to their wire field/arm paths and
+  preserve full-width integer/fixed bounds and counted minima. Every fixed root
+  receives the new digest prefix, including a root with no constraints. This
+  changes fixed-file header and per-record hashes for unchanged schemas, so
+  `WireLaw` moves from 2 to 3 under the existing rule. Every protocol id and
+  derived build version moves, including packet-only consumers: coordinated
+  peer redeployment and cook-cache invalidation are the deliberate cost. Packet
+  payload encoding itself is unchanged by this amendment. `ProjectionVersion`
+  remains 3. `BuildVersionForm` moves from 5 to 6: counted arrays now project
+  `countmin=` separately from scalar element bounds. The old form 5 omission let
+  distinct announced count minima share a build id; the new projection binds
+  that shape fact for fields, nested records and general union arms. Frozen
+  form 5 projection bytes/build ids remain historical evidence. Fixed file form
+  remains 3.
+  This must ship in an announced minor (or an already planned major), never a
+  patch. This amendment does not assign or publish a release tag. The release
+  operator must
+  verify the then-current tags before choosing the release number.
+  Lock rendering 9 preserves historical entries and adds the new own identity;
+  validated legacy writer snapshots select their recorded digest scheme.
+  Already-colliding historical writer files remain indistinguishable without
+  trusted per-file provenance. Rebuilding both sides of a fixture with the new
+  compiler is not cross-epoch proof: release evidence must also preserve old
+  writer bytes, demonstrate new-reader acceptance of unambiguous retained keys,
+  and old-reader refusal of new keys. Generated ids/fixed-wire pins and the
+  previous-release differential are reviewed with this announcement; a green
+  report that skips moved protocol ids alone does not establish backward reads.
 - **2026-08-15, fixed-point rounding unified: half away from zero.** The
   generated fixed-point narrowing changed from the bare arithmetic shift
   (ties toward +infinity) to the one fixed-point rounding rule, ties away

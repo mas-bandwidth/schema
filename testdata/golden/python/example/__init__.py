@@ -128,7 +128,7 @@ from .Wire import ProbeReport
 from .Wire import TestData
 from .Wire import CompressedProbe
 
-PROTOCOL_ID: Final = 0xf35accd0582cdd84
+PROTOCOL_ID: Final = 0x2bf51af687ac0abd
 
 __all__ = [
     "ArmAlign",
@@ -258,3 +258,11 @@ __all__ = [
     "Wide",
     "Wire",
 ]
+
+from ._schema.view import UnitViewInfo as _s_UnitViewInfo
+
+def UnitView() -> "_s_UnitViewInfo":
+    from ._schema.unit_view import UnitView as _s_unit_view
+    return _s_unit_view()
+
+__all__.append("UnitView")

@@ -1,6 +1,6 @@
-0x0858a8858a8a8e9d
-schema-build-version 5
-protocol 6fcb9e6f374ae3ca
+0x0f14e5df2998b840
+schema-build-version 6
+protocol e103b2573e6b167c
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Pose sizeof=24 alignof=8
@@ -23,9 +23,9 @@ record SimState sizeof=304 alignof=16
     field 23fcfd6678e36712 kind=19 offset=128 size=16
     field 6aacb9fbb71a1d91 kind=22 offset=144 size=4 frac=16 default=65536 min=-8 max=8
     field e3b1ca6a3b48dddc kind=22 offset=148 size=12 frac=16 elem=4 array=fixed bound=3 min=-8 max=8
-    field b1494b6ef08a411e kind=26 offset=160 size=12 frac=8 elem=2 array=bounded bound=4 min=0 max=100
+    field b1494b6ef08a411e kind=26 offset=160 size=12 frac=8 elem=2 array=bounded bound=4 countmin=0 min=0 max=100
     field 32969e840d9c67b8 kind=23 offset=176 size=24 frac=32 elem=8 array=keyed bound=3 key=Axis min=-100 max=100
-    field 5af1ac301b4ae16d kind=19 offset=208 size=36 elem=16 array=bounded bound=2
+    field 5af1ac301b4ae16d kind=19 offset=208 size=36 elem=16 array=bounded bound=2 countmin=0
     field 8c2fd80da8957064 kind=13 offset=248 size=24 type=Pose
     field 4328f78ab20e1f98 kind=13 offset=272 size=25 type=Pose optional=true
 enum Axis

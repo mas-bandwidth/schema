@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+   package graphdemo — protocol id 0xef0260949bdd7a2b (packets only: tables version by field id, not by protocol id)
    The TABLE wire (evolution-strict, docs/SPEC-TABLES.md). Compile the .c
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
@@ -4223,7 +4223,7 @@ static SCHEMA_UNUSED int graphdemo_table_cycle_acyclic( graphdemo_table_node_map
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0xfdaabe4726d81d5cull
+#define SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE 0x2e0dc8d1c2bff1aeull
 
 #endif /* SCHEMA_GRAPHDEMO_BUILD_VERSION */
 
@@ -4409,7 +4409,7 @@ static SCHEMA_UNUSED void graphdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #ifndef SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 #define SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 enum { GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=3, GRAPHDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=6, GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES=109, GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
-static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0x5c,0x1d,0xd8,0x26,0x47,0xbe,0xaa,0xfd,0x02,0x0e,0x46,0x06,0x44,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xae,0xf1,0xbf,0xc2,0xd1,0xc8,0x0d,0x2e,0x02,0x0e,0x46,0x06,0x44,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 static const uint8_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[]={0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,};
 static const int32_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[]={0,12,22,34,44,56,68,};
 static SCHEMA_UNUSED uint16_t graphdemo_table_message_own_slot(const uint8_t * raw,int64_t length)
@@ -6431,7 +6431,7 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_fixed_clamp_( graphdemo_stamp_t 
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t graphdemo_stamp_fixed_body_bytes = 16;
 static SCHEMA_UNUSED const int64_t graphdemo_stamp_fixed_record_bytes = 8 + 16; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t graphdemo_stamp_fixed_hash = 0x2b467a2ee937ea73ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
+static SCHEMA_UNUSED const uint64_t graphdemo_stamp_fixed_hash = 0x3d7dedc0769c4360ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -6491,19 +6491,150 @@ static SCHEMA_UNUSED const graphdemo_table_fixed_fill_t graphdemo_stamp_fixed_co
 };
 static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_cover_count = 2;
 
+/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim */
+static SCHEMA_UNUSED const uint8_t graphdemo_stamp_fixed_known_0[] = {
+    0x03, 0x00, 0x00, 0x00, 0xa4, 0x93, 0xdb, 0xb7, 0x13, 0x91, 0x3b, 0xae, 0x0d, 0x10, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x0c, 0x0c, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x13, 0xe2, 0x5c, 0x19, 0x8a, 0x3b, 0x82, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 /* THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). THE ONLY FACT
    A FILE IS MATCHED ON IS THE HASH; the layout bytes are what a known hash
    is held to by memcmp, and the record size is taken from here and NEVER
    from the file. */
 static SCHEMA_UNUSED const graphdemo_table_fixed_known_layout_t graphdemo_stamp_fixed_known[] = {
-    { 0x2b467a2ee937ea73ull, graphdemo_stamp_fixed_layout, (int64_t) sizeof( graphdemo_stamp_fixed_layout ), 24 },
+    { 0x2b467a2ee937ea73ull, graphdemo_stamp_fixed_known_0, (int64_t) sizeof( graphdemo_stamp_fixed_known_0 ), 24 },
+    { 0x3d7dedc0769c4360ull, graphdemo_stamp_fixed_layout, (int64_t) sizeof( graphdemo_stamp_fixed_layout ), 24 },
 };
-static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_known_count = 1;
+static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_known_count = 2;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t graphdemo_stamp_fixed_floor = 0;
+
+/* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
+   never from a file's (§5.9 #3). The storage is STATIC — this codec
+   allocates nothing — and the walk runs ONCE PER PROCESS, off the record
+   loop: a load selects a plan and never builds one, and a load can no
+   longer fail for want of one. C HAS NO PACKAGE INITIALIZER (§5.9 #7 of
+   this leg's PR), so "once" is this flag and not a language phase; what
+   §5.8 row 3 forbids — compiling from A FILE'S bytes into a cache a load
+   can miss — is gone either way: the bytes here are the lock's. */
+#define GRAPHDEMO_STAMP_FIXED_LINEAGE_STRIDE ( 2 + ( 0 + (int32_t) sizeof( graphdemo_table_fixed_entry_t ) - 1 ) / (int32_t) sizeof( graphdemo_table_fixed_entry_t ) )
+
+#ifndef SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE
+/* 0 = nobody has built, 1 = one thread is building, 2 = the plans are readable */
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT 0
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_BUILDING 1
+#define SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY 2
+#if defined( __GNUC__ ) || defined( __clang__ )
+typedef int graphdemo_table_fixed_once_t;
+#define graphdemo_table_fixed_once_ready( f ) ( __atomic_load_n( ( f ), __ATOMIC_ACQUIRE ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_publish( f ) __atomic_store_n( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY, __ATOMIC_RELEASE )
+static SCHEMA_UNUSED int graphdemo_table_fixed_once_claim( graphdemo_table_fixed_once_t * f )
+{
+    int want = SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT;
+    return __atomic_compare_exchange_n( f, &want, SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_BUILDING, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ) ? 1 : 0;
+}
+/* THE WAIT. The build is a BOUNDED walk over the lock's own bytes — no file, no
+   allocation, no lock of its own and no call out — so the thread that claimed it
+   always reaches the publish, and this spin always ends. It runs at most once
+   per process per table and never on the record loop. */
+static SCHEMA_UNUSED void graphdemo_table_fixed_once_wait( graphdemo_table_fixed_once_t * f )
+{
+    while ( __atomic_load_n( f, __ATOMIC_ACQUIRE ) != SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+    {
+        /* nothing: the load is the whole body, and it is an acquire */
+    }
+}
+#elif defined( _MSC_VER )
+typedef long graphdemo_table_fixed_once_t;
+#define graphdemo_table_fixed_once_ready( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY, SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_publish( f ) ( (void) _InterlockedExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY ) )
+#define graphdemo_table_fixed_once_claim( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_BUILDING, SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT )
+#define graphdemo_table_fixed_once_wait( f ) do { while ( !graphdemo_table_fixed_once_ready( f ) ) { } } while ( 0 )
+#else
+/* NO ATOMIC ON THIS COMPILER, AND THE WINDOW IS NAMED. The publish is a plain
+   store AFTER the loop, so no thread can read a zeroed plan: a thread reaches
+   the plans only after its own build wrote them. What is left is that two
+   threads may build at once and write THE SAME BYTES twice — a race in the
+   abstract machine with one outcome in practice — and the fix is not a bigger
+   macro here, it is §5.9 #7's generator-side COMPILE, which lays these plans
+   down as static const data and removes the lazy build entirely. OWED. */
+typedef int graphdemo_table_fixed_once_t;
+#define graphdemo_table_fixed_once_ready( f ) ( *( f ) == SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_publish( f ) ( *( f ) = SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_READY )
+#define graphdemo_table_fixed_once_claim( f ) ( 1 )
+#define graphdemo_table_fixed_once_wait( f ) ( (void) ( f ) )
+#endif
+#endif
+static graphdemo_table_fixed_entry_t graphdemo_stamp_fixed_lineage_storage[2][GRAPHDEMO_STAMP_FIXED_LINEAGE_STRIDE];
+static graphdemo_table_fixed_lineage_plan_t graphdemo_stamp_fixed_lineage[2];
+static graphdemo_table_fixed_once_t graphdemo_stamp_fixed_lineage_ready = SCHEMA_GRAPHDEMO_TABLE_FIXED_ONCE_UNBUILT;
+static SCHEMA_UNUSED void graphdemo_stamp_fixed_lineage_build( void )
+{
+    int32_t i;
+    /* THE FLAG IS PUBLISHED LAST, AFTER THE LOOP, and a racing load WAITS for
+       it: a second thread that sees the plans unpublished must never read
+       them, because an unbuilt TableFixedLineagePlan is all zeros — entries
+       NULL, count 0 — and zeros are a plan step 8 accepts, landing a
+       prefill-only record where the read owed a refusal. So: READY is an
+       acquire load, the build is CLAIMED by one thread, every other thread
+       waits on that acquire, and the publish is a release store of READY
+       after the last entry is written (§5.9 #7). */
+    if ( graphdemo_table_fixed_once_ready( &graphdemo_stamp_fixed_lineage_ready ) ) { return; }
+    if ( !graphdemo_table_fixed_once_claim( &graphdemo_stamp_fixed_lineage_ready ) )
+    {
+        graphdemo_table_fixed_once_wait( &graphdemo_stamp_fixed_lineage_ready ); /* WAIT — never the zeroed plan */
+        return;
+    }
+    for ( i = 0; i < graphdemo_stamp_fixed_known_count; ++i )
+    {
+        graphdemo_table_fixed_layout_view_t parsed;
+        graphdemo_table_report_t census;
+        graphdemo_table_fixed_entry_t * dest = graphdemo_stamp_fixed_lineage_storage[i];
+        int32_t guarded = 0;
+        int32_t made;
+        int32_t fills = 0;
+        uint32_t fill_at = 0;
+        int why = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED;
+        memset( &graphdemo_stamp_fixed_lineage[i], 0, sizeof( graphdemo_stamp_fixed_lineage[i] ) );
+        if ( graphdemo_stamp_fixed_known[i].hash == graphdemo_stamp_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
+        memset( &census, 0, sizeof( census ) );
+        /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
+           (§5.9 #8). C cannot fail a build from a header, so the entry carries
+           the name and LOAD refuses by it if a file ever matches its hash. */
+        if ( !graphdemo_table_fixed_parse_layout( graphdemo_stamp_fixed_known[i].layout, graphdemo_stamp_fixed_known[i].layout_bytes, &parsed, &why ) )
+        { graphdemo_stamp_fixed_lineage[i].reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; continue; }
+        made = graphdemo_table_fixed_compile( &parsed, graphdemo_stamp_fixed_layout, (int32_t) sizeof( graphdemo_stamp_fixed_layout ), graphdemo_stamp_fixed_dst,
+                                    graphdemo_stamp_fixed_cover, graphdemo_stamp_fixed_cover_count,
+                                    dest, GRAPHDEMO_STAMP_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+        if ( made < 0 )
+        {
+            /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
+               and an entry whose plan exceeds it records plan_too_large ON THAT
+               ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
+               compiled walk refuses, or a depth past 64 — is named
+               layout_record_too_large, the reference's name (§5.8 row 6). */
+            graphdemo_stamp_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_GRAPHDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_GRAPHDEMO_TABLE_PLAN_TOO_LARGE;
+            continue;
+        }
+        graphdemo_stamp_fixed_lineage[i].entries = dest;
+        graphdemo_stamp_fixed_lineage[i].count = made;
+        graphdemo_stamp_fixed_lineage[i].guarded = guarded;
+        graphdemo_stamp_fixed_lineage[i].fill = ( fills > 0 ) ? (const graphdemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+        graphdemo_stamp_fixed_lineage[i].fill_count = fills;
+        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
+        graphdemo_stamp_fixed_lineage[i].unknown = census.unknown;
+        graphdemo_stamp_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+    }
+    /* AND THE FLAG LAST: every entry above is written before this store, and
+       this store is what a waiting thread's acquire is waiting for. */
+    graphdemo_table_fixed_once_publish( &graphdemo_stamp_fixed_lineage_ready );
+}
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -6634,6 +6765,26 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_load( graphdemo_stamp_t * val
     { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_LAYOUT_MALFORMED; return -1; }
     /* 8. the plan this endpoint resolves to, and the record size FROM THE LOCK. */
     record_bytes = graphdemo_stamp_fixed_known[pick].record_bytes;
+    if ( hash != graphdemo_stamp_fixed_hash )
+    {
+        graphdemo_stamp_fixed_lineage_build(); /* once per process, from THE LOCK'S bytes */
+        if ( graphdemo_stamp_fixed_lineage[pick].reason != 0 ) { report->refused = 1; report->reason = graphdemo_stamp_fixed_lineage[pick].reason; return -1; }
+        if ( graphdemo_stamp_fixed_lineage[pick].count > plan_capacity ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_PLAN_TOO_LARGE; return -1; }
+        entries = graphdemo_stamp_fixed_lineage[pick].entries;
+        /* THE COMPILED PLAN'S OWN GUARD POOL is laid in its own storage,
+           and a chain-carrying entry's guard_index is a BYTE OFFSET from
+           that base — the same arithmetic the identity plan's static pool
+           reads by (§5.8 row 6). */
+        entry_guards = (const graphdemo_table_fixed_guard_link_t *) (const void *) entries;
+        entry_count = graphdemo_stamp_fixed_lineage[pick].count;
+        entry_guarded = graphdemo_stamp_fixed_lineage[pick].guarded;
+        fill = graphdemo_stamp_fixed_lineage[pick].fill;
+        fill_count = graphdemo_stamp_fixed_lineage[pick].fill_count;
+        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
+           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
+        census_unknown = graphdemo_stamp_fixed_lineage[pick].unknown;
+        census_kind = graphdemo_stamp_fixed_lineage[pick].kind_changed;
+    }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
     at = layout + layout_bytes;

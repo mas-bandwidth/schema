@@ -121,7 +121,7 @@ class _Map:
         # bytes write_body gives an entry object (its two fields in order, each
         # elided at its default, then the end mark) without building one: the
         # faster of the two shapes measured (docs/PORT-PYTHON.md, Maps bench).
-        from .save import Writer
+        from .save import _RetainCtx, Writer
 
         key_field, value_field = _entry_fields(fd)
         key_codec = kinds._REGISTRY[key_field.codec]
@@ -130,25 +130,63 @@ class _Map:
         value_default = value_field.is_default
         field_ref = ctx.idref(fd.field_id)
         keys = _sorted_keys(fd, value)
-        body = bytearray()
-        body_writer = Writer(body)
+        if isinstance(ctx, _RetainCtx):
+            w.varint(field_ref)
+            w.byte(fd.kind)
+        frame = w.begin_frame() if isinstance(ctx, _RetainCtx) else None
+        body = bytearray() if frame is None else None
+        body_writer = Writer(body) if body is not None else w
         body_writer.byte(13)
         body_writer.varint(len(keys))
-        for key in keys:
+        for index, key in enumerate(keys):
             item = value[key]
-            entry_body = bytearray()
-            entry_writer = Writer(entry_body)
+            entry_frame = body_writer.begin_frame() if isinstance(ctx, _RetainCtx) else None
+            entry_body = bytearray() if entry_frame is None else None
+            entry_writer = Writer(entry_body) if entry_body is not None else body_writer
             if not key_default(key):
                 key_codec.write(entry_writer, key_field, key, ctx)
-            if not value_default(item):
+            if isinstance(ctx, _RetainCtx):
+                parent = ctx.steps
+                previous_ordinal = ctx.ordinal
+                entry_path = parent + ((fd.ordinal, index),)
+                value_path = entry_path + ((value_field.ordinal, 0),)
+                has_child = not ctx.preview and value_field.codec == "table" and ctx.retain.has_body(ctx.node, value_path)
+                default = value_default(item)
+                forced = default and has_child
+                if (not default or has_child) and (not forced or ctx.can_id(value_field.field_id)):
+                    start = entry_writer.count
+                    id_mark = len(ctx.ids)
+                    retained_mark = ctx.retain.id_used
+                    emitted_mark = ctx.emitted
+                    ctx.ordinal = value_field.ordinal
+                    ctx.steps = value_path if value_field.codec == "table" else entry_path
+                    value_codec.write(entry_writer, value_field, item, ctx)
+                    if forced and ctx.emitted == emitted_mark:
+                        while len(ctx.ids) > id_mark:
+                            ctx.forget_id(ctx.ids.pop())
+                        ctx.retain.truncate_ids(retained_mark)
+                        entry_writer.truncate(start)
+                ctx.steps = parent
+                ctx.ordinal = previous_ordinal
+                if not ctx.preview:
+                    ctx.lost += ctx.retain.write_tail(ctx.node, entry_path, ctx.known, ctx, entry_writer)
+            elif not value_default(item):
                 value_codec.write(entry_writer, value_field, item, ctx)
             entry_writer.byte(0)
-            body_writer.varint(len(entry_body))
-            body_writer.raw(entry_body)
-        w.varint(field_ref)
-        w.byte(fd.kind)
-        w.varint(len(body))
-        w.raw(body)
+            if entry_frame is None:
+                assert entry_body is not None
+                body_writer.varint(len(entry_body))
+                body_writer.raw(entry_body)
+            else:
+                body_writer.finish_frame(entry_frame)
+        if frame is None:
+            assert body is not None
+            w.varint(field_ref)
+            w.byte(fd.kind)
+            w.varint(len(body))
+            w.raw(body)
+        else:
+            w.finish_frame(frame)
 
 
 kinds.register("map", _Map())

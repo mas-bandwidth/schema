@@ -208,9 +208,10 @@ func main() {
 		reason := fs.String("reason", "", "the sentence that goes in the file beside a `--retire` mark, read years later by whoever asks why")
 		writer := fs.String("writer", "", "capture trusted historical writer metadata for one locked Table@0x<hash>")
 		from := fs.String("from", "", "historical schema unit for --writer; provenance is the caller's responsibility")
+		legacyLayoutOnly := fs.Bool("legacy-layout-only", false, "explicitly trust --from source for an old layout-only key whose empty digest did not bind constraints")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
-		if (*writer != "" || *from != "") && (*writer == "" || *from == "" || *retire != "" || *reason != "" || *print) {
+		if (*writer != "" || *from != "" || *legacyLayoutOnly) && (*writer == "" || *from == "" || *retire != "" || *reason != "" || *print) {
 			fail(fmt.Errorf("--writer and --from are paired and cannot combine with --print, --retire or --reason"))
 		}
 		paths, err := compiler.GatherPaths(fs.Args())
@@ -230,7 +231,7 @@ func main() {
 			if err != nil {
 				fail(err)
 			}
-			path, rewrote, err := compiler.ImportSchemaLockWriter(u, paths, *writer, old)
+			path, rewrote, err := compiler.ImportSchemaLockWriterWithOptions(u, paths, *writer, old, compiler.SchemaLockWriterImportOptions{LegacyLayoutOnly: *legacyLayoutOnly})
 			if err != nil {
 				fail(err)
 			}
@@ -313,7 +314,7 @@ func main() {
 		fs := flag.NewFlagSet("generate", flag.ExitOnError)
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
-		surface := fs.String("surface", "", "for --lang go: the table surfaces to emit, comma-separated from wire,fixed,json,cook,block,view,message,retain (default: all; SPEC-TABLES.md §8.8)")
+		surface := fs.String("surface", "", "for --lang go or python: the table surfaces to emit, comma-separated from wire,fixed,json,cook,block,view,message,retain (default: all; SPEC-TABLES.md §8.8)")
 		runtime := fs.String("runtime", "", "for --lang go: the table runtime, shared (default) or standalone (SPEC-TABLES.md §8.4)")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
@@ -864,12 +865,11 @@ func fail(err error) {
 	fatalf("%v", err)
 }
 
-// refuseSurfaceForTarget returns an error when a non-Go target is handed the
-// --surface flag: the flag is refused by name, not by value, so the empty
-// `--surface=` is refused too (SPEC §8.8).
+// refuseSurfaceForTarget checks the flag by presence, including --surface=;
+// Go and Python accept it, and other targets refuse it by name.
 func refuseSurfaceForTarget(surfaceSet bool, lang string) error {
-	if surfaceSet && lang != "go" {
-		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go target honors it (SPEC-TABLES.md §8.8)", lang)
+	if surfaceSet && lang != "go" && lang != "python" {
+		return fmt.Errorf("the %s target refuses the --surface flag by name; only the go and python targets honor it (SPEC-TABLES.md §8.8)", lang)
 	}
 	return nil
 }
