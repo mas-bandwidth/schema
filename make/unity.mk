@@ -3,12 +3,12 @@
 # wildcard include; the Makefile names no language. The leg registers itself at
 # the end of this file.
 #
-# Packet types only today: the Unity table backend is a named follow-on, and
-# --lang unity refuses a unit with tables by name. Every harness here compiles
-# the generated code as a netstandard2.1 library at C# 9 with warnings as
-# errors (test/unity/UnityDialect.props) — the surface and the language
-# version Unity 2021.2 through Unity 6 compile — and drives it from a small
-# .NET host, because no Unity editor runs in CI.
+# The packet types, and the table core (internal/codegen/unitytable): bool and
+# integer fields on the form-1 file, every other construct by descriptor only.
+# Every harness here compiles the generated code as a netstandard2.1 library at
+# C# 9 with warnings as errors (test/unity/UnityDialect.props) — the surface
+# and the language version Unity 2021.2 through Unity 6 compile — and drives it
+# from a small .NET host, because no Unity editor runs in CI.
 
 # The same pinned SDK command the C# leg uses (make/cs.mk); the Unity dialect
 # is a TargetFramework and a LangVersion inside it, not another toolchain.
@@ -124,3 +124,17 @@ test-unity: toolchain-unity
 TEST_LEGS          += test-unity
 TOOLCHAIN_LEGS     += unity
 TOOLCHAIN_PINS_unity := DOTNET
+
+# ---- the table core ----
+
+# THE TABLE CORE GATE (compiler/tablesunity_test.go): the surface, then the
+# generated tables compiled in the Unity dialect and driven by the conformance
+# driver frame (test/conformance/unity) against the Go engine over a seeded
+# corpus and its mutants — verdicts, counters and re-saved bytes — with each
+# refusal class sabotaged in a copy and required to go red by name. It needs
+# serialize.cs beside the tree (make deps).
+.PHONY: unity-tables
+unity-tables: toolchain-unity
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityTable' ./compiler/
+
+test-unity: unity-tables

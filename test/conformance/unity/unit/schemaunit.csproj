@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ONE GENERATED UNIT in the Unity dialect (test/unity/UnityDialect.props):
+       every .cs file the Unity target generated into UnityUnitDir,
+       compiled as the netstandard2.1 assembly schemaunit.dll the conformance
+       driver loads from <units>/<unit>/. A negative control points
+       UnityUnitDir at a planted copy. -->
+  <Import Project="../../../unity/UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>schemaunit</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(UnityUnitDir)/*.cs" />
+  </ItemGroup>
+
+</Project>

@@ -81,13 +81,16 @@ func TestMooReadStrictAnswersEveryFramingRow(t *testing.T) {
 
 // The control removes phase one, the wire-alone walk, from the emitted read:
 // the rows only it refuses then read, and every other row keeps its verdict.
+// An id-table entry no reference names is the walk's alone to refuse (§3); an
+// explicit null pointer reads and rewrites (docs/rulings.json
+// reads-refuse-non-canonical), so node_index_null is no row the walk owns.
 func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	got, want := framingVerdicts(t, func(t *testing.T, g *generatedUnit) {
 		removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff)
 	})
-	walkOnly := []string{"frame_unknown_id_length", "frame_unknown_id_reference", "node_index_null", "node_record_bytes_after_terminator", "node_unknown_to_fixed_reader"}
+	walkOnly := []string{"frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry", "node_record_bytes_after_terminator", "node_unknown_to_fixed_reader"}
 	for _, name := range walkOnly {
 		if want[name] != "refused" || got[name] != "read" {
 			t.Errorf("%s: without the walk moo answers %q (the row pins %q); the control wants it read", name, got[name], want[name])
