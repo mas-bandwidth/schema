@@ -56,7 +56,7 @@ func TestCSharpPointerTargetBlobKindRefused(t *testing.T) {
 	t.Run("negative control: the root closure decides which blobs a reader can name", func(t *testing.T) {
 		const have = "if (!reached) { node.Declared = true; report.Unknown++; continue; }"
 		const planted = "if (!reached) { report.Unknown++; continue; }"
-		plantedOut := csBlobRun(t, schema, csharpBlobKindPlain(t, dir, rows), csharpBlobUsing(t, schema), func(files map[string][]byte) {
+		plantedOut := csBlobRun(t, schema, csharpBlobKindBody(t, dir, rows), csharpBlobUsing(t, schema), func(files map[string][]byte) {
 			n := 0
 			for name, src := range files {
 				count := strings.Count(string(src), have)
@@ -70,20 +70,15 @@ func TestCSharpPointerTargetBlobKindRefused(t *testing.T) {
 				t.Fatalf("the blob nameability anchor is not in the emitted reader exactly once")
 			}
 		})
-		if strings.Contains(plantedOut, "OLD text-names-bytes read") && !strings.Contains(plantedOut, "FAIL ") {
-			return
+		if !strings.Contains(plantedOut, "FAIL text-names-bytes") {
+			t.Errorf("the planted root-closure rule did not turn text-names-bytes red:\n%s", plantedOut)
 		}
-		if strings.Contains(plantedOut, "FAIL ") || strings.Contains(plantedOut, "text-names-bytes: plain verdict") {
-			t.Errorf("text-names-bytes: the gate passed a reader that names a blob only when the root's closure reaches it\n%s", plantedOut)
-			return
-		}
-		t.Fatalf("text-names-bytes: the planted reader answered nothing:\n%s", plantedOut)
 	})
 }
 
 func csharpBlobUsing(t *testing.T, schema string) string {
 	t.Helper()
-	for _, line := range strings.Split(schema, "\n") {
+	for line := range strings.SplitSeq(schema, "\n") {
 		f := strings.Fields(line)
 		if len(f) >= 2 && f[0] == "package" {
 			return "global using " + capitalize(f[1]) + ";"
@@ -131,34 +126,6 @@ func csharpBlobKindBody(t *testing.T, dir string, rows []csharpPointerTargetRow)
 	}
 	b.WriteString(csharpBlobKindSaves)
 	return b.String()
-}
-
-func csharpBlobKindPlain(t *testing.T, dir string, rows []csharpPointerTargetRow) string {
-	t.Helper()
-	var row csharpPointerTargetRow
-	for _, r := range rows {
-		if r.name == "text-names-bytes" {
-			row = r
-			break
-		}
-	}
-	if row.name == "" {
-		t.Fatal("MANIFEST.tsv has no text-names-bytes row")
-	}
-	wire, err := os.ReadFile(filepath.Join(dir, row.file))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return fmt.Sprintf(`{
- byte[] wire = Convert.FromHexString(%q);
- var value = new Text();
- var report = new TableReport();
- var verdict = Schema.TextLoadVerdict(value, wire, report);
- bool ok = verdict == Schema.TableWire.Verdict.Ok && !report.Refused && !report.Damaged;
- if (ok) { Console.WriteLine("OLD text-names-bytes read"); }
- else { bad += ProbeLog.Fail("text-names-bytes: plain verdict " + verdict + " refused=" + report.Refused + " damaged=" + report.Damaged + " reason=" + report.Reason); }
-}
-`, fmt.Sprintf("%x", wire))
 }
 
 func csharpBlobSlot(t *testing.T, root string) string {
@@ -318,7 +285,7 @@ func checkCSharpBlobSaves(t *testing.T, schema, out string) {
 	}
 	seen := map[string]bool{}
 	m := tabletext.NewModel(unitFrom(t, schema))
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if !strings.HasPrefix(line, "SAVE ") {
 			continue
 		}
