@@ -30,9 +30,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestDartPointerTargetBlobKindRefused(t *testing.T) {
@@ -116,10 +116,17 @@ func TestDartPointerTargetBlobKindRefused(t *testing.T) {
 
 	t.Run("every blobkind vector gives the engine's verdict on both loads", func(t *testing.T) {
 		t.Parallel()
+		saves := 0
+		defer func() {
+			if saves != 12 {
+				t.Errorf("the probe printed %d saves, want 12 (Text and Bin, null, empty and set, plain and retaining)", saves)
+			}
+		}()
 		for _, line := range dartBlobKindRun(t, files, source) {
 			if !strings.HasPrefix(line, "save ") {
 				continue
 			}
+			saves++
 			// THE WRITER: each of the leg's saves, plain and retaining, of
 			// a Text and a Bin with the blob null, empty and set, must
 			// decode in the engine accepted with nothing unknown.
@@ -233,6 +240,84 @@ func TestDartPointerTargetBlobKindRefused(t *testing.T) {
 		}
 		b.WriteString("  if (failed) exit(1);\n}\n")
 		dartBlobKindRun(t, wfiles, b.String())
+	})
+
+	// WHAT A READER NAMES IS ITS UNIT, WHAT IT PLACES IS ITS ROOT: the same
+	// split for table records. A declared table under a slot of a root whose
+	// closure holds only a blob edge is a wrong-type target and refuses; a
+	// declared table the root cannot place, named only from a field this
+	// reader does not declare, reads and counts two unknown (the field and the
+	// record), as text-unknown-field-bytes does for a blob. The engine judges
+	// each wire first.
+	t.Run("declared tables outside the root's closure follow the same split", func(t *testing.T) {
+		t.Parallel()
+		writer := unitFrom(t, `package probe
+table Wrong { body *Bin }
+table More { body *string
+ extra *Bin }
+table RootMore { a *A
+ extra *B }
+table RootWrong { a *B }
+table A { v int32 }
+table B { v int32 }
+table Bin { data *bytes }
+`)
+		reader := unitFrom(t, `package probe
+table Text { body *string }
+table Root { a *A }
+table A { v int32 }
+table B { v int32 }
+table Bin { data *bytes }
+`)
+		wm, rm := tabletext.NewModel(writer), tabletext.NewModel(reader)
+		var b strings.Builder
+		fmt.Fprintf(&b, dartBlobKindPrelude, runtimeHome(reader)+"Wire.dart")
+		for _, c := range []struct{ name, writer, reader, input string }{
+			{"blob-only root, a declared slot names a declared table", "Wrong", "Text", `{"body":{"data":null}}`},
+			{"blob-only root, an undeclared field names a declared table", "More", "Text", `{"body":"x","extra":{"data":null}}`},
+			{"blob-only root, an undeclared field names a declared table and its blob", "More", "Text", `{"body":"x","extra":{"data":"AQI="}}`},
+			{"table root, an undeclared field names a declared table outside its closure", "RootMore", "Root", `{"a":{"v":1},"extra":{"v":2}}`},
+			{"table root, a declared slot names a declared table outside its closure", "RootWrong", "Root", `{"a":{"v":2}}`},
+		} {
+			value := wm.New(writer.Tables[c.writer])
+			var wr tabletext.Report
+			if !wm.Read(value, []byte(c.input), &wr) || !wr.Silent() {
+				t.Fatalf("%s: writer input %+v", c.name, wr)
+			}
+			wire, err := tablewire.Encode(wm, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var reads []bool
+			var unknown []int
+			want := ""
+			for _, retaining := range []bool{false, true} {
+				out := rm.New(reader.Tables[c.reader])
+				var r tabletext.Report
+				if retaining {
+					_, err = tablewire.DecodeRetain(rm, out, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
+				} else {
+					_, err = tablewire.Decode(rm, out, wire, &r)
+				}
+				reads = append(reads, !r.Refused)
+				unknown = append(unknown, r.Unknown)
+				if !r.Refused {
+					text, err := rm.Write(out)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want = string(text) + "\n"
+				}
+			}
+			if reads[0] != reads[1] || unknown[0] != unknown[1] {
+				t.Fatalf("%s: the engine's two loads disagree: read %v, unknown %v", c.name, reads, unknown)
+			}
+			fn := dartName(c.reader)
+			fmt.Fprintf(&b, "  vector(%q, bytes(%q), %t, %d, %q,\n    (d, r) => w.%sToJson(w.%sWireLoad(d, r)),\n    (d, s, r) => w.%sToJson(w.%sWireLoadRetain(d, s, r)));\n",
+				c.name, hex.EncodeToString(wire), reads[0], unknown[0], want, fn, fn, fn, fn)
+		}
+		b.WriteString("  if (failed) exit(1);\n}\n")
+		dartBlobKindRun(t, dartBlobKindFiles(t, reader), b.String())
 	})
 }
 
