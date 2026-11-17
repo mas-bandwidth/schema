@@ -104,7 +104,7 @@ func javaRunVerdicts(t *testing.T, javac, javaBin string, files map[string][]byt
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	answers := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 3 {
 			t.Fatalf("driver line %q, want <row> <entry> <answer>", line)
