@@ -20,6 +20,38 @@ local F = require("./schema_fixed")
 
 local L = {}
 
+-- THE ID TABLE IS FIRST-USE ORDER (docs/SPEC-TABLES.md §3): the value walk
+-- notes where each id reference first sits in the file, the bytes it steps
+-- over included (note_payload, note_content, note_node_table, below), and the
+-- table is held to those places once the same walk ends. One walk, no second.
+-- _firstUse maps an id to the byte offset of its first reference.
+local _firstUse: { [integer]: number } = {}
+
+local function note_use(ids: { any }, ref: number, at: number)
+	if ref < 1 or ref > #ids then return end
+	local id = ids[ref]
+	local seen = _firstUse[id]
+	if seen == nil or at < seen then _firstUse[id] = at end
+end
+
+-- whether the id table lists its entries in the order their first references
+-- sit, each entry named at least once (an unused entry, or one out of its
+-- first-use place, is a spelling no conforming writer emits)
+local function first_use_order(ids: { any }): boolean
+	local last = -1
+	for _, id in ids do
+		local at = _firstUse[id]
+		if at == nil or at <= last then return false end
+		last = at
+	end
+	return true
+end
+
+local note_payload: any = nil
+local note_content: any = nil
+local note_node_table: any = nil
+local note_elements: any = nil
+
 -- the whole-body walks one read has taken: a test seam that counts the load's
 -- own passes over the file, so a cost gate holds a count and never a clock
 local _walks = 0
@@ -254,12 +286,15 @@ end
 local function node_table_scan(bytes: buffer, ids: { any }, endpos: number, report: any): any
 	local w = new_reader(bytes, 1, endpos)
 	local payload: buffer? = nil
+	local payloadAt = 0
 	local present = false
 	local bad = false
+	local after = false
 	while not bad do
 		local ref = r_leb(w)
 		if w.bad then break end
 		if ref == 0 then break end
+		if after then bad = true; break end
 		if ref > #ids then break end
 		if w.at >= w.e then break end
 		local id = ids[ref]
@@ -273,7 +308,9 @@ local function node_table_scan(bytes: buffer, ids: { any }, endpos: number, repo
 			local p = buffer.create(n)
 			buffer.copy(p, 0, bytes, w.at, n)
 			payload = p
+			payloadAt = w.at
 			w.at = w.at + n
+			after = true
 		else
 			if not skip(w, kind) then break end
 		end
@@ -283,15 +320,21 @@ local function node_table_scan(bytes: buffer, ids: { any }, endpos: number, repo
 	local rec = new_reader(payload :: buffer, 0, buffer.len(payload :: buffer))
 	local count = r_leb(rec)
 	if rec.bad then report.malformed = true; return nil end
+	-- AN EMPTY NODE TABLE IS NOT WRITTEN (§3.1): a writer with no records
+	-- appends none, so a present table of count zero is non-canonical.
+	if count == 0 then report.malformed = true; return nil end
 	local raw = {}
 	while rec.at < rec.e do
+		local trefAt = rec.at
 		local tref = r_leb(rec)
 		if rec.bad or tref == 0 or tref > #ids then report.malformed = true; return nil end
+		note_use(ids, tref, payloadAt + trefAt)
 		local tlen = r_leb(rec)
 		if rec.bad or rec.at + tlen > rec.e then report.malformed = true; return nil end
 		local body = buffer.create(tlen)
 		buffer.copy(body, 0, payload :: buffer, rec.at, tlen)
-		raw[#raw + 1] = { tid = ids[tref], body = body }
+		-- at is the record body's place in the file, where its references sit
+		raw[#raw + 1] = { tid = ids[tref], body = body, at = payloadAt + rec.at }
 		rec.at = rec.at + tlen
 	end
 	if count ~= #raw then report.malformed = true; return nil end
@@ -563,10 +606,12 @@ local put: any
 -- a variant this enum cannot name reads None and counts unknown. The value is
 -- the variant's number, None 0 (docs/PORT-LUAU.md, THE TYPE MAPPING).
 local function enum_read(fd: any, r: any, report: any): (any, boolean)
+	local refAt = r.at
 	local ref = r_leb(r)
 	if r.bad then report.malformed = true; return nil, false end
 	if ref == 0 then return 0, true end
 	if ref > #_table then report.malformed = true; return nil, false end
+	note_use(_table, ref, refAt)
 	local id = _table[ref]
 	for i, v in fd.vs do
 		if v[2] == id then
@@ -762,6 +807,8 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 			if not keyOk then report.malformed = true; noteField("malformed", mapName); break end
 			if not loadFixDKeyFits(keyfd, keyVal) then
 				report.clamped = report.clamped + 1; noteField("clamped", mapName)
+				-- the entry is not read, but its body still names ids
+				note_content(body.b, body.at, body.e, 13, 1)
 			else
 				local order = -1
 				if hasLast then order = loadFixDKeyCompare(keyfd, lastKey, keyVal) end
@@ -773,12 +820,15 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 				-- place; a duplicate replaces the entry it repeats, whole.
 				local vals: any = entry.new()
 				while true do
+					local refAt = body.at
 					local ref = r_leb(body)
 					if body.bad then report.malformed = true; noteField("malformed", mapName); break end
 					if ref == 0 then break end
 					if ref > #_table then report.malformed = true; noteField("malformed", mapName); break end
+					note_use(_table, ref, refAt)
 					local id = _table[ref]
 					local kind = r_u8(body)
+					local payloadAt = body.at
 					-- THE RESERVED IDS IN A NESTED BODY ARE MALFORMED (§3.1):
 					-- a map entry is one of those bodies, and the engine's
 					-- bodyAt enforces the same rule there.
@@ -790,6 +840,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 					if efd == nil then
 						report.unknown = report.unknown + 1; noteField("unknown", mapName)
 						if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
+						note_payload(body.b, payloadAt, body.at, kind, 1)
 					elseif id == MapKeyId and keyfd ~= nil then
 						if kind ~= keyfd.k then
 							if widens(kind, keyfd.k) then
@@ -799,6 +850,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 							else
 								report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
 								if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
+								note_payload(body.b, payloadAt, body.at, kind, 1)
 							end
 						else
 							if not read_field(keyfd, body, vals) then break end
@@ -812,6 +864,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 						else
 							report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
 							if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
+							note_payload(body.b, payloadAt, body.at, kind, 1)
 						end
 					else
 						if not read_field(efd, body, vals) then break end
@@ -870,9 +923,11 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 		end
 		local e = fd.e
 		for _ = 1, count do
+			local keyAt = sub.at
 			local key = r_leb(sub)
 			if sub.bad then report.malformed = true; noteField("malformed", keyedName); break end
 			if key == 0 or key > #_table then report.malformed = true; noteField("malformed", keyedName); break end
+			note_use(_table, key, keyAt)
 			local at = 0
 			if fd.keyvs ~= nil then
 				local keyID = _table[key]
@@ -885,6 +940,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			-- a key this reader cannot name is skipped by its length (§2.4, §3.2)
 			if at == 0 then
 				report.unknown = report.unknown + 1; noteField("unknown", keyedName)
+				note_content(sub.b, sub.at, sub.at + elemLen, ek, 1)
 				sub.at = sub.at + elemLen
 				continue
 			end
@@ -1048,6 +1104,8 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	-- truncation leaves bytes by design and already refuses on its own
 	-- counter, so it is not counted again here.
 	if got == keep and keep == count and sub.at < sub.e then report.malformed = true; noteField("malformed", arrayName) end
+	-- the elements a bound clamped away are not read, but they still name ids
+	if got == keep and keep < count then note_elements(sub.b, sub.at, sub.e, ek) end
 	if fd.array == "counted" and holder ~= nil then holder[slot .. "Count"] = got end
 	-- a list of pointers may hold null slots, which a Luau length cannot see:
 	-- its live length rides as n, the table.pack convention, and the save reads it
@@ -1239,10 +1297,12 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	local unionName = _fieldName
 	local un = S.lookup(fd.t)
 	local u = un.new()
+	local refAt = r.at
 	local ref = r_leb(r)
 	if r.bad then report.malformed = true; noteField("malformed", unionName); return u, false end
 	if ref == 0 then return u, true end
 	if ref > #_table then report.malformed = true; noteField("malformed", unionName); return u, false end
+	note_use(_table, ref, refAt)
 	local armID = _table[ref]
 	local kind = r_u8(r)
 	local lpos = r.at
@@ -1260,6 +1320,7 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	local want = arm == nil and 0 or (arm.s == "void" and 32 or arm.k)
 	if arm == nil then
 		report.unknown = report.unknown + 1; noteField("unknown", idName(armID))
+		note_content(r.b, r.at, r.at + n, kind, 1)
 	elseif kind ~= want then
 		if widens(kind, want) then
 			if n == width_of(kind) then
@@ -1272,6 +1333,7 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 			else report.malformed = true; noteField("malformed", arm.name) end
 		else
 			report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", arm.name)
+			note_content(r.b, r.at, r.at + n, kind, 1)
 		end
 	elseif arm.s == "void" then
 		-- a payload-free arm carries L = 0; an L that is not zero is that
@@ -1612,7 +1674,9 @@ end
 read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	local byId = fields_by_id(desc)
 	local seen: { [integer]: boolean } = {}
+	local afterNode = false
 	for _ = 1, math.huge do
+		local refAt = r.at
 		local ref = r_leb(r)
 		if r.bad then _report.malformed = true; return false end
 		if ref == 0 then
@@ -1632,9 +1696,12 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			end
 			return true
 		end
+		if afterNode then _report.malformed = true; return false end
 		if ref > #_table then _report.malformed = true; return false end
 		if r.at >= r.e then _report.malformed = true; return false end
+		note_use(_table, ref, refAt)
 		local kind = r_u8(r)
+		local payloadAt = r.at
 		local id = _table[ref]
 		-- a repeated field id in one body is damage (docs/SPEC-TABLES.md
 		-- §6.5, wirecheck's R5); the value still lands last-wins on the walk
@@ -1649,6 +1716,7 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			if nested then _report.malformed = true; return false end
 			if desc.variable then
 				if not skip(r, kind) then _report.malformed = true; return false end
+				afterNode = true
 				continue
 			end
 		end
@@ -1660,6 +1728,13 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 		if fd == nil then
 			_report.unknown = _report.unknown + 1; noteField("unknown", idName(id))
 			if not skip(r, kind) then _report.malformed = true; noteField("malformed", _fieldName); return false end
+			-- a node table at a root of no variable class still names its
+			-- records' types, and their bodies name ids (§3.1)
+			if id == NodeTableId then
+				note_node_table(r.b, payloadAt, r.at)
+			else
+				note_payload(r.b, payloadAt, r.at, kind, 1)
+			end
 		elseif kind ~= fd.k then
 			if widens(kind, fd.k) then
 				local x = scalar_at(r, fd, kind, _report)
@@ -1671,6 +1746,7 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			else
 				_report.kindMismatch = _report.kindMismatch + 1; noteField("kindMismatch", fd.name)
 				if not skip(r, kind) then _report.malformed = true; noteField("malformed", fd.name); return false end
+				note_payload(r.b, payloadAt, r.at, kind, 1)
 			end
 		else
 			local ok, selected = read_field(fd, r, v)
@@ -1701,6 +1777,8 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	_firstField = {}
 	_pending = {}
 	_nodes = {}
+	_firstUse = {}
+	local whole = true
 	local desc = S.lookup(root)
 	_rootDesc = desc
 	local v = desc.new()
@@ -1753,21 +1831,35 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 					noteField("unknown", idName(tid))
 					local declared = S.tableId(tid) or tid == StringBlobId or tid == BytesBlobId
 					_nodes[#_nodes + 1] = { kind = "x", declared = declared }
+					-- the record is not read, but its body still names ids
+					if tid ~= StringBlobId and tid ~= BytesBlobId then
+						note_content(bytes, rec.at, rec.at + buffer.len(rec.body), 13, 1)
+					end
 				else
 					local inst = nc.new()
-					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = inst, body = rec.body }
+					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = inst, body = rec.body, at = rec.at }
 				end
 			end
 		end
 		for _, n in _nodes do
 			if n ~= nil and n.kind == "t" then
-				local br = new_reader(n.body, 0, buffer.len(n.body))
-				read_body(n.desc, br, n.v, true)
+				-- the record is read in place, so each reference it holds is
+				-- noted at its own offset in the file
+				local br = new_reader(bytes, n.at, n.at + buffer.len(n.body))
+				if not read_body(n.desc, br, n.v, true) then whole = false end
 			end
 		end
 	end
 	local rootReader = new_reader(bytes, 1, o.e)
-	read_body(desc, rootReader, v, false)
+	if not read_body(desc, rootReader, v, false) then whole = false end
+	-- THE ID TABLE IS FIRST-USE ORDER (docs/SPEC-TABLES.md §3): once the walk
+	-- has read every body whole, an id-table entry that no reference names,
+	-- or one whose first reference sits after a later entry's, is a spelling
+	-- no conforming writer emits. A walk cut short already answers its own
+	-- refusal and is not judged on references it never reached.
+	if whole and not _countRefused and not report.malformed and not first_use_order(_table) then
+		report.malformed = true
+	end
 	resolve(report)
 	-- a count past the storage cap answers the report as it stood at the
 	-- refusal (§2.9)
@@ -1977,6 +2069,126 @@ local function walkBody(b: buffer, at: number, e: number, ids: { integer }): any
 		if stop == nil then return nil end
 		fields[#fields + 1] = { s = p, e = stop, ps = q + 1, id = ids[ref], kind = kind }
 		p = stop
+	end
+end
+
+-- THE BYTES THE VALUE WALK STEPS OVER STILL NAME IDS (docs/SPEC-TABLES.md §3):
+-- a writer interns an id when its reference is written, so the id table's
+-- first-use order counts the references inside a field, an arm, a keyed slot
+-- or a node record this reader cannot name. The walk skips those by their
+-- framing; these note each reference inside them where it sits, over exactly
+-- the bytes skipped, so the one walk sees every reference once. Framing they
+-- cannot step over is left to the reads that report it.
+
+-- note_content reads one payload AFTER its own L, which is what a union's arm
+-- payload, a keyed slot and a node record are.
+note_content = function(b: buffer, s: number, stop: number, kind: number, depth: number)
+	if depth > 128 then return end
+	if kind == 13 then
+		local p = s
+		while p < stop do
+			local ref, q = leb(b, p, stop)
+			if ref == nil or ref == 0 then return end
+			note_use(_table, ref, p)
+			if q >= stop then return end
+			local k = buffer.readu8(b, q)
+			local nxt = stepOver(b, q + 1, stop, k)
+			if nxt == nil then return end
+			note_payload(b, q + 1, nxt, k, depth + 1)
+			p = nxt
+		end
+		return
+	end
+	if kind == 14 or kind == 16 then
+		if stop - s < 2 then return end
+		local ek = buffer.readu8(b, s)
+		local count, p = leb(b, s + 1, stop)
+		if count == nil then return end
+		if kind == 16 then
+			for _ = 1, count do
+				local key, q = leb(b, p, stop)
+				if key == nil then return end
+				note_use(_table, key, p)
+				local elen, after = leb(b, q, stop)
+				if elen == nil or after + elen > stop then return end
+				-- A KEYED TRIPLE'S L FRAMES ITS ELEMENT WHOLE: the content after
+				-- it is already unframed, unlike a positional element's line.
+				note_content(b, after, after + elen, ek, depth + 1)
+				p = after + elen
+			end
+			return
+		end
+		if width_of(ek) > 0 then return end
+		for _ = 1, count do
+			local nxt = stepOver(b, p, stop, ek)
+			if nxt == nil then return end
+			note_payload(b, p, nxt, ek, depth + 1)
+			p = nxt
+		end
+		return
+	end
+	if kind == 30 then
+		local ref = leb(b, s, stop)
+		if ref ~= nil then note_use(_table, ref, s) end
+		return
+	end
+	if kind == 15 then
+		local ref, p = leb(b, s, stop)
+		if ref == nil or ref == 0 then return end
+		note_use(_table, ref, s)
+		if p >= stop then return end
+		local kb = buffer.readu8(b, p)
+		local n, after = leb(b, p + 1, stop)
+		if n == nil or after + n > stop then return end
+		note_content(b, after, after + n, kb, depth + 1)
+	end
+end
+
+-- note_payload reads a field's or an element's payload from its first byte,
+-- its own L included where its kind has one.
+note_payload = function(b: buffer, s: number, stop: number, kind: number, depth: number)
+	if depth > 128 then return end
+	if kind == 13 or kind == 14 or kind == 16 then
+		local n, p = leb(b, s, stop)
+		if n == nil or p + n > stop then return end
+		note_content(b, p, p + n, kind, depth + 1)
+	elseif kind == 15 or kind == 30 then
+		note_content(b, s, stop, kind, depth + 1)
+	end
+end
+
+-- note_elements reads the positional elements of kind `ek` from `p` to the
+-- end of their array's body.
+note_elements = function(b: buffer, p: number, stop: number, ek: number)
+	if width_of(ek) > 0 then return end
+	while p < stop do
+		local nxt = stepOver(b, p, stop, ek)
+		if nxt == nil then return end
+		note_payload(b, p, nxt, ek, 1)
+		p = nxt
+	end
+end
+
+-- note_node_table reads a node table this root's class does not place
+-- (docs/SPEC-TABLES.md §3.1): each record's type reference, then the body of
+-- every record that is not a blob.
+note_node_table = function(b: buffer, s: number, stop: number)
+	local n, ps = leb(b, s, stop)
+	if n == nil or ps + n > stop then return end
+	local e = ps + n
+	local count, p = leb(b, ps, e)
+	if count == nil then return end
+	for _ = 1, count do
+		local tref, q = leb(b, p, e)
+		if tref == nil or tref == 0 or tref > #_table then return end
+		note_use(_table, tref, p)
+		local tlen, after = leb(b, q, e)
+		if tlen == nil or after + tlen > e then return end
+		local tid = _table[tref]
+		if tid ~= StringBlobId and tid ~= BytesBlobId then
+			note_content(b, after, after + tlen, 13, 1)
+		end
+		p = after + tlen
 	end
 end
 
