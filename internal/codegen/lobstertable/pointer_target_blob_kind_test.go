@@ -91,8 +91,9 @@ func TestLobsterPointerTargetBlobKindRefused(t *testing.T) {
 		// engine must accept each with nothing unknown
 		resaved := 0
 		for line := range strings.SplitSeq(out, "\n") {
-			name, wire, ok := strings.Cut(strings.TrimPrefix(line, "RESAVE "), " ")
-			if !ok || !strings.HasPrefix(line, "RESAVE ") {
+			rest, isResave := strings.CutPrefix(line, "RESAVE ")
+			name, wire, ok := strings.Cut(rest, " ")
+			if !isResave || !ok {
 				continue
 			}
 			resaved++
@@ -376,8 +377,8 @@ func runBlobKindRead(t *testing.T, g *loadUnit, rows []blobKindRow, inputs map[s
 		}
 	}
 	for line := range strings.SplitSeq(out, "\n") {
-		if strings.HasPrefix(line, "REASON ") {
-			t.Log(strings.TrimPrefix(line, "REASON "))
+		if reason, ok := strings.CutPrefix(line, "REASON "); ok {
+			t.Log(reason)
 		}
 	}
 	return out
