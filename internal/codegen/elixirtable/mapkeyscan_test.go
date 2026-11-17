@@ -28,30 +28,35 @@ func TestMapKeyAdmissionElixir(t *testing.T) {
 	m := tabletext.NewModel(u)
 	var probe strings.Builder
 	probe.WriteString("alias Keyscan.Table,as: T\n")
+	// Each wire's id table is exactly the ids its body references, in the
+	// order the body first uses them (docs/SPEC-TABLES.md §3): the map field
+	// (ref 1), the entry key (2) and value (3), then, in a row whose entries
+	// carry an unknown field, that field (4), and last the root's tail field.
 	for _, tc := range []struct {
 		name, field string
 		entries     []string
 		widened     int
 		refused     bool
+		unknown     bool
 	}{
-		{"duplicate-retains-only-last", "numbers", []string{"02080100000003040a00000005040b00000000", "02080100000003041400000005041500000000"}, 0, true},
-		{"duplicate-retires-first", "numbers", []string{"02080100000003040a00000005040b00000000", "02080100000003041400000000"}, 0, true},
-		{"duplicate-numeric", "numbers", []string{"02080100000003040a00000000", "02080100000003041400000000"}, 0, true},
-		{"duplicate-text", "words", []string{"020c016103040a00000000", "020c016103041400000000"}, 0, true},
-		{"duplicate-before-bad-key", "numbers", []string{"02080100000003040a00000000", "02080100000003041400000000", "0200"}, 0, true},
-		{"unknown-kind", "numbers", []string{"0200"}, 0, true},
-		{"bad-then-exact", "numbers", []string{"0209000000000000000002080700000003040900000000"}, 0, true},
-		{"bad-then-widened", "numbers", []string{"0209000000000000000002060703040900000000"}, 0, true},
-		{"exact-then-bad", "numbers", []string{"0208070000000209000000000000000000"}, 0, true},
-		{"bad-then-framing", "numbers", []string{"020900000000000000000500"}, 0, true},
-		{"good-then-framing", "numbers", []string{"0208070000000500"}, 0, true},
-		{"two-widened-keys", "numbers", []string{"02060103040a00000000", "02060203041400000000"}, 1, false},
-		{"prior-retention-then-bad", "numbers", []string{"02080100000003040a00000005040b00000000", "0200"}, 0, true},
-		{"bad-key-skips-value", "numbers", []string{"02000300"}, 0, true},
-		{"unbounded-key", "free", []string{"020c046c6f6e6703041700000000"}, 0, false},
-		{"over-bound-between", "words", []string{"020c016103040100000000", "020c046c6f6e6703116300", "020c016203040200000000"}, 0, true},
-		{"bad-utf8-before-later-key", "words", []string{"020c01ff020c016100"}, 0, true},
-		{"bad-then-valid-text", "words", []string{"020607020c016103040900000000"}, 0, true},
+		{"duplicate-retains-only-last", "numbers", []string{"02080100000003040a00000004040b00000000", "02080100000003041400000004041500000000"}, 0, true, true},
+		{"duplicate-retires-first", "numbers", []string{"02080100000003040a00000004040b00000000", "02080100000003041400000000"}, 0, true, true},
+		{"duplicate-numeric", "numbers", []string{"02080100000003040a00000000", "02080100000003041400000000"}, 0, true, false},
+		{"duplicate-text", "words", []string{"020c016103040a00000000", "020c016103041400000000"}, 0, true, false},
+		{"duplicate-before-bad-key", "numbers", []string{"02080100000003040a00000000", "02080100000003041400000000", "0200"}, 0, true, false},
+		{"unknown-kind", "numbers", []string{"0200"}, 0, true, false},
+		{"bad-then-exact", "numbers", []string{"0209000000000000000002080700000003040900000000"}, 0, true, false},
+		{"bad-then-widened", "numbers", []string{"0209000000000000000002060703040900000000"}, 0, true, false},
+		{"exact-then-bad", "numbers", []string{"0208070000000209000000000000000000"}, 0, true, false},
+		{"bad-then-framing", "numbers", []string{"020900000000000000000400"}, 0, true, true},
+		{"good-then-framing", "numbers", []string{"0208070000000400"}, 0, true, true},
+		{"two-widened-keys", "numbers", []string{"02060103040a00000000", "02060203041400000000"}, 1, false, false},
+		{"prior-retention-then-bad", "numbers", []string{"02080100000003040a00000004040b00000000", "0200"}, 0, true, true},
+		{"bad-key-skips-value", "numbers", []string{"02000300"}, 0, true, false},
+		{"unbounded-key", "free", []string{"020c046c6f6e6703041700000000"}, 0, false, false},
+		{"over-bound-between", "words", []string{"020c016103040100000000", "020c046c6f6e6703116300", "020c016203040200000000"}, 0, true, false},
+		{"bad-utf8-before-later-key", "words", []string{"020c01ff020c016100"}, 0, true, false},
+		{"bad-then-valid-text", "words", []string{"020607020c016103040900000000"}, 0, true, false},
 	} {
 		body := []byte{13, byte(len(tc.entries))}
 		for _, s := range tc.entries {
@@ -62,9 +67,13 @@ func TestMapKeyAdmissionElixir(t *testing.T) {
 			body = append(body, byte(len(b)))
 			body = append(body, b...)
 		}
+		ids := []uint64{ir.TableWireId(tc.field), ir.MapKeyWireId, ir.MapValueWireId}
+		if tc.unknown {
+			ids = append(ids, ir.TableWireId("unknown"))
+		}
+		ids = append(ids, ir.TableWireId("tail"))
 		wire := append([]byte{1, 1, 14, byte(len(body))}, body...)
-		wire = append(wire, 4, 4, 7, 0, 0, 0, 0)
-		ids := []uint64{ir.TableWireId(tc.field), ir.MapKeyWireId, ir.MapValueWireId, ir.TableWireId("tail"), ir.TableWireId("unknown")}
+		wire = append(wire, byte(len(ids)), 4, 7, 0, 0, 0, 0)
 		for _, id := range ids {
 			wire = binary.LittleEndian.AppendUint64(wire, id)
 		}
