@@ -1630,10 +1630,18 @@ local function resolve(report: any)
 				-- naming it reads null, counted once at the node, not here.
 				-- A placeholder of a type this reader DECLARES is not a newer
 				-- writer's type: naming it at a slot that is not its target is
-				-- damage, and the whole load refuses.
+				-- damage, and the whole load refuses. Such a record is not
+				-- evolution, so the unknown the scan counted for it is taken
+				-- back: it counts kind_mismatch, never unknown as well.
 				if n ~= nil then
 					if n.kind == "x" then
-						if n.declared then report.kindMismatch = report.kindMismatch + 1 end
+						if n.declared then
+							report.kindMismatch = report.kindMismatch + 1
+							if n.counted then
+								n.counted = false
+								report.unknown = report.unknown - 1
+							end
+						end
 					elseif p.d.s == "sblob" then
 						if n.kind == "s" then
 							if landed[n] then report.blobShared = (report.blobShared or 0) + 1; noteField("blobShared", p.name) end
@@ -1830,7 +1838,7 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 					report.unknown = report.unknown + 1
 					noteField("unknown", idName(tid))
 					local declared = S.tableId(tid) or tid == StringBlobId or tid == BytesBlobId
-					_nodes[#_nodes + 1] = { kind = "x", declared = declared }
+					_nodes[#_nodes + 1] = { kind = "x", declared = declared, counted = true }
 					-- the record is not read, but its body still names ids
 					if tid ~= StringBlobId and tid ~= BytesBlobId then
 						note_content(bytes, rec.at, rec.at + buffer.len(rec.body), 13, 1)
