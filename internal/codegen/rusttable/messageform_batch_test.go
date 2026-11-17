@@ -541,16 +541,17 @@ fixed table Probe
 }
 `
 
-// Every text is a FIXED POINT of load-then-save. A text field rides when it is
-// non-empty (the C++ reference's rule, and tablewire's), so `label` set to ""
-// under its declared default "hi" is absent on the wire and loads back as "hi":
-// that value is not a round trip on this form, and no text here spells it.
+// Every text is a FIXED POINT of load-then-save. A text field elides only at
+// its declared default, length and bytes both (docs/SPEC-TABLES.md §3.3): the
+// empty value under the non-empty default "hi" rides, and `label` set to "hi"
+// is elided and loads back as "hi". A wide integer is a STRING of digits on the
+// text wire (§16.2), so those fields are spelled that way here.
 var messageBatchProbeTexts = []string{
 	`{}`,
 	`{
-  "i8v": -128, "i16v": 32767, "i32v": -2147483648, "i64v": 9223372036854775807,
-  "u8v": 255, "u16v": 65535, "u32v": 4294967295, "u64v": 18446744073709551615,
-  "r32": -1000, "ru64": 900000, "i128v": -5000000000, "u128v": 340282366920938463463374607431768211455,
+  "i8v": -128, "i16v": 32767, "i32v": -2147483648, "i64v": "9223372036854775807",
+  "u8v": 255, "u16v": 65535, "u32v": 4294967295, "u64v": "18446744073709551615",
+  "r32": -1000, "ru64": "900000", "i128v": "-5000000000", "u128v": "340282366920938463463374607431768211455",
   "b3": 7, "caps": ["Jump", "Fly"], "flag": true, "f32v": 3.25, "cf": 0.37, "f64v": -1e-300,
   "mood": "Sleepy", "moods": ["Calm", "None", "Angry"], "label": "héllo wörl",
   "blob": "AQIDBAUG", "small": [-1, 0, 127, -32768],
