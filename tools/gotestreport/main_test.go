@@ -37,7 +37,7 @@ func TestAFinishedRowListsFailuresAndIsNotRedForThem(t *testing.T) {
 		t.Errorf("a test failure is the test step's verdict, not the report's:\n%s", f.text)
 	}
 	for _, want := range []string{
-		"1 package(s), 3 test(s): 1 passed, 1 failed, 1 skipped, 0 never reported",
+		"1 package run(s), 3 test(s): 1 passed, 1 failed, 1 skipped, 0 never reported",
 		"FAIL            p TestB",
 		"slowest tests:",
 		"1.5s  p TestA",
@@ -64,11 +64,72 @@ func TestACutRowNamesWhatWasRunning(t *testing.T) {
 	for _, want := range []string{
 		"NEVER FINISHED  q",
 		"NEVER REPORTED  q TestHangs",
-		"2 package(s), 5 test(s): 2 passed, 1 failed, 1 skipped, 1 never reported",
+		"2 package run(s), 5 test(s): 2 passed, 1 failed, 1 skipped, 1 never reported",
 	} {
 		if !strings.Contains(f.text, want) {
 			t.Errorf("report lacks %q:\n%s", want, f.text)
 		}
+	}
+}
+
+// The same package run by two go test commands of one row (the Makefile runs
+// ./compiler/ twice): the first finished green, the second was cut mid-test.
+// The finished record must not cover the cut one, in either order.
+func TestAPackageRunTwiceCutTheSecondTimeIsRed(t *testing.T) {
+	t.Parallel()
+	green := `{"Action":"start","Package":"c"}
+{"Action":"run","Package":"c","Test":"TestX"}
+{"Action":"pass","Package":"c","Test":"TestX","Elapsed":1}
+{"Action":"pass","Package":"c","Elapsed":1}
+`
+	cut := `{"Action":"start","Package":"c"}
+{"Action":"run","Package":"c","Test":"TestX"}
+{"Action":"outp`
+	for _, order := range [][]string{{green, cut}, {cut, green}} {
+		f := reportOf(t, 10*time.Minute, order...).findings(5)
+		if !f.red {
+			t.Errorf("a package cut on one of its two runs reads green:\n%s", f.text)
+		}
+		for _, want := range []string{"NEVER FINISHED  c [go test #", "NEVER REPORTED  c TestX [go test #", "PASS            c [go test #"} {
+			if !strings.Contains(f.text, want) {
+				t.Errorf("report lacks %q:\n%s", want, f.text)
+			}
+		}
+	}
+}
+
+// -count=2 in one record: the test's second run starts again and is cut. Its
+// first PASS does not stand for the second run, and the package never finished.
+func TestASecondRunOfATestCutMidTestIsRed(t *testing.T) {
+	t.Parallel()
+	s := `{"Action":"start","Package":"p"}
+{"Action":"run","Package":"p","Test":"TestY"}
+{"Action":"pass","Package":"p","Test":"TestY","Elapsed":1}
+{"Action":"run","Package":"p","Test":"TestY"}
+`
+	f := reportOf(t, 10*time.Minute, s).findings(5)
+	if !f.red || !strings.Contains(f.text, "NEVER REPORTED  p TestY") {
+		t.Errorf("a second run cut mid-test is not named red:\n%s", f.text)
+	}
+	if strings.Contains(f.text, " [go test #") {
+		t.Errorf("one record is one go test command, not several:\n%s", f.text)
+	}
+}
+
+// A test that failed on one run and passed on a later one (-count=2) is
+// still listed failed: a later pass does not wash out a failure.
+func TestAFailureOnAnEarlierRunStaysListed(t *testing.T) {
+	t.Parallel()
+	s := `{"Action":"start","Package":"p"}
+{"Action":"run","Package":"p","Test":"TestZ"}
+{"Action":"fail","Package":"p","Test":"TestZ","Elapsed":1}
+{"Action":"run","Package":"p","Test":"TestZ"}
+{"Action":"pass","Package":"p","Test":"TestZ","Elapsed":1}
+{"Action":"fail","Package":"p","Elapsed":2}
+`
+	f := reportOf(t, 10*time.Minute, s).findings(5)
+	if !strings.Contains(f.text, "FAIL            p TestZ") || !strings.Contains(f.text, "1 failed") {
+		t.Errorf("an earlier failure was washed out by a later pass:\n%s", f.text)
 	}
 }
 

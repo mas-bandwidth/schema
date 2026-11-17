@@ -27,6 +27,13 @@ package main
 // budget AFTER it reported, which is the detection the lifted limit gave.
 // The log keeps its text: an invocation that did not ask for -json gets the
 // events' own output printed, which is what `go test -v` prints.
+//
+// PGROUP_GO_TEST_SUMMARY is the same record for jobs whose make recipes grep
+// go test's own text (certify's `make test`, where -v-shaped output would
+// change what a `--- SKIP` or `--- PASS` grep sees): the output passes
+// through byte for byte, and only each package's result line (`ok`/`FAIL`,
+// its wall time) is recorded. That is enough for the budget, not for naming
+// the test a cut row was running.
 
 import (
 	"bufio"
@@ -38,7 +45,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -46,6 +55,7 @@ import (
 const (
 	envGoTestTimeout = "PGROUP_GO_TEST_TIMEOUT"
 	envGoTestJSON    = "PGROUP_GO_TEST_JSON"
+	envGoTestSummary = "PGROUP_GO_TEST_SUMMARY"
 	envRealGo        = "PGROUP_REAL_GO"
 	envGoTestNested  = "PGROUP_GO_TEST_NESTED"
 )
@@ -110,24 +120,62 @@ func isTimeoutFlag(a string) (match, takesNext bool) {
 	return false, false
 }
 
+// leadingC is how many arguments right after `test` are its -C dir flag,
+// which go requires to be the first flag on the command line (0, 1 or 2).
+func leadingC(args []string, at int) int {
+	if at+1 >= len(args) {
+		return 0
+	}
+	switch a := args[at+1]; {
+	case a == "-C" || a == "--C":
+		return 2
+	case strings.HasPrefix(a, "-C=") || strings.HasPrefix(a, "--C="):
+		return 1
+	}
+	return 0
+}
+
+// isBinaryTimeoutFlag reports whether a, after -args, is the test binary's
+// own -test.timeout (which go test's -timeout becomes, and which a later one
+// overrides), and whether its value is the next argument. A bare -timeout
+// after -args is a flag of the test's own and is not this.
+func isBinaryTimeoutFlag(a string) (match, takesNext bool) {
+	if m, next := isTimeoutFlag(a); m && strings.Contains(a, "test.timeout") {
+		return true, next
+	}
+	return false, false
+}
+
 // rewriteGoTest returns the go command line with every -timeout of a `go
-// test` removed and -timeout=<timeout> put right after `test`. Arguments
-// after -args belong to the test binary and are copied as they are. A
-// command that is not `go test` comes back unchanged.
+// test` removed and -timeout=<timeout> put right after `test` (after its -C
+// dir, which must stay first). After -args the arguments belong to the test
+// binary and are copied as they are, except -test.timeout, which would
+// override the lifted one there and is removed too. A command that is not
+// `go test` comes back unchanged.
 func rewriteGoTest(args []string, timeout string) []string {
 	at := testArgs(args)
 	if at < 0 {
 		return args
 	}
-	out := append([]string{}, args[:at+1]...)
+	c := leadingC(args, at)
+	if at+1+c > len(args) {
+		return args // a -C with no dir: go reports it
+	}
+	out := append([]string{}, args[:at+1+c]...)
 	out = append(out, "-timeout="+timeout)
-	for i := at + 1; i < len(args); i++ {
+	binary := false
+	for i := at + 1 + c; i < len(args); i++ {
 		a := args[i]
-		if a == "-args" || a == "--args" {
-			out = append(out, args[i:]...)
-			break
+		if !binary && (a == "-args" || a == "--args") {
+			binary = true
+			out = append(out, a)
+			continue
 		}
-		if m, next := isTimeoutFlag(a); m {
+		m, next := isTimeoutFlag(a)
+		if binary {
+			m, next = isBinaryTimeoutFlag(a)
+		}
+		if m {
 			if next {
 				i++
 			}
@@ -148,12 +196,18 @@ func namedTimeout(args []string) string {
 		return ""
 	}
 	named := "10m"
-	for i := at + 1; i < len(args); i++ {
+	binary := false
+	for i := at + 1 + leadingC(args, at); i < len(args); i++ {
 		a := args[i]
-		if a == "-args" || a == "--args" {
-			break
+		if !binary && (a == "-args" || a == "--args") {
+			binary = true
+			continue
 		}
-		if m, next := isTimeoutFlag(a); m {
+		m, next := isTimeoutFlag(a)
+		if binary {
+			m, next = isBinaryTimeoutFlag(a)
+		}
+		if m {
 			if next {
 				if i+1 < len(args) {
 					named = args[i+1]
@@ -182,7 +236,8 @@ func testFlag(args []string, names ...string) bool {
 	if at < 0 {
 		return false
 	}
-	for _, a := range args[at+1:] {
+	from := min(at+1+leadingC(args, at), len(args))
+	for _, a := range args[from:] {
 		if a == "-args" || a == "--args" {
 			return false
 		}
@@ -197,15 +252,20 @@ func testFlag(args []string, names ...string) bool {
 	return false
 }
 
-// withJSON inserts -json after `test` when the command line lacks it.
+// withJSON inserts -json after `test` (after its -C dir, which must stay
+// first) when the command line lacks it.
 func withJSON(args []string) []string {
 	if testFlag(args, "json") {
 		return args
 	}
 	at := testArgs(args)
-	out := append([]string{}, args[:at+1]...)
+	c := leadingC(args, at)
+	if at+1+c > len(args) {
+		return args
+	}
+	out := append([]string{}, args[:at+1+c]...)
 	out = append(out, "-json")
-	return append(out, args[at+1:]...)
+	return append(out, args[at+1+c:]...)
 }
 
 // renderEvents copies a go test -json stream from r to the record, line by
@@ -292,7 +352,10 @@ func goShim(args []string) int {
 	if timeout != "" {
 		args = rewriteGoTest(args, timeout)
 	}
-	dir := os.Getenv(envGoTestJSON)
+	dir, summary := os.Getenv(envGoTestJSON), false
+	if dir == "" {
+		dir, summary = os.Getenv(envGoTestSummary), true
+	}
 	if !isTest || dir == "" || os.Getenv(envGoTestNested) != "" || testFlag(args, "c", "h", "help") {
 		env := os.Environ()
 		if isTest {
@@ -300,15 +363,66 @@ func goShim(args []string) int {
 		}
 		return execGo(real, args, env)
 	}
-	return recordGoTest(real, args, dir, named)
+	return recordGoTest(real, args, dir, named, summary)
 }
 
-// recordGoTest runs the outermost go test with -json, records the stream
-// under dir (after a first line naming the -timeout the command asked for)
-// and prints it as the caller asked for it.
-func recordGoTest(real string, args []string, dir, named string) int {
+// summaryLine is a package's result line in go test's text output: its
+// verdict and its test binary's wall time.
+var summaryLine = regexp.MustCompile(`^(ok|FAIL)\s+(\S+)\s+([0-9]+(?:\.[0-9]+)?)s\b`)
+
+// summarizeLines copies go test's text output from r to w byte for byte and
+// records, for each package result line, a pass or fail event carrying the
+// package's wall time: what tools/gotestreport needs to hold the package to
+// its named budget. A caller that asked for -json gets its events recorded
+// as they are.
+func summarizeLines(r io.Reader, record io.Writer, w io.Writer, raw bool) error {
+	br := bufio.NewReader(r)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			_, _ = w.Write(line)
+			if record != nil {
+				var rec []byte
+				if raw {
+					rec = line
+				} else if m := summaryLine.FindSubmatch(bytes.TrimRight(line, "\r\n")); m != nil {
+					secs, _ := strconv.ParseFloat(string(m[3]), 64)
+					action := "pass"
+					if string(m[1]) == "FAIL" {
+						action = "fail"
+					}
+					rec, _ = json.Marshal(struct {
+						Action, Package string
+						Elapsed         float64
+					}{action, string(m[2]), secs})
+					rec = append(rec, '\n')
+				}
+				if rec != nil {
+					if _, werr := record.Write(rec); werr != nil {
+						record = nil // a full disk loses the record, never the run
+					}
+				}
+			}
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// recordGoTest runs the outermost go test, records under dir (after a first
+// line naming the -timeout the command asked for) and prints its output as
+// the caller asked for it. In full mode the run is switched to -json and
+// every event is recorded; in summary mode the output is left as it is and
+// only each package's verdict and wall time are recorded.
+func recordGoTest(real string, args []string, dir, named string, summary bool) int {
 	raw := testFlag(args, "json")
-	args = withJSON(args)
+	if !summary {
+		args = withJSON(args)
+	}
 	var record *os.File
 	if err := os.MkdirAll(dir, 0o755); err == nil {
 		name := fmt.Sprintf("%d-%d.jsonl", time.Now().UnixNano(), os.Getpid())
@@ -340,7 +454,11 @@ func recordGoTest(real string, args []string, dir, named string) int {
 		defer record.Close()
 		w = record
 	}
-	_ = renderEvents(out, w, os.Stdout, raw)
+	if summary {
+		_ = summarizeLines(out, w, os.Stdout, raw)
+	} else {
+		_ = renderEvents(out, w, os.Stdout, raw)
+	}
 	return shimStatus(cmd, cmd.Wait())
 }
 

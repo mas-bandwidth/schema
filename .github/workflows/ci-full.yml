@@ -185,10 +185,6 @@ jobs:
     # hosted two-core runner the SCHEMA_SLOW=1 gotable package ran past ten
     # minutes; with no cap it would finish there too, only later.
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    env:
-      # each row's outermost go test records its -json stream here (the
-      # header's report); runner.temp is the job's own, never a past run's
-      PGROUP_GO_TEST_JSON: ${{ runner.temp }}/go-test-json
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -282,6 +278,12 @@ jobs:
         exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{"group":"unit-codegen"},{"group":"versioning-cs"},{"group":"versioning-rust"},{"group":"versioning-java"},{"group":"versioning-c"},{"group":"unit-rest-ci"},{"group":"unit-rest-fuzz-2"},{"group":"unit-elixir-3"}]' || '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # each row's outermost go test records its -json stream here (the
+      # header's report). A step sets it because a job's env may not name the
+      # runner context; RUNNER_TEMP is the job's own, never a past run's.
+      - name: where this row records its go test events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
       - name: Check out the C, C++, C#, Go and Rust serialize runtimes (pinned releases)
         run: |
@@ -1289,13 +1291,15 @@ jobs:
         group: [ moo-compiler, moo-table, goose ]
     env:
       PGROUP_WALL: ''
-      # the go-test job's record and report, for these rows too
-      PGROUP_GO_TEST_JSON: ${{ runner.temp }}/go-test-json
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the go-test job's record and report, for these rows too
+      - name: where this row records its go test events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
       # the siblings go-test's compiler rows clone, for the same compiler tests
       - name: Check out the C, C++, C#, Go and Rust serialize runtimes (pinned releases)

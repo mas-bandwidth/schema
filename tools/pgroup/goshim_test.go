@@ -24,6 +24,11 @@ func TestRewriteGoTestLiftsEveryTimeout(t *testing.T) {
 		{"not go test", []string{"build", "-o", "x", "./cmd/x"}, []string{"build", "-o", "x", "./cmd/x"}},
 		{"go run of a tool named test is not go test", []string{"run", "./tools/x", "test", "-timeout", "1s"}, []string{"run", "./tools/x", "test", "-timeout", "1s"}},
 		{"a -run value is not a flag", []string{"test", "-run", "Timeout", "."}, []string{"test", "-timeout=0", "-run", "Timeout", "."}},
+		{"go test -C dir: -C stays first", []string{"test", "-C", "dir", "-timeout", "1s", "."}, []string{"test", "-C", "dir", "-timeout=0", "."}},
+		{"go test -C=dir: -C stays first", []string{"test", "-C=dir", "-count=1", "."}, []string{"test", "-C=dir", "-timeout=0", "-count=1", "."}},
+		{"-test.timeout after -args", []string{"test", ".", "-args", "-test.timeout", "1s", "-v"}, []string{"test", "-timeout=0", ".", "-args", "-v"}},
+		{"-test.timeout= after -args", []string{"test", ".", "-args", "-test.timeout=1s"}, []string{"test", "-timeout=0", ".", "-args"}},
+		{"-test.timeout before -args", []string{"test", "-test.timeout=1s", "."}, []string{"test", "-timeout=0", "."}},
 	}
 	for _, c := range cases {
 		if got := rewriteGoTest(c.in, "0"); !reflect.DeepEqual(got, c.want) {
@@ -44,6 +49,9 @@ func TestNamedTimeoutIsWhatTheShimLifted(t *testing.T) {
 		{[]string{"test", "-timeout=0", "./x"}, "0"},
 		{[]string{"test", "./x", "-args", "-timeout", "1s"}, "10m"},
 		{[]string{"vet", "./x"}, ""},
+		{[]string{"test", "-C", "dir", "-timeout", "5m", "."}, "5m"},
+		{[]string{"test", "-timeout", "5m", ".", "-args", "-test.timeout", "30s"}, "30s"},
+		{[]string{"test", ".", "-args", "-test.timeout=2m"}, "2m"},
 	} {
 		if got := namedTimeout(c.in); got != c.want {
 			t.Errorf("namedTimeout(%q) = %q, want %q", c.in, got, c.want)
@@ -90,6 +98,10 @@ func TestWithJSONAndTestFlag(t *testing.T) {
 	if got := withJSON(already); !reflect.DeepEqual(got, already) {
 		t.Errorf("withJSON(%q) added a second -json: %q", already, got)
 	}
+	inC := []string{"test", "-C", "dir", "./x"}
+	if got, want := withJSON(inC), []string{"test", "-C", "dir", "-json", "./x"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("withJSON(%q) = %q, want %q: -C must stay the first flag", inC, got, want)
+	}
 	if !testFlag([]string{"test", "-c", "-o", "bin"}, "c") {
 		t.Error("testFlag missed -c")
 	}
@@ -132,6 +144,29 @@ func TestRenderEvents(t *testing.T) {
 	}
 	if raw.String() != stream {
 		t.Errorf("a caller that asked for -json got:\n%s", raw.String())
+	}
+}
+
+// TestSummarizeLinesKeepsTheTextByteForByte: summary mode never changes what
+// a recipe greps, and records each package's verdict and wall time.
+func TestSummarizeLinesKeepsTheTextByteForByte(t *testing.T) {
+	t.Parallel()
+	text := "--- FAIL: TestA (0.00s)\n    a_test.go:9: boom\nFAIL\nFAIL\tgithub.com/x/a\t1.250s\n" +
+		"ok  \tgithub.com/x/b\t700.5s\tcoverage: 80.0% of statements\n" +
+		"ok  \tgithub.com/x/c\t(cached)\n?   \tgithub.com/x/d\t[no test files]\n" +
+		"FAIL\tgithub.com/x/e [build failed]\nok  \tgithub.com/x/f\t0.2s"
+	var record, out bytes.Buffer
+	if err := summarizeLines(strings.NewReader(text), &record, &out, false); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != text {
+		t.Errorf("summary mode changed the text:\n%q\nwant:\n%q", out.String(), text)
+	}
+	want := `{"Action":"fail","Package":"github.com/x/a","Elapsed":1.25}` + "\n" +
+		`{"Action":"pass","Package":"github.com/x/b","Elapsed":700.5}` + "\n" +
+		`{"Action":"pass","Package":"github.com/x/f","Elapsed":0.2}` + "\n"
+	if record.String() != want {
+		t.Errorf("record:\n%s\nwant:\n%s", record.String(), want)
 	}
 }
 

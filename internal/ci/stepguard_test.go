@@ -140,8 +140,8 @@ func TestPerCommitStepWallNegativeControls(t *testing.T) {
 		},
 		{
 			"exempt job stops clearing the wall",
-			"    env:\n      PGROUP_WALL: ''\n      # the go-test job's record and report, for these rows too\n",
-			"    env:\n      # the go-test job's record and report, for these rows too\n",
+			"    env:\n      PGROUP_WALL: ''\n    defaults:\n      run:\n        shell: go run ./tools/pgroup -- bash -e {0}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n\n      # the go-test job's record and report, for these rows too",
+			"    defaults:\n      run:\n        shell: go run ./tools/pgroup -- bash -e {0}\n    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n\n      # the go-test job's record and report, for these rows too",
 			"leg-tagged is exempt",
 		},
 	}

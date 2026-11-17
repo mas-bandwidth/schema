@@ -61,10 +61,15 @@ var releaseSoakBudget = regexp.MustCompile(`go test [^\n]*-timeout (\S+) -soak-i
 // (the owner, 2026-11-16: "Nightly runs don't have a timeout... they can run
 // as long as they need."), so the soak runs to the end and the budget is read
 // after it: tools/pgroup lifts the recipe's -timeout in the nightly and
-// records it, and tools/gotestreport names the package OVER BUDGET when its
-// test binary ran past it. This test keeps that budget meaningful:
+// records it with the package's wall time (PGROUP_GO_TEST_SUMMARY, set by
+// release-gates), and that job's last step, tools/gotestreport, names the
+// package OVER BUDGET when its test binary ran past it. This test keeps that
+// budget meaningful:
+//
+//   - release-gates records and reports (so the budget is read at all);
 //
 //   - certify.yml carries no timeout-minutes (no cap cuts the soak short);
+//
 //   - the soak plus a stated 15-minute pre-soak allowance fits the -timeout
 //     the recipe names, so a green soak is inside its budget by design.
 func TestGoReleaseSoakFitsItsBudget(t *testing.T) {
@@ -75,8 +80,19 @@ func TestGoReleaseSoakFitsItsBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read certify.yml: %v", err)
 	}
-	if _, ok := yamlJobs(string(cf))["release-gates"]; !ok {
+	gates, ok := yamlJobs(string(cf))["release-gates"]
+	if !ok {
 		t.Fatal("certify.yml has no release-gates job — the job that runs tables-go-release is missing")
+	}
+	// the budget is read, or this test guards nothing: the job records its
+	// go test package results and reports them whatever happened
+	for _, want := range []string{
+		`run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"`,
+		"        if: always()\n        run: go run ./tools/gotestreport -budget 10m \"$PGROUP_GO_TEST_SUMMARY\"",
+	} {
+		if !strings.Contains(gates, want) {
+			t.Errorf("certify.yml release-gates lacks %q: nothing would read the soak's budget", want)
+		}
 	}
 	for _, l := range lines("certify.yml", string(cf)) {
 		if strings.HasPrefix(l.text, "timeout-minutes:") {

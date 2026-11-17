@@ -121,6 +121,12 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # every go test this job runs records its package results here (the
+      # report at the end of the job). A step sets it because a job's env may
+      # not name the runner context; RUNNER_TEMP is the job's own.
+      - name: where this job records its go test package results
+        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
+
       # Siblings cloned exactly where README.md tells a newcomer to put them —
       # CI exercises the documented path rather than a special one. The
       # Makefile's SERIALIZE* defaults already point here, and the generated
@@ -313,6 +319,15 @@ jobs:
       - name: random-schema property tests (shrinking)
         run: make fuzz-tables-props
 
+      # every go test package this job ran, its verdict and wall time, held to
+      # the -timeout its command named, after it reported (the nightly rule in
+      # the header): a package past it is OVER BUDGET and this step is red.
+      # Its text is go test's own, byte for byte (summary mode), so no recipe
+      # that greps it sees anything new.
+      - name: report each go test package against its named budget
+        if: always()
+        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+
   # EVERY PORT'S RELEASE GATE, by name. A port whose `make test` half had to
   # stay cheap puts its expensive half — the soak, the allocation gate at
   # scale, the fuzz oracle's own negative control — behind one
@@ -370,6 +385,12 @@ jobs:
         target: ${{ fromJson(needs.release-targets.outputs.targets) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # every go test this job runs records its package results here (the
+      # report at the end of the job). A step sets it because a job's env may
+      # not name the runner context; RUNNER_TEMP is the job's own.
+      - name: where this job records its go test package results
+        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
       - name: Check out the serialize runtimes (pinned releases)
         run: |
@@ -487,6 +508,15 @@ jobs:
         if: startsWith(matrix.target, 'tables-wire-fuzz-release-')
         run: make -j"$(nproc)" "${{ matrix.target }}" RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
+      # every go test package this job ran, its verdict and wall time, held to
+      # the -timeout its command named, after it reported (the nightly rule in
+      # the header): a package past it is OVER BUDGET and this step is red.
+      # Its text is go test's own, byte for byte (summary mode), so no recipe
+      # that greps it sees anything new.
+      - name: report each go test package against its named budget
+        if: always()
+        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of
   # serially (they were ~9 minutes end to end in one job; the longest single
@@ -544,6 +574,12 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      # every go test this job runs records its package results here (the
+      # report at the end of the job). A step sets it because a job's env may
+      # not name the runner context; RUNNER_TEMP is the job's own.
+      - name: where this job records its go test package results
+        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
       - name: Check out the serialize runtimes (pinned releases)
         run: |
@@ -694,6 +730,15 @@ jobs:
         if: matrix.os == 'fleet' && matrix.leg == 'go'
         run: make tables-block-gate2-smoke
 
+      # every go test package this job ran, its verdict and wall time, held to
+      # the -timeout its command named, after it reported (the nightly rule in
+      # the header): a package past it is OVER BUDGET and this step is red.
+      # Its text is go test's own, byte for byte (summary mode), so no recipe
+      # that greps it sees anything new.
+      - name: report each go test package against its named budget
+        if: always()
+        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own — the nightly is the trigger that catches it.
   # The same job rides every pull request in ci.yml, deliberately: neither
@@ -751,6 +796,13 @@ jobs:
         with:
           # the newest v tag and its tree are the previous side
           fetch-depth: 0
+
+      # every go test this job runs records its package results here (the
+      # report at the end of the job). A step sets it because a job's env may
+      # not name the runner context; RUNNER_TEMP is the job's own.
+      - name: where this job records its go test package results
+        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
@@ -760,6 +812,15 @@ jobs:
         env:
           GOFLAGS: -mod=readonly
         run: make release-differential
+
+      # every go test package this job ran, its verdict and wall time, held to
+      # the -timeout its command named, after it reported (the nightly rule in
+      # the header): a package past it is OVER BUDGET and this step is red.
+      # Its text is go test's own, byte for byte (summary mode), so no recipe
+      # that greps it sees anything new.
+      - name: report each go test package against its named budget
+        if: always()
+        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
 
   # THE NIGHTLY NEGATIVE-CONTROL TIER (issue #563). Every negative control this
   # tree defines runs on every pull request, in ci.yml, one job per group, and
@@ -809,6 +870,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # every go test this job runs records its package results here (the
+      # report at the end of the job). A step sets it because a job's env may
+      # not name the runner context; RUNNER_TEMP is the job's own.
+      - name: where this job records its go test package results
+        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
       # All six siblings in every group, exactly as ci.yml's leg clones them: a
       # control reaches for a runtime through the generated code it sabotages,
@@ -947,6 +1014,15 @@ jobs:
             grep -nE "$cause" controls.log || echo "no refusal or failure line in controls.log; read the log above"
           fi
           exit $status
+
+      # every go test package this job ran, its verdict and wall time, held to
+      # the -timeout its command named, after it reported (the nightly rule in
+      # the header): a package past it is OVER BUDGET and this step is red.
+      # Its text is go test's own, byte for byte (summary mode), so no recipe
+      # that greps it sees anything new.
+      - name: report each go test package against its named budget
+        if: always()
+        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
 
   # THE NINE SCHEMA LEGS (issue #nx-g30). One reusable workflow, leg.yml,
   # runs every registered driver over its own surface; the matrix input is
