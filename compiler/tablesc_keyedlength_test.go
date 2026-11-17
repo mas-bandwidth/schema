@@ -48,16 +48,24 @@ narrow [Axis]int32
 	for i, c := range cases {
 		fmt.Fprintf(&probe, "/* %s */\nstatic const uint8_t c%d[]={%s};\n", c.name, i, cOctets(c.wire))
 	}
-	probe.WriteString("int main(void) {\n TableReport report; const Root * root; uint8_t * region; int64_t need;\n")
+	// The measure is a strict read too: a frame with bytes left over is
+	// wire_damaged (docs/SPEC-TABLES.md §3), so a damaged wire measures <= 0.
+	// Its load is then given the clean wire's region and must still refuse.
+	probe.WriteString("int main(void) {\n TableReport report; const Root * root; uint8_t * region; int64_t need; int64_t clean;\n")
+	probe.WriteString(" clean=root_load_measure(c0,sizeof(c0)); CHECK(clean>0);\n")
 	for i, c := range cases {
 		accept := 0
 		if c.accept {
 			accept = 1
 		}
-		fmt.Fprintf(&probe, ` { need=root_load_measure(c%d,sizeof(c%d)); CHECK(need>0); region=(uint8_t*)malloc((size_t)need); CHECK(region!=NULL);
+		measure := "CHECK(need>0);"
+		if !c.accept {
+			measure = "CHECK(need<=0); need=clean;"
+		}
+		fmt.Fprintf(&probe, ` { need=root_load_measure(c%d,sizeof(c%d)); %s region=(uint8_t*)malloc((size_t)need); CHECK(region!=NULL);
    memset(&report,0,sizeof(report)); root=root_load(region,need,c%d,sizeof(c%d),&report);
    CHECK((root!=NULL)==%d); CHECK(report.refused==%d); free(region); }
-`, i, i, i, i, accept, 1-accept)
+`, i, i, measure, i, i, accept, 1-accept)
 	}
 	probe.WriteString(" return 0;\n}\n")
 	runCTableWireProbe(t, u, probe.String())
