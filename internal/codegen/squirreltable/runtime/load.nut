@@ -532,6 +532,14 @@ local wcDamage = function(c) {
   return false;
 };
 
+// THE ID TABLE IS IN FIRST-USE ORDER AND EVERY ENTRY IS USED (docs/SPEC-TABLES.md
+// §3): each reference is at most the next unused one, and the walk's end
+// checks that every entry was reached
+local wcUse = function(c, ref) {
+  if (ref > c.nextRef) c.badOrder = true;
+  else if (ref == c.nextRef) c.nextRef++;
+};
+
 // well-formed UTF-8 with no zero byte (textValid in internal/tablewire/text.go)
 utf8Ok = function(b, at, len) {
   local i = 0;
@@ -629,6 +637,7 @@ local wcUnion = function(c, stack, at, end, need) {
     return next;
   }
   if (ref > c.ids.len() || next >= end) { wcDamage(c); return -1; }
+  wcUse(c, ref);
   local kind = c.b[next] & 0xff;
   local n = wcLeb(c, next + 1, end);
   if (n < 0 || n > end - c.pos) { wcDamage(c); return -1; }
@@ -663,6 +672,7 @@ wcPayload = function(c, stack, at, end, kind) {
     case 30: {
       local ref = wcLeb(c, at, end);
       if (ref < 0 || ref > c.ids.len()) { wcDamage(c); return -1; }
+      if (ref > 0) wcUse(c, ref);
       return c.pos;
     }
     case 15:
@@ -726,7 +736,10 @@ local wcStep = function(c, stack, f) {
       if (ref < 0) return wcDamage(c);
       local at = c.pos;
       if (ref == 0) return at == end ? wcClose(c, stack, f) : wcDamage(c);
+      // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1)
+      if (f.root && c.table != null) return wcDamage(c);
       if (ref > c.ids.len()) return wcDamage(c);
+      wcUse(c, ref);
       local id = c.ids[ref - 1];
       if (id in f.seen) return wcDamage(c);
       f.seen[id] <- true;
@@ -762,6 +775,7 @@ local wcStep = function(c, stack, f) {
       local end = f.end;
       local key = wcLeb(c, f.off, end);
       if (key < 0 || key == 0 || key > c.ids.len()) return wcDamage(c);
+      wcUse(c, key);
       if (key in f.seen) return wcDamage(c);
       f.seen[key] <- true;
       local n = wcLeb(c, c.pos, end);
@@ -846,14 +860,16 @@ local wcGraph = function(c, children, blobs) {
 // checkFile over the root body bytes[at, end) and the id table `ids`
 local wireCheck = function(b, at, end, ids, announcement) {
   local c = { b = b, ids = ids, depth = 0, fail = null, nonFinite = false,
-    edges = [], table = null, pos = 0, ek = 0, announcement = announcement };
+    edges = [], table = null, pos = 0, ek = 0, announcement = announcement,
+    nextRef = 1, badOrder = false };
   if (!wcBody(c, at, end, true)) return c;
   local children = [c.edges];
   local blobs = [];
   if (c.table != null) {
     local te = c.table[1];
     local declared = wcLeb(c, c.table[0], te);
-    if (declared < 0) { wcDamage(c); return c; }
+    // AN EMPTY NODE TABLE IS NEVER WRITTEN (§3.1)
+    if (declared <= 0) { wcDamage(c); return c; }
     local off = c.pos;
     local recs = [];
     while (off < te) {
@@ -861,23 +877,25 @@ local wireCheck = function(b, at, end, ids, announcement) {
       if (ref < 0 || ref == 0 || ref > ids.len()) { wcDamage(c); return c; }
       local len = wcLeb(c, c.pos, te);
       if (len < 0 || len > te - c.pos) { wcDamage(c); return c; }
-      recs.append([ids[ref - 1], c.pos, c.pos + len]);
+      recs.append([ref, ids[ref - 1], c.pos, c.pos + len]);
       off = c.pos + len;
     }
     if (off != te || declared != recs.len()) { wcDamage(c); return c; }
     foreach (rec in recs) {
+      wcUse(c, rec[0]);
       c.edges = [];
-      if (rec[0] == STRING_BLOB_ID || rec[0] == BYTES_BLOB_ID) {
-        if (rec[0] == STRING_BLOB_ID && !utf8Ok(b, rec[1], rec[2] - rec[1])) { wcDamage(c); return c; }
+      if (rec[1] == STRING_BLOB_ID || rec[1] == BYTES_BLOB_ID) {
+        if (rec[1] == STRING_BLOB_ID && !utf8Ok(b, rec[2], rec[3] - rec[2])) { wcDamage(c); return c; }
         blobs.append(true);
       } else {
-        if (!wcBody(c, rec[1], rec[2], false)) return c;
+        if (!wcBody(c, rec[2], rec[3], false)) return c;
         blobs.append(false);
       }
       children.append(c.edges);
     }
   }
   wcGraph(c, children, blobs);
+  if (c.fail == null && !c.nonFinite && (c.badOrder || c.nextRef != ids.len() + 1)) wcDamage(c);
   return c;
 };
 

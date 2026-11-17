@@ -40,7 +40,7 @@ var luauModuleKeys = map[string][]string{
 	"schema_refusal.luau":  {"ReadStrict", "ReadStrictNames"},
 	"schema_retain.luau":   {"LoadRetain", "loadRetainWalk", "SaveRetain"},
 	"schema_save.luau":     {"measure", "save"},
-	"schema_tables.luau":   {"keyed", "knownId", "lookup", "lookupTypeId", "table", "tableId", "tableIds", "union", "wireIds"},
+	"schema_tables.luau":   {"buildOf", "buildVersion", "keyed", "knownId", "lookup", "lookupTypeId", "table", "tableId", "tableIds", "union", "wireIds"},
 	"schema_text.luau":     {"LoadText", "SaveText"},
 	"schema_textform.luau": {"EditTextForm", "LoadTextForm", "SaveTextForm", "SetFlags", "TimestampOK"},
 	"schema_view.luau":     {"UnitView"},
