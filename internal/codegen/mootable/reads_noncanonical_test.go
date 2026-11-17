@@ -10,6 +10,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -17,13 +19,18 @@ import (
 // non-canonical spelling vectors (docs/SPEC-TABLES.md §3, §3.1, §3.3, §4;
 // docs/rulings.json reads-refuse-non-canonical): every row of
 // testdata/wire/non-canonical/MANIFEST.tsv is generated for this leg and read
-// through every read entry it has for the row's form — the plain load, the
+// through every read entry it has for the row's form: the plain load, the
 // form dispatch's strict read and the retaining load for the variable form,
 // the message load for the message form, the announcement read for the
-// announcement. A canonical row reads and the read value re-saves to the same
-// bytes; every other row is refused. The verdict is the contract, so no row
-// compares a refusal's reason. moo refuses in every build: there is no
-// release-only check to skip.
+// announcement. A variable row that reads re-saves through the plain and the
+// retaining writer to its canonical bytes: the vector itself, or the
+// canonical rewrite pinned beside it for a lawful spelling no writer
+// produces. A message row is read under the announcement as written, where
+// the manifest's verdict holds and a read re-saves to the same bytes, and
+// under another build version, where a field at its default and fields out of
+// order are lawful evolution and read, and a union field written with arm
+// reference 0 (§3.3 (c)) stays refused. The verdict is the contract, so no row
+// compares a refusal's reason. moo refuses in every build.
 
 type nonCanonicalRow struct {
 	file    string
@@ -67,6 +74,24 @@ func readNonCanonicalManifest(t *testing.T) []nonCanonicalRow {
 	return rows
 }
 
+// nonCanonicalExpected is the canonical file a variable row that reads
+// re-saves to: the canonical rewrite the manifest's generator pins under
+// canonical/, the canonical vector for the reordered fields, else the vector.
+func nonCanonicalExpected(t *testing.T, row nonCanonicalRow) []byte {
+	t.Helper()
+	dir := filepath.Join("testdata", "wire", "non-canonical")
+	path := filepath.Join(dir, row.file)
+	if row.form == "variable" {
+		rewrite := filepath.Join(dir, "canonical", filepath.Base(row.file))
+		if _, err := os.Stat(filepath.Join(root, rewrite)); err == nil {
+			path = rewrite
+		} else if row.file == "variable-fields-out-of-order.bin" {
+			path = filepath.Join(dir, "variable-canonical.bin")
+		}
+	}
+	return readRoot(t, path)
+}
+
 // nonCanonicalUnit is one vectors unit's emitted moo files.
 type nonCanonicalUnit struct {
 	unit  *ir.Unit
@@ -86,19 +111,24 @@ func generateNonCanonicalUnit(t *testing.T, schema string) nonCanonicalUnit {
 	return nonCanonicalUnit{unit: u, files: files}
 }
 
-// nonCanonicalProbe is the main for one row: one "entry=verdict" line per
-// read entry, and for a read value the re-saved bytes as "save=<hex>".
-const nonCanonicalProbe = `local function hexOf(b: buffer): string
+const nonCanonicalHex = `local function hexOf(b: buffer): string
 	local parts = table.create(buffer.len(b))
 	for i = 0, buffer.len(b) - 1 do
-		parts[i + 1] = string.format("%%02x", buffer.readu8(b, i))
+		parts[i + 1] = string.format("%02x", buffer.readu8(b, i))
 	end
 	return table.concat(parts)
 end
 local function verdict(ok: boolean): string
 	return if ok then "read" else "refused"
 end
-local rootName = %q
+`
+
+// nonCanonicalProbe is the main for one row: one "entry=verdict" line per
+// read entry, and for a read value the re-saved bytes as "<writer>=<hex>".
+// A message row is read again under another build version ("other"); a batch
+// read there is saved, read back under the announced build and saved again
+// ("otherback", "othertwice").
+const nonCanonicalProbe = `local rootName = %q
 local form = %q
 if form == "announcement" then
 	local v = MS.NewVocabulary()
@@ -131,8 +161,40 @@ else
 		local out = MS.SaveMessages(rootName, values, {})
 		print("save=" .. (if out ~= nil then hexOf(out) else "refused"))
 	end
+	local announced = v.buildVersion
+	v.buildVersion = announced .. "-other"
+	local on, ovalues = MS.LoadMessages(v, rootName, inputs.wire, 256, {})
+	print("other=" .. verdict(on > 0))
+	if on > 0 then
+		local out = MS.SaveMessages(rootName, ovalues, {})
+		if out == nil then
+			print("otherback=refused")
+			return
+		end
+		v.buildVersion = announced
+		local bn, back = MS.LoadMessages(v, rootName, out, 256, {})
+		print("otherback=" .. verdict(bn > 0))
+		if bn > 0 then
+			local twice = MS.SaveMessages(rootName, back, {})
+			print("othertwice=" .. (if twice ~= nil and hexOf(twice) == hexOf(out) then "same" else "differs"))
+		end
+	end
 end
 `
+
+func runNonCanonicalProbe(t *testing.T, g *generatedUnit, mod, rootName, form string, inputs map[string][]byte) map[string]string {
+	t.Helper()
+	main := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal L = require(\"./table_load\")\nlocal Rf = require(\"./table_refusal\")\nlocal Rt = require(\"./table_retain\")\nlocal Sv = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\n" +
+		g.requireAll() + fmt.Sprintf("local T = require(\"./%s\")\n", mod) + nonCanonicalHex + fmt.Sprintf(nonCanonicalProbe, rootName, form)
+	out := g.run(t, main, inputs)
+	got := map[string]string{"probe": out}
+	for line := range strings.SplitSeq(out, "\n") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
+			got[k] = v
+		}
+	}
+	return got
+}
 
 func TestMooReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
@@ -162,15 +224,7 @@ func TestMooReadsRefuseNonCanonical(t *testing.T) {
 			if row.form == "message" {
 				inputs["ann"] = readRoot(t, ann)
 			}
-			main := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal L = require(\"./table_load\")\nlocal Rf = require(\"./table_refusal\")\nlocal Rt = require(\"./table_retain\")\nlocal Sv = require(\"./table_save\")\nlocal MS = require(\"./table_message\")\nlocal St = require(\"./schema_tables\")\n" +
-				g.requireAll() + fmt.Sprintf("local T = require(\"./%s\")\n", mod) + fmt.Sprintf(nonCanonicalProbe, rootName, row.form)
-			out := g.run(t, main, inputs)
-			got := map[string]string{}
-			for line := range strings.SplitSeq(out, "\n") {
-				if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
-					got[k] = v
-				}
-			}
+			got := runNonCanonicalProbe(t, g, mod, rootName, row.form, inputs)
 			var entries, saves []string
 			switch row.form {
 			case "announcement":
@@ -184,18 +238,143 @@ func TestMooReadsRefuseNonCanonical(t *testing.T) {
 			}
 			for _, entry := range entries {
 				if got[entry] != row.verdict {
-					t.Errorf("%s (%s): %s = %q, want %q\nprobe:\n%s", row.file, row.spell, entry, got[entry], row.verdict, out)
+					t.Errorf("%s (%s): %s = %q, want %q\nprobe:\n%s", row.file, row.spell, entry, got[entry], row.verdict, got["probe"])
+				}
+			}
+			if row.form == "message" {
+				// §3.3: under another build version only the union field
+				// written with arm reference 0 stays refused
+				other := "read"
+				if row.spell == "union-arm-zero" {
+					other = "refused"
+				}
+				if got["other"] != other {
+					t.Errorf("%s (%s): under another build the message load = %q, want %q\nprobe:\n%s", row.file, row.spell, got["other"], other, got["probe"])
+				}
+				if other == "read" && (got["otherback"] != "read" || got["othertwice"] != "same") {
+					t.Errorf("%s (%s): the rewrite under another build reads back %q and re-saves %q, want read and same\nprobe:\n%s", row.file, row.spell, got["otherback"], got["othertwice"], got["probe"])
 				}
 			}
 			if row.verdict != "read" {
 				return
 			}
-			want := hex.EncodeToString(inputs["wire"])
+			want := hex.EncodeToString(nonCanonicalExpected(t, row))
 			for _, s := range saves {
 				if got[s] != want {
 					t.Errorf("%s: the read value re-saves (%s) to %q, want %s", row.file, s, got[s], want)
 				}
 			}
 		})
+	}
+	t.Run("union None element", testMooUnionNoneElementReads)
+	t.Run("unknown union field at None", testMooUnknownUnionFieldNoneRefused)
+	t.Run("undeclared field at the reader's own build", testMooUndeclaredFieldAtOwnBuildRefused)
+}
+
+// testMooUnionNoneElementReads is the control for §3.3 (c): the refusal is of
+// a union FIELD written with arm reference 0, never of a None element of an
+// array of unions, which is positional. The Go writer's batch carrying one
+// reads under this reader's build version and under another.
+func testMooUnionNoneElementReads(t *testing.T) {
+	t.Parallel()
+	const schema = "package messagenone\n\nunion Choice\n{\n    item uint8\n}\n\nfixed table Root\n{\n    tick    uint8\n    choice  Choice\n    choices [..2]Choice\n}\n"
+	u := unitFromSource(t, schema)
+	files, err := generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := writeUnit(t, u, files)
+	m := tabletext.NewModel(u)
+	value := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(value, []byte(`{"tick": 1, "choices": [{}, {"item": 3}]}`), &report) {
+		t.Fatalf("value: %+v", report)
+	}
+	batch, err := tablewire.EncodeMessage(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := runNonCanonicalProbe(t, g, "ProbeTable", "Root", "message", map[string][]byte{"wire": batch, "ann": tablewire.Announce(u)})
+	want := hex.EncodeToString(batch)
+	if got["message"] != "read" || got["save"] != want || got["other"] != "read" || got["otherback"] != "read" || got["othertwice"] != "same" {
+		t.Errorf("a None element of an array of unions: message=%q save=%q (want read, %s), other=%q otherback=%q othertwice=%q (want read, read, same)\nprobe:\n%s", got["message"], got["save"], want, got["other"], got["otherback"], got["othertwice"], got["probe"])
+	}
+}
+
+// testMooUnknownUnionFieldNoneRefused holds §3.3 (c) on the skip path: a
+// reader whose `One` does not declare `pick` meets it as a newer writer's
+// field under another build and skips it, and the skip refuses it written
+// with arm reference 0, as the Go engine's does. The canonical batch, which
+// elides the None union, reads.
+func testMooUnknownUnionFieldNoneRefused(t *testing.T) {
+	t.Parallel()
+	u := unitFromSource(t, "package messageone\n\nfixed table One\n{\n    mode  uint8 = 7\n    count uint8\n}\n")
+	files, err := generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := writeUnit(t, u, files)
+	ann := readRoot(t, filepath.Join("testdata", "wire", "message-one-encoding", "announcement.bin"))
+	for file, want := range map[string]string{"canonical.bin": "read", "union-none.bin": "refused"} {
+		wire := readRoot(t, filepath.Join("testdata", "wire", "message-one-encoding", file))
+		got := runNonCanonicalProbe(t, g, "ProbeTable", "One", "message", map[string][]byte{"wire": wire, "ann": ann})
+		if got["message"] != want {
+			t.Errorf("%s under a reader without pick: message = %q, want %q\nprobe:\n%s", file, got["message"], want, got["probe"])
+		}
+	}
+}
+
+// testMooUndeclaredFieldAtOwnBuildRefused holds §3.3 (b)'s "a field the
+// record does not declare" under the reader's own build version: the reader
+// whose `One` does not declare `pick` is handed a batch carrying `pick` with
+// a set arm, announced at the reader's own build version, and refuses it; the
+// same batch under the writer's build version reads, `pick` skipped as a newer
+// writer's field, and the batch without `pick` reads under both.
+func testMooUndeclaredFieldAtOwnBuildRefused(t *testing.T) {
+	t.Parallel()
+	writer := generateNonCanonicalUnit(t, "test/message-one-encoding/One.schema")
+	m := tabletext.NewModel(writer.unit)
+	value := m.New(m.Lookup("One"))
+	var report tabletext.Report
+	if !m.Read(value, []byte(`{"count": 5, "pick": {"plain": 3}}`), &report) {
+		t.Fatalf("value: %+v", report)
+	}
+	withPick, err := tablewire.EncodeMessage(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := unitFromSource(t, "package messageone\n\nfixed table One\n{\n    mode  uint8 = 7\n    count uint8\n}\n")
+	files, err := generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := writeUnit(t, u, files)
+	const probe = `--!strict
+local inputs = require("./inputs")
+local MS = require("./table_message")
+%slocal own = MS.NewVocabulary()
+if not MS.AnnounceRead(own, inputs.own, {}) then print("own=refused") return end
+for _, at in { "writer", "own" } do
+	local v = MS.NewVocabulary()
+	if not MS.AnnounceRead(v, inputs.ann, {}) then print("announce=refused") return end
+	if at == "own" then
+		v.buildVersion = own.buildVersion
+	end
+	local n = MS.LoadMessages(v, "One", inputs.wire, 4, {})
+	print(at .. "=" .. (if n > 0 then "read" else "refused"))
+end
+`
+	ann := readRoot(t, filepath.Join("testdata", "wire", "message-one-encoding", "announcement.bin"))
+	for name, c := range map[string]struct {
+		wire []byte
+		own  string
+	}{
+		"pick":    {withPick, "refused"},
+		"no pick": {readRoot(t, filepath.Join("testdata", "wire", "message-one-encoding", "canonical.bin")), "read"},
+	} {
+		out := g.run(t, fmt.Sprintf(probe, g.requireAll()), map[string][]byte{"wire": c.wire, "ann": ann, "own": tablewire.Announce(u)})
+		if want := "writer=read\nown=" + c.own; out != want {
+			t.Errorf("%s: moo answered %q, want %q", name, out, want)
+		}
 	}
 }
