@@ -267,9 +267,9 @@ end
 -- ONE JSON string into bytes, bounded at cap bytes (cap < 0 unbounded). A
 -- fourth truth is returned when the body carried a U+0000 unit — the \u0000
 -- escape into text storage §16.3 refuses as text_holds_zero — so the caller
--- that places the value can name the field; callers that only scan (an object
--- key that names no field, a skipped value) ignore it, because a zero that
--- never lands in text storage is not the event.
+-- that places the value can name the field; an object key, a skipped value and
+-- every key scan refuse the read on it as well, because a zero in a key or a
+-- skipped string is still the event.
 local function scan_string(inp, cap)
   if peek(inp) ~= '"' then
     inp.bad = true
@@ -507,8 +507,15 @@ local function skip_container(inp, close, depth, graph)
       return false
     end
     if close == "}" then
-      local key, _, ok = scan_string(inp, MAX_KEY)
+      -- A SKIPPED OBJECT'S KEY IS HELD TO THE GRAMMAR AND TEXT RULES OF A
+      -- PLACED VALUE (§16.2, §16.3): one past 255 decoded bytes, or one that
+      -- decodes to U+0000, refuses the read.
+      local key, over_bound, ok, nul = scan_string(inp, MAX_KEY)
       if not ok then return false end
+      if over_bound or nul then
+        inp.bad = true
+        return false
+      end
       if seen[key] then
         inp.bad = true
         return false
@@ -561,7 +568,13 @@ skip_value = function(inp, depth, graph)
   if c == "{" then return skip_container(inp, "}", depth, graph) end
   if c == "[" then return skip_container(inp, "]", depth, graph) end
   if c == '"' then
-    local _, _, ok = scan_string(inp, -1)
+    -- a skipped string is held to the text rules of a placed value: one that
+    -- decodes to U+0000 refuses the read (§16.3)
+    local _, _, ok, nul = scan_string(inp, -1)
+    if nul then
+      inp.bad = true
+      return false
+    end
     return ok
   end
   if c == "t" then return literal(inp, "true") end
@@ -663,12 +676,13 @@ local function expect_shape(T, d)
 end
 
 -- shape_ok reports whether a value of the given JSON shape satisfies d's row:
--- a wide integer takes a string OR a number (docs/SPEC-TABLES.md §16.2). Only
--- an integer row takes the string form: a flags row rides under the u64 kind
--- but its text is a name array, not the integer spelling.
+-- a wide integer takes a string only (docs/SPEC-TABLES.md §16.2). Flags share
+-- an integer kind but take an array; timestamps take their own RFC 3339 string.
 local function shape_ok(T, d, got)
-  if got == expect_shape(T, d) then return true end
-  return (d.shape == "int" or d.shape == "wide") and is_wide_integer_kind(d.kind) and got == "s"
+  if not d.timestamp and (d.shape == "int" or d.shape == "wide") and is_wide_integer_kind(d.kind) then
+    return got == "s"
+  end
+  return got == expect_shape(T, d)
 end
 
 -- the JSON shape of the value at the cursor, without consuming it (§16.2)
@@ -1309,9 +1323,9 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
         inp.bad = true
         return false
       end
-      local over_bound, ok
-      key, over_bound, ok = scan_string(inp, MAX_KEY)
-      if not ok or over_bound then
+      local over_bound, ok, nul
+      key, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+      if not ok or over_bound or nul then
         inp.bad = true
         return false
       end
@@ -1402,8 +1416,8 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
     inp.bad = true
     return false
   end
-  local k, over_bound, ok = scan_string(inp, MAX_KEY)
-  if not ok or over_bound then
+  local k, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+  if not ok or over_bound or nul then
     inp.bad = true
     return false
   end
@@ -1717,11 +1731,10 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
       inp.bad = true
       return false
     end
-    -- §2.13.1: an UNBOUNDED map key has no length bound, so it is scanned
-    -- with none; a bounded key keeps the walker's own scratch cap and its
-    -- declared bound below.
+    -- §2.13.1, §16.2: a string map key is data, never a schema name, so it
+    -- is scanned with no cap; a bounded key meets its declared bound below.
     local keycap = MAX_KEY
-    if string_key and kf.bound == nil then keycap = -1 end
+    if string_key then keycap = -1 end
     local kraw, over_bound, ok, nul = scan_string(inp, keycap)
     if not ok then return false end
     if peek(inp) ~= ":" then
@@ -1835,8 +1848,8 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
       inp.bad = true
       return false
     end
-    local name, over_bound, ok = scan_string(inp, MAX_KEY)
-    if not ok or over_bound then
+    local name, over_bound, ok, nul = scan_string(inp, MAX_KEY)
+    if not ok or over_bound or nul then
       inp.bad = true
       return false
     end
@@ -1899,10 +1912,14 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     return { tag = 0 }
   end
   -- the arm key is matched by its DECODED value (docs/SPEC-TABLES.md §16.3);
-  -- a key past the bound names no arm
-  local name, over_bound, ok = scan_string(inp, MAX_KEY)
+  -- §16.2: a key past 255 decoded bytes, or one that decodes to U+0000,
+  -- refuses the read
+  local name, over_bound, ok, nul = scan_string(inp, MAX_KEY)
   if not ok then return nil end
-  if over_bound then name = nil end
+  if over_bound or nul then
+    inp.bad = true
+    return nil
+  end
   if peek(inp) ~= ":" then
     inp.bad = true
     return nil
@@ -2048,10 +2065,14 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     return true
   elseif s == "enum" then
     -- the variant is matched by the string's DECODED value
-    -- (docs/SPEC-TABLES.md §16.3); a name past the bound names no variant
+    -- (docs/SPEC-TABLES.md §16.3)
     local name, over_bound, ok = scan_string(inp, MAX_KEY)
     if not ok then return false end
-    if over_bound then name = nil end
+    if over_bound then
+      -- §16.2: a variant name past 255 decoded bytes refuses, never None
+      inp.bad = true
+      return false
+    end
     if name == "None" then
       holder[key] = elem and false or nil
       return true
@@ -2098,20 +2119,23 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       else
         local nm, over_bound, ok = scan_string(inp, MAX_KEY)
         if not ok then return false end
+        if over_bound then
+          -- §16.2: an element name past 255 decoded bytes refuses the read
+          inp.bad = true
+          return false
+        end
         local found = false
-        if not over_bound then
-          local names = d.variants or {}
-          for i, v in ipairs(names) do
-            if v == nm then
-              local bit = 1 << (i - 1)
-              if (bits & bit) ~= 0 then
-                inp.bad = true
-                return false
-              end
-              bits = bits | bit
-              found = true
-              break
+        local names = d.variants or {}
+        for i, v in ipairs(names) do
+          if v == nm then
+            local bit = 1 << (i - 1)
+            if (bits & bit) ~= 0 then
+              inp.bad = true
+              return false
             end
+            bits = bits | bit
+            found = true
+            break
           end
         end
         if not found then report.unknown = report.unknown + 1 end

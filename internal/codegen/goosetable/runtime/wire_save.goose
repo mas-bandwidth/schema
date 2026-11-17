@@ -130,6 +130,7 @@ let SaveRefuseUnionNoArm: i64 = 5;
 let SaveRefuseUnknownRoot: i64 = 6;
 let SaveRefuseNonFiniteFloat: i64 = 7;
 let SaveRefuseInvalidValue: i64 = 8;
+let SaveRefuseLayoutUnsupported: i64 = 9;
 
 // save_refusal_name is a refusal's name, "" for none.
 fn save_refusal_name(code: i64) -> const u8[:] {
@@ -142,6 +143,7 @@ fn save_refusal_name(code: i64) -> const u8[:] {
         SaveRefuseUnknownRoot => "unknown_root",
         SaveRefuseNonFiniteFloat => "non_finite_float",
         SaveRefuseInvalidValue => "invalid_value",
+        SaveRefuseLayoutUnsupported => "layout_unsupported",
         _ => "",
     };
 }
@@ -845,6 +847,9 @@ fn node_table(c: SaveCtx&) {
 // save_into is the one save both entry points share.
 fn save_into(c: SaveCtx&, root_val: i64) -> i64 {
     let t = c.root_tab;
+    // A DECLARED FIXED TABLE PAST THE RECORD CEILING HAS NO FILE FORM
+    // (docs/SPEC-TABLES.md §1, §3.4): its file save refuses, writing nothing
+    if c.unit.tables[t].no_file_form { return SaveRefuseLayoutUnsupported; }
     for i in c.nodes.len + 2 {
         c.index.push(0);
         c.open.push(false);

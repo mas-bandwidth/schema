@@ -437,6 +437,11 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				capLim := min(oldCap, f.ArrayBound)
 				m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 				m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", ind, capLim)
+				if f.ArrayMin > 0 {
+					// a count under the declared minimum refuses before it is
+					// read (docs/SPEC.md §5.1 row 3)
+					m.Printf("%sif (c < %d) return \"count_over_bound\";\n", ind, f.ArrayMin)
+				}
 				m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + 4 + c * %d, at + %s + %d)) return \"wire_damaged\";\n",
 					ind, off, elem.size, off, node.size)
 				m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))

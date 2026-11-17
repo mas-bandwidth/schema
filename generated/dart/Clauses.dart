@@ -2339,7 +2339,6 @@ int readEmptyABits(EmptyA value, ByteData view, int numBits, int bitOffset) {
   if (bitOffset < 0 || bitOffset > numBits) {
     return -1; // the start lies inside the bits the caller vouches for
   }
-  var bitsRead = bitOffset;
   return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
@@ -2413,7 +2412,6 @@ int readEmptyBBits(EmptyB value, ByteData view, int numBits, int bitOffset) {
   if (bitOffset < 0 || bitOffset > numBits) {
     return -1; // the start lies inside the bits the caller vouches for
   }
-  var bitsRead = bitOffset;
   return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
@@ -2771,6 +2769,11 @@ int writeStrs(Strs value, ByteData view) {
   assert(value.lead <= 31);
   assert(value.sLength >= 0);
   assert(value.sLength <= 8);
+  assert(Schema.utf8Valid(value.s, value.sLength));
+  // an interior null is content the write refuses (SPEC §4.7)
+  for (var i0 = 0; i0 < value.sLength; i0++) {
+    assert(value.s[i0] != 0);
+  }
   v = (value.lead & 0x1f) | ((value.sLength & 0xf) << 5);
   scratch |= v << scratchBits;
   scratchBits += 9;

@@ -4,8 +4,7 @@ package goosetable
 // INTEGER TOKEN (docs/SPEC-TABLES.md §16.2, §16.14 W10/W11;
 // docs/rulings.json json-wide-integers-are-strings and
 // json-integer-token-only). An integer whose storage is wider than 32 bits is
-// written as a JSON string of decimal digits and reads as a string or a
-// number, the same digits; every integer field takes an integer token only —
+// written and read as a JSON string of decimal digits; every integer field takes an integer token only —
 // digits with an optional minus, no fraction, no exponent, not -0.
 //
 // The shared vectors under testdata/wire/json-integers name a verdict per
@@ -39,6 +38,8 @@ import (
 // generation.
 const jsonIntegersSchema = `package jsonintegers
 
+enum Key { A, B }
+
 union Choice
 {
     wide  int64
@@ -51,6 +52,7 @@ table Typed
     maybe ?uint64
     pick  Choice
     tail  int32
+    keyed [Key]int64
 }
 
 table Integers
@@ -64,17 +66,27 @@ table Integers
     counts  map[uint64]int32
 }
 
+table WideKinds
+{
+    huge uint128
+    mask bits(40)
+    amount fixed(112,16) | min = -10, max = 10
+    smallfixed fixed(16,16) | min = -10, max = 10
+}
+
 table Sites
 {
     nums  [..4]int64
     maybe ?uint64
     pick  Choice
     bykey map[uint64]int64
+    keyed [Key]int64
 }
 `
 
 type jsonIntegerRow struct {
 	name, root, file, verdict string
+	numberToken               bool
 }
 
 // readJSONIntegerVectors reads the shared manifest: name, root, json file,
@@ -82,27 +94,35 @@ type jsonIntegerRow struct {
 // (docs/rulings.json refusal-verdict-only), so only the verdict is held.
 func readJSONIntegerVectors(t *testing.T) []jsonIntegerRow {
 	t.Helper()
-	path := filepath.Join(fixedRoot, "testdata", "wire", "json-integers", "MANIFEST.tsv")
-	f, err := os.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
 	var rows []jsonIntegerRow
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+	for _, manifest := range []string{"MANIFEST.tsv", "NUMBER-TOKEN.tsv"} {
+		path := filepath.Join(fixedRoot, "testdata", "wire", "json-integers", manifest)
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
 		}
-		w := strings.Split(line, "\t")
-		if len(w) != 5 {
-			t.Fatalf("%s: malformed row %q", path, line)
+		before := len(rows)
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			w := strings.Split(line, "\t")
+			if len(w) != 5 {
+				t.Fatalf("%s: malformed row %q", path, line)
+			}
+			rows = append(rows, jsonIntegerRow{name: w[0], root: w[1], file: w[2], verdict: w[3], numberToken: manifest == "NUMBER-TOKEN.tsv"})
 		}
-		rows = append(rows, jsonIntegerRow{name: w[0], root: w[1], file: w[2], verdict: w[3]})
-	}
-	if err := sc.Err(); err != nil {
-		t.Fatal(err)
+		if err := sc.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if manifest == "NUMBER-TOKEN.tsv" && len(rows)-before != 13 {
+			t.Fatalf("NUMBER-TOKEN.tsv: got %d rows, want 13", len(rows)-before)
+		}
 	}
 	return rows
 }
@@ -115,14 +135,27 @@ var jsonIntegerSiteRows = []struct {
 }{
 	{
 		name: "typed-sites", root: "Typed", class: "typed",
-		text: `{"nums":["-9223372036854775808",3],"maybe":"18446744073709551615","pick":{"wide":9007199254740993},"tail":7}`,
-		want: "{\n  \"nums\": [\n    \"-9223372036854775808\",\n    \"3\"\n  ],\n  \"maybe\": \"18446744073709551615\",\n  \"pick\": {\n    \"wide\": \"9007199254740993\"\n  },\n  \"tail\": 7\n}\n",
+		text: `{"nums":["-9223372036854775808","3"],"maybe":"18446744073709551615","pick":{"wide":"9007199254740993"},"tail":7,"keyed":{"A":"7"}}`,
+		want: "{\n  \"nums\": [\n    \"-9223372036854775808\",\n    \"3\"\n  ],\n  \"maybe\": \"18446744073709551615\",\n  \"pick\": {\n    \"wide\": \"9007199254740993\"\n  },\n  \"tail\": 7,\n  \"keyed\": {\n    \"A\": \"7\",\n    \"B\": \"0\"\n  }\n}\n",
 	},
 	{
 		name: "variable-sites", root: "Sites", class: "variable",
-		text: `{"nums":["-9223372036854775808",3,"4"],"maybe":"18446744073709551615","pick":{"wide":9007199254740993},"bykey":{"9007199254740993":5,"0":"-6"}}`,
-		want: "{\n  \"nums\": [\n    \"-9223372036854775808\",\n    \"3\",\n    \"4\"\n  ],\n  \"maybe\": \"18446744073709551615\",\n  \"pick\": {\n    \"wide\": \"9007199254740993\"\n  },\n  \"bykey\": {\n    \"0\": \"-6\",\n    \"9007199254740993\": \"5\"\n  }\n}\n",
+		text: `{"nums":["-9223372036854775808","3","4"],"maybe":"18446744073709551615","pick":{"wide":"9007199254740993"},"bykey":{"9007199254740993":"5","0":"-6"},"keyed":{"A":"7"}}`,
+		want: "{\n  \"nums\": [\n    \"-9223372036854775808\",\n    \"3\",\n    \"4\"\n  ],\n  \"maybe\": \"18446744073709551615\",\n  \"pick\": {\n    \"wide\": \"9007199254740993\"\n  },\n  \"bykey\": {\n    \"0\": \"-6\",\n    \"9007199254740993\": \"5\"\n  },\n  \"keyed\": {\n    \"A\": \"7\",\n    \"B\": \"0\"\n  }\n}\n",
 	},
+	{name: "wide-kinds-strings", root: "WideKinds", class: "variable", text: `{"huge":"7","mask":"7","amount":"1.5","smallfixed":1.5}`, want: "{\n  \"huge\": \"7\",\n  \"mask\": \"7\",\n  \"amount\": \"1.5\",\n  \"smallfixed\": 1.5\n}\n"},
+	{name: "uint128-number", root: "WideKinds", class: "variable", text: `{"huge":7}`},
+	{name: "bits-number", root: "WideKinds", class: "variable", text: `{"mask":7}`},
+	{name: "fixed128-number", root: "WideKinds", class: "variable", text: `{"amount":1}`},
+	{name: "typed-array-number", root: "Typed", class: "typed", text: `{"nums":[7]}`},
+	{name: "typed-optional-number", root: "Typed", class: "typed", text: `{"maybe":7}`},
+	{name: "typed-arm-number", root: "Typed", class: "typed", text: `{"pick":{"wide":7}}`},
+	{name: "typed-keyed-number", root: "Typed", class: "typed", text: `{"keyed":{"A":7}}`},
+	{name: "variable-array-number", root: "Sites", class: "variable", text: `{"nums":[7]}`},
+	{name: "variable-optional-number", root: "Sites", class: "variable", text: `{"maybe":7}`},
+	{name: "variable-arm-number", root: "Sites", class: "variable", text: `{"pick":{"wide":7}}`},
+	{name: "variable-map-number", root: "Sites", class: "variable", text: `{"bykey":{"1":7}}`},
+	{name: "variable-keyed-number", root: "Sites", class: "variable", text: `{"keyed":{"A":7}}`},
 	{name: "typed-array-fraction", root: "Typed", class: "typed", text: `{"nums":[2.0]}`},
 	{name: "typed-optional-neg-zero", root: "Typed", class: "typed", text: `{"maybe":-0}`},
 	{name: "typed-arm-exponent", root: "Typed", class: "typed", text: `{"pick":{"wide":1e3}}`},
@@ -193,7 +226,7 @@ fn variable(name: const u8[:], root: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var r = schema_rt::json_report();
     let at = schema_rt::json_load_table(NS::TableUnit, NS::TextUnit, root, text, data, vals, nodes, r);
-    if at < 0 || r.damaged { print("refused"); return; }
+    if at < 0 || r.damaged { if r.mismatch > 0 { print("refused_mismatch"); } else { print("refused"); } return; }
     var out: u8[>..] = [];
     let n = schema_rt::json_save_table(NS::TableUnit, NS::TextUnit, root, data, vals, nodes, at, out);
     if n < 0 || n != (out.len as! i64) { print("short"); return; }
@@ -205,7 +238,7 @@ fn typed(name: const u8[:]) {
     if !read_file(name, text) { print("read-failed"); return; }
     var v = NS::NewTyped();
     var report = schema_rt::json_report();
-    if !NS::TypedFromJson(v, text, report) || report.damaged { print("refused"); return; }
+    if !NS::TypedFromJson(v, text, report) || report.damaged { if report.mismatch > 0 { print("refused_mismatch"); } else { print("refused"); } return; }
     let m = NS::TypedToJsonMeasure(v);
     var out: u8[>..] = [];
     let n = NS::TypedToJson(v, out);
@@ -221,6 +254,7 @@ fn main() {
 		name, class, root string
 		want              []byte
 		refused           bool
+		mismatch          bool
 	}
 	var probes []probe
 	for i, row := range rows {
@@ -230,7 +264,7 @@ fn main() {
 		}
 		name := fmt.Sprintf("in%d.json", i)
 		inputs[name] = data
-		p := probe{name: name, class: "variable", root: row.root}
+		p := probe{name: name, class: "variable", root: row.root, mismatch: row.numberToken}
 		if row.verdict == "refused" {
 			p.refused = true
 		} else {
@@ -244,7 +278,7 @@ fn main() {
 	for i, row := range jsonIntegerSiteRows {
 		name := fmt.Sprintf("site%d.json", i)
 		inputs[name] = []byte(row.text)
-		p := probe{name: name, class: row.class, root: row.root, refused: row.want == ""}
+		p := probe{name: name, class: row.class, root: row.root, refused: row.want == "", mismatch: strings.HasSuffix(row.name, "-number")}
 		if !p.refused {
 			p.want = []byte(row.want)
 		}
@@ -273,7 +307,10 @@ fn main() {
 	for i, p := range probes {
 		got := lines[i]
 		if p.refused {
-			if got != "refused" {
+			if p.mismatch && got != "refused_mismatch" {
+				t.Errorf("%s (%s): read %q, want kind_mismatch", p.name, p.class, got)
+			}
+			if !p.mismatch && got != "refused" && got != "refused_mismatch" {
 				t.Errorf("%s (%s): read %q, want refused", p.name, p.class, got)
 			}
 			continue

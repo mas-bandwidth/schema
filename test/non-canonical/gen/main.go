@@ -1,8 +1,9 @@
 // Command gen writes the non-canonical spelling vectors
 // (docs/SPEC-TABLES.md §3, §3.1, §3.3, §22; docs/rulings.json
 // reads-refuse-non-canonical): the canonical variable-form file and the
-// message-form batch the engine writes, then one file per spelling a
-// conforming writer cannot emit, each re-encoded from the canonical bytes with
+// message-form batch the engine writes, deliberate non-canonical cases, and
+// variable evolution positives. A prior required or optional declaration can
+// make stored defaults, nulls and None readable; each case is re-encoded with
 // every LEB128, length, count and id reference recomputed.
 //
 // The canonical bytes are the engine's own Encode. Each variant is parsed back
@@ -11,13 +12,11 @@
 // parser and writer reproduce the engine's canonical bytes byte for byte before
 // any case is derived from them.
 //
-// The three message-form spellings the message-one-encoding fixture already
-// carries (a default written, fields reordered, arm 0) are referenced from
-// MANIFEST.tsv rather than copied here. The one message-form spelling that
-// fixture does not carry, a body that omits a field its announcement declares,
-// is derived here from the canonical batch by parsing the bit stream back into
-// its fields and writing it again with that field dropped, the body count,
-// terminator and pad recomputed.
+// The three message-form spellings (a default written, fields reordered, arm 0)
+// are referenced from MANIFEST.tsv rather than copied here. A body that omits a
+// field its announcement declares has no distinct wire: the omitted field reads
+// its declared default, and the canonical batch of that value omits the same
+// field, so the bytes are the canonical batch of a good value.
 //
 //	go run ./test/non-canonical/gen -out testdata/wire/non-canonical
 package main
@@ -27,6 +26,7 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 
@@ -69,18 +69,16 @@ func main() {
 		"message-canonical.bin":  message,
 		"announcement.bin":       announcement,
 	}
-	for name, wire := range variableCases(u, m, canonical) {
-		files[name] = wire
-	}
-	for name, wire := range messageCases(u, message) {
-		files[name] = wire
-	}
+	maps.Copy(files, variableCases(u, m, canonical))
 	manifest := manifestText()
 
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		fatal("%s: %v", *out, err)
 	}
 	for name, data := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(*out, name)), 0o755); err != nil {
+			fatal("%s: %v", name, err)
+		}
 		if err := os.WriteFile(filepath.Join(*out, name), data, 0o644); err != nil {
 			fatal("%s: %v", name, err)
 		}
@@ -143,7 +141,8 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 
 	cases := map[string][]byte{}
 
-	// FIELDS OUT OF THE WRITER'S DECLARATION ORDER: count and head swapped.
+	// A VALID REORDERING: count and head swapped relative to this reader.
+	// A different writer declaration may have emitted that order.
 	f := mustParse(canonical)
 	swapFields(f.root, countID, headID)
 	cases["variable-fields-out-of-order.bin"] = encodeFile(f)
@@ -152,11 +151,16 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 	f = mustParse(canonical)
 	f.root.fields = append([]*wireField{{id: modeID, kind: byte(ir.TableKindU8), raw: []byte{7}}}, f.root.fields...)
 	cases["variable-field-at-default.bin"] = encodeFile(f)
+	cases["canonical/variable-field-at-default.bin"] = canonical
 
 	// AN EXPLICIT NULL POINTER: the head field written with index 0.
 	f = mustParse(canonical)
 	findField(f.root, headID).index = 0
+	// Null is the only edge to the node, so omit its otherwise orphaned table.
+	removeField(f.root, ir.TableNodeWireId)
 	cases["variable-explicit-null-pointer.bin"] = encodeFile(f)
+	removeField(f.root, headID)
+	cases["canonical/variable-explicit-null-pointer.bin"] = encodeFile(f)
 
 	// AN UNUSED ID-TABLE ENTRY: one entry no body references.
 	f = mustParse(canonical)
@@ -181,6 +185,9 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 
 	// AN EMPTY NODE TABLE: the node-table field present with a count of 0.
 	f = mustParse(canonical)
+	// An empty directory cannot satisfy head's old node index. Omit head so
+	// the empty table is the sole non-canonical graph spelling.
+	removeField(f.root, headID)
 	findField(f.root, ir.TableNodeWireId).nodes = &wireNodes{}
 	cases["variable-empty-node-table.bin"] = encodeFile(f)
 
@@ -196,175 +203,10 @@ func variableCases(u *ir.Unit, m *tabletext.Model, canonical []byte) map[string]
 	pick := findField(f.root, pickID)
 	pick.un = &wireUnion{}
 	cases["variable-union-arm-zero.bin"] = encodeFile(f)
+	removeField(f.root, pickID)
+	cases["canonical/variable-union-arm-zero.bin"] = encodeFile(f)
 
 	return cases
-}
-
-func messageCases(u *ir.Unit, canonical []byte) map[string][]byte {
-	msg := u.Tables["Message"]
-	if msg == nil {
-		fatal("the unit declares no table Message")
-	}
-	var countID uint64
-	found := false
-	for _, f := range msg.Fields {
-		if f.Name == "count" {
-			countID = ir.TableFieldWireId(f)
-			found = true
-		}
-	}
-	if !found {
-		fatal("Message has no declared field count")
-	}
-	return map[string][]byte{
-		"message-omits-declared-field.bin": omitMessageField(canonical, tablewire.MessageVocabulary(u), countID),
-	}
-}
-
-// omitMessageField parses the canonical batch's bit stream back into its
-// bodies and their fields, then writes the batch again without the field the
-// case names. The body count, every reference, the terminator and the final
-// pad are recomputed; nothing is a hand-edited byte.
-func omitMessageField(canonical []byte, vocab []ir.TableVocabularyEntry, dropID uint64) []byte {
-	if len(canonical) < 2 || canonical[0] != byte(ir.TableWireMessageForm) {
-		fatal("the canonical message batch is not a form-2 file")
-	}
-	refBits := ir.TableMessageRefBits(len(vocab))
-	slots := make(map[string]uint64, len(vocab))
-	for i, e := range vocab {
-		slots[e.Key()] = uint64(i + 1)
-	}
-	src := &bitSource{b: canonical[1:]}
-	count := int(src.get(8)) + 1
-	bodies := make([][]messageField, 0, count)
-	for range count {
-		bodies = append(bodies, parseMessageBody(src, vocab, refBits))
-	}
-	if !src.align() || src.off != len(canonical[1:])*8 {
-		fatal("the canonical message batch carries bytes this generator does not parse")
-	}
-
-	w := &bitSink{}
-	w.put(uint64(count-1), 8)
-	for _, fields := range bodies {
-		for _, f := range fields {
-			if f.entry.Id == dropID {
-				continue
-			}
-			w.put(slots[f.entry.Key()], refBits)
-			for i := f.start; i < f.end; i++ {
-				w.put(src.bit(i), 1)
-			}
-		}
-		w.put(0, refBits)
-	}
-	w.align()
-	return append([]byte{byte(ir.TableWireMessageForm)}, w.b...)
-}
-
-// messageField is one field's announced entry and the bit range its payload
-// occupies in the batch.
-type messageField struct {
-	entry ir.TableVocabularyEntry
-	start int
-	end   int
-}
-
-func parseMessageBody(src *bitSource, vocab []ir.TableVocabularyEntry, refBits int) []messageField {
-	var fields []messageField
-	for {
-		ref := src.get(refBits)
-		if ref == 0 {
-			return fields
-		}
-		if ref > uint64(len(vocab)) {
-			fatal("a message reference %d is outside the %d-entry vocabulary", ref, len(vocab))
-		}
-		entry := vocab[ref-1]
-		start := src.off
-		skipMessagePayload(src, vocab, refBits, entry)
-		fields = append(fields, messageField{entry: entry, start: start, end: src.off})
-	}
-}
-
-// skipMessagePayload steps over one field's payload at the widths the message
-// form gives its announced entry.
-func skipMessagePayload(src *bitSource, vocab []ir.TableVocabularyEntry, refBits int, entry ir.TableVocabularyEntry) {
-	switch int(entry.Kind) {
-	case ir.TableKindTable:
-		parseMessageBody(src, vocab, refBits)
-	case ir.TableKindUnion:
-		arm := src.get(refBits)
-		if arm == 0 {
-			return
-		}
-		if arm > uint64(len(vocab)) {
-			fatal("a message union arm %d is outside the %d-entry vocabulary", arm, len(vocab))
-		}
-		skipMessagePayload(src, vocab, refBits, vocab[arm-1])
-	case ir.TableKindEnum:
-		src.get(refBits)
-	default:
-		bits := ir.TableMessageValueBits(entry.Kind, entry.Shape)
-		if bits < 0 {
-			fatal("the canonical message carries kind %d, which this generator does not re-encode", entry.Kind)
-		}
-		src.get(int(bits))
-	}
-}
-
-type bitSource struct {
-	b   []byte
-	off int
-}
-
-func (r *bitSource) bit(i int) uint64 { return uint64(r.b[i/8] >> uint(i%8) & 1) }
-
-func (r *bitSource) get(n int) uint64 {
-	var v uint64
-	for i := range n {
-		if r.off >= len(r.b)*8 {
-			fatal("the canonical message batch ends inside a field")
-		}
-		if r.bit(r.off) == 1 {
-			v |= 1 << uint(i)
-		}
-		r.off++
-	}
-	return v
-}
-
-func (r *bitSource) align() bool {
-	for r.off%8 != 0 {
-		if r.bit(r.off) != 0 {
-			return false
-		}
-		r.off++
-	}
-	return true
-}
-
-type bitSink struct {
-	b []byte
-	n int
-}
-
-func (w *bitSink) put(v uint64, n int) {
-	for i := range n {
-		if w.n%8 == 0 {
-			w.b = append(w.b, 0)
-		}
-		if v>>uint(i)&1 == 1 {
-			w.b[w.n/8] |= 1 << uint(w.n%8)
-		}
-		w.n++
-	}
-}
-
-func (w *bitSink) align() {
-	for w.n%8 != 0 {
-		w.put(0, 1)
-	}
 }
 
 // manifestText is the vector directory's manifest: file, form, case, verdict.
@@ -373,16 +215,15 @@ func (w *bitSink) align() {
 func manifestText() string {
 	return "file\tform\tcase\tverdict\n" +
 		"variable-canonical.bin\tvariable\tcanonical\tread\n" +
-		"variable-fields-out-of-order.bin\tvariable\tfields-out-of-order\trefused\n" +
-		"variable-field-at-default.bin\tvariable\tfield-at-default\trefused\n" +
-		"variable-explicit-null-pointer.bin\tvariable\texplicit-null-pointer\trefused\n" +
+		"variable-fields-out-of-order.bin\tvariable\tcanonical\tread\n" +
+		"variable-field-at-default.bin\tvariable\tfield-at-default\tread\n" +
+		"variable-explicit-null-pointer.bin\tvariable\texplicit-null-pointer\tread\n" +
 		"variable-unused-id-entry.bin\tvariable\tunused-id-entry\trefused\n" +
 		"variable-id-table-out-of-order.bin\tvariable\tid-table-out-of-order\trefused\n" +
 		"variable-empty-node-table.bin\tvariable\tempty-node-table\trefused\n" +
 		"variable-node-table-out-of-place.bin\tvariable\tnode-table-out-of-place\trefused\n" +
-		"variable-union-arm-zero.bin\tvariable\tunion-arm-zero\trefused\n" +
+		"variable-union-arm-zero.bin\tvariable\tunion-arm-zero\tread\n" +
 		"message-canonical.bin\tmessage\tcanonical\tread\n" +
-		"message-omits-declared-field.bin\tmessage\tomits-declared-field\trefused\n" +
 		"announcement.bin\tannouncement\tannouncement\tread\n" +
 		"../message-one-encoding/explicit-default.bin\tmessage\tfield-at-default\trefused\n" +
 		"../message-one-encoding/fields-reordered.bin\tmessage\tfields-out-of-order\trefused\n" +
@@ -654,7 +495,7 @@ func parseNodes(payload []byte, ids []uint64) (*wireNodes, error) {
 
 func readLeb(data []byte, pos int) (uint64, int, error) {
 	var v uint64
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if pos >= len(data) {
 			return 0, 0, fmt.Errorf("unfinished LEB128")
 		}

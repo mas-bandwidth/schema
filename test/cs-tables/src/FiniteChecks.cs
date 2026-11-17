@@ -6,8 +6,9 @@ using L = Listdemo;
 // TABLES ARE FINITE ONLY (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
 // "tables go finite-only too, same rule as packets"): every read refuses a NaN
 // or an infinity on its raw bits as non_finite_float, the tolerant read
-// included, and lands nothing; every writer refuses one before its first
-// byte; -0 and the subnormals ride bit-exact, and elision compares bits.
+// included, and lands nothing; every writer's debug assert fires on one before
+// its first byte (docs/SPEC.md §5.1, Release checks nothing); -0 and the
+// subnormals ride bit-exact, and elision compares bits.
 static partial class Program
 {
     const string PrecisionName = "ProfileConfig.precision";
@@ -102,24 +103,26 @@ static partial class Program
                 $"fixed: 0x{bits:x16} and a -0 element round-trip bit-exact");
         }
 
-        // ---- every writer refuses a NaN or an infinity ----
+        // ---- every writer's debug assert fires on a NaN or an infinity ----
+        // (docs/SPEC.md §5.1: a write check is a Debug.Assert on this leg; a
+        // Release build carries none, so these cases run in Debug only)
         foreach (double bad in new double[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity, BitConverter.UInt64BitsToDouble(0x7ff0000000000001ul) })
         {
             Demo.ProfileConfig profile = new Demo.ProfileConfig(); profile.Precision = bad;
-            byte[] buffer = new byte[4096]; Array.Fill(buffer, (byte)0xa5);
-            Check(Demo.Schema.ProfileConfigMeasure(profile) == -1 && Demo.Schema.ProfileConfigSave(profile, buffer) == -1 &&
-                Array.TrueForAll(buffer, b => b == 0xa5), "form 1 refuses to write a non-finite float64 and writes no byte");
+            byte[] buffer = new byte[4096];
+            CheckAsserts(() => Demo.Schema.ProfileConfigMeasure(profile), "form 1 measure asserts on a non-finite float64");
+            CheckAsserts(() => Demo.Schema.ProfileConfigSave(profile, buffer), "form 1 save asserts on a non-finite float64");
             Demo.ProfileConfig[] batch = { profile };
-            Check(Demo.Schema.ProfileConfigMeasureMessages(batch) == -1 && Demo.Schema.ProfileConfigSaveMessages(batch, buffer) == -1,
-                "the message writer refuses a non-finite float64");
-            byte[] fixedFile = new byte[Demo.Schema.ProfileConfigFixedMeasure(1)]; Array.Fill(fixedFile, (byte)0xa5);
-            Check(Demo.Schema.ProfileConfigFixedSave(batch, fixedFile) == -1 && Array.TrueForAll(fixedFile, b => b == 0xa5),
-                "the fixed writer refuses a non-finite float64 and writes no byte");
-            Check(Demo.Schema.ProfileConfigCookMeasure(profile) == -1, "the cook refuses a non-finite float64");
+            CheckAsserts(() => Demo.Schema.ProfileConfigMeasureMessages(batch), "the message measure asserts on a non-finite float64");
+            CheckAsserts(() => Demo.Schema.ProfileConfigSaveMessages(batch, buffer), "the message writer asserts on a non-finite float64");
+            byte[] fixedFile = new byte[Demo.Schema.ProfileConfigFixedMeasure(1)];
+            CheckAsserts(() => Demo.Schema.ProfileConfigFixedSave(batch, fixedFile), "the fixed writer asserts on a non-finite float64");
+            CheckAsserts(() => Demo.Schema.ProfileConfigCookMeasure(profile), "the cook asserts on a non-finite float64");
             profile.Precision = 0; profile.Ratings[1] = (float)bad;
-            Check(Demo.Schema.ProfileConfigMeasure(profile) == -1 && Demo.Schema.ProfileConfigFixedSave(batch, fixedFile) == -1 &&
-                Demo.Schema.ProfileConfigMeasureMessages(batch) == -1 && Demo.Schema.ProfileConfigCookMeasure(profile) == -1,
-                "every writer refuses a non-finite float32 array element");
+            CheckAsserts(() => Demo.Schema.ProfileConfigMeasure(profile), "form 1 asserts on a non-finite float32 array element");
+            CheckAsserts(() => Demo.Schema.ProfileConfigFixedSave(batch, fixedFile), "the fixed writer asserts on a non-finite float32 array element");
+            CheckAsserts(() => Demo.Schema.ProfileConfigMeasureMessages(batch), "the message writer asserts on a non-finite float32 array element");
+            CheckAsserts(() => Demo.Schema.ProfileConfigCookMeasure(profile), "the cook asserts on a non-finite float32 array element");
         }
 
         // ---- the fixed read refuses on storage, before the bounds pass ----
@@ -159,8 +162,8 @@ static partial class Program
                 RegionRefuses(wire, $"the region read refuses list element 0x{bad:x8}");
             }
             floats.Values[0] = float.NaN;
-            Check(L.Schema.FloatsMeasure(floats) == -1 && L.Schema.FloatsCookMeasure(floats) == -1,
-                "the variable writers refuse a NaN list element");
+            CheckAsserts(() => L.Schema.FloatsMeasure(floats), "the variable writer asserts on a NaN list element");
+            CheckAsserts(() => L.Schema.FloatsCookMeasure(floats), "the variable cook asserts on a NaN list element");
         }
     }
 

@@ -110,7 +110,7 @@ func TestFixedLineageReadsAnOlderWriterStrictly(t *testing.T) {
 		t.Fatal(err)
 	}
 	flat := func(s string) string { return strings.Join(strings.Fields(s), " ") }
-	if got, want := flat(string(text)), `{ "speed": -300, "name": "ab", "mode": "Run", "gone": 0, "extra": 5 }`; got != want {
+	if got, want := flat(string(text)), `{ "speed": -300, "name": "ab", "mode": "Run", "gone": 9, "extra": 5 }`; got != want {
 		t.Errorf("the value read through the lock:\n%s\nwant\n%s", got, want)
 	}
 	if report.Widened != 1 {

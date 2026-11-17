@@ -575,13 +575,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 // mismatched component and the verdict the port reaches), and the card that
 // owes the fix. A carried row that stops disagreeing, or disagrees
 // differently, is drift and fails.
-var luauHostileCarried = []struct{ name, got, fix string }{
-	// RELAXED 2026-11-14 (maintainer: get main green): the Luau JSON read
-	// accepts unpadded base64 (json-base64-canonical) and a zero escape in a
-	// skipped value (the skipped-value rule). re-enable: relax/hostile-rows-luau
-	{"conformance-base64-unpadded", "[verdict] got accept/-/- want refuse/damaged/-", "relax/hostile-rows-luau"},
-	{"conformance-str-zero-escape-unknown-key", "[verdict] got accept/-/- want refuse/damaged/-", "relax/hostile-rows-luau"},
-}
+var luauHostileCarried = []struct{ name, got, fix string }{}
 
 // luauHostileCarriedFinding: a finding line (after its FIX-CARD prefix) that
 // a carried row names.

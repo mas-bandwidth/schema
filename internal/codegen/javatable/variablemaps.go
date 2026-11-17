@@ -148,7 +148,12 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		if key.Type.Width > 32 {
 			cast = "longValue"
 		}
-		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); String token=number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length||mapKey.isEmpty()||Character.isWhitespace(mapKey.charAt(0))){in.bad=true;return;} java.math.BigInteger n=TableJson.exactIntegerToken(token); if(n==null){accepted=false;in.rep.refuse(\"kind_mismatch\");}else if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();\n", min, max, cast)
+		// The key is the spelling and nothing around it: the number scan steps
+		// over whitespace and comments, which is right between tokens and wrong
+		// inside one, so a key with anything before its first digit or minus is
+		// not a JSON number and is malformed, as the engine's placeMapKey reads
+		// it (§16.2). The integer rule is judged on the key itself.
+		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); number.space(); if(number.bad||number.p!=0||mapKey.isEmpty()){in.bad=true;return;} number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length){in.bad=true;return;} if(!TableJson.integerToken(mapKey)){accepted=false;in.rep.refuse(\"kind_mismatch\");}else{java.math.BigInteger n=TableJson.exactIntegerToken(mapKey); if(n==null){accepted=false;in.rep.refuse(\"kind_mismatch\");}else if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}\n", min, max, cast)
 	}
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
 	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s);\n", st.Name, m, depth)

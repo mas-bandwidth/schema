@@ -45,21 +45,21 @@ type dartTextNumberLinearCase struct {
 func dartTextNumberLinearCases(long, floatLen int) []dartTextNumberLinearCase {
 	nines := strings.Repeat("9", long)
 	return []dartTextNumberLinearCase{
-		{"uint64-past-range", "u", nines},
-		{"uint128-past-range", "w", nines},
-		{"fixed-past-range", "g", nines},
-		{"leading-zeros", "g", "0." + strings.Repeat("0", long-2) + "1"},
-		{"zeros-after-point", "g", "1." + strings.Repeat("0", long-1)},
+		{"uint64-past-range", "u", fmt.Sprintf("%q", nines)},
+		{"uint128-past-range", "w", fmt.Sprintf("%q", nines)},
+		{"fixed-past-range", "g", fmt.Sprintf("%q", nines)},
+		{"leading-zeros", "g", fmt.Sprintf("%q", "0."+strings.Repeat("0", long-2)+"1")},
+		{"zeros-after-point", "g", fmt.Sprintf("%q", "1."+strings.Repeat("0", long-1))},
 		{"float-long-token", "f", "0." + strings.Repeat("0", floatLen-2) + "1"},
 		// a comment is layout between tokens (§16.2): a slash right after a
 		// number opens one, and a slash that opens none is refused
-		{"uint64-block-comment", "u", "7/*c*/"},
-		{"uint64-line-comment", "u", "7//c\n"},
-		{"fixed-block-comment", "g", "1.5/**/"},
+		{"uint64-block-comment", "u", `"7"/*c*/`},
+		{"uint64-line-comment", "u", "\"7\"//c\n"},
+		{"fixed-block-comment", "g", `"1.5"/**/`},
 		{"float-line-comment", "f", "2e3//c\n"},
-		{"long-block-comment", "u", nines + "/*c*/"},
-		{"lone-slash", "u", "7/"},
-		{"slash-not-comment", "u", "7/c"},
+		{"long-block-comment", "u", fmt.Sprintf("%q", nines) + "/*c*/"},
+		{"lone-slash", "u", `"7"/`},
+		{"slash-not-comment", "u", `"7"/c`},
 	}
 }
 

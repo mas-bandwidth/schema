@@ -56,6 +56,12 @@ func init() {
 		// scope. C++ spells the same functions as a TableJson* family at
 		// namespace scope inside its own package guard.
 		Name{Name: "TableJson", What: "the text form's generic walk. C# spells it a nested class of Schema, which claims nothing; Java puts it at package scope, Dart at library scope and JavaScript at module scope — an ES module is one scope, with no nested class to hide a walk in — so the claim is the UNION and the name is claimed"},
+		// and the four members of that walk whose spelling starts with Table, which
+		// the scan sees and which claim nothing for the same reason
+		Name{Name: "TableWideJson", What: "TableJson's test for a kind wider than 32 bits, written as a string of digits (§16.2)", Scoped: true},
+		Name{Name: "TableIntegerKind", What: "TableJson's test for a pure integer kind (§16.2)", Scoped: true},
+		Name{Name: "TableIntegerToken", What: "TableJson's integer-token rule: digits only, no fraction or exponent (§16.2)", Scoped: true},
+		Name{Name: "TableShapeMatches", What: "TableJson's shape test: exact, or a string or number for a wide integer (§16.2)", Scoped: true},
 		Name{Name: "TableBitsToFloat", What: "u32 bits -> float"},
 		Name{Name: "TableFloatToBits", What: "float -> u32 bits"},
 		Name{Name: "TableBitsToDouble", What: "u64 bits -> double"},

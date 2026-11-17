@@ -310,7 +310,10 @@ print("fixed-only-ok")
 // over the message closure) with one bit set, byte 6's high bit, so a body
 // names a field twice; the Go engine refuses it on its repeated-id check, the
 // emitted reader refuses it, and the reader with the repeated-id check patched
-// out accepts it.
+// out accepts it. A field named twice is also a field out of its declaration
+// order (§3.3), so the field-order check is patched out beside it; the
+// repeated-id check runs before the order check, so the control still proves
+// the repeated-id check refuses this batch on its own.
 func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
@@ -342,7 +345,12 @@ func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the repeated-id anchor is not in table_message.moo exactly once")
 	}
-	if err := os.WriteFile(filepath.Join(g.dir, "table_message.moo"), []byte(strings.Replace(src, anchor, "if entry == nil or reserved(entry.id) then", 1)), 0o644); err != nil {
+	const order = "if same and hit.k <= lastK then"
+	if strings.Count(src, order) != 1 {
+		t.Fatal("the field-order anchor is not in table_message.moo exactly once")
+	}
+	patched := strings.Replace(strings.Replace(src, anchor, "if entry == nil or reserved(entry.id) then", 1), order, "if false then", 1)
+	if err := os.WriteFile(filepath.Join(g.dir, "table_message.moo"), []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, got, _ := strings.Cut(g.run(t, damageProbe(g, "LoginRequest", 256), inputs), " "); got == "refuse" {

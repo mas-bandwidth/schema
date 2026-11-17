@@ -92,7 +92,7 @@ func luaSkipRunBatch(t *testing.T, refBits int, ref, value uint64, width int) []
 	t.Helper()
 	bits := make([]byte, 0, 2*refBits+width)
 	put := func(v uint64, n int) {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			bits = append(bits, byte((v>>i)&1))
 		}
 	}

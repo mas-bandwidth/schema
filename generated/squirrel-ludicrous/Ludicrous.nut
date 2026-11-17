@@ -165,7 +165,7 @@ _M.WriteUnsignedProbe <- function(stream, value) {
   }
   _h.value = value.Locked;
   if (!stream.serializeFixed64(_h, 16, 16, 3, 3)) return false;
-  if (typeof value.Tail != "integer") return false;
+  if (typeof value.Tail != "integer" || value.Tail < 0 || value.Tail > 255) return false;
   _h.value = value.Tail;
   if (!stream.serializeBits(_h, 8)) return false;
   return true;
@@ -350,7 +350,7 @@ _M.WriteDegenerateProbe <- function(stream, value) {
   if (!stream.serializeInt(_h, 7, 7)) return false;
   _h.value = value.LockedWide;
   if (!stream.serializeInt128(_h, [0xfffff4c58c31d00e, 0xffffffffffffffff], [0xfffff4c58c31d00e, 0xffffffffffffffff])) return false;
-  if (typeof value.Tail != "integer") return false;
+  if (typeof value.Tail != "integer" || value.Tail < 0 || value.Tail > 255) return false;
   _h.value = value.Tail;
   if (!stream.serializeBits(_h, 8)) return false;
   return true;

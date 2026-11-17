@@ -18,8 +18,8 @@ import (
 // bytes(N) rule: the JavaScript text reader and the compiler's engine give the
 // same verdict on every base64 body, and on a read the same bytes. The JSON
 // layer decides first, so a body's escapes are undone before base64 sees it;
-// standard-alphabet symbols, then zero to two trailing `=` of the right count,
-// and a body that does not decode refuses.
+// canonical padded standard-alphabet spelling is required, including zero pad
+// bits, and a body that does not decode refuses.
 func TestJavaScriptTextBase64MatchesEngine(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "node")
@@ -44,7 +44,10 @@ table Root {
 	bodies := []struct{ name, body string }{
 		{"empty", ""},
 		{"canonical-padded", "AQI="},
-		{"canonical-unpadded", "AQI"},
+		{"unpadded", "AQI"},
+		{"one-nonzero-pad-bits", "AQJ="},
+		{"two-nonzero-pad-bits", "AR=="},
+		{"one-byte-padded", "AQ=="},
 		{"one-pad-where-two-belong", "AQ="},
 		{"single-symbol", "A"},
 		{"pad-in-the-middle", "AQ=I"},
@@ -165,5 +168,48 @@ for (const row of rows) {
 				t.Errorf("%s: native bytes %s, engine %s", r.text, got.Bytes, r.want)
 			}
 		})
+	}
+}
+
+// TestJavaScriptTextBase64NegativeControl plants a noncanonical acceptance in
+// the emitted reader and requires the unpadded input to trip the real probe.
+func TestJavaScriptTextBase64NegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "node")
+	u := unitFrom(t, `package probe
+ table Root { v bytes(4) }
+`)
+	files, err := generateVariableFiles(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const from = "let canonical = symbols % 4 === 0;"
+	const to = "let canonical = true;"
+	found := false
+	dir := t.TempDir()
+	for name, data := range files {
+		source := string(data)
+		if strings.Contains(source, from) {
+			source = strings.Replace(source, from, to, 1)
+			found = true
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(name)), []byte(source), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !found {
+		t.Fatal("canonical check control anchor absent")
+	}
+	const probe = `import { RootFromJson, TableVariableReport } from './ProbeVariable.js';
+if (RootFromJson('{"v":"AQI"}', new TableVariableReport()) !== null) throw new Error('noncanonical base64 accepted');
+`
+	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(jsNode(t), "probe.mjs")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "noncanonical base64 accepted") {
+		t.Fatalf("control escaped: %v\n%s", err, out)
 	}
 }

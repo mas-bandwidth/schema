@@ -754,6 +754,8 @@ pub fn write_strs(stream: &mut WriteStream<'_>, value: &Strs) -> Result {
         stream.serialize_bits(&mut raw_value, 5)?;
     }
     debug_assert!(value.s_length >= 0 && value.s_length <= 8, "s_length out of range [0, 8]");
+    debug_assert!(!value.s[..value.s_length as usize].contains(&0), "s holds a zero byte");
+    debug_assert!(std::str::from_utf8(&value.s[..value.s_length as usize]).is_ok(), "s is not well-formed UTF-8");
     {
         let mut offset_value = value.s_length as u32;
         stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)

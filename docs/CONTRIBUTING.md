@@ -367,7 +367,8 @@ second cross-compile on this leg proves nothing the first does not.
 **The target list is enumerated, not typed.** `tools/negativecontrols` reads
 the Makefile and every file the Makefile includes, collects each explicit
 target whose name carries `negative-control`, and holds that set against
-`make/negative-controls.json`, which is the plan the leg's matrix comes from.
+`make/negative-controls.json` with the entries of `make/negative-controls.d/`,
+which is the plan the leg's matrix comes from.
 `go test ./tools/negativecontrols/` fails on any difference in either
 direction: a control the makefiles define and the plan does not carry, and a
 control the plan names and no makefile defines.
@@ -385,10 +386,14 @@ over the matrix job's output rather than a hand-typed include list; and the
 toolchain versions in `make/negative-controls.json` have to match
 `test/conformance/<lang>/ci.json`, so a runtime bump moves both or neither.
 
-So adding a negative control costs one line in `make/negative-controls.json`,
-in the group whose toolchain it needs and whose job still fits the rule with it
-added, and forgetting that line is a red test rather than a control that runs
-nowhere. A control that cannot run on either tier goes in the same file's
+So adding a negative control costs one new file,
+`make/negative-controls.d/<control>.json`, holding
+`{"group": "<group>", "targets": ["<control>"]}`: the group is an existing
+group of `make/negative-controls.json` whose toolchain it needs and whose job
+still fits the rule with it added, and the tool appends the file's targets to
+that group (files in name order). A new file, rather than a line in the shared
+array, means two changes that each add a control never edit the same lines.
+Forgetting the file is a red test rather than a control that runs nowhere. A control that cannot run on either tier goes in the same file's
 `excluded` list with a reason, which the test requires to be non-empty. Nothing
 leaves the leg silently.
 
@@ -443,7 +448,7 @@ touches and two ports landing in one week do not conflict:
 | the target | `compiler/target_<lang>.go` (`target_javascript.go`: a `_js` suffix is a Go build constraint) | its `init` registers the generator |
 | the runtime's claimed names | `internal/tablenames/<lang>.go` | its `init` defines the backend's bit and names |
 | the compiler's tests | `compiler/tables<lang>_test.go` | the package |
-| the build | `make/<lang>.mk` | the Makefile's wildcard include; the file registers its `test-<lang>` leg, its conformance build, its bench unit, its goldens and its pinned toolchain |
+| the build | `make/<lang>.mk` | the Makefile's wildcard include; the file registers its `test-<lang>` leg, its conformance build, its bench unit, its goldens and its pinned toolchain; a later change adds its own targets in a new `make/<lang>-<topic>.mk` (the same wildcard finds it, and its `test-<lang>: <target>` line registers it) rather than appending to this file |
 | the conformance leg | `test/conformance/<lang>/driver` and `ci.json` | the harness discovers the driver; `harness matrix` builds the pull-request matrix from the rows |
 | the tables bench leg | `bench/tables/<lang>/leg` | `bench/tables/run.sh` runs every leg |
 | the shape gate's exemptions | `bench/<lang>/SHAPE-GATE.allow`, `bench/tables/<lang>/SHAPE-GATE.allow` | the gate reads every ledger under the tree |

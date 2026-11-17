@@ -89,7 +89,7 @@ table Config
 `
 
 const textInput3 = `(:lo128 -170141183460469231731687303715884105728 :hi128 340282366920938463463374607431768211455 :fraction 0.0000152587890625 :flags (:Fast "Safe") :keyed (:unknown 4 :done 7) :choice (:ping null) :nodes ((:id "a")) :tags ("x") :ratio 1.5)`
-const textJSON3 = `{"lo128":-170141183460469231731687303715884105728,"hi128":340282366920938463463374607431768211455,"fraction":0.0000152587890625,"flags":["Fast","Safe"],"keyed":{"unknown":4,"done":7},"choice":{"ping":null},"nodes":[{"id":"a"}],"tags":["x"],"ratio":1.5}`
+const textJSON3 = `{"lo128":"-170141183460469231731687303715884105728","hi128":"340282366920938463463374607431768211455","fraction":0.0000152587890625,"flags":["Fast","Safe"],"keyed":{"unknown":4,"done":7},"choice":{"ping":null},"nodes":[{"id":"a"}],"tags":["x"],"ratio":1.5}`
 
 // textProgram is the unit's main: read the document, save its value, write
 // the no-op rewrite, apply one leaf edit, and load the saved bytes back for

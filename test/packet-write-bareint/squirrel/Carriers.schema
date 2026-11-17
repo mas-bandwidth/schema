@@ -1,0 +1,22 @@
+package bareintcarriers
+
+// The Squirrel leg's own carriers for SPEC §5.1 row 11: a bare integer as a
+// fixed array element, a counted array element and inside a union arm's
+// payload, so the width check is held on every path the writer emits it on.
+
+type Elements
+{
+    pair [2]int8
+    list [..2]uint16
+}
+
+type Small
+{
+    value int8
+}
+
+union Arm
+{
+    small Small
+    elements Elements
+}

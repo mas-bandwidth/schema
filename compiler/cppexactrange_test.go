@@ -122,16 +122,16 @@ int main( void )
     // double moves one of the two answers.
     Big v;
     TableReport r{};
-    const char * text = "{\"n\":9007199254740993,\"m\":-9223372036854775807,\"u\":18446744073709551614}";
+    const char * text = "{\"n\":\"9007199254740993\",\"m\":\"-9223372036854775807\",\"u\":\"18446744073709551614\"}";
     if ( !BigFromJson( v, text, (int64_t) strlen( text ), &r ) || r.refuse_reason != ok )
     { printf( "FromJson refused the exact edges\n" ); return 5; }
     if ( v.n != 9007199254740993LL || v.m != -9223372036854775807LL || v.u != 18446744073709551614ULL )
     { printf( "edge read n=%lld m=%lld u=%llu\n",
              (long long) v.n, (long long) v.m, (unsigned long long) v.u ); return 6; }
     const char * past[] = {
-        "{\"n\":9007199254740994}",
-        "{\"m\":-9223372036854775808}",
-        "{\"u\":18446744073709551615}",
+        "{\"n\":\"9007199254740994\"}",
+        "{\"m\":\"-9223372036854775808\"}",
+        "{\"u\":\"18446744073709551615\"}",
     };
     for ( int i = 0; i < 3; ++i )
     {

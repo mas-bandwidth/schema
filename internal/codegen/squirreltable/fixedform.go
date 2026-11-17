@@ -813,6 +813,11 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 			// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5).
 			m.Printf("%s  local c = _rt_fixed.geti32(b, at + %d);\n", ind, at)
 			m.Printf("%s  if (c < 0 || c > %d) return \"count_over_bound\";\n", ind, f.ArrayBound)
+			if f.ArrayMin > 0 {
+				// a count under the declared minimum refuses before it is read
+				// (docs/SPEC.md §5.1 row 3)
+				m.Printf("%s  if (c < %d) return \"count_over_bound\";\n", ind, f.ArrayMin)
+			}
 			m.Printf("%s  if (_rt_fixed.deadNotZero(b, at + %d + c * %d, at + %d + %d)) return \"wire_damaged\";\n",
 				ind, at+fixedCountBytes, fixedElementBytes(f), at+fixedCountBytes, f.ArrayBound*fixedElementBytes(f))
 			m.Printf("%s  if (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
@@ -877,6 +882,11 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 					if v.F.Array == ir.ArrayCounted {
 						m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s + %d);\n", armInd, off, tag)
 						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
+						if v.F.ArrayMin > 0 {
+							// a count under the declared minimum refuses before it
+							// is read (docs/SPEC.md §5.1 row 3)
+							m.Printf("%sif (c < %d) return \"count_over_bound\";\n", armInd, v.F.ArrayMin)
+						}
 						m.Printf("%sif (_rt_fixed.deadNotZero(b, at + %s + %d + %d + c * %d, at + %s + %d + %d)) return \"wire_damaged\";\n",
 							armInd, off, tag, fixedCountBytes, fixedElementBytes(v.F), off, tag, fixedCountBytes+v.F.ArrayBound*fixedElementBytes(v.F))
 						m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", armInd, armExpr, armExpr, armExpr, armExpr, elemZero(v.F))

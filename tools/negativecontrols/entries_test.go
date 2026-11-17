@@ -1,0 +1,108 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// entriesTree writes a manifest and the given entry files into a fresh
+// directory and returns its root.
+func entriesTree(t *testing.T, entries map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(manifestPath, `{"groups": [
+  {"name": "base", "when": "pull-request", "targets": ["a-negative-control"]},
+  {"name": "elixir", "when": "pull-request", "targets": ["b-negative-control"]}
+]}`)
+	for name, body := range entries {
+		write(entriesDir+"/"+name, body)
+	}
+	return root
+}
+
+// TestEntriesJoinTheirGroup holds the per-control files: each entry's targets
+// are appended to the group it names, in file-name order, and a file that is
+// not an entry (no .json suffix) is not read.
+func TestEntriesJoinTheirGroup(t *testing.T) {
+	t.Parallel()
+	root := entriesTree(t, map[string]string{
+		"d-negative-control.json": `{"group": "elixir", "targets": ["d-negative-control"]}`,
+		"c-negative-control.json": `{"group": "elixir", "targets": ["c-negative-control", "c2-negative-control"]}`,
+		"e-negative-control.json": `{"group": "base", "targets": ["e-negative-control"]}`,
+		"README":                  `not an entry`,
+	})
+	m, err := loadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"base":   {"a-negative-control", "e-negative-control"},
+		"elixir": {"b-negative-control", "c-negative-control", "c2-negative-control", "d-negative-control"},
+	}
+	for _, g := range m.Groups {
+		if !slices.Equal(g.Targets, want[g.Name]) {
+			t.Errorf("group %s holds %v, want %v", g.Name, g.Targets, want[g.Name])
+		}
+	}
+	targets, err := m.targetsOf("elixir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targets != "b-negative-control c-negative-control c2-negative-control d-negative-control" {
+		t.Errorf("targets elixir = %q", targets)
+	}
+}
+
+// TestABadEntryIsRefused is the reversed witness: an entry naming no group
+// the manifest holds, carrying a field an entry does not have, naming no
+// target, or not parsing is refused by name, never dropped.
+func TestABadEntryIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, body, want string }{
+		{"unknown group", `{"group": "elixr", "targets": ["x-negative-control"]}`, `no group named "elixr"`},
+		{"unknown field", `{"group": "elixir", "target": ["x-negative-control"]}`, `unknown field`},
+		{"no target", `{"group": "elixir", "targets": []}`, `names no target`},
+		{"not json", `{"group": "elixir",`, `x-negative-control.json`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := entriesTree(t, map[string]string{"x-negative-control.json": tc.body})
+			_, err := loadManifest(root)
+			if err == nil {
+				t.Fatalf("the entry %s was accepted", tc.body)
+			}
+			if !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "x-negative-control.json") {
+				t.Errorf("the refusal %q does not name %q and the file", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestAnEntryDuplicatingAControlIsRefused: an entry that adds a control the
+// manifest already places is two placements, which covered refuses.
+func TestAnEntryDuplicatingAControlIsRefused(t *testing.T) {
+	t.Parallel()
+	root := entriesTree(t, map[string]string{
+		"b-negative-control.json": `{"group": "base", "targets": ["b-negative-control"]}`,
+	})
+	m, err := loadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.covered(); err == nil || !strings.Contains(err.Error(), "b-negative-control") {
+		t.Fatalf("covered accepted a control placed twice: %v", err)
+	}
+}

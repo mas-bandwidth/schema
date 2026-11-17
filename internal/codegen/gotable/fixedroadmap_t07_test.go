@@ -105,12 +105,10 @@ func t07GoC14(t *testing.T) {
 
 // ---- go/W4 ------------------------------------------------------------------
 
-// t07GoW4 holds W4, "read slack unspecified", to the ONE read loop this leg
-// emits: §3.1 "Slack is UNSPECIFIED on read and not a refusal: a reader
-// validates the USED UNITS only, and non-zero slack is not `malformed`, not a
-// refusal, and moves no counter." The text op holds the length word to the
-// plan's own capacity and refuses an overbound length; past the used length it
-// copies the payload whole and never inspects, refuses or counts a slack byte.
+// t07GoW4 holds W4 to the ONE read loop this leg emits. The text op holds the
+// length word to the plan's own capacity and refuses an overbound length; past
+// the used length every dead byte is zero and a non-zero one refuses
+// (docs/rulings.json fixed-dead-bytes-are-zero; docs/SPEC-TABLES.md §3.4).
 func t07GoW4(t *testing.T) {
 	block := funcSource(tableFixedRuntime, "func tableFixedTextRefusal(")
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
@@ -123,8 +121,11 @@ func t07GoW4(t *testing.T) {
 	if !strings.Contains(t07RuntimeCase(t, "tableFixedText", "tableFixedOrdinal"), "binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))") {
 		t.Error("W4: the reader lands the USED length (§3.1)")
 	}
+	if !strings.Contains(block, "tableFixedDeadSpan(src, p.Src+4+uint32(v), p.Src+4+capn)") {
+		t.Error("W4: the bytes past a text's used length are not checked for zero (fixed-dead-bytes-are-zero)")
+	}
 	if strings.Contains(block, "Malformed") {
-		t.Error("W4: non-zero slack is not malformed; the pre-scan validates only used units (§3.1)")
+		t.Error("W4: a non-zero dead byte is wire_damaged, never malformed (§3.4)")
 	}
 	if !strings.Contains(run, "if why := tableFixedTextRefusal(plan, count, src); why != \"\" {") {
 		t.Error("W4: the direct runner does not pre-scan before writes")

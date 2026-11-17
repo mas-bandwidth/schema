@@ -26,6 +26,61 @@ var kindEmitters = map[string]*kindEmitter{}
 
 func registerKind(k *kindEmitter) { kindEmitters[k.name] = k }
 
+// An itemEmitter is one wire-ordered item that carries no storage: an if/else
+// branch, const, reserved or align. Every one lives in its own file and
+// registers from init(), so a new layout construct adds a file and one
+// registration line (docs/PORT-PYTHON.md, THE PACKET CORE CUT).
+type itemEmitter struct {
+	name     string
+	read     func(m *pyModule, c *emitCtx, item ir.Item)
+	write    func(m *pyModule, c *emitCtx, item ir.Item)
+	validate func(m *pyModule, c *emitCtx, item ir.Item)
+	zero     func(m *pyModule, c *emitCtx, item ir.Item)
+}
+
+var itemEmitters = map[string]*itemEmitter{}
+
+func registerItem(e *itemEmitter) { itemEmitters[e.name] = e }
+
+// itemKind is the registry key of a non-field item.
+func itemKind(item ir.Item) string {
+	switch item.(type) {
+	case *ir.Branch:
+		return "branch"
+	case *ir.ConstItem:
+		return "const"
+	case *ir.ReservedItem:
+		return "reserved"
+	case *ir.AlignItem:
+		return "align"
+	}
+	return ""
+}
+
+func emitItemRead(m *pyModule, c *emitCtx, item ir.Item) {
+	if e := itemEmitters[itemKind(item)]; e != nil {
+		e.read(m, c, item)
+	}
+}
+
+func emitItemWrite(m *pyModule, c *emitCtx, item ir.Item) {
+	if e := itemEmitters[itemKind(item)]; e != nil {
+		e.write(m, c, item)
+	}
+}
+
+func emitItemValidate(m *pyModule, c *emitCtx, item ir.Item) {
+	if e := itemEmitters[itemKind(item)]; e != nil {
+		e.validate(m, c, item)
+	}
+}
+
+func emitItemZero(m *pyModule, c *emitCtx, item ir.Item) {
+	if e := itemEmitters[itemKind(item)]; e != nil {
+		e.zero(m, c, item)
+	}
+}
+
 // emitCtx is one generated method's body while an emitter appends to it.
 // Method-level bindings (bound stream operations, reusable Ref holders, type
 // checks) are collected in binds and emitted once at the top of the method
@@ -99,17 +154,45 @@ func (c *emitCtx) finish() string {
 
 // fieldKind is the registry key of a field, or "" when no emitter carries it.
 func fieldKind(f *ir.Field) string {
-	if f.Array != ir.ArrayNone || f.Type.Pointer {
+	if f.Type.Pointer {
 		return ""
+	}
+	if f.Array != ir.ArrayNone {
+		if f.Array != ir.ArrayFixed && f.Array != ir.ArrayCounted {
+			return ""
+		}
+		if fieldKind(arrayElem(f)) == "" {
+			return ""
+		}
+		return "array"
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
+	case ir.TString, ir.TBytes:
+		if f.Type.Unbounded || f.Type.Size < 1 {
+			return ""
+		}
+		if f.Type.Kind == ir.TString {
+			return "string"
+		}
+		return "bytes"
 	case ir.TInt:
 		if f.Type.Width <= 64 {
 			return "int"
 		}
+		if f.Type.Width == 128 {
+			return "int128"
+		}
 		return ""
+	case ir.TBits:
+		return "bits"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
+	case ir.TFixed:
+		return "fixed"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -125,13 +208,23 @@ func fieldKind(f *ir.Field) string {
 	return ""
 }
 
+// FieldKind is the registry key of a field the packet core carries, or "" when
+// no emitter carries it. A table emitter that hosts the packet classes uses it
+// to hold a packet type to the packet wire's own carried set.
+func FieldKind(f *ir.Field) string { return fieldKind(f) }
+
 // blockingKind names what a field is when the codec does not carry it.
 func blockingKind(f *ir.Field) string {
-	if f.Array != ir.ArrayNone {
-		return "array"
-	}
 	if f.Type.Pointer {
 		return "pointer"
+	}
+	switch {
+	case f.Array == ir.ArrayList:
+		return "list"
+	case f.Array != ir.ArrayNone:
+		// an array is carried whenever its element is, so the element's kind
+		// is what blocks it
+		return blockingKind(arrayElem(f))
 	}
 	switch f.Type.Kind {
 	case ir.TInt:
@@ -158,6 +251,10 @@ func blockingKind(f *ir.Field) string {
 	return "unknown"
 }
 
+// BlockingKind names what a field is when the packet core's codec does not
+// carry it.
+func BlockingKind(f *ir.Field) string { return blockingKind(f) }
+
 // firstBlockerItem returns the first wire item the codec does not carry, as
 // the kind's name, or "" when every item is carried.
 func firstBlockerItem(items []ir.Item) string {
@@ -174,12 +271,8 @@ func firstBlockerItem(items []ir.Item) string {
 			if k := firstBlockerItem(item.Else); k != "" {
 				return k
 			}
-		case *ir.ConstItem:
-			return "const"
-		case *ir.ReservedItem:
-			return "reserved"
-		case *ir.AlignItem:
-			return "align"
+		case *ir.ConstItem, *ir.ReservedItem, *ir.AlignItem:
+			// carried: their item emitters live beside this file
 		}
 	}
 	return ""
@@ -466,34 +559,8 @@ func (m *pyModule) readItems(c *emitCtx, items []ir.Item) {
 		switch item := item.(type) {
 		case *ir.FieldItem:
 			m.readField(c, item.F, "self."+item.F.Name)
-		case *ir.Branch:
-			cond := "self." + item.Cond
-			if item.Neg {
-				cond = "not " + cond
-			}
-			thenSub := c.sub(c.indent + "    ")
-			m.readItems(thenSub, item.Then)
-			m.zeroItems(thenSub, item.Else)
-			c.locals = thenSub.locals
-
-			elseSub := c.sub(c.indent + "    ")
-			m.readItems(elseSub, item.Else)
-			m.zeroItems(elseSub, item.Then)
-			c.locals = elseSub.locals
-
-			if thenSub.b.Len() == 0 && elseSub.b.Len() == 0 {
-				continue
-			}
-			c.line("if %s:", cond)
-			if thenSub.b.Len() == 0 {
-				c.line("    pass")
-			} else {
-				c.b.WriteString(thenSub.b.String())
-			}
-			if elseSub.b.Len() > 0 {
-				c.line("else:")
-				c.b.WriteString(elseSub.b.String())
-			}
+		default:
+			emitItemRead(m, c, item)
 		}
 	}
 }
@@ -503,33 +570,8 @@ func (m *pyModule) writeItems(c *emitCtx, items []ir.Item) {
 		switch item := item.(type) {
 		case *ir.FieldItem:
 			m.writeField(c, item.F, "self."+item.F.Name)
-		case *ir.Branch:
-			cond := "self." + item.Cond
-			if item.Neg {
-				cond = "not " + cond
-			}
-			thenSub := c.sub(c.indent + "    ")
-			m.writeItems(thenSub, item.Then)
-			c.locals = thenSub.locals
-
-			elseSub := c.sub(c.indent + "    ")
-			if item.Else != nil {
-				m.writeItems(elseSub, item.Else)
-				c.locals = elseSub.locals
-			}
-			if thenSub.b.Len() == 0 && elseSub.b.Len() == 0 {
-				continue
-			}
-			c.line("if %s:", cond)
-			if thenSub.b.Len() == 0 {
-				c.line("    pass")
-			} else {
-				c.b.WriteString(thenSub.b.String())
-			}
-			if elseSub.b.Len() > 0 {
-				c.line("else:")
-				c.b.WriteString(elseSub.b.String())
-			}
+		default:
+			emitItemWrite(m, c, item)
 		}
 	}
 }
@@ -539,33 +581,8 @@ func (m *pyModule) validateItems(c *emitCtx, items []ir.Item) {
 		switch item := item.(type) {
 		case *ir.FieldItem:
 			m.validateField(c, item.F, "self."+item.F.Name)
-		case *ir.Branch:
-			cond := "self." + item.Cond
-			if item.Neg {
-				cond = "not " + cond
-			}
-			thenSub := c.sub(c.indent + "    ")
-			m.validateItems(thenSub, item.Then)
-			c.locals = thenSub.locals
-
-			elseSub := c.sub(c.indent + "    ")
-			if item.Else != nil {
-				m.validateItems(elseSub, item.Else)
-				c.locals = elseSub.locals
-			}
-			if thenSub.b.Len() == 0 && elseSub.b.Len() == 0 {
-				continue
-			}
-			c.line("if %s:", cond)
-			if thenSub.b.Len() == 0 {
-				c.line("    pass")
-			} else {
-				c.b.WriteString(thenSub.b.String())
-			}
-			if elseSub.b.Len() > 0 {
-				c.line("else:")
-				c.b.WriteString(elseSub.b.String())
-			}
+		default:
+			emitItemValidate(m, c, item)
 		}
 	}
 }
@@ -575,9 +592,8 @@ func (m *pyModule) zeroItems(c *emitCtx, items []ir.Item) {
 		switch item := item.(type) {
 		case *ir.FieldItem:
 			m.zeroField(c, item.F, "self."+item.F.Name)
-		case *ir.Branch:
-			m.zeroItems(c, item.Then)
-			m.zeroItems(c, item.Else)
+		default:
+			emitItemZero(m, c, item)
 		}
 	}
 }
@@ -731,6 +747,12 @@ func wireItemsBits(m *pyModule, items []ir.Item, seen map[string]bool) int64 {
 				then = els
 			}
 			bits += then
+		case *ir.ConstItem:
+			bits += item.Bits
+		case *ir.ReservedItem:
+			bits += item.Bits
+		case *ir.AlignItem:
+			bits += 7
 		}
 	}
 	return bits
@@ -738,16 +760,30 @@ func wireItemsBits(m *pyModule, items []ir.Item, seen map[string]bool) int64 {
 
 func (m *pyModule) fieldBits(f *ir.Field, seen map[string]bool) int64 {
 	if f.Array != ir.ArrayNone {
-		return 0
+		return m.arrayBits(f, seen)
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		return 1
+	case ir.TString, ir.TBytes:
+		return textBits(f.Type.Size)
 	case ir.TInt:
 		if f.HasIntRange {
 			return rangeBits64Big(f.IntMin, f.IntMax)
 		}
 		return int64(f.Type.Width)
+	case ir.TBits:
+		return int64(f.Type.Width)
+	case ir.TFloat32:
+		if f.HasFloatRange {
+			_, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
+			return bits
+		}
+		return 32
+	case ir.TFloat64:
+		return 64
+	case ir.TFixed:
+		return fixedBits(f)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:

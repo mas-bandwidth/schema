@@ -213,7 +213,7 @@ func outOfRangeLastRecord(t *testing.T, wire []byte, listNodeID, valueID uint64,
 			ln, p := readLEB(t, out, next)
 			contentEnd := p + int(ln)
 			declared, p := readLEB(t, out, p)
-			for r := uint64(0); r < declared; r++ {
+			for range declared {
 				tref, at := readLEB(t, out, p)
 				rlen, body := readLEB(t, out, at)
 				if tref < 1 || tref > count {
