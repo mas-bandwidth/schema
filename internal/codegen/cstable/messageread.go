@@ -165,6 +165,14 @@ const tableMessageReadSource = `
         if (value != null) { type.Reset(value); }
         Span<ulong> few = stackalloc ulong[16];
         int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+        // THE SENDER'S OWN BUILD VERSION IS THIS READER'S (§3.3 (a), (b)):
+        // there every field's default and every record's field order are this
+        // reader's, so a field it does not declare, a field out of declaration
+        // order and a field stored at the default the writer elides are
+        // spellings no conforming writer produces (docs/rulings.json
+        // reads-refuse-non-canonical). Under another build none is judged.
+        bool same = d.Vocabulary.BuildVersion == tableOwnVocabulary.BuildVersion;
+        int last = -1;
         for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -172,13 +180,40 @@ const tableMessageReadSource = `
             if (Reserved(entry.Id) || !SeenOnce(few, ref count, ref more, entry.Id)) { return false; }
             TableFieldInfo field = FindField(type, entry.Id);
             if (field == null)
-            { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
+            {
+                if (same) { return false; }
+                d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue;
+            }
+            if (same && field.Ordinal <= last) { return false; }
+            last = field.Ordinal;
             if (!MessageCompatible(entry, field, out bool widened))
             { return Fail(d.Report, "kind_mismatch"); }
+            // §3.3 (c): a writer elides a union FIELD at None at every build,
+            // so arm reference 0 stored at one is refused whatever build
+            // announced it. A None element of an array of unions is positional.
+            if (entry.Kind == 15 && !field.IsArray && !field.Required)
+            { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
             if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
             if (widened && !field.MapKey) { d.Report.Widened++; }
             if (field.Optional && value != null) { field.SetPresent(value, true); }
+            if (same && value != null && MessageAtDefault(value, field)) { return false; }
         }
+    }
+    // MessageAtDefault is the message writer's elision (MessageRides) of a
+    // field that is neither optional nor required, whatever its guard says.
+    static bool MessageAtDefault(object value, TableFieldInfo f)
+    {
+        if (f.Optional || f.Required) { return false; }
+        if (f.Counted)
+        {
+            int n = f.GetCount(value);
+            if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+            return n == 0;
+        }
+        if (!f.IsArray) { return DefaultElement(value, f, 0); }
+        if (f.Kind == 13 && f.KeyId == null) { return false; }
+        for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }
+        return true;
     }
     static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
     {
