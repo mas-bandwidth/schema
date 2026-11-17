@@ -8260,6 +8260,10 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  if(!benchtable_table_message_skip(r,entry))goto damaged;
  break;
  }}
+ {benchtable_table_bit_reader_t arm=r->bits;
+ uint64_t arm_ref=0;
+ if(!benchtable_table_bit_get(&arm,&arm_ref,r->vocabulary->ref_bits)||arm_ref==0)goto damaged;
+ }
  if(!schema_benchtable_table_event_wire_message_load_(r,&value->game_event))return 0;
  if(same_shape && !r->report->refused && r->report->unknown==unknown_before) {
  benchtable_table_bit_writer_t default_writer=benchtable_table_bit_writer(NULL,INT64_MAX);
