@@ -324,7 +324,6 @@ public final class FixedTableVariable {
             Value v,
             TableVariable.NodeTable nt,
             TableVariable.Report report) {
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -343,12 +342,6 @@ public final class FixedTableVariable {
             }
             int kind = r.get8();
             if (id == F_value) {
-                if (lastOrder > 0) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 0;
-                int canonAt = r.off;
                 if (kind == 13) {
                     TableVariable.Reader br = r.body();
                     if (br != null) {
@@ -362,13 +355,6 @@ public final class FixedTableVariable {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
-                }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (kind == 13 && r.off - canonAt == 2)) {
-                    report.refuse("non_canonical");
-                    return false;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (r.rootBody) {
@@ -438,6 +424,56 @@ public final class FixedTableVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert BenchMixedVariable.checkWrite(v.value, walk);
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -447,6 +483,7 @@ public final class FixedTableVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -482,7 +519,7 @@ public final class FixedTableVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -894,5 +931,15 @@ public final class FixedTableVariable {
             in.bad = true;
             return;
         }
+    }
+
+    /**
+     * carry a FixedTableFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(FixedTableFixed.Value fixed) {
+        Value v = new Value();
+        v.value = BenchMixedVariable.fromFixed(fixed.value);
+        return v;
     }
 }

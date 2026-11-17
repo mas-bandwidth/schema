@@ -241,7 +241,6 @@ public final class MixedHitEventRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -260,12 +259,6 @@ public final class MixedHitEventRetain {
             }
             int kind = r.get8();
             if (id == MixedHitEventVariable.F_targetId) {
-                if (lastOrder > 0) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 0;
-                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -291,20 +284,7 @@ public final class MixedHitEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.targetId == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == MixedHitEventVariable.F_damage) {
-                if (lastOrder > 1) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 1;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -342,20 +322,7 @@ public final class MixedHitEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.damage == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == MixedHitEventVariable.F_hitKind) {
-                if (lastOrder > 2) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 2;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -393,20 +360,7 @@ public final class MixedHitEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.hitKind == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == MixedHitEventVariable.F_crit) {
-                if (lastOrder > 3) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 3;
-                int canonUnk = report.unknown;
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
@@ -421,13 +375,6 @@ public final class MixedHitEventRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
-                }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.crit == false)) {
-                    report.refuse("non_canonical");
-                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
@@ -524,6 +471,7 @@ public final class MixedHitEventRetain {
             TableRetain retain,
             byte[] buf,
             TableVariable.Report report) {
+        assert MixedHitEventVariable.checkWrite(v);
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -580,7 +528,7 @@ public final class MixedHitEventRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow || ids.nonFinite ? -1 : w.off;
+        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;
     }
 
     static void writeFieldsRetain(

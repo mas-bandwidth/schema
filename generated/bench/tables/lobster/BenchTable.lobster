@@ -161,10 +161,11 @@ def NewTableEvent() -> TableEvent:
     }
     return value·
 
-// ReadTableHitEvent decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadTableHitEvent(stream·:serialize_read_stream, value·:TableHitEvent) -> bool:
+// read_body_TableHitEvent decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_TableHitEvent(stream·:serialize_read_stream, value·:TableHitEvent) -> bool:
     var rv· = 0
     var rok· = true
     var rb· = false
@@ -182,10 +183,19 @@ def ReadTableHitEvent(stream·:serialize_read_stream, value·:TableHitEvent) -> 
     value·.Crit = rb·
     return true
 
-// ReadTableChatEvent decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadTableChatEvent(stream·:serialize_read_stream, value·:TableChatEvent) -> bool:
+// ReadTableHitEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadTableHitEvent(stream·:serialize_read_stream, value·:TableHitEvent) -> bool:
+    if not read_body_TableHitEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_TableChatEvent decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_TableChatEvent(stream·:serialize_read_stream, value·:TableChatEvent) -> bool:
     var rv· = 0
     var rok· = true
     rv·, rok· = stream·.serialize_int(rv·, 0, 3) // the offset from min; past max is refused (SPEC §4.3)
@@ -196,10 +206,19 @@ def ReadTableChatEvent(stream·:serialize_read_stream, value·:TableChatEvent) -
     value·.Speaker = rv·
     return true
 
-// ReadTablePickupEvent decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5). A
-// refusal latches the stream with its reason and answers false.
-def ReadTablePickupEvent(stream·:serialize_read_stream, value·:TablePickupEvent) -> bool:
+// ReadTableChatEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadTableChatEvent(stream·:serialize_read_stream, value·:TableChatEvent) -> bool:
+    if not read_body_TableChatEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_TablePickupEvent decodes the wire into value, filling its pre-allocated
+// storage (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// It does not end the packet. A refusal latches the stream with its reason
+// and answers false.
+def read_body_TablePickupEvent(stream·:serialize_read_stream, value·:TablePickupEvent) -> bool:
     var rv· = 0
     var rok· = true
     rv·, rok· = stream·.serialize_bits(rv·, 10)
@@ -210,9 +229,18 @@ def ReadTablePickupEvent(stream·:serialize_read_stream, value·:TablePickupEven
     value·.Amount = rv·
     return true
 
-// ReadTableEvent decodes the TableEventType tag and its selected arm (SPEC §4.8); a tag
-// past the arms is refused, and the selected arm is constructed fresh.
-def ReadTableEvent(stream·:serialize_read_stream, value·:TableEvent) -> bool:
+// ReadTablePickupEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadTablePickupEvent(stream·:serialize_read_stream, value·:TablePickupEvent) -> bool:
+    if not read_body_TablePickupEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
+
+// read_body_TableEvent decodes the TableEventType tag and its selected arm (SPEC §4.8); a
+// tag past the arms is refused, and the selected arm is constructed fresh.
+// It does not end the packet.
+def read_body_TableEvent(stream·:serialize_read_stream, value·:TableEvent) -> bool:
     var rv· = 0
     var rok· = true
     rv·, rok· = stream·.serialize_int(rv·, 0, 3) // refuses a tag above the arms (SPEC §4.8)
@@ -220,14 +248,22 @@ def ReadTableEvent(stream·:serialize_read_stream, value·:TableEvent) -> bool:
     value·.Type = TableEventType(rv·)
     if value·.Type == TableEventTypeHit:
         value·.Hit = NewTableHitEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not ReadTableHitEvent(stream·, value·.Hit): return false
+        if not read_body_TableHitEvent(stream·, value·.Hit): return false
     if value·.Type == TableEventTypeChat:
         value·.Chat = NewTableChatEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not ReadTableChatEvent(stream·, value·.Chat): return false
+        if not read_body_TableChatEvent(stream·, value·.Chat): return false
     if value·.Type == TableEventTypePickup:
         value·.Pickup = NewTablePickupEvent() // a fresh payload on every selection (SPEC §4.8)
-        if not ReadTablePickupEvent(stream·, value·.Pickup): return false
+        if not read_body_TablePickupEvent(stream·, value·.Pickup): return false
     return true
+
+// ReadTableEvent reads one packet holding value: its body, then the packet's end
+// (SPEC §5), which refuses a whole byte left over and set unused bits in
+// the final byte. A refusal latches the stream with its reason and answers
+// false.
+def ReadTableEvent(stream·:serialize_read_stream, value·:TableEvent) -> bool:
+    if not read_body_TableEvent(stream·, value·): return false
+    return stream·.serialize_end() // one packet's end: no trailing byte, no set padding (SPEC §5)
 
 // WriteTableHitEvent writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.

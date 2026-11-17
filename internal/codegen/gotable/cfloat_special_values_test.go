@@ -93,17 +93,18 @@ type cfCase struct {
 	counts  int32  // the fields past an end across A and B: the form refuses the value
 	refused bool   // a NaN or an infinity: every writer and every read refuses it
 	text    bool   // the text form writes it (a finite value past an end is not asked of it)
+	elided  bool   // the variable form holds the value at a field's declared default: the read lands it and the rewrite is the current writer's bytes
 }
 
 var cfCases = []cfCase{
-	{"nan", 0x7FC00000, 0, 0, 0, true, false},
-	{"nan_payload", 0xFFA5A5A5, 0, 0, 0, true, false},
-	{"minus_zero", 0x80000000, 0x00000000, 0x00000000, 0, false, true},
-	{"plus_zero", 0x00000000, 0x00000000, 0x00000000, 0, false, true},
-	{"plus_inf", 0x7F800000, 0, 0, 0, true, false},
-	{"minus_inf", 0xFF800000, 0, 0, 0, true, false},
-	{"above_max", 0x40000000, 0x3F800000, 0x3F800000, 2, false, false},
-	{"below_min", 0xC0000000, 0x00000000, 0xBF800000, 2, false, false},
+	{"nan", 0x7FC00000, 0, 0, 0, true, false, false},
+	{"nan_payload", 0xFFA5A5A5, 0, 0, 0, true, false, false},
+	{"minus_zero", 0x80000000, 0x00000000, 0x00000000, 0, false, true, true},
+	{"plus_zero", 0x00000000, 0x00000000, 0x00000000, 0, false, true, true},
+	{"plus_inf", 0x7F800000, 0, 0, 0, true, false, false},
+	{"minus_inf", 0xFF800000, 0, 0, 0, true, false, false},
+	{"above_max", 0x40000000, 0x3F800000, 0x3F800000, 2, false, false, false},
+	{"below_min", 0xC0000000, 0x00000000, 0xBF800000, 2, false, false, false},
 }
 
 // cfRefused is a read's refusal of a non-finite float, with no counter moved.
@@ -209,14 +210,19 @@ func TestMessage(t *testing.T) {
 			}
 			continue
 		}
-		buf := make([]byte, ReadingMeasureMessages(values, nil))
-		var wrep TableReport
 		if c.counts > 0 {
-			if ReadingSaveMessages(values, buf, &wrep) != -1 || wrep.Err() != TableRefuseInvalidValue {
+			var wrep TableReport
+			var sink [64]byte
+			if ReadingMeasureMessages(values, nil) != -1 {
+				t.Errorf("message %s: the measure accepted a value past an end", c.name)
+			}
+			if ReadingSaveMessages(values, sink[:], &wrep) != -1 || wrep.Err() != TableRefuseInvalidValue {
 				t.Errorf("message %s: the writer quantized a value past an end: %+v", c.name, wrep)
 			}
 			continue
 		}
+		buf := make([]byte, ReadingMeasureMessages(values, nil))
+		var wrep TableReport
 		if ReadingSaveMessages(values, buf, &wrep) != int64(len(buf)) || wrep.Err() != nil {
 			t.Fatalf("message %s: save %+v", c.name, wrep)
 		}
@@ -350,6 +356,27 @@ func TestVariable(t *testing.T) {
 				t.Errorf("variable %s: the read landed it", c.name)
 			}
 			cfOutOfRange(t, "variable", c, &rep)
+			continue
+		}
+		if c.elided {
+			// form 1 carries no writer build or Required/optional declaration,
+			// so a field stored at its declared default reads, and rewrites as
+			// the current writer's bytes, which elide it
+			if !readingForm1(&got, buf, &rep) {
+				t.Fatalf("variable %s: a field stored at its declared default did not read: %+v", c.name, rep)
+			}
+			cfLanded(t, "variable", c, got)
+			var canonical Reading
+			ReadingReset(&canonical)
+			canonical.A, canonical.B = math.Float32frombits(c.a), math.Float32frombits(c.b)
+			want := make([]byte, readingForm1Measure(&canonical))
+			if readingForm1Save(&canonical, want) != int64(len(want)) {
+				t.Fatalf("variable %s: canonical save", c.name)
+			}
+			again := make([]byte, readingForm1Measure(&got))
+			if readingForm1Save(&got, again) != int64(len(again)) || !bytes.Equal(again, want) || bytes.Equal(again, buf) {
+				t.Errorf("variable %s: rewrite %x, want the current writer's bytes %x (stored %x)", c.name, again, want, buf)
+			}
 			continue
 		}
 		if !readingForm1(&got, buf, &rep) {

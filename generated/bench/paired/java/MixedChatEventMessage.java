@@ -75,7 +75,7 @@ public final class MixedChatEventMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xa5013e9a && idLo == 0xd5caeda4) {
-                if (0 < lastField) {
+                if (0 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -115,7 +115,7 @@ public final class MixedChatEventMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xfbf1ac4d && idLo == 0x96ebd022) {
-                if (1 < lastField) {
+                if (1 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -155,6 +155,10 @@ public final class MixedChatEventMessage {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;

@@ -224,7 +224,7 @@ public final class MixedEntityMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x23fcfd66 && idLo == 0x78e36712) {
-                if (0 < lastField) {
+                if (0 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -264,7 +264,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xcb4b3735 && idLo == 0x7667310e) {
-                if (1 < lastField) {
+                if (1 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -304,7 +304,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xcb4b3835 && idLo == 0x766732c1) {
-                if (2 < lastField) {
+                if (2 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -344,7 +344,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xcb4b3535 && idLo == 0x76672da8) {
-                if (3 < lastField) {
+                if (3 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -384,7 +384,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xb54d8e19 && idLo == 0x798e16e8) {
-                if (4 < lastField) {
+                if (4 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -424,7 +424,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x53a9f665 && idLo == 0xa90cc1b1) {
-                if (5 < lastField) {
+                if (5 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -464,7 +464,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x6cede6b6 && idLo == 0xeb60ee67) {
-                if (6 < lastField) {
+                if (6 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -504,7 +504,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x6cede5b6 && idLo == 0xeb60ecb4) {
-                if (7 < lastField) {
+                if (7 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -544,7 +544,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x6cede8b6 && idLo == 0xeb60f1cd) {
-                if (8 < lastField) {
+                if (8 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -584,7 +584,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7f69d4b5 && idLo == 0x288ba9cf) {
-                if (9 < lastField) {
+                if (9 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -624,7 +624,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xa0b61020 && idLo == 0x5f2c6e01) {
-                if (10 < lastField) {
+                if (10 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -712,7 +712,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7f6308be && idLo == 0x8ab37fc0) {
-                if (11 < lastField) {
+                if (11 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -752,7 +752,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x11a44fc1 && idLo == 0xd1243da7) {
-                if (12 < lastField) {
+                if (12 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -792,7 +792,7 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7674cfd1 && idLo == 0x9b9031ca) {
-                if (13 < lastField) {
+                if (13 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -832,6 +832,10 @@ public final class MixedEntityMessage {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;

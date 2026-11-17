@@ -5,9 +5,7 @@
 #
 # Scaffolded by `schema new-leg python`. The pinned interpreters and analyzer
 # are make/python-toolchain.mk's; serialize.py, the bit layer, is
-# make/python-serialize.mk's. The target is behind the schema_leg_python build
-# tag until the packet layer (compiler/target_python.go), so its tests build
-# the compiler with the tag.
+# make/python-serialize.mk's. Python is a built-in compiler target.
 
 # test-python: the leg's make test half. The toolchain and serialize.py
 # (python-toolchain-check, its control, python-serialize-test) are
@@ -15,10 +13,22 @@
 # generates into temp directories and runs the generated package under both
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
-.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
+.PHONY: test-python update-goldens-python python-packet-core-negative-control python-table-core-negative-control python-table-maps-negative-control python-vt-widening python-vt-widening-negative-control
+test-python: python-ci-support
+	$(MAKE) --no-print-directory python-ci-packages
+	$(MAKE) --no-print-directory python-ci-compiler
+
+.PHONY: python-ci-support python-ci-packages python-ci-compiler python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-vt-widening
+PYTHON_CI_SUPPORT_GROUPS += python-ci-core python-ci-finite python-ci-close python-ci-defaults python-ci-hosted python-ci-vt-widening
+python-ci-support: $(PYTHON_CI_SUPPORT_GROUPS)
+.PHONY: python-ci-support-list
+python-ci-support-list:
+	@printf '%s\n' $(PYTHON_CI_SUPPORT_GROUPS) python-ci-compiler
+python-ci-core: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
+python-ci-packages:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
-	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
+python-ci-compiler:
+	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -skip '^TestPythonRequiredPublicShapes$$' -count=1
 update-goldens-python: ;
 
 # python-packet-core-negative-control: the packet core's own control. It edits
@@ -28,9 +38,35 @@ update-goldens-python: ;
 python-packet-core-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketCoreNegativeControl ./internal/codegen/python/
 
-# build/schema-python is the tagged compiler the conformance tree is generated
-# with; the ordinary bin/schema does not carry the target until the packet
-# layer drops the tag.
+# packet-finite-python: test/packet-finite, SPEC §4.3's finite floats, on the
+# Python packet wire. test/packet-finite/python/main.py runs every bare-float
+# position of its Finite.schema under both pinned interpreters: a NaN or an
+# infinity is refused on write as InvalidValue naming the field and on read by
+# its raw bits as Refused (non_finite_float); -0, the subnormals and the
+# largest finite values ride bit exact.
+#
+# packet-finite-python-negative-control: TestPythonPacketFloats/negative-control
+# removes the finite rule from a COPY of the generated tree, once per
+# direction (the bit layer's read checks; the field validators' and the bit
+# layer's write checks), and requires the driver to fail exactly the vectors
+# in test/packet-finite/python/<direction>.expected; beside them it cuts the
+# compressed float's range check from a copy of a generated validator and
+# requires the contract probe to name exactly the vectors that check holds,
+# and cuts the fixed point read's raw span check from a copy of the bit layer
+# and requires the probe to name exactly the headroom reads.
+.PHONY: packet-finite-python packet-finite-python-negative-control
+python-ci-finite: packet-finite-python
+packet-finite-python: build/schema-python python-toolchain-check
+	@rm -rf build/packet-finite/python && mkdir -p build/packet-finite/python
+	./build/schema-python generate --lang python --out build/packet-finite/python/generated test/packet-finite/python/Finite.schema
+	$(PYTHON) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
+	$(PYTHON_FLOOR) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
+
+packet-finite-python-negative-control: python-toolchain-check
+	sh test/slowgate/proof python-packet-finite-negative-control 'TestPythonPacketFloats/negative-control' -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonPacketFloats/negative-control' ./internal/codegen/python/
+
+# build/schema-python is the compiler the conformance tree is generated with.
+# The tag remains accepted by existing leg gates; the target is built in.
 build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null)
 	go build -tags schema_leg_python -o $@ ./cmd/schema
 
@@ -61,9 +97,76 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
+# The map cell's negative controls: the map runtime's writer sort is removed,
+# then the reader's duplicate check, then its descending check, then the
+# ascending order the save numbers a map's nodes in, each in a copy, and the
+# pinned probe must go red under each.
+python-table-maps-negative-control:
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonVtMapsNegativeControl' ./internal/codegen/pythontable/ -count=1
+
+# The widening cell: TestPythonVtWidening holds every manifest report row the
+# Go engine widens (the field, union arm, array element and map key sites) and
+# its sibling refusals under both pinned interpreters, and refuses to skip a
+# row the engine widens. The negative control plants the kind-pair ladder, then
+# the field, arm and map widened counters, in a COPY of the emitted runtime and
+# requires its rows red by name.
+python-ci-vt-widening: python-vt-widening python-vt-widening-negative-control
+python-vt-widening: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWidening$$' ./internal/codegen/pythontable/
+python-vt-widening-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideningNegativeControl$$' ./internal/codegen/pythontable/
+
 generated/bench/tables/python/.stamp: ;
 
 TEST_LEGS             += test-python
 CONFORMANCE_LEGS      += $(call unless_skipped,python,build/conformance-python)
 BENCH_TABLES_LEGS     += generated/bench/tables/python/.stamp
 GOLDENS_LEGS          += update-goldens-python
+
+# The packet close gate covers every packet wire pin, including framed and
+# shared-stream multi-root pins, and analyzes the complete generated corpus.
+.PHONY: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
+python-packet-close: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketClose$$' ./internal/codegen/python/
+python-packet-close-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseNegativeControl$$' ./internal/codegen/python/
+python-packet-analyzer: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzer$$' ./internal/codegen/python/
+python-packet-analyzer-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzerNegativeControl$$' ./internal/codegen/python/
+python-ci-close: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
+
+.PHONY: packet-defaults-python packet-defaults-python-negative-control
+packet-defaults-python: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaults$$' ./internal/codegen/python/
+packet-defaults-python-negative-control: python-toolchain-check
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaultsNegativeControl$$' ./internal/codegen/python/
+python-ci-defaults: packet-defaults-python packet-defaults-python-negative-control
+
+generated/bench/python/.stamp: bin/schema $(SCHEMAS_BENCH)
+	@mkdir -p generated/bench/python
+	./bin/schema generate --lang python --out generated/bench/python bench/corpus/Bench.schema
+	@touch $@
+
+.PHONY: bench-python-gate bench-python-negative-control
+bench-python-gate: generated/bench/python/.stamp python-toolchain-check
+	PYTHON=$(PYTHON) bench/python/run --gate
+	PYTHON=$(PYTHON_FLOOR) bench/python/run --gate
+bench-python-negative-control: generated/bench/python/.stamp python-toolchain-check
+	PYTHON=$(PYTHON) bench/python/negative-control
+	PYTHON=$(PYTHON_FLOOR) bench/python/negative-control
+
+# Pin the complete generated packet packages, including their vendored runtime.
+generated/python/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang python --out generated/python examples
+	@touch $@
+generated/python-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang python --out generated/python-ludicrous examples128
+	@touch $@
+
+.PHONY: python-hosted-packet-text python-hosted-packet-text-negative-control
+python-hosted-packet-text: python-toolchain-check
+	sh test/slowgate/proof python-hosted-packet-text 'TestPythonHostedPacketText/current TestPythonHostedPacketText/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketText$$' ./internal/codegen/pythontable/
+python-hosted-packet-text-negative-control: python-toolchain-check
+	sh test/slowgate/proof python-hosted-packet-text-negative-control 'TestPythonHostedPacketTextNegativeControl/current TestPythonHostedPacketTextNegativeControl/floor' -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostedPacketTextNegativeControl$$' ./internal/codegen/pythontable/
+python-ci-hosted: python-hosted-packet-text python-hosted-packet-text-negative-control

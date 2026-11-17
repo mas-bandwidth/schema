@@ -9,8 +9,8 @@
 // write side and fires a Debug.Assert in a debug build, the idiom serialize.cs
 // and the packet writer share. This driver is built Debug, so the asserts are
 // live; a listener turns a fired assert into an exception for the length of
-// one write, and the case answers "refused". The checks every build keeps
-// (enum, union tag, non-finite float, narrow text) answer -1.
+// one write, and the case answers "refused". The binary writers' value checks
+// are all such asserts (docs/SPEC.md §5.1); a -1 answer also reads "refused".
 using System;
 using System.Diagnostics;
 using System.Globalization;

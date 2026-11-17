@@ -91,7 +91,7 @@ public final class MixedHitEventMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xb7bc9ac0 && idLo == 0x15a25050) {
-                if (0 < lastField) {
+                if (0 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -131,7 +131,7 @@ public final class MixedHitEventMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7f6308be && idLo == 0x8ab37fc0) {
-                if (1 < lastField) {
+                if (1 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -171,7 +171,7 @@ public final class MixedHitEventMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x01fbc365 && idLo == 0xb059b925) {
-                if (2 < lastField) {
+                if (2 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -211,7 +211,7 @@ public final class MixedHitEventMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x12616790 && idLo == 0x8c9aa52d) {
-                if (3 < lastField) {
+                if (3 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -251,6 +251,10 @@ public final class MixedHitEventMessage {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;

@@ -384,7 +384,6 @@ public final class BenchIntsVariable {
             Value v,
             TableVariable.NodeTable nt,
             TableVariable.Report report) {
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -403,12 +402,6 @@ public final class BenchIntsVariable {
             }
             int kind = r.get8();
             if (id == F_f0) {
-                if (lastOrder > 0) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 0;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -446,20 +439,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f0 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f1) {
-                if (lastOrder > 1) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 1;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -497,20 +477,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f1 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f2) {
-                if (lastOrder > 2) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 2;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -548,20 +515,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f2 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f3) {
-                if (lastOrder > 3) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 3;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -599,20 +553,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f3 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f4) {
-                if (lastOrder > 4) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 4;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -650,20 +591,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f4 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f5) {
-                if (lastOrder > 5) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 5;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -701,20 +629,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f5 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f6) {
-                if (lastOrder > 6) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 6;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -752,20 +667,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f6 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f7) {
-                if (lastOrder > 7) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 7;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -803,20 +705,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f7 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f8) {
-                if (lastOrder > 8) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 8;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -854,20 +743,7 @@ public final class BenchIntsVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f8 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_f9) {
-                if (lastOrder > 9) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 9;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -904,13 +780,6 @@ public final class BenchIntsVariable {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
-                }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f9 == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
@@ -1014,6 +883,65 @@ public final class BenchIntsVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert v.f0 >= -100 && v.f0 <= 100 : "BenchInts.f0";
+        assert v.f1 >= 0 && v.f1 <= 65535 : "BenchInts.f1";
+        assert v.f2 >= -1000000 && v.f2 <= 1000000 : "BenchInts.f2";
+        assert v.f3 >= 0 && v.f3 <= 3 : "BenchInts.f3";
+        assert v.f4 >= -15 && v.f4 <= 15 : "BenchInts.f4";
+        assert v.f5 >= 0 && v.f5 <= 1000 : "BenchInts.f5";
+        assert v.f6 >= -2048 && v.f6 <= 2047 : "BenchInts.f6";
+        assert v.f7 >= 0 && v.f7 <= 255 : "BenchInts.f7";
+        assert v.f8 >= -600000 && v.f8 <= 600000 : "BenchInts.f8";
+        assert v.f9 >= 0 && v.f9 <= 100 : "BenchInts.f9";
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -1023,6 +951,7 @@ public final class BenchIntsVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -1058,7 +987,7 @@ public final class BenchIntsVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -1541,7 +1470,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -100, 100);
+                        long placed = in.integer(true, false, -100, 100);
                         if (!in.rejected) {
                             v.f0 = (int) placed;
                         }
@@ -1562,7 +1491,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 65535);
+                        long placed = in.integer(true, false, 0, 65535);
                         if (!in.rejected) {
                             v.f1 = (int) placed;
                         }
@@ -1583,7 +1512,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -1000000, 1000000);
+                        long placed = in.integer(true, false, -1000000, 1000000);
                         if (!in.rejected) {
                             v.f2 = (int) placed;
                         }
@@ -1604,7 +1533,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 3);
+                        long placed = in.integer(true, false, 0, 3);
                         if (!in.rejected) {
                             v.f3 = (int) placed;
                         }
@@ -1625,7 +1554,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -15, 15);
+                        long placed = in.integer(true, false, -15, 15);
                         if (!in.rejected) {
                             v.f4 = (int) placed;
                         }
@@ -1646,7 +1575,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 1000);
+                        long placed = in.integer(true, false, 0, 1000);
                         if (!in.rejected) {
                             v.f5 = (int) placed;
                         }
@@ -1667,7 +1596,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, false, -2048, 2047);
                         if (!in.rejected) {
                             v.f6 = (int) placed;
                         }
@@ -1688,7 +1617,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 255);
+                        long placed = in.integer(true, false, 0, 255);
                         if (!in.rejected) {
                             v.f7 = (int) placed;
                         }
@@ -1709,7 +1638,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -600000, 600000);
+                        long placed = in.integer(true, false, -600000, 600000);
                         if (!in.rejected) {
                             v.f8 = (int) placed;
                         }
@@ -1730,7 +1659,7 @@ public final class BenchIntsVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 100);
+                        long placed = in.integer(true, false, 0, 100);
                         if (!in.rejected) {
                             v.f9 = (int) placed;
                         }

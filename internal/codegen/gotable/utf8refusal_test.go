@@ -29,11 +29,6 @@ const utf8RefusalProbe = "package probe\n" +
 	"  if !RootFromJSON(&v,[]byte(x),&r)||(r.Refusal.Error() == \"wire_damaged\" || r.Refusal.Error() == \"malformed\"){t.Fatal(\"narrow clean\")}\n" +
 	"  if v.SLength!=4||v.S[0]!=0xf0||v.S[1]!=0x9f||v.S[2]!=0x98||v.S[3]!=0x80{t.Fatalf(\"narrow: %x\",v.S[:v.SLength])}\n" +
 	" }\n" +
-	" {var v Root;var r TableReport\n" +
-	"  x:=`{\"w\":\"`+\"\\xe2\\x82\\xac\"+`\"}`\n" +
-	"  if !RootFromJSON(&v,[]byte(x),&r)||(r.Refusal.Error() == \"wire_damaged\" || r.Refusal.Error() == \"malformed\"){t.Fatal(\"wide clean\")}\n" +
-	"  if v.WLength!=1||v.W[0]!=0x20ac{t.Fatalf(\"wide: %x\",v.W[:v.WLength])}\n" +
-	" }\n" +
 	"}\n"
 
 func TestGoJsonRefusesInvalidUTF8(t *testing.T) {

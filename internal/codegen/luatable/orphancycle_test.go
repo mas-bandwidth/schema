@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -167,13 +168,7 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 	// and loads in both the Go engine and Lua, with the reference checks placing
 	// every record (Go decodeState.cyclic, the C++ Kahn pass, and the C and Go
 	// directory checks).
-	orphanTwin := bytes.Clone(wires["pointer_orphan_cycle"])
-	const orphanSelfEdge = "\x04\x11\x02\x00"
-	const orphanAcyclicEdge = "\x04\x11\x03\x00"
-	if bytes.Count(orphanTwin, []byte(orphanSelfEdge)) != 1 {
-		t.Fatal("pointer_orphan_cycle must carry the self-referencing ListNode 2 body once")
-	}
-	orphanTwin = bytes.Replace(bytes.Replace(orphanTwin, []byte(orphanSelfEdge), []byte(orphanAcyclicEdge), 1), []byte{0x01, 0x11, 0x00}, []byte{0x01, 0x11, 0x02}, 1)
+	orphanTwin := orphanAcyclicTwin(t, wires["pointer_orphan_cycle"])
 	twinGoOK, twinGoCounts := goEngineVerdictAndCounts(t, units["pointer_orphan_cycle"], "Scene", orphanTwin)
 	if !twinGoOK {
 		t.Fatalf("pointer_orphan_cycle acyclic twin was refused by the Go engine: %s", twinGoCounts)
@@ -231,4 +226,18 @@ func TestLuaOrphanCycleAndReplacedMapEntryVectors(t *testing.T) {
 			t.Fatalf("%s is missing the all-records cycle vertex loop %q", check.path, check.needle)
 		}
 	}
+}
+
+// orphanAcyclicTwin adds a root edge and points the first node at the second.
+// Its trailer is renumbered into first-use order after adding the head ID.
+func orphanAcyclicTwin(t *testing.T, wire []byte) []byte {
+	t.Helper()
+	oldBody := []byte{1, 1, 12, 10, 2, 2, 4, 3, 17, 2, 0, 2, 1, 0, 0}
+	if len(wire) != len(oldBody)+32 || !bytes.Equal(wire[:len(oldBody)], oldBody) {
+		t.Fatal("orphan cycle body or trailer moved")
+	}
+	out := []byte{1, 1, 17, 2, 2, 12, 10, 2, 3, 4, 4, 17, 3, 0, 3, 1, 0, 0}
+	out = binary.LittleEndian.AppendUint64(out, ir.TableWireId("head"))
+	out = append(out, wire[len(oldBody):len(wire)-8]...)
+	return binary.LittleEndian.AppendUint64(out, 4)
 }

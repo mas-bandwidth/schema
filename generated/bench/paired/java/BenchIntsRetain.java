@@ -241,7 +241,6 @@ public final class BenchIntsRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -260,12 +259,6 @@ public final class BenchIntsRetain {
             }
             int kind = r.get8();
             if (id == BenchIntsVariable.F_f0) {
-                if (lastOrder > 0) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 0;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -303,20 +296,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f0 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f1) {
-                if (lastOrder > 1) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 1;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -354,20 +334,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f1 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f2) {
-                if (lastOrder > 2) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 2;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -405,20 +372,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f2 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f3) {
-                if (lastOrder > 3) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 3;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -456,20 +410,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f3 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f4) {
-                if (lastOrder > 4) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 4;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -507,20 +448,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f4 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f5) {
-                if (lastOrder > 5) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 5;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -558,20 +486,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f5 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f6) {
-                if (lastOrder > 6) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 6;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -609,20 +524,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f6 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f7) {
-                if (lastOrder > 7) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 7;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -660,20 +562,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f7 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f8) {
-                if (lastOrder > 8) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 8;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -711,20 +600,7 @@ public final class BenchIntsRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f8 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == BenchIntsVariable.F_f9) {
-                if (lastOrder > 9) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 9;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -761,13 +637,6 @@ public final class BenchIntsRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
-                }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.f9 == 0)) {
-                    report.refuse("non_canonical");
-                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
@@ -863,6 +732,7 @@ public final class BenchIntsRetain {
             TableRetain retain,
             byte[] buf,
             TableVariable.Report report) {
+        assert BenchIntsVariable.checkWrite(v);
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -919,7 +789,7 @@ public final class BenchIntsRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow || ids.nonFinite ? -1 : w.off;
+        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;
     }
 
     static void writeFieldsRetain(

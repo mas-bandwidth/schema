@@ -344,13 +344,21 @@ func TestIssue710ListRefusal(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, "package p\ntable Lists { items []int32\n past int32 }\ntable Nested { child Lists\n past int32 }\nenum Key { First }\ntable KeyedLists { items [Key]Lists\n past int32 }\n")
 	m := tabletext.NewModel(u)
-	ids := []uint64{ir.TableWireId("items"), ir.TableWireId("past"), ir.TableWireId("child"), ir.TableWireId(u.Enums["Key"].VariantWireName(0))}
-	// count 2^31, followed by a sibling that must never decode.
+	items, past, child := ir.TableWireId("items"), ir.TableWireId("past"), ir.TableWireId("child")
+	first := ir.TableWireId(u.Enums["Key"].VariantWireName(0))
+	// Count 2^31, followed by a sibling that must never decode. Each wrapper
+	// uses first-use ID order: a preceding bad reference would refuse before
+	// its count was observable, testing structural damage instead of the cap.
 	body := []byte{1, 14, 6, byte(ir.TableKindI32), 0x80, 0x80, 0x80, 0x80, 8, 2, byte(ir.TableKindI32), 42, 0, 0, 0}
-	nested := append([]byte{3, 13, byte(len(body) + 1)}, body...)
-	nested = append(nested, 0, 2, byte(ir.TableKindI32), 42, 0, 0, 0)
-	keyed := append([]byte{1, byte(ir.TableKindKeyed), byte(len(body) + 5), 13, 1, 4, byte(len(body) + 1)}, body...)
-	keyed = append(keyed, 0, 2, byte(ir.TableKindI32), 42, 0, 0, 0)
+	nestedBody := append([]byte(nil), body...)
+	nestedBody[0], nestedBody[9] = 2, 3 // child, then items, then past
+	nested := append([]byte{1, 13, byte(len(body) + 1)}, nestedBody...)
+	nested = append(nested, 0, 3, byte(ir.TableKindI32), 42, 0, 0, 0)
+	keyedBody := append([]byte(nil), body...)
+	keyedBody[9] = 3 // items, then First, then past; nested items reuses ref 1
+	keyed := append([]byte{1, byte(ir.TableKindKeyed), byte(len(body) + 5), 13, 1, 2, byte(len(body) + 1)}, keyedBody...)
+	keyed = append(keyed, 0, 3, byte(ir.TableKindI32), 42, 0, 0, 0)
+
 	dir := t.TempDir()
 	files, err := New().Generate(u, "cpp", Options{})
 	if err != nil {
@@ -366,8 +374,9 @@ func TestIssue710ListRefusal(t *testing.T) {
 	for _, tc := range []struct {
 		root string
 		body []byte
-	}{{"Lists", body}, {"Nested", nested}, {"KeyedLists", keyed}} {
-		wire := issue710Wire(tc.body, ids...)
+		ids  []uint64
+	}{{"Lists", body, []uint64{items, past}}, {"Nested", nested, []uint64{child, items, past}}, {"KeyedLists", keyed, []uint64{items, first, past}}} {
+		wire := issue710Wire(tc.body, tc.ids...)
 		v := m.New(u.Tables[tc.root])
 		var r tabletext.Report
 		ok, err := tablewire.Decode(m, v, wire, &r)
@@ -410,8 +419,9 @@ func TestIssue710ListRefusal(t *testing.T) {
 	for _, tc := range []struct {
 		root, fn string
 		body     []byte
-	}{{"Lists", "lists", body}, {"Nested", "nested", nested}, {"KeyedLists", "keyed_lists", keyed}} {
-		wire := issue710Wire(tc.body, ids...)
+		ids      []uint64
+	}{{"Lists", "lists", body, []uint64{items, past}}, {"Nested", "nested", nested, []uint64{child, items, past}}, {"KeyedLists", "keyed_lists", keyed, []uint64{items, first, past}}} {
+		wire := issue710Wire(tc.body, tc.ids...)
 		csrc.WriteString("{const uint8_t wire[]={")
 		for _, b := range wire {
 			fmt.Fprintf(&csrc, "%d,", b)

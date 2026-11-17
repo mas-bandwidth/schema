@@ -206,8 +206,13 @@ func main() {
 		print := fs.Bool("print", false, "print the lock this unit would write, and write nothing")
 		retire := fs.String("retire", "", "retire a locked layout (`Table@0x<hash>`) or a whole locked table (`Table`) — the lock's one non-append edit: nothing is removed, the entry or the block stays with its reason, and a retired table's declaration may then be dropped (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4, §11.5)")
 		reason := fs.String("reason", "", "the sentence that goes in the file beside a `--retire` mark, read years later by whoever asks why")
+		writer := fs.String("writer", "", "capture trusted historical writer metadata for one locked Table@0x<hash>")
+		from := fs.String("from", "", "historical schema unit for --writer; provenance is the caller's responsibility")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		if (*writer != "" || *from != "") && (*writer == "" || *from == "" || *retire != "" || *reason != "" || *print) {
+			fail(fmt.Errorf("--writer and --from are paired and cannot combine with --print, --retire or --reason"))
+		}
 		paths, err := compiler.GatherPaths(fs.Args())
 		if err != nil {
 			fail(err)
@@ -215,6 +220,28 @@ func main() {
 		u, err := c.Load(paths)
 		if err != nil {
 			fail(err)
+		}
+		if *writer != "" {
+			oldPaths, err := compiler.GatherPaths([]string{*from})
+			if err != nil {
+				fail(err)
+			}
+			old, err := compiler.New().Load(oldPaths)
+			if err != nil {
+				fail(err)
+			}
+			path, rewrote, err := compiler.ImportSchemaLockWriter(u, paths, *writer, old)
+			if err != nil {
+				fail(err)
+			}
+			if verbose {
+				if rewrote {
+					fmt.Printf("captured writer metadata in %s\n", path)
+				} else {
+					fmt.Printf("%s already carries this writer metadata\n", path)
+				}
+			}
+			break
 		}
 		if *print {
 			fmt.Print(compiler.SchemaLockText(u))

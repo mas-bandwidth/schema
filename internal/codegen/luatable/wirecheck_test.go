@@ -6,14 +6,13 @@ package luatable
 // to the wire's own rules, the bytes its walk skips or reads last-wins
 // included. The framing surface's vectors (docs/LAYERS/1-framing.md) are the
 // rows: each verdict in the manifest was derived from the law, never from a
-// leg, and the strict load must answer it. Ten of them (a repeated field id,
-// an array, keyed or map body with L 0 or 1, unknown field bodies, an
-// unreached node record, a node table twice) are refused by the check alone:
-// with the check switched off the walk reads them, which is the negative
-// control.
+// leg, and the strict load must answer it. Ten rows read when this check is
+// switched off: repeated or unused IDs, damaged field and collection bodies,
+// and damaged node-table framing. The negative control pins that partition.
 
 import (
 	"bufio"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // luaWireCheckCall is the strict load's one call of the check, and
@@ -43,7 +43,8 @@ func withoutWireCheck(t *testing.T, files map[string][]byte) {
 var luaWireCheckOnly = []string{
 	"array_L0_inert", "array_L1_inert", "frame_repeat_last_wins",
 	"frame_unknown_id_length", "frame_unknown_id_reference", "keyed_L1_inert",
-	"map_L1_inert", "node_index_null", "node_table_twice", "node_unknown_to_fixed_reader",
+	"map_L1_inert", "node_table_twice", "frame_unreferenced_entry",
+	"node_record_bytes_after_terminator",
 }
 
 type luaFramingRow struct {
@@ -115,7 +116,34 @@ func luaFramingVerdicts(t *testing.T, rows []luaFramingRow, units map[string][]s
 		for _, p := range paths {
 			full = append(full, filepath.Join("..", "..", "..", p))
 		}
+		// R1.Cfg is a fixed root, while its framing corpus deliberately
+		// exercises form 1. Compile a checked variable twin retaining every
+		// existing field and wire name; an unused pointer makes its mode
+		// variable without altering the pinned bytes.
+		if key == "tblr1" {
+			if len(full) != 1 {
+				t.Fatal("tblr1 framing twin expects one source")
+			}
+			source, err := os.ReadFile(full[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			const anchor = "fixed table Cfg\n{"
+			if strings.Count(string(source), anchor) != 1 {
+				t.Fatal("Cfg source twin anchor changed")
+			}
+			twin := strings.Replace(string(source), anchor, "table Cfg\n{\n    framing_probe *FramingProbe", 1)
+			twin += "\ntable FramingProbe { value int32 }\n"
+			path := filepath.Join(t.TempDir(), "R1.schema")
+			if err := os.WriteFile(path, []byte(twin), 0600); err != nil {
+				t.Fatal(err)
+			}
+			full = []string{path}
+		}
 		u := luarun.LoadUnit(t, full...)
+		if key == "tblr1" && !ir.VariableTables(u)["Cfg"] {
+			t.Fatal("Cfg framing twin is not variable")
+		}
 		files, err := Generate(u)
 		if err != nil {
 			t.Fatalf("generate %s: %v", key, err)
@@ -188,5 +216,79 @@ func TestLuaWireCheckNegativeControl(t *testing.T) {
 		if got[name] != "read" {
 			t.Errorf("%s: with the wire check off the walk answers %q, want read", name, got[name])
 		}
+	}
+}
+
+// The original fixed Cfg must still reject this same form-1 positive before
+// framing is examined; the twin exists only for the variable framing surface.
+func TestLuaFixedCfgFramingIsPreviousForm(t *testing.T) {
+	t.Parallel()
+	u := luarun.LoadUnit(t, filepath.Join("..", "..", "..", "test", "tables", "R1.schema"))
+	if ir.VariableTables(u)["Cfg"] {
+		t.Fatal("original Cfg unexpectedly variable")
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	probe := `local i = require("inputs")
+local r = {}
+local v = require("load").Load(require(i.module), "Cfg", i.wire, r)
+print(v == nil and r.reason or "read")
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "wire", "tables", "framing", "frame_empty_table.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"module": []byte(ModuleName(u)), "wire": wire})))
+	if got != "previous_form" {
+		t.Fatalf("fixed Cfg form 1: got %q, want previous_form", got)
+	}
+}
+
+// The wire-check's scratch belongs to the caller's reusable state. Both an
+// out-of-order first use and an unused ID must fail, while an ordered file
+// before and after them reads with that same state.
+func TestLuaIdFirstUseAndStateReuse(t *testing.T) {
+	t.Parallel()
+	u := luarun.LoadUnit(t, filepath.Join("..", "..", "..", "tables", "pointers"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	wire := func(refs ...byte) []byte {
+		out := []byte{1}
+		for _, ref := range refs {
+			out = append(out, ref, 4, 7, 0, 0, 0)
+		}
+		out = append(out, 0)
+		out = binary.LittleEndian.AppendUint64(out, 101)
+		out = binary.LittleEndian.AppendUint64(out, 102)
+		return binary.LittleEndian.AppendUint64(out, 2)
+	}
+	probe := `local i = require("inputs")
+local T, L = require(i.module), require("load")
+local state = L.NewState()
+for _, name in ipairs({"good", "reverse", "unused", "good"}) do
+  local r = {}
+  local v = L.Load(T, "Scene", i[name], r, state)
+  print(v and "read" or r.reason)
+end
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", map[string][]byte{
+		"module": []byte(ModuleName(u)), "good": wire(1, 2), "reverse": wire(2, 1), "unused": wire(1),
+	})))
+	if got != "read\nwire_damaged\nwire_damaged\nread" {
+		t.Fatalf("first-use and reusable state: %q", got)
 	}
 }

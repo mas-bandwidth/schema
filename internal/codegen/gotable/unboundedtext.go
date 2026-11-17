@@ -37,6 +37,10 @@ func (g *tableGen) emitReadUnboundedText(f *ir.Field, expr, ind string) {
 	holder := g.unboundedHolder(f)
 	bad := refuse("TableRefuseWireDamaged", holder, "return false")
 	g.pf("%ssub, ok := r.Body(); if !ok || !tableUTF8Valid(sub.Buffer) { %s }\n", ind, bad)
+	if g.takeElides() {
+		// empty unbounded text is elided by its writer (§2.13.1, §3)
+		g.pf("%sif len(sub.Buffer) == 0 { %s }\n", ind, bad)
+	}
 	g.pf("%sif !tableTextPlace(&r.Nodes.Carve, &%s, sub.Buffer) { if r.Nodes.Carve.Refused { return false }; %s }\n", ind, expr, bad)
 }
 
@@ -177,7 +181,7 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 	if !unitUsesTextForms(u) {
 		textListCount = 0
 	}
-	s = tableSourceReplace(s, "n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", "if v.Unbounded{t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,uintptr(v.Offset))),nil);if !ok{return false};tableJSONWriteString(out,t);return true};n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", textListCount)
+	s = tableSourceReplace(s, "if !tableJSONCountInContract(p,v){return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),tableJSONCount(p,v)));return true}", "if v.Unbounded{t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,uintptr(v.Offset))),nil);if !ok{return false};tableJSONWriteString(out,t);return true};if !tableJSONCountInContract(p,v){return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),tableJSONCount(p,v)));return true}", textListCount)
 	s = tableSourceReplace(s, "if key.Kind==12 {if n>key.ArrayBound {in.report.Refuse(TableRefuseOutOfRange,\"\");in.pos=probe.pos;good=false}else{", "if key.Kind==12 {if key.Unbounded {memory,ref:=in.graph.alloc(9+int64(n));if memory==nil{in.bad=true;return false};*(*TableBlob)(memory)=TableBlob{Length:uint32(n)};k.text=unsafe.Slice((*byte)(unsafe.Add(memory,8)),int(n));k.blob=ref;_,ok=in.scanString(k.text)}else if n>key.ArrayBound {in.report.Refuse(TableRefuseOutOfRange,\"\");in.pos=probe.pos;good=false}else{", 1)
 	s = tableSourceReplace(s, "entry.Reset(slot);tableMapStoreKey(slot,key,k);", "entry.Reset(slot);if !tableMapStoreKeyed(slot,key,k,nil){in.bad=true;return false};", 1)
 	s = tableSourceReplace(s, "// ---- json walk: end ----", unboundedTextJsonSource+"// ---- json walk: end ----", 1)

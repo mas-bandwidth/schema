@@ -163,10 +163,44 @@ func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 func TestMapCarriers(t *testing.T) {
 	// squirrel registers from compiler/target_squirrel_maps.go, which carries
 	// no build tag, so it is a carrier in every build.
-	want := withMooLeg(withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel"}))
-	if !slices.Equal(gooseLegOrdered(mapTargets), want) {
+	want := withPythonMapLeg(withMooLeg(withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel"})))
+	if !slices.Equal(pythonMapLegOrdered(gooseLegOrdered(mapTargets)), want) {
 		t.Fatalf("mapTargets = %v, want %v", mapTargets, want)
 	}
+}
+
+// The map gates name the Python leg only where the target is built in
+// (`-tags schema_leg_python`): compiler/carries_python_maps.go registers it as
+// a map carrier, from an init that runs before the targets' own files.
+func pythonMapLegBuilt() bool {
+	return slices.Contains(New().Targets(), "python")
+}
+
+// withPythonMapLeg is a sorted carrier list with python in it when the leg is
+// built.
+func withPythonMapLeg(carriers []string) []string {
+	if !pythonMapLegBuilt() {
+		return carriers
+	}
+	return slices.Sorted(slices.Values(append(slices.Clone(carriers), "python")))
+}
+
+// pythonMapLegOrdered is the registry as the gate compares it: sorted when the
+// python leg is built (its init registers first), as given otherwise.
+func pythonMapLegOrdered(registered []string) []string {
+	if !pythonMapLegBuilt() {
+		return registered
+	}
+	return slices.Sorted(slices.Values(registered))
+}
+
+// pythonMapLegSpelled is a refusal's carrier list as it reads with the python
+// leg built: python sorts right before rust.
+func pythonMapLegSpelled(s string) string {
+	if !pythonMapLegBuilt() {
+		return s
+	}
+	return strings.Replace(s, " rust and ", " python, rust and ", 1)
 }
 
 // TestMapFreeUnitIsUntouched: a unit that declares no map generates exactly
@@ -194,10 +228,13 @@ func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{mooLegSpelled(gooseLegSpelled("a map is c, cpp, cs, dart, elixir, go, java, js, lobster, lua, luau, rust and squirrel only today")), "Fleet.ships", "--lang cpp", "--lang squirrel"} {
+	for _, want := range []string{pythonMapLegSpelled(mooLegSpelled(gooseLegSpelled("a map is c, cpp, cs, dart, elixir, go, java, js, lobster, lua, luau, rust and squirrel only today"))), "Fleet.ships", "--lang cpp", "--lang squirrel"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}
+	}
+	if pythonMapLegBuilt() && !strings.Contains(err.Error(), "--lang python") {
+		t.Errorf("the carrier-form refusal does not name --lang python with the python leg built: %v", err)
 	}
 	// Registered carriers pass through refuseMaps without a refusal.
 }

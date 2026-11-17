@@ -383,7 +383,7 @@ public final class BenchMixedMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0xaa38aca4 && idLo == 0x81f528a8) {
-                if (0 < lastField) {
+                if (0 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -423,7 +423,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x0dbe005c && idLo == 0x56697c3e) {
-                if (1 < lastField) {
+                if (1 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -463,7 +463,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x9bae0da8 && idLo == 0xb829ee03) {
-                if (2 < lastField) {
+                if (2 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -503,7 +503,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xb7d7b565 && idLo == 0x0a590b05) {
-                if (3 < lastField) {
+                if (3 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -543,7 +543,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x6d7b98e2 && idLo == 0xd095967e) {
-                if (4 < lastField) {
+                if (4 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -583,7 +583,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x73a94c71 && idLo == 0xd60dc0d8) {
-                if (5 < lastField) {
+                if (5 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -625,7 +625,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x3eee6b51 && idLo == 0xbe54fc85) {
-                if (6 < lastField) {
+                if (6 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -667,7 +667,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x7bbc035f && idLo == 0x7b6d0112) {
-                if (7 < lastField) {
+                if (7 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -707,7 +707,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x3c460475 && idLo == 0xf9be69c6) {
-                if (8 < lastField) {
+                if (8 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -747,7 +747,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x935d0fb0 && idLo == 0x7bb3822a) {
-                if (9 < lastField) {
+                if (9 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -814,7 +814,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xee639cad && idLo == 0x45b1994c) {
-                if (10 < lastField) {
+                if (10 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -881,7 +881,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x2e35dc53 && idLo == 0x21aa5790) {
-                if (11 < lastField) {
+                if (11 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1024,7 +1024,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x5759ce75 && idLo == 0x86bbb5a3) {
-                if (12 < lastField) {
+                if (12 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1108,7 +1108,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x13a62f54 && idLo == 0x2cf8e86e) {
-                if (13 < lastField) {
+                if (13 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1162,7 +1162,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xcfb8a9d0 && idLo == 0x63b5e9e5) {
-                if (14 < lastField) {
+                if (14 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1211,7 +1211,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf7be5 && idLo == 0xe24296c9) {
-                if (15 < lastField) {
+                if (15 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1258,7 +1258,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf7ae5 && idLo == 0xe2429516) {
-                if (16 < lastField) {
+                if (16 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1305,7 +1305,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xdbaf79e5 && idLo == 0xe2429363) {
-                if (17 < lastField) {
+                if (17 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1352,7 +1352,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x9cef31ff && idLo == 0xf7e2e457) {
-                if (18 < lastField) {
+                if (18 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1394,7 +1394,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x5ab3f9c9 && idLo == 0x341f6c04) {
-                if (19 < lastField) {
+                if (19 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1432,7 +1432,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xa3348580 && idLo == 0x461faf16) {
-                if (20 < lastField) {
+                if (20 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1473,7 +1473,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xd61bdd79 && idLo == 0x08af2642) {
-                if (21 < lastField) {
+                if (21 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1526,7 +1526,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xbf30e00d && idLo == 0xc53307a9) {
-                if (22 < lastField) {
+                if (22 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1566,7 +1566,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x560d6527 && idLo == 0xccd8515f) {
-                if (23 < lastField) {
+                if (23 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1606,7 +1606,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xc0829217 && idLo == 0x6cfd8672) {
-                if (24 < lastField) {
+                if (24 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1646,7 +1646,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0xfd29ee12 && idLo == 0xa979cb69) {
-                if (25 < lastField) {
+                if (25 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1686,7 +1686,7 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x78101ac0 && idLo == 0xaa8cbcfe) {
-                if (26 < lastField) {
+                if (26 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1726,6 +1726,10 @@ public final class BenchMixedMessage {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;

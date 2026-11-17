@@ -241,7 +241,6 @@ public final class MixedChatEventRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -260,12 +259,6 @@ public final class MixedChatEventRetain {
             }
             int kind = r.get8();
             if (id == MixedChatEventVariable.F_channel) {
-                if (lastOrder > 0) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 0;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -303,20 +296,7 @@ public final class MixedChatEventRetain {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.channel == 0)) {
-                    report.refuse("non_canonical");
-                    return;
-                }
             } else if (id == MixedChatEventVariable.F_speaker) {
-                if (lastOrder > 1) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 1;
-                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -341,13 +321,6 @@ public final class MixedChatEventRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
-                }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.speaker == 0)) {
-                    report.refuse("non_canonical");
-                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
@@ -444,6 +417,7 @@ public final class MixedChatEventRetain {
             TableRetain retain,
             byte[] buf,
             TableVariable.Report report) {
+        assert MixedChatEventVariable.checkWrite(v);
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -500,7 +474,7 @@ public final class MixedChatEventRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow || ids.nonFinite ? -1 : w.off;
+        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;
     }
 
     static void writeFieldsRetain(

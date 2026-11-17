@@ -11,17 +11,20 @@
 // EVERY SELECTED TEST RUNS IN EXACTLY ONE ROW, by construction, and no row
 // list is a second home for the package list:
 //
-//   - a package with no `split` line in the table rides whole in one row;
+//   - a package with no `split` or `subsplit` line rides whole in one row;
 //     the light ones are packed together, greedily, heaviest first, under the
 //     budget, by the seconds the table measured for them (a package the
 //     table does not name weighs defaultWeight);
 //   - a package with `split` lines gets one row per line, `-run` that
 //     pattern, and one more row that `-skip`s every one of them: the
 //     complement, so a new test lands in that row with no edit anywhere.
+//   - `subsplit` divides a single parent's children in the same way. Each
+//     child pattern gets a row; its complement keeps future named corpus
+//     seeds, and the package complement excludes the parent altogether.
 //
 // -gotable-extras adds the two make rows go-test-touched has always run when
 // gotable is selected (schema#1376): tables-go-fixedform and
-// conformance-go-rows, each a row of its own.
+// conformance-go-rows-a and -b, each a row of its own.
 //
 // The table is .github/go-test-rows.txt; it says how it was measured.
 package main
@@ -57,6 +60,12 @@ type Row struct {
 type table struct {
 	short, plain map[string]float64
 	splits       map[string][]string
+	subsplits    map[string][]subsplit
+}
+
+type subsplit struct {
+	parent string
+	child  string
 }
 
 func main() {
@@ -75,7 +84,9 @@ func main() {
 	}
 	rows := plan(t, pkgs, *short, *budget)
 	if *extras {
-		rows = append(rows, Row{Make: "tables-go-fixedform"}, Row{Make: "conformance-go-rows"})
+		// the two conformance halves are rows of their own: whole, the target ran
+		// 156 s on a loaded bench, past the two-minute cap
+		rows = append(rows, Row{Make: "tables-go-fixedform"}, Row{Make: "conformance-go-rows-a"}, Row{Make: "conformance-go-rows-b"})
 	}
 	for i := range rows {
 		rows[i].Row = fmt.Sprintf("%d/%d", i+1, len(rows))
@@ -96,8 +107,9 @@ func fail(err error) {
 //
 //	weight <package> <short seconds> <plain seconds>
 //	split  <package> <test-name regexp>
+//	subsplit <package> <parent regexp> <child regexp>
 func readTable(path string) (table, error) {
-	t := table{short: map[string]float64{}, plain: map[string]float64{}, splits: map[string][]string{}}
+	t := table{short: map[string]float64{}, plain: map[string]float64{}, splits: map[string][]string{}, subsplits: map[string][]subsplit{}}
 	f, err := os.Open(path)
 	if err != nil {
 		return t, err
@@ -122,8 +134,10 @@ func readTable(path string) (table, error) {
 			t.short[fields[1]], t.plain[fields[1]] = s, p
 		case fields[0] == "split" && len(fields) == 3:
 			t.splits[fields[1]] = append(t.splits[fields[1]], fields[2])
+		case fields[0] == "subsplit" && len(fields) == 4:
+			t.subsplits[fields[1]] = append(t.subsplits[fields[1]], subsplit{parent: fields[2], child: fields[3]})
 		default:
-			return t, fmt.Errorf("%s:%d: want `weight <pkg> <short> <plain>` or `split <pkg> <regexp>`, got %q", path, n, line)
+			return t, fmt.Errorf("%s:%d: want weight, split or subsplit, got %q", path, n, line)
 		}
 	}
 	return t, sc.Err()
@@ -171,13 +185,30 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 	var rows []Row
 	var whole []string
 	for _, p := range pkgs {
-		pats := t.splits[p]
-		if len(pats) == 0 {
+		pats := append([]string(nil), t.splits[p]...)
+		children := t.subsplits[p]
+		if len(pats) == 0 && len(children) == 0 {
 			whole = append(whole, p)
 			continue
 		}
 		for _, pat := range pats {
 			rows = append(rows, Row{Packages: p, Run: pat})
+		}
+		// Preserve table order without iterating a map. A slash is Go's
+		// hierarchical matcher separator, so the child skip does not skip
+		// the parent before its children can be discovered.
+		var parents []string
+		byParent := map[string][]string{}
+		for _, sub := range children {
+			if _, ok := byParent[sub.parent]; !ok {
+				parents = append(parents, sub.parent)
+			}
+			byParent[sub.parent] = append(byParent[sub.parent], sub.child)
+			rows = append(rows, Row{Packages: p, Run: sub.parent + "/" + sub.child})
+		}
+		for _, parent := range parents {
+			rows = append(rows, Row{Packages: p, Run: parent, Skip: parent + "/(" + strings.Join(byParent[parent], "|") + ")"})
+			pats = append(pats, parent)
 		}
 		rows = append(rows, Row{Packages: p, Skip: strings.Join(pats, "|")})
 	}

@@ -186,7 +186,6 @@ public final class FixedTableRetain {
             TableVariable.Report report,
             int[] path,
             int depth) {
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -205,12 +204,6 @@ public final class FixedTableRetain {
             }
             int kind = r.get8();
             if (id == FixedTableVariable.F_value) {
-                if (lastOrder > 0) {
-                    report.refuse("non_canonical");
-                    return;
-                }
-                lastOrder = 0;
-                int canonAt = r.off;
                 if (kind == 13) {
                     TableVariable.Reader br = r.body();
                     if (br != null) {
@@ -228,13 +221,6 @@ public final class FixedTableRetain {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
-                }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (kind == 13 && r.off - canonAt == 2)) {
-                    report.refuse("non_canonical");
-                    return;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (r.rootBody) {
@@ -330,6 +316,7 @@ public final class FixedTableRetain {
             TableRetain retain,
             byte[] buf,
             TableVariable.Report report) {
+        assert FixedTableVariable.checkWrite(v);
         int[] path = new int[128];
         TableVariable.Ids ids = new TableVariable.Ids(64);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
@@ -386,7 +373,7 @@ public final class FixedTableRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow || ids.nonFinite ? -1 : w.off;
+        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;
     }
 
     static void writeFieldsRetain(

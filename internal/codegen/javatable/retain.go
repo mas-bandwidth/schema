@@ -160,7 +160,6 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// readFieldsRetain: the variable readFields, with capture in the unknown arm
 	// and the body's path threaded into list elements (§6.6).
 	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
-	b.WriteString("        int lastOrder = -1;\n")
 	hasReq := false
 	for i, f := range st.Fields {
 		if f.Required {
@@ -203,8 +202,6 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == %sVariable.F_%s) {\n", st.Name, varMember(f))
-		fmt.Fprintf(&b, "                if (lastOrder > %d) { report.refuse(\"non_canonical\"); return; }\n", i)
-		fmt.Fprintf(&b, "                lastOrder = %d;\n", i)
 		if f.Required {
 			fmt.Fprintf(&b, "                boolean reqMatch = (%s);\n", variableCompatibleKinds(variableWireKind(f), "kind"))
 			if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() {
@@ -215,7 +212,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 				fmt.Fprintf(&b, "                if (reqMatch) { TableVariable.Reader probe = new TableVariable.Reader(r.buf, r.ids, new TableVariable.Report()); probe.off = r.off; probe.limit = r.limit; TableVariable.Reader ar = probe.body(); reqMatch = ar != null; if (ar != null && ar.has(2)) { int pk = ar.get8(); %s; reqMatch = ar.fail || (%s); } }\n", countRead(f, "ar"), variableCompatibleKinds(elemKind, "pk"))
 			}
 		}
-		writeVariableFieldReadCanonical(&b, u, st, f, true, i)
+		writeFieldRead(&b, u, st, f, true, i, false)
 		if f.Required {
 			fmt.Fprintf(&b, "                if (!r.fail && reqMatch) { reqSeen_%d = true; }\n", i)
 		}
@@ -285,6 +282,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// saveInto: the variable save, with the retained tail appended at the end
 	// of the body, before the node table (§6.6), ids interned in first-use order.
 	fmt.Fprintf(&b, "    static int saveInto(%sVariable.Value v, TableRetain retain, byte[] buf, TableVariable.Report report) {\n", st.Name)
+	// THE WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1 rows 1-5 and 8),
+	// asserted before the graph walk exactly as the variable save asserts it
+	fmt.Fprintf(&b, "        assert %sVariable.checkWrite(v);\n", st.Name)
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
@@ -334,11 +334,12 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        }\n")
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
-	// a NaN or an infinity refuses the save (docs/SPEC-TABLES.md §3.3)
+	// a NaN or an infinity, or a ranged float off its range, refuses the save
+	// (docs/SPEC-TABLES.md §3.3, docs/SPEC.md §5.1 row 10)
 	if st.Integrity != "" {
-		b.WriteString("        if (!w.overflow && !ids.nonFinite) { w.put32(TableVariable.crc32c(w.buf, w.off)); }\n")
+		b.WriteString("        if (!w.overflow && !ids.nonFinite && !ids.offRange) { w.put32(TableVariable.crc32c(w.buf, w.off)); }\n")
 	}
-	b.WriteString("        return w.overflow || ids.nonFinite ? -1 : w.off;\n")
+	b.WriteString("        return w.overflow || ids.nonFinite || ids.offRange ? -1 : w.off;\n")
 	b.WriteString("    }\n\n")
 
 	// writeFieldsRetain: the canonical write, threading the path into list

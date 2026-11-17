@@ -75,7 +75,7 @@ public final class MixedStatMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x80ab75f0 && idLo == 0x866dbf65) {
-                if (0 < lastField) {
+                if (0 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -115,7 +115,7 @@ public final class MixedStatMessage {
                     r.report.widened++;
                 }
             } else if (idHi == 0x52076675 && idLo == 0xec13a0c1) {
-                if (1 < lastField) {
+                if (1 < lastField && r.vocab.ownBuild()) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -155,6 +155,10 @@ public final class MixedStatMessage {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;

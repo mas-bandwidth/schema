@@ -143,9 +143,14 @@ const AttachmentMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 
-// ReadAttachment reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadAttachment reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
+
+// read reads value's fields from stream without the packet's end check: a
+// Attachment nested in another value is read through it.
 
 // Buff is the storage of schema type Buff; WriteBuff and ReadBuff carry it on
 // the wire.
@@ -174,9 +179,13 @@ const BuffMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 
-// ReadBuff reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadBuff reads one packet holding value from stream, validating every field,
+// then checks the packet's end: a whole byte left after the value, or a set
+// unused bit in the final byte, is refused. It returns the stream's error, or
+// ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.
+
+// read reads value's fields from stream without the packet's end check: a Buff
+// nested in another value is read through it.
 
 // Debuff is the storage of schema type Debuff; WriteDebuff and ReadDebuff carry
 // it on the wire.
@@ -205,9 +214,14 @@ const DebuffMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 
-// ReadDebuff reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadDebuff reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
+
+// read reads value's fields from stream without the packet's end check: a
+// Debuff nested in another value is read through it.
 
 // EffectType is the tag of union Effect: None = 0, then each arm in declared
 // order.
@@ -270,6 +284,11 @@ const EffectMaxBytes = 8
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 
-// ReadEffect reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadEffect reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
+
+// read reads value's fields from stream without the packet's end check: a
+// Effect nested in another value is read through it.

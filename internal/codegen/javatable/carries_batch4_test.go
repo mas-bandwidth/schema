@@ -193,12 +193,15 @@ public final class Main {
             throw new AssertionError("expected malformed UTF-8 refusal");
         }
 
-        // 7. Writer preflight refusal on element past M and count past N
+        // 7. Writer preflight on element past M and count past N: the debug
+        // contract asserts, and the graph still refuses the same value
         ListsVariable.Value badElem = new ListsVariable.Value();
         ListsRulesTextVariable.Value eTooLong = new ListsRulesTextVariable.Value();
         eTooLong.value = "123456789";
         badElem.rules.add(eTooLong);
-        if (ListsVariable.save(badElem) != null || ListsVariable.toJson(badElem) != null) {
+        boolean elemAsserted = false;
+        try { ListsVariable.save(badElem); } catch (AssertionError e) { elemAsserted = true; }
+        if (!elemAsserted || ListsVariable.toJson(badElem) != null) {
             throw new AssertionError("writer accepted element past M");
         }
         ListsVariable.Value badCount = new ListsVariable.Value();
@@ -207,7 +210,9 @@ public final class Main {
             item.value = "a";
             badCount.rules.add(item);
         }
-        if (ListsVariable.save(badCount) != null || ListsVariable.toJson(badCount) != null) {
+        boolean countAsserted = false;
+        try { ListsVariable.save(badCount); } catch (AssertionError e) { countAsserted = true; }
+        if (!countAsserted || ListsVariable.toJson(badCount) != null) {
             throw new AssertionError("writer accepted count past N");
         }
         System.out.println("TEXT_LIST_OK");
@@ -364,14 +369,17 @@ public final class Main {
             }
         }
 
-        // 4. Writer preflight refusal on total overflow
+        // 4. Writer preflight on total overflow: the debug contract asserts,
+        // and the text writer still refuses the same value
         TotalsVariable.Value badA = new TotalsVariable.Value();
         for (int i = 0; i < 2; i++) {
             TotalsATextVariable.Value e = new TotalsATextVariable.Value();
             e.value = "abc";
             badA.a.add(e);
         }
-        if (TotalsVariable.save(badA) != null || TotalsVariable.toJson(badA) != null) {
+        boolean aAsserted = false;
+        try { TotalsVariable.save(badA); } catch (AssertionError e) { aAsserted = true; }
+        if (!aAsserted || TotalsVariable.toJson(badA) != null) {
             throw new AssertionError("writer accepted total overflow on a");
         }
         TotalsVariable.Value badB = new TotalsVariable.Value();
@@ -381,7 +389,9 @@ public final class Main {
             e.valuePresent = true;
             badB.b.add(e);
         }
-        if (TotalsVariable.save(badB) != null || TotalsVariable.toJson(badB) != null) {
+        boolean bAsserted = false;
+        try { TotalsVariable.save(badB); } catch (AssertionError e) { bAsserted = true; }
+        if (!bAsserted || TotalsVariable.toJson(badB) != null) {
             throw new AssertionError("writer accepted total overflow on b");
         }
 

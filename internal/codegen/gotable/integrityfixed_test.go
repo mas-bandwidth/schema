@@ -80,12 +80,16 @@ func TestIntegrityFixed(t *testing.T) {
 	if got := hex.EncodeToString(kw); got != "` + integrityFixedGolden + `" { t.Fatalf("Reading golden: %s", got) }
 	body := kw[:len(kw)-4]
 	if binary.LittleEndian.Uint32(kw[len(body):]) != crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)) { t.Fatalf("trailer is not the CRC-32C of the bytes before it") }
-	// THE CLEAN ROUND TRIP, and the empty file of zero records too.
+	// THE CLEAN ROUND TRIP, and the at-least-one-record rule: a save of zero
+	// records refuses before it writes, and a header and layout followed by no
+	// record is refused rather than read as a batch of none.
 	got, n, r := load(kw)
 	if n != 3 || r != (TableReport{}) || got[0] != rv[0] || got[1] != rv[1] || got[2] != rv[2] || got[3] != sentinel { t.Fatalf("round trip: n=%d report=%+v got=%+v", n, r, got) }
 	empty := make([]byte, ReadingFixedMeasure(0))
-	if ReadingFixedSave(nil, empty) != int64(len(empty)) { t.Fatal("empty save") }
-	if _, n, r := load(empty); n != 0 || r != (TableReport{}) { t.Fatalf("empty round trip: n=%d %+v", n, r) }
+	if ReadingFixedSave(nil, empty) != -1 { t.Fatal("empty save") }
+	noRecordBody := body[:len(body)-len(rv)*int(ReadingFixedRecordBytes)]
+	noRecord := binary.LittleEndian.AppendUint32(append([]byte(nil), noRecordBody...), crc32.Checksum(noRecordBody, crc32.MakeTable(crc32.Castagnoli)))
+	if _, n, r := load(noRecord); n != -1 || r.Err() == nil { t.Fatalf("no-record file: n=%d %+v", n, r) }
 	// EVERY SINGLE-BIT FLIP AND EVERY 0xff OF EVERY BYTE IS REFUSED BY NAME:
 	// the form byte keeps its §3.4 name, and every other byte, the trailer's
 	// own included, is integrity_mismatch with nothing landed (§2.14).

@@ -28,12 +28,12 @@ func TestGoPacketWriteRefusesOffRangeCompressedFloat(t *testing.T) {
 
 	for _, decl := range []string{"func WriteSingle(", "func WriteFlat("} {
 		body := funcBody(t, files, decl)
-		fold := strings.Index(body, "normalizedValue :=")
-		if fold < 0 {
+		before, _, ok := strings.Cut(body, "normalizedValue :=")
+		if !ok {
 			t.Errorf("%s does not fold the compressed float\n%s", decl, body)
 			continue
 		}
-		guard := body[:fold]
+		guard := before
 		for _, refuse := range []string{"return serialize.ErrNonFiniteFloat", "return serialize.ErrValueOutOfRange"} {
 			if !strings.Contains(guard, refuse) {
 				t.Errorf("%s does not refuse before the fold with %q\n%s", decl, refuse, body)
@@ -55,7 +55,7 @@ func cfloatField(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.Contains(line, "float32") {
 			return strings.TrimSpace(line)
 		}
@@ -78,7 +78,7 @@ func cfloatCases(t *testing.T) []cfloatCase {
 		t.Fatal(err)
 	}
 	var out []cfloatCase
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

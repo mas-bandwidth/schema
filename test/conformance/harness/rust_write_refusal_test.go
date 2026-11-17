@@ -16,6 +16,15 @@ func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 	root := conformanceRoot(t)
 	build := exec.Command("make", "build/conformance-rust")
 	build.Dir = root
+	// This gate checks the debug writer's refusal, so optimization and debug
+	// symbols add build work without changing its assertion coverage. Keep the
+	// assertions explicit; the row must also fit with a cold target.
+	build.Env = append(os.Environ(),
+		"CARGO_PROFILE_DEV_OPT_LEVEL=0",
+		"CARGO_PROFILE_DEV_DEBUG=0",
+		"CARGO_PROFILE_DEV_INCREMENTAL=false",
+		"CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=true",
+	)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("make build/conformance-rust: %v\n%s", err, out)
 	}

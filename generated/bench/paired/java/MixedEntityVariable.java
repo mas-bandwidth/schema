@@ -412,7 +412,6 @@ public final class MixedEntityVariable {
             Value v,
             TableVariable.NodeTable nt,
             TableVariable.Report report) {
-        int lastOrder = -1;
         while (true) {
             long ref = r.leb();
             if (r.fail) {
@@ -431,12 +430,6 @@ public final class MixedEntityVariable {
             }
             int kind = r.get8();
             if (id == F_entityId) {
-                if (lastOrder > 0) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 0;
-                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -462,20 +455,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.entityId == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_posX) {
-                if (lastOrder > 1) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 1;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -513,20 +493,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.posX == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_posY) {
-                if (lastOrder > 2) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 2;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -564,20 +531,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.posY == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_posZ) {
-                if (lastOrder > 3) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 3;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -615,20 +569,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.posZ == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_yaw) {
-                if (lastOrder > 4) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 4;
-                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -654,20 +595,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.yaw == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_pitch) {
-                if (lastOrder > 5) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 5;
-                int canonUnk = report.unknown;
                 if (kind == 7 || kind == 6) {
                     if (kind == 7) {
                         if (r.has(2)) {
@@ -693,20 +621,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.pitch == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_velX) {
-                if (lastOrder > 6) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 6;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -744,20 +659,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.velX == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_velY) {
-                if (lastOrder > 7) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 7;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -795,20 +697,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.velY == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_velZ) {
-                if (lastOrder > 8) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 8;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -846,20 +735,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.velZ == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_health) {
-                if (lastOrder > 9) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 9;
-                int canonUnk = report.unknown;
                 if (kind == 4 || kind == 2 || kind == 3) {
                     if (kind == 4) {
                         if (r.has(4)) {
@@ -897,20 +773,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.health == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_weapon) {
-                if (lastOrder > 10) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 10;
-                int canonUnk = report.unknown;
                 if (kind == 30) {
                     long vref = r.leb();
                     if (!r.fail) {
@@ -927,20 +790,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.weapon == 0)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_damage) {
-                if (lastOrder > 11) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 11;
-                int canonUnk = report.unknown;
                 if (kind == 9 || kind == 8 || kind == 7 || kind == 6) {
                     if (kind == 9) {
                         if (r.has(8)) {
@@ -978,20 +828,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.damage == 0L)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_moving) {
-                if (lastOrder > 12) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 12;
-                int canonUnk = report.unknown;
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
@@ -1007,20 +844,7 @@ public final class MixedEntityVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.moving == false)) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
             } else if (id == F_firing) {
-                if (lastOrder > 13) {
-                    report.refuse("non_canonical");
-                    return false;
-                }
-                lastOrder = 13;
-                int canonUnk = report.unknown;
                 if (kind == 1) {
                     if (r.has(1)) {
                         int bv = r.get8();
@@ -1035,13 +859,6 @@ public final class MixedEntityVariable {
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
-                }
-                if (!r.fail
-                        && !report.refused
-                        && !report.damaged
-                        && (report.unknown == canonUnk && v.firing == false)) {
-                    report.refuse("non_canonical");
-                    return false;
                 }
             } else if (id == TableVariable.NODE_ID) {
                 if (nt != null && r.rootBody) {
@@ -1214,6 +1031,66 @@ public final class MixedEntityVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller. It reaches every table the
+    // value points to, each once, so a cycle ends it.
+    static boolean checkWrite(Value v) {
+        TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
+        walk.point(v);
+        for (Object o = walk.next(); o != null; o = walk.next()) {
+            if (o instanceof BenchBitsVariable.Value) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchIntsVariable.Value) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) o, walk);
+            }
+            if (o instanceof BenchMixedVariable.Value) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) o, walk);
+            }
+            if (o instanceof BenchPacketVariable.Value) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) o, walk);
+            }
+            if (o instanceof FixedTableVariable.Value) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) o, walk);
+            }
+            if (o instanceof MixedChatEventVariable.Value) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedEntityVariable.Value) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) o, walk);
+            }
+            if (o instanceof MixedHitEventVariable.Value) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedPickupEventVariable.Value) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+            }
+            if (o instanceof MixedStatVariable.Value) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
+            }
+        }
+        return true;
+    }
+
+    static boolean checkWrite(Value v, TableVariable.WriteCheck walk) {
+        if (v == null) {
+            return true;
+        }
+        assert (v.entityId & 0xffffffffL) <= 0xfffL : "MixedEntity.entity_id";
+        assert v.posX >= -16383 && v.posX <= 16383 : "MixedEntity.pos_x";
+        assert v.posY >= -16383 && v.posY <= 16383 : "MixedEntity.pos_y";
+        assert v.posZ >= -16383 && v.posZ <= 16383 : "MixedEntity.pos_z";
+        assert (v.yaw & 0xffffffffL) <= 0x1ffL : "MixedEntity.yaw";
+        assert (v.pitch & 0xffffffffL) <= 0x1ffL : "MixedEntity.pitch";
+        assert v.velX >= -2048 && v.velX <= 2047 : "MixedEntity.vel_x";
+        assert v.velY >= -2048 && v.velY <= 2047 : "MixedEntity.vel_y";
+        assert v.velZ >= -2048 && v.velZ <= 2047 : "MixedEntity.vel_z";
+        assert v.health >= 0 && v.health <= 1000 : "MixedEntity.health";
+        assert v.weapon >= 0 && v.weapon <= 15 : "MixedEntity.weapon";
+        return true;
+    }
+
     private static int weaponEnum(long vid, TableVariable.Report report) {
         if (vid == 0xa790eee12766cf0cL) {
             return 1;
@@ -1273,6 +1150,7 @@ public final class MixedEntityVariable {
     public static byte[] save(Value v, TableVariable.Saver saver) {
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
+        assert checkWrite(v);
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;
@@ -1308,7 +1186,7 @@ public final class MixedEntityVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite) {
+        if (w.ids.nonFinite || w.ids.offRange) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -1886,7 +1764,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0xfffL);
+                        long placed = in.integer(false, false, 0L, 0xfffL);
                         if (!in.rejected) {
                             v.entityId = (int) placed;
                         }
@@ -1907,7 +1785,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, false, -16383, 16383);
                         if (!in.rejected) {
                             v.posX = (int) placed;
                         }
@@ -1928,7 +1806,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, false, -16383, 16383);
                         if (!in.rejected) {
                             v.posY = (int) placed;
                         }
@@ -1949,7 +1827,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, false, -16383, 16383);
                         if (!in.rejected) {
                             v.posZ = (int) placed;
                         }
@@ -1970,7 +1848,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x1ffL);
+                        long placed = in.integer(false, false, 0L, 0x1ffL);
                         if (!in.rejected) {
                             v.yaw = (int) placed;
                         }
@@ -1991,7 +1869,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(false, 0L, 0x1ffL);
+                        long placed = in.integer(false, false, 0L, 0x1ffL);
                         if (!in.rejected) {
                             v.pitch = (int) placed;
                         }
@@ -2012,7 +1890,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, false, -2048, 2047);
                         if (!in.rejected) {
                             v.velX = (int) placed;
                         }
@@ -2033,7 +1911,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, false, -2048, 2047);
                         if (!in.rejected) {
                             v.velY = (int) placed;
                         }
@@ -2054,7 +1932,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, false, -2048, 2047);
                         if (!in.rejected) {
                             v.velZ = (int) placed;
                         }
@@ -2075,7 +1953,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        long placed = in.integer(true, 0, 1000);
+                        long placed = in.integer(true, false, 0, 1000);
                         if (!in.rejected) {
                             v.health = (int) placed;
                         }
@@ -2222,5 +2100,28 @@ public final class MixedEntityVariable {
             in.bad = true;
             return;
         }
+    }
+
+    /**
+     * carry a MixedEntityFixed value into this value (the text form's reader of a fixed root's
+     * value; docs/SPEC-TABLES.md §16, §3.4).
+     */
+    public static Value fromFixed(MixedEntityFixed.Value fixed) {
+        Value v = new Value();
+        v.entityId = fixed.entityId;
+        v.posX = fixed.posX;
+        v.posY = fixed.posY;
+        v.posZ = fixed.posZ;
+        v.yaw = fixed.yaw;
+        v.pitch = fixed.pitch;
+        v.velX = fixed.velX;
+        v.velY = fixed.velY;
+        v.velZ = fixed.velZ;
+        v.health = fixed.health;
+        v.weapon = (fixed.weapon & 0xFF);
+        v.damage = fixed.damage;
+        v.moving = fixed.moving;
+        v.firing = fixed.firing;
+        return v;
     }
 }

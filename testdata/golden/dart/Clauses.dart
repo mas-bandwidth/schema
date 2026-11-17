@@ -2339,7 +2339,6 @@ int readEmptyABits(EmptyA value, ByteData view, int numBits, int bitOffset) {
   if (bitOffset < 0 || bitOffset > numBits) {
     return -1; // the start lies inside the bits the caller vouches for
   }
-  var bitsRead = bitOffset;
   return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
@@ -2413,7 +2412,6 @@ int readEmptyBBits(EmptyB value, ByteData view, int numBits, int bitOffset) {
   if (bitOffset < 0 || bitOffset > numBits) {
     return -1; // the start lies inside the bits the caller vouches for
   }
-  var bitsRead = bitOffset;
   return 0; // empty body — presence is the payload (SPEC §4.6)
 }
 
