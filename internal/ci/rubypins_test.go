@@ -156,6 +156,19 @@ func TestRubyPins(t *testing.T) {
 			t.Errorf(".github/workflows/ruby-leg.yml does not name %q", want)
 		}
 	}
+	// A cache miss builds both CRubies from source, which no push or pull
+	// request's two minutes holds: the leg runs nightly and on dispatch only.
+	triggers := workflowTriggerBranches(workflow)
+	for _, event := range []string{"schedule", "workflow_dispatch"} {
+		if _, ok := triggers[event]; !ok {
+			t.Errorf(".github/workflows/ruby-leg.yml does not trigger on %s", event)
+		}
+	}
+	for _, event := range []string{"push", "pull_request", "pull_request_target"} {
+		if _, ok := triggers[event]; ok {
+			t.Errorf(".github/workflows/ruby-leg.yml triggers on %s: it builds two interpreters on a cache miss and runs nightly and on dispatch only", event)
+		}
+	}
 
 	checkPath := filepath.Join(root, "make", "ruby-toolchain-check.sh")
 	if _, err := os.Stat(checkPath); err != nil {

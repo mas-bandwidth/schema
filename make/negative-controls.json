@@ -3449,7 +3449,7 @@
     },
     {
       "target": "ruby-toolchain-negative-control",
-      "reason": "the Ruby leg's toolchain control (make/ruby-toolchain.mk) needs the two pinned CRuby interpreters and their analyzers, which .github/actions/ruby restores into dist/. It runs in the leg's own workflow, .github/workflows/ruby-leg.yml, on every pull request and push that touches the leg, right beside the ruby-toolchain-check it controls; the shared negative-control rows carry no Ruby pin, so running it there would refuse at the missing interpreters before the control ran."
+      "reason": "the Ruby leg's toolchain control (make/ruby-toolchain.mk) needs the two pinned CRuby interpreters and their analyzers, which .github/actions/ruby restores into dist/. It runs in the leg's own workflow, .github/workflows/ruby-leg.yml, nightly and on dispatch on the fleet and on macOS, right beside the ruby-toolchain-check it controls. No group of this plan restores the Ruby pins (a group has no Ruby toolchain field, so an entry under make/negative-controls.d/ cannot give it them), and running it in a shared row would refuse at the missing interpreters before the control ran."
     }
   ]
 }

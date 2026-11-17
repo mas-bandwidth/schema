@@ -11,53 +11,55 @@ name: ruby leg
 # Until the skeleton lands make/ruby.mk and defines test-ruby, this runs the
 # toolchain check, and it always runs the toolchain control.
 #
-# A GITHUB-HOSTED RUNNER, so a fork's pull request may run it: the job runs
-# the repository's own code against pinned tools and holds no secret.
+# NIGHTLY AND DISPATCH ONLY. On a cache miss the hosted macOS row builds both
+# CRubies from source, which does not fit a push or pull request's two
+# minutes (internal/ci/nightly_test.go), so this is off those events. The
+# macOS job carries no timeout: a nightly run has no time limit. The fleet job
+# carries the bound every self-hosted job carries
+# (internal/ci/selfhosted_bounds_test.go).
 
 on:
-  push:
-    branches: [ main, dev ]
-    paths:
-      - 'make/ruby*'
-      - '.github/workflows/ruby-leg.yml'
-      - '.github/actions/ruby/**'
-      - 'internal/ci/rubypins_test.go'
-      - 'docs/PORT-RUBY.md'
-  pull_request:
-    paths:
-      - 'make/ruby*'
-      - '.github/workflows/ruby-leg.yml'
-      - '.github/actions/ruby/**'
-      - 'internal/ci/rubypins_test.go'
-      - 'docs/PORT-RUBY.md'
+  schedule:
+    - cron: '29 6 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
-    name: make test-ruby (${{ matrix.os }})
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: fleet, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: macos-latest, runner: macos-latest }
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 2
+    name: make test-ruby (fleet)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/ruby
+      - name: make test-ruby (or the toolchain check until the skeleton lands)
+        run: |
+          if make -n test-ruby >/dev/null 2>&1; then
+            make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
+          else
+            make ruby-toolchain-check
+          fi
+      - name: make ruby-toolchain-negative-control
+        run: make ruby-toolchain-negative-control
+
+  macos:
+    name: make test-ruby (macos-latest)
+    runs-on: macos-latest
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: runner.environment == 'github-hosted'
         with:
           go-version-file: go.mod
           cache: false
