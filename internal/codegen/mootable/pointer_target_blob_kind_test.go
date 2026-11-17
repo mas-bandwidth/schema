@@ -1,7 +1,9 @@
 package mootable_test
 
 import (
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +36,9 @@ func TestMooPointerTargetBlobKindRefused(t *testing.T) {
 	}
 	var rows []blobKindRow
 	units := map[string]bool{}
-	for i, line := range strings.Split(string(manifest), "\n") {
+	i := -1
+	for line := range strings.SplitSeq(string(manifest), "\n") {
+		i++
 		line = strings.TrimRight(line, "\r")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -124,52 +128,150 @@ func TestMooPointerTargetBlobKindRefused(t *testing.T) {
 		}
 	})
 
+	// THE FEATURE WITNESSES (testdata/conformance/feature-witnesses/
+	// pointer-targets/cases.json): the engine saves each row's input at its
+	// writer root and is the oracle for the read at its reader root; the leg's
+	// three read paths must answer the same verdict and unknown count. Rows 8,
+	// 9 and 10 (a declared table, then each blob kind, outside the reader
+	// root's closure) are the refusals this ruling flipped.
+	t.Run("the pointer-target feature witnesses answer the engine's verdict", func(t *testing.T) {
+		const witnessDir = "testdata/conformance/feature-witnesses/pointer-targets"
+		dir := filepath.Join(root, witnessDir)
+		m := engineModel(t, dir)
+		data, err := os.ReadFile(filepath.Join(dir, "cases.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cases []pointerWitnessCase
+		if err := json.Unmarshal(data, &cases); err != nil {
+			t.Fatal(err)
+		}
+		flipped := map[int]string{8: "table outside root closure", 9: "bytes outside root closure", 10: "string outside root closure"}
+		for n, name := range flipped {
+			if len(cases) < n || cases[n-1].Name != name || cases[n-1].KindMismatch == 0 {
+				t.Fatalf("cases.json row %d is not the refused %q", n, name)
+			}
+		}
+		var witnessRows []blobKindRow
+		witnessInputs := map[string][]byte{}
+		for _, c := range cases {
+			writer, reader := m.Lookup(c.Writer), m.Lookup(c.Reader)
+			if writer == nil || reader == nil {
+				t.Fatalf("%s: no table %q or %q", c.Name, c.Writer, c.Reader)
+			}
+			v := m.New(writer)
+			var r tabletext.Report
+			if !m.Read(v, c.Input, &r) || !r.Silent() {
+				t.Fatalf("%s: the writer's input does not read: %+v", c.Name, r)
+			}
+			wire, err := tablewire.Encode(m, v)
+			if err != nil {
+				t.Fatalf("%s: Encode: %v", c.Name, err)
+			}
+			var report tabletext.Report
+			ok, err := tablewire.Decode(m, m.New(reader), wire, &report)
+			engineRead := ok && err == nil && !report.Refused
+			if engineRead != (c.KindMismatch == 0) || (engineRead && report.Unknown != c.Unknown) {
+				t.Fatalf("%s: the engine answers read=%v unknown %d against cases.json kind_mismatch %d unknown %d", c.Name, engineRead, report.Unknown, c.KindMismatch, c.Unknown)
+			}
+			witnessRows = append(witnessRows, blobKindRow{caseName: c.Name, unit: witnessDir, root: c.Reader, read: engineRead, unknown: report.Unknown})
+			witnessInputs[c.Name] = wire
+		}
+		g := generateSchemaDir(t, dir)
+		got := map[string]map[string]blobKindAnswer{witnessDir: runBlobKindReads(t, g, witnessRows, witnessInputs)}
+		for _, p := range blobKindProblems(witnessRows, got) {
+			t.Error(p)
+		}
+	})
+
 	// A CONFORMING WRITER NEVER EMITS A BLOB RECORD NO POINTER REACHES: the
-	// leg's save (plain and retaining) of each writer root, the blob set or
-	// null, reads back under the engine accepted with nothing unknown.
+	// leg's save (plain and retaining) of each writer root, each blob field
+	// set, empty or null, reads back under the engine accepted with nothing
+	// unknown and the field's value intact, so a save that dropped the blob
+	// (or never set it) cannot pass as the null save.
 	t.Run("the writer emits no unreachable blob record", func(t *testing.T) {
 		const writerUnit = "test/pointer-target-type/blobkind/writer"
 		g := generateSchemaDir(t, filepath.Join(root, writerUnit))
-		paths, err := compiler.GatherPaths([]string{filepath.Join(root, writerUnit)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		u, err := compiler.New().Load(paths)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m := tabletext.NewModel(u)
+		m := engineModel(t, filepath.Join(root, writerUnit))
 		out := g.run(t, blobKindWriterProbe(g), nil)
-		seen := 0
+		seen := map[string]bool{}
 		for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 			f := strings.Split(line, "\t")
-			if len(f) != 3 {
+			if len(f) != 5 {
 				t.Fatalf("the writer probe printed %q", line)
 			}
-			label, path, hexWire := f[0], f[1], f[2]
+			rootName, field, state, path, hexWire := f[0], f[1], f[2], f[3], f[4]
+			label := rootName + "." + field + " " + state + " (" + path + ")"
 			if !strings.HasPrefix(hexWire, "x") {
-				t.Fatalf("%s (%s): the save refused: %s", label, path, hexWire)
+				t.Fatalf("%s: the save refused: %s", label, hexWire)
 			}
 			wire, err := hex.DecodeString(strings.TrimPrefix(hexWire, "x"))
 			if err != nil {
-				t.Fatalf("%s (%s): bad hex %q: %v", label, path, hexWire, err)
+				t.Fatalf("%s: bad hex %q: %v", label, hexWire, err)
 			}
-			root, _, _ := strings.Cut(label, ".")
-			def := m.Lookup(root)
+			def := m.Lookup(rootName)
 			if def == nil {
-				t.Fatalf("%s: no engine table %q", label, root)
+				t.Fatalf("%s: no engine table %q", label, rootName)
 			}
+			dest := m.New(def)
 			var report tabletext.Report
-			ok, err := tablewire.Decode(m, m.New(def), wire, &report)
+			ok, err := tablewire.Decode(m, dest, wire, &report)
 			if !ok || err != nil || report.Refused || report.Unknown != 0 {
-				t.Errorf("%s (%s): the writer emitted a wire the engine does not read clean: %v %+v", label, path, err, report)
+				t.Errorf("%s: the writer emitted a wire the engine does not read clean: %v %+v", label, err, report)
+				continue
 			}
-			seen++
+			text, err := m.Write(dest)
+			if err != nil {
+				t.Fatalf("%s: Write: %v", label, err)
+			}
+			var value map[string]any
+			if err := json.Unmarshal(text, &value); err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]any{"null": nil, "empty": ""}[state]
+			if state == "set" {
+				want = "hello"
+				if field != "body" {
+					want = base64.StdEncoding.EncodeToString([]byte("hello"))
+				}
+			}
+			if value[field] != want {
+				t.Errorf("%s: the engine reads %s = %v from %s, want %v", label, field, value[field], hexWire, want)
+			}
+			seen[rootName+"."+field+" "+state+" "+path] = true
 		}
-		if seen == 0 {
-			t.Fatal("the writer probe answered no save")
+		for _, rf := range []string{"Text.body", "Text.extra", "Bin.data"} {
+			for _, state := range []string{"set", "empty", "null"} {
+				for _, path := range []string{"save", "retain"} {
+					if !seen[rf+" "+state+" "+path] {
+						t.Errorf("the writer probe answered no %s %s save (%s)", rf, state, path)
+					}
+				}
+			}
 		}
 	})
+}
+
+// pointerWitnessCase is one row of the pointer-target feature witnesses.
+type pointerWitnessCase struct {
+	Name, Writer, Reader string
+	Input                json.RawMessage
+	KindMismatch         int `json:"kind_mismatch"`
+	Unknown              int
+}
+
+// engineModel compiles one schema directory into the engine's model.
+func engineModel(t *testing.T, dir string) *tabletext.Model {
+	t.Helper()
+	paths, err := compiler.GatherPaths([]string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tabletext.NewModel(u)
 }
 
 // blobKindRow is one row of the blob-kind manifest.
@@ -257,9 +359,11 @@ end
 	return answers
 }
 
-// blobKindWriterProbe constructs each writer root with its blob field set and
-// null, saves it plainly and retaining, and prints label, path and the wire as
-// hex. A refusal prints its name where the hex would be.
+// blobKindWriterProbe constructs each writer root with one blob field set,
+// empty or null, saves it plainly and retaining, and prints root, field,
+// state, path and the wire as hex. A refusal prints its name where the hex
+// would be. A record's slot is the field's exported name (desc.go), not the
+// schema name.
 func blobKindWriterProbe(g *generatedUnit) string {
 	return "--!strict\nlocal L = require(\"./table_load\")\nlocal R = require(\"./table_retain\")\nlocal W = require(\"./table_save\")\nlocal St = require(\"./schema_tables\")\n" +
 		g.requireAll() + `local function hex(b: buffer): string
@@ -269,23 +373,24 @@ func blobKindWriterProbe(g *generatedUnit) string {
 	end
 	return "x" .. table.concat(parts)
 end
-local function emit(root: string, field: string, data: string?)
+local function emit(root: string, field: string, slot: string, state: string, data: string?)
 	local d = St.lookup(root)
 	local v = d.new()
 	if data ~= nil then
-		v[field] = buffer.fromstring(data)
+		v[slot] = buffer.fromstring(data)
 	end
 	local out, why = W.save(d, v)
-	print(string.format("%s.%s\tset\t%s", root, field, if out ~= nil then hex(out) else "SAVENIL " .. tostring(why.name)))
+	print(string.format("%s\t%s\t%s\tsave\t%s", root, field, state, if out ~= nil then hex(out) else "SAVENIL " .. tostring(why.name)))
 	local report = L.newReport()
 	local store = R.newStore(16777216, nil)
 	local kept, whyKept = R.SaveRetain(root, v, store, report)
-	print(string.format("%s.%s\tretain\t%s", root, field, if kept ~= nil then hex(kept) else "SAVENIL " .. tostring(whyKept.name)))
+	print(string.format("%s\t%s\t%s\tretain\t%s", root, field, state, if kept ~= nil then hex(kept) else "SAVENIL " .. tostring(whyKept.name)))
 end
-emit("Text", "body", "hello")
-emit("Text", "body", nil)
-emit("Bin", "data", "hello")
-emit("Bin", "data", nil)
+for _, f in { { "Text", "body", "Body" }, { "Text", "extra", "Extra" }, { "Bin", "data", "Data" } } do
+	emit(f[1], f[2], f[3], "set", "hello")
+	emit(f[1], f[2], f[3], "empty", "")
+	emit(f[1], f[2], f[3], "null", nil)
+end
 `
 }
 
