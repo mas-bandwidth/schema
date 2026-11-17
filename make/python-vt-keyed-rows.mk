@@ -10,9 +10,11 @@
 # fixed reader's slot order) and requires the rows each reaches to go red by
 # name; the control row is
 # make/negative-controls.d/python-vt-keyed-rows-negative-control.json. Both
-# tests run in the automatically discovered package rows of the per-commit
-# Python plan (tools/python-ci-rows.sh).
+# targets are registered as CI support rows of the per-commit Python plan, as
+# every test-python prerequisite must be (internal/ci
+# TestPythonCISupportCoversEveryPrerequisite).
 .PHONY: python-vt-keyed-rows python-vt-keyed-rows-negative-control
+PYTHON_CI_SUPPORT_GROUPS += python-vt-keyed-rows python-vt-keyed-rows-negative-control
 test-python: python-vt-keyed-rows python-vt-keyed-rows-negative-control
 
 python-vt-keyed-rows: python-toolchain-check
