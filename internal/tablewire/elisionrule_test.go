@@ -494,6 +494,75 @@ fixed table Root {
 	}
 }
 
+// §3.3 (c) is not gated on the build version: a union FIELD this reader names,
+// written with arm reference 0, is refused whether the batch announces this
+// reader's build or another one, because no message field can be Required.
+// The writer's batch of the same value (the union elided) reads under both,
+// and a None element of an array of unions stays positional and reads.
+func TestMessageReadRefusesUnionNoneFieldAtEveryBuild(t *testing.T) {
+	t.Parallel()
+	m := covModel(t, `package messagenone
+union Choice { item uint8 }
+fixed table Root {
+    tick uint8
+    choice Choice
+    choices [..2]Choice
+}
+`)
+	var vocabulary Vocabulary
+	if err := vocabulary.AnnounceRead(Announce(m.Unit), &tabletext.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	value := covPlace(t, m, "Root", `{"tick":1}`)
+	e := &bitEncoder{m: m, slots: MessageVocabularySlots(m.Unit), refBits: vocabulary.RefBits()}
+	w := &bitWriter{}
+	w.put(0, 8) // a batch of one
+	tick, _ := value.FieldByKey("tick")
+	if err := encodeBitField(e, w, tick); err != nil {
+		t.Fatal(err)
+	}
+	choice, _ := value.FieldByKey("choice")
+	e.ref(w, ir.TableFieldEntry(choice.Def))
+	w.put(0, e.refBits) // None stored at the union FIELD
+	w.put(0, e.refBits) // the body's terminator
+	w.align()
+	none := append([]byte{ir.TableWireMessageForm}, w.b...)
+	canonical, err := EncodeMessage(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	element, err := EncodeMessage(m, covPlace(t, m, "Root", `{"tick":1,"choices":[{},{"item":3}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, other := range []bool{false, true} {
+		for _, tc := range []struct {
+			name string
+			wire []byte
+			read bool
+		}{{"union None field", none, false}, {"writer's batch", canonical, true}, {"None element", element, true}} {
+			for _, batch := range []bool{false, true} {
+				v := vocabulary
+				if other {
+					v.buildVersion ^= 1
+				}
+				back := m.New(m.Lookup("Root"))
+				var report tabletext.Report
+				var ok bool
+				var err error
+				if batch {
+					_, ok, err = DecodeMessages(m, []*tabletext.Instance{back}, tc.wire, &v, &report)
+				} else {
+					ok, err = DecodeMessage(m, back, tc.wire, &v, &report)
+				}
+				if ok != tc.read || (err == nil) != tc.read {
+					t.Errorf("%s other-build=%v batch=%v: ok=%v err=%v: %s", tc.name, other, batch, ok, err, hex.EncodeToString(tc.wire))
+				}
+			}
+		}
+	}
+}
+
 // A variable file identifies fields but carries no writer build or record
 // declaration. Reordering the reader's declaration is lawful evolution (§4).
 func TestVariableReadPreservesFieldReordering(t *testing.T) {

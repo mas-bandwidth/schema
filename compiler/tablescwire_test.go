@@ -162,7 +162,9 @@ func tableOpenMixSlot(id uint64) uint32 {
 
 // TestCTableOpenDistinctnessVerdict is the same verdict as pairwise: a
 // repeated id is damage and refuses, distinct ids including a hash-slot
-// collision and a count above the 256-slot bound are not.
+// collision and a count above the 256-slot bound are not. Each id rides as an
+// unknown field of the body, so every entry is used and the table is in
+// first-use order (docs/SPEC-TABLES.md §3) whatever the ids are.
 func TestCTableOpenDistinctnessVerdict(t *testing.T) {
 	var collideA, collideB uint64
 	found := false
@@ -196,6 +198,14 @@ static int load_ids(const uint64_t *ids, uint64_t n, TableReport *report)
     Leaf value;
     CHECK(n <= 257);
     buf[o++] = 1;
+    /* every entry is referenced, in first-use order, by an unknown u8 field */
+    for ( i = 0; i < n; i++ ) {
+        uint64_t ref = i + 1;
+        while ( ref >= 0x80 ) { buf[o++] = (uint8_t)(ref | 0x80); ref >>= 7; }
+        buf[o++] = (uint8_t)ref;
+        buf[o++] = 6;
+        buf[o++] = 0;
+    }
     buf[o++] = 0;
     for ( i = 0; i < n; i++ ) { put_le64(buf + o, ids[i]); o += 8; }
     put_le64(buf + o, n); o += 8;
