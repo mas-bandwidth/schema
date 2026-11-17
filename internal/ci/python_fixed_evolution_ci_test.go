@@ -218,7 +218,7 @@ func TestPythonFixedEvolutionCICoverage(t *testing.T) {
 		Target, Package, Test string
 		Corpus                bool
 	}
-	if err := json.Unmarshal(run("sh", "tools/python-ci-rows.sh"), &plan); err != nil {
+	if err := json.Unmarshal(pythonCIPlan(t), &plan); err != nil {
 		t.Fatal(err)
 	}
 	counts := map[string]int{}

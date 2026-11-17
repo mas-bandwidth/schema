@@ -36,7 +36,7 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 			wanted = append(wanted, name)
 		}
 	}
-	plan := run("sh", "tools/python-ci-rows.sh")
+	plan := pythonCIPlan(t)
 	var rows []struct{ Target string }
 	if err := json.Unmarshal(plan, &rows); err != nil {
 		t.Fatal(err)

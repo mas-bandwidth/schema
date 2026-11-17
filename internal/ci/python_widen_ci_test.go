@@ -2,7 +2,6 @@ package ci
 
 import (
 	"encoding/json"
-	"os/exec"
 	"regexp"
 	"testing"
 )
@@ -10,12 +9,7 @@ import (
 // The slow historical widening parents must run in their own support rows,
 // while unrelated tests remain in the automatically discovered package rows.
 func TestPythonWidenCIPlan(t *testing.T) {
-	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
-	cmd.Dir = "../.."
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("python CI plan: %v\n%s", err, out)
-	}
+	out := pythonCIPlan(t)
 	var rows []struct {
 		Target  string `json:"target"`
 		Package string `json:"package"`

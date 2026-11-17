@@ -2,7 +2,6 @@ package ci
 
 import (
 	"encoding/json"
-	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -10,16 +9,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// The 24 real support rows replace only the expensive omnibus; focused
+// The 48 real support rows replace only the expensive omnibus; focused
 // pipe and planted control tests must remain in the discovered package shards.
 func TestPythonCIWireFuzzStandalonePartition(t *testing.T) {
 	slowtest.Gate(t, "Python wire-fuzz CI plan")
-	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
-	cmd.Dir = repoRoot(t)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("plan Python rows: %v\n%s", err, out)
-	}
+	out := pythonCIPlan(t)
 	var rows []struct {
 		Target, Package, Test string
 		Corpus                bool
@@ -31,7 +25,7 @@ func TestPythonCIWireFuzzStandalonePartition(t *testing.T) {
 	for _, pin := range []string{"current", "floor"} {
 		for _, mode := range []string{"normal", "dev"} {
 			for _, arm := range []string{"plain", "mixed", "retain"} {
-				for _, shard := range []string{"0", "1"} {
+				for _, shard := range []string{"0", "1", "2", "3"} {
 					want["python-wirefuzz-"+pin+"-"+mode+"-"+arm+"-shard-"+shard] = 0
 				}
 			}

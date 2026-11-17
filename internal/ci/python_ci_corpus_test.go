@@ -134,12 +134,7 @@ func pythonSupportMissing(db map[string][]string, roots []string) []string {
 func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "Go package listing (Python CI matrix)")
-	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
-	cmd.Dir = repoRoot(t)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("plan Python rows: %v\n%s", err, out)
-	}
+	out := pythonCIPlan(t)
 	var rows []struct {
 		Target, Package, Test string
 		Corpus                bool

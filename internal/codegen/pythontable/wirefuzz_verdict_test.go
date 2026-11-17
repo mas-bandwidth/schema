@@ -118,13 +118,13 @@ func wireFuzzPartitionIssue(rows, support []string) string {
 		}
 		return n
 	}
-	if len(rows) != 24 {
-		return fmt.Sprintf("wire-fuzz partition has %d rows, want 24", len(rows))
+	if len(rows) != 48 {
+		return fmt.Sprintf("wire-fuzz partition has %d rows, want 48", len(rows))
 	}
 	for _, pin := range []string{"current", "floor"} {
 		for _, mode := range []string{"normal", "dev"} {
 			for _, arm := range []string{"plain", "mixed", "retain"} {
-				for _, shard := range []string{"0", "1"} {
+				for _, shard := range []string{"0", "1", "2", "3"} {
 					row := "python-wirefuzz-" + pin + "-" + mode + "-" + arm + "-shard-" + shard
 					if count(rows, row) != 1 || count(support, row) != 1 {
 						return "missing or duplicate wire-fuzz support row " + row
@@ -169,7 +169,7 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 		}
 		return strings.Fields(string(out))
 	}
-	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != "wire-fuzz partition has 16 rows, want 24" {
+	if issue := wireFuzzPartitionIssue(run("python-wirefuzz-ci-list"), run("python-ci-support-list")); issue != "wire-fuzz partition has 32 rows, want 48" {
 		t.Fatalf("partition fault escaped: %q", issue)
 	}
 }

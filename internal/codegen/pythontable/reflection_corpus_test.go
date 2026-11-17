@@ -298,10 +298,77 @@ func TestPythonReflectionVocabularyNegativeControl(t *testing.T) {
 	}
 }
 
+// reflectionStrictShards bounds the per-commit rows: strict mypy over one unit
+// takes 9-20 s at two cores, so the whole corpus cannot fit one row; two units
+// per shard keeps the slowest shard near 35 s. The make target
+// python-reflection still runs every shard, and the test with no selector
+// runs every unit.
+const reflectionStrictShards = 24
+
+func reflectionStrictShard(value string) (int, error) {
+	if value == "" {
+		return -1, nil
+	}
+	shard, err := strconv.Atoi(value)
+	if err != nil || shard < 0 || shard >= reflectionStrictShards || strconv.Itoa(shard) != value {
+		return 0, fmt.Errorf("invalid PYTHON_REFLECTION_STRICT_SHARD %q", value)
+	}
+	return shard, nil
+}
+
+func reflectionStrictSelected(shard, index int) bool {
+	return shard < 0 || index%reflectionStrictShards == shard
+}
+
+func TestPythonReflectionStrictShardPlan(t *testing.T) {
+	units := reflectionUnits(t)
+	if len(units) < reflectionStrictShards {
+		t.Fatalf("%d units cannot fill %d shards", len(units), reflectionStrictShards)
+	}
+	seen := make(map[string]int)
+	for shard := range reflectionStrictShards {
+		selected := 0
+		for index, unit := range units {
+			if reflectionStrictSelected(shard, index) {
+				seen[unit.name]++
+				selected++
+			}
+		}
+		if selected == 0 {
+			t.Fatalf("shard %d is empty", shard)
+		}
+	}
+	if len(seen) != len(units) {
+		t.Fatalf("partition covered %d units, want %d", len(seen), len(units))
+	}
+	for name, count := range seen {
+		if count != 1 {
+			t.Errorf("unit %s selected %d times", name, count)
+		}
+	}
+	for index := range units {
+		if !reflectionStrictSelected(-1, index) {
+			t.Fatalf("no selector skipped unit %d", index)
+		}
+	}
+	for _, invalid := range []string{"-1", strconv.Itoa(reflectionStrictShards), "00", "x"} {
+		if _, err := reflectionStrictShard(invalid); err == nil {
+			t.Errorf("accepted invalid shard %q", invalid)
+		}
+	}
+}
+
 func TestPythonReflectionStrictTypes(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "pinned strict mypy")
-	for _, row := range reflectionUnits(t) {
+	shard, err := reflectionStrictShard(os.Getenv("PYTHON_REFLECTION_STRICT_SHARD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, row := range reflectionUnits(t) {
+		if !reflectionStrictSelected(shard, index) {
+			continue
+		}
 		t.Run(row.name, func(t *testing.T) {
 			u := loadUnitPaths(t, row.paths...)
 			files, err := reflectionGenerate(u)

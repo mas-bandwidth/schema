@@ -2,7 +2,6 @@ package ci
 
 import (
 	"encoding/json"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"testing"
@@ -10,12 +9,7 @@ import (
 
 // The delegated packet core must run once per shard, with other tests retained.
 func TestPythonPacketCoreCIPlan(t *testing.T) {
-	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
-	cmd.Dir = "../.."
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("Python CI plan: %v\n%s", err, out)
-	}
+	out := pythonCIPlan(t)
 	var rows []struct {
 		Target  string `json:"target"`
 		Package string `json:"package"`
