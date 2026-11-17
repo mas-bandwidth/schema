@@ -114,7 +114,6 @@ func TestCPointerTargetBlobKindRefused(t *testing.T) {
 	}
 
 	for _, unit := range units {
-		unit := unit
 		t.Run(unit, func(t *testing.T) {
 			var unitRows []cBlobKindRow
 			var wires [][]byte
@@ -356,7 +355,7 @@ type cBlobKindWire struct {
 func cBlobKindSaved(t *testing.T, output string) []cBlobKindWire {
 	t.Helper()
 	var saved []cBlobKindWire
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 4 || (fields[0] != "SAVED" && fields[0] != "RETAIN") {
 			continue
