@@ -201,9 +201,10 @@ const tableRegionSource = `
                 // A record this reader DECLARES but cannot place below this
                 // root is still a type it names: a pointer slot to another
                 // type is a wrong-type target and damage (docs/SPEC-TABLES.md
-                // §3.1). A type the reader does not declare stays unknown and
-                // the slot is null.
-                else if (state.Root.DeclaredType(id) != null) { Fail(report, "kind_mismatch"); }
+                // §3.1). Both reserved blob ids are named the same way, whether
+                // or not this root reaches that kind. A type the reader does
+                // not declare stays unknown and the slot is null.
+                else if (id == BytesTypeId || id == StringTypeId || state.Root.DeclaredType(id) != null) { Fail(report, "kind_mismatch"); }
             }
         }
         value.SetRaw(f, index, target == long.MinValue ? 0 : (f.BlobKind == 0 ? node : unchecked((ulong)(target - (value.Slot(f, index) - value.Base)))));
@@ -697,7 +698,7 @@ const tableRegionSource = `
         {
             scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
             long offset = -1; TableTypeInfo node = type.PointerType(id);
-            bool blob = id == BytesTypeId || id == StringTypeId;
+            bool blob = (id == BytesTypeId && type.BytesEdge) || (id == StringTypeId && type.StringEdge);
             if (blob)
             {
                 offset = at; at += Align(8L + body.Buffer.Length + (id == StringTypeId ? 1 : 0), type.RegionAlign);

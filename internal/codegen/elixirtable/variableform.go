@@ -168,6 +168,19 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	}
 	nodeTypes.WriteString("}")
 	b.WriteString(exAttribute("node_types", nodeTypes.String()))
+	b.WriteString("  # the types this reader NAMES whatever a root reaches (docs/SPEC-TABLES.md\n")
+	b.WriteString("  # §3.1, §6.5): every table the unit declares. A record of one, or of\n")
+	b.WriteString("  # either reserved blob id, under a declared slot of another type is damage;\n")
+	b.WriteString("  # only a record of a type outside this set is evolution.\n")
+	var declared strings.Builder
+	declared.WriteString("%{")
+	for _, name := range names {
+		if st := u.Tables[name]; st != nil {
+			fmt.Fprintf(&declared, "0x%016X => %q, ", ir.TableWireId(st.WireName()), name)
+		}
+	}
+	declared.WriteString("}")
+	b.WriteString(exAttribute("declared_types", declared.String()))
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
 	b.WriteString("  def descriptors, do: @tables\n\n")
@@ -2092,7 +2105,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       # A RECORD THIS READER CANNOT NAME keeps its body ({:unknown, body}):
       # the value reads it as nothing, but the reach walk still reads its
-      # pointer payloads, as every record's are (§3.1, §4)
+      # pointer payloads, as every record's are (§3.1, §4). A record this
+      # reader NAMES that the root cannot place ({:unplaced, body}) is counted
+      # and walked the same way, but a declared slot naming it is damage:
+      # the two reserved blob ids and every declared table are nameable
+      # whatever the root reaches (§3.1, §6.5)
       node =
         case resolve(ids, sref) do
           :error ->
@@ -2106,13 +2123,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             :malformed
 
           @string_id ->
-            # a *string blob this reader can name is its UTF-8 bytes; a record
-            # whose content is not text is malformed, and the root that reaches
-            # no *string cannot place the record at all (§3.1)
+            # a *string blob is its UTF-8 bytes; a record whose content is not
+            # text is malformed, and the root that reaches no *string cannot
+            # place the record (§3.1)
             cond do
               not utf8_valid?(bytes) -> :malformed
               is_map(allowed) and allowed.string_blob -> {:blob, :string, bytes}
-              true -> {:unknown, :blob}
+              true -> {:unplaced, :blob}
             end
 
           tid ->
@@ -2120,12 +2137,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               {:ok, :bytes} ->
                 if is_map(allowed) and allowed.bytes_blob,
                   do: {:blob, :bytes, bytes},
-                  else: {:unknown, :blob}
+                  else: {:unplaced, :blob}
 
               {:ok, name} ->
-                if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
-                  do: {:table, name, bytes},
-                  else: {:unknown, bytes}
+                cond do
+                  is_map(allowed) and Map.get(allowed.node_types, tid) == name ->
+                    {:table, name, bytes}
+
+                  Map.has_key?(@declared_types, tid) ->
+                    {:unplaced, bytes}
+
+                  true ->
+                    {:unknown, bytes}
+                end
 
               :error ->
                 {:unknown, bytes}
@@ -2295,6 +2319,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           # naming it reads null (docs/SPEC-TABLES.md §3.1), as the
           # retaining read and Go's oracle (internal/tablewire) already do
           :null
+
+        {:unplaced, _body} ->
+          # A NODE OF A TYPE THIS READER NAMES that the root cannot place is
+          # never this slot's target (the slot's own target is placed), so a
+          # declared slot naming it is a wrong-type pointer: damage (§3.1,
+          # §6.5; docs/rulings.json blob-target-outside-closure-refused)
+          {:value, :wrong_type}
       end
     end
   end
@@ -2314,7 +2345,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp directory_report(nodes, report, retaining) do
     if :malformed in nodes, do: throw(:wire_damaged)
 
-    unknown = Enum.count(nodes, &match?({:unknown, _}, &1))
+    unknown = Enum.count(nodes, &(match?({:unknown, _}, &1) or match?({:unplaced, _}, &1)))
 
     %{
       report
