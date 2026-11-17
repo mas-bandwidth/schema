@@ -124,7 +124,7 @@ local run = function(root, depth, leaf) {
 
 	// rows[kind][depth] = {measured, saved}
 	rows := map[string]map[int][2]int{"leaf": {}, "default": {}}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		f := strings.Fields(line)
 		if len(f) != 6 || f[0] != "ROW" {
 			continue
