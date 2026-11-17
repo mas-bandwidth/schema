@@ -264,10 +264,10 @@ func blobKindWitnessRows(t *testing.T, m *tabletext.Model, dir string) []blobKin
 // reads null, a declared wrong-kind slot included.
 func plantRootClosureRule(t *testing.T, files map[string][]byte) map[string][]byte {
 	t.Helper()
-	const anchor = "if outside then report.unknown = report.unknown + 1 end\n      if rec.tid == STRING_BLOB_ID then"
-	const planted = "if outside then\n        report.unknown = report.unknown + 1\n        local e = node_entry(state, ctx)\n        e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = \"unknown\", nil, nil, nil, nil, nil, nil\n        ctx.nodes[#ctx.nodes + 1] = e\n      elseif rec.tid == STRING_BLOB_ID then"
+	const anchor = "      if rec.tid == STRING_BLOB_ID then\n        local body"
+	const planted = "      if outside then\n        local e = node_entry(state, ctx)\n        e.kind, e.blob, e.box, e.codec, e.value, e.at, e.lim = \"unknown\", nil, nil, nil, nil, nil, nil\n        ctx.nodes[#ctx.nodes + 1] = e\n      elseif rec.tid == STRING_BLOB_ID then\n        local body"
 	src := string(files["load.lua"])
-	if strings.Count(src, anchor) != 1 {
+	if !strings.Contains(src, "if outside then report.unknown = report.unknown + 1 end") || strings.Count(src, anchor) != 1 {
 		t.Fatal("the closure anchor is not in the generated load.lua exactly once")
 	}
 	out := maps.Clone(files)
