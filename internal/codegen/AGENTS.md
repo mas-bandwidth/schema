@@ -39,3 +39,4 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `squirrel/` | Squirrel packet emitter | `go test ./internal/codegen/squirrel` | `go test ./internal/codegen/squirrel` |
 | `squirreltable/` | Squirrel table emitter | `go test ./internal/codegen/squirreltable` | `go test ./internal/codegen/squirreltable` |
 | `unity/` | Unity C# packet emitter (docs/UNITY.md) | `go test ./internal/codegen/unity` | `go test ./internal/codegen/unity` |
+| `unitytable/` | Unity C# table emitter (docs/UNITY.md) | `go test ./compiler -run TestUnityTable` | `make unity-tables` |
