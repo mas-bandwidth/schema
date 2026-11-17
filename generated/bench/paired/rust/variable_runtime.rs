@@ -1148,140 +1148,6 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
     }
 }
 
-/// THE ID TABLE IS IN FIRST-USE ORDER, EVERY ENTRY USED (docs/SPEC-TABLES.md
-/// §3; docs/rulings.json reads-refuse-non-canonical): the entries are numbered
-/// in the order a writer first names them, root body first and the node
-/// table's records in index order, which is the wire's own byte order, so one
-/// pass over the framing at open sees every reference where it was written.
-/// false is a table no conforming writer produces: a reference past the next
-/// new entry, or an entry no reference names. A framing this walk cannot follow
-/// answers true and is the decoder's to refuse. The walk reads kind bytes,
-/// lengths and references only, so its cost is linear in the input.
-pub fn table_ids_first_use(wire: &[u8], end: usize, ids: &[u64]) -> bool {
-    let mut w = TableFirstUse { wire, ids, next: 1, out_of_order: false };
-    let mut off = 1usize;
-    if end > wire.len() || w.body(&mut off, end, 0, true).is_none() { return true; }
-    !w.out_of_order && w.next as usize == ids.len() + 1
-}
-
-struct TableFirstUse<'a> {
-    wire: &'a [u8],
-    ids: &'a [u64],
-    next: u64,
-    out_of_order: bool,
-}
-
-impl TableFirstUse<'_> {
-    fn note(&mut self, r: u64) -> Option<()> {
-        if r == 0 || r as usize > self.ids.len() { return None; }
-        if r == self.next { self.next += 1; } else if r > self.next { self.out_of_order = true; }
-        Some(())
-    }
-
-    fn leb(&self, off: &mut usize, end: usize) -> Option<u64> {
-        leb_read(&self.wire[..end], off)
-    }
-
-    fn span(&self, off: &mut usize, end: usize) -> Option<usize> {
-        let n = self.leb(off, end)?;
-        if *off > end || n > (end - *off) as u64 { return None; }
-        Some(*off + n as usize)
-    }
-
-    fn body(&mut self, off: &mut usize, end: usize, depth: usize, root: bool) -> Option<()> {
-        if depth > TABLE_RETAIN_DEPTH_CAP { return None; }
-        loop {
-            let r = self.leb(off, end)?;
-            if r == 0 { return Some(()); }
-            self.note(r)?;
-            if *off >= end { return None; }
-            let kind = self.wire[*off];
-            *off += 1;
-            if root && kind == 12 && self.ids[r as usize - 1] == NODE_TABLE_ID {
-                let sub = self.span(off, end)?;
-                self.nodes(off, sub, depth)?;
-                if *off != sub { return None; }
-                continue;
-            }
-            self.payload(off, end, kind, depth)?;
-        }
-    }
-
-    fn nodes(&mut self, off: &mut usize, end: usize, depth: usize) -> Option<()> {
-        let count = self.leb(off, end)?;
-        for _ in 0..count {
-            if *off >= end { return None; }
-            let r = self.leb(off, end)?;
-            self.note(r)?;
-            let tid = self.ids[r as usize - 1];
-            let sub = self.span(off, end)?;
-            if tid != BYTES_TYPE_ID && tid != STRING_TYPE_ID {
-                let mut o = *off;
-                self.body(&mut o, sub, depth + 1, false)?;
-                if o != sub { return None; }
-            }
-            *off = sub;
-        }
-        Some(())
-    }
-
-    fn payload(&mut self, off: &mut usize, end: usize, kind: u8, depth: usize) -> Option<()> {
-        match kind {
-            13 | 14 | 16 => self.framed(off, end, kind, depth),
-            15 => {
-                let arm = self.leb(off, end)?;
-                if arm == 0 { return Some(()); }
-                self.note(arm)?;
-                if *off >= end { return None; }
-                let akind = self.wire[*off];
-                *off += 1;
-                self.framed(off, end, akind, depth)
-            }
-            30 => {
-                let r = self.leb(off, end)?;
-                if r != 0 { self.note(r)?; }
-                Some(())
-            }
-            _ => leb_skip(self.wire, off, end, kind).then_some(()),
-        }
-    }
-
-    fn framed(&mut self, off: &mut usize, end: usize, kind: u8, depth: usize) -> Option<()> {
-        let sub = self.span(off, end)?;
-        let mut o = *off;
-        match kind {
-            13 => {
-                self.body(&mut o, sub, depth + 1, false)?;
-                if o != sub { return None; }
-            }
-            14 | 16 => {
-                if o >= sub { *off = sub; return Some(()); }
-                let ek = self.wire[o];
-                o += 1;
-                let count = self.leb(&mut o, sub)?;
-                for _ in 0..count {
-                    if o >= sub { return None; }
-                    if kind == 16 {
-                        let key = self.leb(&mut o, sub)?;
-                        self.note(key)?;
-                        self.framed(&mut o, sub, ek, depth + 1)?;
-                    } else {
-                        self.payload(&mut o, sub, ek, depth + 1)?;
-                    }
-                }
-                if o != sub { return None; }
-            }
-            15 | 30 => {
-                self.payload(&mut o, sub, kind, depth + 1)?;
-                if o != sub { return None; }
-            }
-            _ => {}
-        }
-        *off = sub;
-        Some(())
-    }
-}
-
 /// THE RETAIN-UNKNOWN STORE (docs/SPEC-TABLES.md §6.6): the caller's two
 /// bounded stores threaded through the retaining load and save. 'bytes' holds
 /// the retained records, 'ids' the retained ids' own list; both are the
@@ -2062,19 +1928,32 @@ pub static KNOWN_IDS: &[u64] = &[
 // A complete traversal can prove an unused transport ID (§3). An incomplete
 // traversal defers to the existing framing/value walk, which owns its named
 // refusal (including count caps and non-finite diagnostics).
+//
+// THE SAME TRAVERSAL HOLDS THE WRITER'S GRAPH SPELLING (§3, §3.1;
+// docs/rulings.json reads-refuse-non-canonical): it meets references in the
+// wire's byte order, which is the order a writer first names them, root body
+// first and the node table's records in index order, so an entry first named
+// out of turn is an id table out of first-use order; and the node table is the
+// root body's last field and holds at least one record. Each is a spelling no
+// conforming writer produces, so Some(false) refuses it like an unused entry.
 pub fn table_ids_all_used(body: &[u8], ids: &[u64]) -> Option<bool> {
     if ids.len() > 4096 { return None; }
-    let mut walk = TableIdUse { ids, seen: [false; 4096] };
+    let mut walk = TableIdUse { ids, seen: [false; 4096], next: 0, canonical: true };
     walk.body(body, true, 0)?;
-    Some(walk.seen[..ids.len()].iter().all(|used| *used))
+    Some(walk.canonical && walk.seen[..ids.len()].iter().all(|used| *used))
 }
 
-struct TableIdUse<'a> { ids: &'a [u64], seen: [bool; 4096] }
+struct TableIdUse<'a> { ids: &'a [u64], seen: [bool; 4096], next: usize, canonical: bool }
 
 impl TableIdUse<'_> {
     fn reference(&mut self, reference: u64) -> Option<u64> {
         let index = usize::try_from(reference.checked_sub(1)?).ok()?;
         let id = *self.ids.get(index)?;
+        if !self.seen[index] {
+            // first named out of turn: the id table is not in first-use order
+            if index != self.next { self.canonical = false; }
+            self.next += 1;
+        }
         self.seen[index] = true;
         Some(id)
     }
@@ -2089,13 +1968,17 @@ impl TableIdUse<'_> {
 
     fn body(&mut self, bytes: &[u8], root: bool, depth: usize) -> Option<()> {
         let mut at = 0;
+        let mut after_nodes = false;
         loop {
             let reference = leb_read(bytes, &mut at)?;
             if reference == 0 { return (at == bytes.len()).then_some(()); }
+            // a field after the node table: the table is out of its place (§3.1)
+            if after_nodes { self.canonical = false; }
             let id = self.reference(reference)?;
             let kind = *bytes.get(at)?; at += 1;
             if id == NODE_TABLE_ID {
                 if !root || kind != 12 { return None; }
+                after_nodes = true;
                 self.nodes(Self::frame(bytes, &mut at)?, depth)?;
             } else {
                 self.payload(bytes, &mut at, kind, depth)?;
@@ -2107,6 +1990,8 @@ impl TableIdUse<'_> {
         let mut at = 0;
         let count = leb_read(bytes, &mut at)?;
         if count > bytes.len() as u64 { return None; }
+        // a node table with no record is one no writer emits (§3.1)
+        if count == 0 { self.canonical = false; }
         for _ in 0..count {
             let type_id = self.reference(leb_read(bytes, &mut at)?)?;
             let body = Self::frame(bytes, &mut at)?;

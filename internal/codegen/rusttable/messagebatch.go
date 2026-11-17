@@ -477,9 +477,16 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("    let mut seen_ids = [0u64; 64];\n")
 	m.pf("    let mut seen_count = 0usize;\n")
 	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
-	// THE WRITER'S ORDER IS THE READER'S RULE (docs/SPEC-TABLES.md §3.3, §4;
-	// docs/rulings.json reads-refuse-non-canonical): next_field is one past
-	// the ordinal of the last declared field this body carried.
+	// THE SENDER'S OWN BUILD IS THIS READER'S (docs/SPEC-TABLES.md §3.3 (a),
+	// (b); docs/rulings.json reads-refuse-non-canonical): every field's
+	// default and every record's field order are digested into the build
+	// version (§20.1, §20.2), so there, and only there, this reader's
+	// declaration is the sender's. A field the record does not declare, a
+	// field out of the declaration order and a field stored at its declared
+	// default are spellings no conforming writer produces. Under another build
+	// version none of the three is judged. next_field is one past the ordinal
+	// of the last declared field this body carried.
+	m.pf("    let same_build = v.build_version == BUILD_VERSION;\n")
 	m.pf("    let mut next_field = 0usize;\n")
 	// The arms are generated aside, so the default image is bound only when a
 	// default test reads it.
@@ -488,7 +495,7 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 		mine := ir.TableFieldEntry(f)
 		ind := "                "
 		body.pf("            0x%016x => {\n", mine.Id)
-		body.pf("%sif next_field > %d %s // out of the writer's order (§3.3)\n", ind, i, msgBad)
+		body.pf("%sif same_build && next_field > %d %s // out of the writer's order (§3.3 (b))\n", ind, i, msgBad)
 		body.pf("%snext_field = %d;\n", ind, i+1)
 		label := body.tmp("'f")
 		widens := msgCanWiden(f, mine)
@@ -504,14 +511,24 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 		if f.Type.Optional {
 			body.pf("%s    value.%s_present = true;\n", ind, f.Name)
 		} else {
-			// A FIELD STORED AT ITS DEFAULT, A UNION WITH ARM REFERENCE 0
-			// INCLUDED (§3.3, §4): the save's own ride test, so a value it
-			// would elide is a spelling no conforming writer produces. A field
-			// whose read met a name this build cannot resolve (an unknown arm,
+			if isUnionRef(f.Type) && f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.Required {
+				// A UNION FIELD WRITTEN WITH ARM REFERENCE 0 (§3.3 (c)): None
+				// elides, so its explicit spelling is refused at every build.
+				// An arm this build cannot name also reads None, and counts
+				// one unknown; a None element of an array of unions is
+				// positional and reads.
+				body.pf("%s    if value.%s.tag() == 0 && report.unknown == unknown_before %s // a union written with arm reference 0 (§3.3 (c))\n", ind, f.Name, msgBad)
+			}
+			// A FIELD STORED AT ITS DEFAULT (§3.3 (a), §4), at this reader's
+			// own build only: the save's own ride test, so a value it would
+			// elide is a spelling no conforming writer produces. A field whose
+			// read met a name this build cannot resolve (an unknown arm,
 			// variant or nested field) reads a default lawfully and is not
 			// held to it.
-			rides := body.rides(f, "value."+f.Name, "dflt."+f.Name, ind+"    ")
-			body.pf("%s    let rides = %s;\n%s    if report.unknown == unknown_before && !rides %s // a field stored at its default (§4)\n", ind, rides, ind, msgBad)
+			body.pf("%s    if same_build && report.unknown == unknown_before {\n", ind)
+			rides := body.rides(f, "value."+f.Name, "dflt."+f.Name, ind+"        ")
+			body.pf("%s        let rides = %s;\n%s        if !rides %s // a field stored at its default (§3.3 (a))\n", ind, rides, ind, msgBad)
+			body.pf("%s    }\n", ind)
 		}
 		if widens {
 			body.pf("%s    if widened { report.widened += 1; }\n", ind)
@@ -534,7 +551,10 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("        seen_count += 1;\n")
 	m.pf("        match entry.id {\n")
 	m.pf("%s", arms)
-	m.pf("            _ => {\n                report.unknown += 1;\n                if !table_message_skip(r, v, &entry, 0) %s\n            }\n", msgBad)
+	// A FIELD THE RECORD DOES NOT DECLARE, at this reader's own build, has no
+	// place in the sender's record (§3.3 (b)); under another build it is a
+	// newer writer's field, skipped and counted (§4).
+	m.pf("            _ => {\n                if same_build %s // a field the record does not declare (§3.3 (b))\n                report.unknown += 1;\n                if !table_message_skip(r, v, &entry, 0) %s\n            }\n", msgBad, msgBad)
 	m.pf("        }\n    }\n}\n\n")
 }
 
