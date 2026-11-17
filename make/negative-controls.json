@@ -1060,6 +1060,15 @@
       "ruby": "pin"
     },
     {
+      "name": "ruby-skeleton",
+      "when": "nightly",
+      "why": "the Ruby skeleton's controls (make/ruby.mk, docs/PORT-RUBY.md): in copies, a generated file gains a require and a line ruby -w warns about, the unit loses its runtime, the driver lists a surface, the keyword record writes next as a bare local, and each identifier rule is turned off; TestRubySkeleton's negative-control subtests must go red by name on each. Under a second of interpreter time on a bench under both pins; the row's cost is the Ruby pin action, nightly for the reason the ruby-toolchain row gives.",
+      "targets": [
+        "ruby-skeleton-negative-control"
+      ],
+      "ruby": "pin"
+    },
+    {
       "name": "python-serialize",
       "when": "pull-request",
       "why": "serialize.py's corpus runner (third_party/serialize.py, make/python-serialize.mk), on the pins .github/actions/python restores into dist/: the corpus test pointed at a root with no vectors must go red by that name. The eighteen per-rule sabotage controls run inside python-serialize-test itself. One interpreter run, under 1 s on a bench, so the row is the pins' cache restore.",

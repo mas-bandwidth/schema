@@ -155,7 +155,7 @@ func TestThePageCarriesTheThreeTables(t *testing.T) {
 // lobster, then python (docs/PORT-PYTHON.md), then unity (docs/UNITY.md), in
 // the same order.
 func TestEveryTableHasEveryLanguage(t *testing.T) {
-	want := "| feature | cpp | c | cs | go | rust | java | js | dart | elixir | goose | luau | lua | squirrel | moo | lobster | python | unity |"
+	want := "| feature | cpp | c | cs | go | rust | java | js | dart | elixir | goose | luau | lua | squirrel | moo | lobster | python | unity | ruby |"
 	headers := 0
 	for n, line := range strings.Split(readRoadmap(t), "\n") {
 		if strings.HasPrefix(line, "| feature") {

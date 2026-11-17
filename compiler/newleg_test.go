@@ -199,6 +199,29 @@ func TestNewLegPythonRecipe(t *testing.T) {
 	}
 }
 
+// TestNewLegRubyRecipe: ruby's scaffold is .rb files commented with `#`
+// (docs/PORT-RUBY.md, THE RUNTIME LAYOUT), not .ruby. Under the
+// schema_leg_ruby tag ruby is a live target and new-leg refuses it by name;
+// the recipe is held either way.
+func TestNewLegRubyRecipe(t *testing.T) {
+	t.Parallel()
+	ext, comment := newLegRecipe("ruby")
+	if ext != "rb" || comment != "#" {
+		t.Fatalf("newLegRecipe(ruby) = %q, %q; want rb, #", ext, comment)
+	}
+	files, err := NewLeg("ruby")
+	if err != nil {
+		if !strings.Contains(err.Error(), "ruby is already a live target") {
+			t.Fatal(err)
+		}
+		return
+	}
+	emitter := string(files["internal/codegen/ruby/ruby.go"])
+	if !strings.Contains(emitter, `const ext = "rb"`) {
+		t.Errorf("scaffolded ruby.go does not emit .rb files:\n%s", emitter)
+	}
+}
+
 func TestNewLegZigOmitsLuaHarness(t *testing.T) {
 	files, err := NewLeg("zig")
 	if err != nil {
