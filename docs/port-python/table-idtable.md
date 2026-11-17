@@ -15,11 +15,14 @@
   by its `L`, the payload-free kind must have `L = 0`, and both count
   `unknown`. A field the reader can name that rides under either kind is the
   ordinary kind mismatch.
-- **Non-canonical id tables read as the engine reads them.** The reader
-  accepts an id table that holds an unused entry or entries out of first-use
-  order, as the Go engine does today: SPEC-TABLES lists both as non-canonical
-  spellings to refuse, and that refusal reaches this leg through its own card
-  once the engine refuses them.
+- **Non-canonical id tables are refused, as the engine refuses them.** The
+  reader refuses an id table that holds an unused entry or one whose entries
+  are out of first-use order with `Refused("wire_damaged")`, which is what the
+  Go engine does (`internal/tablewire/wirecheck.go`, `firstUseMatches`):
+  SPEC-TABLES lists both as non-canonical spellings to refuse.
+  `TestPythonIDOrder` holds both to that refusal, on the reordered and unused
+  spellings, and on a structurally mismatched field beside them (the id damage
+  is reported first).
 
 ### Enum lookup bench
 
