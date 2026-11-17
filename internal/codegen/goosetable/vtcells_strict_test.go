@@ -197,6 +197,9 @@ func buildGooseVtWireVectors(t *testing.T, u *ir.Unit) ([]gooseVtWireVec, []byte
 			name: "inert-body-repeated-id",
 			want: false,
 			wire: makeWire(func(ref func(uint64) []byte) []byte {
+				// The outer field is named first so the id table is in
+				// first-use order (§3) and the repeat is the only damage.
+				ref(ir.TableWireId("unknown_table"))
 				f1 := append(append(ref(ir.TableWireId("inner_x")), byte(ir.TableKindI32)), 1, 0, 0, 0)
 				f2 := append(append(ref(ir.TableWireId("inner_x")), byte(ir.TableKindI32)), 2, 0, 0, 0)
 				inner := append(append(f1, f2...), 0)
