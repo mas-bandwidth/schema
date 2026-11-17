@@ -141,6 +141,7 @@ var catalog = []Entry{
 	e("internal/codegen/squirrel", "Squirrel packet emitter", "go test ./internal/codegen/squirrel", "go test ./internal/codegen/squirrel"),
 	e("internal/codegen/squirreltable", "Squirrel table emitter", "go test ./internal/codegen/squirreltable", "go test ./internal/codegen/squirreltable"),
 	e("internal/codegen/unity", "Unity C# packet emitter (docs/UNITY.md)", "go test ./internal/codegen/unity", "go test ./internal/codegen/unity"),
+	e("internal/codegen/unitytable", "Unity C# table emitter (docs/UNITY.md)", "go test ./compiler -run TestUnityTable", "make unity-tables"),
 
 	// tables/
 	e("tables/arms", "union-arm traversal corpus", "make check", "bin/schema check tables/arms"),
