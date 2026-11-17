@@ -43,8 +43,15 @@ const RuntimeFile = "Tables.Runtime.cs"
 func tablesFile(base string) string { return base + ".Tables.cs" }
 
 // Generate returns the table files of the unit, nothing for a unit with no
-// table.
+// table. Every fixed root carries the single lineage entry it can always
+// compute, its own (docs/FIXED-FORM-ALGORITHM.md §5.9 #1).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the lock's lineage per fixed root, keyed by
+// the root's declared name, OLDEST FIRST (fixedform.go).
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -58,7 +65,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		for _, st := range tables {
 			seen[st.Name] = true
 		}
-		out[tablesFile(f.Base)] = emitTables(u, f.Base, tables)
+		data, err := emitTables(u, f.Base, tables, lineage)
+		if err != nil {
+			return nil, err
+		}
+		out[tablesFile(f.Base)] = data
 	}
 	var orphans []*ir.Struct
 	names := make([]string, 0, len(u.Tables))
@@ -145,7 +156,7 @@ func indent(s string) string {
 	return b.String()
 }
 
-func emitTables(u *ir.Unit, base string, tables []*ir.Struct) []byte {
+func emitTables(u *ir.Unit, base string, tables []*ir.Struct, lineage map[string][]FixedLineageEntry) ([]byte, error) {
 	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
 	var types, schema strings.Builder
 	saves := false
@@ -159,12 +170,20 @@ func emitTables(u *ir.Unit, base string, tables []*ir.Struct) []byte {
 			emitSave(&schema, st)
 			emitLoad(&schema, st)
 		}
+		if FixedCarried(u, st) {
+			root, err := buildFixedRoot(u, st, lineage[st.Name])
+			if err != nil {
+				return nil, err
+			}
+			saves = true
+			emitFixed(&schema, root)
+		}
 	}
 	usings := []string{"System"}
 	if saves {
 		usings = append(usings, "System.Diagnostics")
 	}
-	return []byte(header(u, base+".schema", usings...) + wrap(u, types.String(), schema.String()))
+	return []byte(header(u, base+".schema", usings...) + wrap(u, types.String(), schema.String())), nil
 }
 
 // emitStruct is the table's storage: one member per carried field, and a
