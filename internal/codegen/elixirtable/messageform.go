@@ -35,7 +35,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -1942,7 +1941,6 @@ const messageRuntimeBody = `  defstruct announced: false,
 //	{:fixed, e}           every element at e
 //	:zero_ref             an enum or a union element at reference 0
 func messageRecords(u *ir.Unit) (string, bool) {
-	m := tabletext.NewModel(u)
 	closure := tablewire.MessageClosure(u)
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -1952,7 +1950,10 @@ func messageRecords(u *ir.Unit) (string, bool) {
 	unions := map[string]*ir.Union{}
 	var records []string
 	for _, name := range names {
-		st := m.Lookup(name)
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
 		if st == nil {
 			continue
 		}
@@ -1960,7 +1961,7 @@ func messageRecords(u *ir.Unit) (string, bool) {
 		for i, f := range st.Fields {
 			e := ir.TableFieldEntry(f)
 			// the entry's bytes behind a leading 1, as one integer (entry/1's :raw)
-			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(m, f), messageSub(f, unions)))
+			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(f), messageSub(f, unions)))
 		}
 		records = append(records, fmt.Sprintf("%q => %%{%s}", name, strings.Join(fields, ", ")))
 	}
@@ -2024,7 +2025,7 @@ func messageSub(f *ir.Field, unions map[string]*ir.Union) string {
 
 // messageFieldRule is one field's elision rule, in internal/tablewire
 // messageElides's order (see messageRecords for the spellings).
-func messageFieldRule(m *tabletext.Model, f *ir.Field) string {
+func messageFieldRule(f *ir.Field) string {
 	if f.Required || f.Type.Optional || f.Type.Pointer || f.IsMap() {
 		return ":never"
 	}
@@ -2043,7 +2044,7 @@ func messageFieldRule(m *tabletext.Model, f *ir.Field) string {
 		if f.HasFloatRange {
 			born = 0
 		}
-		elem := messageScalarRule(m, f)
+		elem := messageScalarRule(f)
 		switch kind {
 		case ir.TableKindTable:
 			elem = ":empty"
@@ -2057,45 +2058,79 @@ func messageFieldRule(m *tabletext.Model, f *ir.Field) string {
 		if kind == ir.TableKindUnion {
 			return "{:fixed, :zero_ref}"
 		}
-		return "{:fixed, " + messageScalarRule(m, f) + "}"
+		return "{:fixed, " + messageScalarRule(f) + "}"
 	case kind == ir.TableKindUnion:
 		return ":never"
 	case kind == ir.TableKindTable:
 		return ":empty"
 	}
-	return messageScalarRule(m, f)
+	return messageScalarRule(f)
 }
 
-// messageScalarRule is internal/tablewire cellIsDefault over one value of f.
-func messageScalarRule(m *tabletext.Model, f *ir.Field) string {
-	def := m.FieldDefaultCell(f)
+// messageScalarRule is internal/tablewire cellIsDefault over one value of f,
+// against the declared default the engine's model would place in the field
+// (internal/tabletext fieldDefault), read from the declaration itself.
+func messageScalarRule(f *ir.Field) string {
 	if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
-		name := tabletext.EnumName(en, int64(def.U))
-		if name == "" || name == "None" {
+		if !f.HasDefault || f.DefVariant == "" || f.DefVariant == "None" || !slices.Contains(en.Variants, f.DefVariant) {
 			return "{:enum, :none}"
 		}
-		return fmt.Sprintf("{:enum, 0x%016X}", ir.TableWireId(en.VariantWireNameOf(name)))
+		return fmt.Sprintf("{:enum, 0x%016X}", ir.TableWireId(en.VariantWireNameOf(f.DefVariant)))
+	}
+	var defFloat float64
+	if f.HasDefault {
+		defFloat = f.DefFloat
 	}
 	switch {
 	case f.Type.Kind == ir.TBool:
-		if def.B {
+		if f.HasDefault && f.DefBool {
 			return "{:same, 1}"
 		}
 		return "{:same, 0}"
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		return fmt.Sprintf("{:f32eq, 0x%08X}", math.Float32bits(float32(def.F)))
+		return fmt.Sprintf("{:f32eq, 0x%08X}", math.Float32bits(float32(defFloat)))
 	case f.Type.Kind == ir.TFloat32:
-		return fmt.Sprintf("{:f32, 0x%08X}", math.Float32bits(float32(def.F)))
+		return fmt.Sprintf("{:f32, 0x%08X}", math.Float32bits(float32(defFloat)))
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		return fmt.Sprintf("{:f64eq, 0x%016X}", math.Float64bits(def.F))
+		return fmt.Sprintf("{:f64eq, 0x%016X}", math.Float64bits(defFloat))
 	case f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("{:f64, 0x%016X}", math.Float64bits(def.F))
-	case ir.TableKindWide(ir.TableScalarKind(f)):
-		return "{:same, " + tabletext.WideValue(&def).String() + "}"
-	case f.Type.Kind == ir.TInt && f.Type.Signed:
-		return fmt.Sprintf("{:same, %d}", def.I)
+		return fmt.Sprintf("{:f64, 0x%016X}", math.Float64bits(defFloat))
 	}
-	return fmt.Sprintf("{:same, %d}", def.U)
+	i, u := messageDefaultInt(f)
+	switch {
+	case ir.TableKindWide(ir.TableScalarKind(f)):
+		wide := new(big.Int)
+		if (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.HasDefault && f.DefInt != nil {
+			wide.Set(f.DefInt)
+		}
+		return "{:same, " + wide.String() + "}"
+	case f.Type.Kind == ir.TInt && f.Type.Signed:
+		return fmt.Sprintf("{:same, %d}", i)
+	}
+	return fmt.Sprintf("{:same, %d}", u)
+}
+
+// messageDefaultInt is an integer-like field's declared default as the
+// engine's model holds it: a signed reading for a signed int or fixed-point
+// field or a negative value, the flags mask, and zero where nothing is
+// declared (internal/tabletext fieldDefault and intCell).
+func messageDefaultInt(f *ir.Field) (int64, uint64) {
+	if !f.HasDefault || f.DefInt == nil {
+		return 0, 0
+	}
+	v := f.DefInt
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed, ir.TBits:
+		if (f.Type.Kind != ir.TBits && f.Type.Signed) || v.Sign() < 0 {
+			return v.Int64(), uint64(v.Int64())
+		}
+		return int64(v.Uint64()), v.Uint64()
+	case ir.TNamed:
+		if _, ok := f.Type.Ref.(*ir.Flags); ok {
+			return 0, v.Uint64()
+		}
+	}
+	return 0, 0
 }
 
 // messageWriteRuleRows emits write_rule_rows/0: the write contract
