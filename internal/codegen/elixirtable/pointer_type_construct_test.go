@@ -106,10 +106,22 @@ end
 `, hex.EncodeToString(wire), row.Writer, string(row.Input), row.Writer, row.Reader, row.Reader, row.Unknown, row.Name, row.Reader, string(canonical)+"\n", row.Name)
 	}
 	p.WriteString("IO.puts(\"POINTER_TARGET_KINDS_OK\")\n")
-	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), p.String())
+	files := generateElixir(t, u)
+	out, e := runArmProbe(t, elixirBinary(t), files, p.String())
 	if e != nil || !strings.Contains(out, "POINTER_TARGET_KINDS_OK") || strings.Contains(out, "warning:") {
 		t.Fatalf("native exact pointer types: %v\n%s", e, out)
 	}
+
+	// NEGATIVE CONTROL: with the root closure as the set the reader names, a
+	// declared table outside the root's closure under a declared slot reads
+	// null, so the probe goes red on that row by name (docs/rulings.json
+	// blob-target-outside-closure-refused).
+	t.Run("root-closure-naming-control", func(t *testing.T) {
+		out, e := runArmProbe(t, elixirBinary(t), plantRootClosureNaming(t, files), p.String())
+		if e == nil || !strings.Contains(out, "table outside root closure strict refusal") {
+			t.Fatalf("the planted root-closure naming did not go red on table outside root closure: %v\n%s", e, out)
+		}
+	})
 }
 
 func TestNodeTableWrongKindElixir(t *testing.T) {
