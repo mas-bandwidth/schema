@@ -57,7 +57,13 @@ func TestKeyedElementWideningElixir(t *testing.T) {
 		}
 		wire := append([]byte{1, 1, 16, byte(len(body))}, body...)
 		wire = append(wire, 0)
-		ids := []uint64{ir.TableWireId(tc.field), ir.TableWireId(u.Enums["Slot"].VariantWireNameOf("A")), ir.TableWireId(u.Enums["Slot"].VariantWireNameOf("B"))}
+		// The id table holds exactly the ids the body references, in first-use
+		// order (docs/SPEC-TABLES.md §3): the field, then slot i's key, the
+		// variant at ref i+2.
+		ids := []uint64{ir.TableWireId(tc.field)}
+		for _, variant := range []string{"A", "B"}[:len(tc.slots)] {
+			ids = append(ids, ir.TableWireId(u.Enums["Slot"].VariantWireNameOf(variant)))
+		}
 		for _, id := range ids {
 			wire = binary.LittleEndian.AppendUint64(wire, id)
 		}
