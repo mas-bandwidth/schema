@@ -93,7 +93,7 @@ type cfCase struct {
 	counts  int32  // the fields past an end across A and B: the form refuses the value
 	refused bool   // a NaN or an infinity: every writer and every read refuses it
 	text    bool   // the text form writes it (a finite value past an end is not asked of it)
-	elided  bool   // the variable form holds the value at a field's declared default: the read refuses it
+	elided  bool   // the variable form holds the value at a field's declared default: the read lands it and the rewrite is the current writer's bytes
 }
 
 var cfCases = []cfCase{
@@ -359,8 +359,23 @@ func TestVariable(t *testing.T) {
 			continue
 		}
 		if c.elided {
-			if readingForm1(&got, buf, &rep) {
-				t.Errorf("variable %s: the read landed a field at its declared default", c.name)
+			// form 1 carries no writer build or Required/optional declaration,
+			// so a field stored at its declared default reads, and rewrites as
+			// the current writer's bytes, which elide it
+			if !readingForm1(&got, buf, &rep) {
+				t.Fatalf("variable %s: a field stored at its declared default did not read: %+v", c.name, rep)
+			}
+			cfLanded(t, "variable", c, got)
+			var canonical Reading
+			ReadingReset(&canonical)
+			canonical.A, canonical.B = math.Float32frombits(c.a), math.Float32frombits(c.b)
+			want := make([]byte, readingForm1Measure(&canonical))
+			if readingForm1Save(&canonical, want) != int64(len(want)) {
+				t.Fatalf("variable %s: canonical save", c.name)
+			}
+			again := make([]byte, readingForm1Measure(&got))
+			if readingForm1Save(&got, again) != int64(len(again)) || !bytes.Equal(again, want) || bytes.Equal(again, buf) {
+				t.Errorf("variable %s: rewrite %x, want the current writer's bytes %x (stored %x)", c.name, again, want, buf)
 			}
 			continue
 		}
