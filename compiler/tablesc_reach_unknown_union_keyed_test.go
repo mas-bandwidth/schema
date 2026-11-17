@@ -28,65 +28,73 @@ func TestCTableReachThroughUnknownUnionAndKeyed(t *testing.T) {
 		t.Fatalf("load tables/pointers: %v", err)
 	}
 
-	ids := []string{
-		"head", "tree", "alias", "node-table", "type:ListNode", "value",
-		"next", "type:TreeNode", "left", "right", "mystery", "mystery2",
-		"graphUnknown", "string", "bytes", "mystery3", "armystery", "key",
-	}
-	entries := make([]uint64, len(ids))
-	for i, name := range ids {
+	entry := func(name string) uint64 {
 		switch {
 		case name == "node-table":
-			entries[i] = ir.TableNodeWireId
+			return ir.TableNodeWireId
 		case strings.HasPrefix(name, "type:"):
 			st := u.Tables[name[len("type:"):]]
 			if st == nil {
 				t.Fatalf("no table named %q", name[len("type:"):])
 			}
-			entries[i] = ir.TableTypeId(st.WireName())
+			return ir.TableTypeId(st.WireName())
 		default:
-			entries[i] = ir.TableWireId(name)
+			return ir.TableWireId(name)
 		}
 	}
-	file := func(body []byte) []byte {
+	// Each wire's id table names exactly the ids its body references, in
+	// FIRST-USE ORDER over the whole wire, root body first, then the node
+	// table's records (docs/SPEC-TABLES.md §3): a reader refuses an unused
+	// or out-of-order entry, so reference n below is the n-th name given.
+	file := func(ids []string, body []byte) []byte {
 		out := append([]byte{ir.TableWireForm}, body...)
-		for _, id := range entries {
-			out = binary.LittleEndian.AppendUint64(out, id)
+		for _, name := range ids {
+			out = binary.LittleEndian.AppendUint64(out, entry(name))
 		}
-		return binary.LittleEndian.AppendUint64(out, uint64(len(entries)))
+		return binary.LittleEndian.AppendUint64(out, uint64(len(ids)))
 	}
 	record := func(typ byte, body []byte) []byte {
 		return reachCat(reachB(typ), reachLeb(uint64(len(body))), body)
 	}
-	nodeTable := func(count uint64, records ...[]byte) []byte {
+	nodeTable := func(ref byte, count uint64, records ...[]byte) []byte {
 		payload := reachLeb(count)
 		for _, r := range records {
 			payload = append(payload, r...)
 		}
-		return reachCat(reachB(4, ir.TableKindString), reachLeb(uint64(len(payload))), payload)
+		return reachCat(reachB(ref, ir.TableKindString), reachLeb(uint64(len(payload))), payload)
 	}
-	unknown := record(13, reachB(0))
+	unknown := func(typ byte) []byte { return record(typ, reachB(0)) }
 	// An unknown record's body carrying an array of element kind 32 at count
 	// 0 and an enum-keyed body of element kind 17 at count 0: both kinds are
 	// off the closed lists (docs/SPEC-TABLES.md §3, §4), so the reach walk
-	// must refuse however the record is reached.
-	unknownBadArray := record(13, reachB(11, 14, 2, 32, 0, 0))
-	unknownBadKeyed := record(13, reachB(11, 16, 2, 17, 0, 0))
+	// must refuse however the record is reached. The record's own field is
+	// "mystery", reference 1 in every wire that carries one.
+	unknownBadArray := func(typ byte) []byte { return record(typ, reachB(1, 14, 2, 32, 0, 0)) }
+	unknownBadKeyed := func(typ byte) []byte { return record(typ, reachB(1, 16, 2, 17, 0, 0)) }
 
+	field := []string{"mystery", "node-table", "graphUnknown"}
 	cases := []struct {
 		name   string
 		wire   []byte
 		accept bool
 	}{
-		{"graph_reach_unknown_field", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknown), reachB(0))), true},
-		{"graph_reach_unknown_nested", file(reachCat(reachB(11, 13, 4, 7, 17, 2, 0), nodeTable(1, unknown), reachB(0))), true},
-		{"graph_reach_unknown_union_arm", file(reachCat(reachB(11, 15, 17, 17, 1, 2), nodeTable(1, unknown), reachB(0))), true},
+		{"graph_reach_unknown_field", file(field,
+			reachCat(reachB(1, 17, 2), nodeTable(2, 1, unknown(3)), reachB(0))), true},
+		{"graph_reach_unknown_nested", file([]string{"mystery", "next", "node-table", "graphUnknown"},
+			reachCat(reachB(1, 13, 4, 2, 17, 2, 0), nodeTable(3, 1, unknown(4)), reachB(0))), true},
+		{"graph_reach_unknown_union_arm", file([]string{"mystery", "armystery", "node-table", "graphUnknown"},
+			reachCat(reachB(1, 15, 2, 17, 1, 2), nodeTable(3, 1, unknown(4)), reachB(0))), true},
 		// Element kind 17 is forbidden in an enum-keyed body (§3), so this refuses.
-		{"graph_reach_unknown_keyed_slot", file(reachCat(reachB(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, unknown), reachB(0))), false},
-		{"graph_reach_unknown_table_elem_array_kind", file(reachCat(reachB(11, 14, 7, 13, 1, 4, 3, 17, 2, 0), nodeTable(1, unknownBadArray), reachB(0))), false},
-		{"graph_reach_unknown_field_array_kind", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknownBadArray), reachB(0))), false},
-		{"graph_reach_unknown_field_keyed_kind", file(reachCat(reachB(11, 17, 2), nodeTable(1, unknownBadKeyed), reachB(0))), false},
-		{"graph_unknown_type_unreached", file(reachCat(nodeTable(1, unknown), reachB(0))), false},
+		{"graph_reach_unknown_keyed_slot", file([]string{"mystery", "key", "node-table", "graphUnknown"},
+			reachCat(reachB(1, 16, 5, 17, 1, 2, 1, 2), nodeTable(3, 1, unknown(4)), reachB(0))), false},
+		{"graph_reach_unknown_table_elem_array_kind", file([]string{"mystery", "alias", "node-table", "graphUnknown"},
+			reachCat(reachB(1, 14, 7, 13, 1, 4, 2, 17, 2, 0), nodeTable(3, 1, unknownBadArray(4)), reachB(0))), false},
+		{"graph_reach_unknown_field_array_kind", file(field,
+			reachCat(reachB(1, 17, 2), nodeTable(2, 1, unknownBadArray(3)), reachB(0))), false},
+		{"graph_reach_unknown_field_keyed_kind", file(field,
+			reachCat(reachB(1, 17, 2), nodeTable(2, 1, unknownBadKeyed(3)), reachB(0))), false},
+		{"graph_unknown_type_unreached", file([]string{"node-table", "graphUnknown"},
+			reachCat(nodeTable(1, 1, unknown(2)), reachB(0))), false},
 	}
 
 	var wires, checks strings.Builder
