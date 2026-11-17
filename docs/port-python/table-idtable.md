@@ -24,6 +24,28 @@
   spellings, and on a structurally mismatched field beside them (the id damage
   is reported first).
 
+### The roadmap row over the manifest
+
+`TestPythonVtIdtableRows` (make `python-vt-idtable-rows`) holds the
+id-table-wire row over the twelve conformance-manifest cases luatable's
+`vtcells_test.go` names for it, under both pins. Every instance root
+(`vocab_wide`, `vocab_low`, `peer_a`, `peer_b`, `vocab9_wide`, `vocab9_low`,
+`login_full`, `match_full`) is a fixed table, so its plain `load` and `save`
+are form 3, as luatable reads a declared fixed root through `ReadFixed`: each
+reference wire loads, saves back byte for byte, and measures its length. The
+four report rows (`escape_unnamed_field`, `escape_named_field`,
+`escape_element`, `nopayload_named_field`) are form-1 wires of the fixed root
+`ToolMessage`: the plain load refuses them `previous_form`, as the Go engine's
+`Decode` does, and the variable reader (`load_table`), where the escape and
+payload-free kinds are judged, answers the engine's `DecodeVariable` verdict on
+the same bytes: `escape_unnamed_field` reads (the escape at a position it
+cannot name is skipped and counted unknown), the two named-field rows refuse
+`kind_mismatch`, and `escape_element` refuses `wire_damaged`. The rows needed
+no runtime change. `TestPythonVtIdtableRowsNegativeControl` plants, in a copy
+of the runtime, the fixed save's layout hash one bit off and the fixed read's
+record-hash test inverted (every instance case red under each), and the
+variable read refusing an unnamed escape (`escape_unnamed_field` red).
+
 ### Enum lookup bench
 
 The enum codec maps a value to its variant's wire id on save and a wire id to
