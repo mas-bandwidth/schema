@@ -57,10 +57,10 @@ class FakeRunner(m.Runner):
             text = fuzz(arm,int(seed),self.lang)
         elif name.startswith("wire-builder-"):
             text = fuzz("plain", int(name.rsplit("-", 1)[1]), self.lang, builder=True)
-        elif self.lang == "moo" and name in ("packet-normal-0", "packet-ludicrous-0"):
+        elif self.lang in ("moo", "python") and name in ("packet-normal-0", "packet-ludicrous-0"):
             tests = argv[argv.index("-run")+1][2:-2].split("|")
-            text = "\n".join("\n".join(native("moo",t).splitlines()[:-1]) for t in tests)
-            text += "\n" + native("moo").splitlines()[-1]
+            text = "\n".join("\n".join(native(self.lang,t).splitlines()[:-1]) for t in tests)
+            text += "\n" + native(self.lang).splitlines()[-1]
         elif name.startswith("packet-"):
             text = "OK"
             if name == "packet-schema_test_random":
@@ -77,6 +77,10 @@ class FakeRunner(m.Runner):
             tests = argv[argv.index("-run")+1][2:-2].split("|")
             text = "\n".join("\n".join(native("mootable",t).splitlines()[:-1]) for t in tests)
             text += "\n" + native("mootable").splitlines()[-1]
+        elif name.startswith("retain-python-"):
+            tests = argv[argv.index("-run")+1][2:-2].split("|")
+            text = "\n".join("\n".join(native("pythontable",t).splitlines()[:-1]) for t in tests)
+            text += "\n" + native("pythontable").splitlines()[-1]
         elif name.startswith("retain-"):
             test = argv[argv.index("-run")+1][1:-1]
             package = argv[-1].split("/")[-1]
@@ -447,9 +451,14 @@ class Contracts(unittest.TestCase):
                 expected=["packet-"+feature+"-"+lang+tail
                           for feature in ("defaults","utf8")
                           for tail in ("","-negative-control")]
-                if lang in ("go","java","dart","elixir","goose","moo"):
+                if lang in ("go","java","dart","elixir","goose","moo","python"):
                     expected += ["packet-finite-"+lang,"packet-finite-"+lang+"-negative-control"]
-                self.assertEqual(features[features.index("-j2")+1:],expected)
+                targets=features[features.index("-j2")+1:]
+                if lang=="python":
+                    # through the uncapped copy of the reviewed recipes
+                    self.assertEqual(targets[:2],["-f",str(runner.out/"Makefile.python-uncapped-packet-features")])
+                    targets=targets[2:]
+                self.assertEqual(targets,expected)
             self.assertFalse(any("packet-wide-" in word or word.startswith("wide-") for word in features))
             runner.temporary.cleanup()
         self.assertEqual(len(m.required_phases("js")),23)
@@ -476,7 +485,9 @@ class Contracts(unittest.TestCase):
                         "goose-toolchain-ready","build/conformance-harness-goose","build/goose-packet/.stamp",
                         "packet-finite-goose","packet-finite-goose-negative-control",
                         "moo-toolchain-ready","build/conformance-harness-moo","build/schema-moo","moo-packet-driver",
-                        "packet-finite-moo","packet-finite-moo-negative-control"))
+                        "packet-finite-moo","packet-finite-moo-negative-control",
+                        "dist-python","python-toolchain-check","build/conformance-harness-python","build/schema-python",
+                        "packet-finite-python","packet-finite-python-negative-control"))
         for lang in m.LANGUAGES:
             if lang!="cpp":
                 for feature in ("defaults","utf8"):
@@ -492,9 +503,29 @@ class Contracts(unittest.TestCase):
         goose_outer={name for name in outer if name.startswith("tables-goose-")}
         # MOO's likewise, through moo_uncapped_makefile.
         moo_outer={name for name in outer if name.startswith("tables-moo-")}
-        self.assertEqual(outer-goose_outer-moo_outer,{"tables-view","tables-fixed-twin"})
+        # Python's likewise, through python_uncapped_makefile, in each phase
+        # that makes them: the packet features, the external gates and the
+        # verdict-pipe controls.
+        python_outer={name for name in outer if "python" in name}
+        self.assertEqual(outer-goose_outer-moo_outer-python_outer,{"tables-view","tables-fixed-twin"})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
+        runner=FakeRunner(ROOT,"python")
+        uncapped=set()
+        for phase,targets in (("packet-features",m.PYTHON_PACKET_FEATURES),
+                              ("external-table-gates",m.FIXED_GATES["python"]),
+                              ("wire-retain-controls",m.WIRE_CONTROLS["python"])):
+            self.assertIsNotNone(m.python_uncapped_makefile(runner,targets,phase))
+            receipt=json.loads((runner.out/("Makefile.python-uncapped-"+phase+".json")).read_text())
+            self.assertLessEqual(set(receipt),set(targets.split()))
+            uncapped|=set(receipt)
+        self.assertEqual(uncapped,python_outer)
+        self.assertEqual(python_outer,{"packet-defaults-python","packet-defaults-python-negative-control",
+                                       "packet-finite-python-negative-control",
+                                       "python-fixed-writer-lineage","python-fixed-writer-lineage-negative-control",
+                                       "tables-python-wire-fuzz-negative-control",
+                                       "tables-python-wire-fuzz-retain-negative-control"})
+        runner.temporary.cleanup()
         runner=FakeRunner(ROOT,"goose")
         m.goose_uncapped_makefile(runner,m.FIXED_GATES["goose"])
         receipt=json.loads((runner.out/"Makefile.goose-uncapped.json").read_text())
@@ -647,6 +678,118 @@ class Contracts(unittest.TestCase):
             runner=FakeRunner(root,"moo")
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertIsNone(m.moo_uncapped_makefile(runner,m.FIXED_GATES["moo"]))
+            self.assertTrue(runner.results[-1]["errors"])
+            runner.temporary.cleanup()
+
+    def test_python_plan_is_the_expanded_shape(self):
+        required=m.required_phases("python")
+        for phase in ("prerequisites","implementation","native-python","native-pythontable","native-lockfile",
+                      "native-list-python","native-list-pythontable",
+                      "packet-build","packet-normal-0","packet-ludicrous-0",
+                      "packet-features","external-table-gates","wire-driver-build","wire-retain-controls",
+                      "retain-python-save","retain-python-remap",
+                      *("wire-"+arm+"-"+str(seed) for arm in ("plain","retain") for seed in (1,2,3))):
+            self.assertIn(phase,required)
+        self.assertNotIn("packet-normal-1",required)
+        # no §5.6 retirement is admitted for Python
+        self.assertNotIn("python",m.RETIRED_NATIVE)
+        self.assertTrue(m.native_retirement_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything","python",set()))
+        # one process over every unit under the current pin, the plain profile
+        self.assertEqual(m.driver_command(ROOT,"python"),
+                         m.PYTHON_DIST+" -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python")
+        self.assertNotIn("python",m.MIXED_BUILDER)
+        self.assertEqual(m.GO_TAGS,{"python":"schema_leg_python"})
+
+    def test_python_main_uses_tagged_harness_pins_and_tags(self):
+        real=m.Runner
+        m.Runner=FakeRunner
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main(["python"]),0)
+            runner=FakeRunner.instances[-1]
+            calls={name:(argv,cwd) for name,argv,cwd in runner.calls}
+            for target in ("dist-python","python-toolchain-check","build/conformance-harness-python"):
+                self.assertIn(target,calls["prerequisites"][0])
+            self.assertEqual(calls["implementation"][0],
+                             ["./build/conformance-harness-python","implementation","--lang","python"])
+            for package in ("lockfile","python","pythontable"):
+                for name in ("native-list-"+package,"native-"+package):
+                    argv=calls[name][0]
+                    self.assertEqual(argv[argv.index("-tags")+1],"schema_leg_python",name)
+            for name in ("native-list-gotable","native-gotable"):
+                self.assertNotIn(name,calls)
+            for arm in ("plain","retain"):
+                for seed in m.SEEDS:
+                    argv=calls["wire-"+arm+"-"+str(seed)][0]
+                    self.assertEqual(argv[0],"./build/conformance-harness")
+                    self.assertEqual(argv[argv.index("--driver")+1],m.driver_command(ROOT,"python"))
+                    self.assertNotIn("--mixed-builder",argv)
+            for label,tests in m.PYTHON_PACKET_PROBES.items():
+                argv=calls["packet-"+label+"-0"][0]
+                self.assertEqual(argv[-1],"./internal/codegen/python")
+                self.assertEqual(argv[argv.index("-tags")+1],"schema_leg_python")
+                self.assertEqual(argv[argv.index("-run")+1],"^("+"|".join(tests)+")$")
+            for name in ("retain-python-save","retain-python-remap"):
+                argv=calls[name][0]
+                self.assertIn("-timeout=0",argv)
+                self.assertEqual(argv[-1],"./internal/codegen/pythontable")
+            for phase in ("packet-features","external-table-gates","wire-retain-controls"):
+                argv=calls[phase][0]
+                self.assertEqual(argv[argv.index("-f")+1],str(runner.out/("Makefile.python-uncapped-"+phase)))
+            self.assertIn("-f",calls["external-table-gates"][0])
+            # every interpreter the plan starts is a pin, never a bare name
+            for name,argv,cwd in runner.calls:
+                for i,word in enumerate(argv):
+                    if i and argv[i-1]=="--lang":
+                        continue  # a language name, not a command word
+                    for token in word.split():
+                        self.assertIsNone(m.re.fullmatch(r"python[0-9.]*",token),(name,argv))
+            runner.temporary.cleanup()
+        finally:
+            m.Runner=real
+
+    def test_python_dist_matches_the_make_pin(self):
+        mk=(ROOT/"make/python-toolchain.mk").read_text()
+        version=m.re.search(r"^PYTHON_CURRENT_VERSION\s*:=\s*(\S+)$",mk,m.re.MULTILINE)[1]
+        exe=m.re.search(r"^PYTHON\s*\?=\s*\$\(CURDIR\)/dist/python-\$\(PYTHON_CURRENT_VERSION\)/bin/(\S+)$",mk,m.re.MULTILINE)[1]
+        self.assertEqual(m.PYTHON_DIST,"dist/python-"+version+"/bin/"+exe)
+
+    def test_python_uncapped_makefile_is_exact_and_drift_rejected(self):
+        runner=FakeRunner(ROOT,"python")
+        for phase,targets in (("packet-features",m.PYTHON_PACKET_FEATURES),
+                              ("external-table-gates",m.FIXED_GATES["python"]),
+                              ("wire-retain-controls",m.WIRE_CONTROLS["python"])):
+            text=m.python_uncapped_makefile(runner,targets,phase).read_text()
+            self.assertTrue(text.startswith("include Makefile\n"))
+            self.assertNotIn("-timeout 600s",text)
+            receipt=json.loads((runner.out/("Makefile.python-uncapped-"+phase+".json")).read_text())
+            self.assertTrue(receipt,phase)
+            for target in receipt:
+                block=m.re.search(r"^"+m.re.escape(target)+r":\n((?:\t[^\n]*\n)+)",text,m.re.MULTILINE)
+                self.assertIsNotNone(block,target)
+                for line in block[1].splitlines():
+                    if "go test " in line or "test/slowgate/proof " in line:
+                        self.assertRegex(line,r"-timeout=0(\s|$)")
+        runner.temporary.cleanup()
+        for before,after in (("go test -count=1 -timeout 600s","go test -count=1 -timeout 900s"),
+                             ("-count=1 -timeout 600s -tags","-count=1 -timeout=10m -tags")):
+            with tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);(root/"make").mkdir()
+                for f in (ROOT/"make").glob("python*.mk"):
+                    (root/"make"/f.name).write_text(f.read_text().replace(before,after))
+                runner=FakeRunner(root,"python")
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertIsNone(m.python_uncapped_makefile(runner,m.PYTHON_PACKET_FEATURES,"packet-features"))
+                self.assertTrue(runner.results[-1]["errors"])
+                runner.temporary.cleanup()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/"make").mkdir()
+            for f in (ROOT/"make").glob("python*.mk"):
+                (root/"make"/f.name).write_text(f.read_text())
+            (root/"make"/"python-zz-duplicate.mk").write_text("packet-defaults-python:\n\techo shadow\n")
+            runner=FakeRunner(root,"python")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertIsNone(m.python_uncapped_makefile(runner,m.PYTHON_PACKET_FEATURES,"packet-features"))
             self.assertTrue(runner.results[-1]["errors"])
             runner.temporary.cleanup()
 
