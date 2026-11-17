@@ -5637,20 +5637,43 @@ the payload opens with the count and then carries the records:
   **A blob is owned by one slot (§2.5)**: a wire CAN spell two slots naming one
   blob record, but every writer refuses that graph by the name `blob_shared`,
   and every read refuses that wire by the same name (§6.5).
-- **A ROOT that reaches no blob of that shape skips it by its length and
-  counts it `unknown`**, as it does any record whose type id it cannot name,
-  and the record keeps its index. The reserved ids are named on the same terms
-  a table's name id is (§3.1): a blob node is a pointer's pointee, so a
-  `*string` record under a root that no `*string` edge sits below is a node
-  this reader cannot place, and it commands no storage. A file never carries
-  one, because a writer writes only the ids its own body used; a MESSAGE can,
-  because §3.3's tail announces every reserved id whether or not the root
-  names it. A reader that names the id and meets a length past the field it
-  rides in refuses the whole wire `wire_damaged`, as it refuses any record
-  that does; nothing reads a blob's bytes from outside its record. A blob record under a `*T` slot, or a table record under a `*bytes`
-  slot, is the type-id check below: damage, `wire_damaged` (a wrong-type pointer target, §6.5). A
-  `*bytes` slot and a `*string` slot are two ids for the same reason
-  `string(N)` and `bytes(N)` are two kinds on this wire.
+- **The two reserved ids are types EVERY reader of the variable form can
+  name, whatever its root reaches.** A blob record named from a slot this
+  reader DECLARES whose target is not that blob kind — a `*string` slot naming
+  a `*bytes` record, a `*bytes` slot naming a `*string` record, a `*T` slot
+  naming either — refuses the whole read `wire_damaged` (a wrong-type pointer
+  target, §6.5), whether or not the root's closure has an edge of that kind;
+  so does a table record under a `*bytes` or `*string` slot. A `*bytes` slot
+  and a `*string` slot are two ids for the same reason `string(N)` and
+  `bytes(N)` are two kinds on this wire.
+- **A blob record of a kind the root's closure lacks, reached only from fields
+  this reader does not declare** — a newer writer's field — is skipped by its
+  length and counted `unknown`, and it keeps its index: that is evolution, and
+  the load is accepted. Its bytes are still held to the rules every reader
+  applies to them (the text rule above, the size cap, §6.5), and it commands
+  no storage.
+- **A blob record no pointer reaches** is damage, `wire_damaged`, as every
+  unreachable record is (§6.5, THE GRAPH). No conforming writer emits one: a
+  save numbers only the records its written slots name. A MESSAGE's tail
+  announces both reserved ids whether or not the root names them (§3.3); an
+  announced id is not a record, and only a record is judged here. A reader
+  that meets a blob record whose length runs past the field it rides in
+  refuses the whole wire `wire_damaged`, as it refuses any record that does;
+  nothing reads a blob's bytes from outside its record.
+- **Why the blob kinds are refused, and where evolution stays accepted**
+  (docs/rulings.json `blob-target-outside-closure-refused`, 2026-11-17). The
+  maintainer's standing principle: "if there is ever any uncertainty about how
+  to read something, and it is weird or not a natural case for somebody
+  sending us well formed data, the answer is always reject." A blob of the
+  wrong kind under a declared slot is input no conforming writer emits, so
+  every leg refuses it, in every build. A newer writer's TYPE is not this
+  case: a declared slot naming a record whose type id is a TABLE id the
+  reader's unit does not declare reads null with the load accepted (the bullet
+  "A node whose TYPE this reader does not DECLARE" below; vector
+  `next-writer-only`). The wire tells the two apart by the record's type id
+  alone: a reserved blob id is always one this reader names, and a table id
+  is one it names exactly when its unit declares that table. The vectors are
+  testdata/wire/pointer-target-type/blobkind.
 - The blob rides ONLY as a record. A `*bytes` field's own payload is the
   node index under kind `17`, so an edit between `*bytes` and
   `bytes(N)` — kind `17` against kind `14` — is §4's kind mismatch in both
@@ -9981,7 +10004,8 @@ evolution a read accepts (§4).
   field; map key order and repeats (a map and a `[..N]Pair` are the same
   bytes); and a pointer to a record of a type this reader names that is not
   the type its slot requires. A pointer to a record of a type this reader
-  CANNOT name is evolution: the pointer reads null (§3.1).
+  CANNOT name — a table type the reader's unit does not declare, never one of
+  the two reserved blob ids — is evolution: the pointer reads null (§3.1).
 
 **EVERY RECORD OF A TYPE THIS READER NAMES IS DECODED** and held to the
 declaration, whether or not a slot the reader knows reaches it, on the region
