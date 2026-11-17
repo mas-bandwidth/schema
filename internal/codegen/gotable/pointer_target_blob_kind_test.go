@@ -25,7 +25,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -57,10 +56,10 @@ func TestGoPointerTargetBlobKindRefused(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 
 	readerUnit := loadUnitPaths(t, root, []string{blobKindUnit})
-	readerModel := blobKindModel(t, filepath.Join(root, blobKindUnit))
+	readerModel := tabletext.NewModel(readerUnit)
 	rows := blobKindManifestRows(t, root, readerUnit, readerModel)
 	witnessUnit := loadUnitPaths(t, root, []string{blobWitnessDir})
-	witnesses := blobKindWitnessRows(t, root)
+	witnesses := blobKindWitnessRows(t, root, tabletext.NewModel(witnessUnit))
 
 	t.Run("every manifest row through every read entry", func(t *testing.T) {
 		t.Parallel()
@@ -116,19 +115,6 @@ func TestGoPointerTargetBlobKindRefused(t *testing.T) {
 			}
 		}
 	})
-}
-
-func blobKindModel(t *testing.T, dir string) *tabletext.Model {
-	t.Helper()
-	paths, err := compiler.GatherPaths([]string{dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tabletext.NewModel(u)
 }
 
 // blobKindManifestRows reads the blobkind manifest generically and holds each
@@ -211,10 +197,9 @@ var blobKindEngineReads = []func(*tabletext.Model, *tabletext.Instance, []byte, 
 // outside the reader root's closure: the engine writes each row's input at
 // its writer root, and its own read at the reader root is the verdict, which
 // must be the row's (kind_mismatch above zero refuses).
-func blobKindWitnessRows(t *testing.T, root string) []blobKindRow {
+func blobKindWitnessRows(t *testing.T, root string, m *tabletext.Model) []blobKindRow {
 	t.Helper()
 	dir := filepath.Join(root, blobWitnessDir)
-	m := blobKindModel(t, dir)
 	data, err := os.ReadFile(filepath.Join(dir, "cases.json"))
 	if err != nil {
 		t.Fatal(err)
