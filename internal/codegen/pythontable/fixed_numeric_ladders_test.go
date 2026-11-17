@@ -13,7 +13,11 @@ import (
 )
 
 // TestPythonFixedNumericLadders compares every adjacent signed and unsigned
-// integer and fixed-point widening through 128 bits against live C++ files.
+// integer widening through 64 bits, and every adjacent fixed-point widening
+// through 128-bit storage, against live C++ files. The fixed form's integer
+// rungs stop at 64 bits (docs/FIXED-FORM-ALGORITHM.md §1): int64 into int128
+// and uint64 into uint128 are kinds that moved, and
+// TestPythonFixedProofEvolutionKindPairs holds their refusal.
 func TestPythonFixedNumericLadders(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters, strict mypy, and live C++")
@@ -22,11 +26,9 @@ fixed table T {
  s8 int8
  s16 int16
  s32 int32
- s64 int64 | min = -9223372036854775807, max = 9223372036854775807
  u8 uint8
  u16 uint16
  u32 uint32
- u64 uint64
  p8 fixed(4,4) | min = -8, max = 7
  p16 fixed(12,4) | min = -8, max = 7
  p32 fixed(28,4) | min = -8, max = 7
@@ -42,11 +44,9 @@ fixed table T {
  s8 int16
  s16 int32
  s32 int64
- s64 int128 | min = -9223372036854775807, max = 9223372036854775807
  u8 uint16
  u16 uint32
  u32 uint64
- u64 uint128
  p8 fixed(12,4) | min = -8, max = 7
  p16 fixed(28,4) | min = -8, max = 7
  p32 fixed(60,4) | min = -8, max = 7
@@ -58,7 +58,7 @@ fixed table T {
  added int32 = 77
 }
 `
-	setup := `value[0].s8 = -127; value[0].s16 = -32768; value[0].s32 = -2147483647 - 1; value[0].s64 = -9223372036854775807ll; value[0].u8 = 255; value[0].u16 = 65535; value[0].u32 = 0xffffffffu; value[0].u64 = 0xffffffffffffffffull; value[0].p8 = -1; value[0].p16 = -1; value[0].p32 = -1; value[0].p64 = -1; value[0].q8 = 240; value[0].q16 = 65520; value[0].q32 = 0xfffffff0u; value[0].q64 = 0xfffffffffffffff0ull;`
+	setup := `value[0].s8 = -127; value[0].s16 = -32768; value[0].s32 = -2147483647 - 1; value[0].u8 = 255; value[0].u16 = 65535; value[0].u32 = 0xffffffffu; value[0].p8 = -1; value[0].p16 = -1; value[0].p32 = -1; value[0].p64 = -1; value[0].q8 = 240; value[0].q16 = 65520; value[0].q32 = 0xfffffff0u; value[0].q64 = 0xfffffffffffffff0ull;`
 	old, newer := fixedproof.ParseCheckUnit(t, oldSchema), fixedproof.ParseCheckUnit(t, newSchema)
 	_, _, oldBody := fixedproof.RootFacts(old.Tables["T"])
 	_, _, newBody := fixedproof.RootFacts(newer.Tables["T"])
@@ -77,7 +77,7 @@ with open('old','rb') as f: wire = f.read()
 report = LoadReport()
 rows = T.fixed_load(wire, report=report)
 r = rows[0]
-if (r.s8,r.s16,r.s32,r.s64,r.u8,r.u16,r.u32,r.u64,r.added,report.widened) != (-127,-32768,-2147483648,-9223372036854775807,255,65535,4294967295,18446744073709551615,77,16):
+if (r.s8,r.s16,r.s32,r.u8,r.u16,r.u32,r.added,report.widened) != (-127,-32768,-2147483648,255,65535,4294967295,77,14):
     raise AssertionError('ladder_control')
 if (r.p8,r.p16,r.p32,r.p64,r.q8,r.q16,r.q32,r.q64) != (-1,-1,-1,-1,240,65520,4294967280,18446744073709551600): raise AssertionError('ladder_control')
 with open('saved','wb') as f: f.write(T.fixed_save(rows))
