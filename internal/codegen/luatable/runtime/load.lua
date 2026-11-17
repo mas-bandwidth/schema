@@ -2374,6 +2374,7 @@ end
 local function wc_body(c, b, at, lim, root)
   local seen = wc_set(c.bodies, c.depth)
   local ids = c.ids
+  local placed = false
   while true do
     local ref, nx = wc_leb(b, at, lim)
     if ref == nil then return wc_fail(c, "wire_damaged") end
@@ -2382,6 +2383,9 @@ local function wc_body(c, b, at, lim, root)
       if at ~= lim then return wc_fail(c, "wire_damaged") end
       return true
     end
+    -- A NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field after it is
+    -- a node table out of its place, refused rather than read.
+    if placed then return wc_fail(c, "wire_damaged") end
     if above(ref, c.nids) then return wc_fail(c, "wire_damaged") end
     if not wc_use(c, ref) then return nil end
     local id = ids[ref]
@@ -2398,6 +2402,7 @@ local function wc_body(c, b, at, lim, root)
       if n == nil or above(n, lim - after) then return wc_fail(c, "wire_damaged") end
       at = after + n
       c.table, c.tlim = after, at
+      placed = true
     else
       at = wc_payload(c, b, at, lim, kind)
       if at == nil then return nil end
@@ -2634,6 +2639,10 @@ local function wire_check(st, bytes, blen)
       off = recend
     end
     if declared ~= n - 1 then return "wire_damaged" end
+    -- A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL (§3.1): a
+    -- field carrying a count of 0 is a spelling no conforming writer
+    -- produces, refused rather than read.
+    if n == 1 then return "wire_damaged" end
   end
   if c.next_id ~= nids + 1 then return "wire_damaged" end
   if not wc_graph(c, n) then return c.fail end

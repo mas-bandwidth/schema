@@ -277,9 +277,10 @@ local function slot_field(T, f)
   return slot(T, f.id)
 end
 
+-- field_by_id answers the declared field and its declaration index
 local function field_by_id(_T, desc, id)
-  for _, f in ipairs(desc.fields) do
-    if f.id == id then return f end
+  for i, f in ipairs(desc.fields) do
+    if f.id == id then return f, i end
   end
   return nil
 end
@@ -592,11 +593,15 @@ skip_body = function(R, ctx, depth)
     if fe == nil or fe.id == NODE_ID or fe.id == 0xfffffffffffffffe or fe.id == 0xfffffffffffffffd then return false end
     if seen[fe.id] then return false end
     seen[fe.id] = true
-    if not skip_entry(R, fe, ctx, depth) then return false end
+    if not skip_entry(R, fe, ctx, depth, true) then return false end
   end
 end
 
-skip_entry = function(R, e, ctx, depth)
+-- `field` says the entry is a body FIELD: the writer elides None at every
+-- union field, so an explicit arm reference 0 there is refused on the skip
+-- path too (§3.3 (c)). An element of an array of unions and a union arm's
+-- value keep their positional None.
+skip_entry = function(R, e, ctx, depth, field)
   depth = depth or 0
   if depth > 128 then return false end
   local k = e.kind
@@ -667,7 +672,7 @@ skip_entry = function(R, e, ctx, depth)
   elseif k == 15 then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
-    if ref == 0 then return true end
+    if ref == 0 then return not field end
     local ae = ctx.vocab[ref]
     if ae == nil or ae.kind == 0 or ae.id == NODE_ID or ae.id == 0xfffffffffffffffe or ae.id == 0xfffffffffffffffd then
       return false
@@ -984,24 +989,31 @@ load_fields = function(R, T, name, value, ctx)
   -- A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (§3.3): its fields follow
   -- the writer declaration order, and nothing is written at a default the
   -- writer elides. A body that breaks either is damage, so the batch discards.
-  -- Announcement references are in writer projection order (§3.3), so each
-  -- reference index is its position in that order, including unknown fields.
-  local lastRef = 0
+  -- The order is judged under the reader's own build version, where it is
+  -- this record's declaration order field for field and every field the
+  -- sender's record declares is one this record declares, so a field it
+  -- cannot name is refused there too (§3.3 (b)). Under another build version
+  -- the sender may have reordered its fields, and the announcement stores
+  -- each field once, so its slot order is no one record's order: there the
+  -- order is not judged and an unnamed field is skipped (§4).
+  local ordered = ctx.vocab.buildVersion == T.BuildVersion
+  local lastKnown = 0
   local seen = {}
   while true do
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
     if ref == 0 then return true end
-    if ref <= lastRef then return false end
-    lastRef = ref
     local e = ctx.vocab[ref]
     if e == nil or e.id == NODE_ID or e.id == 0xfffffffffffffffe or e.id == 0xfffffffffffffffd then return false end
     if seen[e.id] then return false end
     seen[e.id] = true
-    local f = field_by_id(T, desc, e.id)
+    local f, index = field_by_id(T, desc, e.id)
     if f == nil then
-      if not skip_entry(R, e, ctx) then return false end
+      if ordered then return false end
+      if not skip_entry(R, e, ctx, nil, true) then return false end
     else
+      if ordered and index <= lastKnown then return false end
+      lastKnown = index
       ctx.field = f.name
       -- The field's union arm is read with the field in hand, so an explicit
       -- None reference is refused here and read_value knows which read it is.
