@@ -106,10 +106,11 @@ func TestJsPointerTargetBlobKindRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 		probe := jsLoadVerdictProbe(encoded)
-		out, err := jsBlobKindProbe(t, u, filesByUnit[unit], probe, nil)
-		if err != nil {
-			t.Fatalf("%s: node probe failed: %v\n%s", unit, err, out)
-		}
+		t.Run("every MANIFEST row answers its verdict", func(t *testing.T) {
+			if out, err := jsBlobKindProbe(t, u, filesByUnit[unit], probe, nil); err != nil {
+				t.Fatalf("%s: node probe failed: %v\n%s", unit, err, out)
+			}
+		})
 
 		t.Run("negative control: the root-closure rule reads text-names-bytes", func(t *testing.T) {
 			hasRow := false
