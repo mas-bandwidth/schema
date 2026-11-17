@@ -264,30 +264,55 @@ func TestPythonFixedFormBenchFunctional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The batch rows are the one-record file's oracle-checked record written
+	// 1024 times by the runtime under test, so the per-record cost of each
+	// identity-plan shape is visible apart from the envelope.
 	script := pyrun.ImportPrelude + `import gc, statistics, time
 from probe import T
+from probe._schema import fixedform
+assert [e['direct'] for e in fixedform._ROOTS['T']['known'].values()]==[True]
 with open('wire','rb') as f: wire=f.read()
 values=T.fixed_load(wire)
 assert T.fixed_save(values)==wire and len(wire)==T.fixed_measure(1)
+batch=values*1024
+many=T.fixed_save(batch)
+assert len(many)==T.fixed_measure(1024) and T.fixed_save(T.fixed_load(many))==many
 for _ in range(100):
     T.fixed_load(wire)
     T.fixed_save(values)
 gc.disable()
-for name,call in [('FixedLoad',lambda:T.fixed_load(wire)),('FixedSave',lambda:T.fixed_save(values))]:
+for name,call,n,per in [('FixedLoad',lambda:T.fixed_load(wire),5000,1),('FixedSave',lambda:T.fixed_save(values),5000,1),
+                        ('FixedLoadBatch1024',lambda:T.fixed_load(many),20,1024),('FixedSaveBatch1024',lambda:T.fixed_save(batch),20,1024)]:
     samples=[]
     for _ in range(5):
         begin=time.perf_counter_ns()
-        for i in range(5000): call()
-        samples.append((time.perf_counter_ns()-begin)/5000)
-    print(name,'ns_per_record',round(statistics.median(samples),1),'samples',samples)
+        for i in range(n): call()
+        samples.append((time.perf_counter_ns()-begin)/(n*per))
+    print(name,'ns_per_record',round(statistics.median(samples),1),'samples',[round(s,1) for s in samples])
 gc.enable()
 `
+	// §4.2 permits two shapes for the identity plan. The runtime keeps the
+	// direct decode from the file's own bytes; the record-image shape is the
+	// same runtime with the direct branch switched off in a scratch copy, so
+	// both are measured on every run and the kept one must stay the faster.
+	const runtimePath = "probe/_schema/fixedform.py"
+	const direct = `direct = entry["direct"]`
+	if strings.Count(string(files[runtimePath]), direct) != 1 {
+		t.Fatalf("%s carries no single direct identity switch %q to measure against", runtimePath, direct)
+	}
+	image := maps.Clone(files)
+	image[runtimePath] = []byte(strings.Replace(string(files[runtimePath]), direct, "direct = False", 1))
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
-		dir := pythonFixedTree(t, files)
-		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
-		if err != nil {
-			t.Fatalf("fixed benchmark: %v\n%s\n%s", err, out, stderr)
+		for _, shape := range []struct {
+			name  string
+			files map[string][]byte
+		}{{"direct decode (kept)", files}, {"record image", image}} {
+			dir := pythonFixedTree(t, shape.files)
+			out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire})
+			if err != nil {
+				t.Fatalf("fixed benchmark (%s): %v\n%s\n%s", shape.name, err, out, stderr)
+			}
+			t.Logf("%s %s\n%s", pin, shape.name, out)
 		}
-		t.Logf("%s\n%s", pin, out)
 	}
 }

@@ -18,7 +18,11 @@ sizes and image-domain plans as static data in `_fixed.py`. Its own plan is
 one whole-body copy. Locked older layouts are matched at generation, with
 unguarded operations before guarded operations and copy coalescing inside
 each half. The runtime selects a known hash and compares its layout bytes;
-it never parses a file's layout as executable data.
+it never parses a file's layout as executable data. A plan of unguarded
+same-offset copies with nothing reset or prefilled decodes straight from the
+file's bytes; every other plan runs through the record image. Both shapes
+are measured in [PORT-PYTHON.md](../PORT-PYTHON.md), THE FIXED
+IDENTITY-PLAN SHAPES.
 
 Every record hash, live value and dead byte is checked before any record is
 constructed or a caller's report changes. The writer starts each record as a
@@ -84,7 +88,8 @@ round-trip rows to the shared C++ corpus. `make python-fixed-form-bench`
 first compares an eight-byte, two-int32 record against a live C++ writer,
 then measures 5000 calls in each of five samples after 100 warmup calls,
 with collection disabled during the samples. Median wall-clock times on
-Linux, in microseconds per one-record file:
+Linux, in microseconds per one-record file, recorded before the direct
+identity-plan decode (the record-image shape):
 
 | Interpreter | FixedLoad | FixedSave |
 |---|---:|---:|

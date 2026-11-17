@@ -83,7 +83,7 @@ class BitWriter:
         return bytes(self.data)
 
 
-# The announced shape is peer-owned. It is never replaced by the local
+# The announced shape belongs to the remote endpoint. It is never replaced by the local
 # declaration when measuring or skipping a payload from a different build.
 class Shape:
     __slots__ = ("kind", "packing", "bits", "base", "minimum", "maximum", "element", "inner", "quant")
@@ -186,16 +186,16 @@ class Entry:
 class BuildVersionMismatch(Refused):
     """A strict connection refused a different announced build."""
 
-    __slots__ = ("peer", "own")
+    __slots__ = ("remote", "own")
 
-    def __init__(self, peer: int, own: int) -> None:
+    def __init__(self, remote: int, own: int) -> None:
         super().__init__("build_version_mismatch")
-        self.peer = peer
+        self.remote = remote
         self.own = own
 
 
 class MessageVocabulary:
-    """One connection's terminal announcement state and peer vocabulary."""
+    """One connection's terminal announcement state and remote vocabulary."""
 
     __slots__ = ("strict", "own_version", "build_version", "announced", "refused", "entries", "unknown", "resolved", "slots", "names", "variants")
 

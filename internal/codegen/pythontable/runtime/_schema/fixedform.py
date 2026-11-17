@@ -379,6 +379,17 @@ def fixed_register(roots: dict[str, _Spec]) -> None:
                     at = end
                 entry["holes"] = holes
                 entry["split"] = next((index for index, op in enumerate(entry["plan"]) if op["guards"]), len(entry["plan"]))
+                # The two identity-plan shapes of the algorithm's §4.2. When
+                # every operation is an unguarded copy to the same offset and
+                # nothing is reset or prefilled, the record image would equal
+                # the body byte for byte, so values are decoded straight from
+                # the file (measured faster; docs/port-python/table-fixed-form.md).
+                entry["direct"] = (
+                    entry["record"] == root["body"] + 8
+                    and not holes
+                    and not entry["fills"]
+                    and all(op["op"] == "copy" and not op["guards"] and op["src"] == op["dst"] for op in entry["plan"])
+                )
             known[entry["hash"]] = entry
         root["known"] = known
         cls = descriptor.by_name(name)
@@ -464,9 +475,11 @@ def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: in
         if _integer(source, at, 8) != wire_hash:
             raise Refused("no_layout")
         _check(entry["check"], source, at + 8)
-    values = []
     widened = 0
-    for index in range(count):
+    direct = entry["direct"]
+    spec = root["spec"]
+    values = [_decode(spec, source, start + index * record + 8) for index in range(count)] if direct else []
+    for index in range(0 if direct else count):
         at = start + index * record + 8
         body = source[at:at + record - 8]
         image = bytearray(root["body"])

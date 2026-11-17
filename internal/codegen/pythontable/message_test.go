@@ -627,7 +627,7 @@ except Refused as e:assert e.reason=='wire_damaged'
 else:raise AssertionError('message_announcement_damage_priority')
 v=MessageVocabulary(own_version=456,strict=True)
 try:announce_read(v,announce(good))
-except BuildVersionMismatch as e:assert e.reason=='build_version_mismatch' and e.peer==123 and e.own==456 and v.build_version==123
+except BuildVersionMismatch as e:assert e.reason=='build_version_mismatch' and e.remote==123 and e.own==456 and v.build_version==123
 else:raise AssertionError('message_strict_version')
 print('ok')
 `
