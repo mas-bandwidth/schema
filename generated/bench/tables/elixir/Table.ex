@@ -8709,8 +8709,10 @@ defmodule Benchtable.Table do
     do: Enum.reverse(parts, [:binary.copy(<<0>>, size - at)])
 
   defp cook_lay_writes([{w, bytes} | rest], at, size, parts)
-       when w >= at and w + byte_size(bytes) <= size,
-       do: cook_lay_writes(rest, w + byte_size(bytes), size, [bytes, :binary.copy(<<0>>, w - at) | parts])
+       when w >= at and w + byte_size(bytes) <= size do
+    gap = :binary.copy(<<0>>, w - at)
+    cook_lay_writes(rest, w + byte_size(bytes), size, [bytes, gap | parts])
+  end
 
   defp cook_lay_writes(_writes, _at, _size, _parts), do: :overlap
 
