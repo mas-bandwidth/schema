@@ -3182,6 +3182,7 @@ defmodule Bench.Table do
         if not terminated, do: throw(:wire_damaged)
 
         strict_syntax!(body, nodes, ids)
+        if not first_use_order?(body, ids), do: throw(:wire_damaged)
 
         # A BLOB NAMED FROM TWO SLOTS already refused the read at its second
         # naming (blob_shared, §2.5), so a read that lands reports 0
@@ -3287,6 +3288,216 @@ defmodule Bench.Table do
       end
     end
   end
+
+  # THE ID TABLE IS IN FIRST-USE ORDER (docs/SPEC-TABLES.md §3): its entries
+  # are the ids the wire uses, in the order a walk first resolves each one,
+  # root body first and then the node table's records in index order. An
+  # entry no reference names, or one out of that order, is a spelling no
+  # conforming writer produces, and the read refuses it rather than re-encoding
+  # it (docs/rulings.json reads-refuse-non-canonical). A field reference, an
+  # enum's variant, a union's arm, a keyed slot's key and a node record's type
+  # each use their id where the walk meets them.
+  defp first_use_order?(body, ids) do
+    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil),
+         {:ok, {order, _seen}} <- first_use_nodes(table, ids, acc) do
+      Enum.reverse(order) == first_use_entries(ids)
+    else
+      _ -> false
+    end
+  end
+
+  defp first_use_entries(ids), do: for(<<id::little-unsigned-64 <- ids>>, do: id)
+
+  defp first_use(ids, ref, {order, seen} = acc) do
+    if ref >= 1 and ref <= div(byte_size(ids), 8) do
+      id = :binary.decode_unsigned(binary_part(ids, (ref - 1) * 8, 8), :little)
+
+      if MapSet.member?(seen, id),
+        do: {:ok, id, acc},
+        else: {:ok, id, {[id | order], MapSet.put(seen, id)}}
+    else
+      :error
+    end
+  end
+
+  # first_use_fields walks one body to its terminator. In the root body the
+  # node table's payload is set aside, its records walked after the body.
+  defp first_use_fields(bin, ids, acc, root, table) do
+    case first_use_leb(bin) do
+      {0, rest} ->
+        {:ok, rest, acc, table}
+
+      {ref, <<kind, rest::binary>>} ->
+        case first_use(ids, ref, acc) do
+          {:ok, 0xFFFFFFFFFFFFFFFF, acc} when root and kind == 12 ->
+            with {:ok, content, rest} <- first_use_framed(rest) do
+              first_use_fields(rest, ids, acc, root, content)
+            end
+
+          {:ok, _id, acc} ->
+            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc) do
+              first_use_fields(rest, ids, acc, root, table)
+            end
+
+          :error ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp first_use_nodes(nil, _ids, acc), do: {:ok, acc}
+
+  defp first_use_nodes(table, ids, acc) do
+    case first_use_leb(table) do
+      {n, records} -> first_use_records(records, n, ids, acc)
+      :error -> :error
+    end
+  end
+
+  defp first_use_records(<<>>, 0, _ids, acc), do: {:ok, acc}
+  defp first_use_records(_rest, 0, _ids, _acc), do: :error
+
+  defp first_use_records(rest, n, ids, acc) do
+    with {ref, rest} <- first_use_leb(rest),
+         {:ok, type_id, acc} <- first_use(ids, ref, acc),
+         {:ok, record, rest} <- first_use_framed(rest),
+         {:ok, acc} <- first_use_record(record, type_id, ids, acc) do
+      first_use_records(rest, n - 1, ids, acc)
+    end
+  end
+
+  # a blob record is its bytes (§2.5, §3.1): no reference rides inside it
+  defp first_use_record(_record, type_id, _ids, acc)
+       when type_id in [0x704BE0D8FAAFFC58, 0x2F2EC0474F1C4FE4],
+       do: {:ok, acc}
+
+  defp first_use_record(record, _type_id, ids, acc), do: first_use_content(record, 13, ids, acc)
+
+  defp first_use_payload(bin, kind, ids, acc) when kind in [17, 30] do
+    case first_use_leb(bin) do
+      {0, rest} ->
+        {:ok, rest, acc}
+
+      {ref, rest} when kind == 30 ->
+        with {:ok, _id, acc} <- first_use(ids, ref, acc), do: {:ok, rest, acc}
+
+      {_index, rest} ->
+        {:ok, rest, acc}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp first_use_payload(bin, 15, ids, acc) do
+    case first_use_leb(bin) do
+      {0, rest} ->
+        {:ok, rest, acc}
+
+      {ref, <<kind, rest::binary>>} ->
+        with {:ok, _id, acc} <- first_use(ids, ref, acc),
+             {:ok, content, rest} <- first_use_framed(rest),
+             {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+          {:ok, rest, acc}
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp first_use_payload(bin, kind, ids, acc) when kind in [12, 13, 14, 16, 31, 32] do
+    with {:ok, content, rest} <- first_use_framed(bin),
+         {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+      {:ok, rest, acc}
+    end
+  end
+
+  defp first_use_payload(bin, kind, _ids, acc) do
+    w = first_use_width(kind)
+
+    case bin do
+      <<_::binary-size(^w), rest::binary>> when w > 0 -> {:ok, rest, acc}
+      _ -> :error
+    end
+  end
+
+  defp first_use_content(b, 13, ids, acc) do
+    case first_use_fields(b, ids, acc, false, nil) do
+      {:ok, <<>>, acc, nil} -> {:ok, acc}
+      _ -> :error
+    end
+  end
+
+  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc) when kind in [14, 16] do
+    case first_use_leb(rest) do
+      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc)
+      {n, items} -> first_use_slots(items, ek, n, ids, acc)
+      :error -> :error
+    end
+  end
+
+  defp first_use_content(_b, kind, _ids, _acc) when kind in [14, 16], do: :error
+
+  defp first_use_content(b, kind, ids, acc) when kind in [15, 17, 30] do
+    case first_use_payload(b, kind, ids, acc) do
+      {:ok, <<>>, acc} -> {:ok, acc}
+      _ -> :error
+    end
+  end
+
+  defp first_use_content(_b, _kind, _ids, acc), do: {:ok, acc}
+
+  defp first_use_elements(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
+  defp first_use_elements(_rest, _ek, 0, _ids, _acc), do: :error
+
+  defp first_use_elements(rest, ek, n, ids, acc) do
+    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc) do
+      first_use_elements(rest, ek, n - 1, ids, acc)
+    end
+  end
+
+  defp first_use_slots(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
+  defp first_use_slots(_rest, _ek, 0, _ids, _acc), do: :error
+
+  defp first_use_slots(rest, ek, n, ids, acc) do
+    with {key, rest} <- first_use_leb(rest),
+         {:ok, _id, acc} <- first_use(ids, key, acc),
+         {:ok, content, rest} <- first_use_framed(rest),
+         {:ok, acc} <- first_use_content(content, ek, ids, acc) do
+      first_use_slots(rest, ek, n - 1, ids, acc)
+    end
+  end
+
+  defp first_use_framed(bin) do
+    case first_use_leb(bin) do
+      {n, rest} when byte_size(rest) >= n ->
+        <<content::binary-size(^n), rest::binary>> = rest
+        {:ok, content, rest}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp first_use_leb(bin), do: first_use_leb(bin, 0, 0)
+
+  defp first_use_leb(<<b, rest::binary>>, shift, acc) when shift < 64 do
+    acc = acc ||| (b &&& 0x7F) <<< shift
+    if b < 0x80, do: {acc, rest}, else: first_use_leb(rest, shift + 7, acc)
+  end
+
+  defp first_use_leb(_bin, _shift, _acc), do: :error
+
+  defp first_use_width(kind) when kind in [1, 2, 6, 20, 25], do: 1
+  defp first_use_width(kind) when kind in [3, 7, 21, 26], do: 2
+  defp first_use_width(kind) when kind in [4, 8, 10, 22, 27], do: 4
+  defp first_use_width(kind) when kind in [5, 9, 11, 23, 28, 36], do: 8
+  defp first_use_width(kind) when kind in [18, 19, 24, 29], do: 16
+  defp first_use_width(_kind), do: 0
 
   # duplicate_ids? is the id table's own framing rule (docs/SPEC-TABLES.md §3):
   # one id in two entries is a table that cannot be read whole.
