@@ -1,14 +1,59 @@
 #!/bin/sh
-# THE PYTHON LEG of the tables bench (bench/tables/README.md).
-# Scaffolded by `schema new-leg python`. There is no table codec to
-# build or measure yet, so both actions report ABSENT without producing rows.
+# THE PYTHON LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        generate bench/corpus/BenchTable.schema for Python
+#   leg run [args]   run bench/tables/python/table_main.py under the pinned Python
+#
+# A fixed class in Python reads and writes only the fixed form (form 3), and
+# this bench measures form 1, so the build generates a copy of the corpus
+# whose tables are declared variable: the same form-1 bytes, which the
+# runner's gate proves on all 64 records before any clock starts. The unit is
+# generated into $PYTHON_BENCH_GEN, build/tables-bench-python by default.
+#
+# The interpreter is $PYTHON, else the pinned CPython 3.15.2 under dist/
+# (`make dist-python`); it must be a file path to one of the two pins, never a
+# name looked up on PATH. A leg whose toolchain is absent answers 2 and the
+# pass skips it when it was not asked for by name.
 set -e
+
+# PYTHON_BENCH_GEN lets a control build its own copy beside a running gate
+: "${PYTHON_BENCH_GEN:=build/tables-bench-python}"
+GEN=$PYTHON_BENCH_GEN
+: "${PYTHON:=dist/python-3.15.2/bin/python3.15}"
+
+pinned() {
+    case "$PYTHON" in
+    */*) ;;
+    *) echo "PYTHON=$PYTHON is not a path: the bench runs only a pinned interpreter (make dist-python)" >&2; exit 2 ;;
+    esac
+    [ -x "$PYTHON" ] || { echo "no pinned Python at $PYTHON -- run make dist-python" >&2; exit 2; }
+    version=$("$PYTHON" -I -c 'import platform; print(platform.python_implementation(), platform.python_version())')
+    case "$version" in
+    "CPython 3.11.18"|"CPython 3.15.2") ;;
+    *) echo "the Python tables bench refuses $version: expected CPython 3.11.18 or 3.15.2" >&2; exit 1 ;;
+    esac
+}
+
 case "$1" in
-build|run)
-	exit 2
-	;;
+build)
+    pinned
+    [ -x bin/schema ] || { echo "missing bin/schema -- run make" >&2; exit 2; }
+    rm -rf "$GEN"
+    mkdir -p "$GEN/source"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN/source/BenchTable.schema"
+    if cmp -s bench/corpus/BenchTable.schema "$GEN/source/BenchTable.schema"; then
+        echo "the corpus declares no fixed table: the variable copy changed nothing" >&2; exit 1
+    fi
+    ./bin/schema generate --lang python --out "$GEN/unit" "$GEN/source/BenchTable.schema"
+    ;;
+run)
+    shift
+    pinned
+    exec "$PYTHON" -W error -I -B bench/tables/python/table_main.py "$GEN/unit" "$@"
+    ;;
 *)
-	echo "usage: $0 build | run [args...]" >&2
-	exit 1
-	;;
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
 esac
