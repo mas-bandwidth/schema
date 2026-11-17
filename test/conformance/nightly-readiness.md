@@ -1,8 +1,8 @@
 # Original-nine nightly readiness
 
 Run `test/conformance/nightly-readiness <lang>` for exactly one of
-`cpp c cs go rust java js dart elixir goose moo`. Goose and MOO, the languages
-past the original nine, run the same expanded shape (below). The nightly workflow must preserve
+`cpp c cs go rust java js dart elixir goose moo python`. Goose, MOO and Python,
+the languages past the original nine, run the same expanded shape (below). The nightly workflow must preserve
 stdout and `build/nightly-readiness/<lang>/`, and write a passing readiness
 receipt only after exit zero. Every phase is attempted; one failed phase keeps
 the final result incomplete. A green conformance report or a manually completed
@@ -48,6 +48,7 @@ The packet/table package pairs are:
 | Elixir | elixir | elixirtable | normal and ludicrous |
 | Goose | goose | goosetable | `goose run` and `goose run --debug`, normal and ludicrous |
 | MOO | moo | mootable | the package's golden probes under the pinned `moo`, normal and ludicrous |
+| Python | python | pythontable | the package's probes under both pinned CPythons, normal and ludicrous |
 
 External table targets are `tables-maps/lists/arms/retain/view/doctags/flat-wire/
 fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
@@ -58,7 +59,9 @@ fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
 `tables-goose-versioning`, `tables-goose-message-form` and the
 `tables-goose-versioning/fixedform/message-form/message-peer` negative controls;
 and for MOO `tables-moo-fixed`, `tables-moo-message-form` and
-`tables-moo-compiler-claims`. Versioning and fixed-roadmap Go tests
+`tables-moo-compiler-claims`; and for Python `python-fixed-writer-lineage`,
+`python-message-conformance`, `tables-python-bench-gate` and their negative
+controls. Versioning and fixed-roadmap Go tests
 already run in their complete packages, without the legacy filtered targets'
 600-second or 20-minute suite limits.
 
@@ -126,11 +129,45 @@ sabotage in the emitted runtime in-test: `retain-moo-save` and
 `retain-moo-refusal` run those tests uncapped and require them to pass. MOO
 has no §5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
 
+## Python
+
+Python's gates run under the `schema_leg_python` build tag (`make
+test-python`'s `python-ci-packages` among them), so every Go test phase of
+this run (the native packages, the packet probes and the retention controls)
+passes `-tags schema_leg_python`. Its prerequisites build and probe the pinned
+interpreters and analyzer (`dist-python`, `python-toolchain-check`) and build
+`build/conformance-harness-python`, the harness with the tag, the only build
+that admits `implementation --lang python`; every other harness phase uses the
+ordinary harness.
+
+Python's packet programs are internal/codegen/python's probes, each running
+the generated package under both pins: `packet-normal-0` runs the packet core
+over every wire pin, the close gate and its analyzer, and the arrays, floats,
+layout, ranged-bits, text and unions probes; `packet-ludicrous-0` runs the
+int128 and fixed point probe. Its packet features are the defaults, UTF-8 and
+finite gates with their controls.
+
+The wire phases run `test/conformance/python/wirefuzz.py` over
+`build/conformance-python` under the current pin, as the release fuzz does
+(`make/wire-fuzz-release.mk`), in the plain profile; the driver is one process
+over every generated unit. `python-wirefuzz-release-check` refuses a run in
+which any unit was refused.
+
+Python's gate recipes run `go test`, directly or through
+`test/slowgate/proof`, with a 600-second suite cap. The run executes the
+packet features, external gates and wire controls through private makefiles
+that copy each such recipe from `make/python*.mk` with that cap replaced by
+`-timeout=0` (a bare `go test` gains it); any other cap fails closed, and
+per-recipe hashes are recorded. Its retention controls plant their fault in a
+copy of the emitted runtime or the driver in-test: `retain-python-save` and
+`retain-python-remap` run those tests uncapped and require them to pass.
+Python has no §5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
+
 Wire controls are the existing `tables[-<lang>]-wire-fuzz-negative-control`
 targets, with C#'s pack control and Elixir's refusal control. Retention controls
 are C++'s retaining differential pair; C's dropped retained field; C#'s
 `tables-cs-retain-negative-control`; Go's file-count floor and unknown-node
-controls; Rust's capacity-check overlay; Goose's and MOO's in-test retention controls; Java's declared-default and node-record
+controls; Rust's capacity-check overlay; Goose's, MOO's and Python's in-test retention controls; Java's declared-default and node-record
 controls; JavaScript's cards upgrade control alongside the full native RT1
 suite; and Dart/Elixir's retained-node controls. The named controls' enumerated
 runs may use N=0; they never stand in for the six positive release runs.

@@ -40,9 +40,12 @@ bytes are the same, which the gate proves on all 64 records. The interpreter is
 
 `TestPythonReadiness` (`internal/codegen/pythontable/readiness_test.go`) holds
 the release target's recipe, the leg's refusal of a bare interpreter, the
-runner's single naming of the generated root, and the two workflow steps that
-install the pins: `ci-full.yml`'s conformance job for a row whose `ci.json`
-names `python`, and `certify.yml`'s release-gates job. Under `SCHEMA_SLOW` it
+runner's single naming of the generated root, the three workflow steps that
+install the pins (`ci-full.yml`'s conformance job and the reusable `leg.yml`'s
+legs job, which certify's schema-legs job calls, each for a row whose
+`ci.json` names `python`, and `certify.yml`'s release-gates job), the
+`"python": "pin"` field of `test/conformance/python/ci.json`, the
+nightly-readiness entry below and the tagged harness it runs. Under `SCHEMA_SLOW` it
 runs the runner's gate under both pins over a unit generated as the leg
 generates it. `TestPythonReadinessNegativeControl` plants one fault per rule in
 a copy of the real file the rule reads and requires each finding by name, then
@@ -51,11 +54,24 @@ flipped byte in variant 3 and requires each red by its own message.
 `make test-python` runs both (`python-readiness`,
 `python-readiness-negative-control`), and both are CI support rows.
 
-## Not in this tier yet
+## The nightly-readiness entry
 
-- The nightly-readiness entry (`test/conformance/nightly-readiness python`) is
-  not written: its contract tests, the harness's `implementation --lang`
-  admission for Python and the leg's `ci.json` pin field change with it.
-- `test/conformance/python/ci.json` names no `python` field, so the
-  conformance job's pin step above does not run for the Python row until it
-  does; the reusable `leg.yml` has no Python pin step.
+`test/conformance/nightly-readiness python` runs the leg's acceptance in the
+shape Goose and MOO run theirs (`test/conformance/nightly-readiness.md`,
+"Python"): `implementation --lang python` through
+`build/conformance-harness-python`, the harness built with
+`schema_leg_python` (`make/python-ci-release.mk`; the untagged harness refuses
+the name); the `python`, `pythontable` and `lockfile` packages whole under
+`SCHEMA_SLOW` and the tag; the packet probes under both pins; the defaults,
+UTF-8 and finite packet gates; the fixed writer's lineage, the message form
+against the C++ reference and the bench leg's gate, each with its control; the
+wire fuzz over `build/conformance-python` under the current pin, plain and
+retaining at seeds 1 to 3 with 100000 random mutants; and the verdict-pipe and
+retention controls. Every recipe that runs `go test` is run through a copy
+with its 600-second cap lifted, as Goose's are. The contract tests in
+`test/conformance/nightly_readiness_test.py` hold the plan, its phases and the
+copied recipes for Python as for every other language.
+
+The nightly workflow (`nightly-conformance.yml`) runs its readiness step for
+the original nine only, as it does for Goose and MOO, and its port job has no
+Python pin step; adding Python there is a change to that workflow.

@@ -47,6 +47,14 @@ tables-python-bench-gate-negative-control: bin/schema python-toolchain-check
 	done
 	@echo "tables-python-bench-gate negative control: a flipped golden byte and a flipped variant byte each fail the gate by name"
 
+# THE HARNESS WITH THE TARGET'S TAG, for the leg's acceptance run
+# (test/conformance/nightly-readiness python): only a schema_leg_python build
+# admits `implementation --lang python`
+# (test/conformance/harness/implementation_python.go).
+build/conformance-harness-python: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES)
+	@mkdir -p build
+	go build -tags schema_leg_python -o $@ ./test/conformance/harness
+
 # THE RELEASE TIER (docs/PORTING.md J3). certify.yml's release-targets job
 # derives tables-python-release from this file by name, and its release-gates
 # job installs the pins every recipe here needs. Every instrument is the PR

@@ -1,6 +1,7 @@
 package pythontable
 
 import (
+	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
@@ -29,7 +30,20 @@ import (
 //   - ci-full-pins: ci-full.yml's conformance job installs the pins for a row
 //     whose ci.json names `python`;
 //   - certify-pins: certify.yml's release-gates job installs the pins every
-//     tables-python-release run needs.
+//     tables-python-release run needs;
+//   - leg-pins: leg.yml's legs job, which certify's schema-legs job calls,
+//     installs the pins for a row whose ci.json names `python`;
+//   - ci-json-pin: test/conformance/python/ci.json names `"python": "pin"`,
+//     so both pin steps above run for the Python row;
+//   - readiness-entry: test/conformance/nightly-readiness carries python in
+//     its acceptance shape: the language, its two packages under the
+//     schema_leg_python tag, the tagged harness built and run for
+//     `implementation --lang python`, the pins as a prerequisite, the wire
+//     fuzz under the current pin over build/conformance-python, its own
+//     packet probes and retention controls, and no bare interpreter;
+//   - readiness-harness: the harness admits `implementation --lang python`
+//     in a schema_leg_python build only, and make/python-ci-release.mk builds
+//     that harness with the tag.
 //
 // The files are passed in, so the negative control can hand it planted copies.
 func pythonReadinessFindings(files map[string]string) []string {
@@ -88,8 +102,56 @@ func pythonReadinessFindings(files map[string]string) []string {
 		"uses: ./.github/actions/python", "") {
 		add("certify-pins")
 	}
+	if !workflowStep(workflowJob(files[".github/workflows/leg.yml"], "legs"),
+		"uses: ./.github/actions/python", "if: matrix.python != ''") {
+		add("leg-pins")
+	}
+
+	var row map[string]string
+	if err := json.Unmarshal([]byte(files["test/conformance/python/ci.json"]), &row); err != nil || row["python"] != "pin" {
+		add("ci-json-pin")
+	}
+
+	readiness := files["test/conformance/nightly-readiness"]
+	for _, rule := range []string{
+		`"moo", "python")`,
+		`"python": ("python", "pythontable"),`,
+		`GO_TAGS = {"python": "schema_leg_python"}`,
+		`tags = ["-tags", GO_TAGS[lang]] if lang in GO_TAGS else []`,
+		`"go", "test", *tags, "-json", "-timeout=0"`,
+		`PYTHON_DIST = "dist/python-` + pyrun.CurrentVersion + `/bin/python3.15"`,
+		`return PYTHON_DIST + " -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python"`,
+		`prerequisites += " dist-python python-toolchain-check build/conformance-harness-python"`,
+		`harness = "./build/conformance-harness-python"`,
+		`required |= {"retain-python-" + name for name in PYTHON_RETENTION_CONTROLS}`,
+		`run_python_packets(runner)`,
+	} {
+		if !strings.Contains(readiness, rule) {
+			add("readiness-entry")
+		}
+	}
+	for line := range strings.SplitSeq(readiness, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") && readinessBareInterpreter.MatchString(line) {
+			add("readiness-entry")
+		}
+	}
+
+	admit := files["test/conformance/harness/implementation_python.go"]
+	if !strings.HasPrefix(admit, "//go:build schema_leg_python\n") ||
+		!strings.Contains(admit, `taggedImplementationLanguages = append(taggedImplementationLanguages, "python")`) ||
+		!strings.Contains(makeRecipe(mk, "build/conformance-harness-python"),
+			"go build -tags schema_leg_python -o $@ ./test/conformance/harness") {
+		add("readiness-harness")
+	}
 	return findings
 }
+
+// readinessBareInterpreter is a Python interpreter named with no directory in
+// the readiness script's code: a command list whose first word is a bare
+// `python...`, or `python3...` as a word of a string. The language key
+// "python", an index such as GO_TAGS["python"], is neither; the script's own
+// shebang is a comment.
+var readinessBareInterpreter = regexp.MustCompile(`(?:^|[^\w\]])\[\s*["']python[0-9.]*["']\s*[,\]]|["'\s]python[3][0-9.]*["'\s]`)
 
 // bareInterpreter is a command word, or a value handed to one, that names a
 // Python interpreter with no directory: the shell would look it up on PATH.
@@ -155,6 +217,10 @@ var pythonReadinessFiles = []string{
 	"bench/tables/python/SHAPE-GATE.allow",
 	".github/workflows/ci-full.yml",
 	".github/workflows/certify.yml",
+	".github/workflows/leg.yml",
+	"test/conformance/python/ci.json",
+	"test/conformance/nightly-readiness",
+	"test/conformance/harness/implementation_python.go",
 }
 
 func readPythonReadinessFiles(t *testing.T) (string, map[string]string) {
@@ -217,6 +283,16 @@ func TestPythonReadinessNegativeControl(t *testing.T) {
 		{"bench-leg", "bench/tables/python/table_main.py", `bench_table(getattr(module, ROOT)`, `bench_table(getattr(module, "TableMixed")`},
 		{"ci-full-pins", ".github/workflows/ci-full.yml", "      - uses: ./.github/actions/python\n        if: matrix.python != ''\n\n      # THE LOBSTER PIN", "\n      # THE LOBSTER PIN"},
 		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/python\n\n      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1\n        with:", "\n      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1\n        with:"},
+		{"leg-pins", ".github/workflows/leg.yml", "      - uses: ./.github/actions/python\n        if: matrix.python != ''\n", ""},
+		{"leg-pins", ".github/workflows/leg.yml", "        if: matrix.python != ''\n", "        if: matrix.moo != ''\n"},
+		{"ci-json-pin", "test/conformance/python/ci.json", `"python": "pin"`, `"python": ""`},
+		{"readiness-entry", "test/conformance/nightly-readiness", `"moo", "python")`, `"moo")`},
+		{"readiness-entry", "test/conformance/nightly-readiness", `GO_TAGS = {"python": "schema_leg_python"}`, `GO_TAGS = {}`},
+		{"readiness-entry", "test/conformance/nightly-readiness", `harness = "./build/conformance-harness-python"`, `harness = "./build/conformance-harness"`},
+		{"readiness-entry", "test/conformance/nightly-readiness", "def run_python_packets(runner):\n", "def run_python_packets(runner):\n    runner.run(\"probe\", [\"python3.15\", \"-V\"])\n"},
+		{"readiness-entry", "test/conformance/nightly-readiness", `return PYTHON_DIST + " -W error`, `return "python3.15 -W error`},
+		{"readiness-harness", "test/conformance/harness/implementation_python.go", "//go:build schema_leg_python\n", ""},
+		{"readiness-harness", "make/python-ci-release.mk", "go build -tags schema_leg_python -o $@ ./test/conformance/harness", "go build -o $@ ./test/conformance/harness"},
 	} {
 		planted := maps.Clone(files)
 		if strings.Count(planted[plant.file], plant.before) != 1 {
