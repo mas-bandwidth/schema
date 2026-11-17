@@ -32,8 +32,8 @@
 # share: the shared-node label (docs/SPEC-TABLES.md §16.7, docs/PORTING.md M14)
 # is taken out of _writePtr (tools/sabotage table-dart-text-share), so a node two
 # slots name is written in full twice. The matrix must go red on
-# `dart / json-write` alone, on the shared-node rows (graph_shared,
-# list_shared).
+# `dart / json-write` on shared-node rows (graph_shared, list_shared). The
+# report and hostile surfaces also render values as JSON and detect the same fault.
 #
 # framing: the id table's 4096-entry maximum (docs/LAYERS/1-framing.md F6) is
 # taken out of the reader's open() (tools/sabotage table-dart-id-table-cap), so a
@@ -186,11 +186,13 @@ for surface in wire message report framing retain retain-save json-read json-wri
     # surfaceCookWrite constructs its input values via fromJson, so the text
     # reader's bool sabotage also turns cook-write rows red alongside json-read
     [ "$mode" = walk ] && [ "$surface" = cook-write ] && continue
+    [ "$mode" = share ] && { [ "$surface" = report ] || [ "$surface" = json-hostile ]; } && continue
     grep -Eq "^$surface +pass " "$out/log" || { cat "$out/log"; echo "surface $surface did not stay green" >&2; exit 1; }
 done
 # every failing row is a row of the broken rule, and each is a wrong answer
 allowed="^  dart / $red[:/ ]"
 [ "$mode" = walk ] && allowed='^  dart / (json-read|cook-write)[:/ ]'
+[ "$mode" = share ] && allowed='^  dart / (json-write[:/ ]|report: w[12]_fleet_as_w[12]:|json-hostile: (pointer-array-shared-label|shared-node-by-label):)'
 [ "$mode" = block ] && allowed='^  dart / forgery: block_pitch: '
 if grep '^  dart / ' "$out/log" | grep -Ev "$allowed" >/dev/null; then
     cat "$out/log"; exit 1
@@ -213,4 +215,4 @@ if [ "$mode" = block ]; then
     [ "$rows" = "block_pitch " ] || { cat "$out/log"; echo "block control turned red on '$rows', want the block_pitch row" >&2; exit 1; }
 fi
 grep "^$red " "$out/log"
-echo "Dart $mode negative control: the emitter sabotage ($sabotage) is detected by dart / $red alone"
+echo "Dart $mode negative control: the emitter sabotage ($sabotage) is detected by dart / $red"

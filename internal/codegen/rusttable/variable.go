@@ -1736,6 +1736,7 @@ pub static KNOWN_IDS: &[u64] = &[
 		fmt.Fprintf(&b, "    0x%016x,\n", id)
 	}
 	b.WriteString("];\n")
+	b.WriteString(wireIDUseRust)
 	b.WriteString(textHelpers())
 	if len(ir.TableTimestampFields(u)) > 0 {
 		b.WriteString(timestampHelpersRust)

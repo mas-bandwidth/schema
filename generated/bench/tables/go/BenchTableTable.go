@@ -1901,9 +1901,10 @@ type TableMessageShape struct {
 // An entry also keeps, in the caller's storage, the first slot announcing its
 // id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID                                   uint64
-	Shape, Element                       TableMessageShape
-	bodyFirst, bodySeenAt, bodySeenBelow uint64
+	ID                    uint64
+	Shape, Element        TableMessageShape
+	bodyFirst, bodySeenAt uint64
+	bodySeenBelow         [2]uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -5014,7 +5015,7 @@ func TableMixedReset(value *TableMixed) {
 	for i := range value.Entities {
 		TableEntityReset(&value.Entities[i])
 	}
-	value.EntitiesCount = 0
+	value.EntitiesCount = 1
 	for i := range value.Stats {
 		TableStatReset(&value.Stats[i])
 	}
@@ -5164,7 +5165,22 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		if value.EntitiesCount < 1 || value.EntitiesCount > 8 {
 			return false
 		}
-		if value.EntitiesCount > 0 {
+		allBirth := value.EntitiesCount == 1
+		if allBirth {
+			for i := 0; i < 1; i++ {
+				mark := w.Ids.Count
+				n := TableEntityMeasureBody(&value.Entities[i], w.Ids)
+				w.Ids.Truncate(mark)
+				if n < 0 {
+					return false
+				}
+				allBirth = n <= 1
+				if !allBirth {
+					break
+				}
+			}
+		}
+		if !allBirth {
 			if ref := w.Ids.refAtHit(46, 0x935d0fb07bb3822a); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}

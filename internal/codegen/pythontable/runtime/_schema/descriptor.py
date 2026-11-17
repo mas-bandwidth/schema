@@ -50,9 +50,11 @@ class FieldDesc:
         "map_entry",
         "pointer",
         "optional",
+        "required",
         "array",
         "bound",
         "size",
+        "text_total",
         "key_enum",
         "keyed_list",
         "array_kind",
@@ -86,9 +88,11 @@ class FieldDesc:
     map_entry: str
     pointer: bool
     optional: bool
+    required: bool
     array: bool
     bound: int
     size: int
+    text_total: int
     key_enum: str
     keyed_list: bool
     array_kind: int
@@ -122,9 +126,11 @@ class FieldDesc:
         map_entry: str = "",
         pointer: bool = False,
         optional: bool = False,
+        required: bool = False,
         array: bool = False,
         bound: int = 0,
         size: int = 0,
+        text_total: int = 0,
         key_enum: str = "",
         array_kind: int = 0,
         array_min: int = 0,
@@ -157,9 +163,11 @@ class FieldDesc:
         self.map_entry = map_entry
         self.pointer = pointer
         self.optional = optional
+        self.required = required
         self.array = array
         self.bound = bound
         self.size = size
+        self.text_total = text_total
         self.key_enum = key_enum
         self.keyed_list = keyed_list
         self.array_kind = array_kind
@@ -214,11 +222,11 @@ class FieldDesc:
         if self.codec == "pointer_array":
             if type(value) is not list:
                 return False
-            if len(value) == 0:
-                return True
-            if self.array_mode != "fixed":
-                return False
-            return all(elem is None for elem in value)
+            if self.array_mode == "fixed":
+                return all(elem is None for elem in value)
+            if self.array_mode == "counted":
+                return len(value) == self.min_count and all(elem is None for elem in value)
+            return len(value) == 0
         if self.pointer or self.optional:
             return value is None
         if self.codec in ("bool", "int", "enum", "string", "unsupported"):
@@ -243,7 +251,7 @@ class FieldDesc:
             fields: tuple[FieldDesc, ...] = tuple(
                 field for field in value.descriptor.fields if field.guard_holds(value)
             )
-            return all(field.is_default(getattr(value, field.name)) for field in fields)
+            return all(not field.required and field.is_default(getattr(value, field.name)) for field in fields)
         if self.codec == "union":
             # None is the absence of the field, and a union whose arm is None
             # (type 0) is the same value on the wire (docs/SPEC-TABLES.md §2.6)
@@ -251,13 +259,12 @@ class FieldDesc:
         if self.codec == "array":
             return _array_is_default(self, value)
         if self.codec == "union_array":
-            # As the engine elides (internal/tablewire/encode.go): a counted
-            # or unbounded array only when it holds nothing, a fixed array
-            # when every element is at the declared default, judged per
-            # element by its selected arm, never by == against a fresh value.
-            if self.array_kind != 1:
-                return len(value) == 0
-            return all(element.type == 0 for element in value)
+            # Fixed arrays elide when every arm is None. Counted arrays
+            # elide at their birth count only when every born arm is None;
+            # an unbounded list has birth count zero.
+            if self.array_kind == 1:
+                return all(element.type == 0 for element in value)
+            return len(value) == self.array_min and all(element.type == 0 for element in value)
         if self.codec == "keyed":
             # A keyed array whose every slot elides writes no field
             # (kind_keyed.py): the same test, slot by slot, so a table that
@@ -322,13 +329,14 @@ def _as_bytes(value: Any) -> bytes | None:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id")
+    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "forms")
 
     name: str
     type_id: int
     variable: bool
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
+    forms: tuple[str, ...]
 
     def __init__(
         self,
@@ -336,7 +344,9 @@ class TableDesc:
         type_id: int,
         variable: bool,
         fields: tuple[FieldDesc, ...],
+        forms: tuple[str, ...] = ("wire", "json", "block", "cook"),
     ) -> None:
+        self.forms = forms
         self.name = name
         self.type_id = type_id
         self.variable = variable

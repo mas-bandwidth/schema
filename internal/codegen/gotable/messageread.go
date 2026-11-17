@@ -9,13 +9,14 @@ import (
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown, at every nesting level: the body's open tick sits in starts,
-	// sized here at the deepest nesting this body's declaration reaches (fixed,
-	// since a by-value cycle does not compile), and the test is one look at the
-	// named entry (tableMessageSeenRepeat).
+	// or unknown, at every nesting level: each body's open tick sits in starts,
+	// sized once for the deepest nesting this body's declaration reaches, and
+	// the test is one look at the named entry (tableMessageSeenRepeat).
 	nest := messageBodyNest(st, map[*ir.Struct]int{})
-	if nest > ir.TableFixedMaxDepth {
-		panic(fmt.Sprintf("message body %s nests %d deep, past the fixed form's %d", st.Name, nest, ir.TableFixedMaxDepth))
+	if nest > ir.TableBinaryMaxDepth {
+		// A body at the binary bound has no body inside it, so its level fits
+		// the marks; no conforming read goes deeper (§4), so no form is emitted.
+		return
 	}
 	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return tableMessageBody%s(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)
 	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,starts []uint64,depth int)bool {\n", st.Name, g.storageName(st.Name))
@@ -234,6 +235,9 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	} else if f.KeyEnum == "" && (enumRef(f) != nil || isUnionRef(f.Type)) {
 		sink = fixedArraySink(f, elide)
 	}
+	if elide && f.KeyEnum == "" && f.Array == ir.ArrayCounted && f.BornCount() > 0 && !quantizedMessageFloat(f) {
+		sink = "allDefault"
+	}
 	if f.KeyEnum == "" {
 		g.pf("if %s.Element.Kind==6&&!r.Bits.Align(){%s};", entry, bad)
 	}
@@ -267,7 +271,14 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		g.pf("}\n")
 		if sink != "" {
-			g.pf("if exact&&%s{%s}\n", sink, bad)
+			when := "exact"
+			if f.Array == ir.ArrayCounted {
+				// Equal build labels alone do not establish the sender's default;
+				// the announced count and element shapes must match this field.
+				slot := g.messageSlot(ir.TableFieldEntry(f)) - 1
+				when += fmt.Sprintf("&&!widened&&n==%d&&%s.Shape==tableMessageEntries[%d].Shape&&%s.Element==tableMessageEntries[%d].Element", f.BornCount(), entry, slot, entry, slot)
+			}
+			g.pf("if %s&&%s{%s}\n", when, sink, bad)
 		}
 		if counted {
 			g.pf("%s=int32(n)\n", companion)

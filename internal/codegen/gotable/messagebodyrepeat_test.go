@@ -1,6 +1,8 @@
 package gotable
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -381,6 +383,56 @@ func TestRepeatCheck(t *testing.T) {
 		}
 	}
 }
+
+// TestDeepBodyRepeat checks the same rule in a body read at nesting depth 64:
+// an id named once in that body and once in the body inside it reads, and the
+// outer body naming it again after the inner body closes is refused.
+func TestDeepBodyRepeat(t *testing.T) {
+	t.Parallel()
+	nv := nestedVocabulary(t)
+	u, mid := nv.unknown, nv.mid
+	starts := make([]uint64, 128)
+	read := func(refs []uint64) (bool, TableReport) {
+		var value Root
+		r := TableMessageReader{Bits: TableBitReader{Buffer: bodyBits(refs, nv.refBits)}, Vocabulary: nv.v}
+		ok := tableMessageBodyRoot(&r, &value, starts, 64)
+		return ok, r.Report
+	}
+	if ok, report := read([]uint64{u, mid, u, 0}); !ok || report.Refused() {
+		t.Fatalf("one naming at each of two nested bodies at depth 64: ok=%v %+v", ok, report)
+	}
+	if ok, report := read([]uint64{u, mid, u, 0, u}); ok || !report.Refused() {
+		t.Fatalf("a field id twice in one body at depth 64 was accepted: ok=%v %+v", ok, report)
+	}
+}
 `
 	runGeneratedTables(t, schema, probe)
+}
+
+// TestGoMessageBodyReadAtBinaryDepth holds that a unit whose fixed tables nest
+// by value to the binary bound still emits every message body read it names,
+// and that the root's per-body marks cover that bound.
+func TestGoMessageBodyReadAtBinaryDepth(t *testing.T) {
+	t.Parallel()
+	var src strings.Builder
+	src.WriteString("package probe\n\nfixed table T128 {\n\tv int32\n}\n")
+	for i := 127; i >= 0; i-- {
+		fmt.Fprintf(&src, "fixed table T%d {\n\tt T%d\n}\n", i, i+1)
+	}
+	found := false
+	for name, data := range generate(t, src.String()) {
+		text := string(data)
+		if !strings.Contains(text, "func T0LoadMessageBody(") {
+			continue
+		}
+		found = true
+		for _, want := range []string{"var starts [129]uint64", "func T128LoadMessageBody("} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s does not carry %q", name, want)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the unit at the binary bound emits no T0LoadMessageBody")
+	}
 }

@@ -53,6 +53,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := python.CheckNames(u); err != nil {
 		return nil, err
 	}
+	if err := checkBlobRefName(u); err != nil {
+		return nil, err
+	}
 	if err := refuseUncarriedPacketKinds(u); err != nil {
 		return nil, err
 	}
@@ -104,6 +107,45 @@ func Runtime() (map[string][]byte, error) {
 		return nil
 	})
 	return out, err
+}
+
+// checkBlobRefName protects the public blob-node type from a package export
+// or schema module that would replace it.
+func checkBlobRefName(u *ir.Unit) error {
+	for _, f := range u.Files {
+		if f.Base == "BlobRef" {
+			return fmt.Errorf("python: %s.schema collides with the BlobRef package export", f.Base)
+		}
+		for _, st := range f.Tables {
+			if st.Name == "BlobRef" {
+				return fmt.Errorf("python: table BlobRef collides with the BlobRef package export")
+			}
+		}
+		for _, un := range f.TableUnions {
+			if un.Name == "BlobRef" {
+				return fmt.Errorf("python: union BlobRef collides with the BlobRef package export")
+			}
+		}
+		for _, decl := range f.Decls {
+			name := ""
+			switch d := decl.(type) {
+			case *ir.Const:
+				name = d.Name
+			case *ir.Enum:
+				name = d.Name
+			case *ir.Flags:
+				name = d.Name
+			case *ir.Struct:
+				name = d.Name
+			case *ir.Union:
+				name = d.Name
+			}
+			if name == "BlobRef" {
+				return fmt.Errorf("python: declaration BlobRef collides with the BlobRef package export")
+			}
+		}
+	}
+	return nil
 }
 
 // closureUnions is the set of table-closure unions: every union a table
@@ -418,6 +460,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		b.WriteString("\n")
 	}
 	schema := map[string]string{
+		"BlobRef":      "BlobRef as _s_BlobRef",
 		"InvalidValue": "InvalidValue",
 		"LoadReport":   "LoadReport",
 		"Refused":      "Refused",
@@ -443,9 +486,10 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit) string {
 		fmt.Fprintf(&b, "from ._schema.serialize import %s\n", strings.Join(imports.Serialize, ", "))
 	}
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
+	b.WriteString("from ._schema.integrity import open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _collect_root, _validate as _validate_value, _check_root as _s_check_root, _write_form, _write_node_table, measure_table, save_table\n\n\n")
 
 	if body := host.Body(); body != "" {
@@ -613,19 +657,32 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("\n    @classmethod\n")
 	if straight {
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
-		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
 	} else {
 		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
+	}
+	if st.Integrity == "crc32c" {
+		b.WriteString("        data = _s_open_crc(data)\n")
+	}
+	if straight {
+		fmt.Fprintf(b, "        return _s_load_%s(cls, data, report)\n", name)
+	} else {
 		b.WriteString("        return load_table(cls, data, report)\n")
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
+	call := "save_table(self)"
 	if straight {
-		fmt.Fprintf(b, "        return _s_save_%s(self)\n", name)
-	} else {
-		b.WriteString("        return save_table(self)\n")
+		call = fmt.Sprintf("_s_save_%s(self)", name)
 	}
+	if st.Integrity == "crc32c" {
+		call = "_s_seal_crc(" + call + ")"
+	}
+	fmt.Fprintf(b, "        return %s\n", call)
 	b.WriteString("\n    def measure(self) -> int:\n")
-	b.WriteString("        return measure_table(self)\n\n\n")
+	if st.Integrity == "crc32c" {
+		b.WriteString("        return measure_table(self) + 4\n\n\n")
+	} else {
+		b.WriteString("        return measure_table(self)\n\n\n")
+	}
 	emitTableDescriptor(b, u, st, false)
 	if fast {
 		emitFastStraightLine(b, st, variable, guards)
@@ -651,6 +708,18 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
 	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
 	fmt.Fprintf(b, "    variable=%s,\n", pyBool(variable))
+	if !valueClass {
+		var forms []string
+		for _, form := range []string{"wire", "json", "block", "cook"} {
+			if st.CarriesForm(form) {
+				forms = append(forms, strconv.Quote(form))
+			}
+		}
+		if len(forms) == 1 {
+			forms[0] += ","
+		}
+		fmt.Fprintf(b, "    forms=(%s),\n", strings.Join(forms, ", "))
+	}
 	fmt.Fprintf(b, "    fields=(\n")
 	for ordinal, f := range st.Fields {
 		lo, hi := intRange(f)
@@ -674,6 +743,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		fmt.Fprintf(b, "            map_entry=%s,\n", strconv.Quote(mapEntry))
 		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
 		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
+		fmt.Fprintf(b, "            required=%s,\n", pyBool(f.Required))
 		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
 		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
 		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
@@ -689,6 +759,9 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueCla
 		}
 		fmt.Fprintf(b, "            elem_codec=%s,\n", strconv.Quote(elemCodec))
 		fmt.Fprintf(b, "            size=%d,\n", fieldSize(f))
+		if f.IsTextList() {
+			fmt.Fprintf(b, "            text_total=%d,\n", f.TextTotal)
+		}
 		fmt.Fprintf(b, "            variant_ids=%s,\n", variantIds(f))
 		if dep := deprecatedOrdinals(f); dep != "" {
 			fmt.Fprintf(b, "            deprecated=%s,\n", dep)
@@ -845,7 +918,7 @@ func emitFastStraightLine(b *strings.Builder, st *ir.Struct, variable bool, guar
 				ind = "        "
 			}
 			fmt.Fprintf(b, "%scurrent = value.%s\n", ind, f.Name)
-			fmt.Fprintf(b, "%sif not f%d.is_default(current):\n", ind, i)
+			fmt.Fprintf(b, "%sif f%d.required or not f%d.is_default(current):\n", ind, i, i)
 			fmt.Fprintf(b, "%s    w%d(writer, f%d, current, ctx)\n", ind, i, i)
 		}
 	}
@@ -871,7 +944,7 @@ func emitBlockDescriptors(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks 
 	fmt.Fprintf(b, "%s.block_row = BlockRecord(\n", name)
 	emitBlockRecordBody(b, u, row, nil, false)
 	b.WriteString(")\n")
-	if blocks == nil {
+	if blocks == nil || !st.CarriesForm("block") {
 		fmt.Fprintf(b, "%s.block = None\n\n", name)
 		return
 	}
@@ -995,7 +1068,7 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    current: object\n")
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "    current = value.%s\n", f.Name)
-		fmt.Fprintf(b, "    if not fields[%d].is_default(current):\n", i)
+		fmt.Fprintf(b, "    if fields[%d].required or not fields[%d].is_default(current):\n", i, i)
 		fmt.Fprintf(b, "        _s_kinds._REGISTRY[%q].write(writer, fields[%d], current, ctx)\n", codecOf(f), i)
 	}
 	b.WriteString("    writer.byte(0)\n")
@@ -1006,6 +1079,7 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "def _s_load_%s(cls: type[%s], data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name, name, name)
 	b.WriteString("    view = buffer_view(data)\n")
 	b.WriteString("    ids = _id_table(view)\n")
+	b.WriteString("    _check_id_order(view, ids)\n")
 	b.WriteString("    ctx = _LoadCtx(ids)\n")
 	b.WriteString("    obj = cls()\n")
 	b.WriteString("    ctx.root = obj\n")
@@ -1028,6 +1102,9 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 			fmt.Fprintf(b, "        elif field_id == fields[%d].field_id:\n", i)
 		}
 		fmt.Fprintf(b, "            if kind != fields[%d].kind:\n", i)
+		b.WriteString("                from ._schema.kind_array import _widens\n")
+		fmt.Fprintf(b, "                if _widens(kind, fields[%d].kind):\n", i)
+		b.WriteString("                    return load_table(cls, data, report)\n")
 		fmt.Fprintf(b, "                raise Refused(\"kind_mismatch\", f\"{obj.descriptor.name}.{fields[%d].name} rides under kind {kind}, not {fields[%d].kind}\")\n", i, i)
 		fmt.Fprintf(b, "            obj.%s = _s_kinds._REGISTRY[fields[%d].codec].read(reader, fields[%d], ctx)\n", f.Name, i, i)
 	}
@@ -1039,7 +1116,10 @@ func emitStraightLine(b *strings.Builder, st *ir.Struct) {
 	}
 	b.WriteString("    if reader.pos != reader.end:\n")
 	b.WriteString("        raise Refused(\"wire_damaged\", \"bytes between the root terminator and the id table\")\n")
+	b.WriteString("    missing = [f.name for f in fields if f.required and f.field_id not in seen]\n")
 	b.WriteString("    _resolve(ctx)\n")
+	b.WriteString("    if missing:\n")
+	b.WriteString("        raise Refused(\"missing_required\", \", \".join(missing))\n")
 	b.WriteString("    if report is not None:\n")
 	b.WriteString("        report.unknown = ctx.unknown\n")
 	b.WriteString("        report.widened = 0\n")
@@ -1175,7 +1255,7 @@ func armFieldDesc(v ir.UnionVariant, tag int) string {
 	}
 	codec := codecOf(f)
 	switch codec {
-	case "keyed", "string_blob", "bytes_blob":
+	case "keyed":
 		codec = "unsupported"
 	}
 	elemCodec := ""
@@ -1222,8 +1302,8 @@ func packageInit(u *ir.Unit, plans []*filePlan) string {
 	fmt.Fprintf(&b, "# Code generated by the schema compiler from the unit %s. DO NOT EDIT.\n", u.Package)
 	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
 	b.WriteString("from typing import Final\n\n")
-	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
-	names := []string{"BUILD_VERSION", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	b.WriteString("from ._schema import BlobRef, InvalidValue, LoadReport, Refused\n")
+	names := []string{"BUILD_VERSION", "BlobRef", "InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
 	for _, plan := range plans {
 		// A class or union in this module already occupies the public name.
 		// Its import below loads the module and preserves the public value.
@@ -1330,6 +1410,12 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	if codec == "enum" {
+		fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+		if dep := deprecatedOrdinals(f); dep != "" {
+			fmt.Fprintf(b, "                deprecated=%s,\n", dep)
+		}
+	}
 	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
 	fmt.Fprintf(b, "            ),\n")
 	keys := make([]string, 0, f.ArrayBound)
@@ -1349,7 +1435,7 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
 // element the keyed kind does not carry yet: bool, the integer and
-// fixed-point kinds, and tables by value.
+// fixed-point kinds, enums, and tables by value.
 func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1357,8 +1443,13 @@ func keyedElemCodec(f *ir.Field) string {
 	case ir.TInt, ir.TFixed:
 		return "int"
 	case ir.TNamed:
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
-			return "table"
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref.IsTable {
+				return "table"
+			}
+		case *ir.Enum:
+			return "enum"
 		}
 	}
 	return ""
@@ -1394,7 +1485,7 @@ func codecOf(f *ir.Field) string {
 		// a fixed or counted array of a fixed-class scalar: the same kind-14
 		// body, each element through its own kind module
 		switch element {
-		case "bool", "int", "float32", "float64", "string", "enum":
+		case "bool", "int", "float32", "float64", "string", "enum", "text_optional":
 			return "array"
 		}
 		return "unsupported"
@@ -1413,7 +1504,7 @@ func codecOf(f *ir.Field) string {
 	}
 	if f.IsMap() {
 		if f.Type.Optional {
-			return "unsupported"
+			return "optional"
 		}
 		return "map"
 	}
@@ -1470,10 +1561,18 @@ func elementCodecOf(f *ir.Field) string {
 		return "bool"
 	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
 	case ir.TNamed:
-		if _, ok := f.Type.Ref.(*ir.Struct); ok {
-			// a table or a packet type by value: both ride a kind-13 body
+		switch f.Type.Ref.(type) {
+		case *ir.Struct:
 			return "table"
+		case *ir.Enum:
+			return "enum"
+		case *ir.Flags:
+			return "int"
 		}
 	}
 	return "unsupported"
@@ -1483,6 +1582,12 @@ func elementCodecOf(f *ir.Field) string {
 // unbounded array's is elementCodecOf's, and a fixed [N]T or counted [..N]T
 // array also carries the fixed class's floats, strings, enums and flags masks.
 func arrayElemCodec(f *ir.Field) string {
+	if f.IsTextList() {
+		if ir.TextListOptional(f) {
+			return "text_optional"
+		}
+		return "string"
+	}
 	element := elementCodecOf(f)
 	if f.Array == ir.ArrayList || element != "unsupported" || f.Type.Pointer {
 		return element
@@ -1572,7 +1677,7 @@ func innerCodecOf(f *ir.Field) string {
 	}
 	if f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		switch optionalElemCodecOf(f) {
-		case "bool", "int", "table", "float32", "float64":
+		case "bool", "int", "table", "enum", "float32", "float64":
 			return "array"
 		}
 		return "unsupported"
@@ -1604,7 +1709,7 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	switch codec {
 	case "bool":
 		def = "False"
-	case "int":
+	case "int", "enum":
 		def = "0"
 	case "float32", "float64":
 		def = "0.0"
@@ -1617,6 +1722,10 @@ func emitOptionalArrayElem(b *strings.Builder, f *ir.Field) {
 	fmt.Fprintf(b, "                lo=%s,\n", lo)
 	fmt.Fprintf(b, "                hi=%s,\n", hi)
 	fmt.Fprintf(b, "                target=%s,\n", strconv.Quote(targetName(f)))
+	fmt.Fprintf(b, "                variant_ids=%s,\n", variantIds(f))
+	if dep := deprecatedOrdinals(f); dep != "" {
+		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
+	}
 	fmt.Fprintf(b, "                default=%s,\n", def)
 	if isFloat(f) {
 		fmt.Fprintf(b, "                f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
@@ -1647,9 +1756,9 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 	if f.Type.Pointer {
 		if f.Type.Blob() {
 			if f.Type.Kind == ir.TString {
-				return "str | None"
+				return "str | _s_BlobRef | None"
 			}
-			return "bytes | bytearray | memoryview | None"
+			return "bytes | bytearray | memoryview | _s_BlobRef | None"
 		}
 		return "object | None"
 	}
@@ -1718,14 +1827,13 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A fixed array is born with every slot; a counted array is born
-		// empty whatever its minimum, as the engine's reset builds it
-		// (internal/tabletext/value.go), so an absent counted field reads as
-		// the engine reads it. The minimum binds the writer, which refuses
-		// an array below it.
+		// A union array is born at its declared minimum, with independent
+		// None-valued elements; fixed arrays are born at their full bound.
 		count := int64(0)
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
+		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
+			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"
@@ -1843,6 +1951,9 @@ func deprecatedOrdinals(f *ir.Field) string {
 // fieldSize is a string or bytes field's declared byte bound, and 0 for every
 // field that declares none or is not a byte buffer.
 func fieldSize(f *ir.Field) int64 {
+	if f.IsTextList() {
+		return ir.TextListValue(f).Type.Size
+	}
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		return f.Type.Size

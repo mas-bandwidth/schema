@@ -12,7 +12,7 @@ body's closed list, a slot whose element does not fill its L exactly, and a
 byte left inside the body's L each refuse the whole load.
 """
 
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 from . import InvalidValue, Refused
 from . import descriptor, kinds
@@ -86,10 +86,14 @@ class _Keyed:
         if elem_kind not in _ELEMENT_KINDS:
             raise _damaged(f"a keyed element kind {elem_kind} outside the closed list")
         if elem_kind != elem.kind:
-            raise Refused(
-                "kind_mismatch",
-                f"{fd.name} carries element kind {elem_kind}, not {elem.kind}",
-            )
+            from .kind_array import _widens
+
+            if not _widens(elem_kind, elem.kind):
+                raise Refused(
+                    "kind_mismatch",
+                    f"{fd.name} carries element kind {elem_kind}, not {elem.kind}",
+                )
+            ctx.widened += 1
         # the owner being read was built fresh, so its default is a fresh keyed
         # array of this field's own class
         current = getattr(ctx.current, fd.name)
@@ -121,7 +125,12 @@ class _Keyed:
                 values[slot] = obj
                 continue
             sub = Reader(element, 0, size, ctx.ids)
-            values[slot] = codec.read(sub, elem, ctx)
+            if elem_kind != elem.kind:
+                from .load import _widened_scalar
+
+                values[slot] = _widened_scalar(sub, elem_kind, elem)
+            else:
+                values[slot] = codec.read(sub, elem, ctx)
             if sub.pos != sub.end:
                 raise _damaged("bytes left inside a keyed slot after its element")
         if body.pos != body.end:
@@ -154,12 +163,16 @@ class _Keyed:
                 if elem.is_default(current):
                     _rollback(ctx, slot_mark)  # a default slot elides
                     continue
-                _write_scalar(Writer(element), elem, current)
+                if elem.codec == "enum":
+                    codec = cast(kinds._ElementKind, kinds._REGISTRY[elem.codec])
+                    codec.write_element(Writer(element), elem, current, ctx)
+                else:
+                    _write_scalar(Writer(element), elem, current)
             sw.varint(key)
             sw.varint(len(element))
             sw.raw(element)
             present += 1
-        if present == 0:
+        if present == 0 and not fd.required:
             _rollback(ctx, mark)  # no present slot: the field is not written
             return
         inner = bytearray()

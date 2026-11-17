@@ -1,6 +1,7 @@
 package jstable
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func runJSConstructProbe(t *testing.T, files map[string][]byte, home, script string, cases any) string {
@@ -107,27 +109,20 @@ table Outer {
 }
 
 func TestJavaScriptOneSidedRangeConstruct(t *testing.T) {
-	t.Skip("layer 4 (js): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
-	slowtest.Gate(t, "node (it executes one-sided integer clamps)")
+	slowtest.Gate(t, "node (it executes one-sided integer bounds)")
 	t.Parallel()
 	u := unitFrom(t, `package probe
-
-table Probe {
+ table Probe {
     a int64 | min = 0
     b uint16 | max = 9
     c int8 | min = -3
     d uint64 | max = 18446744073709551610
-}
+ }
 `)
 	m := tabletext.NewModel(u)
 	type row struct {
-		Name        string `json:"name"`
-		Wire        string `json:"wire"`
-		Saved       string `json:"saved"`
-		Clamped     int    `json:"clamped"`
-		Input       string `json:"input"`
-		JSONSaved   string `json:"jsonSaved"`
-		JSONClamped int    `json:"jsonClamped"`
+		Name, Wire, Saved, Input, JSONSaved string
+		WireOK, JSONOK                      bool
 	}
 	var cases []row
 	for _, tc := range []struct {
@@ -135,41 +130,55 @@ table Probe {
 		index int
 		raw   uint64
 		input string
+		valid bool
 	}{
-		{"lower-clamp", 0, ^uint64(0), `{"a":-1}`},
-		{"lower-edge", 0, 0, `{"a":0}`},
-		{"signed-upper", 0, 1<<63 - 1, `{"a":9223372036854775807}`},
-		{"upper-clamp", 1, 65535, `{"b":65535}`},
-		{"upper-edge", 1, 9, `{"b":9}`},
-		{"signed-small-clamp", 2, 128, `{"c":-128}`},
-		{"unsigned-upper", 3, ^uint64(0), `{"d":18446744073709551615}`},
+		{"lower-edge", 0, 0, `{"a":"0"}`, true},
+		{"lower-outside", 0, ^uint64(0), `{"a":"-1"}`, false},
+		{"signed-upper", 0, 1<<63 - 1, `{"a":"9223372036854775807"}`, true},
+		{"upper-edge", 1, 9, `{"b":9}`, true},
+		{"upper-outside", 1, 10, `{"b":10}`, false},
+		{"signed-small-edge", 2, 253, `{"c":-3}`, true},
+		{"signed-small-outside", 2, 252, `{"c":-4}`, false},
+		{"unsigned-edge", 3, 18446744073709551610, `{"d":"18446744073709551610"}`, true},
+		{"unsigned-outside", 3, 18446744073709551611, `{"d":"18446744073709551611"}`, false},
 	} {
-		inst := m.New(u.Tables["Probe"])
-		inst.Fields[tc.index].Cell.I = int64(tc.raw)
-		inst.Fields[tc.index].Cell.U = tc.raw
-		wire, err := tablewire.Encode(m, inst)
-		if err != nil {
-			t.Fatal(err)
+		f := u.Tables["Probe"].Fields[tc.index]
+		kind := ir.TableWireFieldKind(f)
+		wire := []byte{1, 1, byte(kind)}
+		for i := 0; i < ir.TableKindWidth(kind); i++ {
+			wire = append(wire, byte(tc.raw>>(8*i)))
 		}
-		back := m.New(u.Tables["Probe"])
-		var rep tabletext.Report
-		if ok, err := tablewire.Decode(m, back, wire, &rep); !ok || err != nil {
-			t.Fatalf("oracle decode: %+v %v", rep, err)
+		wire = append(wire, 0)
+		wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(f))
+		wire = binary.LittleEndian.AppendUint64(wire, 1)
+		value := m.New(u.Tables["Probe"])
+		var report tabletext.Report
+		ok, err := tablewire.Decode(m, value, wire, &report)
+		if ok != tc.valid || (ok && err != nil) || (!ok && !tablewire.ReadRefusal(err)) {
+			t.Fatalf("%s wire oracle: ok=%v err=%v report=%+v", tc.name, ok, err, report)
 		}
-		saved, err := tablewire.Encode(m, back)
-		if err != nil {
-			t.Fatal(err)
+		c := row{Name: tc.name, Wire: hex.EncodeToString(wire), Input: tc.input, WireOK: ok}
+		if ok {
+			saved, err := tablewire.Encode(m, value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.Saved = hex.EncodeToString(saved)
 		}
+		jv := m.New(u.Tables["Probe"])
 		var jr tabletext.Report
-		jsonBack := m.New(u.Tables["Probe"])
-		if !m.Read(jsonBack, []byte(tc.input), &jr) || jr.Refused {
-			t.Fatalf("oracle JSON: %+v", jr)
+		c.JSONOK = m.Read(jv, []byte(tc.input), &jr)
+		if c.JSONOK != tc.valid {
+			t.Fatalf("%s JSON oracle: ok=%v report=%+v", tc.name, c.JSONOK, jr)
 		}
-		jsaved, err := tablewire.Encode(m, jsonBack)
-		if err != nil {
-			t.Fatal(err)
+		if c.JSONOK {
+			saved, err := tablewire.Encode(m, jv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.JSONSaved = hex.EncodeToString(saved)
 		}
-		cases = append(cases, row{tc.name, hex.EncodeToString(wire), hex.EncodeToString(saved), 0, tc.input, hex.EncodeToString(jsaved), 0})
+		cases = append(cases, c)
 	}
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
@@ -190,15 +199,16 @@ const cases = JSON.parse(readFileSync(process.argv[2],"utf8"));
 const m = await import(pathToFileURL(process.argv[3]).href);
 const hex = b => b == null ? "null" : Buffer.from(b).toString("hex");
 for (const c of cases) {
-  const rep = new m.TableVariableReport();
-  const value = m.ProbeLoad(new Uint8Array(Buffer.from(c.wire,"hex")),rep);
-  const jr = new m.TableVariableReport();
-  const jvalue = m.ProbeFromJson(c.input,jr);
-  if (value === null || rep.damaged || rep.oor !== c.clamped || hex(m.ProbeSave(value)) !== c.saved
-      || jvalue === null || jr.damaged || jr.oor !== c.jsonClamped || hex(m.ProbeSave(jvalue)) !== c.jsonSaved) {
-    throw new Error(c.name + " mismatch " + JSON.stringify({rep,jr,wire:hex(m.ProbeSave(value)),json:hex(m.ProbeSave(jvalue))}));
-  }
-  console.log(c.name + " OK");
+ const rep = new m.TableVariableReport();
+ const value = m.ProbeLoad(new Uint8Array(Buffer.from(c.Wire,"hex")),rep);
+ const jr = new m.TableVariableReport();
+ const jvalue = m.ProbeFromJson(c.Input,jr);
+ if ((value!==null)!==c.WireOK || (jvalue!==null)!==c.JSONOK ||
+     (value!==null && hex(m.ProbeSave(value))!==c.Saved) ||
+     (jvalue!==null && hex(m.ProbeSave(jvalue))!==c.JSONSaved)) {
+   throw new Error(c.Name + " mismatch " + JSON.stringify({rep,jr}));
+ }
+ console.log(c.Name + " OK");
 }
 `
 
