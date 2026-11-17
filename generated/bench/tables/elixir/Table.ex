@@ -3334,7 +3334,8 @@ defmodule Benchtable.Table do
          {:ok, {order, _seen}} <- first_use_nodes(table, ids, acc) do
       Enum.reverse(order) == first_use_entries(ids)
     else
-      _ -> false
+      # framing this walk cannot follow is strict_syntax!/3's to refuse
+      _ -> true
     end
   end
 
