@@ -351,3 +351,9 @@ stream_tag_enum_mismatch streamdemo Feed testdata/wire/tables/stream_tag_enum_mi
 stream_tag_pointer_mismatch streamdemo Feed testdata/wire/tables/stream_tag_pointer_mismatch.bin
 stream_tag_bytes_mismatch streamdemo Feed testdata/wire/tables/stream_tag_bytes_mismatch.bin
 stream_tag_short_width streamdemo Feed testdata/wire/tables/stream_tag_short_width.bin
+
+# THE EMPTY WIRE (§3, §6.5). Zero bytes carry no form byte, so every leg refuses
+# the read and its report names the refusal. A region root's load measures the
+# wire first; when the measure refuses, the report still carries the refused
+# verdict. The first truncation of featurewitnesses.Root.
+region_empty_wire_refused featurewitnesses Root testdata/wire/tables/fuzz-vectors/region_empty_wire_refused.bin
