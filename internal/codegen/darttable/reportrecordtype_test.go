@@ -32,8 +32,11 @@ import (
 
 // sceneRecordTypeMutant is the fuzzer's record-type pass #1 mutant (seed
 // 24845619678): the 232-byte graphdemo.Scene file whose node record's type id
-// was rewritten to a type no pointer below Scene targets.
-const sceneRecordTypeMutant = "01010c0474726565020402000000031102041104051107060c4d060f0e080401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c057269676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b02405d8145753aaaa76c8c204b4a28a8b9d66fe00649160807a0f00000000000000"
+// was rewritten to a type no pointer below Scene targets. Its id table is
+// spelled in first-use order, every entry referenced (docs/SPEC-TABLES.md §3):
+// the same mutation with the references renumbered to the order the wire first
+// uses them, so the strict read reaches the record type it is about.
+const sceneRecordTypeMutant = "01010c0474726565020402000000031102041104051107060c4d06070e080401000000010c0161091103000a07080402000000000b0d0c0c03746f700d11050e1106000b080c0c046c656674000b090c0c057269676874000f0d0704030000000c0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffff66fe00649160807aea0ce83094fde47c28f025a0ba6c31e5a99fa6a599c80ef61d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b02405d8145753aaaa76c8c204b4a28a8b9d0f00000000000000"
 
 // catalogBlobRecordTypeMutant is the regression mutant the cold read
 // (dart-fix-scene-record-type-kind-mismatch r1) measured: corpus seed
