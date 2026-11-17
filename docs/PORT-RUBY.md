@@ -296,13 +296,18 @@ unit, named for the unit's package:
   `InvalidValue`, reached as `<Unit>::Refused` and `<Unit>::InvalidValue`. The
   runtime is not a top-level gem or module: that name could belong to an
   unrelated installed library. A caller handling several units catches
-  `StandardError`.
+  `StandardError`. A file loaded by `require_relative` is evaluated at the top
+  level, so `_schema.rb` cannot be emitted verbatim and still open the unit's
+  module: the embedded source (`internal/codegen/ruby/runtime/_schema.rb`)
+  opens one placeholder module, `SchemaRuntimeUnit`, and the emitter writes it
+  with that one line naming the unit's module, and nothing else changed.
 - **Module names.** The package ident names the directory and file verbatim;
   the Ruby module constant is its Ruby spelling, split on `_` and capitalized
   per segment (`tabledemo` becomes `Tabledemo`, `my_game` becomes `MyGame`).
-  A package that maps to a constant already defined by the interpreter, or
-  that collides with another package's mapping in the unit, is refused by
-  name. A schema file's base name is its file name and must be a valid Ruby
+  Each segment must start with a letter, so the spelling is a constant and two
+  packages never map to one (`game_2` and `game2` would both be `Game2`). A
+  package that maps to a constant already defined by the interpreter is
+  refused by name. A schema file's base name is its file name and must be a valid Ruby
   identifier; two files whose names differ only in case are refused, because
   macOS and Windows fold case. A file named for the runtime (`_schema`) is
   refused, as is `serialize`, because `serialize.rb` is emitted beside the
@@ -314,7 +319,7 @@ unit, named for the unit's package:
 | `compiler/target_ruby.go` | the target, behind the `schema_leg_ruby` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
 | `compiler/carries_ruby.go` | the carried constructs, registered once from `rubyCarried`; a later layer adds `var _ = carryRuby(<construct>)` in its own file |
 | `internal/codegen/ruby` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
-| `internal/codegen/ruby/runtime/` | the runtime, embedded and emitted verbatim: the errors, and serialize.rb vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-ruby`) |
+| `internal/codegen/ruby/runtime/` | the runtime, embedded and emitted with its module line naming the unit: the errors (`_schema.rb`), and, from the packet layer, serialize.rb vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-ruby`) |
 | `internal/codegen/ruby/rubyrun` | the test helper (THE HARNESS) |
 | `internal/codegen/rubytable` | the table surface's emitter and codec, from the table layers (R5) |
 | `internal/tablenames/ruby.go` | the table runtime's claimed names, from the table layers (R5) |
@@ -337,36 +342,58 @@ soft spellings a method may still take, such as `class` in a receiver
 position, are not in the row, because the generated code spells every field as
 a method definition or a plain call.
 
-The row refuses those names in every unit, whatever the target, as the other
-rows do, and nothing is escaped. Then, by rule, in the Ruby target:
+**The row leaves out two keywords, `next` and `alias`, and `defined?`.** The
+shared corpus spells both as field names that every leg generates: `next` in
+`tables/pointers`, `tables/stream`, `tables/blobs` and nine more schema files
+under `test/` and `testdata/`, and inline in some 150 Go files across the
+emitters, most of them tests; `alias` in
+`tables/pointers` and `tables/blobs`. A row holding them refuses those units
+for every target. Renaming them (with `was = "next"`, so no wire id moves)
+reaches every leg's tests, far past the skeleton's files, so the skeleton
+(R3) leaves them out of the row, as the Python skeleton first left out
+`global`, and the Ruby target refuses both by name instead (`CheckNames`,
+`rubyKeywords`), until the corpus is renamed and they join the row.
+`defined?` is a keyword, but no schema identifier can spell its question mark.
 
-- **Constant names must be valid Ruby constants.** A type, table, union, enum
-  or flags declaration must start with an uppercase ASCII letter and otherwise
-  use only letters, digits and `_`; one that does not is refused by name. An
-  enum or flags variant is also a constant, so it takes the same rule. The
-  spellings `None` and `Max` are already refused by the checker (they are
-  every enum's own names).
+The row refuses those names in every unit, whatever the target, as the other
+rows do, and nothing is escaped. Then, by rule, in the Ruby target
+(`internal/codegen/ruby`, `CheckNames`; each rule refuses its case by name,
+and `TestRubySkeleton` turns each off in turn and requires its case to pass):
+
+- **Constant names must be valid Ruby constants.** A type, table, union,
+  enum, flags set or `const` (a module constant, THE VALUE MAPPING) must start
+  with an uppercase ASCII letter and otherwise use only letters, digits and
+  `_`; one that does not is refused by name. An enum or flags variant is also a
+  constant, so it takes the same rule. The spellings `None` and `Max` are
+  already refused by the checker (they are every enum's own names).
 - **A declaration named like a core constant or a generated runtime name** is
-  refused by name: the constants generated code spells unqualified (`Array`,
-  `Hash`, `Integer`, `Float`, `String`, `StandardError`, `Encoding`, `Math`,
-  ...), and the runtime's own (`Refused`, `InvalidValue`, `LoadReport`,
-  `Stream`, `WriteStream`, `ReadStream`, `MeasureStream`). A type's name is a
-  module-level constant, and the generated module names these unqualified.
+  refused by name: every top-level constant of either pinned interpreter
+  (`Object.constants` with RubyGems and the default gems a plain `ruby` boots
+  with loaded: `Array`, `Hash`, `Integer`, `Float`, `String`, `Set`, `Data`,
+  `Gem`, ...; the list is `rubyCoreConstants`, re-derived from both pins by
+  `TestRubySkeleton`), and the unit module's own (`Refused`, `InvalidValue`,
+  `LoadReport`, `Stream`, `WriteStream`, `ReadStream`, `MeasureStream`,
+  `PROTOCOL_ID`). A type's name is a module-level constant, and the generated
+  module names these unqualified.
 - **A field must be a valid Ruby method name and not a generated member.**
   Fields keep snake_case and become methods, so a field named for a generated
   member (`read`, `read_bits`, `write`, `load`, `save`, `descriptor`, `initialize`,
-  `inspect`, `eql?`, `hash`, `class`, `freeze`, `dup`, `clone`, `send`,
-  `method`, `object_id`) is refused by name. The emitter holds the list
+  `inspect`, `hash`, `class`, `freeze`, `dup`, `clone`, `send`,
+  `method`, `object_id`) is refused by name; `eql?` is a member too, but no
+  schema identifier can spell it. A union arm takes the same rule and one
+  more: it may not be `type`, the union's arm number. A field or arm spelled
+  like a Ruby keyword is refused by name. The emitter holds the list
   (`generatedMembers`); the table layers claim their runtime's names in
   `internal/tablenames/ruby.go`, as every backend does. A field named `list`,
-  `range` or `string` shadows nothing generated and is legal.
-- **A name starting with `__`** is refused by name: Ruby reserves the
-  double-underscore spellings for the interpreter and for reflection.
+  `range`, `string` or `type` shadows nothing generated and is legal.
+- **A field or arm starting with `__`** is refused by name: Ruby reserves the
+  double-underscore spellings for the interpreter and for reflection. A
+  constant cannot start with `_` at all.
 - **Generated helpers** are named with the `_s_` prefix, and the Ruby target
   refuses a schema name that starts with it, so no schema name collides with a
   helper.
 - **The package's module constant** must not be an existing top-level
-  constant of the pinned interpreter. A package whose Ruby spelling is
+  constant of a pinned interpreter. A package whose Ruby spelling is
   `Object`, `String`, `File`, `Dir`, `Math` or another defined constant would
   reopen that class or module rather than create a namespace, so it is refused
   by name, as a Python package that names a standard library module is.
@@ -379,11 +406,14 @@ out as lowercase hex lines.**
 
 - **`rubyrun.Run(t, dir, main, inputs)`** writes each input as `dir/<name>`,
   runs `$RUBY --disable-gems -w <main>` with `dir` as the working directory,
-  and returns stdout. The probe `main` loads the generated unit with
-  `require_relative`; the one path the test chose, and nothing from the
+  `RUBYOPT`, `RUBYLIB`, `GEM_HOME` and `GEM_PATH` removed from its
+  environment, and returns stdout; anything on stderr, a warning included,
+  fails the test as an error does. The probe `main` loads the generated unit
+  with `require_relative`; the one path the test chose, and nothing from the
   environment. `rubyrun.RunFloor` runs `$RUBY_FLOOR` the same way, and every
-  packet and table gate runs under both. An interpreter that does not resolve
-  fails the test naming `make dist-ruby`; it never skips.
+  packet and table gate runs under both. A test that runs an interpreter is
+  behind `SCHEMA_SLOW` (`make test-ruby` sets it); there, an interpreter that
+  does not resolve fails the test naming `make dist-ruby`; it never skips.
 - **No real time, no sockets, no network, no outside service** in a unit
   test. Anything timed (the bench, a soak) is a functional test.
 - Every test calls `t.Parallel()`.
@@ -399,8 +429,10 @@ The `ruby` column of [PORTING.md](PORTING.md) holds every technique ❌,
 citing #381 (the language list) and the `port/ruby` layer that carries it, or
 `—` with the platform's reason:
 
-- **M2 and M3**: Ruby's small integers are immediates and every `Float` is a
-  heap object, so there is no unboxed form to keep.
+- **M2 and M3**: CRuby holds an `Integer` as an immediate only below 2^62 in
+  magnitude,
+  and whether a `Float` is an immediate or a heap object is CRuby's choice;
+  Ruby source cannot choose either form, so there is no unboxed form to keep.
 - **M4**: Ruby has no inlining directive or aliasing qualifier; M4b, the
   self-contained codec, is the shape (R4). YJIT may inline at run time, but
   the source states no directive the leg can carry.
