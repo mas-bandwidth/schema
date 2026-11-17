@@ -80,6 +80,65 @@ func requireRelativeOnly(files map[string][]byte) error {
 
 // driverAnswersAbsent is the gate on the skeleton's conformance driver: it
 // lists no surface, and every surface it is asked for is exit 2 (ABSENT).
+// keywordFields is every Ruby keyword the field access rule carries, sorted:
+// the whole of rubyKeywords, which holds no word a schema name cannot spell.
+func keywordFields() []string {
+	return slices.Sorted(maps.Keys(rubyKeywords))
+}
+
+// keywordRecord is a module holding the record class whose fields are every
+// keyword, emitted by recordClass.
+func keywordRecord() string {
+	return "# frozen_string_literal: true\n\nmodule KeywordFields\n" + recordClass("Keywords", keywordFields(), "  ") + "end\n"
+}
+
+// keywordProbe writes each field through an explicit receiver, copies the
+// record, then answers the field count, whether the copy equals the original
+// and reads back every value, and the hash's keys in order.
+func keywordProbe(words []string) string {
+	var b strings.Builder
+	b.WriteString("# frozen_string_literal: true\n\nrequire_relative \"keyword_fields\"\n\ndef hex(text) = text.to_s.unpack1(\"H*\")\n\na = KeywordFields::Keywords.new\n")
+	reads := make([]string, len(words))
+	values := make([]string, len(words))
+	for i, w := range words {
+		fmt.Fprintf(&b, "%s\n", fieldWrite("a", w, fmt.Sprint(i+1)))
+		reads[i] = fieldRead("b", w)
+		values[i] = fmt.Sprint(i + 1)
+	}
+	b.WriteString("b = KeywordFields::Keywords.new." + HelperPrefix + "copy_from(a)\n")
+	b.WriteString("puts hex(b.to_h.size)\n")
+	fmt.Fprintf(&b, "puts hex(b == a && [%s] == [%s])\n", strings.Join(reads, ", "), strings.Join(values, ", "))
+	b.WriteString("puts hex(b.to_h.keys.join(\" \"))\n")
+	return b.String()
+}
+
+// noBareField refuses a line that writes a field as a bare local (`next = `)
+// or reads one bare at the end of an assignment (`= next`): the two shapes a
+// keyword cannot take. The interpreter run is the whole proof; this names the
+// line first.
+func noBareField(src string, words []string) error {
+	for line := range strings.SplitSeq(src, "\n") {
+		trimmed := strings.TrimSpace(line)
+		for _, w := range words {
+			if strings.HasPrefix(trimmed, w+" = ") || strings.HasSuffix(trimmed, "= "+w) {
+				return fmt.Errorf("the record reaches the field %s bare: %s", w, trimmed)
+			}
+		}
+	}
+	return nil
+}
+
+// plantBareNext is the field access rule's fault: next written as a bare
+// local, in a copy of the record.
+func plantBareNext(t *testing.T, src string) string {
+	t.Helper()
+	planted := strings.Replace(src, "self.next = other.next", "next = other.next", 1)
+	if planted == src {
+		t.Fatal("the keyword record has no self.next = other.next to plant the fault in")
+	}
+	return planted
+}
+
 func driverAnswersAbsent(driver, dir string) error {
 	list := exec.Command("sh", driver, "manifest.json", "list")
 	list.Dir = dir
@@ -163,11 +222,13 @@ puts hex(["unlexed:", *words.reject { |w| Ripper.lex(w).dig(0, 1) == :on_kw }].j
 // identifier rule refuses its case by name and its legal neighbours generate,
 // and each rule, turned off, lets its case through (the rules' negative
 // control); the checker's Ruby row is the keyword list less next and alias;
-// the conformance driver answers every surface absent. The slow half
-// (SCHEMA_SLOW, make test-ruby) runs the pinned interpreters: the namespace
-// loads under both with no warning under ruby -w, two units keep their own
-// errors, the name lists are the pins', and the warning and load gates each
-// go red on a planted fault.
+// a record whose fields are every keyword reaches none bare; the conformance
+// driver answers every surface absent. The slow half (SCHEMA_SLOW, make
+// test-ruby) runs the pinned interpreters: the namespace loads under both with
+// no warning under ruby -w, two units keep their own errors, the keyword
+// record runs, the name lists are the pins', and the warning, load and keyword
+// gates each go red on a planted fault. Every control is a subtest named
+// *-negative-control (make ruby-skeleton-negative-control).
 func TestRubySkeleton(t *testing.T) {
 	t.Parallel()
 
@@ -280,9 +341,6 @@ func TestRubySkeleton(t *testing.T) {
 		{"type named like a core constant", ruleCoreConstant, withDecl(&ir.Struct{Name: "Integer"}), "type Integer is a constant the Ruby interpreter or the generated runtime defines"},
 		{"union named like a runtime name", ruleCoreConstant, withDecl(&ir.Union{Name: "Refused"}), "union Refused is a constant the Ruby interpreter or the generated runtime defines"},
 		{"const named PROTOCOL_ID", ruleCoreConstant, withDecl(&ir.Const{Name: "PROTOCOL_ID"}), "const PROTOCOL_ID is a constant the Ruby interpreter or the generated runtime defines"},
-		{"field keyword next", ruleKeyword, withDecl(&ir.Struct{Name: "Node", Fields: fields("next")}), "Node's field next is a Ruby keyword"},
-		{"field keyword alias", ruleKeyword, withDecl(&ir.Struct{Name: "Asset", Fields: fields("alias")}), "Asset's field alias is a Ruby keyword"},
-		{"arm keyword begin", ruleKeyword, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "begin"}}}), "union Event's arm begin is a Ruby keyword"},
 		{"field double underscore", ruleDoubleUnderscore, withDecl(&ir.Struct{Name: "Player", Fields: fields("__secret")}), "Player's field __secret starts with __"},
 		{"field helper prefix", ruleHelperPrefix, withDecl(&ir.Struct{Name: "Player", Fields: fields("_s_hp")}), "Player's field _s_hp starts with _s_"},
 		{"field generated member", ruleGeneratedMember, withDecl(&ir.Struct{Name: "Player", Fields: fields("save")}), "Player's field save is the name of a member the generated class defines"},
@@ -314,6 +372,10 @@ func TestRubySkeleton(t *testing.T) {
 			{"type with a digit and an underscore", withDecl(&ir.Struct{Name: "Player_2"})},
 			{"enum variant in capitals", withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"LASER", "Rail"}})},
 			{"arm named like a field", withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "Spawn"}, {Name: "hit"}}})},
+			// the field access rule carries every keyword (fields.go)
+			{"fields named next and alias", withDecl(&ir.Struct{Name: "Node", Fields: fields("next", "alias")})},
+			{"fields named for other keywords", withDecl(&ir.Struct{Name: "Span", Fields: fields("begin", "end", "if", "then")})},
+			{"arm named for a keyword", withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "begin"}, {Name: "next"}}})},
 		} {
 			if err := CheckNames(c.unit); err != nil {
 				t.Errorf("%s: refused: %v", c.name, err)
@@ -333,7 +395,7 @@ func TestRubySkeleton(t *testing.T) {
 				t.Errorf("%s: with %s off, still refused: %v", c.name, c.rule, err)
 			}
 		}
-		for _, rule := range []string{rulePackageSpelling, rulePackageConstant, ruleFileIdentifier, ruleFileReserved, ruleFileCaseFold, ruleConstantSpelling, ruleCoreConstant, ruleDoubleUnderscore, ruleHelperPrefix, ruleKeyword, ruleGeneratedMember} {
+		for _, rule := range []string{rulePackageSpelling, rulePackageConstant, ruleFileIdentifier, ruleFileReserved, ruleFileCaseFold, ruleConstantSpelling, ruleCoreConstant, ruleDoubleUnderscore, ruleHelperPrefix, ruleGeneratedMember} {
 			if !ruled[rule] {
 				t.Errorf("rule %s has no refused case, so nothing shows it holds", rule)
 			}
@@ -341,8 +403,8 @@ func TestRubySkeleton(t *testing.T) {
 	})
 
 	// The checker's Ruby row (internal/check) is the leg's keyword list less
-	// next and alias, which the shared corpus spells as fields
-	// (docs/PORT-RUBY.md, IDENTIFIERS).
+	// next and alias, which the shared corpus spells as fields and the field
+	// access rule carries (docs/PORT-RUBY.md, IDENTIFIERS).
 	t.Run("reserved-row", func(t *testing.T) {
 		t.Parallel()
 		row := check.ReservedIn("Ruby")
@@ -355,6 +417,37 @@ func TestRubySkeleton(t *testing.T) {
 		}
 	})
 
+	// THE FIELD ACCESS RULE, pure: a record whose fields are every keyword
+	// reaches each through an explicit receiver, a symbol, a label or an
+	// instance variable, and no line of it starts with a bare field name.
+	t.Run("keyword-fields", func(t *testing.T) {
+		t.Parallel()
+		src := keywordRecord()
+		for _, w := range keywordFields() {
+			for _, want := range []string{
+				":" + w,
+				"@" + w + " = 0",
+				"self." + w + " = other." + w,
+				w + ": @" + w,
+			} {
+				if !strings.Contains(src, want) {
+					t.Errorf("the keyword record reaches %s without %q", w, want)
+				}
+			}
+		}
+		if err := noBareField(src, keywordFields()); err != nil {
+			t.Error(err)
+		}
+	})
+
+	// Its control: a copy that writes next as a bare local.
+	t.Run("keyword-fields-shape-negative-control", func(t *testing.T) {
+		t.Parallel()
+		if err := noBareField(plantBareNext(t, keywordRecord()), keywordFields()); err == nil || !strings.Contains(err.Error(), "next = other.next") {
+			t.Fatalf("a planted bare next went %v; want red naming the line", err)
+		}
+	})
+
 	t.Run("driver", func(t *testing.T) {
 		t.Parallel()
 		root, err := rubyrun.RepoRoot()
@@ -364,7 +457,15 @@ func TestRubySkeleton(t *testing.T) {
 		if err := driverAnswersAbsent(filepath.Join(root, "test", "conformance", "ruby", "driver"), t.TempDir()); err != nil {
 			t.Fatal(err)
 		}
-		// its negative control: a copy that lists a surface it cannot answer
+	})
+
+	// The driver gate's control: a copy that lists a surface it cannot answer.
+	t.Run("driver-negative-control", func(t *testing.T) {
+		t.Parallel()
+		root, err := rubyrun.RepoRoot()
+		if err != nil {
+			t.Fatal(err)
+		}
 		dir := t.TempDir()
 		src, err := os.ReadFile(filepath.Join(root, "test", "conformance", "ruby", "driver"))
 		if err != nil {
@@ -450,6 +551,42 @@ func TestRubySkeleton(t *testing.T) {
 			_, stderr, err := rubyrun.Try(t, p.pin(t), dir, "main.rb", map[string][]byte{"main.rb": []byte(loadProbe)})
 			if err == nil || !strings.Contains(stderr, "hello/_schema") {
 				t.Fatalf("a unit with no runtime loaded (%v); stderr:\n%s", err, stderr)
+			}
+		})
+
+		// THE FIELD ACCESS RULE under the pin: the record whose fields are
+		// every keyword loads under ruby -w with no warning, each field is
+		// written and read through an explicit receiver, copied, hashed by
+		// label and compared.
+		t.Run("keyword-fields/"+p.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			words := keywordFields()
+			lines := rubyrun.HexLines(t, p.run(t, dir, "main.rb", map[string][]byte{
+				"keyword_fields.rb": []byte(keywordRecord()),
+				"main.rb":           []byte(keywordProbe(words)),
+			}))
+			want := []string{fmt.Sprint(len(words)), "true", strings.Join(words, " ")}
+			var got []string
+			for _, l := range lines {
+				got = append(got, string(l))
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("keyword probe answered %q, want %q", got, want)
+			}
+		})
+
+		// Its control: the same record with next written as a bare local
+		// must not load, and the failure names the file.
+		t.Run("keyword-fields-negative-control/"+p.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			_, stderr, err := rubyrun.Try(t, p.pin(t), dir, "main.rb", map[string][]byte{
+				"keyword_fields.rb": []byte(plantBareNext(t, keywordRecord())),
+				"main.rb":           []byte(keywordProbe(keywordFields())),
+			})
+			if err == nil || !strings.Contains(stderr, "keyword_fields.rb") {
+				t.Fatalf("a record writing next as a bare local loaded (%v); stderr:\n%s", err, stderr)
 			}
 		})
 

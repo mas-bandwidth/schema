@@ -20,6 +20,15 @@ test-ruby: ruby-toolchain-check
 	sh test/slowgate/proof test-ruby-compiler 'TestRubyTargetIsRegistered TestRubyGeneratesAnEmptyUnitThroughTheDriver TestRubyRefusesADeclarationThroughTheDriver TestNewLegRubyRecipe' -count=1 -tags schema_leg_ruby -run 'Ruby' ./compiler
 update-goldens-ruby: ;
 
+# ruby-skeleton-negative-control: the skeleton's controls, each planting its
+# fault in a copy of what its gate covers (a generated file, the runtime, the
+# driver, the keyword record) and going red by name: TestRubySkeleton's
+# *-negative-control subtests under both pinned interpreters
+# (make/negative-controls.json, ruby-skeleton).
+.PHONY: ruby-skeleton-negative-control
+ruby-skeleton-negative-control: ruby-toolchain-check
+	sh test/slowgate/proof ruby-skeleton-negative-control 'TestRubySkeleton' -count=1 -timeout 600s -tags schema_leg_ruby -run 'TestRubySkeleton/negative-control' ./internal/codegen/ruby/
+
 # The conformance driver answers every surface ABSENT until a layer carries
 # one (test/conformance/ruby/driver), so the leg builds nothing for it.
 build/conformance-ruby: ;

@@ -5,9 +5,10 @@ package ruby
 // and END blocks: every word the lexer reads as a keyword wherever a bare name
 // stands. defined? is one too, but no schema identifier can spell its question
 // mark. The checker's Ruby row is this list less next and alias
-// (internal/check; TestRubySkeleton holds the two together), and
-// TestRubySkeleton/pins has both pinned interpreters lex each word as a
-// keyword.
+// (internal/check; TestRubySkeleton holds the two together), which the field
+// access rule carries (fields.go); TestRubySkeleton/pins has both pinned
+// interpreters lex each word as a keyword, and keyword-fields has both run a
+// record whose fields are every word of the list.
 var rubyKeywords = wordSet(`alias and begin break case class def do else elsif end ensure false for
 	if in module next nil not or redo rescue retry return self super then true undef unless until when
 	while yield __FILE__ __LINE__ __ENCODING__ BEGIN END`)

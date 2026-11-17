@@ -44,17 +44,17 @@ const (
 	ruleCoreConstant     = "core-constant"
 	ruleDoubleUnderscore = "double-underscore"
 	ruleHelperPrefix     = "helper-prefix"
-	ruleKeyword          = "keyword"
 	ruleGeneratedMember  = "generated-member"
 )
 
 // CheckNames holds every name the generated namespace spells to
 // docs/PORT-RUBY.md, IDENTIFIERS, and refuses the first that breaks a rule, by
 // name. The reserved words every target refuses are the checker's
-// (internal/check, Ruby's row); the keywords are held here again for the
-// names a method takes, because the row leaves out next and alias, which the
-// shared corpus spells as fields. The rest are the rules only the Ruby target
-// has: the package and its module constant, the file names, constant
+// (internal/check, Ruby's row). No name is refused here for being a Ruby
+// keyword: a field or arm is reached only through the field access rule
+// (fields.go), which carries every keyword, so next and alias, which the row
+// leaves out, are carried as written. The rest are the rules only the Ruby
+// target has: the package and its module constant, the file names, constant
 // spellings, core constants and runtime names, double-underscore and helper
 // prefixes, and the generated members.
 func CheckNames(u *ir.Unit) error {
@@ -227,9 +227,6 @@ func (c checker) checkFields(file, owner string, fields []*ir.Field) error {
 // checkMethod holds a name the generated code spells as a method: a field or
 // a union arm.
 func (c checker) checkMethod(file, what, name string) error {
-	if rubyKeywords[name] && c.on(ruleKeyword) {
-		return fmt.Errorf("ruby: %s.schema: %s is a Ruby keyword; rename it", file, what)
-	}
 	if strings.HasPrefix(name, "__") && c.on(ruleDoubleUnderscore) {
 		return fmt.Errorf("ruby: %s.schema: %s starts with __, which Ruby reserves for the interpreter and reflection; rename it", file, what)
 	}

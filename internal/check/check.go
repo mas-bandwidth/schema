@@ -3637,10 +3637,10 @@ var reservedLanguages = []struct {
 	// name can spell it. next and alias are keywords the shared corpus spells
 	// as field names in every leg (next in tables/pointers, tables/stream,
 	// tables/blobs and some 150 Go tests; alias in tables/pointers and
-	// tables/blobs), so this row would refuse corpus units every leg
-	// generates; the Ruby target refuses both by name instead
-	// (internal/codegen/ruby, CheckNames), until the corpus is renamed
-	// (docs/PORT-RUBY.md, IDENTIFIERS).
+	// tables/blobs), and the Ruby target carries them: it reaches a field only
+	// through an explicit receiver, a symbol, a hash label or an instance
+	// variable, where every keyword is legal (internal/codegen/ruby, fields.go;
+	// docs/PORT-RUBY.md, IDENTIFIERS).
 	{"Ruby", []string{"ruby"}, `and begin break case class def do else elsif end ensure false for if in
 		module nil not or redo rescue retry return self super then true undef unless until when while
 		yield __FILE__ __LINE__ __ENCODING__ BEGIN END`},

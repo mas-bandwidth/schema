@@ -337,23 +337,35 @@ keywords (`alias`, `and`, `begin`, `break`, `case`, `class`, `def`, `defined?`,
 `do`, `else`, `elsif`, `end`, `ensure`, `false`, `for`, `if`, `in`, `module`,
 `next`, `nil`, `not`, `or`, `redo`, `rescue`, `retry`, `return`, `self`,
 `super`, `then`, `true`, `undef`, `unless`, `until`, `when`, `while`, `yield`,
-and the `__FILE__`, `__LINE__`, `__ENCODING__`, `BEGIN` and `END` words). The
-soft spellings a method may still take, such as `class` in a receiver
-position, are not in the row, because the generated code spells every field as
-a method definition or a plain call.
+and the `__FILE__`, `__LINE__`, `__ENCODING__`, `BEGIN` and `END` words), less
+the three below.
 
 **The row leaves out two keywords, `next` and `alias`, and `defined?`.** The
 shared corpus spells both as field names that every leg generates: `next` in
 `tables/pointers`, `tables/stream`, `tables/blobs` and nine more schema files
 under `test/` and `testdata/`, and inline in some 150 Go files across the
 emitters, most of them tests; `alias` in
-`tables/pointers` and `tables/blobs`. A row holding them refuses those units
-for every target. Renaming them (with `was = "next"`, so no wire id moves)
-reaches every leg's tests, far past the skeleton's files, so the skeleton
-(R3) leaves them out of the row, as the Python skeleton first left out
-`global`, and the Ruby target refuses both by name instead (`CheckNames`,
-`rubyKeywords`), until the corpus is renamed and they join the row.
-`defined?` is a keyword, but no schema identifier can spell its question mark.
+`tables/pointers` and `tables/blobs`. A row holding them would refuse those
+units for every target, and the Ruby target needs no such refusal: it
+**carries** them, by the field access rule below. `defined?` is a keyword, but
+no schema identifier can spell its question mark.
+
+**The field access rule.** In Ruby a keyword is a legal method name when it
+is defined with `attr_*` or `def` and called with an explicit receiver
+(`node.next`, `self.alias = 1`), a legal symbol (`:next`), a legal hash label
+(`next: 1`) and a legal instance variable (`@next`); only a bare local
+variable or a call with no receiver cannot spell it. So the generated code
+reaches a field only in those four forms, never through a bare local named
+after a field, and that is a rule of the emitter for every keyword, not only
+for `next` and `alias` (`internal/codegen/ruby/fields.go`; `recordClass` is
+the shape every type and table class starts from). `TestRubySkeleton`
+generates a record whose fields are every word of `rubyKeywords` and runs it
+under both pinned interpreters with any `ruby -w` warning failing the run:
+each field is written and read through an explicit receiver, copied, hashed
+by label and compared, and its control writes `next` as a bare local in a
+copy, which must fail to load. Every word carries, so the Ruby target refuses
+no name for being a Ruby keyword; the other words reach it only if the shared
+row stops refusing them.
 
 The row refuses those names in every unit, whatever the target, as the other
 rows do, and nothing is escaped. Then, by rule, in the Ruby target
@@ -382,7 +394,8 @@ and `TestRubySkeleton` turns each off in turn and requires its case to pass):
   `method`, `object_id`) is refused by name; `eql?` is a member too, but no
   schema identifier can spell it. A union arm takes the same rule and one
   more: it may not be `type`, the union's arm number. A field or arm spelled
-  like a Ruby keyword is refused by name. The emitter holds the list
+  like a Ruby keyword is carried (the field access rule above); `class`
+  is refused as a generated member, not as a keyword. The emitter holds the list
   (`generatedMembers`); the table layers claim their runtime's names in
   `internal/tablenames/ruby.go`, as every backend does. A field named `list`,
   `range`, `string` or `type` shadows nothing generated and is legal.
@@ -422,6 +435,35 @@ out as lowercase hex lines.**
   one answer file per case.
 - **The analyzer gates** run `ruby -w`, RuboCop and Steep in strict mode over
   every generated tree and the runtime. A warning or finding is a failure.
+
+## THE CROSS-LEG GATES OWED
+
+Several compiler gates walk every registered target and hold each to a claim
+about the code it generates. In a build with the `schema_leg_ruby` tag the
+skeleton is registered but generates no type or table, so these gates fail
+under that tag until the layer that carries the construct lands. They are
+owed by those layers, not weakened: each layer adds Ruby's claim to the gate
+in the same change that carries the construct.
+
+- **R4, the packet wire** (types, unions, counted arrays):
+  `TestCountedArrayIsBornAtItsDeclaredMinimum` and
+  `TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom`
+  (`compiler/countedbirth_test.go`),
+  `TestGuardCommentsSpellTheConditionTheWayDescriptorsDo`
+  (`compiler/guardspelling_test.go`),
+  `TestVoidArmInTypeBodyIsCheckedAndCarried`
+  (`compiler/packetvoidarms_test.go`),
+  `TestUnionTagEnumExportsMaxNoCountAndItsDebugName` and
+  `TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet`
+  (`compiler/tagenumsurface_test.go`), and
+  `TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom`
+  (`compiler/uniontagwrite_test.go`).
+- **R5, fixed tables**: `TestFixedTableValueDefaultsEveryLeg` and
+  `TestFX1GeneratesOnEveryLeg` (`compiler/valuedefaults_test.go`).
+- **R6, variable tables**: `TestNoVariableTableMessagePath` and its
+  `TestNoVariableTableMessagePathNegativeControl`
+  (`compiler/messageformlock_test.go`), and
+  `TestEveryTargetHasATableBackend` (`compiler/schema_spec_pin_s0_test.go`).
 
 ## THE REGISTER
 
