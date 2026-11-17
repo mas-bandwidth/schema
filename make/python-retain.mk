@@ -9,7 +9,7 @@ PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_RETAIN_SHARDS) python-retain-negative-contr
 .PHONY: python-retain $(PYTHON_RETAIN_SHARDS) python-retain-negative-control
 python-retain: $(PYTHON_RETAIN_SHARDS)
 python-retain-0: dist-python
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(CRC|RequiredDefault|RoundTrip|SurfaceSelection|Names|ResolverNegativeControl|Capture|ManifestSave|OutputAllocationShape|DirectFrameBoundaries|PublicNegativeControl|DriverNegativeControl)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(CRC|RequiredDefault|RoundTrip|SurfaceSelection|Names|ResolverNegativeControl|Capture|ManifestSave|OutputAllocationShape|DirectFrameBoundaries|PublicNegativeControl|DriverNegativeControl|ReadSurface|ReadSurfaceNegativeControl)$$' ./internal/codegen/pythontable/
 python-retain-1: dist-python
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(ResolvedPayload|PathIndex|Tail|RequiredContainers|PathIndexNegativeControl|TailNegativeControl|NodeRemapNegativeControl|TotalIDKnownLast|TotalIDDroppedDefaultSlot|KnownIDNegativeControl|KnownOnlyIDOverflow|MapEntryIDBudget|KnownKeyedIDLimit)$$' ./internal/codegen/pythontable/
 python-retain-2: dist-python
@@ -17,5 +17,5 @@ python-retain-2: dist-python
 python-retain-3: dist-python
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(KeyedAndMapInternal|FixedRefusal|SelectedRuntime|OptionalMap|KeyedEnum|FixedArrayGrowth|ArrayWideningReport|GuardedBody|Depth128|ZeroIDField|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
 python-retain-negative-control: dist-python
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(ResolverNegativeControl|PathIndexNegativeControl|NodeRemapNegativeControl|KnownIDNegativeControl|TailNegativeControl|PublicNegativeControl|DriverNegativeControl|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(ResolverNegativeControl|PathIndexNegativeControl|NodeRemapNegativeControl|KnownIDNegativeControl|TailNegativeControl|PublicNegativeControl|DriverNegativeControl|ReadSurfaceNegativeControl|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
 test-python: $(PYTHON_RETAIN_SHARDS) python-retain-negative-control
