@@ -5409,9 +5409,9 @@ moves not one byte of a value-only table: a fixed-size table has no
 pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
-**Backend status for this section: the TOOL, the C++ REFERENCE, C, GO and
-PYTHON write and read it; the other backends refuse a pointered unit's wire by
-name (§11).**
+**Backend status for this section: the TOOL, the C++ REFERENCE, C and GO
+write and read it, and so does PYTHON; the other backends refuse a pointered
+unit's wire by name (§11).**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -15880,7 +15880,8 @@ SceneFromJson( builder, text, text_bytes, &report );
 
 **Backend status for this section: the FIXED class in every table backend —
 C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO,
-Python, Rust and Squirrel — and the VARIABLE class in C, C++ and Python (§16.7).** In C and C++ a pointered unit's text form reads through the builder. In C#, Dart,
+Rust and Squirrel, and Python beside them — and the VARIABLE class in C, C++
+and Python (§16.7).** In C and C++ a pointered unit's text form reads through the builder. In C#, Dart,
 Elixir, Go, Java, JavaScript and Rust the absence is already made one level
 up: a
 pointered unit gets no table source at all (§11), so it has no text form for
