@@ -211,7 +211,6 @@ func TestDartReadsRefuseNonCanonical(t *testing.T) {
 	units := map[string]*ir.Unit{}
 	announcements := map[string][]byte{}
 	for _, row := range nonCanonicalManifest(t, filepath.Join(vector, "MANIFEST.tsv")) {
-		row := row
 		schema, announcement := nonCanonicalUnit(repo, row.file)
 		u, ok := units[schema]
 		if !ok {
@@ -254,7 +253,7 @@ func TestDartReadsRefuseNonCanonical(t *testing.T) {
 		}
 		line := strings.TrimSpace(string(out))
 		fields := map[string]string{}
-		for _, f := range strings.Fields(line) {
+		for f := range strings.FieldsSeq(line) {
 			k, v, ok := strings.Cut(f, "=")
 			if ok {
 				fields[k] = v

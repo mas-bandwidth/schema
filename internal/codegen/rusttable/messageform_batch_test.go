@@ -750,14 +750,16 @@ const messageBatchRefusalsMain = `
     {
         // A field this reader cannot name, under a slot the ENDPOINT announced, is
         // skipped by its announced shape and counted unknown (§3.3). The endpoint
-        // here is this build with one more entry: the reader's vocabulary is
+        // here is another build with one more entry: the reader's vocabulary is
         // forged by announcing a stranger's table whose slot 1 is an id this
-        // build does not declare.
+        // build does not declare, under a build version that is not this
+        // reader's (at its own build an undeclared field is refused, §3.3 (b)).
         let mut values = vec![RootRow::default(); 1];
         let mut rep = TableReport::default();
         let mut v2_storage = vec![TableMessageEntry::default(); 4096];
         let mut v2 = TableVocabulary::new(&mut v2_storage);
         let mut ok_all = announce_read(&mut v2, &TABLE_ANNOUNCEMENT, &mut TableReport::default());
+        v2.build_version ^= 1;
         // slot 1 is now an unknown u32 field
         v2.entries[0] = TableMessageEntry { id: 0x0123_4567_89ab_cdef, kind: 8, ..Default::default() };
         let mut w_buf = vec![0u8; 16];
