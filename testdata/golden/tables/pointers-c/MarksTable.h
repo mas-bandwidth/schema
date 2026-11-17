@@ -7417,7 +7417,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_(graphdemo_table_rea
         if (id==UINT64_C(0x704be0d8faaffc58) && !graphdemo_table_wire_utf8(body.buffer,body.size)) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; k++; continue; }
         if (type==NULL) {
             if(id!=UINT64_C(0x2f2ec0474f1c4fe4) && id!=UINT64_C(0x704be0d8faaffc58) && graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-            if(!nodes->declared(id)) { unknown++; }
+            unknown++;
         }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
@@ -7548,8 +7548,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_retain_(graphdemo_ta
             if(id!=UINT64_C(0x2f2ec0474f1c4fe4) && id!=UINT64_C(0x704be0d8faaffc58) && graphdemo_table_skip_body(body,(int64_t)(nodes->count-1),0,0)!=body.size) { reader->report->refused=1, reader->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return 0;
             }
-            if(!nodes->declared(id)) { unknown++;
-            }
+            unknown++;
         }
         else if (sink->region!=NULL) {
             int64_t at=sink->region->used, size=graphdemo_table_node_wire_storage(type,&body);
