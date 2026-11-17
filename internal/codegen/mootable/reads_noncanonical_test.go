@@ -269,6 +269,136 @@ func TestMooReadsRefuseNonCanonical(t *testing.T) {
 	t.Run("union None element", testMooUnionNoneElementReads)
 	t.Run("unknown union field at None", testMooUnknownUnionFieldNoneRefused)
 	t.Run("undeclared field at the reader's own build", testMooUndeclaredFieldAtOwnBuildRefused)
+	t.Run("node table not last, id table in first-use order", testMooNodeTablePlacementAlone)
+	t.Run("present optional at its default", testMooPresentOptionalAtDefault)
+}
+
+// testMooPresentOptionalAtDefault shows what moo does today with a present
+// optional holding its declared default (an evolution T -> ?T): the message
+// load at the reader's own build version reads the Go writer's batch, which
+// carries the field, as the Go engine does; the at-default rule judges only a
+// field that is neither optional nor required.
+func testMooPresentOptionalAtDefault(t *testing.T) {
+	t.Parallel()
+	u := unitFromSource(t, "package probe\n\nfixed table Root\n{\n    tick uint8\n    o    ?uint8\n}\n")
+	files, err := generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := writeUnit(t, u, files)
+	m := tabletext.NewModel(u)
+	value := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(value, []byte(`{"tick": 1, "o": 0}`), &report) {
+		t.Fatalf("value: %+v", report)
+	}
+	batch, err := tablewire.EncodeMessage(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absent := m.New(m.Lookup("Root"))
+	if !m.Read(absent, []byte(`{"tick": 1}`), &report) {
+		t.Fatalf("value: %+v", report)
+	}
+	if elided, err := tablewire.EncodeMessage(m, absent); err != nil || hex.EncodeToString(elided) == hex.EncodeToString(batch) {
+		t.Fatalf("the present optional at its default is not on the wire: %x (%v)", batch, err)
+	}
+	var vocab tablewire.Vocabulary
+	if err := vocab.AnnounceRead(tablewire.Announce(u), &report); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := tablewire.DecodeMessage(m, m.New(m.Lookup("Root")), batch, &vocab, &report); !ok || err != nil {
+		t.Fatalf("the Go engine refuses the present optional at its default: %v", err)
+	}
+	got := runNonCanonicalProbe(t, g, "ProbeTable", "Root", "message", map[string][]byte{"wire": batch, "ann": tablewire.Announce(u)})
+	if got["message"] != "read" || got["save"] != hex.EncodeToString(batch) {
+		t.Errorf("a present optional at its default: message=%q save=%q, want read and %x\nprobe:\n%s", got["message"], got["save"], batch, got["probe"])
+	}
+}
+
+// testMooNodeTablePlacementAlone holds §3.1's placement rule by itself: a
+// root whose node table rides before a field, with the id table in the order
+// the walk first meets each entry (the root body, then the records), so no
+// other refusal reaches it. The same root with the node table last reads,
+// and the Go engine decodes it and re-encodes the same bytes; both loads
+// refuse the misplaced table.
+func testMooNodeTablePlacementAlone(t *testing.T) {
+	t.Parallel()
+	u := unitFromSource(t, "package probe\n\ntable Leaf\n{\n    v int32\n}\n\ntable Root\n{\n    head *Leaf\n    tail int32\n}\n")
+	files, err := generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := writeUnit(t, u, files)
+	leaf := ir.TableWireId(u.Tables["Leaf"].WireName())
+	spell := func(nodeTableLast bool) []byte {
+		b := &wb{}
+		order := []uint64{ir.TableWireId("head"), ir.TableWireId("tail"), ir.TableNodeWireId, leaf, ir.TableWireId("v")}
+		if !nodeTableLast {
+			order[1], order[2] = order[2], order[1]
+		}
+		b.ids = order
+		refOf := func(id uint64) uint64 {
+			for i, e := range b.ids {
+				if e == id {
+					return uint64(i) + 1
+				}
+			}
+			t.Fatalf("id %x is not in the table", id)
+			return 0
+		}
+		nodeTable := func() {
+			b.leb(refOf(ir.TableNodeWireId))
+			b.u8(ir.TableKindString)
+			at := b.openLen()
+			b.leb(1)
+			b.leb(refOf(leaf))
+			rec := b.openLen()
+			b.i32("v", 5)
+			b.end()
+			b.closeLen(rec)
+			b.closeLen(at)
+		}
+		b.field("head", ir.TableKindPointer)
+		b.leb(2)
+		if !nodeTableLast {
+			nodeTable()
+		}
+		b.i32("tail", 9)
+		if nodeTableLast {
+			nodeTable()
+		}
+		b.end()
+		return b.finish()
+	}
+	m := tabletext.NewModel(u)
+	for _, last := range []bool{true, false} {
+		wire := spell(last)
+		want := "refused"
+		if last {
+			want = "read"
+		}
+		inst := m.New(m.Lookup("Root"))
+		var report tabletext.Report
+		ok, err := tablewire.Decode(m, inst, wire, &report)
+		engine := "refused"
+		if ok && err == nil {
+			engine = "read"
+			again, err := tablewire.EncodeVariable(m, inst)
+			if err != nil || hex.EncodeToString(again) != hex.EncodeToString(wire) {
+				t.Fatalf("node table last: the Go engine re-encodes %x (%v), want %x", again, err, wire)
+			}
+		}
+		if engine != want {
+			t.Fatalf("node table last=%v: the Go engine answers %s, want %s (%v %+v)", last, engine, want, err, report)
+		}
+		got := runNonCanonicalProbe(t, g, "ProbeTable", "Root", "variable", map[string][]byte{"wire": wire})
+		for _, entry := range []string{"plain", "strict", "retain"} {
+			if got[entry] != want {
+				t.Errorf("node table last=%v: %s = %q, want %q\nprobe:\n%s", last, entry, got[entry], want, got["probe"])
+			}
+		}
+	}
 }
 
 // testMooUnionNoneElementReads is the control for §3.3 (c): the refusal is of
