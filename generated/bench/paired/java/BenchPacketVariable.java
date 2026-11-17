@@ -1007,9 +1007,13 @@ public final class BenchPacketVariable {
                         rec.typeId = 0;
                     } else {
                         rec.value = new String(rec.body, StandardCharsets.UTF_8);
+                        // A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.
+                        report.unknown++;
                     }
                 } else if (rec.typeId == TableVariable.BYTES_ID) {
                     rec.bytes = rec.body;
+                    // A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.
+                    report.unknown++;
                 } else if (!rec.textMalformed) {
                     // §3.1: a cleared text node is damage; an actual id of zero is unknown.
                     rec.table = createNode(rec.typeId);

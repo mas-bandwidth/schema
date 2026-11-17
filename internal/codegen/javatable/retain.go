@@ -106,6 +106,19 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("                if (!rec.textMalformed && rec.typeId != TableVariable.STRING_ID && rec.typeId != TableVariable.BYTES_ID) {\n")
 		fmt.Fprintf(&b, "                    rec.table = %sVariable.createNode(rec.typeId);\n", st.Name)
 		b.WriteString("                    if (rec.table == null) { report.unknown++; report.retainLost++; rec.typeId = 0; }\n")
+		// A blob record of a kind this root's closure lacks is an excluded class
+		// too (§6.6): unknown once and one retain_lost, its type id kept.
+		bytesBlob, strBlob := ir.PointerReachableBlobs(st)
+		for _, blob := range []struct {
+			id      string
+			reached bool
+		}{{"STRING_ID", strBlob}, {"BYTES_ID", bytesBlob}} {
+			if blob.reached {
+				continue
+			}
+			fmt.Fprintf(&b, "                } else if (!rec.textMalformed && rec.typeId == TableVariable.%s) {\n", blob.id)
+			writeBlobOutsideClosure(&b, "                    ", "report.unknown++; report.retainLost++;")
+		}
 		b.WriteString("                }\n            }\n")
 		// A NODE BODY RETAINS LIKE THE ROOT'S (§6.6: "in the root body and in
 		// every node record"): its unknown fields are captured under the node's
