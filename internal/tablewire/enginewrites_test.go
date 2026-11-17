@@ -99,6 +99,35 @@ func TestEngineReadsEverythingItWrites(t *testing.T) {
 		}
 	}
 	t.Logf("map_twin: %d bytes, %d ids, no stored default a field", len(wire), len(ids))
+
+	// The Java graph gate builds map_twin by setting each node's signed
+	// `extra` cell directly. The writer's elision judges that value, so the
+	// bytes it writes must carry it: a field that rides is never written at its
+	// default.
+	direct := m.New(m.Lookup("Node"))
+	for n, depth := direct, 0; depth < 3; depth++ {
+		extra, _ := n.FieldByKey("extra")
+		extra.Cell.I = 77
+		left, _ := n.FieldByKey("left")
+		left.Cell.Node = m.New(m.Lookup("Node"))
+		n = left.Cell.Node
+	}
+	wire, err = tablewire.Encode(m, direct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := m.New(m.Lookup("Node"))
+	if ok, err := tablewire.Decode(m, back, wire, &tabletext.Report{}); !ok || err != nil {
+		t.Fatalf("map_twin built by cell refused: %v", err)
+	}
+	for n, depth := back, 0; depth < 3; depth++ {
+		extra, _ := n.FieldByKey("extra")
+		if extra.Cell.I != 77 {
+			t.Fatalf("map_twin node %d: the writer rode extra and wrote %d, not the 77 it judged", depth, extra.Cell.I)
+		}
+		left, _ := n.FieldByKey("left")
+		n = left.Cell.Node
+	}
 }
 
 func assertEngineWrites(t *testing.T, m *tabletext.Model, value *tabletext.Instance) {
