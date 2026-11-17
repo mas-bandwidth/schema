@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,19 +26,15 @@ func TestRubyPins(t *testing.T) {
 	}
 	mk := string(mkBytes)
 
-	if !regexp.MustCompile(`(?m)^TOOLCHAIN_LEGS\s*\+=\s*ruby\s*$`).MatchString(mk) {
-		t.Error("make/ruby-toolchain.mk does not append ruby to TOOLCHAIN_LEGS")
+	// The leg joins the aggregate toolchain gate only with the skeleton
+	// (docs/PORT-RUBY.md, THE PIN): the aggregate's skip names come from
+	// TEST_LEGS, so registering a leg that has no test-ruby yet turns
+	// make toolchain-negative-control red. Until then toolchain-ruby is a
+	// standalone target.
+	if regexp.MustCompile(`(?m)^(TOOLCHAIN_LEGS\s*\+=.*\bruby\b|TOOLCHAIN_PINS_ruby\s*:?=)`).MatchString(mk) {
+		t.Error("make/ruby-toolchain.mk registers ruby in TOOLCHAIN_LEGS before the skeleton defines test-ruby; the aggregate toolchain control refuses a skip that names no registered leg")
 	}
-
-	pinsMatch := regexp.MustCompile(`(?m)^TOOLCHAIN_PINS_ruby\s*:=\s*(.+)$`).FindStringSubmatch(mk)
-	if pinsMatch == nil {
-		t.Fatal("make/ruby-toolchain.mk does not define TOOLCHAIN_PINS_ruby")
-	}
-	pinsFields := strings.Fields(pinsMatch[1])
 	wantPins := []string{"RUBY", "RUBY_FLOOR", "RUBOCOP", "STEEP", "RBS"}
-	if strings.Join(pinsFields, " ") != strings.Join(wantPins, " ") {
-		t.Errorf("TOOLCHAIN_PINS_ruby = %v, want %v", pinsFields, wantPins)
-	}
 	for _, pin := range wantPins {
 		probe := `$(call toolchain_probe,ruby,` + pin + `,`
 		if !strings.Contains(mk, probe) {
@@ -178,12 +175,60 @@ func TestRubyPins(t *testing.T) {
 		t.Error("make/ruby-toolchain.mk does not define ruby-toolchain-negative-control")
 	}
 
-	manifest, err := os.ReadFile(filepath.Join(root, "make", "negative-controls.json"))
+	// The control is a member of a group that restores the Ruby pins: its
+	// entry under make/negative-controls.d names the group, and that group in
+	// make/negative-controls.json carries the ruby marker.
+	entryBytes, err := os.ReadFile(filepath.Join(root, "make", "negative-controls.d", "ruby-toolchain-negative-control.json"))
+	if err != nil {
+		t.Fatalf("read make/negative-controls.d/ruby-toolchain-negative-control.json: %v", err)
+	}
+	var entry struct {
+		Group   string   `json:"group"`
+		Targets []string `json:"targets"`
+	}
+	if err := json.Unmarshal(entryBytes, &entry); err != nil {
+		t.Fatalf("make/negative-controls.d/ruby-toolchain-negative-control.json: %v", err)
+	}
+	if strings.Join(entry.Targets, " ") != "ruby-toolchain-negative-control" {
+		t.Errorf("the .d entry's targets are %v, want [ruby-toolchain-negative-control]", entry.Targets)
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(root, "make", "negative-controls.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(manifest), `"ruby-toolchain-negative-control"`) {
-		t.Error("make/negative-controls.json does not register ruby-toolchain-negative-control")
+	var manifest struct {
+		Groups []struct {
+			Name string `json:"name"`
+			When string `json:"when"`
+			Ruby string `json:"ruby"`
+		} `json:"groups"`
+		Excluded []struct {
+			Target string `json:"target"`
+		} `json:"excluded"`
+	}
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatalf("make/negative-controls.json: %v", err)
+	}
+	found := false
+	for _, g := range manifest.Groups {
+		if g.Name != entry.Group {
+			continue
+		}
+		found = true
+		if g.Ruby != "pin" {
+			t.Errorf("group %s runs ruby-toolchain-negative-control but its ruby field is %q, not pin: the row would not restore the Ruby pins", g.Name, g.Ruby)
+		}
+		if g.When != "nightly" {
+			t.Errorf("group %s is %q: a cache miss builds two CRubies, so the row runs nightly", g.Name, g.When)
+		}
+	}
+	if !found {
+		t.Errorf("the .d entry names group %q, which make/negative-controls.json does not hold", entry.Group)
+	}
+	for _, e := range manifest.Excluded {
+		if e.Target == "ruby-toolchain-negative-control" {
+			t.Error("make/negative-controls.json still excludes ruby-toolchain-negative-control: it runs in its group")
+		}
 	}
 
 	var legFiles []string

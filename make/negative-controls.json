@@ -1053,6 +1053,13 @@
       "python": "pin"
     },
     {
+      "name": "ruby-toolchain",
+      "when": "nightly",
+      "why": "The Ruby leg's toolchain control (make/ruby-toolchain.mk): six runs of the toolchain check, a few seconds on the pins. The row's cost is the Ruby pin action (.github/actions/ruby): on a runner-store or cache miss it builds both CRubies from their source tarballs and installs the locked analyzers, which took 169 s on a workstation, past the per-commit cap on a runner two to three times slower. The control's targets come from make/negative-controls.d/.",
+      "targets": [],
+      "ruby": "pin"
+    },
+    {
       "name": "python-serialize",
       "when": "pull-request",
       "why": "serialize.py's corpus runner (third_party/serialize.py, make/python-serialize.mk), on the pins .github/actions/python restores into dist/: the corpus test pointed at a root with no vectors must go red by that name. The eighteen per-rule sabotage controls run inside python-serialize-test itself. One interpreter run, under 1 s on a bench, so the row is the pins' cache restore.",
@@ -3446,10 +3453,6 @@
     {
       "target": "roadmap-check-negative-control",
       "reason": "the roadmap gate's drift control (tools/roadmap/roadmap.mk): it needs SBCL and full git history for $(ROADMAP_BASE), which the shared negative-control rows on hosted ubuntu-latest runners neither install nor clone, so running it there would refuse at the missing tool before the control ran. It runs in its own gate, .github/workflows/roadmap.yml's `roadmap` job, which fetches full history and checks that sbcl is present before running `make roadmap-check-negative-control` beside the roadmap-check and roadmap-test gates on the fleet runner, on every push to main and on every pull request that touches the roadmap files."
-    },
-    {
-      "target": "ruby-toolchain-negative-control",
-      "reason": "the Ruby leg's toolchain control (make/ruby-toolchain.mk) needs the two pinned CRuby interpreters and their analyzers, which .github/actions/ruby restores into dist/. It runs in the leg's own workflow, .github/workflows/ruby-leg.yml, nightly and on dispatch on the fleet and on macOS, right beside the ruby-toolchain-check it controls. No group of this plan restores the Ruby pins (a group has no Ruby toolchain field, so an entry under make/negative-controls.d/ cannot give it them), and running it in a shared row would refuse at the missing interpreters before the control ran."
     }
   ]
 }

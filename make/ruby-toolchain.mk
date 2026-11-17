@@ -1,8 +1,8 @@
 # make/ruby-toolchain.mk — the Ruby leg's pinned toolchain
 # (docs/PORT-RUBY.md, THE PIN; docs/plans/ruby-leg.md, R1). Included by the
 # Makefile's wildcard include; the stem has a dash, so it is a support
-# fragment and never probed as a --lang port. The leg registers its pins at
-# the end of this file.
+# fragment and never probed as a --lang port. The end of this file says when
+# the leg joins the aggregate toolchain gate.
 #
 # TWO INTERPRETERS AND ONE ANALYZER LOCK, all built or installed into dist/
 # (gitignored), none of them found on PATH:
@@ -182,7 +182,8 @@ ruby-toolchain-negative-control: ruby-toolchain-check
 		{ cat $(RUBY_NC)/path.log; echo "NEGATIVE CONTROL FAILED: the planted PATH interpreter went red, but not by its file"; exit 1; }
 	@echo "negative control: a wrong RUBY, a wrong RUBY_FLOOR, a wrong RUBOCOP, STEEP and RBS, and an interpreter from PATH each turn ruby-toolchain-check RED by name"
 
-# The leg registers its pins here; test-ruby and the rest of the leg are
-# make/ruby.mk's, which arrives with the skeleton in R3.
-TOOLCHAIN_LEGS        += ruby
-TOOLCHAIN_PINS_ruby   := RUBY RUBY_FLOOR RUBOCOP STEEP RBS
+# NOT YET IN TOOLCHAIN_LEGS. The aggregate toolchain gate takes its skip names
+# from TEST_LEGS, so a leg registered there before it defines test-ruby makes
+# make toolchain-negative-control refuse its own skip. make/ruby.mk registers
+# test-ruby, TOOLCHAIN_LEGS and TOOLCHAIN_PINS_ruby together with the skeleton
+# in R3 (docs/PORT-RUBY.md, THE PIN); until then toolchain-ruby stands alone.

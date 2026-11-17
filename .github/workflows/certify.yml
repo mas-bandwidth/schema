@@ -879,6 +879,12 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # The Ruby pins (make/ruby-toolchain.mk), for a row naming `ruby`:
+      # .github/actions/ruby restores them from the runner store or builds
+      # them, and checks them against the pins.
+      - uses: ./.github/actions/ruby
+        if: matrix.ruby != ''
+
       # The generated-Go golangci-lint controls probe for the pinned binary
       # (make/schema-go-generated-golangci-lint-gate.mk GOLANGCI_LINT_VERSION);
       # a hosted runner has none, so the row that runs them installs exactly
