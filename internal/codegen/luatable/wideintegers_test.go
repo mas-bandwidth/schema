@@ -215,6 +215,7 @@ table Sites
     uwide   uint64
     bits64  bits(64)
     bits33  bits(33)
+    bits32  bits(32)
     u128    uint128
     fixed64 fixed(48, 16) | min = -10, max = 10
     fixed128 fixed(64, 64) | min = -10, max = 10
@@ -236,6 +237,7 @@ const luaJsonSitesCanonical = `{
   "uwide": "18446744073709551615",
   "bits64": "18446744073709551615",
   "bits33": "8589934591",
+  "bits32": 4294967295,
   "u128": "340282366920938463463374607431768211455",
   "fixed64": "-1.5",
   "fixed128": "0.5",
@@ -273,6 +275,7 @@ const luaJsonSitesNumbers = `{
   "uwide": 18446744073709551615,
   "bits64": 18446744073709551615,
   "bits33": 8589934591,
+  "bits32": 4294967295,
   "u128": 340282366920938463463374607431768211455,
   "fixed64": -1.5,
   "fixed128": 0.5,
@@ -381,8 +384,9 @@ func luaJsonIntegerSites(t *testing.T) {
 		"canonical": []byte(luaJsonSitesCanonical),
 		"numbers":   []byte(luaJsonSitesNumbers),
 	}
-	keys := []string{"canonical", "numbers", "narrow"}
+	keys := []string{"canonical", "numbers", "narrow", "bits32-number"}
 	inputs["narrow"] = []byte(`{"pick": {"narrow": 42}}`)
+	inputs["bits32-number"] = []byte(`{"bits32": 42}`)
 	for key, body := range luaJsonSitesNumberTokens {
 		inputs[key] = []byte(body)
 		keys = append(keys, key)
@@ -411,6 +415,9 @@ func luaJsonIntegerSites(t *testing.T) {
 	}
 	if !strings.HasPrefix(byRow["narrow"], "ok|") || !strings.Contains(byRow["narrow"], hexBytes([]byte(`"narrow": 42`))) {
 		t.Errorf("narrow: got %s, want numeric int32 accepted", byRow["narrow"])
+	}
+	if !strings.HasPrefix(byRow["bits32-number"], "ok|") || !strings.Contains(byRow["bits32-number"], hexBytes([]byte(`"bits32": 42`))) {
+		t.Errorf("bits32-number: got %s, want numeric bits(32) accepted", byRow["bits32-number"])
 	}
 	for _, key := range append([]string{"numbers"}, mapKeys(luaJsonSitesNumberTokens)...) {
 		if byRow[key] != "refused|kind_mismatch" {
