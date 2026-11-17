@@ -4679,7 +4679,8 @@ namespace Benchtable
             static bool MessageRides(object value, TableFieldInfo f)
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
-                if (!f.Optional && f.Counted) { return f.GetCount(value) != 0; }
+                // text or bytes with a declared default elide at it, as Rides says
+                if (!f.Optional && f.Counted && f.DefaultBytes == null) { return f.GetCount(value) != 0; }
                 return Rides(value, f);
             }
             static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
@@ -4968,7 +4969,12 @@ namespace Benchtable
             static bool MessageAtDefault(object value, TableFieldInfo f)
             {
                 if (f.Optional || f.Required) { return false; }
-                if (f.Counted) { return f.GetCount(value) == 0; }
+                if (f.Counted)
+                {
+                    int n = f.GetCount(value);
+                    if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+                    return n == 0;
+                }
                 if (!f.IsArray) { return DefaultElement(value, f, 0); }
                 if (f.Kind == 13 && f.KeyId == null) { return false; }
                 for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }

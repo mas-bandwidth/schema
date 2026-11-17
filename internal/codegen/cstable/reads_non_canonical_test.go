@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -211,6 +212,61 @@ func TestCSharpReadsRefuseNonCanonical(t *testing.T) {
 	}
 	t.Run("union None element", testCSharpUnionNoneElementReads)
 	t.Run("undeclared field", testCSharpUndeclaredFieldSameBuild)
+	t.Run("text default", testCSharpTextAtDefault)
+}
+
+// testCSharpTextAtDefault holds the at-default rule for text with a declared
+// default, by the writer's elision (internal/tablewire messageElides): the
+// value at "abc" elides, so its batch is the tick alone and reads; an empty
+// text is not the default and rides; and "abc" written explicitly is refused
+// at this reader's build and read at another.
+func testCSharpTextAtDefault(t *testing.T) {
+	t.Parallel()
+	const reader = `package textdefault
+
+fixed table Root
+{
+    tick uint8
+    tag  string(8) = "abc"
+}
+`
+	const other = `package textdefault
+
+fixed table Root
+{
+    tick uint8
+    tag  string(8)
+}
+`
+	encode := func(src, text string) []byte {
+		m := tabletext.NewModel(unitFrom(t, src))
+		value := m.New(m.Lookup("Root"))
+		var report tabletext.Report
+		if !m.Read(value, []byte(text), &report) {
+			t.Fatalf("value %s: %+v", text, report)
+		}
+		batch, err := tablewire.EncodeMessage(m, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return batch
+	}
+	if !reflect.DeepEqual(tablewire.MessageVocabulary(unitFrom(t, reader)), tablewire.MessageVocabulary(unitFrom(t, other))) {
+		t.Fatal("the two units' vocabularies differ; the explicit default would not ride under the reader's announcement")
+	}
+	own := "Convert.ToHexString(Schema.Announce())"
+	calls := []string{
+		csNonCanonicalMessageCall("elided", own, encode(reader, `{"tick": 1}`), true, true, "Root"),
+		csNonCanonicalMessageCall("empty", own, encode(reader, `{"tick": 1, "tag": ""}`), true, true, "Root"),
+		csNonCanonicalMessageCall("explicit", own, encode(other, `{"tick": 1, "tag": "abc"}`), false, true, "Root"),
+	}
+	program := strings.NewReplacer("NAMESPACE", "Textdefault", "VARIABLE", "", "CALLS", strings.Join(calls, "\n        ")).Replace(csNonCanonicalProbeSource)
+	out := csNonCanonicalRun(t, reader, program)
+	for _, name := range []string{"elided", "empty", "explicit"} {
+		if !strings.Contains(out, "PASS "+name+"\n") {
+			t.Errorf("text at its default: %s not held:\n%s", name, out)
+		}
+	}
 }
 
 // testCSharpUndeclaredFieldSameBuild holds §3.3's rule for a field the
