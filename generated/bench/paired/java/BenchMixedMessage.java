@@ -1727,7 +1727,7 @@ public final class BenchMixedMessage {
                 }
             } else {
                 if (r.vocab.ownBuild()) {
-                    r.report.refuse("non_canonical");
+                    r.report.damaged = true;
                     return false;
                 }
                 r.report.unknown++;

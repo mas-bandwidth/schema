@@ -2330,7 +2330,7 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	g.pf("            if (entry == null) { return true; }\n")
 	g.pf("            if (!r.seenAdd(seenFieldMark, entry.id)) { r.report.damaged = true; return false; }\n")
 	if len(st.Fields) == 0 {
-		g.pf("            if (r.vocab.ownBuild()) { r.report.refuse(\"non_canonical\"); return false; }\n")
+		g.pf("            if (r.vocab.ownBuild()) { r.report.damaged = true; return false; }\n")
 		g.pf("            r.report.unknown++;\n")
 		g.pf("            if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
 	} else {
@@ -2350,7 +2350,7 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 			g.emitLoadFieldCase(f, mine, "v", "entry", 16)
 		}
 		g.pf("            } else {\n")
-		g.pf("                if (r.vocab.ownBuild()) { r.report.refuse(\"non_canonical\"); return false; }\n")
+		g.pf("                if (r.vocab.ownBuild()) { r.report.damaged = true; return false; }\n")
 		g.pf("                r.report.unknown++;\n")
 		g.pf("                if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
 		g.pf("            }\n")

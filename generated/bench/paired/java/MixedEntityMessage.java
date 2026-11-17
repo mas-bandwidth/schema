@@ -833,7 +833,7 @@ public final class MixedEntityMessage {
                 }
             } else {
                 if (r.vocab.ownBuild()) {
-                    r.report.refuse("non_canonical");
+                    r.report.damaged = true;
                     return false;
                 }
                 r.report.unknown++;
