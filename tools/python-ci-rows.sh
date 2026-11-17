@@ -78,7 +78,7 @@ while IFS= read -r package; do
     for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical TestPythonMapShapeBench TestPythonReflectionStrictTypes; do
       printf '%s\n' "$names" | grep -qx "$delegated" || { echo "missing $delegated" >&2; exit 1; }
     done
-    for target in python-ci-map-bench-current python-ci-map-bench-floor python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3; do
+    for target in python-ci-map-bench-current python-ci-map-bench-floor python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3 python-ci-widen-scalar-4 python-ci-widen-scalar-5 python-ci-widen-scalar-6 python-ci-widen-scalar-7; do
       [ "$(printf '%s\n' "$support" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
     done
     # Strict mypy over the reflection units runs in its own twenty-four shards.

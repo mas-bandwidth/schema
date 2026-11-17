@@ -37,7 +37,7 @@ func TestPythonWidenCIPlan(t *testing.T) {
 			}
 		}
 	}
-	for _, target := range []string{"python-ci-widen-container", "python-ci-widen-scalar-0", "python-ci-widen-scalar-1", "python-ci-widen-scalar-2", "python-ci-widen-scalar-3", "python-ci-widen-coverage"} {
+	for _, target := range []string{"python-ci-widen-container", "python-ci-widen-scalar-0", "python-ci-widen-scalar-1", "python-ci-widen-scalar-2", "python-ci-widen-scalar-3", "python-ci-widen-scalar-4", "python-ci-widen-scalar-5", "python-ci-widen-scalar-6", "python-ci-widen-scalar-7", "python-ci-widen-coverage"} {
 		if targets[target] != 1 {
 			t.Errorf("support target %s appears %d times, want one", target, targets[target])
 		}
