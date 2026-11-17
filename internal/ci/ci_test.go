@@ -1456,6 +1456,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"release.yml:release",
 		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
+		"ruby-leg.yml:test",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",
 		"schema-cpp-runs-hostile-corpus.yml:corpus",

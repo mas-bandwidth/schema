@@ -666,6 +666,10 @@ func TestToolchainPinsMatchTheConformanceRegistry(t *testing.T) {
 		if g.Python != "" && g.Python != "pin" {
 			t.Errorf("group %q sets python to %q: the Python pins live in make/python-toolchain.mk, and this field is \"pin\" or absent", g.Name, g.Python)
 		}
+		// The Ruby pins likewise live in make/ruby-toolchain.mk.
+		if g.Ruby != "" && g.Ruby != "pin" {
+			t.Errorf("group %q sets ruby to %q: the Ruby pins live in make/ruby-toolchain.mk, and this field is \"pin\" or absent", g.Name, g.Ruby)
+		}
 	}
 }
 
@@ -707,10 +711,14 @@ func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 		t.Fatal("make/schema-go-generated-golangci-lint-gate.mk sets no GOLANGCI_LINT_VERSION, so there is no pin to hold a group against")
 	}
 	for _, g := range m.Groups {
-		lint, dart := false, false
+		lint, dart, ruby := false, false, false
 		for _, target := range g.Targets {
 			lint = lint || strings.Contains(target, "golangci-lint")
 			dart = dart || strings.HasPrefix(target, "schema-dart-")
+			ruby = ruby || strings.HasPrefix(target, "ruby-")
+		}
+		if ruby && g.Ruby == "" {
+			t.Errorf("group %q runs Ruby controls and names no `ruby`, so its job restores no Ruby pins and the toolchain probe refuses before the controls run", g.Name)
 		}
 		if lint && g.Golangci == "" {
 			t.Errorf("group %q runs golangci-lint controls and names no `golangci`, so its job installs none and the probe refuses before the controls run", g.Name)
@@ -722,44 +730,59 @@ func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 			t.Errorf("group %q runs Dart controls and names no `dart`, so its job installs no Dart and make refuses at toolchain-dart", g.Name)
 		}
 	}
-	// And each workflow that expands a tier carrying a golangci row has the
-	// step that installs it.
+	// And each workflow that expands a tier carrying a golangci or a ruby row
+	// has the step that installs it.
+	tools := []struct {
+		field string
+		wants func(Group) bool
+		what  string
+	}{
+		{"golangci", func(g Group) bool { return g.Golangci != "" }, "golangci-lint"},
+		{"ruby", func(g Group) bool { return g.Ruby != "" }, "the Ruby pins"},
+	}
 	for _, leg := range legs {
-		tier := whenPullRequest
-		if strings.HasSuffix(leg.command, " "+whenNightly) {
-			tier = whenNightly
-		}
-		needs := false
-		for _, g := range m.Groups {
-			needs = needs || (g.When == tier && g.Golangci != "")
-		}
-		if !needs {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", leg.workflow))
-		if err != nil {
-			t.Fatal(err)
-		}
-		doc, err := parseWorkflow(string(body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		steps, err := mappingAt(doc, "jobs", leg.job, "steps")
-		if err != nil {
-			t.Fatal(err)
-		}
-		list, _ := steps.([]any)
-		found := false
-		for _, item := range list {
-			step, _ := item.(map[string]any)
-			if cond, _ := step["if"].(string); strings.Contains(cond, "matrix.golangci != ''") {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf(".github/workflows/%s: the %s job has no step keyed on matrix.golangci, and the %s tier carries a row that needs golangci-lint", leg.workflow, leg.job, tier)
+		for _, tool := range tools {
+			holdToolStep(t, root, m, leg.workflow, leg.job, leg.command, tool.field, tool.wants, tool.what)
 		}
 	}
+}
+
+// holdToolStep requires one workflow job that expands a tier to carry a step
+// keyed on matrix.<field> whenever that tier holds a row that needs the tool.
+func holdToolStep(t *testing.T, root string, m Manifest, workflow, job, command, field string, wants func(Group) bool, what string) {
+	t.Helper()
+	tier := whenPullRequest
+	if strings.HasSuffix(command, " "+whenNightly) {
+		tier = whenNightly
+	}
+	needs := false
+	for _, g := range m.Groups {
+		needs = needs || (g.When == tier && wants(g))
+	}
+	if !needs {
+		return
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", workflow))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := parseWorkflow(string(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := mappingAt(doc, "jobs", job, "steps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ := steps.([]any)
+	key := "matrix." + field + " != ''"
+	for _, item := range list {
+		step, _ := item.(map[string]any)
+		if cond, _ := step["if"].(string); strings.Contains(cond, key) {
+			return
+		}
+	}
+	t.Errorf(".github/workflows/%s: the %s job has no step keyed on matrix.%s, and the %s tier carries a row that needs %s", workflow, job, field, tier, what)
 }
 
 // perCommitCapSeconds is the fleet rule a runner enforces by killing a
