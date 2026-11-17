@@ -58,6 +58,7 @@ public final class MixedStatMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, MixedStatFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -74,6 +75,11 @@ public final class MixedStatMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x80ab75f0 && idLo == 0x866dbf65) {
+                if (0 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 6 || elemKind != 0) {
@@ -88,6 +94,7 @@ public final class MixedStatMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v1 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 8);
                     if (r.err) {
@@ -96,10 +103,23 @@ public final class MixedStatMessage {
                     }
                     v.statId = (int) (v1);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.statId != 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x52076675 && idLo == 0xec13a0c1) {
+                if (1 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 1;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -114,6 +134,7 @@ public final class MixedStatMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v2 = TableMessage.readSigned(r, entry.shape, -512L, 511L, true);
                     if (r.err) {
@@ -122,10 +143,22 @@ public final class MixedStatMessage {
                     }
                     v.delta = (int) (v2);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.delta != 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.damaged = true;
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;

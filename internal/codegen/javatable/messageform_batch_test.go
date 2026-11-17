@@ -866,6 +866,9 @@ const messageBatchRefusalsMain = `
             final TableVocabulary v2 = new TableVocabulary();
             v2.reset(4096);
             boolean okAll = TableVocabulary.announceRead(v2, ann, new TableVocabulary.Report());
+            // A sender under another build version (§3.3 (b)): at the reader's
+            // own build a field the record does not declare is refused.
+            v2.buildVersion ^= 1;
             final TableVocabulary.Entry unk = new TableVocabulary.Entry();
             unk.id = 0x0123456789abcdefL;
             unk.kind = 8;
