@@ -70,7 +70,11 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n", len(tablewire.MessageVocabulary(u)))
 	b.WriteString("\n")
-	b.WriteString(messageIntegrity(u, messageRuntimeBody+messageBatchRuntimeBody))
+	// the announcement's id table holds the same first-use rule as every
+	// variable-form read (docs/SPEC-TABLES.md §3)
+	firstUse := strings.Replace(firstUseSource(), "strict_syntax!/3's to refuse", "walk_body/3's to refuse", 1)
+	runtime := insertOnce(messageRuntimeBody, "  # A table carrying one id twice is the whole wire malformed (§3).", firstUse)
+	b.WriteString(messageIntegrity(u, runtime+messageBatchRuntimeBody))
 	b.WriteString(messageWriteRuleRows(u))
 	b.WriteString("end\n")
 	return []byte(b.String())
@@ -528,6 +532,13 @@ const messageBatchRuntimeBody = `  @batch_max 256
               :malformed
             else
               case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+                # A UNION FIELD WRITTEN WITH THE NONE REFERENCE is damage at
+                # every build (§3.3 (c)): a conforming writer elides a union
+                # at None. A None element of an array of unions and a nested
+                # arm's None are positional and read.
+                {:ok, :none, _rest2} when entry.kind == 15 ->
+                  :malformed
+
                 {:ok, value, rest2} ->
                   read_body(
                     vocab,
@@ -1063,8 +1074,15 @@ const messageRuntimeBody = `  defstruct announced: false,
 
   def announce_read(data, vocab) do
     case open_file(data) do
-      {:ok, body, ids} -> walk_body(body, ids, vocab)
-      {:error, reason} -> {:error, reason, %{vocab | refused: true}}
+      {:ok, body, ids} ->
+        # an id table out of first-use order is the whole wire malformed (§3),
+        # judged before the build version is read, as the engine does
+        if first_use_order?(body, ids),
+          do: walk_body(body, ids, vocab),
+          else: {:error, :malformed, %{vocab | refused: true}}
+
+      {:error, reason} ->
+        {:error, reason, %{vocab | refused: true}}
     end
   end
 

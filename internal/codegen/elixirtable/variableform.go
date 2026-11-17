@@ -1982,6 +1982,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {0, _rest} ->
         {:ok, Enum.reverse(acc), node_bin}
 
+      {_ref, _rest} when node_bin != nil ->
+        # THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field after
+        # it is a spelling no conforming writer produces, and the read refuses
+        # it (docs/rulings.json reads-refuse-non-canonical)
+        throw(:wire_damaged)
+
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
@@ -2059,6 +2065,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         content = binary_part(rest, 0, l)
 
         case leb(content) do
+          # AN EMPTY NODE TABLE is a spelling no conforming writer produces: a
+          # writer with no node writes no table (§3.1; docs/rulings.json
+          # reads-refuse-non-canonical)
+          {0, _cr} -> throw(:wire_damaged)
           {n, cr} -> node_records(cr, n, [], ids, allowed)
           :error -> :error
         end
@@ -6538,6 +6548,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {0, _rest} ->
         measure_found_nodes(found, ids, desc)
 
+      # a field after the node table: the read refuses it (§3.1)
+      {_ref, _rest} when found != nil ->
+        :error
+
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
@@ -6577,7 +6591,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
          content = binary_part(rest, 0, l),
          {n, cr} <- leb(content),
          {:ok, records} <- scan_measure_records(cr, n, ids, []) do
-      measure_records(records, ids, desc, 0, 0)
+      # an empty node table: the read refuses it (§3.1)
+      if n == 0, do: :error, else: measure_records(records, ids, desc, 0, 0)
     else
       _ -> {:ok, 0, 0}
     end
