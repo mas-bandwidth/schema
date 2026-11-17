@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Unity C# wire test (docs/UNITY.md): the twin of test/cs and
+       test/cs-ludicrous over the unity-target corpus, compiled in the Unity
+       dialect by lib/. Writes every pinned instance, byte-compares it against
+       the C++-pinned goldens in testdata/wire, and round-trips it through the
+       reader. No test framework; the exit code is the verdict. -->
+  <Import Project="HostDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>unitytest</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/*.cs" />
+    <ProjectReference Include="lib/schemaunity.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1175,11 +1175,15 @@ Leg.check(
   Map.get(whole_report, :forged, false) == true
 )
 
-# A PRESENT BYTE AND A BOOL BYTE ARE BOTH `!= 0` AND NEVER `== 1`, which is
-# what a form that writes 0 or 1 and reads anything owes a hostile writer. Both
-# land through the PROJECTION, which the identity and compiled paths share, so
-# planting the byte once reaches both. The offset is found by writing the same
-# value twice with only that flag moved, so no offset is hard-coded here.
+# A PRESENT BYTE AND A BOOL BYTE ARE HELD TO THEIR BOUND: 0 or 1 and nothing
+# else (docs/SPEC-TABLES.md §3.4, the identity plan's `bool` op). Any other
+# byte is damage and REFUSES THE WHOLE LOAD `wire_damaged`; only 0 is absent
+# and only 0 is false. Every slack byte is dead, and A NON-ZERO DEAD BYTE
+# REFUSES THE WHOLE LOAD (docs/rulings.json fixed-dead-bytes-are-zero;
+# docs/FIXED-FORM-ALGORITHM.md §5.3 step 11) — on the load, and on a compiled
+# plan's read, whose check pass runs over the raw body before the plan lands a
+# byte. The offset is found by writing the same value twice with only that
+# flag moved, so no offset is hard-coded here.
 only_diff = fn a, b ->
   Enum.find(0..(byte_size(a) - 1)//1, fn i -> :binary.at(a, i) != :binary.at(b, i) end)
 end
@@ -1193,14 +1197,41 @@ absent_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: false}]
 present_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: true}])
 present_at = only_diff.(absent_bytes, present_bytes)
 
-{:ok, [seven], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7))
-Leg.eq("a present byte of 7 LANDS PRESENT — the test is `!= 0`", seven.link_present, true)
+Leg.eq(
+  "a present byte of 7 REFUSES the whole load wire_damaged — the bound is 0 or 1",
+  Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7)),
+  {:error, :wire_damaged, Tblp3.FixedRuntime.report()}
+)
 
-{:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0))
+one_bytes = plant.(absent_bytes, present_at, 1)
+{:ok, [one], _} = Tblp3.P3Fixed.chain_fixed_load(one_bytes)
+Leg.eq("and a present byte of 1 lands present", one.link_present, true)
+
+# A present byte of 0 makes the payload dead: over a payload the writer filled
+# it refuses, and over a zero payload it reads absent.
+Leg.eq(
+  "a present byte of 0 over a filled payload REFUSES wire_damaged — the payload is dead",
+  Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0)),
+  {:error, :wire_damaged, Tblp3.FixedRuntime.report()}
+)
+
+{:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(one_bytes, present_at, 0))
 Leg.eq("and only 0 is absent", zero.link_present, false)
 
-# LIVE-count: an absent optional's payload is ignored and moves no counter,
-# both paths. C++ skips the payload when the present byte is 0.
+# A compiled plan's read: the check pass over the raw body with the dead plan
+# built from the same layout, then the plan's run — the order the load keeps.
+compiled_read = fn rt, mine, dst, plan, body, prefill ->
+  try do
+    rt.dead_check(body, rt.dead_plan(mine, mine, dst))
+    {_, r} = rt.run(plan, body, prefill, rt.report())
+    {:ok, r}
+  catch
+    :throw, {:refuse, why} -> {:refuse, why}
+  end
+end
+
+# DEAD: an absent optional's payload is dead, held to zero, and a non-zero
+# byte there refuses the whole load, both paths.
 value0 = %{present | link_present: true, link: %{present.link | value: 0}}
 value1 = %{present | link_present: true, link: %{present.link | value: 1}}
 
@@ -1213,12 +1244,17 @@ value_at =
 hostile_opt =
   Enum.reduce(0..3//1, absent_bytes, fn i, data -> plant.(data, value_at + i, 0xFF) end)
 
-{:ok, [_], opt_ident} = Tblp3.P3Fixed.chain_fixed_load(hostile_opt)
-Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.unknown, 0)
+Leg.eq(
+  "identity: absent optional payload 0xFF REFUSES the whole load wire_damaged",
+  Tblp3.P3Fixed.chain_fixed_load(hostile_opt),
+  {:error, :wire_damaged, Tblp3.FixedRuntime.report()}
+)
 
 opt_body =
   bodies_of.(hostile_opt, Tblp3.P3Fixed.chain_fixed_body_bytes())
   |> hd()
+
+opt_clean = bodies_of.(absent_bytes, Tblp3.P3Fixed.chain_fixed_body_bytes()) |> hd()
 
 {:ok, opt_mine} = Tblp3.FixedRuntime.parse_layout(Tblp3.P3Fixed.chain_fixed_layout())
 
@@ -1231,19 +1267,32 @@ opt_body =
     Tblp3.FixedRuntime.report()
   )
 
-{_, opt_comp} =
-  Tblp3.FixedRuntime.run(
+opt_read = fn body ->
+  compiled_read.(
+    Tblp3.FixedRuntime,
+    opt_mine,
+    Tblp3.P3Fixed.chain_fixed_dst(),
     opt_compiled,
-    opt_body,
-    Tblp3.P3Fixed.chain_fixed_prefill(),
-    Tblp3.FixedRuntime.report()
+    body,
+    Tblp3.P3Fixed.chain_fixed_prefill()
   )
+end
 
-Leg.eq("compiled: absent optional payload 0xFF moves no counter", opt_comp.unknown, 0)
+Leg.eq(
+  "compiled: absent optional payload 0xFF REFUSES wire_damaged",
+  opt_read.(opt_body),
+  {:refuse, :wire_damaged}
+)
+
+Leg.eq(
+  "compiled: and the same body with its payload zero reads",
+  opt_read.(opt_clean),
+  {:ok, Tblp3.FixedRuntime.report()}
+)
 
 # Sibling: counted [..4]int32 live=1, slack 0xFF. Pack.ships[0].hardpoints is
-# that shape (| min = 0, max = 8). A live 1 is in range; slack -1 is not.
-# LIVE-only counts nothing; walking ArrayBound would count three clamps.
+# that shape (| min = 0, max = 8). The three slots past the count are dead, so
+# slack 0xFF refuses the whole load, both paths; the live 1 alone reads.
 fighter = Enum.at(p0.ships, 0)
 
 hp1 =
@@ -1261,10 +1310,14 @@ hp_at = only_diff.(hp1, hp2)
 hostile_hp =
   Enum.reduce(0..11//1, hp1, fn i, data -> plant.(data, hp_at + 4 + i, 0xFF) end)
 
-{:ok, [_], hp_ident} = Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp)
-Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.unknown, 0)
+Leg.eq(
+  "identity: counted-array slack 0xFF REFUSES the whole load wire_damaged",
+  Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp),
+  {:error, :wire_damaged, Tabledemo.FixedRuntime.report()}
+)
 
 hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_bytes()) |> hd()
+hp_clean = bodies_of.(hp1, Tabledemo.PackFixed.pack_config_fixed_body_bytes()) |> hd()
 
 {:ok, hp_mine} =
   Tabledemo.FixedRuntime.parse_layout(Tabledemo.PackFixed.pack_config_fixed_layout())
@@ -1278,15 +1331,28 @@ hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_byte
     Tabledemo.FixedRuntime.report()
   )
 
-{_, hp_comp} =
-  Tabledemo.FixedRuntime.run(
+hp_read = fn body ->
+  compiled_read.(
+    Tabledemo.FixedRuntime,
+    hp_mine,
+    Tabledemo.PackFixed.pack_config_fixed_dst(),
     hp_compiled,
-    hp_body,
-    Tabledemo.PackFixed.pack_config_fixed_prefill(),
-    Tabledemo.FixedRuntime.report()
+    body,
+    Tabledemo.PackFixed.pack_config_fixed_prefill()
   )
+end
 
-Leg.eq("compiled: counted-array slack 0xFF moves no counter", hp_comp.unknown, 0)
+Leg.eq(
+  "compiled: counted-array slack 0xFF REFUSES wire_damaged",
+  hp_read.(hp_body),
+  {:refuse, :wire_damaged}
+)
+
+Leg.eq(
+  "compiled: and the same body with its slack zero reads",
+  hp_read.(hp_clean),
+  {:ok, Tabledemo.FixedRuntime.report()}
+)
 
 track = fn v, on ->
   ships =
@@ -1299,8 +1365,14 @@ bool_off = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, false)])
 bool_on = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, true)])
 bool_at = only_diff.(bool_off, bool_on)
 
-{:ok, [two], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 2))
-Leg.eq("a bool byte of 2 LANDS TRUE", Enum.at(two.ships, 0).gunner.tracking, true)
+Leg.eq(
+  "a bool byte of 2 REFUSES the whole load wire_damaged — the bound is 0 or 1",
+  Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 2)),
+  {:error, :wire_damaged, Tabledemo.FixedRuntime.report()}
+)
+
+{:ok, [on], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 1))
+Leg.eq("and a bool byte of 1 lands true", Enum.at(on.ships, 0).gunner.tracking, true)
 
 {:ok, [off], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_on, bool_at, 0))
 Leg.eq("and only 0 is false", Enum.at(off.ships, 0).gunner.tracking, false)
@@ -1779,7 +1851,7 @@ poison = fn bytes ->
   a = save.(:binary.copy("a", n))
   b = save.(:binary.copy("b", n))
   at = Enum.find(0..(byte_size(a) - 1), fn i -> :binary.at(a, i) != :binary.at(b, i) end)
-  <<pre::binary-size(at), _label::binary-size(n), post::binary>> = a
+  <<pre::binary-size(^at), _label::binary-size(^n), post::binary>> = a
   pre <> bytes <> post
 end
 

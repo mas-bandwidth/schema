@@ -411,6 +411,9 @@ public final class TableVariable {
         // (docs/SPEC-TABLES.md §3.3): it lives on the one id table every
         // writer of a save shares, sub-writers included, so the save sees it.
         public boolean nonFinite;
+        // offRange is the SAVE's refusal of a ranged float off its range
+        // (docs/SPEC.md §5.1 row 10), held in every build beside nonFinite.
+        public boolean offRange;
 
         public Ids(int cap) {
             entries = new long[cap];
@@ -661,6 +664,23 @@ public final class TableVariable {
             put64(bits);
         }
 
+        // putF32In and putF64In write a ranged float: its raw bits as putF32
+        // and putF64 do, and a value off [lo, hi] refuses the whole save in
+        // every build (docs/SPEC.md §5.1 row 10), on every field shape.
+        public void putF32In(float v, double lo, double hi) {
+            if ((double) v < lo || (double) v > hi) {
+                ids.offRange = true;
+            }
+            putF32(v);
+        }
+
+        public void putF64In(double v, double lo, double hi) {
+            if (v < lo || v > hi) {
+                ids.offRange = true;
+            }
+            putF64(v);
+        }
+
         public void putLeb(long v) {
             while (true) {
                 int b = (int) (v & 0x7f);
@@ -859,11 +879,14 @@ public final class TableVariable {
         // where node k's begin (node 0 the root, node k record k - 1)
         long[] edges = new long[64];
         int edgeCount;
+        int nextRef;
+        boolean firstUseBad;
         // the cursor a walk answers through: the offset after what it read
         int at;
         final int[] table = new int[2];
         final int[] rootOnlyEdgeStart = new int[2];
         int[] recStart = new int[16];
+        int[] recRef = new int[16];
         int[] recEnd = new int[16];
         boolean[] recBlob = new boolean[16];
         int[] edgeStart = new int[16];
@@ -895,6 +918,8 @@ public final class TableVariable {
             fail = OK;
             nonFinite = false;
             edgeCount = 0;
+            nextRef = 1;
+            firstUseBad = false;
             at = 0;
         }
 
@@ -903,6 +928,20 @@ public final class TableVariable {
                 fail = DAMAGED;
             }
             return false;
+        }
+
+        // Entries are distinct, so a reference below nextRef is already seen.
+        // Defer this verdict until the whole walk and graph complete: an
+        // incomplete walk retains its original refusal (such as count cap).
+        void use(long ref) {
+            if (ref == 0) return;
+            if (ref == nextRef) nextRef++;
+            else if (ref > nextRef) firstUseBad = true;
+        }
+
+        int complete() {
+            if (firstUseBad || nextRef - 1 != ids.length) return DAMAGED;
+            return nonFinite ? NON_FINITE : OK;
         }
 
         // leb reads one canonical LEB128 at off below end into at, answering
@@ -983,7 +1022,7 @@ public final class TableVariable {
             if (table[0] < 0) {
                 rootOnlyEdgeStart[0] = 0;
                 rootOnlyEdgeStart[1] = rootEdges;
-                return graph(rootOnlyEdgeStart, 1, null) ? (nonFinite ? NON_FINITE : OK) : fail;
+                return graph(rootOnlyEdgeStart, 1, null) ? complete() : fail;
             }
             int off = table[0];
             int end = table[1];
@@ -1006,6 +1045,7 @@ public final class TableVariable {
                 }
                 if (n == recStart.length) {
                     recStart = java.util.Arrays.copyOf(recStart, n * 2);
+                    recRef = java.util.Arrays.copyOf(recRef, n * 2);
                     recEnd = java.util.Arrays.copyOf(recEnd, n * 2);
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
@@ -1017,6 +1057,7 @@ public final class TableVariable {
                 if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
                     return DAMAGED;
                 }
+                recRef[n] = (int) ref;
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
@@ -1035,12 +1076,13 @@ public final class TableVariable {
             edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
             for (int k = 0; k < n; k++) {
+                use(recRef[k]);
                 if (!recBlob[k] && !body(recStart[k], recEnd[k], false, null)) {
                     return fail;
                 }
                 edgeStart[k + 2] = edgeCount;
             }
-            return graph(edgeStart, n + 1, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
+            return graph(edgeStart, n + 1, recBlob) ? complete() : fail;
         }
 
         // graph judges the pointer graph: node 0 is the root, node k record k
@@ -1148,6 +1190,7 @@ public final class TableVariable {
                 if (ref == 0) {
                     return true;
                 }
+                use(ref);
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
                 if (id == BUILD_ID || id == VOCAB_ID) {
@@ -1244,6 +1287,7 @@ public final class TableVariable {
                             damage();
                             return -1;
                         }
+                        use(ref);
                         return at;
                     }
                 case 15:
@@ -1430,7 +1474,8 @@ public final class TableVariable {
             }
             p = first;
             for (long i = 0; i < count; i++) {
-                leb(p, end);
+                long key = leb(p, end);
+                use(key);
                 long n = leb(at, end);
                 int from = at;
                 p = from + (int) n;
@@ -1453,6 +1498,7 @@ public final class TableVariable {
             if (ref == 0) {
                 return at;
             }
+            use(ref);
             if (at >= end) {
                 damage();
                 return -1;
@@ -1821,6 +1867,59 @@ public final class TableVariable {
             }
         }
         return len;
+    }
+
+    // textWritable is the write contract on text (docs/SPEC.md §5.1 rows 4
+    // and 8): no lone surrogate, no zero, and a UTF-8 length inside max (a
+    // negative max is unbounded). A writer's checkWrite asserts it: debug only.
+    public static boolean textWritable(String s, long max) {
+        if (s == null) {
+            return true;
+        }
+        int n = s.length();
+        long len = 0;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c == 0) {
+                return false;
+            } else if (c < 0x80) {
+                len += 1;
+            } else if (c < 0x800) {
+                len += 2;
+            } else if (Character.isHighSurrogate(c)) {
+                if (i + 1 >= n || !Character.isLowSurrogate(s.charAt(i + 1))) {
+                    return false;
+                }
+                len += 4;
+                i++;
+            } else if (Character.isLowSurrogate(c)) {
+                return false;
+            } else {
+                len += 3;
+            }
+        }
+        return max < 0 || len <= max;
+    }
+
+    // WriteCheck is the write contract's walk over the tables a value points
+    // to (docs/SPEC.md §5.1): each target is checked once, by identity, so a
+    // cycle ends the walk and stays the graph's own refusal. A work list, not
+    // a recursion, so a long chain cannot run out of stack. Debug only: a
+    // writer's checkWrite makes one under an assert.
+    public static final class WriteCheck {
+        private final java.util.IdentityHashMap<Object, Boolean> seen =
+                new java.util.IdentityHashMap<>();
+        private final java.util.ArrayDeque<Object> pending = new java.util.ArrayDeque<>();
+
+        public void point(Object target) {
+            if (target != null && seen.put(target, Boolean.TRUE) == null) {
+                pending.add(target);
+            }
+        }
+
+        public Object next() {
+            return pending.poll();
+        }
     }
 
     // textValid reports whether a kind-12 payload is well-formed UTF-8 with no
@@ -2723,6 +2822,7 @@ public final class TableVariable {
             ids.count = 0;
             ids.overflow = false;
             ids.nonFinite = false;
+            ids.offRange = false;
             writer.off = 0;
             writer.overflow = false;
             return writer;

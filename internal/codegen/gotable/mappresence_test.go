@@ -20,9 +20,13 @@ import (
 //     reads as absent;
 //   - retain-unknown (§6.6) and the cooked form (§7) keep the presence, and
 //     the view's descriptor names the field optional with its present offset;
-//   - a reader built WITHOUT the `?` reads the present-empty wire as an empty
-//     map, the entries wire as its entries, and the absent wire as empty, each
-//     silently (§2.8: one framing with two spellings).
+//   - a reader built WITHOUT the `?` reads the absent wire as empty and the
+//     entries wire as its entries, and reads the present-empty wire as empty
+//     too, rewriting it as the current writer's bytes (the absent wire): form 1
+//     carries no writer Required/optional declaration, so an explicit empty at
+//     a plain map field's declared default is lawful presence evolution (§2.3,
+//     §2.8; docs/rulings.json reads-refuse-non-canonical, the 2026-11-15
+//     compatibility correction).
 func TestGoMapPresence(t *testing.T) {
 	t.Parallel()
 	runGenerated(t, mapPresenceSchema, mapPresenceProbe)
@@ -321,8 +325,9 @@ GOLDENS
 func TestPlainReader(t *testing.T) {
 	for _, tc := range []struct {
 		name, golden string
-		count       int32
-	}{{"absent", goldenAbsent, 0}, {"empty", goldenEmpty, 0}, {"entries", goldenEntries, 1}} {
+		count        int32
+		rewrite      string // the current writer's bytes for what the plain reader landed
+	}{{"absent", goldenAbsent, 0, goldenAbsent}, {"empty", goldenEmpty, 0, goldenAbsent}, {"entries", goldenEntries, 1, goldenEntries}} {
 		wire, _ := hex.DecodeString(tc.golden)
 		var report TableReport
 		got := MLoad(make([]byte, 1<<16), wire, &report)
@@ -336,6 +341,13 @@ func TestPlainReader(t *testing.T) {
 			if p := MTagsFind(nil, &got.Tags, "a"); p == nil || *p != 5 {
 				t.Fatalf("%s: plain reader lost the entry", tc.name)
 			}
+		}
+		again := make([]byte, MMeasure(got))
+		if MSave(got, again) != int64(len(again)) {
+			t.Fatalf("%s: plain rewrite", tc.name)
+		}
+		if h := hex.EncodeToString(again); h != tc.rewrite {
+			t.Errorf("%s: plain rewrite\n got %s\nwant %s", tc.name, h, tc.rewrite)
 		}
 	}
 	// THE PLAIN WRITER: an empty plain map elides, so it writes the absent

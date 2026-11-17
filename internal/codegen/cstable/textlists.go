@@ -37,7 +37,7 @@ public static partial class TableWire
         if (field.TextTotal == 0) { return true; }
         long spent = extra;
         TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
-        for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); if (length < 0) { return false; } spent += length; if (spent > field.TextTotal) { return false; } } }
+        for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); System.Diagnostics.Debug.Assert(length >= 0); spent += length; if (spent > field.TextTotal) { return false; } } }
         return spent <= field.TextTotal;
     }
     internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
@@ -76,7 +76,7 @@ const tableNativeTextListSource = `
         if (field.TextTotal == 0) { return true; }
         long spent = extra;
         TableFieldInfo text = field.Table.Fields[0]; int count = value.Count(field);
-        for (int i = 0; i < count; i++) { NativeValue child = value.Child(field, i); if (!text.Optional || child.Present(text)) { int length = child.Count(text); if (length < 0) { return false; } spent += length; if (spent > field.TextTotal) { return false; } } }
+        for (int i = 0; i < count; i++) { NativeValue child = value.Child(field, i); if (!text.Optional || child.Present(text)) { int length = child.Count(text); System.Diagnostics.Debug.Assert(length >= 0); spent += length; if (spent > field.TextTotal) { return false; } } }
         return spent <= field.TextTotal;
     }
     public static unsafe ReadOnlySpan<byte> TextAtNative(IntPtr pointer, TableFieldInfo field, int index, out bool present)

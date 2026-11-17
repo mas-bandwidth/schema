@@ -691,6 +691,7 @@ func tableTextFormParse(src []byte, limits TableTextFormLimits) (*tableTextFormN
 type tableTextFormLabel struct {
 	info *TableTypeInfo
 	done bool
+	ordinal string // bounded JSON identity; the source spelling has no numeric cap
 }
 
 type tableTextFormResolver struct {
@@ -1169,8 +1170,15 @@ func (r *tableTextFormResolver) integer(v *tableTextFormNode, f *TableFieldInfo)
 		return r.fail(TableTextFormBound, v, v.start)
 	}
 	v.canon = raw.String()
-	if f.Kind >= 18 {
-		// the wide walk converts the token's digits exactly (§16.2)
+	if tableJSONWideIntegerKind(f.Kind) {
+		// Fixed-point JSON carries whole units; integer JSON carries integral digits.
+		if f.Kind >= 20 && f.Kind <= 29 {
+			r.jsonString(v.text)
+		} else {
+			r.jsonString([]byte(v.canon))
+		}
+	} else if f.Kind >= 18 {
+		// Preserve a narrow fixed-point value's decimal scale.
 		r.out = append(r.out, v.text...)
 	} else {
 		r.raw(v.canon)
@@ -1362,16 +1370,19 @@ func (r *tableTextFormResolver) pointer(v *tableTextFormNode, f *TableFieldInfo,
 			return r.fail(TableTextFormReference, v, label.start)
 		}
 		v.pairs = true
-		r.raw("{\"&node\":" + key + "}")
+		r.raw("{\"&node\":" + state.ordinal + "}")
 		return true
 	}
 	if state != nil {
 		// a second definition under one label
 		return r.fail(TableTextFormReference, v, label.start)
 	}
-	state = &tableTextFormLabel{info: info}
+	// Source labels are document-wide identities (§16.9.2), not JSON uint64
+	// values. Assign one ordinal before descending so nested definitions get
+	// distinct identities, while the open/done rule still rejects cycles.
+	state = &tableTextFormLabel{info: info, ordinal: strconv.Itoa(len(r.labels)+1)}
 	r.labels[key] = state
-	if !r.record(v, info, path, 2, "\"&node\":"+key) {
+	if !r.record(v, info, path, 2, "\"&node\":"+state.ordinal) {
 		return false
 	}
 	state.done = true

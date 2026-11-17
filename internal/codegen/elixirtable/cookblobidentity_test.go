@@ -111,7 +111,7 @@ for name <- ["blob_equal_bytes"] do
   end
 end
 
-fresh = %%{"name" => "two", "thumb" => <<1, 2, 3>>, "alias" => <<1, 2, 3>>}
+fresh = {%%{"name" => "two", "thumb" => <<1, 2, 3>>, "alias" => <<1, 2, 3>>}, {}}
 Probe.check(Probe.nodes(Probe.cook(%[1]s, fresh, :little)) == 3, "fresh equal blobs", "root and two blob nodes")
 `, mod, filepath.Join(root, "testdata", "wire", "tables"), dir)
 	probe.WriteString(`

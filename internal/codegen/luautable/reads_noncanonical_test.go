@@ -2,9 +2,12 @@
 // non-canonical spelling vectors (docs/SPEC-TABLES.md §3, §3.1, §3.3, §4;
 // docs/rulings.json reads-refuse-non-canonical): every row of
 // testdata/wire/non-canonical/MANIFEST.tsv is generated for this leg and read
-// through each of its read entries. A canonical row reads and re-saves to the
-// same bytes; every other row is refused. The verdict is the contract, so no
-// row compares a refusal's reason.
+// through each of its read entries and holds the manifest's verdict. A read row
+// re-saves to its canonical bytes (the vector, or the rewrite pinned beside
+// it); a refused row is refused by every entry. A message row is also read
+// under another build version, where only a union field written with arm
+// reference 0 stays refused (§3.3). The verdict is the contract, so no row
+// compares a refusal's reason.
 package luautable_test
 
 import (
@@ -21,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 type nonCanonicalRow struct {
@@ -143,7 +148,35 @@ if count > 0 then
 	local saved = M.SaveMessages(vocab, root, bodies, report())
 	print("save=" .. (if saved ~= nil then hex(saved) else "refused"))
 end
+-- the same batch announced under another build version (§3.3 (a), (b))
+vocab.buildVersion = 0i
+local ocount = M.LoadMessages(vocab, root, inputs.wire, 256, report())
+print("otherbuild=" .. (if ocount > 0 then "read" else "refused"))
+local owcount = M.loadMessagesWalk(vocab, root, inputs.wire, 256, report())
+print("otherbuildwalk=" .. (if owcount > 0 then "read" else "refused"))
 `
+
+// nonCanonicalExpected is the file a read row re-saves to: the vector itself,
+// or the canonical rewrite the manifest's generator pins beside it for a
+// lawful spelling no writer produces (docs/SPEC-TABLES.md §3).
+func nonCanonicalExpected(t *testing.T, row nonCanonicalRow) []byte {
+	t.Helper()
+	vector := filepath.Join(root, "testdata", "wire", "non-canonical")
+	path := filepath.Join(vector, row.file)
+	if row.form == "variable" {
+		rewrite := filepath.Join(vector, "canonical", filepath.Base(row.file))
+		if _, err := os.Stat(rewrite); err == nil {
+			path = rewrite
+		} else if row.file == "variable-fields-out-of-order.bin" {
+			path = filepath.Join(vector, "variable-canonical.bin")
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
 
 func TestLuauReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
@@ -229,6 +262,20 @@ func TestLuauReadsRefuseNonCanonical(t *testing.T) {
 					t.Errorf("%s: %s = %q, want %q (probe: %q)", row.file, entry, got[entry], want, out)
 				}
 			}
+			// Under another build version a field at a default and fields
+			// out of order are lawful evolution and read; a union field
+			// written with arm reference 0 is refused at every build (§3.3).
+			if row.form == "message" {
+				other := "read"
+				if row.spelling == "union-arm-zero" {
+					other = "refused"
+				}
+				for _, entry := range []string{"otherbuild", "otherbuildwalk"} {
+					if got[entry] != other {
+						t.Errorf("%s: %s = %q, want %q (probe: %q)", row.file, entry, got[entry], other, out)
+					}
+				}
+			}
 			if row.verdict != "read" || row.form == "announcement" {
 				return
 			}
@@ -236,9 +283,121 @@ func TestLuauReadsRefuseNonCanonical(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s: the canonical read printed no save (%q)", row.file, out)
 			}
-			if saved != hex.EncodeToString(wire) {
-				t.Errorf("%s: the read value re-saves to %s, want %s", row.file, saved, hex.EncodeToString(wire))
+			if expected := hex.EncodeToString(nonCanonicalExpected(t, row)); saved != expected {
+				t.Errorf("%s: the read value re-saves to %s, want %s", row.file, saved, expected)
 			}
 		})
+	}
+	t.Run("union None element", testLuauUnionNoneElementReads)
+	t.Run("undeclared field", testLuauUndeclaredFieldAtOwnBuild)
+}
+
+// testLuauUndeclaredFieldAtOwnBuild holds §3.3 (b)'s other half: under the
+// reader's own build version every field the sender's record declares is one
+// this record declares, so a body naming a field this record cannot name is
+// refused; under another build version it is an ordinary unknown and reads
+// (§4). The batch is a wider sender's, announced first under its own build and
+// then under this reader's.
+func testLuauUndeclaredFieldAtOwnBuild(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sender := filepath.Join(dir, "Sender.schema")
+	if err := os.WriteFile(sender, []byte("package probe\n\nfixed table Root\n{\n    tick  uint8\n    extra uint8\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	su, err := compiler.New().Load([]string{sender})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := tabletext.NewModel(su)
+	value := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(value, []byte(`{"tick": 1, "extra": 2}`), &report) {
+		t.Fatalf("value: %+v", report)
+	}
+	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{value})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := generateFiles(t, map[string]string{"Probe.schema": "package probe\n\nfixed table Root\n{\n    tick uint8\n}\n"})
+	main := `local inputs = require("./inputs")
+local M = require("./schema_message")
+local T = require("./ProbeTable")
+local function report(): any
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+end
+local vocab = M.NewVocabulary()
+if not M.AnnounceRead(vocab, inputs.ann, report()) then print("announce=refused"); return end
+print("other=" .. (if M.LoadMessages(vocab, "Root", inputs.wire, 4, report()) == 1 then "read" else "refused"))
+vocab.buildVersion = T.TableMessageBuildVersion
+print("own=" .. (if M.LoadMessages(vocab, "Root", inputs.wire, 4, report()) == 1 then "read" else "refused"))
+print("ownwalk=" .. (if M.loadMessagesWalk(vocab, "Root", inputs.wire, 4, report()) == 1 then "read" else "refused"))
+`
+	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(main), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": batch, "ann": tablewire.Announce(su)})))
+	if out != "other=read\nown=refused\nownwalk=refused" {
+		t.Fatalf("a field the record does not declare: %q, want other=read, own=refused, ownwalk=refused", out)
+	}
+}
+
+// testLuauUnionNoneElementReads is the control for §3.3 (c): the refusal is of
+// a union FIELD written with arm reference 0, never of a None element of an
+// array of unions, which is positional. The writer's batch carrying one reads
+// under this reader's build version and under another.
+func testLuauUnionNoneElementReads(t *testing.T) {
+	t.Parallel()
+	const src = `package messagenone
+
+union Choice
+{
+    item uint8
+}
+
+fixed table Root
+{
+    tick    uint8
+    choice  Choice
+    choices [..2]Choice
+}
+`
+	g := generateFiles(t, map[string]string{"Probe.schema": src})
+	path := filepath.Join(t.TempDir(), "Probe.schema")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := tabletext.NewModel(u)
+	value := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(value, []byte(`{"tick": 1, "choices": [{}, {"item": 3}]}`), &report) {
+		t.Fatalf("value: %+v", report)
+	}
+	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{value})
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := `local inputs = require("./inputs")
+local M = require("./schema_message")
+require("./ProbeTable")
+local function report(): any
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+end
+local vocab = M.NewVocabulary()
+if not M.AnnounceRead(vocab, inputs.ann, report()) then print("announce=refused"); return end
+print("own=" .. (if M.LoadMessages(vocab, "Root", inputs.wire, 4, report()) == 1 then "read" else "refused"))
+vocab.buildVersion = 0i
+print("other=" .. (if M.LoadMessages(vocab, "Root", inputs.wire, 4, report()) == 1 then "read" else "refused"))
+`
+	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(main), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": batch, "ann": tablewire.Announce(u)})))
+	if out != "own=read\nother=read" {
+		t.Fatalf("a None element of an array of unions: %q, want own=read and other=read", out)
 	}
 }

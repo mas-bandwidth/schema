@@ -125,8 +125,8 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	kinds["pairs"] = []any{json.Number("1"), json.Number("-2")}
 	kinds["optional"] = []any{}
 	kinds["bytes"] = "AP8="
-	kinds["signed"] = json.Number("-170141183460469231731687303715884105728")
-	kinds["unsigned"] = json.Number("340282366920938463463374607431768211455")
+	kinds["signed"] = "-170141183460469231731687303715884105728"
+	kinds["unsigned"] = "340282366920938463463374607431768211455"
 	kinds["fraction"] = json.Number("0.0000152587890625")
 	kinds["float"] = json.Number("-0")
 	kinds["time"] = "2026-10-15T12:34:05Z"
@@ -317,8 +317,8 @@ func cppDocumentDefaults() map[string]any {
 		"nodes":    []any{},
 		"pairs":    []any{json.Number("0"), json.Number("0")},
 		"bytes":    "",
-		"signed":   json.Number("0"),
-		"unsigned": json.Number("0"),
+		"signed":   "0",
+		"unsigned": "0",
 		"fraction": json.Number("0.0"),
 		"float":    json.Number("0"),
 		"time":     "1970-01-01T00:00:00Z",

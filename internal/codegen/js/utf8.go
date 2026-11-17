@@ -18,8 +18,8 @@ func emitTextHelper() string {
 	var b strings.Builder
 	pf := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
 	pf("// %s(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no\n", utf8Helper)
-	pf("// interior null (SPEC §4.7). Every string field's read calls it; nothing\n")
-	pf("// allocates and nothing latches.\n")
+	pf("// interior null (SPEC §4.7). Every string field's read and write calls it;\n")
+	pf("// nothing allocates and nothing latches.\n")
 	pf("function %s(bytes, length) {\n", utf8Helper)
 	pf("  for (let utf8Index = 0; utf8Index < %s;) {\n", "length")
 	pf("    const utf8Lead = bytes[utf8Index++];\n")
@@ -71,4 +71,10 @@ func emitTextHelper() string {
 // emitReadText emits the call site: one line per string field.
 func emitReadText(pf func(string, ...any), name, length, ind string) {
 	pf("%sif (!%s(%s, %s)) {\n%s  return false;\n%s}\n", ind, utf8Helper, name, length, ind, ind)
+}
+
+// emitWriteText emits the write-side call site. refusal is the tier's own
+// refusal value ("false" for the runtime pair, "-1" for the flat pair).
+func emitWriteText(pf func(string, ...any), name, length, ind, refusal string) {
+	pf("%sif (!%s(%s, %s)) {\n%s  return %s;\n%s}\n", ind, utf8Helper, name, length, ind, refusal, ind)
 }

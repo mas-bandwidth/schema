@@ -1303,6 +1303,12 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
         if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
+        if ( entry.kind == 15 )
+        {
+            TableBitReader peek = r;
+            uint64_t arm = 0;
+            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+        }
         if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
 }

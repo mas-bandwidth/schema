@@ -25,14 +25,14 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// the length over [0, N] where the runtime's string call frames it over
 		// [0, N-1]. One bit of difference, and every following field shifts.
 		//
-		// An interior null among the used bytes is writer misuse, not content:
-		// a debug assert that compiles out under NDEBUG, the same guard the
-		// C++ backend folds in. The READ side refuses it in every build, as
-		// validation of untrusted bytes (SPEC §4.7, §5).
+		// Check the length before inspecting the caller's buffer. Both text
+		// rules are debug assertions on write; the reader validates untrusted
+		// bytes in every build (SPEC §4.7, §5).
+		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_length; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.pf("%s        serialize_assert( value->%s[i] != 0 ); /* interior null on write (SPEC §4.7) */\n", ind, f.Name)
 		g.pf("%s    }\n%s}\n", ind, ind)
-		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
+		g.pf("%sserialize_assert( schema_utf8_valid_( (const uint8_t *) value->%s, value->%s_length ) ); /* ill-formed text on write (SPEC §5.1) */\n", ind, f.Name, f.Name)
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))

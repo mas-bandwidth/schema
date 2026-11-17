@@ -74,12 +74,12 @@ func csDeadPlanEntries(t *testing.T, src string) []string {
 		t.Fatal("the emitted unit carries no identity plan")
 	}
 	body := src[start:]
-	end := strings.Index(body, "});")
-	if end < 0 {
+	before, _, ok := strings.Cut(body, "});")
+	if !ok {
 		t.Fatal("the identity plan is not closed")
 	}
 	var out []string
-	rest := body[:end]
+	rest := before
 	for {
 		i := strings.Index(rest, "new TableFixedEntry(")
 		if i < 0 {

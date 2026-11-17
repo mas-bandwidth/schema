@@ -26,6 +26,7 @@ type pyModule struct {
 	sibling map[string]string // file base -> local alias
 
 	surfaceOnly bool // a class-surface-only unit (tests of every field kind)
+	hosted      bool // a caller other than the packet emitter hosts these classes (the table emitter)
 }
 
 func (m *pyModule) need(name string)                  { m.imports[name] = true }
@@ -87,7 +88,7 @@ func (m *pyModule) assemble() string {
 		h.WriteString("\n")
 	}
 	h.WriteString(m.body.String())
-	return h.String()
+	return strings.TrimRight(h.String(), "\n") + "\n"
 }
 
 func sortedKeys(set map[string]bool) []string {

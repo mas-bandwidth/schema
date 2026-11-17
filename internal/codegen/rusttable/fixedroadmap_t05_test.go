@@ -38,7 +38,8 @@ package rusttable
 // rust/C4 [owed]: ill-formed text refuses BY NAME.
 //
 // rust/R24 [owed]: the content rule is over the USED units, the length word is
-// counted in bytes with the clamp in units, and slack is not a refusal.
+// counted in bytes with the clamp in units, and the bytes past the used length
+// are dead: a non-zero one refuses the whole read (fixed-dead-bytes-are-zero).
 
 import (
 	"fmt"
@@ -439,7 +440,8 @@ func t05C4(t *testing.T) {
 // t05R24 holds rust/R24 to docs/FIXED-FORM-ALGORITHM.md §4.5: "The CONTENT
 // RULES apply to the USED UNITS and nothing else: UTF-8 validity over `v`
 // bytes, never over `N`"; the text row's `size` is the payload's BYTE span
-// and its `aux` the cap; and slack is not a refusal.
+// and its `aux` the cap; and the dead bytes past the used length are checked
+// against zero by the dead-byte pass.
 func t05R24(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
 	t04Has(t, runtime, `Self::TextIllFormed => "text_ill_formed",`,
@@ -462,8 +464,9 @@ func t05R24(t *testing.T) {
 		"R24 the text entry's span is the payload's BYTE count")
 	t04Has(t, runtime, "aux: bytes,",
 		"R24 the clamp's cap is the BYTE span")
-	// SLACK IS UNSPECIFIED ON READ AND NOT A REFUSAL: `bytes(N)` has no content
-	// rule at all, and no content rule reads the bytes a writer never wrote.
+	// THE DEAD BYTES PAST THE USED LENGTH ARE CHECKED AGAINST ZERO, never read
+	// as content: `bytes(N)` has no content rule at all, and the dead-byte pass
+	// is the one check over the bytes a writer never wrote.
 	bytesMod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    b bytes(8)\n}\n")
 	if strings.Contains(bytesMod, "table_utf8_valid") {
 		t.Error("R24: a bytes(N) has no content rule and must not be judged as text (SPEC-TABLES §3.4)")

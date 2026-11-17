@@ -136,6 +136,15 @@ func runLuaStrictCorpus(t *testing.T, patch func([]byte) ([]byte, error)) error 
 
 	instanceRows := jsonManifestRows(t, manifestPath, "instance")
 	hostileRows := jsonManifestRows(t, manifestPath, "json-hostile")
+	expectedInstances := 0
+	for _, row := range instanceRows {
+		if !row.noText {
+			expectedInstances++
+		}
+	}
+	if expectedInstances == 0 || len(hostileRows) == 0 {
+		return fmt.Errorf("manifest has no text instances or hostile rows")
+	}
 
 	var unitOrder []string
 	seenUnit := map[string]bool{}
@@ -162,7 +171,7 @@ func runLuaStrictCorpus(t *testing.T, patch func([]byte) ([]byte, error)) error 
 		u := luarun.LoadUnit(t, paths...)
 		files, err := Generate(u)
 		if err != nil {
-			continue
+			return fmt.Errorf("unit %s: generate Lua: %w", unitName, err)
 		}
 		if patch != nil {
 			patched, perr := patch(files["json.lua"])
@@ -264,8 +273,8 @@ func runLuaStrictCorpus(t *testing.T, patch func([]byte) ([]byte, error)) error 
 			}
 		}
 	}
-	if readCompared < 113 || writeCompared < 113 || hostileCompared < 155 {
-		return fmt.Errorf("corpus coverage short: read=%d write=%d hostile=%d", readCompared, writeCompared, hostileCompared)
+	if readCompared != expectedInstances || writeCompared != expectedInstances || hostileCompared != len(hostileRows) {
+		return fmt.Errorf("corpus coverage short: read=%d write=%d want=%d hostile=%d want=%d", readCompared, writeCompared, expectedInstances, hostileCompared, len(hostileRows))
 	}
 
 	// Variable-class null references (§16.2) and duplicate keys inside a
@@ -340,7 +349,7 @@ print(text)
 // port/lua/vt/text-form and port/lua/vt/text-form-variable: the corpus and
 // null-reference tests and the Lua conformance driver read strictly through
 // J.FromJson and load.Load / T.ReadFixed (never fromJsonWalk or loadWalk), and
-// every text-carrying instance row (113 rows, wide-field units included),
+// every text-carrying instance row (wide-field units included),
 // every json-hostile row (155 rows), variable-class null references, and
 // unknown-subtree duplicate keys obey the strict read.
 func TestLuaFromJsonStrictAgreesWithTheCorpus(t *testing.T) {
@@ -397,22 +406,25 @@ func TestLuaFromJsonStrictAgreesWithTheCorpusNegativeControl(t *testing.T) {
 	}
 
 	for _, p := range []struct {
-		name, anchor, replacement string
+		name, anchor, replacement, want string
 	}{
 		{
 			"strict refusal bypass in FromJson",
 			"  if reason ~= nil then\n    report.refused = 1\n",
 			"  if false then\n    report.refused = 1\n",
+			"json-hostile ",
 		},
 		{
 			"unknown-object duplicate key in skip_container",
 			"      if seen[key] then\n        inp.bad = true\n        return false\n      end\n",
 			"      if false then\n        inp.bad = true\n        return false\n      end\n",
+			"variable-class null/duplicate check failed",
 		},
 		{
 			"field lookup in find_key",
 			"  for _, fd in ipairs(desc.fields) do\n    if fd.key == key then return fd end\n  end\n",
 			"  for _, fd in ipairs(desc.fields) do\n    if false then return fd end\n  end\n",
+			"FromJson then Save != wire",
 		},
 	} {
 		err := runLuaStrictCorpus(t, func(src []byte) ([]byte, error) {
@@ -422,8 +434,8 @@ func TestLuaFromJsonStrictAgreesWithTheCorpusNegativeControl(t *testing.T) {
 			}
 			return []byte(strings.Replace(s, p.anchor, p.replacement, 1)), nil
 		})
-		if err == nil {
-			t.Fatalf("NEGATIVE CONTROL FAILED: %s left runLuaStrictCorpus green", p.name)
+		if err == nil || !strings.Contains(err.Error(), p.want) {
+			t.Fatalf("NEGATIVE CONTROL FAILED: %s: got %v, want the named failure %q", p.name, err, p.want)
 		}
 		t.Logf("%s: caught (%v)", p.name, err)
 	}

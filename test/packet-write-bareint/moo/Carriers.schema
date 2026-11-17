@@ -1,0 +1,22 @@
+package bareintcarriers
+
+// The moo leg's carriers of a bare integer beyond a plain field (SPEC §5.1
+// row 11): a fixed array element, a counted array element and a union arm's
+// payload, so the width test holds on every path the writer emits it on.
+
+type Elements
+{
+    pair [2]int8
+    list [..2]uint16
+}
+
+type Small
+{
+    value int8
+}
+
+union Arm
+{
+    small Small
+    elements Elements
+}

@@ -1,28 +1,27 @@
 package cpptable
 
-// TestNestedUnionArmTrailingBytesReadOn pins the C++ reader to the Go
-// oracle's reading of a nested-union arm whose `L` is longer than the inner
-// union it frames: the inner union decodes, the bytes left inside the arm are
-// stepped over with it, the parent reads on past `L`, and NOTHING counts. The
-// Go oracle (internal/tablewire arm(), the UnionOf case) and every other port
-// read it so; the C++ reader alone called it malformed, and the wire fuzzer
-// went red on it (messagedemo.ToolMessage, mutant 72054 of seed 24845619678).
+// TestNestedUnionArmTrailingBytesRefused pins the C++ reader to the Go
+// oracle's verdict on a nested-union arm whose `L` is longer than the inner
+// union it frames: bytes left inside a union arm's `L` after a whole inner
+// union are damage, and the whole load refuses (docs/SPEC-TABLES.md §3, "Bytes
+// left inside a union arm's `L` after a whole inner union are damage"; §6.5's
+// wire-alone list, "bytes left inside an arm after a nested union").
 //
-// docs/SPEC-TABLES.md §3's arm table states the `L` a writer spells for a
-// union arm ("the inner arm id's length, or that plus the inner kind byte,
-// its L and its payload"), and its damage sentence names a fixed-width arm
-// whose `L` is not its width and a length-shaped arm damaged inside its `L`.
-// A whole inner union with bytes after it is neither, so the reading is the
-// oracle's until the spec rules on it: an open question for the owner.
+// The oracle is the Go strict walk, internal/tablewire checkFile, which every
+// Go form-1 load runs before any value decodes (internal/tablewire/decode.go,
+// PHASE ONE). On this wire it answers wire_damaged: "bytes left inside an arm
+// after its payload"; on the same arm without the extra byte it answers
+// nothing. The C++ form-1 read holds the same rule in its generated strict
+// walk (TableStrictContent, the union case).
 //
 // Two assertions, one file:
 //
-//   - always, on the emitted C++: the nested-union arm carries no
-//     consumption guard after the inner union.
+//   - always, on the emitted C++: the generated strict walk carries the
+//     arm rule.
 //   - behind slowtest.Gate, because it compiles and runs the generated unit:
-//     a saved table with one extra byte inserted after the inner union's
-//     payload, and the outer arm's `L` raised to cover it, loads with the
-//     union and its value intact and the report clean.
+//     a saved table loads clean with its union and value intact (the control),
+//     and the same table with one extra byte inserted after the inner union's
+//     payload, and the outer arm's `L` raised to cover it, is refused whole.
 
 import (
 	"fmt"
@@ -77,9 +76,9 @@ table Root
 }
 `
 
-// TestNestedUnionArmTrailingBytesReadOn is table-free and opens with
+// TestNestedUnionArmTrailingBytesRefused is table-free and opens with
 // t.Parallel(); the toolchain half skips by name on a default `go test`.
-func TestNestedUnionArmTrailingBytesReadOn(t *testing.T) {
+func TestNestedUnionArmTrailingBytesRefused(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -107,25 +106,25 @@ func TestNestedUnionArmTrailingBytesReadOn(t *testing.T) {
 	}
 	text := string(header)
 
-	// The arm reader is the `sub` bounded to the outer arm's `L`; the union
-	// that carries the arm is `value.pick`. A consumption guard there would
-	// count the oracle's clean read malformed.
-	guard := "if ( sub.offset != sub.size ) { value.pick.type = OuterType::None; r.report->damaged = true; }"
-	if strings.Contains(text, guard) {
-		t.Fatalf("the nested-union arm still refuses bytes left inside its L, where the Go oracle reads on:\n    %s", guard)
+	// The generated strict walk's arm rule: a union arm's content is
+	// consumed exactly, before any value decodes (§3, §6.5).
+	rule := "return r.offset == n; // bytes left inside an arm after its payload"
+	if !strings.Contains(text, rule) {
+		t.Fatalf("the generated strict walk does not carry the arm rule the Go oracle holds:\n    %s", rule)
 	}
 
 	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 
 	out, err := runNestedTrailProbe(t, files, "NestTrailTable.h")
 	if err != nil {
-		t.Fatalf("the generated unit did not read past the bytes left inside the arm:\n%s\n%v", out, err)
+		t.Fatalf("the generated unit did not refuse the bytes left inside the arm, or did not read the clean control:\n%s\n%v", out, err)
 	}
 }
 
-// nestedTrailProbe is the C++ body: it saves a canonical Root, inserts one
-// byte after the inner union's payload, raises the nested-union arm's `L` by
-// one to cover it, and loads the result.
+// nestedTrailProbe is the C++ body: it saves a canonical Root and loads it
+// (the control), then inserts one byte after the inner union's payload,
+// raises the nested-union arm's `L` by one to cover it, and requires the
+// whole load refused.
 const nestedTrailProbe = `
     Root r;
     RootReset( r );
@@ -137,6 +136,25 @@ const nestedTrailProbe = `
     static uint8_t buffer[1 << 16];
     int64_t n = RootSave( &r, buffer, (int64_t) sizeof( buffer ) - 1 );
     if ( n <= 0 ) { printf( "save wrote %lld\n", (long long) n ); return 1; }
+
+    static uint8_t raw[1 << 16];
+    const uintptr_t off = ( ( -(uintptr_t) &raw[0] ) & 63 );
+    uint8_t * region = raw + off;
+
+    // THE CONTROL: the same arm without the extra byte reads clean.
+    {
+        const int64_t region_bytes = RootLoadMeasure( buffer, n );
+        if ( region_bytes <= 0 ) { printf( "control measure: %lld\n", (long long) region_bytes ); return 1; }
+        if ( off + (uintptr_t) region_bytes > sizeof( raw ) ) { printf( "the region buffer is too small\n" ); return 1; }
+        TableReport report;
+        memset( (void *) &report, 0, sizeof( report ) );
+        const Root * got = RootLoad( region, region_bytes, buffer, n, &report );
+        if ( got == NULL ) { printf( "control load returned NULL, damaged=%d refused=%d\n", (int) report.damaged, (int) report.refused ); return 1; }
+        if ( report.damaged || report.unknown || report.refused ) { printf( "the control read counted something: damaged=%d unknown=%d refused=%d\n", (int) report.damaged, (int) report.unknown, (int) report.refused ); return 1; }
+        if ( got->id != 7 ) { printf( "control: id=%u\n", (unsigned) got->id ); return 1; }
+        if ( got->pick.type != OuterType::Inner || got->pick.inner.type != InnerType::A ) { printf( "control: the union did not keep its arm: %d %d\n", (int) got->pick.type, (int) got->pick.inner.type ); return 1; }
+        if ( got->pick.inner.a.n != (int32_t) 0xA1B2C3D4 ) { printf( "control: the inner value moved\n" ); return 1; }
+    }
 
     // The leaf's int32 is the inner union's arm payload. The nested-union
     // arm's L sits six bytes before it: the inner arm id, its kind, its L,
@@ -158,21 +176,16 @@ const nestedTrailProbe = `
     n += 1;
     buffer[at - 6] += 1; // the arm's L covers it
 
-    const int64_t region_bytes = RootLoadMeasure( buffer, n );
-    if ( region_bytes <= 0 ) { printf( "measure: %lld\n", (long long) region_bytes ); return 1; }
-    static uint8_t raw[1 << 16];
-    const uintptr_t off = ( ( -(uintptr_t) &raw[0] ) & 63 );
-    if ( off + (uintptr_t) region_bytes > sizeof( raw ) ) { printf( "the region buffer is too small\n" ); return 1; }
-    uint8_t * region = raw + off;
-
+    // THE DAMAGE: the measure refuses, and a load into a region large
+    // enough for any read of it refuses whole with nothing handed back.
+    const int64_t measured = RootLoadMeasure( buffer, n );
+    if ( measured > 0 ) { printf( "the measure admitted the bytes left inside the arm: %lld\n", (long long) measured ); return 1; }
     TableReport report;
     memset( (void *) &report, 0, sizeof( report ) );
+    const int64_t region_bytes = (int64_t) ( sizeof( raw ) - off );
     const Root * got = RootLoad( region, region_bytes, buffer, n, &report );
-    if ( got == NULL ) { printf( "load returned NULL, malformed=%d\n", (int) report.damaged ); return 1; }
-    if ( report.damaged || report.unknown || report.refused ) { printf( "the read counted the bytes left inside the arm: malformed=%d unknown=%d kind_mismatch=%d\n", (int) report.damaged, (int) report.unknown, (int) report.refused ); return 1; }
-    if ( got->id != 7 ) { printf( "the parent did not read on: id=%u\n", (unsigned) got->id ); return 1; }
-    if ( got->pick.type != OuterType::Inner || got->pick.inner.type != InnerType::A ) { printf( "the union did not keep its arm: %d %d\n", (int) got->pick.type, (int) got->pick.inner.type ); return 1; }
-    if ( got->pick.inner.a.n != (int32_t) 0xA1B2C3D4 ) { printf( "the inner value moved\n" ); return 1; }
+    if ( got != NULL ) { printf( "the load read past the bytes left inside the arm\n" ); return 1; }
+    if ( !report.damaged && !report.refused ) { printf( "the load failed without a refusing verdict: damaged=%d refused=%d\n", (int) report.damaged, (int) report.refused ); return 1; }
     return 0;
 `
 

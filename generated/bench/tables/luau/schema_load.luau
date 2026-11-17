@@ -344,7 +344,6 @@ end
 -- THE LINK: each descriptor learns its fields by id, once (docs/SPEC-TABLES.md
 -- §3, §8.1). A field's t names a descriptor through the registry.
 local byIdCache: { [any]: { [integer]: any } } = {}
-local posCache: { [any]: { [integer]: number } } = {}
 local typeCache: { [any]: { [integer]: any } } = {}
 
 local function fields_by_id(desc: any): { [integer]: any }
@@ -353,18 +352,6 @@ local function fields_by_id(desc: any): { [integer]: any }
 		m = {}
 		for _, f in desc.fields do m[f.id] = f end
 		byIdCache[desc] = m
-	end
-	return m
-end
-
--- a field's place in its writer's declaration order (docs/SPEC-TABLES.md §3),
--- which is the order a conforming writer emits and the reader requires.
-local function field_positions(desc: any): { [integer]: number }
-	local m = posCache[desc]
-	if m == nil then
-		m = {}
-		for i, f in desc.fields do m[f.id] = i end
-		posCache[desc] = m
 	end
 	return m
 end
@@ -572,9 +559,6 @@ end
 
 local _table: { any } = {}
 local _pending: { any } = {}
--- the union FIELD whose arm reference is being read: an element or a nested
--- arm keeps its positional None (§2.6, §3.3).
-local _unionField: any = nil
 local _nodes: { any } = {}
 local _rootValue: any = nil
 local _rootDesc: any = nil
@@ -869,10 +853,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 								note_payload(body.b, payloadAt, body.at, kind, 1)
 							end
 						else
-							_unionField = if keyfd.s == "union" then keyfd else nil
-							local keyok = read_field(keyfd, body, vals, true)
-							_unionField = nil
-							if not keyok then break end
+							if not read_field(keyfd, body, vals) then break end
 						end
 					elseif kind ~= efd.k then
 						if widens(kind, efd.k) then
@@ -886,10 +867,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 							note_payload(body.b, payloadAt, body.at, kind, 1)
 						end
 					else
-						_unionField = if efd.s == "union" then efd else nil
-						local valok = read_field(efd, body, vals, true)
-						_unionField = nil
-						if not valok then break end
+						if not read_field(efd, body, vals) then break end
 					end
 				end
 				-- THE KEY IS THE ENTRY'S OWN FIELD (docs/SPEC-TABLES.md §2.8):
@@ -1322,15 +1300,7 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	local refAt = r.at
 	local ref = r_leb(r)
 	if r.bad then report.malformed = true; noteField("malformed", unionName); return u, false end
-	if ref == 0 then
-		-- AN EXPLICIT NONE ARM IS NOT A WRITER'S SPELLING (§3.3 (c)): a
-		-- conforming writer elides the field. An element's or a nested arm's
-		-- None is positional and stays lawful.
-		if _unionField == fd and fd.required ~= true then
-			report.malformed = true; noteField("malformed", unionName); return u, false
-		end
-		return u, true
-	end
+	if ref == 0 then return u, true end
 	if ref > #_table then report.malformed = true; noteField("malformed", unionName); return u, false end
 	note_use(_table, ref, refAt)
 	local armID = _table[ref]
@@ -1387,7 +1357,7 @@ end
 -- is an array of a FOREIGN ELEMENT KIND (§3); intact false is a payload
 -- damaged inside its own L, which a field answers with its declared default
 -- and a union arm (read_arm) with None.
-read_field = function(fd: any, r: any, v: any, as_field: boolean?): any
+read_field = function(fd: any, r: any, v: any): any
 	local fieldName = _fieldName
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
@@ -1438,12 +1408,6 @@ read_field = function(fd: any, r: any, v: any, as_field: boolean?): any
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		local index = r_leb(r)
 		if r.bad then _report.malformed = true; noteField("malformed", fieldName); return false end
-		-- A NULL POINTER IS ELIDED, NOT WRITTEN (§3.1): an explicit index 0 in
-		-- a non-required field is the non-canonical spelling §4 refuses. A
-		-- pointer ARM and an array element keep their positional null.
-		if index == 0 and as_field == true and fd.required ~= true then
-			_report.malformed = true; noteField("malformed", fieldName); return false
-		end
 		_pending[#_pending + 1] = { holder = v, key = fd.slot, index = index, d = fd, name = fd.name or fieldName }
 		return true
 	elseif s == "tab" then
@@ -1707,141 +1671,9 @@ local function guard_holds(fd: any, v: any): boolean
 	return true
 end
 
--- A FIELD THE WRITER WOULD HAVE ELIDED (docs/SPEC-TABLES.md §3): a value a
--- conforming writer stores by its absence, never with a field header. A read
--- that meets the field anyway is the non-canonical spelling §4 refuses.
-local function same_bytes(v: any, slot: string, def: string?)
-	local b = v[slot]
-	local n = v[slot .. "Length"]
-	local d = def or ""
-	if typeof(b) ~= "buffer" then return n == nil and #d == 0 end
-	if n == nil then n = buffer.len(b) end
-	if n ~= #d then return false end
-	if n == 0 then return true end
-	return buffer.readstring(b, 0, n) == d
-end
-
-local function elem_default(e: any, val: any)
-	if e == nil then return val == nil or val == 0 end
-	local istab = typeof(val) == "table"
-	if e.s ~= "union" and istab then return false end
-	local s = e.s
-	if s == "bool" then return val == false or val == nil end
-	if s == "int" then return val == 0 end
-	if s == "float" then return val == 0 or val == 0.0 end
-	if s == "enum" then return val == 0 or val == nil end
-	if s == "ptr" or s == "sblob" or s == "bblob" then return not val end
-	if s == "union" then return val == nil or (istab and val.Type == 0) end
-	if s == "str" or s == "text" then
-		if typeof(val) ~= "buffer" then return true end
-		return buffer.len(val) == 0
-	end
-	return false
-end
-
--- a number or an integer as the other domain, so a default spelled in one
--- compares with a value held in the other (schema_save.luau's as_number)
-local function as_number(x: any): any
-	if typeof(x) == "integer" then return integer.tonumber(x) end
-	return x
-end
-
--- an integer at its default, in either domain or as a 128-bit { lo, hi }:
--- the writer's own comparison (schema_save.luau's same_int)
-local function same_int(a: any, b: any): boolean
-	if typeof(a) == "table" or typeof(b) == "table" then
-		local alo = typeof(a) == "table" and a.lo or 0i
-		local ahi = typeof(a) == "table" and a.hi or 0i
-		local blo = typeof(b) == "table" and b.lo or 0i
-		local bhi = typeof(b) == "table" and b.hi or 0i
-		return alo == blo and ahi == bhi
-	end
-	if typeof(a) == typeof(b) then return a == b end
-	return as_number(a) == as_number(b)
-end
-
--- whether the float payload at `at` is the default's own bit pattern: kind 10
--- the float32 narrowing, kind 11 the float64 (schema_save.luau's same_float)
-local floatScratch = buffer.create(8)
-local function wire_float_is(b: buffer, at: number, e: number, kind: number, def: any): boolean
-	def = as_number(def)
-	if typeof(def) ~= "number" then return false end
-	if kind == 10 then
-		if at + 4 > e then return false end
-		buffer.writef32(floatScratch, 0, def)
-		return buffer.readu32(b, at) == buffer.readu32(floatScratch, 0)
-	end
-	if kind == 11 then
-		if at + 8 > e then return false end
-		buffer.writef64(floatScratch, 0, def)
-		return buffer.readu32(b, at) == buffer.readu32(floatScratch, 0)
-			and buffer.readu32(b, at + 4) == buffer.readu32(floatScratch, 4)
-	end
-	return false
-end
-
-local field_at_default: any
-
--- b, ps and e are the field's payload on the wire: where the read value
--- cannot say what the writer compared (a float's bits, an enum's variant),
--- the payload does.
-field_at_default = function(fd: any, v: any, b: buffer, ps: number, e: number)
-	if fd.required == true then return false end
-	if fd.present ~= nil then return false end
-	if v == nil or fd.slot == nil then return false end
-	local s = fd.s
-	local val = v[fd.slot]
-	if s == "ptr" or s == "sblob" or s == "bblob" then return false end
-	if s == "str" or s == "bytes" then return same_bytes(v, fd.slot, fd.def) end
-	if s == "text" then return typeof(val) ~= "buffer" or buffer.len(val) == 0 end
-	if s == "map" then return false end
-	if s == "arr" then
-		if typeof(val) == "buffer" then return false end
-		if fd.array == "keyed" then
-			if val == nil then return true end
-			for i = 1, fd.bound or 0 do if val[i] ~= nil then return false end end
-			return true
-		end
-		if fd.array == "list" then
-			local n = 0
-			if val ~= nil then n = val.n or #val end
-			return n == 0
-		end
-		if fd.array == "counted" then return (v[fd.slot .. "Count"] or 0) == 0 end
-		if fd.e ~= nil and (fd.e.s == "tab" or fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob" or fd.e.s == "map" or fd.e.s == "arr") then return false end
-		for i = 1, fd.bound or 0 do
-			if not elem_default(fd.e, val ~= nil and val[i] or nil) then return false end
-		end
-		return true
-	end
-	if s == "union" then return false end
-	if s == "tab" then return false end
-	if s == "bool" then return (val == true) == (fd.def == true) end
-	-- A FLOAT'S DEFAULT IS A BIT PATTERN (§3.3): the writer elides on the raw
-	-- bits (schema_save.luau's same_float), so -0 and +0 are different
-	-- spellings, and the read compares the bits the wire carries.
-	if s == "float" then return wire_float_is(b, ps, e, fd.k, fd.def or 0) end
-	if s == "int" then return same_int(val, fd.def) end
-	-- AN ENUM'S DEFAULT IS A VARIANT (§2.15): the field is at its default when
-	-- its reference names the default variant, or is None where the default
-	-- is None. A retired or unknown variant names another id and still reads.
-	if s == "enum" then
-		local er = new_reader(b, ps, e)
-		local ref = r_leb(er)
-		if er.bad then return false end
-		local def = as_number(fd.def or 0)
-		if ref == 0 then return def == 0 end
-		if def == 0 or fd.vs == nil or fd.vs[def] == nil or ref > #_table then return false end
-		return _table[ref] == fd.vs[def][2]
-	end
-	return false
-end
-
 read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	local byId = fields_by_id(desc)
-	local pos = field_positions(desc)
 	local seen: { [integer]: boolean } = {}
-	local lastPos = 0
 	local afterNode = false
 	for _ = 1, math.huge do
 		local refAt = r.at
@@ -1892,14 +1724,6 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 		if fd ~= nil then
 			_ownerName = desc.name
 			_fieldName = fd.name
-			-- A BODY'S FIELDS FOLLOW THE WRITER'S DECLARATION ORDER (§3):
-			-- a field after one that comes later in the declaration is a
-			-- spelling no conforming writer emits.
-			local p = pos[id]
-			if p ~= nil then
-				if p <= lastPos then _report.malformed = true; noteField("malformed", fd.name); return false end
-				lastPos = p
-			end
 		end
 		if fd == nil then
 			_report.unknown = _report.unknown + 1; noteField("unknown", idName(id))
@@ -1925,13 +1749,8 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 				note_payload(r.b, payloadAt, r.at, kind, 1)
 			end
 		else
-			_unionField = if fd.s == "union" then fd else nil
-			local ok, selected = read_field(fd, r, v, true)
-			_unionField = nil
+			local ok, selected = read_field(fd, r, v)
 			if not ok then return false end
-			if selected ~= false and field_at_default(fd, v, r.b, payloadAt, r.e) then
-				_report.malformed = true; noteField("malformed", fd.name); return false
-			end
 			seen[id] = true
 			-- ?T: a field that rode is present (§2.3) — EXCEPT an optional
 			-- array whose body carries a FOREIGN ELEMENT KIND: the array is not
@@ -2143,11 +1962,6 @@ local NAMES: { [string]: string } = {
 	duplicate = "malformed",
 }
 
--- a report at rest, in schema_load.luau's shape (docs/SPEC-TABLES.md §4)
-local function fresh(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0, blobShared = 0 }
-end
-
 local function moved(report: any, k: string): boolean
 	if k == "malformed" then return report.malformed == true end
 	return report[k] > 0
@@ -2202,17 +2016,6 @@ local function leb(b: buffer, at: number, e: number): (number?, number)
 		s = s + 7
 	end
 	return nil, at
-end
-
-local function lebBytes(n: number): string
-	local out = {}
-	repeat
-		local x = n % 0x80
-		n = (n - x) / 0x80
-		if n > 0 then x = x + 0x80 end
-		out[#out + 1] = string.char(x)
-	until n == 0
-	return table.concat(out)
 end
 
 -- the end of one payload of `kind` at `at`, or nil when it does not fit: the

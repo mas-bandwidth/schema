@@ -99,6 +99,10 @@ struct TableDesc {
     id: u64,                  // FNV-1a 64 of its wire name (§3.1)
     table: bool,
     fixed: bool,
+    // a declared fixed table this build emits no <T>FixedLoad for: past the
+    // record ceiling it has no file form (docs/SPEC-TABLES.md §1, §3.4), so
+    // every file read at it refuses form 1 as previous_form
+    no_file_form: bool,
     variable: bool,
     json_array: bool,
     integrity: bool,

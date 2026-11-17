@@ -1,0 +1,21 @@
+package finite
+
+// SPEC §4.3: a bare float is finite and rides as its IEEE-754 bit pattern.
+// Finite puts a float64 on a byte boundary and one behind a bool, a float32
+// between them, and a quantized float32 last; Pair holds two float64s back to
+// back. Each position reaches the runtime's own float calls.
+
+type Finite
+{
+    aligned   float64
+    single    float32
+    flag      bool
+    unaligned float64
+    quantized float32 | min = 0, max = 10, resolution = 0.01
+}
+
+type Pair
+{
+    first  float64
+    second float64
+}

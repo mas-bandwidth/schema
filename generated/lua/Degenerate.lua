@@ -507,7 +507,8 @@ end
 -- type SpanChunk (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSpanChunk(stream, v)
   for _i = 1, 4 do
-    if math.type(v.Values[_i]) ~= "integer" then return false end
+    -- the declared width (SPEC §5.1 row 11)
+    if math.type(v.Values[_i]) ~= "integer" or v.Values[_i] < 0 or v.Values[_i] > 65535 then return false end
     if not stream:serializeBits({ value = v.Values[_i] }, 16) then return false end -- the storage width
   end
   return true
@@ -518,7 +519,8 @@ function _M.WriteSpanTail(stream, v)
   for _i = 1, 2 do
     if not stream:serializeDouble({ value = v.Values[_i] }) then return false end
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  -- the declared width (SPEC §5.1 row 11)
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 4294967295 then return false end
   if not stream:serializeBits({ value = v.Tail }, 32) then return false end -- the storage width
   return true
 end

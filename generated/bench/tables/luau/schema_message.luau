@@ -119,14 +119,45 @@ local function floatStep(r: any, st: any, kind: number, fd: any): boolean
 		finite = bit32.band(hi, 0x7FF00000) ~= 0x7FF00000
 	end
 	if not finite and st.nonFinite == nil then
-		st.nonFinite = (st.owner or "?") .. "." .. (fd.name or "?")
+		st.nonFinite = (st.owner or "?") .. "." .. (if fd ~= nil then fd.name or "?" else "?")
 	end
 	return true
 end
 
 -- whether a shape is a plain float the walk must test: kind 10 unpacked, or 11
-local function plainFloat(shape: any, fd: any): boolean
-	return fd ~= nil and fd.s == "float" and ((shape.kind == 10 and shape.packing == 0) or shape.kind == 11)
+local function plainFloat(shape: any): boolean
+	return (shape.kind == 10 and shape.packing == 0) or shape.kind == 11
+end
+
+-- A SKIPPED STRING'S BYTES ARE TEXT (docs/SPEC-TABLES.md §3, §4): a string
+-- the walk does not keep is held to what a read of it holds — well-formed
+-- UTF-8 with no zero byte — exactly as schema_load.luau's utf8_ok holds a
+-- named field's bytes.
+local function textOk(b: buffer, at: number, n: number): boolean
+	local i = at
+	local e = at + n
+	while i < e do
+		local b0 = buffer.readu8(b, i)
+		if b0 == 0 then return false end
+		if b0 < 0x80 then i = i + 1
+		else
+			local need, cp
+			if b0 >= 0xC2 and b0 <= 0xDF then need, cp = 1, b0 - 0xC0
+			elseif b0 >= 0xE0 and b0 <= 0xEF then need, cp = 2, b0 - 0xE0
+			elseif b0 >= 0xF0 and b0 <= 0xF4 then need, cp = 3, b0 - 0xF0
+			else return false end
+			if i + need >= e then return false end
+			for k = 1, need do
+				local x = buffer.readu8(b, i + k)
+				if x < 0x80 or x > 0xBF then return false end
+				cp = cp * 64 + (x - 0x80)
+			end
+			local min = need == 1 and 0x80 or (need == 2 and 0x800 or 0x10000)
+			if cp < min or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF) then return false end
+			i = i + 1 + need
+		end
+	end
+	return true
 end
 
 -- put writes a reference back at a bit offset already read: only a deprecated
@@ -204,6 +235,24 @@ local function kindBits(k: number): number
 end
 
 
+-- bitsLen32 is bits.Len32: the bits a step count's largest index needs.
+local function bitsLen32(n: number): number
+	local b = 0
+	while n > 0 do
+		b = b + 1
+		n = math.floor(n / 2)
+	end
+	return b
+end
+
+-- asF32 rounds one arithmetic result to float32, which is the precision the
+-- announced quantized triple is derived in (ir.TableMessageQuantization).
+local f32scratch = buffer.create(4)
+local function asF32(x: number): number
+	buffer.writef32(f32scratch, 0, x)
+	return buffer.readf32(f32scratch, 0)
+end
+
 local function newShape(): any
 	return { kind = 0, packing = 0, bits = 0, min = 0, max = 0, elem = 0, inner = nil }
 end
@@ -230,7 +279,23 @@ local function shapeRead(r: any, k: number): any
 			return s
 		elseif packing == 2 and k == 10 then
 			if r.at + 12 > r.e then r.bad = true; return s end
+			local qmin = buffer.readf32(r.b, r.at)
+			local qmax = buffer.readf32(r.b, r.at + 4)
+			local qres = buffer.readf32(r.b, r.at + 8)
 			r.at = r.at + 12
+			-- the triple's derivation is ir.TableMessageQuantization's, in
+			-- float32: the step count and therefore the index width
+			if not (qmin < qmax) or not (qres > 0) then r.bad = true; return s end
+			local delta = asF32(qmax - qmin)
+			local values = asF32(delta / qres)
+			if delta - delta ~= 0 or values - values ~= 0 then r.bad = true; return s end
+			if not (values >= 1) then values = 1
+			elseif values > 4294967040 then values = 4294967040 end
+			s.qmin = qmin
+			s.qmax = qmax
+			s.qres = qres
+			s.count = math.ceil(values)
+			s.bits = bitsLen32(s.count)
 			return s
 		else
 			r.bad = true
@@ -465,22 +530,54 @@ local function countOf(r: any, s: any): (number, boolean)
 	return raw + s.min, true
 end
 
+-- a field's index in its record's declaration order
+local fieldIndexMaps = setmetatable({}, { __mode = "k" })
+local function fieldIndex(desc: any, id: integer): number?
+	local m = fieldIndexMaps[desc]
+	if m == nil then
+		m = {}
+		for i, f in desc.fields do m[f.id] = i end
+		fieldIndexMaps[desc] = m
+	end
+	return m[id]
+end
+
+local messageFieldDefault: any
+
 skipBody = function(r: any, st: any, desc: any, dep: any): boolean
-	-- A BODY HAS ONE ENCODING FOR ITS VALUE (§3.3): its field references follow
-	-- the announcement's declaration order. A body that ends at once is the
-	-- value with every field at its default, which is lawful (§4).
-	local lastRef = 0
+	-- AN ID TWICE IN ONE BODY IS DAMAGE, whether this reader can name it or
+	-- not (docs/SPEC-TABLES.md §3.1, §3.3).
+	local seen: { [integer]: boolean } = {}
+	-- THE ORDER IS THE SENDER'S DECLARATION ORDER (§3.3 (b)). Under this
+	-- reader's own build version (st.same) that is this record's declaration
+	-- order, and every field the sender's record declares is one this record
+	-- declares: a field out of that order, or one this record cannot name, is
+	-- refused. Under another build version neither is judged (§4).
+	local ordered = st.same == true and desc ~= nil and desc.fields ~= nil
+	local last = 0
 	while true do
 		local ref, ok = get(r, st.refBits)
-		if not ok then return false end
+			if not ok then return false end
 		if ref == 0 then return true end
-		if ref <= lastRef then return false end
-		lastRef = ref
 		local e = entryOf(st.v, ref)
-		if e == nil or reserved(e.id) then return false end
+		if e == nil or reserved(e.id) or seen[e.id] then return false end
+		seen[e.id] = true
 		if dep ~= nil and desc ~= nil then dep.table = desc.name end
 		if desc ~= nil then st.owner = desc.name end
-		if not skipShape(r, st, e, fieldById(desc, e.id), dep, true) then return false end
+		local fd = fieldById(desc, e.id)
+		if ordered then
+			local i = fieldIndex(desc, e.id)
+			if i == nil or i <= last then return false end
+			last = i
+			-- A FIELD STORED AT THE DEFAULT ITS WRITER ELIDES (§3.3 (a)) is
+			-- refused at this reader's own build version, where the sender's
+			-- default is this reader's: the payload is peeked, not consumed.
+			local at = r.off
+			local def = messageFieldDefault(fd, r, e, st)
+			r.off = at
+			if def then return false end
+		end
+		if not skipShape(r, st, e, fd, dep, true) then return false end
 	end
 end
 
@@ -511,21 +608,35 @@ local function defaultWords(def: any, w: number): { number }?
 	return words
 end
 
--- A FIELD AT THE DEFAULT ITS WRITER ELIDES (§3.3 (a)): the reader peeks the
--- announced payload without consuming it, and a field the writer would have
--- left out refuses the batch. Every lawful writer's default for a field this
--- reader names is the reader's own (a changed default is refused by the
--- lineage check, docs/VERSIONING.md), so the writer's build version does not
--- enter: an empty string, bytes or counted array (every writer elides a zero
--- count); a bool, an unpacked integer of any width, or a fixed-point raw at the
--- default's own bits; a plain float at the default's own bit pattern; an enum
--- naming the default variant, or None where the default is None. A packed
--- integer and a compressed float carry an offset this walk does not hold, and
--- read as before.
-local function messageFieldDefault(fd: any, r: any, e: any, st: any): boolean
+-- messageFieldDefault is the message writer's elision rule read off the bits
+-- (docs/SPEC-TABLES.md §3.3 (a), tablewire's messageElides): whether a field,
+-- neither required nor optional, holds what its writer leaves out. A string or
+-- bytes at the default's own bytes; a counted array or an enum-keyed array of
+-- no element; a nested body that is its terminator alone; a bool, an unpacked
+-- integer of any width, or a fixed-point raw at the default's own bits; a
+-- plain float at the default's own bit pattern; an enum naming the default
+-- variant, or None where the default is None. A union's None is refused where
+-- it is read (skipShape). A packed integer, a compressed float and a fixed
+-- array are not judged here and read as before.
+messageFieldDefault = function(fd: any, r: any, e: any, st: any): boolean
 	if fd == nil or fd.required == true or fd.present ~= nil then return false end
 	local k = e.shape.kind
-	if k == 12 or k == 14 then
+	if k == 12 then
+		local def = fd.def or ""
+		if typeof(def) ~= "string" then return false end
+		local n, ok = countOf(r, e.shape)
+		if not ok or n ~= #def then return false end
+		if n == 0 then return true end
+		if not align(r) or r.off + n * 8 > r.n then return false end
+		return buffer.readstring(r.b, math.floor(r.off / 8), n) == def
+	end
+	if k == 13 then
+		if fd.s ~= "tab" then return false end
+		local ref, ok = get(r, st.refBits)
+		return ok and ref == 0
+	end
+	if k == 14 or k == 16 then
+		if k == 14 and e.shape.min == e.shape.max then return false end
 		local n, ok = countOf(r, e.shape)
 		return ok and n == 0
 	end
@@ -579,11 +690,13 @@ end
 skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boolean?): boolean
 	local k = e.shape.kind
 	if k == 0 or k == 32 then return true end
-	if fieldEntry == true and fd ~= nil then
-		local at = r.off
-		local def = messageFieldDefault(fd, r, e, st)
-		r.off = at
-		if def then return false end
+	if plainFloat(e.shape) then return floatStep(r, st, k, fd) end
+	if k == 10 and e.shape.packing == 2 then
+		-- A QUANTIZED FLOAT RIDES ITS STEP INDEX, and an index above the
+		-- announced count is damage (docs/SPEC-TABLES.md §3.3).
+		local idx, ok = get(r, e.shape.bits)
+		if not ok then return false end
+		return idx <= (e.shape.count or 0)
 	end
 	if k == 30 then
 		local at = r.off
@@ -622,10 +735,11 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		local ref, ok = get(r, st.refBits)
 		if not ok then return false end
 		if ref == 0 then
-			-- A UNION FIELD WRITTEN WITH THE NONE REFERENCE IS NOT THE ONE
-			-- ENCODING (§3.3 (c)): a conforming writer elides it. An element
-			-- or a nested arm keeps its positional None.
-			if fieldEntry == true then return false end
+			-- A UNION FIELD WRITTEN WITH ARM REFERENCE 0 IS REFUSED at every
+			-- build version (§3.3 (c)): a conforming writer elides a None
+			-- field, one this reader cannot name included. An array element's
+			-- or a nested arm's None is positional and stays lawful.
+			if fieldEntry == true and not (fd ~= nil and fd.required == true) then return false end
 			return true
 		end
 		local arm = entryOf(st.v, ref)
@@ -640,12 +754,18 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		return skipShape(r, st, arm, armFd, dep)
 	elseif k == 12 then
 		local n, ok = countOf(r, e.shape)
-		if not ok then return false end
-		if k == 12 and not align(r) then return false end
-		return skip(r, n * (if k == 12 then 8 else 16))
+		if not ok or not align(r) then return false end
+		if r.off + n * 8 > r.n then return false end
+		-- SKIPPED IS NOT UNREAD: a string's bytes are held to what a read of
+		-- them holds (docs/SPEC-TABLES.md §3, §4).
+		if not textOk(r.b, math.floor(r.off / 8), n) then return false end
+		return skip(r, n * 8)
 	elseif k == 14 or k == 16 then
 		local n, ok = countOf(r, e.shape)
 		if not ok then return false end
+		-- THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above
+		-- the announced maximum is damage here as it is at a named field.
+		if n > e.shape.max then return false end
 		local ef = nil
 		if fd ~= nil then
 			if fd.e ~= nil then ef = named(fd.e, fd.name)
@@ -664,11 +784,16 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 			return r.off ~= before
 		end
 		if k == 16 then
+			local seen: { [integer]: boolean } = {}
 			for _ = 1, n do
 				local key, kok = get(r, st.refBits)
 				if not kok then return false end
 				local ken = entryOf(st.v, key)
 				if ken == nil or reserved(ken.id) or ken.shape.kind ~= 0 then return false end
+				-- A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE, a key this reader
+				-- cannot name included (docs/SPEC-TABLES.md §3.2, §3.3).
+				if seen[ken.id] then return false end
+				seen[ken.id] = true
 				-- A KEYED ARRAY's key is a slot, not a caller value: the key
 				-- may name a retired variant and the element is what is read
 				-- and written (Go's variantWireId key=true, §2.15).
@@ -681,13 +806,15 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 			return true
 		end
 		if e.shape.elem == 6 and not align(r) then return false end
-		if plainFloat(element, ef) then
+		if plainFloat(element) then
 			for _ = 1, n do
 				if not floatStep(r, st, ik, ef) then return false end
 			end
 			return true
 		end
-		if not variable then
+		-- kind 10 is also the quantized float, whose index is checked, so it
+		-- is walked element by element rather than skipped as a run.
+		if ik ~= 10 and not variable then
 			return skip(r, n * element.bits)
 		end
 		for _ = 1, n do
@@ -699,7 +826,6 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		local n, ok = get(r, 32)
 		return ok and skip(r, n * 8)
 	end
-	if plainFloat(e.shape, fd) then return floatStep(r, st, k, fd) end
 	return skip(r, e.shape.bits)
 end
 
@@ -734,7 +860,10 @@ end
 -- a copy, so a clean batch allocates nothing and the caller's buffer is never
 -- changed.
 local function walkBodies(v: any, data: buffer, desc: any, count: number, write: boolean): (number, any, boolean, any, string?)
-	local st: any = { v = v, refBits = v.refBits, owner = nil, nonFinite = nil }
+	-- same: the sender announced this reader's own build version, the one
+	-- place its declaration is the sender's (§3.3 (a), (b))
+	local own = S.buildOf(desc.name)
+	local st: any = { v = v, refBits = v.refBits, owner = nil, nonFinite = nil, same = own ~= nil and own == v.buildVersion }
 	local r = newReader(data, 16)
 	local dep = { write = write, found = false, field = nil, table = nil }
 	local bodies = {}
