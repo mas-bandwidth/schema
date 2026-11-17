@@ -329,7 +329,12 @@ defmodule Bench.FixedRuntime do
   from 'clamps/4' so a float bound reads as a float bound. A NaN or an infinity
   never arrives here: 'f32_value/1' and 'f64_value/1' refuse one on its raw
   bits first, as non_finite_float (docs/SPEC-TABLES.md §3.3), so every value
-  these see is a finite float, and a negative zero is not below a min of +0.
+  these see is a finite float.
+
+  A NEGATIVE ZERO LANDS AS +0, the value 0 itself, inside a range that holds
+  zero (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero):
+  the guard compares by VALUE, because a 0.0 pattern no longer matches a -0 on
+  OTP 27 and later.
 
   Which bound is the reader's own and not the writer's is schema#1164, ruled
   statement B: a compressed float rides AS THE FLOAT in the fixed form, its
@@ -337,6 +342,7 @@ defmodule Bench.FixedRuntime do
   """
   def fclamp(v, lo, _hi) when v < lo, do: lo
   def fclamp(v, _lo, hi) when v > hi, do: hi
+  def fclamp(v, _lo, _hi) when v == 0, do: 0.0
   def fclamp(v, _lo, _hi), do: v
 
   def fclamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1

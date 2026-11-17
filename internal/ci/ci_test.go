@@ -51,6 +51,16 @@ var (
 // conformance row names it rather than restating the version.
 const dotnetPinFile = ".github/dotnet-version"
 
+// The Unity dialect (test/unity/UnityDialect.props): the one property file a
+// library imports to compile generated Unity code, and the framework it must
+// then target.
+const (
+	unityDialectProps = "UnityDialect.props"
+	unityTFM          = "netstandard2.1"
+)
+
+var unityDialect = regexp.MustCompile(`<Import\s+Project="[^"]*/UnityDialect\.props"\s*/>`)
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs("../..")
@@ -190,6 +200,17 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 			return nil
 		}
 		projects++
+		// A library compiled in the Unity dialect targets the surface Unity
+		// exposes, netstandard2.1, not the SDK pin (docs/UNITY.md); the pinned
+		// SDK builds it, and its .NET host beside it targets the pin.
+		if unityDialect.MatchString(string(src)) {
+			for _, m := range found {
+				if got := strings.TrimSpace(m[1]); got != unityTFM {
+					t.Errorf("%s imports %s and targets %s: a Unity dialect library targets %s", rel, unityDialectProps, got, unityTFM)
+				}
+			}
+			return nil
+		}
 		for _, m := range found {
 			if got := strings.TrimSpace(m[1]); got != want {
 				t.Errorf("%s targets %s while %s pins %s: certification would run on an SDK no workflow installs (issue #470)", rel, got, dotnetPinFile, pin)
@@ -1138,7 +1159,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1219,7 +1240,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1346,6 +1367,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
+		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
@@ -1373,6 +1395,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:pr-select",
 		"ci-full.yml:proof",
 		"ci-full.yml:shape-gate",
+		"ci-full.yml:unity",
 		"ci-full.yml:vuln",
 		"cla.yml:caa",
 		"leg.yml:leg-matrix",
@@ -1384,6 +1407,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
 		"promotion-tag.yml:tag",
+		"python-leg.yml:plan",
 		"python-leg.yml:test",
 		"release.yml:release",
 		"roadmap.yml:page",

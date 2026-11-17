@@ -1304,6 +1304,7 @@ function _M.WriteProbeSample(stream: any, v: any): boolean
   if type(v.Active) ~= "boolean" then return false end
   BOOL.value = v.Active
   if not stream:serializeBool(BOOL) then return false end -- SPEC §4.3
+  if v.Orientation ~= v.Orientation or v.Orientation < -180.0 or v.Orientation > 180.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end -- the step index (SPEC §4.3)
   if type(v.RawDelta) ~= "number" or v.RawDelta % 1 ~= 0 or v.RawDelta < -2147483648 or v.RawDelta > 2147483647 then return false end
   BITS.value = v.RawDelta % 4294967296
@@ -1503,6 +1504,8 @@ _M.ChatMaxBytes = 264
 function _M.WriteChat(stream: any, v: any): boolean
   if type(v.TextLength) ~= "number" or v.TextLength % 1 ~= 0 or v.TextLength < 0 or v.TextLength > 256 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.Text) ~= "buffer" or buffer.len(v.Text) < v.TextLength then return false end
+  if not utf8valid(v.Text, v.TextLength) then return false end -- malformed UTF-8 (SPEC §4.7)
+  for k = 0, v.TextLength - 1 do if buffer.readu8(v.Text, k) == 0 then return false end end -- interior null (SPEC §4.7)
   BITS.value = v.TextLength
   if not stream:serializeBits(BITS, 9) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.Text, 0, v.TextLength))) then return false end -- align, then the used bytes (SPEC §4.7)
@@ -1563,6 +1566,7 @@ function _M.WriteTestData(stream: any, v: any): boolean
     if not stream:serializeBits(BITS, 8) then return false end -- the offset from min (SPEC §4.3)
   end
   if not stream:serializeFloat({ value = v.FloatValue }) then return false end
+  if v.CompressedFloatValue ~= v.CompressedFloatValue or v.CompressedFloatValue < 0.0 or v.CompressedFloatValue > 10.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
   if type(v.Int8Value) ~= "number" or v.Int8Value % 1 ~= 0 or v.Int8Value < -128 or v.Int8Value > 127 then return false end
@@ -1594,6 +1598,8 @@ function _M.WriteTestData(stream: any, v: any): boolean
   if not stream:serializeBytes(v.FixedBytes) then return false end -- [N]uint8 on a byte boundary: one bulk copy
   if type(v.TextLength) ~= "number" or v.TextLength % 1 ~= 0 or v.TextLength < 0 or v.TextLength > 255 then return false end -- the length guards the copy (SPEC §6.3)
   if type(v.Text) ~= "buffer" or buffer.len(v.Text) < v.TextLength then return false end
+  if not utf8valid(v.Text, v.TextLength) then return false end -- malformed UTF-8 (SPEC §4.7)
+  for k = 0, v.TextLength - 1 do if buffer.readu8(v.Text, k) == 0 then return false end end -- interior null (SPEC §4.7)
   BITS.value = v.TextLength
   if not stream:serializeBits(BITS, 8) then return false end -- the length
   if not stream:serializeBytes(buffer.fromstring(buffer.readstring(v.Text, 0, v.TextLength))) then return false end -- align, then the used bytes (SPEC §4.7)
@@ -1608,7 +1614,9 @@ _M.CompressedProbeMaxBytes = 8
 -- WriteCompressedProbe writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteCompressedProbe(stream: any, v: any): boolean
+  if v.Boundary ~= v.Boundary or v.Boundary < 0.0 or v.Boundary > 10.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Boundary }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  if v.Offset ~= v.Offset or v.Offset < -5.0 or v.Offset > 5.0 then return false end
   if not stream:serializeCompressedFloat({ value = v.Offset }, -5.0, 5.0, 0.001) then return false end -- the step index (SPEC §4.3)
   return true
 end

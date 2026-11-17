@@ -1,22 +1,29 @@
 package goosetable
 
 // THE NON-CANONICAL SPELLING VECTORS ON THE GOOSE LEG (docs/SPEC-TABLES.md §3,
-// §3.1, §3.3, §4; docs/rulings.json reads-refuse-non-canonical): every read of
-// the variable form (form 1) and of the message form (form 2) refuses a file
-// or batch that decodes to a good value but that no conforming writer of a
-// lawful lineage version would produce.
+// §3.1, §3.3, §4; docs/rulings.json reads-refuse-non-canonical). The variable
+// form (form 1) refuses the spellings it can observe on its own: an id-table
+// entry that is unused or out of first-use order, an empty node table, and a
+// node table that is not the root body's last field. A field at its default,
+// an explicit null pointer, union arm 0 and fields out of order carry no
+// writer build, so they read and re-save in the current writer's spelling.
+// The message form (form 2) refuses a field at its default and fields out of
+// the declaration order under the reader's own build version, and a union
+// field written with arm reference 0 at every build.
 //
 // Each row of testdata/wire/non-canonical/MANIFEST.tsv is generated for its
 // unit and run through every read entry Goose has for that form: plain load
 // (load_table) and retaining load (load_table_retain) for variable form, batch
 // load (<Root>LoadMessages) for message form, and both announce_read and
-// announce_once for an announcement. Canonical rows read and re-save to the
-// exact input bytes; every other row is refused. Goose has no LoadMeasure for
-// form 1 (widening_test.go). The verdict is the contract
-// (docs/rulings.json refusal-verdict-only), so no assertion compares a reason.
+// announce_once for an announcement. A read row re-saves to its canonical
+// bytes (the vector, or the rewrite the manifest pins under canonical/); every
+// other row is refused. Goose has no LoadMeasure for form 1
+// (widening_test.go). The verdict is the contract (docs/rulings.json
+// refusal-verdict-only), so no assertion compares a reason.
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -103,6 +110,25 @@ func readGooseNonCanonicalManifest(t *testing.T) []gooseNonCanonicalRow {
 		t.Fatalf("%s names no vector rows", manifestPath)
 	}
 	return rows
+}
+
+// gooseNonCanonicalExpected is the file a variable read row re-saves to: the
+// rewrite the manifest pins under canonical/ for a lawful spelling no writer
+// produces, the canonical vector for fields out of order, else the row itself.
+func gooseNonCanonicalExpected(t *testing.T, vectorDir string, row gooseNonCanonicalRow) []byte {
+	t.Helper()
+	path := filepath.Join(vectorDir, filepath.FromSlash(row.file))
+	rewrite := filepath.Join(vectorDir, "canonical", filepath.Base(row.file))
+	if _, err := os.Stat(rewrite); err == nil {
+		path = rewrite
+	} else if row.file == "variable-fields-out-of-order.bin" {
+		path = filepath.Join(vectorDir, "variable-canonical.bin")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func TestGooseReadsRefuseNonCanonical(t *testing.T) {
@@ -272,7 +298,11 @@ fn main() {
 				t.Fatal(err)
 			}
 			inputs[inName] = raw
-			wantHex := strings.ToLower(hex.EncodeToString(raw))
+			want := raw
+			if row.form == "variable" && row.verdict == "read" {
+				want = gooseNonCanonicalExpected(t, vectorDir, row)
+			}
+			wantHex := strings.ToLower(hex.EncodeToString(want))
 			reached[row.file] = true
 			switch row.form {
 			case "variable":
@@ -391,6 +421,7 @@ fixed table MsgRoot {
     fxs [2]Sub
     opt ?int32
     w   int32
+    dtx string(4) = "hi"
 }
 `
 
@@ -497,13 +528,24 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 		cases = append(cases, shapeCase{name: name, form: "var", verdict: verdict, wire: wire})
 	}
 
-	// Form 1 non-canonical spellings isolated per field shape, plus §4 positive controls.
+	// Form 1, per field shape: a field at its default, an explicit null, an
+	// empty collection and slots out of order carry no writer build, so they
+	// read (docs/rulings.json reads-refuse-non-canonical, the 2026-11-15
+	// correction); an empty node table is refused. Plus §4 positive controls.
 	addVar("var-live-node-canonical", "read", buildVar(func(ref func(string) []byte, refID func(uint64) []byte) ([]byte, []byte) {
 		body := join(ref("a"), []byte{byte(ir.TableKindPointer), 2})
 		refID(ir.TableNodeWireId)
 		return body, liveNode(ref)
 	}))
-	addVar("var-explicit-null-with-live-node", "refused", buildVar(func(ref func(string) []byte, refID func(uint64) []byte) ([]byte, []byte) {
+	// The node table first, with the id table in the first-use order of that
+	// body, so its place is the one thing wrong (§3.1).
+	addVar("var-node-table-first", "refused", buildVar(func(ref func(string) []byte, refID func(uint64) []byte) ([]byte, []byte) {
+		nodeRef := refID(ir.TableNodeWireId)
+		aRef := ref("a")
+		nodes := framed(liveNode(ref))
+		return join(nodeRef, []byte{byte(ir.TableKindString)}, nodes, aRef, []byte{byte(ir.TableKindPointer), 2}), nil
+	}))
+	addVar("var-explicit-null-with-live-node", "read", buildVar(func(ref func(string) []byte, refID func(uint64) []byte) ([]byte, []byte) {
 		body := join(ref("a"), []byte{byte(ir.TableKindPointer), 2}, ref("b"), []byte{byte(ir.TableKindPointer), 0})
 		refID(ir.TableNodeWireId)
 		return body, liveNode(ref)
@@ -512,22 +554,22 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 		refID(ir.TableNodeWireId)
 		return nil, []byte{0}
 	}))
-	addVar("var-string-at-default", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-string-at-default", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("txt"), []byte{byte(ir.TableKindString)}, framed([]byte("hi"))), nil
 	}))
-	addVar("var-bytes-at-default", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-bytes-at-default", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("raw"), []byte{byte(ir.TableKindArray)}, framed([]byte{byte(ir.TableKindU8), 0})), nil
 	}))
-	addVar("var-enum-none-at-default", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-enum-none-at-default", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("m1"), []byte{byte(ir.TableKindEnum), 0}), nil
 	}))
-	addVar("var-enum-named-at-default", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-enum-named-at-default", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("m2"), []byte{byte(ir.TableKindEnum)}, ref("beta")), nil
 	}))
 	addVar("var-deprecated-enum-variant", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("m2"), []byte{byte(ir.TableKindEnum)}, ref("retired")), nil
 	}))
-	addVar("var-empty-nested-body", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-empty-nested-body", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("sub"), []byte{byte(ir.TableKindTable), 1, 0}), nil
 	}))
 	addVar("var-unknown-field-on-nested", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
@@ -535,35 +577,35 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 		inner := join(ref("future_field"), []byte{byte(ir.TableKindI32)}, i32(9), []byte{0})
 		return join(fut, framed(inner)), nil
 	}))
-	addVar("var-empty-counted-array", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-empty-counted-array", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("cnt"), []byte{byte(ir.TableKindArray)}, framed([]byte{byte(ir.TableKindI32), 0})), nil
 	}))
-	addVar("var-empty-list", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-empty-list", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("lst"), []byte{byte(ir.TableKindArray)}, framed([]byte{byte(ir.TableKindI32), 0})), nil
 	}))
-	addVar("var-empty-map", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-empty-map", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("mp"), []byte{byte(ir.TableKindArray)}, framed([]byte{byte(ir.TableKindTable), 0})), nil
 	}))
-	addVar("var-empty-keyed", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-empty-keyed", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("kd"), []byte{byte(ir.TableKindKeyed)}, framed([]byte{byte(ir.TableKindI32), 0})), nil
 	}))
-	addVar("var-keyed-out-of-order", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-keyed-out-of-order", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		hdr := join(ref("kd"), []byte{byte(ir.TableKindKeyed)})
 		pay := join([]byte{byte(ir.TableKindI32), 2}, ref("ky"), framed(i32(1)), ref("kx"), framed(i32(2)))
 		return join(hdr, framed(pay)), nil
 	}))
-	addVar("var-keyed-slot-at-default", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-keyed-slot-at-default", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		hdr := join(ref("kd"), []byte{byte(ir.TableKindKeyed)})
 		pay := join([]byte{byte(ir.TableKindI32), 1}, ref("kx"), framed(i32(0)))
 		return join(hdr, framed(pay)), nil
 	}))
-	addVar("var-all-default-fixed-scalars", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-all-default-fixed-scalars", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("fxi"), []byte{byte(ir.TableKindArray)}, framed(join([]byte{byte(ir.TableKindI32), 2}, i32(0), i32(0)))), nil
 	}))
-	addVar("var-all-default-fixed-enums", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-all-default-fixed-enums", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("fxe"), []byte{byte(ir.TableKindArray)}, framed([]byte{byte(ir.TableKindEnum), 2, 0, 0})), nil
 	}))
-	addVar("var-all-default-fixed-unions", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-all-default-fixed-unions", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("fxu"), []byte{byte(ir.TableKindArray)}, framed([]byte{byte(ir.TableKindUnion), 2, 0, 0})), nil
 	}))
 	addVar("var-fixed-union-with-none-elem", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
@@ -580,7 +622,7 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 	addVar("var-widened-non-default", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("w"), []byte{byte(ir.TableKindI8), 5}), nil
 	}))
-	addVar("var-widened-at-default", "refused", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
+	addVar("var-widened-at-default", "read", buildVar(func(ref func(string) []byte, _ func(uint64) []byte) ([]byte, []byte) {
 		return join(ref("w"), []byte{byte(ir.TableKindI8), 0}), nil
 	}))
 
@@ -689,6 +731,7 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 	fxsSlot, _ := slotField(u, vocab, "MsgRoot", "fxs")
 	optSlot, _ := slotField(u, vocab, "MsgRoot", "opt")
 	wSlot, _ := slotField(u, vocab, "MsgRoot", "w")
+	dtxSlot, dtxEnt := slotField(u, vocab, "MsgRoot", "dtx")
 	_ = slotName("alpha")
 	betaSlot := slotName("beta")
 	kxSlot := slotName("kx")
@@ -722,12 +765,16 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 		put(subSlot, refBits)
 		put(0, refBits)
 	}))
-	addMsg("msg-unknown-field-on-nested", "read", packMsg(func(put func(uint64, int), _ func()) {
+	// A field the record does not declare: refused under the reader's own
+	// build version (§3.3(b)), unknown and skipped under another (§4).
+	undeclared := packMsg(func(put func(uint64, int), _ func()) {
 		put(subSlot, refBits)
 		put(wSlot, refBits)
 		put(9, 32)
 		put(0, refBits)
-	}))
+	})
+	addMsg("msg-unknown-field-on-nested", "refused", undeclared)
+	cases = append(cases, shapeCase{name: "msg-unknown-field-on-nested-other-build", form: "msg-other", verdict: "read", wire: undeclared})
 	addMsg("msg-empty-counted-array", "refused", packMsg(func(put func(uint64, int), _ func()) {
 		put(cntSlot, refBits)
 		put(0, ir.TableMessageCountBits(cntEnt.Shape))
@@ -775,6 +822,20 @@ func testGooseNonCanonicalShapes(t *testing.T) {
 		put(fxsSlot, refBits)
 		put(0, refBits)
 		put(0, refBits)
+	}))
+	// A text field whose default is not empty is at its default only when its
+	// length AND bytes are the default's; the empty text rides and reads.
+	addMsg("msg-text-at-nonempty-default", "refused", packMsg(func(put func(uint64, int), align func()) {
+		put(dtxSlot, refBits)
+		put(2, ir.TableMessageBitsRequired(0, dtxEnt.Shape.Max))
+		align()
+		put('h', 8)
+		put('i', 8)
+	}))
+	addMsg("msg-text-empty-under-nonempty-default", "read", packMsg(func(put func(uint64, int), align func()) {
+		put(dtxSlot, refBits)
+		put(0, ir.TableMessageBitsRequired(0, dtxEnt.Shape.Max))
+		align()
 	}))
 	addMsg("msg-optional-at-default", "read", packMsg(func(put func(uint64, int), _ func()) {
 		put(optSlot, refBits)
@@ -860,8 +921,18 @@ fn check_msg(ann_name: const u8[:], name: const u8[:]) {
 fn main() {
 `))
 
+	// The other build's announcement: the same vocabulary under another build
+	// version, the one fact that differs between the two senders.
+	var buildLE [8]byte
+	binary.LittleEndian.PutUint64(buildLE[:], ir.BuildVersion(u))
+	if n := bytes.Count(ann, buildLE[:]); n != 1 {
+		t.Fatalf("the announcement holds the unit's build version %d times, want 1", n)
+	}
+	otherAnn := bytes.Clone(ann)
+	otherAnn[bytes.Index(otherAnn, buildLE[:])] ^= 0x01
 	inputs := map[string][]byte{
 		"ann.bin":       ann,
+		"ann_other.bin": otherAnn,
 		"ann_widen.bin": widenAnn,
 	}
 	for i, c := range cases {
@@ -872,6 +943,8 @@ fn main() {
 			fmt.Fprintf(&b, "    check_var(%q);\n", inName)
 		case "msg":
 			fmt.Fprintf(&b, "    check_msg(\"ann.bin\", %q);\n", inName)
+		case "msg-other":
+			fmt.Fprintf(&b, "    check_msg(\"ann_other.bin\", %q);\n", inName)
 		case "msg-widen":
 			fmt.Fprintf(&b, "    check_msg(\"ann_widen.bin\", %q);\n", inName)
 		}

@@ -387,6 +387,8 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
     }
   }
   assert(value.locked == 196608);
+  assert(value.tail >= 0);
+  assert(value.tail <= 255);
   v = value.tail & 0xff;
   scratch |= v << scratchBits;
   scratchBits += 8;
@@ -1515,6 +1517,8 @@ int writeDegenerateProbe(DegenerateProbe value, ByteData view) {
     const locked = Int128(0xffffffffffffffff, 0xfffff4c58c31d00e);
     assert(value.lockedWide == locked);
   }
+  assert(value.tail >= 0);
+  assert(value.tail <= 255);
   v = value.tail & 0xff;
   scratch |= v << scratchBits;
   scratchBits += 8;

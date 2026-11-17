@@ -6,8 +6,8 @@ package goosetable
 // sender announced this reader's own build version. Under another build
 // version the sender's default and order are not known, so the same bodies
 // read as lawful version evolution. An explicit empty union arm (§3.3(c))
-// refuses whatever the build. The file (variable) form is not gated, and
-// TestGooseReadsRefuseNonCanonical holds it.
+// refuses whatever the build. The file (variable) form judges none of these
+// (TestGooseReadsRefuseNonCanonical holds it).
 
 import (
 	"bytes"
@@ -24,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -65,6 +67,18 @@ func TestGooseMessageCanonicalGateIsTheBuildVersion(t *testing.T) {
 	at := bytes.Index(other, want[:])
 	other[at] ^= 0x01
 	canonical := strings.ToLower(hex.EncodeToString(read("canonical.bin")))
+	// The field-order case holds mode 8 (the vector's README), so under
+	// another build it re-saves to the engine's canonical batch of that value.
+	m := tabletext.NewModel(u)
+	reordered := m.New(m.Lookup("One"))
+	if !m.Read(reordered, []byte(`{"mode": 8, "count": 5}`), &tabletext.Report{}) {
+		t.Fatal("the field-order case's value does not read")
+	}
+	reorderedBatch, err := tablewire.EncodeMessage(m, reordered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reorderedCanonical := strings.ToLower(hex.EncodeToString(reorderedBatch))
 
 	cases := []struct {
 		file             string
@@ -72,7 +86,7 @@ func TestGooseMessageCanonicalGateIsTheBuildVersion(t *testing.T) {
 	}{
 		{"canonical.bin", canonical, canonical},
 		{"explicit-default.bin", "refused", canonical},
-		{"fields-reordered.bin", "refused", canonical},
+		{"fields-reordered.bin", "refused", reorderedCanonical},
 		{"union-none.bin", "refused", "refused"},
 	}
 

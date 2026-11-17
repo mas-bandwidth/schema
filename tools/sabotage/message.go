@@ -13,8 +13,8 @@ func init() {
 // countOverBoundClamps takes the strict read's count_over_bound refusal out of
 // the message array read and clamps to the bound in its place.
 var countOverBoundClamps = []edit{{
-	old: "\tif kept > bound {\n\t\td.refuse(ReasonCountOverBound)\n\t\treturn false\n\t}\n",
-	new: "\tif kept > bound {\n\t\tkept = bound // SABOTAGED: an over-long array clamps to the bound\n\t}\n",
+	old: "\tif kept > bound || (f.Array == ir.ArrayCounted && n < uint64(f.ArrayMin)) {\n\t\td.refuse(ReasonCountOverBound)\n\t\treturn false\n\t}\n",
+	new: "\tif kept > bound {\n\t\tkept = bound // SABOTAGED: an over-long array clamps to the bound\n\t} else if f.Array == ir.ArrayCounted && n < uint64(f.ArrayMin) {\n\t\td.refuse(ReasonCountOverBound)\n\t\treturn false\n\t}\n",
 }}
 
 var messageSabotages = map[string][]edit{
@@ -137,8 +137,8 @@ var messageSabotages = map[string][]edit{
 	// THE VOCABULARY IS PER CONNECTION AND PER DIRECTION: a reader that
 	// resolves against its own unit's is wrong whenever the peers differ.
 	"message-reads-own-vocabulary": {{
-		old: "\t\td := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail}\n",
-		new: "\t\town := &Vocabulary{entries: MessageVocabulary(m.Unit), announced: true} // SABOTAGED: the reader's own vocabulary\n\t\td := &bitDecoder{m: m, v: own, report: report, r: r, refBits: own.RefBits(), fail: fail}\n",
+		old: "\t\td := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail, build: build, buildKnown: true}\n",
+		new: "\t\town := &Vocabulary{entries: MessageVocabulary(m.Unit), announced: true} // SABOTAGED: the reader's own vocabulary\n\t\td := &bitDecoder{m: m, v: own, report: report, r: r, refBits: own.RefBits(), fail: fail, build: build, buildKnown: true}\n",
 	}},
 
 	// A SECOND ANNOUNCEMENT IS REFUSED BY NAME and sets nothing.
@@ -306,8 +306,8 @@ var messageColdReadSabotages = map[string][]edit{
 	// it: take the refusal out and the dequantize clamps it instead, which is
 	// the ranged offset's rule reaching a kind it does not govern.
 	"message-quantized-index-above-count": {{
-		old: "\t\tcount, _, derived := ir.TableMessageQuantization(shape)\n\t\tif !derived || index > uint64(count) {\n\t\t\td.damage()\n\t\t\treturn false\n\t\t}\n",
-		new: "\t\t// SABOTAGED: an index above the step count is clamped, never rejected\n",
+		old: "\tcount, _, derived := ir.TableMessageQuantization(shape)\n\tif !derived || index > uint64(count) {\n\t\td.damage()\n\t\treturn 0, false\n\t}\n",
+		new: "\t// SABOTAGED: an index above the step count is clamped, never rejected\n",
 	}},
 
 	// A FAILED STRICT CHECK REFUSES THE ANNOUNCEMENT and sets no vocabulary.

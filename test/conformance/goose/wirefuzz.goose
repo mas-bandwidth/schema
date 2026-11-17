@@ -11,7 +11,14 @@
 //   wirefuzz <unit> fixed     the value-only roots on the region arm, where a
 //                             fixed root has no region and measures -1, and
 //                             their message form (form byte 2), read against
-//                             the unit's own announcement
+//                             the unit's own announcement. A root the unit
+//                             emits <Root>FixedLoad for is read through it
+//                             (the fixed form, form byte 3) and saved back
+//                             through <Root>FixedSave: the leg routes by the
+//                             ROOT, never by the roster's form, as the
+//                             conformance driver does (conformance_fixed_fuzz,
+//                             the glue's); every other value-only root keeps
+//                             the table wire's load and save
 //
 // ONE UNIT PER PROCESS. Every generated unit carries its own copy of the
 // runtime, so two units cannot be one Goose program; make/goose-fuzz.mk builds
@@ -84,6 +91,7 @@ fn main() {
     var roots: i64[>..] = [];
     var retaining: bool[>..] = [];
     var message: bool[>..] = [];
+    var fixed: bool[>..] = [];
     var reply: u8[>..] = [];
     for _ in count {
         let kn = take(2);
@@ -108,6 +116,9 @@ fn main() {
         roots.push(t);
         retaining.push(fr[1] == 1);
         message.push(msg);
+        // the fixed form of a root the unit emits <Root>FixedLoad for, on the
+        // fixed arm: chosen by the root, whatever form the roster names
+        fixed.push(t >= 0 && !msg && !builder && conformance_fixed_root(root));
         reply.push(if t >= 0 { 1 } else { 0 });
     }
     write_stdout(reply);
@@ -131,8 +142,9 @@ fn main() {
         let name = unit.tables[roots[idx]].name;
         if message[idx] {
             // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the batch read
-            // against the unit's own announcement, body one saved back; the
-            // glue answers the saved length, or -1 when the save refused
+            // against the unit's own announcement, every body it delivered
+            // saved back; the glue answers the saved length, or -1 when the
+            // load delivered nothing or the save refused
             var mrep = schema_rt::MsgReport { .. };
             var msaved: u8[>..] = [];
             let mn = conformance_message_fuzz(name, data, msaved, mrep);
@@ -156,6 +168,38 @@ fn main() {
                 mout.append(msaved);
             }
             write_stdout(mout);
+            flush_stdout();
+            continue;
+        }
+        if fixed[idx] {
+            // THE FIXED FORM (docs/SPEC-TABLES.md §3.4): <Root>FixedLoad of the
+            // root's one record, the record it returned saved back through
+            // <Root>FixedSave; the glue answers -2 for a refused load (or
+            // one that returned no record), -1 for a refused save, else the
+            // saved length
+            var frep = schema_rt::FixedReport { .. };
+            var fsaved: u8[>..] = [];
+            let fcode = conformance_fixed_fuzz(name, data, fsaved, frep);
+            var fout: u8[>..] = [];
+            // a fixed read has no region and no builder completion
+            fout.push(if fcode != -2 { 1 } else { 0 });
+            put_i32(fout, 0);
+            put_i32(fout, 0);
+            put_i32(fout, 0);
+            put_i32(fout, frep.oor);
+            put_i32(fout, 0);
+            fout.push(flag(frep.damaged) as! u8);
+            fout.push(flag(frep.reason != 0 || (fcode == -2 && !frep.damaged)) as! u8);
+            put_le(fout, 0xFFFFFFFFFFFFFFFF, 8); // measure: no region (-1)
+            put_i32(fout, 0);
+            put_i32(fout, 0);
+            if fcode < 0 {
+                put_le(fout, 0xFFFFFFFFFFFFFFFF, 8);
+            } else {
+                put_le(fout, fsaved.len as! u64, 8);
+                fout.append(fsaved);
+            }
+            write_stdout(fout);
             flush_stdout();
             continue;
         }

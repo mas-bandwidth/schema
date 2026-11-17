@@ -329,22 +329,84 @@ func listPackages(t *testing.T, root string, pkgs []string) map[string][]string 
 	return names
 }
 
-// matchNames is what `go test -list pattern` prints of a package's listing:
-// the names the whole pattern matches (-list does not split it at slashes).
-// An empty result is the refusal the gate is built around.
+// matchNames checks the top-level component of each -run alternative against
+// go test -list output. Go splits -run at unescaped slashes and top-level
+// alternatives; -list cannot discover dynamic subtest names. Compile every
+// component so malformed subtest expressions still fail the gate.
 func matchNames(t *testing.T, pattern string, listed []string) []string {
 	t.Helper()
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		t.Fatalf("go test -list %q: %v", pattern, err)
+	var top []*regexp.Regexp
+	start, classes, groups := 0, 0, 0
+	first := true
+	add := func(end int) {
+		component := pattern[start:end]
+		re, err := regexp.Compile(component)
+		if err != nil {
+			t.Fatalf("go test -run %q: %v", pattern, err)
+		}
+		if first {
+			top = append(top, re)
+			first = false
+		}
 	}
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '\\':
+			i++
+		case '[':
+			classes++
+		case ']':
+			if classes > 0 {
+				classes--
+			}
+		case '(':
+			if classes == 0 {
+				groups++
+			}
+		case ')':
+			if classes == 0 {
+				groups--
+			}
+		case '/', '|':
+			if classes == 0 && groups == 0 {
+				add(i)
+				if pattern[i] == '|' {
+					first = true
+				}
+				start = i + 1
+			}
+		}
+	}
+	add(len(pattern))
 	var names []string
 	for _, n := range listed {
-		if re.MatchString(n) {
-			names = append(names, n)
+		for _, re := range top {
+			if re.MatchString(n) {
+				names = append(names, n)
+				break
+			}
 		}
 	}
 	return names
+}
+
+func TestRunPatternMatchesTopLevelBeforeSubtests(t *testing.T) {
+	t.Parallel()
+	names := []string{"TestAlpha", "TestBeta"}
+	for _, tc := range []struct {
+		pattern string
+		want    int
+	}{
+		{`^TestAlpha$/negative-control`, 1},
+		{`^TestAlpha$/negative-control|^TestBeta$/read`, 2},
+		{`^TestMissing$/negative-control`, 0},
+		{`^Test(Alpha|Beta)$/case`, 2},
+		{`^TestAlpha[/-]$`, 0},
+	} {
+		if got := matchNames(t, tc.pattern, names); len(got) != tc.want {
+			t.Errorf("pattern %q matched %v, want %d names", tc.pattern, got, tc.want)
+		}
+	}
 }
 
 // runPatternException is one -run recipe whose pattern cannot be resolved

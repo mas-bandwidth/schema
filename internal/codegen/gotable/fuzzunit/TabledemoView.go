@@ -67,7 +67,7 @@ var tableViewPacketUnions [1]TableUnionInfo
 func init() {
 	tableViewPacketTypes[0] = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(Attachment{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*Attachment)(p) = NewAttachment() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "slot", JSON: "slot", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Slot)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Slot)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -78,7 +78,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "power", JSON: "power", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Power)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Attachment{}.Power)), ElemSize: uint32(unsafe.Sizeof(Attachment{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -91,7 +91,7 @@ func init() {
 	}}
 	tableViewPacketTypes[1] = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(Buff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Buff)(p) = NewBuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "multiplier", JSON: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Buff{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(Buff{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Buff{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(Buff{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -104,7 +104,7 @@ func init() {
 	}}
 	tableViewPacketTypes[2] = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(Debuff{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*Debuff)(p) = NewDebuff() }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "amount", JSON: "amount", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Debuff{}.Amount)), ElemSize: uint32(unsafe.Sizeof(Debuff{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Debuff{}.Amount)), ElemSize: uint32(unsafe.Sizeof(Debuff{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -117,7 +117,7 @@ func init() {
 	}}
 	tableViewPacketTypes[3] = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoard{})), NumFields: 1, Reset: func(p unsafe.Pointer) { *(*ScoreBoard)(p) = ScoreBoard{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "per_team", JSON: "per_team", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
-			ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoard{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoard{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoard{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoard{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 100000.0, RangeIntMin: 0, RangeIntMax: 100000, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -130,7 +130,7 @@ func init() {
 	}}
 	tableViewPacketUnions[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(Effect{}.Type)), TagSize: uint32(unsafe.Sizeof(Effect{}.Type)), Arms: []TableUnionArmInfo{{Void: true},
 		{Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Buff = NewBuff() }, Field: TableFieldInfo{Name: "buff", JSON: "buff", TypeName: "Buff", DeclaredTypeName: "Buff", ID: 0xffb5be9be2e469cc, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Buff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Buff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Buff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -142,7 +142,7 @@ func init() {
 			Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: []string{"positive"}},
 		},
 		{Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] }, Reset: func(p unsafe.Pointer) { (*Effect)(p).Debuff = NewDebuff() }, Field: TableFieldInfo{Name: "debuff", JSON: "debuff", TypeName: "Debuff", DeclaredTypeName: "Debuff", ID: 0x13cdc5ede73d2fd7, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Debuff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayMin: 0, ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Effect{}.Debuff)), ElemSize: uint32(unsafe.Sizeof(Effect{}.Debuff)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,

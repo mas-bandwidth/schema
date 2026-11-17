@@ -131,6 +131,14 @@ fn msg_put_bytes(w: MsgWriter&, out: u8[>..]&, s: const u8[:], n: i64) {
     }
 }
 
+// msg_text_is is the elision test of a string or bytes field with a declared
+// default: the first n bytes of s are exactly want, length and bytes both.
+fn msg_text_is(s: const u8[:], n: i64, want: const u8[:]) -> bool {
+    if n != want.len { return false; }
+    for i in n { if s[i] != want[i] { return false; } }
+    return true;
+}
+
 // msg_refuse records a write refusal; the caller returns false.
 fn msg_refuse(w: MsgWriter&, code: i64) -> bool {
     w.ok = false;
@@ -426,6 +434,13 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
     }
     let first = data.len - span;
     if !ids_distinct(data, first, ids_n as! i64) {
+        report.damaged = true;
+        return false;
+    }
+    // An announcement is an ordinary form-1 file (§3.3): every referenced
+    // ID participates in the complete first-use walk, including unknown fields.
+    let check, non_finite = wire_check(data, 1, first, first, ids_n as! i64, true);
+    if check != 0 || non_finite {
         report.damaged = true;
         return false;
     }

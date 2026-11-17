@@ -43,8 +43,11 @@ func TestSpecMessageFormHasOneEncoding(t *testing.T) {
 				"is read as today",
 				"lawful version evolution",
 				"A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER",
-				"the order the announcement gives each record's fields",
-				"a field this reader cannot name still has its place in that order",
+				"Under the same announced shape and build version, the reader checks a body's field references against the record's declaration order",
+				"field order is digested into the build version (§20.1)",
+				"It refuses a body out of that order and a field the record does not declare",
+				"its slot order is no one record's order",
+				"Under a different build version, order is not judged and the body reads, which is lawful version evolution",
 				"A UNION FIELD WRITTEN WITH THE NONE REFERENCE",
 				"an explicit arm `0` is not the one encoding a conforming writer emits",
 				"is not part of the contract",
@@ -53,6 +56,8 @@ func TestSpecMessageFormHasOneEncoding(t *testing.T) {
 			},
 			stales: []string{
 				"Field ORDER within a body is not part of the contract",
+				"the order the announcement gives each record's fields",
+				"a field this reader cannot name still has its place in that order",
 			},
 		},
 	}
@@ -64,7 +69,7 @@ func TestSpecMessageFormHasOneEncoding(t *testing.T) {
 		}
 		for _, stale := range r.stales {
 			if strings.Contains(flat, stale) {
-				t.Errorf("%s: §3.3 carries the variable form's sentence %q", r.row, stale)
+				t.Errorf("%s: §3.3 carries the stale sentence %q", r.row, stale)
 			}
 		}
 	}

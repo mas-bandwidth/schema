@@ -494,7 +494,12 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		e.p(ind+1, "}")
 		e.p(ind, "}")
 	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
-		e.p(ind, "if %s != 0 {", pl.length)
+		if len(f.DefBytes) == 0 {
+			e.p(ind, "if %s != 0 {", pl.length)
+		} else {
+			// elided only when the length AND the bytes are the default's
+			e.p(ind, "if !schema_rt::msg_text_is(%s, %s, %s) {", pl.val, pl.length, stringLit(string(f.DefBytes)))
+		}
 		header(ind + 1)
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:
@@ -897,7 +902,7 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		e.p(ind, "let n%s = schema_rt::msg_text_len(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
-		if checkDefault {
+		if checkDefault && len(f.DefBytes) == 0 {
 			e.p(ind, "if %s && n%s == 0 { return schema_rt::msg_damage(r); }", fieldGate, v)
 		}
 		e.p(ind, "let at%s = r.pos >> 3;", v)
@@ -912,6 +917,10 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
 		e.p(ind, "%s = n%s as! i32;", pl.length, v)
+		if checkDefault && len(f.DefBytes) != 0 {
+			// the writer elides only the default's length AND bytes (putField)
+			e.p(ind, "if %s && schema_rt::msg_text_is(%s, %s, %s) { return schema_rt::msg_damage(r); }", fieldGate, pl.val, pl.length, stringLit(string(f.DefBytes)))
+		}
 		e.p(ind, "r.pos += n%s * 8;", v)
 	case f.KeyEnum != "":
 		slots := slotCount(f)
@@ -1127,6 +1136,9 @@ func (e *msgEmit) emitStruct(st *ir.Struct) {
 		e.p(3, "},")
 	}
 	e.p(3, "_ => {")
+	// §3.3(b): under this reader's build version every field the sender's
+	// record declares is one this record declares
+	e.p(4, "if r.canon { return schema_rt::msg_damage(r); }")
 	e.p(4, "if !schema_rt::msg_unknown(r, en) { return false; }")
 	e.p(3, "},")
 	e.p(2, "}")

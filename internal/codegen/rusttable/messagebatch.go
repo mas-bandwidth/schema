@@ -229,14 +229,16 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 	m.pf("    w.put(0, TABLE_MESSAGE_REF_BITS);\n    !w.overflow\n}\n\n")
 }
 
-// storageCheck refuses a used length or a live count outside its storage,
-// which no wire can spell (gotable emitStorageCheck).
+// storageCheck holds a used length or a live count outside its storage,
+// which no wire can spell (gotable emitStorageCheck). It is a WRITE check,
+// so by rule it is a debug_assert! and nothing else: a release build carries
+// no write-side check at all (docs/SPEC.md §5.1, an assert leg).
 func (m *msgGen) storageCheck(f *ir.Field, expr, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		m.pf("%sif %s_length < 0 || %s_length > %d { return false; }\n", ind, expr, expr, f.Type.Size)
+		m.pf("%sdebug_assert!(%s_length >= 0 && %s_length <= %d, \"the declared length is the bound (docs/SPEC-TABLES.md §3.4)\");\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
-		m.pf("%sif %s_count < 0 || %s_count > %d { return false; }\n", ind, expr, expr, f.ArrayBound)
+		m.pf("%sdebug_assert!(%s_count >= 0 && %s_count <= %d, \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\");\n", ind, expr, expr, f.ArrayBound)
 	}
 }
 
@@ -254,13 +256,17 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 	}
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		// TEXT AND BYTES RIDE WHEN NON-EMPTY, declared default or not: the
-		// C++ reference's rule (cpptable messagecodec.go, `value.x_length >
-		// 0`) and the repository's codec's (tablewire messageencode.go,
-		// `fv.Count == 0` elides). gotable's byteValueRides elides a string AT
-		// its declared default instead, which is the file form's rule and
-		// not this form's; the reference is the one followed here.
-		return expr + "_length > 0"
+		// TEXT AND BYTES ELIDE ONLY AT THEIR DECLARED DEFAULT, length and
+		// bytes both (docs/SPEC-TABLES.md §3.3; the fixed engine's
+		// internal/tablewire/messageencode.go, messageElides,
+		// `bytes.Equal(fv.Cell.Str, f.DefBytes)`). An empty value under a
+		// non-empty default rides, and the default itself does not, so the
+		// reader's declared default is what an elided field reads. This is
+		// gotable's byteValueRides: empty when no default is declared.
+		if len(f.DefBytes) == 0 {
+			return expr + "_length > 0"
+		}
+		return fmt.Sprintf("%s_length != %d || %s[..%d] != %s", expr, len(f.DefBytes), expr, len(f.DefBytes), rustByteArray(f.DefBytes))
 	case f.Array == ir.ArrayCounted:
 		return expr + "_count > 0"
 	case f.Array == ir.ArrayFixed:
@@ -1121,6 +1127,55 @@ pub fn table_message_unsigned(kind: u8, lo: u64, hi: u64) -> u128 {
     }
 }
 
+/// A kind whose domain is two's complement (§3.3).
+pub fn table_message_signed_kind(kind: u8) -> bool {
+    (2..=5).contains(&kind) || kind == 18 || (20..=24).contains(&kind)
+}
+
+/// A RANGED value's skip holds base plus offset to the kind's own domain, the
+/// bound a named read holds it to: the offset's bits can spell a value past the
+/// sender's range (§3.3). The base and the offset are added exactly as the
+/// named read adds them, the wide lo/hi included, and a width of zero still
+/// holds the base.
+pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s: &TableMessageShape) -> bool {
+    if width < 0 {
+        return false;
+    }
+    let width = width as u32;
+    let Some(mut lo) = r.get(core::cmp::min(width, 64)) else { return false };
+    let mut hi = if width > 64 {
+        match r.get(width - 64) {
+            Some(v) => v,
+            None => return false,
+        }
+    } else {
+        0
+    };
+    let offset = ((hi as u128) << 64) | lo as u128;
+    let bits = kind_bits(kind);
+    if table_message_signed_kind(kind) {
+        // Narrow announcements store a sign-extended 64-bit base; wide
+        // announcements store both halves. Bias the signed domain so the
+        // full unsigned offset can be added without narrowing it to i128.
+        let base = if bits > 64 {
+            (((s.base_hi as u128) << 64) | s.base_lo as u128) as i128
+        } else {
+            s.base_lo as i64 as i128
+        };
+        let biased = (base as u128) ^ (1u128 << 127);
+        let Some(sum) = biased.checked_add(offset) else { return false };
+        let value = (sum ^ (1u128 << 127)) as i128;
+        let bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
+        let top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
+        value >= bottom && value <= top
+    } else {
+        let base = if bits > 64 { ((s.base_hi as u128) << 64) | s.base_lo as u128 } else { s.base_lo as u128 };
+        let Some(value) = base.checked_add(offset) else { return false };
+        let top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
+        value <= top
+    }
+}
+
 /// One scalar by its shape (§3.3): the value bits, the ranged base added back,
 /// a quantized step mapped back onto its float32 range — all at the announced
 /// storage width, before the file form's clamps.
@@ -1206,13 +1261,14 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             None => false,
             Some(0) => true,
             Some(reference) => match v.entry(reference).copied() {
-                Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 && table_message_skip(r, v, &arm, depth + 1),
+                Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
+                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13 | 14 | 15 | 16))),
                 None => false,
             },
         },
         12 => {
             let Some(n) = table_message_count(r, s) else { return false };
-            if !r.align() {
+            if n > s.max || !r.align() {
                 return false;
             }
             let start = (r.offset / 8) as usize;
@@ -1232,47 +1288,77 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 None => false,
             }
         }
+        10 => {
+            // A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS
+            // COUNT (§3.3): the same raw-bits rule a named float read applies.
+            let Some(raw) = r.get(table_message_value_bits(10, s) as u32) else { return false };
+            if s.packing == 2 {
+                raw <= s.qcount as u64
+            } else {
+                table_finite_f32(raw as u32)
+            }
+        }
+        11 => match r.get(64) {
+            Some(raw) => table_finite_f64(raw),
+            None => false,
+        },
         14 | 16 => {
             let Some(n) = table_message_count(r, s) else { return false };
-            if e.kind == 14 && s.elem == 6 && !r.align() {
+            // THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3).
+            if n > s.max || (e.kind == 14 && s.elem == 6 && !r.align()) {
                 return false;
             }
             let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default() };
-            let width = table_message_value_bits(element.kind, &element.shape);
-            if width >= 0 {
-                let mut w = width as u64;
-                if e.kind == 16 {
-                    w += v.ref_bits as u64;
+            // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3): a float, a
+            // ranged or quantized element carries a value condition, and a
+            // keyed entry carries a key reference, so those are walked.
+            if e.kind == 14
+                && !matches!(element.kind, 10 | 11 | 13 | 15 | 17 | 30)
+                && element.shape.packing == 0
+            {
+                match table_message_value_bits(element.kind, &element.shape) {
+                    0 => return true,
+                    width if width > 0 => return r.skip(n * width as u64),
+                    _ => {}
                 }
-                return r.skip(n * w);
             }
-            for i in 0..n {
-                if e.kind == 16 && !r.skip(v.ref_bits as u64) {
-                    return false;
-                }
+            // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
+            // REPEATS (§3.2, §3.3): the set is one id per entry and the caller's
+            // vocabulary sizes it.
+            let mut seen: Vec<u64> = Vec::with_capacity(v.count);
+            for _ in 0..n {
+                // THE KEY IS PART OF THE WALKED ELEMENT: the offset is sampled
+                // before it so a width-0 slot cannot accept the run unread.
                 let at = r.offset;
+                if e.kind == 16 {
+                    let Some(reference) = r.get(v.ref_bits) else { return false };
+                    let Some(id) = v.name(reference) else { return false };
+                    if seen.contains(&id) {
+                        return false;
+                    }
+                    seen.push(id);
+                }
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
                 }
-                // A WALKED ELEMENT THAT CONSUMED NO BITS — a nested array
-                // whose inner run is itself zero-width — is the same run in a
-                // shape the arithmetic above cannot see (§3.3). Every element
-                // after it consumes nothing too, so the rest of the run is
-                // stepped in one, and a remaining count the bits left could
-                // not back is damage. The walk is bounded by the batch's bits
-                // whatever the count says.
+                // A WALKED ELEMENT THAT CONSUMES NO BITS, its key included, is
+                // damage (§3.3): the plain-array width-0 run is the arithmetic
+                // path above, not this one.
                 if r.offset == at {
-                    if n - i - 1 > (r.buffer.len() as u64) * 8 - r.offset {
-                        return false;
-                    }
-                    return true;
+                    return false;
                 }
             }
             true
         }
         kind => {
             let bits = table_message_value_bits(kind, s);
-            bits >= 0 && r.skip(bits as u64)
+            if bits < 0 {
+                return false;
+            }
+            if s.packing == 1 && (integer_kind(kind) || fixed_kind(kind)) {
+                return table_message_skip_ranged(r, kind, bits, s);
+            }
+            r.skip(bits as u64)
         }
     }
 }
@@ -1282,18 +1368,27 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
     if depth > 128 {
         return false;
     }
+    // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped: the set
+    // is one id per entry, whichever slot carried it, and the caller's
+    // vocabulary sizes it. A reference the entry table returns is lawful.
+    let mut seen: Vec<u64> = Vec::with_capacity(v.count);
     loop {
         match r.get(v.ref_bits) {
             None => return false,
             Some(0) => return true,
-            Some(reference) => match v.entry(reference).copied() {
-                Some(e) => {
-                    if !table_message_skip(r, v, &e, depth) {
-                        return false;
-                    }
+            Some(reference) => {
+                let Some(e) = v.entry(reference).copied() else { return false };
+                if e.id >= 0xffff_ffff_ffff_fffd {
+                    return false;
                 }
-                None => return false,
-            },
+                if seen.contains(&e.id) {
+                    return false;
+                }
+                seen.push(e.id);
+                if !table_message_skip(r, v, &e, depth) {
+                    return false;
+                }
+            }
         }
     }
 }

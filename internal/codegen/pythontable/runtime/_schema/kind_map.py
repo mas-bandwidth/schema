@@ -79,12 +79,17 @@ class _Map:
         out: dict[Any, Any] = {}
         last: Any = None
         landed = False
+        widened = False
         for _ in range(count):
             n = sub.varint()
             body = sub.take(n)
             entry = entry_cls()
             before = len(ctx.pending)
-            read_body(body, entry, ctx)
+            blobs_before = len(ctx.blob_pending)
+            if read_body(body, entry, ctx, key_field) and not widened:
+                # The map counts once, regardless of how many keys widened.
+                ctx.widened += 1
+                widened = True
             key = getattr(entry, key_field.name)
             if landed and _compare(fd, last, key) >= 0:
                 raise Refused(
@@ -95,9 +100,14 @@ class _Map:
             landed = True
             if value_field.codec == "pointer":
                 for i in range(before, len(ctx.pending)):
-                    owner, name, index = ctx.pending[i]
-                    if owner is entry and name == value_field.name:
-                        ctx.pending[i] = (out, key, index)
+                    owner, slot, index = ctx.pending[i]
+                    if owner is entry and slot.name == value_field.name:
+                        ctx.pending[i] = (out, (key, slot), index)
+            if value_field.codec in ("string_blob", "bytes_blob"):
+                for i in range(blobs_before, len(ctx.blob_pending)):
+                    owner, slot, index = ctx.blob_pending[i]
+                    if owner is entry and slot.name == value_field.name:
+                        ctx.blob_pending[i] = (out, (key, slot), index)
             out[key] = getattr(entry, value_field.name)
         if sub.pos != sub.end:
             raise Refused(

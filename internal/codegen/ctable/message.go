@@ -64,6 +64,34 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 		fmt.Fprintf(&b, "0x%02x,", v)
 	}
 	b.WriteString("};\n")
+	// Retain the exact encoded entry identity before resolving quantization
+	// facts: different triples can resolve to the same qmin/delta/count.
+	b.WriteString("static const uint8_t kTableMessageEntryKeyBytes[]={")
+	offsets := []int{0}
+	for _, e := range entries {
+		for _, v := range []byte(e.Key()) {
+			fmt.Fprintf(&b, "0x%02x,", v)
+		}
+		offsets = append(offsets, offsets[len(offsets)-1]+len(e.Key()))
+	}
+	if len(entries) == 0 {
+		b.WriteString("0")
+	}
+	b.WriteString("};\nstatic const int32_t kTableMessageEntryKeyOffsets[]={")
+	for _, offset := range offsets {
+		fmt.Fprintf(&b, "%d,", offset)
+	}
+	b.WriteString("};\n")
+	b.WriteString(`static SCHEMA_UNUSED uint16_t table_message_own_slot(const uint8_t * raw,int64_t length)
+{
+ int32_t i;
+ for(i=0;i<kTableMessageEntriesHere;i++) {
+  int32_t start=kTableMessageEntryKeyOffsets[i],n=kTableMessageEntryKeyOffsets[i+1]-start;
+  if(length==n && !memcmp(raw,kTableMessageEntryKeyBytes+start,(size_t)n))return (uint16_t)(i+1);
+ }
+ return 0;
+}
+`)
 	checkDefault := ""
 	if hasProbes {
 		checkDefault = ",check_default"
@@ -153,6 +181,7 @@ typedef struct TableMessageEntry {
  float qmin,qdelta;uint32_t qcount;float elem_qmin,elem_qdelta;uint32_t elem_qcount;
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
+ uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
 } TableMessageEntry;
 typedef struct TableMessageShapeFacts {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -268,8 +297,11 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
   entry->min=began;entry->max=at;
   count++;
  }
- /* Resolve the accepted spans into the caller's final 96-byte entries. */
- at=0;{int64_t i;for(i=0;i<count;i++)if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;}
+ /* Resolve accepted spans, retaining their exact own-entry proof. */
+ at=0;{int64_t i;for(i=0;i<count;i++){int64_t began=at;
+  if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
+  v->entries[i].own_slot=table_message_own_slot(words+began,at-began);
+ }}
  v->count=count;v->ref_bits=table_bits_required(0,count);v->announced=1;return 1;
 damaged:
  report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;

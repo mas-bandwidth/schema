@@ -184,6 +184,31 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "python" {
+			// Each optional array names the array framing and its own carried
+			// element codec, including table, float32 and enum elements.
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang python refused the supported shape: %v", err)
+			}
+			module := string(files["probe/Probe.py"])
+			for field, element := range map[string]string{"entries": "table", "weights": "float32", "grades": "enum"} {
+				i := strings.Index(module, `name="`+field+`",`)
+				if i < 0 {
+					t.Fatalf("--lang python: no descriptor for %s", field)
+				}
+				row, _, _ := strings.Cut(module[i:], "\n        ),")
+				for _, want := range []string{`codec="optional",`, `inner="array",`, `elem=FieldDesc(`, `codec="` + element + `",`} {
+					if !strings.Contains(row, want) {
+						t.Errorf("--lang python: %s descriptor lacks %s:\n%s", field, want, row)
+					}
+				}
+				if strings.Contains(row, `"unsupported"`) {
+					t.Errorf("--lang python: %s descriptor contains unsupported codec:\n%s", field, row)
+				}
+			}
+			continue
+		}
 		if target == "elixir" {
 			// the variable form carries the construct (docs/SPEC-TABLES.md
 			// §2.3, §2.6): one Table.ex codec per unit

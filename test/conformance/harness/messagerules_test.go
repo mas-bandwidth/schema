@@ -349,7 +349,10 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	// THE MESSAGE CLOSURE ANNOUNCES NO NODE-TABLE ID (§3.3), but a vocabulary
 	// from a build that still announced one carries it once, so the rows read
 	// against the unit's own entries with the node-table id after them
-	v, vreport, verr := readAnnouncement(announce(own.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), own.Entries()...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})))
+	// Unknown fields may be skipped for another build, allowing the malformed
+	// value references below to reach the kept and skipped enum walks.
+	future := evolvedMessageVocabulary(t, bunit)
+	v, vreport, verr := readAnnouncement(announce(future.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), own.Entries()...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})))
 	if verr != nil || !v.Announced() || vreport.Refused {
 		t.Fatalf("the announcement carrying the node-table id was refused: %v %+v", verr, vreport)
 	}
@@ -625,9 +628,9 @@ fixed table Every
 	wv := vocabularyOf(t, writer)
 	inst := wm.New(wm.Lookup("Every"))
 	var read tabletext.Report
-	text := `{"b":true,"i8":-3,"i16":-300,"i32":-70000,"i64":-5000000000,"u8":200,"u16":60000,"u32":4000000000,"u64":9000000000000000000,` +
+	text := `{"b":true,"i8":-3,"i16":-300,"i32":-70000,"i64":"-5000000000","u8":200,"u16":60000,"u32":4000000000,"u64":"9000000000000000000",` +
 		`"r32":999,"f32":1.5,"q32":0.25,"f64":2.5,"bits7":100,"mask":["A","C"],"s":"hi","by":"AQID","t":{"x":7},"arr":[1,2,3],"fix":[4,5,6],` +
-		`"un":{"inner":{"x":9}},"color":"Blue","keyed":{"Green":5},"wide":340282366920938463463374607431768211455,"fx":1.5,"last":2147483649}`
+		`"un":{"inner":{"x":9}},"color":"Blue","keyed":{"Green":5},"wide":"340282366920938463463374607431768211455","fx":1.5,"last":2147483649}`
 	if !wm.Read(inst, []byte(text), &read) || !read.Silent() {
 		t.Fatalf("the writer's text did not read: %+v", read)
 	}
@@ -813,7 +816,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	}
 	// THE TOLERANT ROW: an unknown field beside both sets the vocabulary and
 	// counts one unknown
-	tolerant := forgeAnnouncement(terminated(versionField(0x8877665544332211), []byte{3, 8, 9, 0, 0, 0}, vocabularyField(vocab)), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
+	tolerant := forgeAnnouncement(terminated(versionField(0x8877665544332211), vocabularyField(vocab), []byte{3, 8, 9, 0, 0, 0}), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
 	if pinned := pinnedWire(t, "testdata/wire/tables/announce_unknown_field.bin", tolerant); string(pinned) != string(tolerant) {
 		t.Errorf("the tolerant wire differs from the pinned announce_unknown_field at byte %d", firstDifference(pinned, tolerant))
 	}
@@ -827,7 +830,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	// AND THE TOLERANCE STOPS AT THE FILE'S OWN RULE: the same unknown field
 	// twice is the same field id twice in one body, which refuses the
 	// announcement as it refuses any file (§6.5), and sets no vocabulary
-	twice := forgeAnnouncement(terminated(versionField(0x8877665544332211), []byte{3, 8, 9, 0, 0, 0}, []byte{3, 8, 9, 0, 0, 0}, vocabularyField(vocab)), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
+	twice := forgeAnnouncement(terminated(versionField(0x8877665544332211), vocabularyField(vocab), []byte{3, 8, 9, 0, 0, 0}, []byte{3, 8, 9, 0, 0, 0}), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
 	if tv, treport, terr := readAnnouncement(twice); !readRefused(terr, treport) || tv.Announced() {
 		t.Errorf("an unknown field twice: err=%v announced=%v report=%+v", terr, tv.Announced(), treport)
 	}
@@ -1175,8 +1178,13 @@ func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
 	if got.ok || !readRefused(got.err, got.report) {
 		t.Fatalf("a count past the bound refuses: ok=%v err=%v report=%+v", got.ok, got.err, got.report)
 	}
-	if fv := fieldOf(t, got.inst, "few"); fv.Count != 0 {
-		t.Errorf("a refused read handed back a count of %d", fv.Count)
+	// Counted arrays are born at their declared minimum, even on refusal.
+	born := fieldOf(t, model.New(model.Lookup("Bases")), "few").Count
+	if born != 2 {
+		t.Fatalf("few's born count is %d, want 2", born)
+	}
+	if fv := fieldOf(t, got.inst, "few"); fv.Count != born {
+		t.Errorf("a refused read changed the born count: got %d, want %d", fv.Count, born)
 	}
 }
 
@@ -1253,8 +1261,12 @@ func TestTheSixFindings(t *testing.T) {
 		if ok || !readRefused(derr, rep) {
 			t.Errorf("the surplus body refuses: ok=%v err=%v report=%+v", ok, derr, rep)
 		}
-		if few := fieldOf(t, read, "few"); few.Count != 0 {
-			t.Errorf("a refused read handed back %d elements", few.Count)
+		born := fieldOf(t, model.New(model.Lookup("Bases")), "few").Count
+		if born != 2 {
+			t.Fatalf("few's born count is %d, want 2", born)
+		}
+		if few := fieldOf(t, read, "few"); few.Count != born {
+			t.Errorf("a refused read changed the born count: got %d, want %d", few.Count, born)
 		}
 	}
 
@@ -1289,7 +1301,7 @@ func TestTheSixFindings(t *testing.T) {
 		}
 		mine := sm.New(sm.Lookup("SimState"))
 		var textReport tabletext.Report
-		if !sm.Read(mine, []byte(`{"flux":-1267650600228229401496703205371,"energy":123,"entity_id":77}`), &textReport) || !textReport.Silent() {
+		if !sm.Read(mine, []byte(`{"flux":"-1267650600228229401496703205371","energy":"123","entity_id":"77"}`), &textReport) || !textReport.Silent() {
 			t.Fatalf("the scalars text did not read: %+v", textReport)
 		}
 		if own, err := tablewire.EncodeMessage(sm, mine); err != nil || string(own) != string(pinned) {
