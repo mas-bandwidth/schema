@@ -49,6 +49,7 @@ func TestRustJsonWideIntegersAreStrings(t *testing.T) {
 	}
 	type vector struct {
 		name, json, verdict string
+		number              bool
 	}
 	var vectors []vector
 	accepts, refusals := 0, 0
@@ -89,7 +90,7 @@ func TestRustJsonWideIntegersAreStrings(t *testing.T) {
 		if len(fields) != 5 || fields[1] != "Integers" || fields[3] != "refused" {
 			t.Fatalf("NUMBER-TOKEN.tsv:%d: invalid row %q", i+1, line)
 		}
-		vectors = append(vectors, vector{name: fields[0], json: fields[2], verdict: fields[3]})
+		vectors = append(vectors, vector{name: fields[0], json: fields[2], verdict: fields[3], number: true})
 		numberRows++
 	}
 	if numberRows != 13 {
@@ -107,8 +108,15 @@ func TestRustJsonWideIntegersAreStrings(t *testing.T) {
 			fmt.Fprintf(&body, `{
     let mut report = TableReport::default();
     assert!(integers_from_json(%q, &mut report).is_none(), "refuse row %s: the read accepted it");
-}
 `, string(text), v.name)
+			if v.number {
+				// A bare number token in a wide field is the wrong shape and
+				// the leg reports it as damage; the read must not refuse the
+				// text for some other reason and hide the token.
+				fmt.Fprintf(&body, `    assert!(report.damaged, "refuse row %s: the bare number token was not reported as damage");
+`, v.name)
+			}
+			body.WriteString("}\n")
 			continue
 		}
 		// Every accept row lands the same values, and the writer spells the
