@@ -44,6 +44,14 @@ public final class BenchPacketRetain {
                         report.retainLost++;
                         rec.typeId = 0;
                     }
+                } else if (!rec.textMalformed && rec.typeId == TableVariable.STRING_ID) {
+                    // A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.
+                    report.unknown++;
+                    report.retainLost++;
+                } else if (!rec.textMalformed && rec.typeId == TableVariable.BYTES_ID) {
+                    // A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.
+                    report.unknown++;
+                    report.retainLost++;
                 }
             }
             int[] np = new int[128];
