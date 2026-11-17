@@ -18,7 +18,7 @@ done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
 while IFS= read -r package; do
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
-  names=$(printf '%s\n' "$tests" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
+  names=$(printf '%s\n' "$tests" | awk '/^(Test|Example|Fuzz)[A-Za-z0-9_]*$/ { print }')
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }

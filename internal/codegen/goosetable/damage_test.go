@@ -25,11 +25,13 @@ func TestGooseDamagedLoadReturnsNoRoot(t *testing.T) {
 		if len(fields) != 4 {
 			t.Fatalf("unexpected probe output: %q", line)
 		}
-		// node_index_null names no record from the root, so its one record
-		// is reached by no pointer: damage under the strict read (§6.5, THE
-		// GRAPH, DEFINED ONCE), as the framing corpus pins it
+		// node_clean and node_index_null read, as the framing corpus pins
+		// them (testdata/conformance/tables/MANIFEST.txt): node_index_null is
+		// an explicit null pointer with no node table, which the variable form
+		// reads and rewrites (docs/rulings.json reads-refuse-non-canonical,
+		// the 2026-11-15 correction). Every other row is damage.
 		want := "0 1"
-		if fields[0] == "node_clean" {
+		if fields[0] == "node_clean" || fields[0] == "node_index_null" {
 			want = "1 0"
 		}
 		if strings.Join(fields[2:], " ") != want {

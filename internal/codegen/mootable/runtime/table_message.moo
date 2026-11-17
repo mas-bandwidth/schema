@@ -1470,13 +1470,16 @@ local function skipBody(t: any, depth: number): boolean
 			return dmal(t)
 		end
 		seen[e.id] = true
-		if not skipEntry(t, e.kind, e.shape, depth) then
+		if not skipEntry(t, e.kind, e.shape, depth, true) then
 			return false
 		end
 	end
 end
 
-skipEntry = function(t: any, kind: number, shape: any, depth: number?): boolean
+-- `field` is true where the payload is a body field's own: a union field
+-- written with arm reference 0 is damage there, on the skip path too (§3.3
+-- (c)); an element or an arm's payload keeps its positional None
+skipEntry = function(t: any, kind: number, shape: any, depth: number?, field: boolean?): boolean
 	depth = depth or 0
 	if depth > SKIP_MAX_DEPTH then
 		return false
@@ -1499,6 +1502,9 @@ skipEntry = function(t: any, kind: number, shape: any, depth: number?): boolean
 			return false
 		end
 		if ref == 0 then
+			if field then
+				return dmal(t)
+			end
 			return true
 		end
 		local arm = armAt(t, ref)
@@ -1978,8 +1984,9 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 	return true
 end
 
--- one field's payload under its announced entry (field)
-local function decodeField(t: any, fd: any, entry: any, holder: any): boolean
+-- one field's payload under its announced entry (field); `field` is true for
+-- a body field's own payload, false for a union arm's
+local function decodeField(t: any, fd: any, entry: any, holder: any, field: boolean?): boolean
 	local s = fd.s
 	if s == "arr" and fd.array == "keyed" then
 		return decodeKeyed(t, fd, entry, holder)
@@ -1988,7 +1995,7 @@ local function decodeField(t: any, fd: any, entry: any, holder: any): boolean
 	elseif s == "arr" then
 		return decodeArray(t, fd, entry, holder)
 	elseif s == "union" then
-		local u, ok = decodeArm(t, fd)
+		local u, ok = decodeArm(t, fd, field)
 		holder[fd.slot] = u
 		return ok
 	elseif s == "enum" then
@@ -2016,8 +2023,12 @@ end
 
 -- one union value (unionCell): the arm's reference, then the payload a field
 -- of the arm's type carries; an arm this build cannot name reads None and
--- counts unknown, a retyped one refuses kind_mismatch
-decodeArm = function(t: any, fd: any): (any, boolean)
+-- counts unknown, a retyped one refuses kind_mismatch. `field` is true where
+-- the union is a body field's own payload: a conforming writer elides a None
+-- field, so an explicit arm reference 0 there is damage at every build
+-- version (docs/SPEC-TABLES.md §3.3 (c)); a None element of an array of unions
+-- and a nested union's None arm are positional and read.
+decodeArm = function(t: any, fd: any, field: boolean?): (any, boolean)
 	local un = S.lookup(fd.t)
 	local u = un.new()
 	local ref, ok = reference(t)
@@ -2025,6 +2036,9 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 		return u, dmal(t)
 	end
 	if ref == 0 then
+		if field and not fd.required then
+			return u, dmal(t)
+		end
 		return u, true
 	end
 	local entry = armAt(t, ref)
@@ -2140,7 +2154,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 				return dmal(t)
 			end
 			t.report.unknown += 1
-			if not skipEntry(t, entry.kind, entry.shape, 0) then
+			if not skipEntry(t, entry.kind, entry.shape, 0, true) then
 				return dmal(t)
 			end
 			continue
@@ -2154,7 +2168,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 		local mine = mineEntry(slotOf(d, hit.k))
 		if entry.kind ~= mine.kind or entry.shape.elem ~= mine.shape.elem then
 			if widens(entry, mine.kind, mine.shape.elem) then
-				if not decodeField(t, fd, entry, v) then
+				if not decodeField(t, fd, entry, v, true) then
 					return false
 				end
 				t.report.widened += 1
@@ -2167,7 +2181,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			return refuseRead(t, "kind_mismatch")
 		end
 		local off, subst, nonFinite = t.r.off, t.subst, t.report.nonFinite
-		if not decodeField(t, fd, entry, v) then
+		if not decodeField(t, fd, entry, v, true) then
 			return false
 		end
 		-- A FIELD STORED AT ITS DECLARED DEFAULT: a field whose read substituted

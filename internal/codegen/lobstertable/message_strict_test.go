@@ -57,6 +57,7 @@ repeat-known:refused
 second-record:refused
 repeat-unknown:refused
 unknown-valid:accepted
+undeclared-same-build:refused
 unknown-nan:refused
 unknown-utf8:refused
 text-bound:refused
@@ -98,34 +99,43 @@ def repeat_body(w:schema_rt.MessageWriter, slot:int, value:schema_rt.Slot, entry
         assert schema_rt.mw_value(w, value, entry)
     schema_rt.mw_put(w, 0, w.ref_bits)
 
+// Under the reader's own build version a repeated field is also out of the
+// declaration order and a field the record does not declare is refused
+// (§3.3 (b)); under ANOTHER build neither is judged, so the repeat and
+// unknown rows read through a vocabulary announcing another build, where the
+// duplicate check and the unknown field's own payload checks alone decide.
+let foreign = schema_rt.new_vocabulary(4096)
+assert schema_rt.announce_read(foreign, schema_rt.announce(), schema_rt.LoadReport {})
+foreign.build_version = foreign.build_version + 1
 let repeated = schema_rt.MessageWriter { ref_bits: vocab.ref_bits }
 repeat_body(repeated, slots[0], rec.fields[0], schema_rt.message_own_entry(slots, 0))
-result("repeat-known", finish(repeated), vocab)
+result("repeat-known", finish(repeated), foreign)
 let second = schema_rt.MessageWriter { ref_bits: vocab.ref_bits }
 assert schema_rt.mw_body(second, rec)
 repeat_body(second, slots[0], rec.fields[0], schema_rt.message_own_entry(slots, 0))
-result("second-record", finish(second, 2), vocab)
+result("second-record", finish(second, 2), foreign)
 let orec = schema_rt.new_record(schema_rt.table_of("Other"))
 orec.fields[0].cell.i = 19
 let unknown_repeat = schema_rt.MessageWriter { ref_bits: vocab.ref_bits }
 repeat_body(unknown_repeat, other[0], orec.fields[0], schema_rt.message_own_entry(other, 0))
-result("repeat-unknown", finish(unknown_repeat), vocab)
+result("repeat-unknown", finish(unknown_repeat), foreign)
 let unknown_good = schema_rt.MessageWriter { ref_bits: vocab.ref_bits }
 schema_rt.mw_put(unknown_good, other[0], vocab.ref_bits)
 assert schema_rt.mw_value(unknown_good, orec.fields[0], schema_rt.message_own_entry(other, 0))
 schema_rt.mw_put(unknown_good, 0, vocab.ref_bits)
-result("unknown-valid", finish(unknown_good), vocab)
+result("unknown-valid", finish(unknown_good), foreign)
+result("undeclared-same-build", finish(unknown_good), vocab)
 let bad_float = schema_rt.MessageWriter { ref_bits: vocab.ref_bits }
 schema_rt.mw_put(bad_float, other[1], vocab.ref_bits)
 schema_rt.mw_put(bad_float, 0x7fc00000, 32)
 schema_rt.mw_put(bad_float, 0, vocab.ref_bits)
-result("unknown-nan", finish(bad_float), vocab)
+result("unknown-nan", finish(bad_float), foreign)
 let invalid_text = schema_rt.MessageWriter { ref_bits: vocab.ref_bits }
 schema_rt.mw_put(invalid_text, other[2], vocab.ref_bits)
 schema_rt.mw_put(invalid_text, 1, 3)
 schema_rt.mw_raw(invalid_text, "\xff")
 schema_rt.mw_put(invalid_text, 0, vocab.ref_bits)
-result("unknown-utf8", finish(invalid_text), vocab)
+result("unknown-utf8", finish(invalid_text), foreign)
 let text_entry = schema_rt.message_entry(vocab, slots[1])
 assert text_entry
 let old_max = text_entry.shape.max

@@ -296,6 +296,10 @@ func buildShortBodiesAndUnreachableVectors(t *testing.T, u *ir.Unit) []shortBody
 		{
 			name: "unreachable-chained-nodes",
 			wire: makeWire(func(ref func(uint64) []byte) []byte {
+				// the id table in first-use order: the node table and the
+				// record's type are named on the wire before its field
+				ref(math.MaxUint64)
+				ref(leafTID)
 				next3 := append(ptrField(ref, "next", 3), 0)
 				return nodeTable(ref,
 					struct {
