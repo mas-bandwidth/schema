@@ -62,7 +62,7 @@ const tableBuilderLoadSource = `
             {
                 scan.Ref(out _, out ulong id); scan.Slice(out Reader body);
                 long offset = -1; TableTypeInfo node = type.PointerType(id);
-                bool blob = id == BytesTypeId || id == StringTypeId;
+                bool blob = (id == BytesTypeId && type.BytesEdge) || (id == StringTypeId && type.StringEdge);
                 if (blob)
                 {
                     if (id == StringTypeId && !TextValid(body.Buffer)) { Damage(report); }
