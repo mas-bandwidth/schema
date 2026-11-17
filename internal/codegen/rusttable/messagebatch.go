@@ -256,13 +256,17 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 	}
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		// TEXT AND BYTES RIDE WHEN NON-EMPTY, declared default or not: the
-		// C++ reference's rule (cpptable messagecodec.go, `value.x_length >
-		// 0`) and the repository's codec's (tablewire messageencode.go,
-		// `fv.Count == 0` elides). gotable's byteValueRides elides a string AT
-		// its declared default instead, which is the file form's rule and
-		// not this form's; the reference is the one followed here.
-		return expr + "_length > 0"
+		// TEXT AND BYTES ELIDE ONLY AT THEIR DECLARED DEFAULT, length and
+		// bytes both (docs/SPEC-TABLES.md §3.3; the fixed engine's
+		// internal/tablewire/messageencode.go, messageElides,
+		// `bytes.Equal(fv.Cell.Str, f.DefBytes)`). An empty value under a
+		// non-empty default rides, and the default itself does not, so the
+		// reader's declared default is what an elided field reads. This is
+		// gotable's byteValueRides: empty when no default is declared.
+		if len(f.DefBytes) == 0 {
+			return expr + "_length > 0"
+		}
+		return fmt.Sprintf("%s_length != %d || %s[..%d] != %s", expr, len(f.DefBytes), expr, len(f.DefBytes), rustByteArray(f.DefBytes))
 	case f.Array == ir.ArrayCounted:
 		return expr + "_count > 0"
 	case f.Array == ir.ArrayFixed:
