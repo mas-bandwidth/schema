@@ -405,8 +405,10 @@ generated class per table and per map entry, each with its descriptor
   - `*string`: carried ([the table blobs](port-python/table-blobs.md))
 
   - `?T` over the base kinds, over a variable closure included: carried
+    ([the table optionals](port-python/table-optional.md))
 
   - `?[N]T` and `?[..N]T` over the base kinds: carried
+    ([the table optionals](port-python/table-optional.md))
 
   - `[]T`: carried ([the table unbounded arrays](port-python/table-unbounded.md))
 
