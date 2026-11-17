@@ -24,6 +24,27 @@ unknown keyed slots can substitute defaults during evolution. The reader keeps
 that distinct from a sender explicitly writing a default, including inside a
 nested body or keyed element.
 
+## One encoding for each value
+
+A read refuses a batch no conforming writer emits (SPEC-TABLES §3.3,
+`docs/rulings.json` `message-one-encoding` and `reads-refuse-non-canonical`).
+Under the reader's own build version it refuses a field the record does not
+declare; under the same build version and the same announced field shape it
+refuses fields out of the writer's declaration order and a field stored at the
+default the writer elides. At every build version it refuses a union field
+written with arm reference 0, on the read and on the skip path alike, while a
+None element of an array of unions reads. Under another build version order
+and defaults are not judged, and an undeclared field is skipped and counted.
+`TestPythonMessageReadsRefuseNonCanonical` holds every message and
+announcement row of `testdata/wire/non-canonical/MANIFEST.tsv` to the Go
+engine's verdict under the announcement as written and under another build;
+its negative control removes each refusal from the generated runtime in turn
+and requires the gate to go red on the row that refusal holds.
+
+The order and default checks already require the field's full announced shape
+to match the reader's own, which the spec states and the engine does not yet
+check on its own; on the shared vectors the shapes match and the two agree.
+
 The package retains a schema's existing public export if its name overlaps a
 message API spelling. In that case the complete message API is available
 from `package._schema._message_unit`.

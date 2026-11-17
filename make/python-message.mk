@@ -8,6 +8,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-message python-message-negative-control \
     python-message-write-negative-control python-message-crc-negative-control \
     python-message-onesided-negative-control python-message-substitution-negative-control \
     python-message-arm-shape-negative-control \
+    python-message-noncanonical python-message-noncanonical-negative-control \
     python-fixed-message-conformance python-fixed-message-surface-control
 .PHONY: python-fixed-message-conformance python-fixed-message-surface-control
 python-fixed-message-conformance: python-message-conformance
@@ -54,3 +55,13 @@ test-python: python-message-substitution-negative-control
 python-message-arm-shape-negative-control: python-toolchain-check deps-go
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageUnionKeyedArmShape$$' ./internal/codegen/pythontable/
 test-python: python-message-arm-shape-negative-control
+
+# The message read's canonical rules (SPEC-TABLES §3.3 (a)-(c)) over the shared
+# non-canonical vectors, the Go engine as the oracle, and each refusal's removal
+# planted in the generated runtime.
+.PHONY: python-message-noncanonical python-message-noncanonical-negative-control
+python-message-noncanonical: python-toolchain-check deps-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageReadsRefuseNonCanonical$$' ./internal/codegen/pythontable/
+python-message-noncanonical-negative-control: python-toolchain-check deps-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMessageReadsRefuseNonCanonicalNegativeControl$$' ./internal/codegen/pythontable/
+test-python: python-message-noncanonical python-message-noncanonical-negative-control
