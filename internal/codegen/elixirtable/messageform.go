@@ -272,7 +272,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
         check(not (entry.kind == 15 and value == :none))
 
         decl =
-          case field_decl(rec, entry, last) do
+          case write_decl(rec, entry, last, vocab) do
             {:ok, decl} -> decl
             _ -> throw(:invalid_value)
           end
@@ -581,9 +581,10 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   # A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (§3.3), judged where the walk
-  # first meets each spelling, against the record the bound root reaches (rec,
-  # nil under another build version, where the sender may have lawfully
-  # reordered, added or removed fields: §3.3, §4):
+  # first meets each spelling, against the record the bound root reaches (held
+  # at every build version, because the reader still needs to know which
+  # fields its record declares; under another build version the sender may have
+  # lawfully reordered, added or removed fields: §3.3, §4):
   #
   #   * a field id twice in one body is damage, named or not;
   #   * a union field written with arm reference 0 is damage at every build
@@ -593,7 +594,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   #     declare is damage, and where the field's announced entry is this
   #     reader's own byte for byte, a field out of the record's declaration
   #     order (§3.3 (b)) and a field stored at the default the writer elides
-  #     (§3.3 (a)) are damage.
+  #     (§3.3 (a)) are damage;
+  #   * under another build version an undeclared field is stepped over by its
+  #     announced shape and omitted, never appended to the body.
   defp read_body(_vocab, _r, _acc, _seen, depth, _rec, _last) when depth > 128, do: :malformed
 
   defp read_body(vocab, r, acc, seen, depth, rec, last) do
@@ -607,15 +610,40 @@ const messageBatchRuntimeBody = `  @batch_max 256
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
 
-            with false <- MapSet.member?(seen, entry.id),
-                 {:ok, decl} <- field_decl(rec, entry, last),
-                 {:ok, value, rest2} <-
-                   read_value(vocab, entry.kind, entry.shape, elem, rest, depth, sub_of(decl)),
-                 false <- entry.kind == 15 and value == :none,
-                 false <- stored_at_default?(vocab, decl, value) do
-              seen = MapSet.put(seen, entry.id)
-              last = next_last(decl, last)
-              read_body(vocab, rest2, [{ref, value} | acc], seen, depth, rec, last)
+            with false <- MapSet.member?(seen, entry.id) do
+              case field_decl(rec, entry, last, vocab) do
+                :skip ->
+                  case skip_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+                    {:ok, rest2} ->
+                      read_body(vocab, rest2, acc, MapSet.put(seen, entry.id), depth, rec, last)
+
+                    :malformed ->
+                      :malformed
+                  end
+
+                {:ok, decl} ->
+                  with {:ok, value, rest2} <-
+                         read_value(
+                           vocab,
+                           entry.kind,
+                           entry.shape,
+                           elem,
+                           rest,
+                           depth,
+                           sub_of(decl)
+                         ),
+                       false <- entry.kind == 15 and value == :none,
+                       false <- stored_at_default?(vocab, decl, value) do
+                    seen = MapSet.put(seen, entry.id)
+                    last = next_last(decl, last)
+                    read_body(vocab, rest2, [{ref, value} | acc], seen, depth, rec, last)
+                  else
+                    _ -> :malformed
+                  end
+
+                _ ->
+                  :malformed
+              end
             else
               _ -> :malformed
             end
@@ -629,22 +657,38 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  # One field's declaration in the bound record: {:ok, nil} where no record is
-  # judged, {:ok, {index, exact, rule, sub}} for a declared field, and a refusal
-  # for an undeclared field or, where the entry is exact, one out of order.
-  defp field_decl(nil, _entry, _last), do: {:ok, nil}
+  # One field's declaration in the bound record: {:ok, {index, exact, rule,
+  # sub}} for a declared field, :skip where the reader has no record or the
+  # record does not declare the field under another build version, and a
+  # refusal for a field the record does not declare at this reader's own build
+  # version or, where the entry is exact, one out of order.
+  defp field_decl(nil, _entry, _last, _vocab), do: :skip
 
-  defp field_decl(rec, entry, last) do
+  defp field_decl(rec, entry, last, vocab) do
     case Map.get(rec, entry.id) do
       nil ->
-        :undeclared
+        if own_build?(vocab), do: :undeclared, else: :skip
 
       {index, raw, rule, sub} ->
-        exact = raw == Map.get(entry, :raw)
+        if own_build?(vocab) do
+          exact = raw == Map.get(entry, :raw)
 
-        if exact and index <= last,
-          do: :out_of_order,
-          else: {:ok, {index, exact, rule, sub}}
+          if exact and index <= last,
+            do: :out_of_order,
+            else: {:ok, {index, exact, rule, sub}}
+        else
+          {:ok, {index, false, rule, sub}}
+        end
+    end
+  end
+
+  # The writer holds the record at every build version too, but judges order
+  # and defaults only under its own; a field its record does not declare under
+  # another build version writes with no record rules, as before.
+  defp write_decl(rec, entry, last, vocab) do
+    case field_decl(rec, entry, last, vocab) do
+      :skip -> {:ok, nil}
+      other -> other
     end
   end
 
@@ -733,17 +777,33 @@ const messageBatchRuntimeBody = `  @batch_max 256
     v
   end
 
-  # the record the bound root reaches, under this reader's own build version
-  defp own_record(%{build_version: @build_version, root: root}) when is_binary(root),
-    do: record(root)
+  # the record the bound root reaches, held at every build version so the walk
+  # can tell a declared field from one it must step over
+  defp own_record(%{root: root}) when is_binary(root), do: record(root)
 
   defp own_record(_vocab), do: nil
+
+  defp own_build?(%{build_version: @build_version}), do: true
+  defp own_build?(_vocab), do: false
 
   defp record(name) when is_binary(name), do: Map.get(@message_records, name)
   defp record(_sub), do: nil
 
   defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)
   defp arm_sub(_sub, _id), do: nil
+
+  # An undeclared field under another build version is stepped over by its
+  # announced shape and omitted (docs/SPEC-TABLES.md §3.3, §4). Its payload is
+  # read exactly as a kept value would be, so damage stays damage, but nothing
+  # lands in the body; a union field at arm 0 is still refused where the walk
+  # meets it, whatever the build.
+  defp skip_value(vocab, kind, shape, elem, r, depth) do
+    case read_value(vocab, kind, shape, elem, r, depth, nil) do
+      {:ok, :none, _rest} when kind == 15 -> :malformed
+      {:ok, _value, rest} -> {:ok, rest}
+      :malformed -> :malformed
+    end
+  end
 
   defp read_value(_vocab, _kind, _shape, _elem, _r, depth, _sub) when depth > 128,
     do: :malformed

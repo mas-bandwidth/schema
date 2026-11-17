@@ -34,6 +34,12 @@ fixed table Alpha
     a int32
     b int32
     c string(8)
+    d Delta
+}
+
+type Delta
+{
+    y int32
 }
 
 fixed table Beta
@@ -48,7 +54,11 @@ table Var
 `)
 	slots := tablewire.MessageVocabularySlots(u)
 	ref := func(table, field string) uint64 {
-		for _, f := range u.Tables[table].Fields {
+		st := u.Tables[table]
+		if st == nil {
+			st = u.Structs[table]
+		}
+		for _, f := range st.Fields {
 			if f.Name == field {
 				if s, ok := slots[ir.TableFieldEntry(f).Key()]; ok {
 					return s
@@ -59,12 +69,13 @@ table Var
 		return 0
 	}
 	a, b, c, x := ref("Alpha", "a"), ref("Alpha", "b"), ref("Alpha", "c"), ref("Beta", "x")
+	d, y := ref("Alpha", "d"), ref("Delta", "y")
 
 	// the Go engine's canonical batch of one Alpha body
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup("Alpha"))
 	var rep tabletext.Report
-	if !m.Read(inst, []byte(`{"a":1,"b":2,"c":"hi"}`), &rep) || !rep.Silent() {
+	if !m.Read(inst, []byte(`{"a":1,"b":2,"c":"hi","d":{"y":3}}`), &rep) || !rep.Silent() {
 		t.Fatalf("source: %+v", rep)
 	}
 	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
@@ -78,7 +89,7 @@ table Var
 
 	body := fmt.Sprintf(`    {:ok, vocab} = M.announce_read(M.announce())
     batch = File.read!(golden("batch.bin"))
-    canonical = [[{%[1]d, 1}, {%[2]d, 2}, {%[3]d, "hi"}]]
+    canonical = [[{%[1]d, 1}, {%[2]d, 2}, {%[3]d, "hi"}, {%[4]d, [{%[5]d, 3}]}]]
 
     # for_root binds each fixed root, and refuses any other name
     {:ok, alpha} = M.for_root(vocab, "Alpha")
@@ -108,10 +119,16 @@ table Var
     # the batch read under the other root names fields Beta does not declare
     check(match?({:malformed, 0, _}, M.beta_load_messages(vocab, batch)), "beta_load_messages read Alpha's body")
 
+    # under another build version those undeclared fields, nested body included,
+    # are stepped over and omitted; the declared fields still read
+    other = %%{vocab | build_version: bxor(vocab.build_version, 1)}
+    check(M.beta_load_messages(other, batch) == {:ok, [[]]}, "other build: beta_load_messages kept an undeclared field")
+    check(M.alpha_load_messages(other, batch) == {:ok, canonical}, "other build: alpha_load_messages did not read the declared fields")
+
     # the bound save refuses out of order, undeclared and at-default bodies
     for {what, bad} <- [
           {"out of order", [[{%[2]d, 2}, {%[1]d, 1}]]},
-          {"undeclared", [[{%[1]d, 1}, {%[4]d, 5}]]},
+          {"undeclared", [[{%[1]d, 1}, {%[6]d, 5}]]},
           {"at default", [[{%[1]d, 0}, {%[2]d, 2}]]},
           {"text at default", [[{%[1]d, 1}, {%[3]d, ""}]]}
         ] do
@@ -119,7 +136,7 @@ table Var
       check(M.alpha_save_messages(vocab, bad) == {:error, :invalid_value}, "alpha_save_messages wrote a body #{what}")
       check(M.alpha_measure_messages(vocab, bad) == {:error, :invalid_value}, "alpha_measure_messages measured a body #{what}")
     end
-`, a, b, c, x)
+`, a, b, c, d, y, x)
 
 	out, err := runMessageProbe(t, u, filepath.Join(dir, "announce.bin"), body)
 	if err != nil {

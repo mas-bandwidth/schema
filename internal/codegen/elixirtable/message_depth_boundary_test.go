@@ -20,12 +20,15 @@ const depthBoundarySchema = `package depthprobe
 
 fixed table Root {
 	a int32
-}
-
-fixed table ZExtra {
 	b int32
 	c int32
 	d int32
+}
+
+fixed table ZExtra {
+	e int32
+	f int32
+	g int32
 }
 `
 
@@ -137,15 +140,18 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 	t.Helper()
 	u := depthBoundaryUnit(t)
 	st := u.Tables["Root"]
-	if st == nil || len(st.Fields) != 1 {
-		t.Fatalf("expected Root table with 1 field, got %+v", st)
+	if st == nil || len(st.Fields) != 4 {
+		t.Fatalf("expected Root table with 4 fields, got %+v", st)
 	}
+	// The synthetic nested table, union and array ride the ids of the root's
+	// own fields, so under another build version the walk keeps them rather
+	// than stepping over them; only their announced shapes are the peer's.
 	entries := []ir.TableVocabularyEntry{
 		ir.TableFieldEntry(st.Fields[0]),
-		{Id: 0x9991, Kind: ir.TableKindTable},
-		{Id: 0x9992, Kind: ir.TableKindUnion},
+		{Id: ir.TableFieldEntry(st.Fields[1]).Id, Kind: ir.TableKindTable},
+		{Id: ir.TableFieldEntry(st.Fields[2]).Id, Kind: ir.TableKindUnion},
 		{
-			Id:   0x9993,
+			Id:   ir.TableFieldEntry(st.Fields[3]).Id,
 			Kind: ir.TableKindArray,
 			Shape: ir.TableMessageShape{
 				Min:   1,

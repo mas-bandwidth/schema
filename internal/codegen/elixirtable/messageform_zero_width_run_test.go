@@ -69,19 +69,6 @@ func TestElixirMessageZeroWidthRunIsBounded(t *testing.T) {
 
 	const far = 30_000_000
 
-	flat := zeroWidthAnnouncement(
-		zeroWidthEntry(0x1000, 14, zeroWidthArray(far, far, 0, nil)),
-	)
-	ranged := zeroWidthAnnouncement(
-		zeroWidthEntry(0x1000, 14, zeroWidthArray(far, far, 2, []byte{1, 0, 14})),
-	)
-	nested := zeroWidthAnnouncement(
-		zeroWidthEntry(0x1000, 14, zeroWidthArray(far, far, 14, zeroWidthArray(far, far, 0, nil))),
-	)
-	small := zeroWidthAnnouncement(
-		zeroWidthEntry(0x1000, 14, zeroWidthArray(2, 2, 0, nil)),
-	)
-
 	u := unitFrom(t, `package probe
 
 fixed table Probe
@@ -89,6 +76,21 @@ fixed table Probe
     x uint8
 }
 `)
+	// The announcement names the root's own field, so the bound read holds it;
+	// only its announced shape is the peer's.
+	id := ir.TableFieldEntry(u.Tables["Probe"].Fields[0]).Id
+	flat := zeroWidthAnnouncement(
+		zeroWidthEntry(id, 14, zeroWidthArray(far, far, 0, nil)),
+	)
+	ranged := zeroWidthAnnouncement(
+		zeroWidthEntry(id, 14, zeroWidthArray(far, far, 2, []byte{1, 0, 14})),
+	)
+	nested := zeroWidthAnnouncement(
+		zeroWidthEntry(id, 14, zeroWidthArray(far, far, 14, zeroWidthArray(far, far, 0, nil))),
+	)
+	small := zeroWidthAnnouncement(
+		zeroWidthEntry(id, 14, zeroWidthArray(2, 2, 0, nil)),
+	)
 	tables, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
