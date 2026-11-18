@@ -1,0 +1,15 @@
+# frozen_string_literal: true
+
+require_relative '_table/core'
+require_relative '_table/descriptor'
+require_relative '_table/load'
+require_relative '_table/save'
+require_relative '_table/retain'
+require_relative '_table/text_carrier'
+require_relative '_table/json_scan'
+require_relative '_table/json_table'
+require_relative '_table/textform_scan'
+require_relative '_table/textform'
+require_relative '_table/block'
+require_relative '_table/cook'
+require_relative '_table/view'

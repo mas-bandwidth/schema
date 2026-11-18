@@ -8,6 +8,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -118,7 +119,7 @@ func generateMessageFormLock(t *testing.T) (map[string]map[string][]byte, []stri
 	}
 	// THE TWO TAGGED LEGS (compiler/target_moo.go, target_goose.go build only
 	// under their schema_leg_* tags), through their table emitters directly
-	for target, generate := range map[string]func(*ir.Unit) (map[string][]byte, error){"moo": mootable.Generate, "goose": goosetable.Generate} {
+	for target, generate := range map[string]func(*ir.Unit) (map[string][]byte, error){"moo": mootable.Generate, "goose": goosetable.Generate, "ruby": rubytable.Generate} {
 		if _, ok := out[target]; ok {
 			continue
 		}
@@ -133,8 +134,8 @@ func generateMessageFormLock(t *testing.T) (map[string]map[string][]byte, []stri
 		targets = append(targets, target)
 	}
 	sort.Strings(targets)
-	if len(targets) != 17 {
-		t.Fatalf("%d backends generated (%v); the lock holds all seventeen", len(targets), targets)
+	if len(targets) != 18 {
+		t.Fatalf("%d backends generated (%v); the lock holds all eighteen", len(targets), targets)
 	}
 	return out, targets
 }

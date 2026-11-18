@@ -19,6 +19,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `paired/` | paired before/after + fixed-form bytes | `make bench-paired-check` | `make bench-paired-gate` |
 | `python/` | Python packet runner | `bench/run.sh --only python` | `bench/run.sh --only python` |
 | `results/` | committed CSV ledgers | `none` | `bench/run.sh` |
+| `ruby/` | Ruby packet runner | `make bench-ruby-gate` | `bench/run.sh --only ruby` |
 | `rust/` | Rust runner | `bench/run.sh --only rust` | `bench/run.sh --only rust` |
 | `tables/` | tables bench pass | `make bench-tables` | `make bench-tables` |
 | `tools/` | bench aggregation and shape gate | `go test ./bench/tools` | `go test ./bench/tools` |

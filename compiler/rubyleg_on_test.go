@@ -22,8 +22,8 @@ func TestRubyTargetIsRegistered(t *testing.T) {
 	if !ok {
 		t.Fatal("the ruby target registered no carries set (compiler/carries_ruby.go)")
 	}
-	if len(got) != 0 {
-		t.Fatalf("the ruby packet target carries %v; it carries no table construct until R5/R6", got)
+	if !slices.Equal(got, CarryConstructs()) {
+		t.Fatalf("the ruby target carries %v, want %v", got, CarryConstructs())
 	}
 }
 
@@ -86,7 +86,11 @@ func TestRubyCarriesThePacketWireThroughTheDriver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = c.Generate(u, "ruby", nil); err == nil || !strings.Contains(err.Error(), "and the ruby table backend is a named follow-on") {
-		t.Errorf("table declaration: got %v, want refusal naming follow-on", err)
+	files, err = c.Generate(u, "ruby", nil)
+	if err != nil {
+		t.Fatalf("table declaration refused: %v", err)
+	}
+	if !strings.Contains(string(files["game/Game.rb"]), "class Fleet") {
+		t.Fatal("generate --lang ruby emitted no class Fleet in game/Game.rb")
 	}
 }
