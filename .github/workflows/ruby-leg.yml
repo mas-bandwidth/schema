@@ -47,6 +47,7 @@ jobs:
       - name: make test-ruby (or the toolchain check until the skeleton lands)
         run: |
           if make -n test-ruby >/dev/null 2>&1; then
+            make serialize-siblings
             make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
           else
             make ruby-toolchain-check
@@ -70,6 +71,7 @@ jobs:
       - name: make test-ruby (or the toolchain check until the skeleton lands)
         run: |
           if make -n test-ruby >/dev/null 2>&1; then
+            make serialize-siblings
             make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
           else
             make ruby-toolchain-check

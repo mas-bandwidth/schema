@@ -139,6 +139,19 @@ func TestUnionArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "ruby" {
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang ruby refused the supported shape: %v", err)
+			}
+			dataSrc := string(files["probe/_fixed_data.rb"])
+			for _, want := range []string{`"name" => "history"`, `"name" => "undo"`, `"kind" => 15`} {
+				if !strings.Contains(dataSrc, want) {
+					t.Errorf("--lang ruby: probe/_fixed_data.rb lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "elixir" {
 			// the variable form carries the construct (docs/SPEC-TABLES.md
 			// §2.3, §2.6): one Table.ex codec per unit

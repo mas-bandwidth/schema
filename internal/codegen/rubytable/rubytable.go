@@ -19,7 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-//go:embed runtime/_table.rb all:runtime/_table
+//go:embed runtime/_table.rb runtime/_fixed.rb all:runtime/_table
 var runtimeFS embed.FS
 
 //go:embed runtime/_table.rbs
@@ -39,7 +39,7 @@ func GenerateSurface(u *ir.Unit, surfaces Surfaces) (map[string][]byte, error) {
 }
 
 // GenerateSurfaceLineage emits the selected surfaces and fixed lineage entries.
-func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, _ map[string][]FixedLineageEntry) (map[string][]byte, error) {
+func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if err := ValidateSurfaces(u, surfaces); err != nil {
 		return nil, err
 	}
@@ -76,6 +76,14 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, _ map[string][]FixedL
 		}
 	}
 
+	if surfaces.Fixed {
+		fixedData, derr := emitRubyFixedData(u, mod, lineage)
+		if derr != nil {
+			return nil, derr
+		}
+		out[path.Join(pkg, "_fixed_data.rb")] = []byte(fixedData)
+	}
+
 	if surfaces.View {
 		out[path.Join(pkg, "_view.rb")] = []byte(emitViewModule(u, mod))
 	}
@@ -86,6 +94,9 @@ func GenerateSurfaceLineage(u *ir.Unit, surfaces Surfaces, _ map[string][]FixedL
 		}
 		rel := strings.TrimPrefix(p, "runtime/")
 		if rel == "_table.rbs" {
+			return nil
+		}
+		if rel == "_fixed.rb" && !surfaces.Fixed {
 			return nil
 		}
 		if rel == "_table/message.rb" && !hasMessage {
@@ -125,10 +136,12 @@ var reservedTableFiles = map[string]bool{
 	"_message_unit": true,
 	"_view":         true,
 	"_fixed":        true,
+	"_fixed_data":   true,
 }
 
 var reservedTableConstants = map[string]bool{
 	"SchemaTable":          true,
+	"FixedLoadReport":      true,
 	"BlobRef":              true,
 	"TableRetain":          true,
 	"TextError":            true,
@@ -220,8 +233,14 @@ func emitUnitEntry(u *ir.Unit, mod string, bases []string, surfaces Surfaces, ha
 	fmt.Fprintf(&b, "require_relative '%s/serialize'\n", u.Package)
 	fmt.Fprintf(&b, "require_relative '%s/_table'\n", u.Package)
 	fmt.Fprintf(&b, "require_relative '%s/_retain_known'\n", u.Package)
+	if surfaces.Fixed {
+		fmt.Fprintf(&b, "require_relative '%s/_fixed'\n", u.Package)
+	}
 	for _, base := range bases {
 		fmt.Fprintf(&b, "require_relative '%s/%s'\n", u.Package, base)
+	}
+	if surfaces.Fixed {
+		fmt.Fprintf(&b, "require_relative '%s/_fixed_data'\n", u.Package)
 	}
 	if hasMessage {
 		fmt.Fprintf(&b, "require_relative '%s/_message_unit'\n", u.Package)
@@ -271,7 +290,11 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 		b.WriteString("    def _s_reset\n      _s_zero\n    end\n")
 		b.WriteString("  end\n")
 		emitUnionDescriptor(&b, u, un)
-		fmt.Fprintf(&b, "  SchemaTable.register_union(%s)\n\n", un.Name)
+		fmt.Fprintf(&b, "  SchemaTable.register_union(%s)\n", un.Name)
+		if surfaces.Fixed {
+			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n", rbQuote(un.Name), un.Name)
+		}
+		b.WriteString("\n")
 	}
 
 	for _, st := range plan.packets {
@@ -288,19 +311,25 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 		b.WriteString("  end\n")
 		emitTableDescriptor(&b, u, st, true, surfaces)
 		emitValueBlockRow(&b, u, st)
+		if surfaces.Fixed {
+			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(st.Name), st.Name)
+		}
 	}
 
 	for _, un := range orderUnions(plan.unions) {
 		emitTableUnion(&b, u, un)
+		if surfaces.Fixed {
+			fmt.Fprintf(&b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(un.Name), un.Name)
+		}
 	}
 
 	for _, st := range orderStructs(plan.tables) {
 		for _, f := range st.Fields {
 			if f.KeyEnum != "" {
-				emitKeyedClass(&b, st.Name, f)
+				emitKeyedClass(&b, st.Name, f, surfaces)
 			}
 		}
-		emitTable(&b, u, st, blocks, surfaces)
+		emitTable(&b, u, mod, st, blocks, surfaces)
 	}
 
 	s := strings.TrimRight(b.String(), "\n")
@@ -311,7 +340,7 @@ func keyedClassName(tableName string, f *ir.Field) string {
 	return tableName + ir.GoExportName(f.Name) + "KeyedArray"
 }
 
-func emitKeyedClass(b *strings.Builder, tableName string, f *ir.Field) {
+func emitKeyedClass(b *strings.Builder, tableName string, f *ir.Field, surfaces Surfaces) {
 	kname := keyedClassName(tableName, f)
 	elem := *f
 	elem.Array = ir.ArrayNone
@@ -324,7 +353,11 @@ func emitKeyedClass(b *strings.Builder, tableName string, f *ir.Field) {
 	fmt.Fprintf(b, "    def initialize(_key_max = %d, &block)\n", f.ArrayBound)
 	fmt.Fprintf(b, "      _s_len = _key_max\n      super(_s_len) { |k| block ? block.call(k) : (%s) }\n", elemDef)
 	b.WriteString("    end\n")
-	b.WriteString("  end\n\n")
+	b.WriteString("  end\n")
+	if surfaces.Fixed {
+		fmt.Fprintf(b, "  _s_fixed_classes[%s] = %s\n", rbQuote(kname), kname)
+	}
+	b.WriteString("\n")
 }
 
 func emitTableUnion(b *strings.Builder, u *ir.Unit, un *ir.Union) {
@@ -383,7 +416,7 @@ func emitAttrAccessor(b *strings.Builder, syms []string, hasObjectID bool) {
 	}
 }
 
-func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUnit, surfaces Surfaces) {
+func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks *ir.BlockUnit, surfaces Surfaces) {
 	name := st.Name
 	fmt.Fprintf(b, "  class %s\n", name)
 	b.WriteString("    class << self\n")
@@ -423,82 +456,56 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUn
 	fmt.Fprintf(b, "    def ==(other)\n      other.instance_of?(%s) && SchemaTable.graph_eq(self, other)\n    end\n\n", name)
 	b.WriteString("    def inspect\n      SchemaTable.graph_inspect(self)\n    end\n\n")
 
-	if surfaces.Fixed && st.FixedDeclared {
-		b.WriteString("    def self.fixed_load(data, capacity = 4096, report = nil, plan_capacity = nil)\n")
-		b.WriteString("      raise Refused.new('fixed_surface_not_selected') unless SchemaTable.respond_to?(:fixed_load)\n")
-		fmt.Fprintf(b, "      SchemaTable.u(SchemaTable).fixed_load(%s, data, capacity, report, plan_capacity)\n", name)
+	if surfaces.Fixed && fixedRootAdmitted(u, st) {
+		b.WriteString("    def self.fixed_load(data, capacity = 4096, report = nil, plan_capacity = nil, **opts)\n")
+		b.WriteString("      opts.each_key do |k|\n")
+		b.WriteString("        unless k == :capacity || k == :report || k == :plan_capacity\n")
+		b.WriteString("          raise ::ArgumentError, \"unknown keyword: #{k.inspect}\"\n")
+		b.WriteString("        end\n")
+		b.WriteString("      end\n")
+		b.WriteString("      capacity = opts[:capacity] if opts.key?(:capacity)\n")
+		b.WriteString("      report = opts[:report] if opts.key?(:report)\n")
+		b.WriteString("      plan_capacity = opts[:plan_capacity] if opts.key?(:plan_capacity)\n")
+		fmt.Fprintf(b, "      ::%s._s_fixed_load(%s, data, capacity, report, plan_capacity)\n", mod, rbQuote(name))
 		b.WriteString("    end\n\n")
 		b.WriteString("    def self.fixed_save(values)\n")
-		fmt.Fprintf(b, "      raise InvalidValue.new(%s, 'fixed_surface_not_selected') unless SchemaTable.respond_to?(:fixed_save)\n", rbQuote(name))
-		fmt.Fprintf(b, "      SchemaTable.u(SchemaTable).fixed_save(%s, values)\n", name)
+		fmt.Fprintf(b, "      ::%s._s_fixed_save(%s, self, values)\n", mod, rbQuote(name))
 		b.WriteString("    end\n\n")
 		b.WriteString("    def self.fixed_measure(count)\n")
-		fmt.Fprintf(b, "      raise InvalidValue.new(%s, 'fixed_surface_not_selected') unless SchemaTable.respond_to?(:fixed_measure)\n", rbQuote(name))
-		fmt.Fprintf(b, "      SchemaTable.u(SchemaTable).fixed_measure(%s, count)\n", name)
+		fmt.Fprintf(b, "      ::%s._s_fixed_measure(%s, count)\n", mod, rbQuote(name))
 		b.WriteString("    end\n\n")
 	}
 
-	b.WriteString("    def self.load(data, report = nil)\n")
 	switch {
 	case st.FixedDeclared && !surfaces.Fixed:
-		b.WriteString("      raise Refused.new('fixed_surface_not_selected')\n")
+		b.WriteString("    def self.load(_data, _report = nil)\n      raise Refused.new('fixed_surface_not_selected')\n    end\n\n")
+		fmt.Fprintf(b, "    def save\n      raise InvalidValue.new(%s, 'fixed_surface_not_selected')\n    end\n\n", rbQuote(name))
+		fmt.Fprintf(b, "    def measure\n      raise InvalidValue.new(%s, 'fixed_surface_not_selected')\n    end\n\n", rbQuote(name))
 	case st.FixedDeclared:
-		b.WriteString("      if SchemaTable.respond_to?(:fixed_load)\n")
-		fmt.Fprintf(b, "        return SchemaTable.u(SchemaTable).fixed_load(%s, data, 1, report)[0]\n", name)
-		b.WriteString("      end\n")
-		if st.Integrity == "crc32c" {
-			b.WriteString("      data = SchemaTable.open_crc(data)\n")
-		}
-		fmt.Fprintf(b, "      SchemaTable.load_table(%s, data, report)\n", name)
+		fmt.Fprintf(b, "    def self.load(data, report = nil)\n      ::%s._s_fixed_load(%s, data, 1, report, nil)[0]\n    end\n\n", mod, rbQuote(name))
+		fmt.Fprintf(b, "    def save\n      ::%s._s_fixed_save(%s, %s, [self])\n    end\n\n", mod, rbQuote(name), name)
+		fmt.Fprintf(b, "    def measure\n      ::%s._s_fixed_measure(%s, 1)\n    end\n\n", mod, rbQuote(name))
 	default:
+		b.WriteString("    def self.load(data, report = nil)\n")
 		if st.Integrity == "crc32c" {
 			b.WriteString("      data = SchemaTable.open_crc(data)\n")
 		}
-		fmt.Fprintf(b, "      SchemaTable.load_table(%s, data, report)\n", name)
-	}
-	b.WriteString("    end\n\n")
-
-	b.WriteString("    def save\n")
-	switch {
-	case st.FixedDeclared && !surfaces.Fixed:
-		fmt.Fprintf(b, "      raise InvalidValue.new(%s, 'fixed_surface_not_selected')\n", rbQuote(name))
-	case st.FixedDeclared:
-		b.WriteString("      if SchemaTable.respond_to?(:fixed_save)\n")
-		fmt.Fprintf(b, "        return SchemaTable.u(SchemaTable).fixed_save(%s, [self])\n", name)
-		b.WriteString("      end\n")
+		fmt.Fprintf(b, "      SchemaTable.load_table(%s, data, report)\n    end\n\n", name)
+		b.WriteString("    def save\n")
 		if st.Integrity == "crc32c" {
 			b.WriteString("      SchemaTable.seal_crc(SchemaTable.save_table(self))\n")
 		} else {
 			b.WriteString("      SchemaTable.save_table(self)\n")
 		}
-	default:
-		if st.Integrity == "crc32c" {
-			b.WriteString("      SchemaTable.seal_crc(SchemaTable.save_table(self))\n")
-		} else {
-			b.WriteString("      SchemaTable.save_table(self)\n")
-		}
-	}
-	b.WriteString("    end\n\n")
-
-	b.WriteString("    def measure\n")
-	switch {
-	case st.FixedDeclared && !surfaces.Fixed:
-		fmt.Fprintf(b, "      raise InvalidValue.new(%s, 'fixed_surface_not_selected')\n", rbQuote(name))
-	case st.FixedDeclared:
-		b.WriteString("      if SchemaTable.respond_to?(:fixed_measure)\n")
-		fmt.Fprintf(b, "        return SchemaTable.u(SchemaTable).fixed_measure(%s, 1)\n", name)
-		b.WriteString("      end\n")
+		b.WriteString("    end\n\n")
+		b.WriteString("    def measure\n")
 		if st.Integrity == "crc32c" {
 			b.WriteString("      SchemaTable.measure_table(self) + 4\n")
 		} else {
 			b.WriteString("      SchemaTable.measure_table(self)\n")
 		}
-	case st.Integrity == "crc32c":
-		b.WriteString("      SchemaTable.measure_table(self) + 4\n")
-	default:
-		b.WriteString("      SchemaTable.measure_table(self)\n")
+		b.WriteString("    end\n\n")
 	}
-	b.WriteString("    end\n\n")
 
 	b.WriteString("    def self.measure(value)\n      value.measure\n    end\n\n")
 
@@ -591,6 +598,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, blocks *ir.BlockUn
 	b.WriteString("  end\n")
 	emitTableDescriptor(b, u, st, false, surfaces)
 	emitBlockDescriptors(b, u, st, blocks)
+	if surfaces.Fixed {
+		fmt.Fprintf(b, "  _s_fixed_classes[%s] = %s\n\n", rbQuote(name), name)
+	}
 }
 
 func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, valueClass bool, surfaces Surfaces) {

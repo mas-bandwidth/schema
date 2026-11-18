@@ -92,7 +92,48 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
     attr_accessor retained: Integer
     attr_accessor retain_lost: Integer
     def initialize: () -> void
+    def reset: () -> void
   end
+
+  class FixedLoadReport < LoadReport
+    attr_accessor layout_hash: Integer
+    def initialize: () -> void
+    def reset: () -> void
+  end`)
+	if surfaces.Fixed {
+		b.WriteString(`
+  self.@_s_fixed_roots: ::Hash[String, untyped]
+  self.@_s_fixed_classes: ::Hash[String, untyped]
+  self.@_s_crc32c_table: ::Array[Integer]
+
+  def self._s_fixed_roots: () -> ::Hash[String, untyped]
+  def self._s_fixed_classes: () -> ::Hash[String, untyped]
+  def self._s_fixed_arr: () -> ::Array[untyped]
+  def self._s_fixed_hash: () -> ::Hash[String, untyped]
+  def self._s_fixed_crc32c: (String data) -> Integer
+  def self._s_fixed_seal_crc: (String data) -> String
+  def self._s_fixed_form_refusal: (Integer form, Integer b0) -> String
+  def self._s_fixed_open_crc: (String data, ?Integer form) -> String
+  def self._s_fixed_int: (String data, Integer at, Integer width, bool signed) -> Integer
+  def self._s_fixed_store: (String out, Integer at, Integer width, Integer value) -> void
+  def self._s_fixed_dead: (String data, Integer from, Integer stop) -> void
+  def self._s_fixed_dead_header: (String source) -> void
+  def self._s_fixed_bool: (String data, Integer at) -> bool
+  def self._s_fixed_text: (String raw) -> String
+  def self._s_fixed_encode: (untyped spec, untyped value, String out, Integer at, String path, bool check) -> void
+  def self._s_fixed_seed: (untyped spec, String out, Integer at) -> void
+  def self._s_fixed_check: (untyped spec, String data, Integer at) -> void
+  def self._s_fixed_decode: (untyped spec, String data, Integer at, ?untyped current) -> untyped
+  def self._s_fixed_guarded: (untyped op, String source) -> bool
+  def self._s_fixed_apply: (untyped op, String source, String image) -> Integer
+  def self._s_fixed_register: (untyped roots) -> void
+  def self._s_fixed_root: (String cls_name, bool writing) -> untyped
+  def self._s_fixed_measure: (String cls_name, untyped count) -> Integer
+  def self._s_fixed_save: (String cls_name, untyped cls_obj, untyped values) -> String
+  def self._s_fixed_load: (String cls_name, untyped data, ?untyped capacity, ?LoadReport? report, ?untyped plan_capacity) -> ::Array[untyped]
+`)
+	}
+	b.WriteString(`
 
   module Serialize
     def self.float32_round: (Float value) -> Float
@@ -428,9 +469,11 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			if surfaces.Fixed && st.FixedDeclared {
 				b.WriteString("    def self.fixed_plan_max: () -> Integer\n")
 				b.WriteString("    def self.fixed_plan_max=: (Integer) -> Integer\n")
-				fmt.Fprintf(&b, "    def self.fixed_load: (untyped data, ?Integer capacity, ?untyped report, ?untyped plan_capacity) -> ::Array[%s]\n", st.Name)
-				fmt.Fprintf(&b, "    def self.fixed_save: (::Array[%s] values) -> String\n", st.Name)
-				b.WriteString("    def self.fixed_measure: (Integer count) -> Integer\n")
+			}
+			if surfaces.Fixed && fixedRootAdmitted(u, st) {
+				fmt.Fprintf(&b, "    def self.fixed_load: (untyped data, ?untyped capacity, ?untyped report, ?untyped plan_capacity, **untyped opts) -> ::Array[%s]\n", st.Name)
+				fmt.Fprintf(&b, "    def self.fixed_save: (untyped values) -> String\n")
+				b.WriteString("    def self.fixed_measure: (untyped count) -> Integer\n")
 			}
 			if surfaces.Retain {
 				fmt.Fprintf(&b, "    def self.load_retain: (untyped data, untyped retain, ?untyped report) -> %s\n", st.Name)

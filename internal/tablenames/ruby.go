@@ -16,6 +16,7 @@ func init() {
 		Name{Name: "fixed_load", What: "load a whole fixed-form batch", Scoped: true},
 		Name{Name: "fixed_save", What: "save a fixed-form batch", Scoped: true},
 		Name{Name: "fixed_measure", What: "measure a fixed-form batch from its count", Scoped: true},
+		Name{Name: "fixed_plan_max", What: "bound the size of an executed fixed-form plan", Scoped: true},
 		Name{Name: "BlobRef", What: "an explicit shared byte or string blob node", Scoped: true},
 		Name{Name: "Refused", What: "the read refusal every generated unit defines", Scoped: true},
 		Name{Name: "InvalidValue", What: "the write refusal every generated unit defines", Scoped: true},

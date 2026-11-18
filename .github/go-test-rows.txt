@@ -73,6 +73,9 @@ weight ./internal/codegen/moo/moorun 0 0
 weight ./internal/codegen/mootable 2 2
 weight ./internal/codegen/python 0 0
 weight ./internal/codegen/python/pyrun 0 0
+weight ./internal/codegen/ruby 1 1
+weight ./internal/codegen/ruby/rubyrun 0 0
+weight ./internal/codegen/rubytable 5 10
 weight ./internal/codegen/rust 7 7
 weight ./internal/codegen/rusttable 100 322
 weight ./internal/codegen/squirrel 1 1

@@ -14,11 +14,15 @@ type Surfaces = gotable.Surfaces
 
 // FixedLineageEntry is one fixed-form schema layout entry from the unit's lock.
 type FixedLineageEntry struct {
-	Wire    uint64
-	Layout  []byte
-	Record  int64
-	Retired bool
-	Reason  string
+	Wire             uint64
+	Layout           []byte
+	Record           int64
+	Retired          bool
+	Reason           string
+	Ranges           []ir.TableFixedWriterRange
+	Digest           []byte
+	Writer           *ir.Struct
+	LegacyLayoutOnly bool
 }
 
 // DefaultSurfaces enables every carried Ruby table surface, including hand-text.

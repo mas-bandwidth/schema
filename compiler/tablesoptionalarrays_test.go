@@ -221,6 +221,19 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "ruby" {
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang ruby refused the supported shape: %v", err)
+			}
+			dataSrc := string(files["probe/_fixed_data.rb"])
+			for _, want := range []string{`"name" => "entries"`, `"name" => "weights"`, `"name" => "grades"`, `"shape" => "optional"`} {
+				if !strings.Contains(dataSrc, want) {
+					t.Errorf("--lang ruby: probe/_fixed_data.rb lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "unity" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
