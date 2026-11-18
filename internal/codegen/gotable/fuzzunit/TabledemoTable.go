@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x210cd52b1224513a)
-const _ = uint64(0x210cd52b1224513a - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xb70483de78b8ab22)
+const _ = uint64(0xb70483de78b8ab22 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -143,12 +143,6 @@ type TableBitWriter = goruntime.TableBitWriter
 type TableBitReader = goruntime.TableBitReader
 
 type TableMessageShape = goruntime.TableMessageShape
-
-type TableMessageEntry = goruntime.TableMessageEntry
-
-type TableVocabulary = goruntime.TableVocabulary
-
-type TableMessageReader = goruntime.TableMessageReader
 
 const TableFixedForm = goruntime.TableFixedForm
 
@@ -289,16 +283,6 @@ const TableMessageBatchMax = goruntime.TableMessageBatchMax
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
 
-func tableMessageSeenOpen(a0 *TableVocabulary, a1 []uint64, a2 int) {
-	goruntime.TableMessageSeenOpen(a0, a1, a2)
-}
-
-func tableMessageSeenFirst(a0 *TableVocabulary) { goruntime.TableMessageSeenFirst(a0) }
-
-func tableMessageSeenRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64) bool {
-	return goruntime.TableMessageSeenRepeat(a0, a1, a2, a3)
-}
-
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
 
 func tableMessageKnownKind(a0 uint8) bool { return goruntime.TableMessageKnownKind(a0) }
@@ -309,10 +293,6 @@ func tableMessageCount(a0 *TableBitReader, a1 TableMessageShape) (uint64, bool) 
 	return goruntime.TableMessageCount(a0, a1)
 }
 
-func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 TableMessageEntry, a4 int) bool {
-	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4)
-}
-
 func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) (bool, bool) {
 	return goruntime.TableMessageReadScalar(a0, a1, a2)
 }
@@ -320,12 +300,6 @@ func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]by
 func tableMessageWriteScalar(a0 *TableBitWriter, a1 *int32, a2 TableMessageShape, a3, a4 uint64) {
 	goruntime.TableMessageWriteScalar(a0, a1, a2, a3, a4)
 }
-
-func tableMessageBatchOpen(a0 *TableVocabulary, a1 []byte, a2 *TableReport) (TableMessageReader, int64) {
-	return goruntime.TableMessageBatchOpen(a0, a1, a2)
-}
-
-func tableMessageBatchClose(a0 *TableMessageReader) bool { return goruntime.TableMessageBatchClose(a0) }
 
 // GlobalSettingsRow — a block row, or a record one nests by value. `Row` is a CLAIMED
 // suffix (mas-bandwidth/schema docs/SPEC-TABLES.md §11), so no declaration in the unit can take it.
@@ -1730,6 +1704,32 @@ func (r *TableReader) meetFirstUse(ref uint64) {
 	if r.Report != nil {
 		tableFirstUseMeet(r.Report, ref)
 	}
+}
+
+// An entry keeps its matching own encoded-entry slot, if any, and in the
+// caller's storage the first slot for its id and the body-read duplicate marks.
+type TableMessageEntry struct {
+	ID                             uint64
+	Shape, Element                 TableMessageShape
+	ownSlot, bodyFirst, bodySeenAt uint64
+	bodySeenBelow                  [2]uint64
+}
+
+// Storage belongs to the caller and is resolved once for one connection direction.
+type TableVocabulary struct {
+	Entries            []TableMessageEntry
+	Count, RefBits     int64
+	BuildVersion       uint64
+	Announced, Refused bool
+	MaxBytes           int64
+	Strict             bool
+	bodyClock          uint64
+}
+type TableMessageReader struct {
+	Bits       TableBitReader
+	Vocabulary *TableVocabulary
+	Report     TableReport
+	IndexBits  int64
 }
 
 type TableMessageWriter struct {

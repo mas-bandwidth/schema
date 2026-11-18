@@ -1842,13 +1842,13 @@ type TableMessageShape struct {
 	QCount        uint32
 }
 
-// An entry also keeps, in the caller's storage, the first slot announcing its
-// id and when and at which nesting levels a body read last named it.
+// An entry keeps its matching own encoded-entry slot, if any, and in the
+// caller's storage the first slot for its id and the body-read duplicate marks.
 type TableMessageEntry struct {
-	ID                    uint64
-	Shape, Element        TableMessageShape
-	bodyFirst, bodySeenAt uint64
-	bodySeenBelow         [2]uint64
+	ID                             uint64
+	Shape, Element                 TableMessageShape
+	ownSlot, bodyFirst, bodySeenAt uint64
+	bodySeenBelow                  [2]uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
