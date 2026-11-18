@@ -244,42 +244,86 @@ func declaredIntSpans(u *ir.Unit) map[[2]uint64][2]*big.Int {
 // kept value writes and reads back equal.
 func probeScalarOffShape(t *testing.T, u *ir.Unit, rows []scalarOffShapeRow) {
 	t.Helper()
-	var body strings.Builder
-	body.WriteString(`    vocab =
-      case M.announce_read(M.announce()) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the unit's own announcement: #{inspect(other)}"
-      end
-`)
-	for _, row := range rows {
-		for _, v := range row.refused {
-			value := v.String()
-			if row.array {
-				value = "[" + value + "]"
+	// The probe reads as a peer at another build, so each value is judged by
+	// its announced shape alone; the bound root still holds its record at that
+	// build, though, and steps over a field it does not declare, so every row
+	// binds the root whose record declares its field.
+	roots := messageRoots(u)
+	direct := map[uint64]string{}
+	for _, name := range roots {
+		for _, f := range u.Tables[name].Fields {
+			if _, seen := direct[ir.TableFieldEntry(f).Id]; !seen {
+				direct[ir.TableFieldEntry(f).Id] = name
 			}
-			fmt.Fprintf(&body, "\n    check(match?({:error, _}, M.save_messages(vocab, [[{%d, %s}]])), %q)\n",
-				row.ref, value, fmt.Sprintf("%s: save_messages wrote %s", row.what, value))
-		}
-		for _, v := range row.kept {
-			value := v.String()
-			if row.array {
-				value = "[" + value + "]"
-			}
-			fmt.Fprintf(&body, `
-    case M.save_messages(vocab, [[{%[1]d, %[2]s}]]) do
-      {:ok, bytes} ->
-        check(M.load_messages(vocab, bytes) == {:ok, [[{%[1]d, %[2]s}]]}, %[3]q)
-
-      _ ->
-        check(false, %[4]q)
-    end
-`, row.ref, value,
-				fmt.Sprintf("%s: %s did not read back equal", row.what, value),
-				fmt.Sprintf("%s: save_messages refused the boundary %s", row.what, value))
 		}
 	}
+	vocab := tablewire.MessageVocabulary(u)
+	bound := map[string]string{}
+	var binds strings.Builder
+	bind := func(root string) string {
+		if name, ok := bound[root]; ok {
+			return name
+		}
+		name := fmt.Sprintf("vocab_%d", len(bound))
+		bound[root] = name
+		fmt.Fprintf(&binds, "    {:ok, %s} = M.for_root(vocab, %q)\n", name, root)
+		return name
+	}
+	var rows2 strings.Builder
+	for _, row := range rows {
+		// A row outside every fixed root's direct fields still writes by its
+		// announced shape under this other build, and the read steps over it:
+		// the body comes back without the field.
+		root, declared := direct[vocab[row.ref-1].Id]
+		if !declared {
+			root = roots[0]
+		}
+		v := bind(root)
+		for _, value := range row.refused {
+			text := value.String()
+			if row.array {
+				text = "[" + text + "]"
+			}
+			fmt.Fprintf(&rows2, "\n    check(match?({:error, _}, M.save_messages(%s, [[{%d, %s}]])), %q)\n",
+				v, row.ref, text, fmt.Sprintf("%s: save_messages wrote %s", row.what, text))
+		}
+		for _, value := range row.kept {
+			text := value.String()
+			if row.array {
+				text = "[" + text + "]"
+			}
+			expected := fmt.Sprintf("[[{%d, %s}]]", row.ref, text)
+			label := fmt.Sprintf("%s: %s did not read back equal", row.what, text)
+			if !declared {
+				expected = "[[]]"
+				label = fmt.Sprintf("%s: %s was not stepped over", row.what, text)
+			}
+			fmt.Fprintf(&rows2, `
+    case M.save_messages(%[1]s, [[{%[2]d, %[3]s}]]) do
+      {:ok, bytes} ->
+        check(M.load_messages(%[1]s, bytes) == {:ok, %[4]s}, %[5]q)
 
+      _ ->
+        check(false, %[6]q)
+    end
+`, v, row.ref, text, expected,
+				label,
+				fmt.Sprintf("%s: save_messages refused the boundary %s", row.what, text))
+		}
+	}
 	ann := filepath.Join(t.TempDir(), "announce.bin")
+	writeOtherBuildAnnouncement(t, u, ann)
+	var body strings.Builder
+	body.WriteString(`    vocab =
+      with {:ok, v} <- M.announce_read(File.read!(file())) do
+        v
+      else
+        other -> raise "announce_read refused the announcement: #{inspect(other)}"
+      end
+`)
+	body.WriteString(binds.String())
+	body.WriteString(rows2.String())
+
 	out, err := runMessageProbe(t, u, ann, body.String())
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)

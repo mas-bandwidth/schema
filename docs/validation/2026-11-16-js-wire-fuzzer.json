@@ -1,0 +1,276 @@
+{
+  "language": "js",
+  "tested_revision": "6d5190530bc6441bda0e410032d0f15a530d1562",
+  "tested_tree": "53636e4e268a17b3d0756a1f91e55c5cab5c24d8",
+  "platform": "Linux x86-64, existing reserved fleet bench",
+  "command": "python3 test/conformance/nightly-readiness js",
+  "result": "NIGHTLY_READINESS_PASS language=js phases=23",
+  "source_status": "tracked files unchanged; an existing untracked Python __pycache__ directory was present both before and after",
+  "readiness_sha256": "b3b507c0efec145355e7acf5d7cfb6837509e89aa776a2970c0263ee1a674fbd",
+  "sibling_pins": {
+    "serialize": "7bf1877b38cfdd737d0bf102a546ec2674335786",
+    "serialize.c": "1d072f62e72ed357c094a7f52b29327ed8cdd862",
+    "serialize.go": "97c6825383cffe9f43af64526dea4e0ef10d1662",
+    "serialize.js": "5ed211576f9f2a780cfc95dd11b4ea2a3dc7d00d",
+    "serialize.rs": "be2591509c68f828b43029a543ef9ffa290637b8"
+  },
+  "tool_versions": [
+    "go version go1.26.10 linux/amd64",
+    "v26.7.0",
+    "Python 3.14.4",
+    "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0"
+  ],
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 5
+  },
+  "native_test_events": {
+    "native-lockfile": {
+      "pass": 320,
+      "fail": 0,
+      "skip": 0
+    },
+    "native-js": {
+      "pass": 36,
+      "fail": 0,
+      "skip": 0
+    },
+    "native-jstable": {
+      "pass": 702,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 327,
+    "roots": 63,
+    "enumerated_per_seed": 224113,
+    "random_per_seed": 100000,
+    "absent_codecs": 0,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "eligible_corpus_seeds": 130,
+    "roots": 29,
+    "outside_retaining_domain": 197,
+    "enumerated_per_seed": 135353,
+    "random_per_seed": 100000,
+    "absent_eligible_codecs": 0,
+    "divergences": 0
+  },
+  "campaigns": {
+    "wire-plain-1": {
+      "summary": "wire-fuzz-mixed-builder: seed 1, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 24.6 s, 13161 mutants/s",
+      "log_sha256": "b8e97a997f00239c7d22ab2f1916279be461cb63cb3dd429735ec27dd3767eda"
+    },
+    "wire-plain-2": {
+      "summary": "wire-fuzz-mixed-builder: seed 2, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 21.7 s, 14937 mutants/s",
+      "log_sha256": "a9033c4b7eb7d3442558d3721bb9e323b2d545debccb8984bbb7ee86dff5464b"
+    },
+    "wire-plain-3": {
+      "summary": "wire-fuzz-mixed-builder: seed 3, 327 seeds over 63 roots, 224113 enumerated + 100000 random = 324113 mutants, 0 divergences, 19.9 s, 16316 mutants/s",
+      "log_sha256": "6bbb27a3a7ff97d23dd79b5fa462b7fddc67c96ad606e8523d77c5dcba747832"
+    },
+    "wire-retain-1": {
+      "summary": "wire-fuzz-mixed-builder retain: seed 1, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 85.8 s, 2742 mutants/s",
+      "log_sha256": "459a346743bd2ad6799f30599538bfc0edc3b428e35e1f4db9d6ae082003e5ea"
+    },
+    "wire-retain-2": {
+      "summary": "wire-fuzz-mixed-builder retain: seed 2, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 109.7 s, 2146 mutants/s",
+      "log_sha256": "6ac54ea360bf1855cd0c1b2cbcdc43c5277ea277c48a5fc99fefcd8d13dcbc3d"
+    },
+    "wire-retain-3": {
+      "summary": "wire-fuzz-mixed-builder retain: seed 3, 130 seeds over 29 roots, 197 seeds outside the arm, 135353 enumerated + 100000 random = 235353 mutants, 0 divergences, 105.3 s, 2235 mutants/s",
+      "log_sha256": "2950eb0ec24d2de8dfdfe8853e9614ea4ce708bca32b7fa2679b534b5a2e9653"
+    }
+  },
+  "controls": {
+    "targets": [
+      "tables-js-wire-fuzz-negative-control",
+      "cards-js-conformance-upgrade-negative-control"
+    ],
+    "summary": "Both named planted-fault controls detected their faults.",
+    "log_sha256": "876602488de0394183fb463d0f0c37fdf9a3e15810515988832e3747d7371a3c"
+  },
+  "generated_current": "592 emitted files byte-identical; one named exception; 51 ignored paths",
+  "readiness_log_sha256": "4852ab97c373971ffacdc37e1313194dae206e7f8653bb6dac1907044743fa33",
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 0.912972204037942,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 0.7487847220618278,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 0.2714822950074449,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 6.072815543971956,
+      "errors": []
+    },
+    {
+      "phase": "native-list-js",
+      "exit": 0,
+      "seconds": 0.21730762801598758,
+      "errors": []
+    },
+    {
+      "phase": "native-js",
+      "exit": 0,
+      "seconds": 0.4541536719771102,
+      "errors": []
+    },
+    {
+      "phase": "native-list-jstable",
+      "exit": 0,
+      "seconds": 0.3219380379887298,
+      "errors": []
+    },
+    {
+      "phase": "native-jstable",
+      "exit": 0,
+      "seconds": 23.942495591007173,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 0.7712977760238573,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 0.06721085193566978,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-1",
+      "exit": 0,
+      "seconds": 0.07018424104899168,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.03245903493370861,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-1",
+      "exit": 0,
+      "seconds": 0.03695267904549837,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 3.2926106409868225,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 1.8844168349169195,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 0.8073274189373478,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 25.19561704993248,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 22.359280642005615,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 20.349137747078203,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 86.15270336496178,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 110.032867514994,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 105.81257558392826,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 1.2370974079240113,
+      "errors": []
+    }
+  ],
+  "phase_log_sha256": {
+    "prerequisites": "eb104b4bd80e7d68d058bd42fcd6730ea8eb3f38bfd221ca2c3112d50c52c86b",
+    "implementation": "0cc6e84b2b97d64584819cdf221bc6cad32ecd87dccf39c7aaaa5860b519f0cf",
+    "native-list-lockfile": "61f374a47ccfc150784794de92e1e8c264d0eb75824abc24be552d0baf35b506",
+    "native-lockfile": "0f09ebaa9816f6aca5803a558db13b65a8dede439e8332d7092aabc912544a77",
+    "native-list-js": "ac14b30a15698fd420821ed635c8c041610ab11faa824980289745b0816a3154",
+    "native-js": "c2346dc0f8cc85494926545bb69c08ee62d4c327bab2a89d61e5369dcf3d0eec",
+    "native-list-jstable": "43a304b485054220be81b0c76be61c62e36f1843fc8a392bc01d6cfdd7a55174",
+    "native-jstable": "f312a1a1aa10fb2b0d8979c20e29913a6c1568bae0a7c3250588690407dc4da8",
+    "packet-build": "39c84bdeec26ac60f4c93f2dc865a5373b49ea4b2e79c359dc8f5b05d18997e9",
+    "packet-normal-0": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-1": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-ludicrous-0": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-ludicrous-1": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-features": "2b4af9f60dc2c08b7767d1c558162fefac9813c9109a1a009712291207fd79d9",
+    "external-table-gates": "8338d5d11cd0a1611270e50da69e0cd439d075e1bed4fa71a866e0f0b5eb4452",
+    "wire-driver-build": "03ddf97d0e7d492aa7ad482f976b5fcf8b0d3afa383e111370d2d32eb94a5b55",
+    "wire-plain-1": "b8e97a997f00239c7d22ab2f1916279be461cb63cb3dd429735ec27dd3767eda",
+    "wire-plain-2": "a9033c4b7eb7d3442558d3721bb9e323b2d545debccb8984bbb7ee86dff5464b",
+    "wire-plain-3": "6bbb27a3a7ff97d23dd79b5fa462b7fddc67c96ad606e8523d77c5dcba747832",
+    "wire-retain-1": "459a346743bd2ad6799f30599538bfc0edc3b428e35e1f4db9d6ae082003e5ea",
+    "wire-retain-2": "6ac54ea360bf1855cd0c1b2cbcdc43c5277ea277c48a5fc99fefcd8d13dcbc3d",
+    "wire-retain-3": "2950eb0ec24d2de8dfdfe8853e9614ea4ce708bca32b7fa2679b534b5a2e9653",
+    "wire-retain-controls": "876602488de0394183fb463d0f0c37fdf9a3e15810515988832e3747d7371a3c"
+  },
+  "binaries_sha256": {
+    "schema": "00bd9bc5e20c2a864bd15ad6968ae1228ab68967aee1d145375ae975733bca93",
+    "conformance-harness": "76254e7c01c414b0fd969a3acdd8bb810a21e810170484dc8c788fb9b1745d70"
+  }
+}

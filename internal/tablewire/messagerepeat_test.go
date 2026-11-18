@@ -7,6 +7,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const messageRepeatUnit = `package messagerepeat
@@ -186,10 +187,16 @@ func TestMessageRefusesRepeatedFieldId(t *testing.T) {
 func TestMessageRefusesRepeatedKeyedSlot(t *testing.T) {
 	m := covModel(t, messageRepeatUnit)
 	root := m.Lookup("Root")
+	// A genuinely different sender build isolates duplicate identity from the
+	// same-shape order check, which would also refuse the repeated ordinal.
+	writer := covModel(t, messageRepeatUnit+"\nfixed table SenderRevision { added uint8 }\n")
+	if ir.BuildVersion(writer.Unit) == ir.BuildVersion(m.Unit) {
+		t.Fatal("sender build did not change")
+	}
 	var voc Vocabulary
 	var ann tabletext.Report
-	voc.AnnounceRead(Announce(m.Unit), &ann)
-	data, _ := EncodeMessage(m, covPlace(t, m, "Root", `{"by":{"Run":1,"Fly":2}}`))
+	voc.AnnounceRead(Announce(writer.Unit), &ann)
+	data, _ := EncodeMessage(writer, covPlace(t, writer, "Root", `{"by":{"Run":1,"Fly":2}}`))
 	v := voc
 	if ok, err := DecodeMessage(m, m.New(root), data, &v, &tabletext.Report{}); !ok {
 		t.Fatalf("the clean batch was refused: %v", err)

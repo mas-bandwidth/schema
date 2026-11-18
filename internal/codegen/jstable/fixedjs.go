@@ -145,7 +145,7 @@ type fixedGen struct {
 	// an absent optional lands its payload's declared default, and for a
 	// nested type that default is that type's own Init.
 	need func(cls, typeName string)
-	// loops is how deep the decode's emitted loops nest. A nested struct is
+	// loops is how deep the CHECK or decode loops nest. A nested struct is
 	// INLINED into its parent's projection (one straight function, the way the
 	// flat packet reader is), so a loop inside an inlined element must not
 	// shadow the loop variable its base offset is written in.
@@ -657,6 +657,18 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
+// emitReadCheckBody validates one image without projecting any caller storage.
+// FixedLoad runs it over the whole batch before its first destination write.
+func (g *fixedGen) emitReadCheckBody(st *ir.Struct) {
+	// Only tables have FixedLoad; nested type checks are inlined at that root.
+	if !st.IsTable || !fixedStructChecked(st) {
+		return
+	}
+	g.pf("export function %sFixedCheckRead(view, at, report) {\n", st.Name)
+	g.emitCheckStruct(st, "at", 0, "  ")
+	g.pf("}\n\n")
+}
+
 func fixedStructChecked(st *ir.Struct) bool {
 	if st == nil {
 		return false
@@ -676,7 +688,7 @@ func fixedFieldChecked(f *ir.Field) bool {
 		// wire_damaged like a bool (§4.5) before any payload is project.
 		return true
 	}
-	if f.Type.Kind == ir.TString || fixedIsFloat(f.Type) || f.Type.Kind == ir.TBool {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || fixedIsFloat(f.Type) || f.Type.Kind == ir.TBool {
 		return true
 	}
 	if f.Array == ir.ArrayCounted {
@@ -690,14 +702,23 @@ func fixedFieldChecked(f *ir.Field) bool {
 		case *ir.Struct:
 			return fixedStructChecked(r)
 		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F != nil && fixedFieldChecked(v.F) {
-					return true
-				}
-			}
+			return true // the tag itself is bounded, even for payload-free arms
+		case *ir.Enum:
+			_, checked := fixedEnumClampMax(r)
+			return checked
 		}
 	}
-	return false
+	return fixedScalarBounded(f)
+}
+
+func fixedScalarBounded(f *ir.Field) bool {
+	if _, _, ok := fixedFloatClampEnds(f); ok {
+		return true
+	}
+	if low, high := fixedClampEnds(f); low || high {
+		return true
+	}
+	return f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*fixedStorageBytes(f.Type)
 }
 
 // fixedPayloadChecked reports whether an optional's payload carries a check of
@@ -870,12 +891,14 @@ func (g *fixedGen) emitCheckPayload(f *ir.Field, base string, at int64, ind stri
 		g.pf("%s  if (n < 0 || n > %d) { report.refused = TableFixedRefusal.CountOverBound; return; }\n", ind, f.ArrayBound)
 		g.emitCheckLoop(f, base, at+fixedCountBytes, "n", ind+"  ")
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s{\n", ind)
 		g.pf("%s  const n = view.getInt32(%s, true);\n", ind, off(base, at))
 		g.pf("%s  if (n < 0 || n > %d) { report.refused = TableFixedRefusal.LengthOverBound; return; }\n", ind, f.Type.Size)
-		g.pf("%s  if (!TableFixedTextOk(TableFixedTextUtf8, view, %s, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
-			ind, off(base, at+fixedCountBytes))
+		if f.Type.Kind == ir.TString {
+			g.pf("%s  if (!TableFixedTextOk(TableFixedTextUtf8, view, %s, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
+				ind, off(base, at+fixedCountBytes))
+		}
 		g.pf("%s}\n", ind)
 	default:
 		g.emitCheckElement(f, base, at, ind)
@@ -887,8 +910,11 @@ func (g *fixedGen) emitCheckLoop(f *ir.Field, base string, at int64, count, ind 
 		return
 	}
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
-	g.emitCheckElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
+	iv := g.loopVar()
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitCheckElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), iv, elem), 0, ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
@@ -902,21 +928,26 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, base string, at int64, ind stri
 		return
 	case ir.TFloat32:
 		g.pf("%sif ((view.getUint32(%s, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }\n", ind, off(base, at))
-		return
 	case ir.TFloat64:
 		// the exponent is the high word's bits 20..30
 		g.pf("%sif ((view.getUint32(%s, true) & 0x7ff00000) === 0x7ff00000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }\n", ind, off(base, at+4))
+	case ir.TString, ir.TBytes:
+		elem := *f
+		elem.Array, elem.KeyEnum = ir.ArrayNone, ""
+		g.emitCheckPayload(&elem, base, at, ind)
 		return
 	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			g.emitCheckStruct(r, base, at, ind)
+			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
 			g.pf("%s{\n", ind)
 			g.pf("%s  let tag = 0;\n", ind)
 			g.loadTag(ind+"  ", "tag", off(base, at), tag)
+			g.pf("%s  if (tag > %d) { report.refused = TableFixedRefusal.OutOfRange; return; }\n", ind, len(r.Variants))
 			g.pf("%s  switch (tag) {\n", ind)
 			for i, v := range r.Variants {
 				if v.F != nil && fixedFieldChecked(v.F) {
@@ -927,8 +958,26 @@ func (g *fixedGen) emitCheckElement(f *ir.Field, base string, at int64, ind stri
 			}
 			g.pf("%s    default: break;\n%s  }\n", ind, ind)
 			g.pf("%s}\n", ind)
+			return
+		case *ir.Enum:
+			if max, checked := fixedEnumClampMax(r); checked {
+				g.pf("%s{ let tag = 0;\n", ind)
+				g.loadTag(ind+"  ", "tag", off(base, at), int64(r.StorageBits/8))
+				g.pf("%s  if (tag > %d) { report.refused = TableFixedRefusal.OutOfRange; return; } }\n", ind, max)
+			}
+			return
 		}
 	}
+	if !fixedScalarBounded(f) {
+		return
+	}
+	if g.emitBigClampLanes(ind, "", off(base, at), f) {
+		return
+	}
+	g.pf("%s{ let n;\n", ind)
+	g.load(ind+"  ", "n", "view", off(base, at), f.Type)
+	g.emitDecodeBounds(ind+"  ", "n", f)
+	g.pf("%s}\n", ind)
 }
 
 // THE CHECK PASS HOLDS EVERY DEAD BYTE TO ZERO (docs/FIXED-FORM-ALGORITHM.md
@@ -1371,7 +1420,9 @@ func (g *fixedGen) emitBigClampLanes(ind, expr, at string, f *ir.Field) bool {
 		cond = hiCond
 	}
 	g.pf("%s  if (%s) { report.refused = TableFixedRefusal.OutOfRange; return; }\n", ind, cond)
-	g.load(ind+"    ", expr, "view", at, f.Type)
+	if expr != "" {
+		g.load(ind+"    ", expr, "view", at, f.Type)
+	}
 	g.pf("%s}\n", ind)
 	return true
 }

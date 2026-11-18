@@ -7077,10 +7077,13 @@ is the checkout's emitters, not a claim that a release tag already said so.
 - **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
   emits `<Package>.TableMessage` when the unit has a fixed root and does not
   emit it otherwise. The module carries the announcement (`announce`,
-  `announce_measure`, `announce_read`) and the bitpacked batch
-  (`measure_messages`, `save_messages`, `load_messages`). The batch verbs are
-  the module's, over the vocabulary `announce_read` resolved, not a generated
-  verb per root. The entry bound and the byte bound are fields of that
+  `announce_measure`, `announce_read`), `for_root`, which binds the vocabulary
+  `announce_read` resolved to one fixed root's record, and the bitpacked batch
+  (`measure_messages`, `save_messages`, `load_messages`) over a bound
+  vocabulary; on a vocabulary no root is bound to the three answer
+  `:no_root`. Each fixed root also gets `<root>_measure_messages`,
+  `<root>_save_messages` and `<root>_load_messages`, which bind and act in one
+  call (`messageBinding`, in `integrity.go`). The entry bound and the byte bound are fields of that
   vocabulary (default 4096 and 64 KiB), because the BEAM has no caller-owned
   array.
 
@@ -13946,7 +13949,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedFiniteBody  FixedRefuseBatch
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedCheckDead  FixedCheckRead  FixedFiniteBody  FixedRefuseBatch
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  FixedReadPlan  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy

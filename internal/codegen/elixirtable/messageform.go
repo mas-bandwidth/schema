@@ -5,15 +5,19 @@
 //
 //	announce / announce_measure — the constant and its length, not a walk;
 //	announce_read — reads the announcement file and fills a TableVocabulary;
+//	for_root — binds the resolved vocabulary to one fixed root's record;
 //	measure_messages / save_messages / load_messages — the bitpacked batch,
-//	form byte 2, over the vocabulary announce_read resolved.
+//	form byte 2, over a vocabulary bound to its root, and the per-root
+//	<root>_measure_messages / <root>_save_messages / <root>_load_messages.
 //
 // The batch runtime below reads and writes that form-`2` body. The
 // announcement's form-`1` reader is emitted once per unit that declares a
 // fixed table, beside BuildVersion. The announcement is a compile-time constant
 // of the unit and its vocabulary is a pure function of the build version
-// (docs/SPEC-TABLES.md §3.3). The batch verbs are the module's, not a generated
-// verb per root.
+// (docs/SPEC-TABLES.md §3.3). A batch is always read and written against one
+// root's record: the module's batch verbs act on a vocabulary for_root bound,
+// answer :no_root on one no root is bound to, and each fixed root also gets its
+// own verbs that bind and act in one call.
 //
 // THE BEAM HAS NO CALLER-OWNED ARRAY, so §3.3's "the resolved vocabulary's
 // storage is the caller's, declared by capacity" is honoured the way this leg's
@@ -25,6 +29,7 @@ package elixirtable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
 	"sort"
@@ -62,18 +67,35 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  a vocabulary past either bound is `:vocabulary_too_large`, and the two\n")
 	b.WriteString("  strict checks — the build version present exactly once at kind 9 eight\n")
 	b.WriteString("  bytes wide, the vocabulary present exactly once at kind 14 element kind 6\n")
-	b.WriteString("  — answer `:malformed`, never a refusal. `measure_messages/2`,\n")
-	b.WriteString("  `save_messages/2` and `load_messages/2,3` measure, write and read a\n")
-	b.WriteString("  form-`2` batch of bodies against that resolved vocabulary.\n")
+	b.WriteString("  — answer `:malformed`, never a refusal.\n\n")
+	b.WriteString("  A batch is read and written against ONE ROOT'S RECORD. `for_root/2` binds\n")
+	b.WriteString("  the resolved vocabulary to a fixed root (`:unknown_root` for any other\n")
+	b.WriteString("  name); `measure_messages/2`, `save_messages/2` and `load_messages/2,3`\n")
+	b.WriteString("  measure, write and read a form-`2` batch of that root's bodies, and answer\n")
+	b.WriteString("  `:no_root` on a vocabulary no root is bound to. Each fixed root also has\n")
+	b.WriteString("  `<root>_measure_messages/2`, `<root>_save_messages/2` and\n")
+	b.WriteString("  `<root>_load_messages/2,3`, which bind and act in one call. Under this\n")
+	b.WriteString("  unit's own build version a field the root does not declare is refused,\n")
+	b.WriteString("  and where the announced entry is this build's own, so are a field out of\n")
+	b.WriteString("  declaration order and a field at the default the writer elides; a union\n")
+	b.WriteString("  field at arm 0 is refused at every build. A read refusal discards the\n")
+	b.WriteString("  batch, and a write refusal is `:invalid_value`.\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n", len(tablewire.MessageVocabulary(u)))
+	records, unions := messageRecords(u)
+	b.WriteString(records)
 	b.WriteString("\n")
 	// THE ANNOUNCEMENT IS A FILE (§3.3), held to the id table's first-use rule
 	// like every other (docs/SPEC-TABLES.md §3; the engine's checkAnnouncement)
 	runtime := insertOnce(messageRuntimeBody, "  # A table carrying one id twice is the whole wire malformed (§3).\n", firstUseSource())
-	b.WriteString(messageIntegrity(u, runtime+messageBatchRuntimeBody))
+	batch := messageBatchRuntimeBody
+	if !unions {
+		batch = strings.Replace(batch, messageArmSubUnion, "", 1)
+	}
+	b.WriteString(messageIntegrity(u, runtime+batch))
+	b.WriteString(messageBinding(u))
 	b.WriteString(messageWriteRuleRows(u))
 	b.WriteString("end\n")
 	return []byte(b.String())
@@ -100,13 +122,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
   @doc """
   The batch's byte size for ` + "`" + `values` + "`" + `, or the refusal by name (docs/SPEC-TABLES.md §3.3).
   """
+  def measure_messages(%__MODULE__{announced: true, root: nil}, _values),
+    do: {:error, :no_root}
+
   def measure_messages(%__MODULE__{announced: true} = vocab, values) when is_list(values) do
     n = length(values)
 
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}) do
+      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
@@ -122,13 +147,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
   @doc """
   Write ` + "`" + `values` + "`" + ` as one batch (docs/SPEC-TABLES.md §3.3).
   """
+  def save_messages(%__MODULE__{announced: true, root: nil}, _values),
+    do: {:error, :no_root}
+
   def save_messages(%__MODULE__{announced: true} = vocab, values) when is_list(values) do
     n = length(values)
 
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}) do
+      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
       end
@@ -141,11 +169,18 @@ const messageBatchRuntimeBody = `  @batch_max 256
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
 
   @doc """
-  Read one batch into at most ` + "`" + `capacity` + "`" + ` bodies (docs/SPEC-TABLES.md §3.3).
+  Read one batch into at most ` + "`" + `capacity` + "`" + ` bodies (docs/SPEC-TABLES.md §3.3), against
+  the root record ` + "`" + `for_root/2` + "`" + ` bound: a vocabulary with no bound root is
+  ` + "`" + `:no_root` + "`" + `.
   """
   def load_messages(vocab, data, capacity \\ @batch_max)
 
-  def load_messages(%__MODULE__{announced: true} = vocab, <<2, m, rest::binary>>, capacity) do
+  def load_messages(%__MODULE__{announced: true, root: nil}, _data, _capacity),
+    do: {:error, :no_root}
+
+  def load_messages(vocab, data, capacity), do: load_messages_raw(vocab, data, capacity)
+
+  defp load_messages_raw(%__MODULE__{announced: true} = vocab, <<2, m, rest::binary>>, capacity) do
     count = m + 1
 
     if count > capacity do
@@ -157,7 +192,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
       # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
       # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered and the count is
       # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
-      case read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []) do
+      r = {bytes_to_int(rest), 0, bit_size(rest)}
+
+      case read_bodies(vocab, r, count, [], own_record(vocab)) do
         {:ok, bodies, r} ->
           if batch_ends_clean?(r), do: {:ok, bodies}, else: {:malformed, 0, []}
 
@@ -172,14 +209,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
     :non_finite_float -> {:error, :non_finite_float}
   end
 
-  def load_messages(%__MODULE__{announced: true}, <<2>>, _capacity), do: {:error, :malformed}
+  defp load_messages_raw(%__MODULE__{announced: true}, <<2>>, _capacity),
+    do: {:error, :malformed}
 
-  def load_messages(%__MODULE__{announced: true}, <<_form, _::binary>>, _capacity),
+  defp load_messages_raw(%__MODULE__{announced: true}, <<_form, _::binary>>, _capacity),
     do: {:error, :newer_form}
 
-  def load_messages(%__MODULE__{announced: true}, _data, _capacity), do: {:error, :malformed}
+  defp load_messages_raw(%__MODULE__{announced: true}, _data, _capacity),
+    do: {:error, :malformed}
 
-  def load_messages(_vocab, _data, _capacity), do: {:error, :no_vocabulary}
+  defp load_messages_raw(_vocab, _data, _capacity), do: {:error, :no_vocabulary}
 
   # ---------------------------------------------------------------------------
   # THE BATCH: form byte 2, a count of bodies minus one, then one bit stream
@@ -202,33 +241,52 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
-  defp encode_bodies(_vocab, [], acc), do: {:ok, acc}
+  defp encode_bodies(_vocab, [], acc, _rec), do: {:ok, acc}
 
-  defp encode_bodies(vocab, [body | rest], acc) do
-    case encode_body(vocab, body, acc) do
-      {:ok, acc2} -> encode_bodies(vocab, rest, acc2)
+  defp encode_bodies(vocab, [body | rest], acc, rec) do
+    case encode_body(vocab, body, acc, rec) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec)
       :error -> :error
     end
   end
 
-  defp encode_body(vocab, body, acc) do
-    case encode_fields(vocab, body, acc) do
+  defp encode_body(vocab, body, acc, rec) do
+    case encode_fields(vocab, body, acc, rec, -1) do
       {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
       :error -> :error
     end
   end
 
-  defp encode_fields(_vocab, [], acc), do: {:ok, acc}
+  # THE BOUND WRITE HOLDS THE BOUND READ'S RULES (docs/SPEC-TABLES.md §3.3), so
+  # no batch this writer emits is one its own reader refuses: a union field at
+  # arm 0 is refused at every build, and under this unit's own build version a
+  # field the record does not declare, a field out of its declaration order and
+  # a field stored at the default the writer elides are refused, each by
+  # :invalid_value in every build. Nothing is reordered or dropped.
+  defp encode_fields(_vocab, [], acc, _rec, _last), do: {:ok, acc}
 
-  defp encode_fields(vocab, [{ref, value} | rest], acc) do
+  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, last) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
         check_field(vocab, entry, value)
-        acc2 = put_bits(acc, ref, vocab.ref_bits)
+        check(not (entry.kind == 15 and value == :none))
 
-        case encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2) do
-          {:ok, acc3} -> encode_fields(vocab, rest, acc3)
-          :error -> :error
+        decl =
+          case write_decl(rec, entry, last, vocab) do
+            {:ok, decl} -> decl
+            _ -> throw(:invalid_value)
+          end
+
+        acc2 = put_bits(acc, ref, vocab.ref_bits)
+        elem = Map.get(entry, :element)
+
+        case encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, sub_of(decl)) do
+          {:ok, acc3} ->
+            check(not written_at_default?(vocab, decl, entry, value))
+            encode_fields(vocab, rest, acc3, rec, next_last(decl, last))
+
+          :error ->
+            :error
         end
 
       :error ->
@@ -236,38 +294,42 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp encode_value(_vocab, 0, _shape, _elem, _value, acc), do: {:ok, acc}
-  defp encode_value(_vocab, 32, _shape, _elem, _value, acc), do: {:ok, acc}
+  defp encode_value(_vocab, 0, _shape, _elem, _value, acc, _sub), do: {:ok, acc}
+  defp encode_value(_vocab, 32, _shape, _elem, _value, acc, _sub), do: {:ok, acc}
 
-  defp encode_value(_vocab, 1, _shape, _elem, value, acc) when value in [0, 1],
+  defp encode_value(_vocab, 1, _shape, _elem, value, acc, _sub) when value in [0, 1],
     do: {:ok, put_bits(acc, value, 1)}
 
-  defp encode_value(_vocab, kind, shape, _elem, value, acc)
+  defp encode_value(_vocab, kind, shape, _elem, value, acc, _sub)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
        do: encode_scalar(kind, shape, value, acc)
 
-  defp encode_value(_vocab, 10, shape, _elem, value, acc), do: encode_float(shape, value, acc)
+  defp encode_value(_vocab, 10, shape, _elem, value, acc, _sub),
+    do: encode_float(shape, value, acc)
 
-  defp encode_value(_vocab, 11, _shape, _elem, value, acc),
+  defp encode_value(_vocab, 11, _shape, _elem, value, acc, _sub),
     do: {:ok, put_bits(acc, f64_to_bits(value), 64)}
 
-  defp encode_value(_vocab, 12, shape, _elem, value, acc), do: encode_string(shape, value, acc)
+  defp encode_value(_vocab, 12, shape, _elem, value, acc, _sub),
+    do: encode_string(shape, value, acc)
 
-  defp encode_value(vocab, 13, _shape, _elem, value, acc), do: encode_body(vocab, value, acc)
+  defp encode_value(vocab, 13, _shape, _elem, value, acc, sub),
+    do: encode_body(vocab, value, acc, record(sub))
 
-  defp encode_value(vocab, 14, shape, elem, value, acc),
-    do: encode_array(vocab, shape, elem, value, acc)
+  defp encode_value(vocab, 14, shape, elem, value, acc, sub),
+    do: encode_array(vocab, shape, elem, value, acc, sub)
 
-  defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
+  defp encode_value(vocab, 15, _shape, _elem, value, acc, sub),
+    do: encode_union(vocab, value, acc, sub)
 
-  defp encode_value(vocab, 16, shape, elem, value, acc),
-    do: encode_keyed(vocab, shape, elem, value, acc)
+  defp encode_value(vocab, 16, shape, elem, value, acc, sub),
+    do: encode_keyed(vocab, shape, elem, value, acc, sub)
 
-  defp encode_value(vocab, 30, _shape, _elem, value, acc) do
+  defp encode_value(vocab, 30, _shape, _elem, value, acc, _sub) do
     if enum_ref?(vocab, value), do: {:ok, put_bits(acc, value, vocab.ref_bits)}, else: :error
   end
 
-  defp encode_value(_vocab, _kind, _shape, _elem, _value, _acc), do: :error
+  defp encode_value(_vocab, _kind, _shape, _elem, _value, _acc, _sub), do: :error
 
   # A SCALAR THE SHAPE CANNOT CARRY IS REFUSED, NEVER MASKED (docs/SPEC.md §5.1,
   # docs/SPEC-TABLES.md §3.3): a ranged value rides as value - base in its
@@ -340,21 +402,21 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp encode_array(vocab, shape, elem, value, acc) do
+  defp encode_array(vocab, shape, elem, value, acc, sub) do
     # a count off the announced shape's min..max refuses and is never masked
     # into the count's width (docs/SPEC.md §5.1, row 3)
     count = length(value)
     check(count >= shape.min and count <= shape.max)
     acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
     acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
-    encode_elements(vocab, elem, value, acc3)
+    encode_elements(vocab, elem, value, acc3, sub)
   end
 
-  defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
+  defp encode_elements(_vocab, _elem, [], acc, _sub), do: {:ok, acc}
 
-  defp encode_elements(vocab, elem, [v | rest], acc) do
-    case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc) do
-      {:ok, acc2} -> encode_elements(vocab, elem, rest, acc2)
+  defp encode_elements(vocab, elem, [v | rest], acc, sub) do
+    case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), v, acc, sub) do
+      {:ok, acc2} -> encode_elements(vocab, elem, rest, acc2, sub)
       :error -> :error
     end
   end
@@ -365,16 +427,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # (a variant name), and a key that names one twice each refuse the batch in
   # every build (docs/SPEC-TABLES.md §3.2, §3.3, §5.1). No align: a keyed body
   # never aligns, whatever its element kind.
-  defp encode_keyed(vocab, shape, elem, value, acc) do
+  defp encode_keyed(vocab, shape, elem, value, acc, sub) do
     count = length(value)
     check(count <= shape.max)
     acc2 = put_bits(acc, count, bit_length(shape.max))
-    encode_keyed_slots(vocab, elem, value, acc2, MapSet.new())
+    encode_keyed_slots(vocab, elem, value, acc2, MapSet.new(), sub)
   end
 
-  defp encode_keyed_slots(_vocab, _elem, [], acc, _seen), do: {:ok, acc}
+  defp encode_keyed_slots(_vocab, _elem, [], acc, _seen, _sub), do: {:ok, acc}
 
-  defp encode_keyed_slots(vocab, elem, [{key_ref, value} | rest], acc, seen) do
+  defp encode_keyed_slots(vocab, elem, [{key_ref, value} | rest], acc, seen, sub) do
     case entry_at(vocab, key_ref) do
       {:ok, entry} ->
         check(
@@ -382,10 +444,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
         )
 
         acc2 = put_bits(acc, key_ref, vocab.ref_bits)
+        inner = Map.get(elem, :element)
 
-        case encode_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), value, acc2) do
-          {:ok, acc3} -> encode_keyed_slots(vocab, elem, rest, acc3, MapSet.put(seen, entry.id))
-          :error -> :error
+        case encode_value(vocab, elem.kind, elem.shape, inner, value, acc2, sub) do
+          {:ok, acc3} ->
+            encode_keyed_slots(vocab, elem, rest, acc3, MapSet.put(seen, entry.id), sub)
+
+          :error ->
+            :error
         end
 
       :error ->
@@ -393,15 +459,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp encode_union(vocab, :none, acc), do: {:ok, put_bits(acc, 0, vocab.ref_bits)}
+  defp encode_union(vocab, :none, acc, _sub), do: {:ok, put_bits(acc, 0, vocab.ref_bits)}
 
-  defp encode_union(vocab, {ref, value}, acc) do
+  defp encode_union(vocab, {ref, value}, acc, sub) do
     acc2 = put_bits(acc, ref, vocab.ref_bits)
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
         check_field(vocab, entry, value)
-        encode_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), value, acc2)
+        elem = Map.get(entry, :element)
+        encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, arm_sub(sub, entry.id))
 
       :error ->
         :error
@@ -504,45 +571,81 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # mask and never a byte-order question.
   # ---------------------------------------------------------------------------
 
-  defp read_bodies(_vocab, r, 0, acc), do: {:ok, Enum.reverse(acc), r}
+  defp read_bodies(_vocab, r, 0, acc, _rec), do: {:ok, Enum.reverse(acc), r}
 
-  defp read_bodies(vocab, r, n, acc) do
-    case read_body(vocab, r, [], MapSet.new(), 0) do
-      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc])
+  defp read_bodies(vocab, r, n, acc, rec) do
+    case read_body(vocab, r, [], MapSet.new(), 0, rec, -1) do
+      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc], rec)
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
 
-  defp read_body(_vocab, _r, _acc, _seen, depth) when depth > 128, do: :malformed
+  # A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (§3.3), judged where the walk
+  # first meets each spelling, against the record the bound root reaches (held
+  # at every build version, because the reader still needs to know which
+  # fields its record declares; under another build version the sender may have
+  # lawfully reordered, added or removed fields: §3.3, §4):
+  #
+  #   * a field id twice in one body is damage, named or not;
+  #   * a union field written with arm reference 0 is damage at every build
+  #     (§3.3 (c)); a None element of an array of unions and a nested arm's
+  #     None are positional and read;
+  #   * under this reader's own build version, a field the record does not
+  #     declare is damage, and where the field's announced entry is this
+  #     reader's own byte for byte, a field out of the record's declaration
+  #     order (§3.3 (b)) and a field stored at the default the writer elides
+  #     (§3.3 (a)) are damage;
+  #   * under another build version an undeclared field is stepped over by its
+  #     announced shape and omitted, never appended to the body.
+  defp read_body(_vocab, _r, _acc, _seen, depth, _rec, _last) when depth > 128, do: :malformed
 
-  defp read_body(vocab, r, acc, seen, depth) do
+  defp read_body(vocab, r, acc, seen, depth, rec, last) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
 
       {:ok, ref, rest} ->
-        # A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or not: the
-        # ENTRY's id, not the position that named it, is the field's identity
+        # the ENTRY's id, not the position that named it, is the field's identity
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
 
-            if MapSet.member?(seen, entry.id) do
-              :malformed
-            else
-              case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
-                {:ok, value, rest2} ->
-                  read_body(
-                    vocab,
-                    rest2,
-                    [{ref, value} | acc],
-                    MapSet.put(seen, entry.id),
-                    depth
-                  )
+            with false <- MapSet.member?(seen, entry.id) do
+              case field_decl(rec, entry, last, vocab) do
+                :skip ->
+                  case skip_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+                    {:ok, rest2} ->
+                      read_body(vocab, rest2, acc, MapSet.put(seen, entry.id), depth, rec, last)
 
-                :malformed ->
+                    :malformed ->
+                      :malformed
+                  end
+
+                {:ok, decl} ->
+                  with {:ok, value, rest2} <-
+                         read_value(
+                           vocab,
+                           entry.kind,
+                           entry.shape,
+                           elem,
+                           rest,
+                           depth,
+                           sub_of(decl)
+                         ),
+                       false <- entry.kind == 15 and value == :none,
+                       false <- stored_at_default?(vocab, decl, value) do
+                    seen = MapSet.put(seen, entry.id)
+                    last = next_last(decl, last)
+                    read_body(vocab, rest2, [{ref, value} | acc], seen, depth, rec, last)
+                  else
+                    _ -> :malformed
+                  end
+
+                _ ->
                   :malformed
               end
+            else
+              _ -> :malformed
             end
 
           _ ->
@@ -554,20 +657,169 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp read_value(_vocab, _kind, _shape, _elem, _r, depth) when depth > 128, do: :malformed
+  # One field's declaration in the bound record: {:ok, {index, exact, rule,
+  # sub}} for a declared field, :skip where the reader has no record or the
+  # record does not declare the field under another build version, and a
+  # refusal for a field the record does not declare at this reader's own build
+  # version or, where the entry is exact, one out of order.
+  defp field_decl(nil, _entry, _last, _vocab), do: :skip
 
-  defp read_value(vocab, 13, _shape, _elem, r, depth),
-    do: read_body(vocab, r, [], MapSet.new(), depth + 1)
+  defp field_decl(rec, entry, last, vocab) do
+    case Map.get(rec, entry.id) do
+      nil ->
+        if own_build?(vocab), do: :undeclared, else: :skip
 
-  defp read_value(vocab, 14, shape, elem, r, depth),
-    do: read_array(vocab, shape, elem, r, depth)
+      {index, raw, rule, sub} ->
+        if own_build?(vocab) do
+          exact = raw == Map.get(entry, :raw)
 
-  defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
+          if exact and index <= last,
+            do: :out_of_order,
+            else: {:ok, {index, exact, rule, sub}}
+        else
+          {:ok, {index, false, rule, sub}}
+        end
+    end
+  end
 
-  defp read_value(vocab, 16, shape, elem, r, depth),
-    do: read_keyed(vocab, shape, elem, r, depth)
+  # The writer holds the record at every build version too, but judges order
+  # and defaults only under its own; a field its record does not declare under
+  # another build version writes with no record rules, as before.
+  defp write_decl(rec, entry, last, vocab) do
+    case field_decl(rec, entry, last, vocab) do
+      :skip -> {:ok, nil}
+      other -> other
+    end
+  end
 
-  defp read_value(vocab, kind, shape, elem, r, _depth),
+  defp next_last({index, true, _rule, _sub}, _last), do: index
+  defp next_last(_decl, last), do: last
+
+  defp sub_of({_index, _exact, _rule, sub}), do: sub
+  defp sub_of(nil), do: nil
+
+  defp stored_at_default?(vocab, {_index, true, rule, _sub}, value),
+    do: at_default?(vocab, rule, value)
+
+  defp stored_at_default?(_vocab, _decl, _value), do: false
+
+  # The writer checks the value it was handed and the value its reader will
+  # see: a quantized float reads back as its step's value.
+  defp written_at_default?(vocab, {_index, true, rule, _sub}, entry, value),
+    do: at_default?(vocab, rule, value) or at_default?(vocab, rule, as_read(entry, value))
+
+  defp written_at_default?(_vocab, _decl, _entry, _value), do: false
+
+  defp as_read(%{kind: 10, shape: %{packing: 2} = shape}, value), do: dequantized(shape, value)
+
+  defp as_read(%{kind: 14, element: %{kind: 10, shape: %{packing: 2} = shape}}, value),
+    do: Enum.map(value, &dequantized(shape, &1))
+
+  defp as_read(_entry, value), do: value
+
+  defp dequantized(shape, value) do
+    {delta, count} = quant_facts(shape)
+    bits = dequantize_bits(quantize(shape, round_f32(value)), shape.qmin, delta, count)
+    <<v::little-float-32>> = <<bits::little-32>>
+    v
+  end
+
+  # THE WRITER'S ELISION RULE, one rule per declared field, emitted by the
+  # compiler beside the record (internal/tablewire messageElides): the value a
+  # field holds when a conforming writer leaves it out.
+  defp at_default?(_vocab, :empty, value), do: value == []
+  defp at_default?(_vocab, :zero_ref, value), do: value == 0 or value == :none
+  defp at_default?(_vocab, {:same, d}, value), do: value === d
+
+  defp at_default?(_vocab, {:f32, bits}, value),
+    do: is_number(value) and f32_raw(value) == bits
+
+  defp at_default?(_vocab, {:f32eq, bits}, value),
+    do: is_number(value) and round_f32(value) == f32(bits)
+
+  defp at_default?(_vocab, {:f64, bits}, value),
+    do: is_number(value) and f64_raw(value) == bits
+
+  defp at_default?(_vocab, {:f64eq, bits}, value),
+    do: is_number(value) and value == f64_of(bits)
+
+  defp at_default?(_vocab, {:enum, :none}, value), do: value == 0
+
+  defp at_default?(vocab, {:enum, id}, value) when is_integer(value) and value > 0 do
+    case entry_at(vocab, value) do
+      {:ok, entry} -> entry.id == id
+      :error -> false
+    end
+  end
+
+  defp at_default?(vocab, {:counted, born, elem}, value) when is_list(value) do
+    value == [] or
+      (born > 0 and length(value) == born and Enum.all?(value, &at_default?(vocab, elem, &1)))
+  end
+
+  defp at_default?(vocab, {:fixed, elem}, value) when is_list(value),
+    do: Enum.all?(value, &at_default?(vocab, elem, &1))
+
+  defp at_default?(_vocab, _rule, _value), do: false
+
+  defp f32_raw(value) do
+    <<bits::little-32>> = <<value::little-float-32>>
+    bits
+  end
+
+  defp f64_raw(value) do
+    <<bits::little-64>> = <<value::little-float-64>>
+    bits
+  end
+
+  defp f64_of(bits) do
+    <<v::little-float-64>> = <<bits::little-64>>
+    v
+  end
+
+  # the record the bound root reaches, held at every build version so the walk
+  # can tell a declared field from one it must step over
+  defp own_record(%{root: root}) when is_binary(root), do: record(root)
+
+  defp own_record(_vocab), do: nil
+
+  defp own_build?(%{build_version: @build_version}), do: true
+  defp own_build?(_vocab), do: false
+
+  defp record(name) when is_binary(name), do: Map.get(@message_records, name)
+  defp record(_sub), do: nil
+
+  defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)
+  defp arm_sub(_sub, _id), do: nil
+
+  # An undeclared field under another build version is stepped over by its
+  # announced shape and omitted (docs/SPEC-TABLES.md §3.3, §4). Its payload is
+  # read exactly as a kept value would be, so damage stays damage, but nothing
+  # lands in the body; a union field at arm 0 is still refused where the walk
+  # meets it, whatever the build.
+  defp skip_value(vocab, kind, shape, elem, r, depth) do
+    case read_value(vocab, kind, shape, elem, r, depth, nil) do
+      {:ok, :none, _rest} when kind == 15 -> :malformed
+      {:ok, _value, rest} -> {:ok, rest}
+      :malformed -> :malformed
+    end
+  end
+
+  defp read_value(_vocab, _kind, _shape, _elem, _r, depth, _sub) when depth > 128,
+    do: :malformed
+
+  defp read_value(vocab, 13, _shape, _elem, r, depth, sub),
+    do: read_body(vocab, r, [], MapSet.new(), depth + 1, record(sub), -1)
+
+  defp read_value(vocab, 14, shape, elem, r, depth, sub),
+    do: read_array(vocab, shape, elem, r, depth, sub)
+
+  defp read_value(vocab, 15, _shape, _elem, r, depth, sub), do: read_union(vocab, r, depth, sub)
+
+  defp read_value(vocab, 16, shape, elem, r, depth, sub),
+    do: read_keyed(vocab, shape, elem, r, depth, sub)
+
+  defp read_value(vocab, kind, shape, elem, r, _depth, _sub),
     do: read_value(vocab, kind, shape, elem, r)
 
   defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}
@@ -675,13 +927,13 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   # THE COUNT'S BITS CAN SPELL MORE THAN max - min (§3.3), so a count above
   # the announced maximum is damage, a skipped field's too.
-  defp read_array(vocab, shape, elem, r, depth) do
+  defp read_array(vocab, shape, elem, r, depth, sub) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
          n = shape.min + offset,
          true <- n <= shape.max,
          {:ok, rest2} <- maybe_align(elem, rest) do
       next_depth = elem_depth(elem, depth)
-      read_elements(vocab, shape, elem, n, rest2, [], next_depth)
+      read_elements(vocab, shape, elem, n, rest2, [], next_depth, sub)
     else
       _ -> :malformed
     end
@@ -691,30 +943,31 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # (key reference, element) pair per slot. A key that names no declared
   # no-payload entry, and one that names the same entry twice, is damage
   # (§3.3), a skipped field's too.
-  defp read_keyed(vocab, shape, elem, r, depth) do
+  defp read_keyed(vocab, shape, elem, r, depth, sub) do
     case get_bits(r, bit_length(shape.max)) do
       {:ok, n, rest} when n <= shape.max ->
-        read_keyed_pairs(vocab, elem, n, rest, [], MapSet.new(), elem_depth(elem, depth))
+        read_keyed_pairs(vocab, elem, n, rest, [], MapSet.new(), elem_depth(elem, depth), sub)
 
       _ ->
         :malformed
     end
   end
 
-  defp read_keyed_pairs(_vocab, _elem, 0, r, acc, _seen, _depth),
+  defp read_keyed_pairs(_vocab, _elem, 0, r, acc, _seen, _depth, _sub),
     do: {:ok, Enum.reverse(acc), r}
 
-  defp read_keyed_pairs(vocab, elem, n, r, acc, seen, depth) do
+  defp read_keyed_pairs(vocab, elem, n, r, acc, seen, depth, sub) do
     with {:ok, ref, rest} <- get_bits(r, vocab.ref_bits),
          {:ok, entry} <- entry_at(vocab, ref),
          true <- entry.kind == 0,
          true <- entry.id < 0xFFFFFFFFFFFFFFFD,
          false <- MapSet.member?(seen, entry.id) do
       seen = MapSet.put(seen, entry.id)
+      inner = Map.get(elem, :element)
 
-      case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), rest, depth) do
+      case read_value(vocab, elem.kind, elem.shape, inner, rest, depth, sub) do
         {:ok, value, rest2} ->
-          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, value} | acc], seen, depth)
+          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, value} | acc], seen, depth, sub)
 
         :malformed ->
           :malformed
@@ -730,7 +983,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp maybe_align(%{kind: 6}, r), do: align(r)
   defp maybe_align(_elem, r), do: {:ok, r}
 
-  defp read_elements(_vocab, _shape, _elem, 0, r, acc, _depth), do: {:ok, Enum.reverse(acc), r}
+  defp read_elements(_vocab, _shape, _elem, 0, r, acc, _depth, _sub),
+    do: {:ok, Enum.reverse(acc), r}
 
   # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
@@ -740,8 +994,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # (internal/tablewire/messagedecode.go) before any cell is allocated. A
   # WALKED element that consumes no bits is damage, even where the remaining
   # count could fit in the batch's padding.
-  defp read_elements(vocab, shape, elem, n, r, acc, depth) when is_map(elem) and n > 0 do
-    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth) do
+  defp read_elements(vocab, shape, elem, n, r, acc, depth, sub) when is_map(elem) and n > 0 do
+    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth, sub) do
       {:ok, v, ^r} ->
         if element_run_bits(elem) < 0 do
           :malformed
@@ -750,14 +1004,15 @@ const messageBatchRuntimeBody = `  @batch_max 256
         end
 
       {:ok, v, rest} ->
-        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth, sub)
 
       :malformed ->
         :malformed
     end
   end
 
-  defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth) when n > 0, do: :malformed
+  defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth, _sub) when n > 0,
+    do: :malformed
 
   defp zero_width_run(_vocab, _shape, n, r, acc, v) do
     # The shape is the writer's announcement, whatever its minimum and maximum:
@@ -797,7 +1052,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp bits_left({_int, off, total}) when total > off, do: total - off
   defp bits_left({_int, _off, _total}), do: 0
 
-  defp read_union(vocab, r, depth) do
+  defp read_union(vocab, r, depth, sub) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, :none, rest}
@@ -806,8 +1061,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
+            arm = arm_sub(sub, entry.id)
 
-            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1) do
+            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1, arm) do
               {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
               :malformed -> :malformed
             end
@@ -1018,6 +1274,8 @@ func exAttrBinary(prefix string, segs []string) string {
 }
 
 const messageRuntimeBody = `  defstruct announced: false,
+            integrity: false,
+            root: nil,
             refused: false,
             build_version: 0,
             entries: [],
@@ -1360,7 +1618,13 @@ const messageRuntimeBody = `  defstruct announced: false,
   end
 
   defp duplicate?(_e, []), do: false
-  defp duplicate?(e, [x | rest]), do: e == x or duplicate?(e, rest)
+  # one entry twice, by everything the entry decodes to
+  defp duplicate?(e, [x | rest]), do: same_entry?(e, x) or duplicate?(e, rest)
+
+  defp same_entry?(e, x) do
+    e.id == x.id and e.kind == x.kind and e.shape == x.shape and
+      Map.get(e, :element) == Map.get(x, :element)
+  end
 
   defp ref_bits(0), do: 1
   defp ref_bits(n), do: ref_bits(n, 1)
@@ -1369,7 +1633,21 @@ const messageRuntimeBody = `  defstruct announced: false,
 
   # ---- one entry -----------------------------------------------------------------
 
-  defp entry(<<id::little-unsigned-64, kind, rest::binary>>) do
+  # An entry keeps its own bytes as :raw, behind a leading 1 as one integer:
+  # the bound read judges a field's order and default only where its announced
+  # entry is this reader's own, byte for byte (§3.3).
+  defp entry(bin) do
+    case entry_shape(bin) do
+      {:ok, e, rest} ->
+        bytes = binary_part(bin, 0, byte_size(bin) - byte_size(rest))
+        {:ok, Map.put(e, :raw, :binary.decode_unsigned(<<1, bytes::binary>>)), rest}
+
+      :error ->
+        :error
+    end
+  end
+
+  defp entry_shape(<<id::little-unsigned-64, kind, rest::binary>>) do
     if not known_kind?(kind) do
       :error
     else
@@ -1387,7 +1665,7 @@ const messageRuntimeBody = `  defstruct announced: false,
     end
   end
 
-  defp entry(_), do: :error
+  defp entry_shape(_), do: :error
 
   defp read_element(kind, id, s, <<elem, rest::binary>>) do
     if not known_kind?(elem) or elem == 12 do
@@ -1703,6 +1981,217 @@ const messageRuntimeBody = `  defstruct announced: false,
   end
 
 `
+
+// messageRecords emits THE RECORDS THE BOUND BATCH HOLDS (docs/SPEC-TABLES.md
+// §3.3 (a), (b)): this unit's build version, and per record of the message
+// closure its declared fields by id, each {declaration index, the field's
+// encoded vocabulary entry, the writer's elision rule, what a body under it
+// is read against}; and per union the same last fact for each arm. The rule
+// is internal/tablewire's messageElides spelled over the batch's own values:
+//
+//	:never                the field is never judged at a default (a `?T`, a
+//	                      `| required`, a union, whose None is refused where it
+//	                      is read, a fixed array of tables)
+//	:empty                a nested table or an enum-keyed array: elides empty
+//	{:same, v}            an integer, a bool, a text or a bytes at its default
+//	{:f32, bits} {:f64, bits}      a plain float, compared by bit pattern
+//	{:f32eq, bits} {:f64eq, bits}  a ranged float, compared by value
+//	{:enum, id | :none}   an enum naming its default variant
+//	{:counted, born, e}   no element, or the born count all at e
+//	{:fixed, e}           every element at e
+//	:zero_ref             an enum or a union element at reference 0
+func messageRecords(u *ir.Unit) (string, bool) {
+	closure := tablewire.MessageClosure(u)
+	names := make([]string, 0, len(closure))
+	for name := range closure {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	unions := map[string]*ir.Union{}
+	var records []string
+	for _, name := range names {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		var fields []string
+		for i, f := range st.Fields {
+			e := ir.TableFieldEntry(f)
+			// the entry's bytes behind a leading 1, as one integer (entry/1's :raw)
+			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(f), messageSub(f, unions)))
+		}
+		records = append(records, fmt.Sprintf("%q => %%{%s}", name, strings.Join(fields, ", ")))
+	}
+	// every union a record or an arm reaches, its arms' bodies too
+	done := map[string]bool{}
+	var unionRows []string
+	for len(done) < len(unions) {
+		var pending []string
+		for name := range unions {
+			if !done[name] {
+				pending = append(pending, name)
+			}
+		}
+		sort.Strings(pending)
+		for _, name := range pending {
+			done[name] = true
+			var arms []string
+			for _, v := range unions[name].Variants {
+				sub := "nil"
+				if v.F != nil {
+					sub = messageSub(v.F, unions)
+				}
+				arms = append(arms, fmt.Sprintf("0x%016X => %s", ir.TableArmEntry(v).Id, sub))
+			}
+			unionRows = append(unionRows, fmt.Sprintf("%q => %%{%s}", name, strings.Join(arms, ", ")))
+		}
+	}
+	sort.Strings(unionRows)
+	var b strings.Builder
+	b.WriteString("\n  # this unit's own build version and records, as its message writer lays\n")
+	b.WriteString("  # them out (docs/SPEC-TABLES.md §3.3 (a), (b)): the bound batch's rules\n")
+	fmt.Fprintf(&b, "  @build_version 0x%016X\n", ir.BuildVersion(u))
+	b.WriteString(exAttribute("message_records", "%{"+strings.Join(records, ", ")+"}"))
+	// a unit no union reaches carries no union table and no union clause of
+	// arm_sub/2: an empty map literal there is a type warning on the BEAM
+	if len(unionRows) > 0 {
+		b.WriteString(exAttribute("message_unions", "%{"+strings.Join(unionRows, ", ")+"}"))
+	}
+	return b.String(), len(unionRows) > 0
+}
+
+// messageArmSubUnion is arm_sub/2's union clause in messageBatchRuntimeBody,
+// dropped from a unit no union reaches (messageRecords).
+const messageArmSubUnion = "  defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)\n"
+
+// messageSub is what a body under field f is read against: a record's name, a
+// union's arms by name, or nil.
+func messageSub(f *ir.Field, unions map[string]*ir.Union) string {
+	if f.Type.Kind != ir.TNamed || f.Type.Pointer || f.IsMap() {
+		return "nil"
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return fmt.Sprintf("%q", ref.Name)
+	case *ir.Union:
+		unions[ref.Name] = ref
+		return fmt.Sprintf("{:union, %q}", ref.Name)
+	}
+	return "nil"
+}
+
+// messageFieldRule is one field's elision rule, in internal/tablewire
+// messageElides's order (see messageRecords for the spellings).
+func messageFieldRule(f *ir.Field) string {
+	if f.Required || f.Type.Optional || f.Type.Pointer || f.IsMap() {
+		return ":never"
+	}
+	kind := ir.TableWireScalarKind(f)
+	switch {
+	case f.KeyEnum != "":
+		return ":empty"
+	case f.Type.Kind == ir.TString:
+		return "{:same, <<" + strings.Join(elixirBytes(f.DefBytes), ", ") + ">>}"
+	case f.Type.Kind == ir.TBytes:
+		return "{:same, [" + strings.Join(elixirBytes(f.DefBytes), ", ") + "]}"
+	case f.CountedOnWire():
+		// the born slots all at their defaults elide too, except a compressed
+		// float's (internal/tablewire array's allBirth)
+		born := f.BornCount()
+		if f.HasFloatRange {
+			born = 0
+		}
+		elem := messageScalarRule(f)
+		switch kind {
+		case ir.TableKindTable:
+			elem = ":empty"
+		case ir.TableKindEnum, ir.TableKindUnion:
+			elem = ":zero_ref"
+		}
+		return fmt.Sprintf("{:counted, %d, %s}", born, elem)
+	case f.Array == ir.ArrayFixed && kind == ir.TableKindTable:
+		return ":never"
+	case f.Array == ir.ArrayFixed:
+		if kind == ir.TableKindUnion {
+			return "{:fixed, :zero_ref}"
+		}
+		return "{:fixed, " + messageScalarRule(f) + "}"
+	case kind == ir.TableKindUnion:
+		return ":never"
+	case kind == ir.TableKindTable:
+		return ":empty"
+	}
+	return messageScalarRule(f)
+}
+
+// messageScalarRule is internal/tablewire cellIsDefault over one value of f,
+// against the declared default the engine's model would place in the field
+// (internal/tabletext fieldDefault), read from the declaration itself.
+func messageScalarRule(f *ir.Field) string {
+	if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+		if !f.HasDefault || f.DefVariant == "" || f.DefVariant == "None" || !slices.Contains(en.Variants, f.DefVariant) {
+			return "{:enum, :none}"
+		}
+		return fmt.Sprintf("{:enum, 0x%016X}", ir.TableWireId(en.VariantWireNameOf(f.DefVariant)))
+	}
+	var defFloat float64
+	if f.HasDefault {
+		defFloat = f.DefFloat
+	}
+	switch {
+	case f.Type.Kind == ir.TBool:
+		if f.HasDefault && f.DefBool {
+			return "{:same, 1}"
+		}
+		return "{:same, 0}"
+	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		return fmt.Sprintf("{:f32eq, 0x%08X}", math.Float32bits(float32(defFloat)))
+	case f.Type.Kind == ir.TFloat32:
+		return fmt.Sprintf("{:f32, 0x%08X}", math.Float32bits(float32(defFloat)))
+	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
+		return fmt.Sprintf("{:f64eq, 0x%016X}", math.Float64bits(defFloat))
+	case f.Type.Kind == ir.TFloat64:
+		return fmt.Sprintf("{:f64, 0x%016X}", math.Float64bits(defFloat))
+	}
+	i, u := messageDefaultInt(f)
+	switch {
+	case ir.TableKindWide(ir.TableScalarKind(f)):
+		wide := new(big.Int)
+		if (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.HasDefault && f.DefInt != nil {
+			wide.Set(f.DefInt)
+		}
+		return "{:same, " + wide.String() + "}"
+	case f.Type.Kind == ir.TInt && f.Type.Signed:
+		return fmt.Sprintf("{:same, %d}", i)
+	}
+	return fmt.Sprintf("{:same, %d}", u)
+}
+
+// messageDefaultInt is an integer-like field's declared default as the
+// engine's model holds it: a signed reading for a signed int or fixed-point
+// field or a negative value, the flags mask, and zero where nothing is
+// declared (internal/tabletext fieldDefault and intCell).
+func messageDefaultInt(f *ir.Field) (int64, uint64) {
+	if !f.HasDefault || f.DefInt == nil {
+		return 0, 0
+	}
+	v := f.DefInt
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed, ir.TBits:
+		if (f.Type.Kind != ir.TBits && f.Type.Signed) || v.Sign() < 0 {
+			return v.Int64(), uint64(v.Int64())
+		}
+		return int64(v.Uint64()), v.Uint64()
+	case ir.TNamed:
+		if _, ok := f.Type.Ref.(*ir.Flags); ok {
+			return 0, v.Uint64()
+		}
+	}
+	return 0, 0
+}
 
 // messageWriteRuleRows emits write_rule_rows/0: the write contract
 // (docs/SPEC.md §5.1) of every declaration the message closure reaches, one

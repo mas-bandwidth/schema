@@ -200,8 +200,9 @@ func unboundedTextCook(u *ir.Unit, s string) string {
 	if !ir.UnitHasUnboundedText(u) {
 		return s
 	}
-	s = tableSourceReplace(s, " if !f.Pointer&&(f.TypeName==\"string\"", " if f.Unbounded {return w.text(p,dest,live)}\n if !f.Pointer&&(f.TypeName==\"string\"", 1)
+	s = tableSourceReplace(s, " if !f.Pointer&&(f.TypeName==\"string\"", " if f.Unbounded {return w.text(p,dest,reached)}\n if !f.Pointer&&(f.TypeName==\"string\"", 1)
+	s = tableSourceReplace(s, " if f.Pointer||f.CookElemSize==0{return true}\n", " if f.Pointer||f.CookElemSize==0{return true}\n if f.Unbounded{return w.text(p,0,false)}\n", 1)
 	return s + `
-func(w *tableCookWriter) text(slot unsafe.Pointer,at int64,live bool)bool{if w.numbering==nil{return false};t,ok:=tableTextBytes((*TableRef)(slot),w.numbering.arena);if !ok{return false};if !live||len(t)==0{return true};w.at=(w.at+7)&^7;start:=w.at;w.at+=tableRegionRound(9+int64(len(t)));w.put(at,uint64(start-at),8);if w.buffer!=nil{w.put(start,uint64(len(t)),4);copy(w.buffer[start+8:start+8+int64(len(t))],t)};return true}
+func(w *tableCookWriter) text(slot unsafe.Pointer,at int64,live bool)bool{if w.numbering==nil{return false};t,ok:=tableTextBytes((*TableRef)(slot),w.numbering.arena);if !ok||!live&&len(t)!=0{return false};if len(t)==0{return true};w.at=(w.at+7)&^7;start:=w.at;w.at+=tableRegionRound(9+int64(len(t)));w.put(at,uint64(start-at),8);if w.buffer!=nil{w.put(start,uint64(len(t)),4);copy(w.buffer[start+8:start+8+int64(len(t))],t)};return true}
 `
 }

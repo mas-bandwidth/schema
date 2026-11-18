@@ -84,9 +84,9 @@ func TestDartPointerTargetBlobKindRefused(t *testing.T) {
 			value := m.New(def)
 			var r tabletext.Report
 			if retaining {
-				_, err = tablewire.DecodeRetain(m, value, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
+				_, _ = tablewire.DecodeRetain(m, value, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
 			} else {
-				_, err = tablewire.Decode(m, value, wire, &r)
+				_, _ = tablewire.Decode(m, value, wire, &r)
 			}
 			if r.Refused != (row.verdict == "refused") {
 				t.Fatalf("%s: the engine (retaining=%v) refused=%v (%v), the manifest says %s", row.name, retaining, r.Refused, err, row.verdict)
@@ -226,9 +226,9 @@ func TestDartPointerTargetBlobKindRefused(t *testing.T) {
 			for _, retaining := range []bool{false, true} {
 				var r tabletext.Report
 				if retaining {
-					_, err = tablewire.DecodeRetain(wm, wm.New(wu.Tables[c.Reader]), wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
+					_, _ = tablewire.DecodeRetain(wm, wm.New(wu.Tables[c.Reader]), wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
 				} else {
-					_, err = tablewire.Decode(wm, wm.New(wu.Tables[c.Reader]), wire, &r)
+					_, _ = tablewire.Decode(wm, wm.New(wu.Tables[c.Reader]), wire, &r)
 				}
 				if !r.Refused {
 					t.Fatalf("%s: the engine (retaining=%v) read it (%v); the witness row is a refusal", c.Name, retaining, err)
@@ -295,9 +295,9 @@ table Bin { data *bytes }
 				out := rm.New(reader.Tables[c.reader])
 				var r tabletext.Report
 				if retaining {
-					_, err = tablewire.DecodeRetain(rm, out, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
+					_, _ = tablewire.DecodeRetain(rm, out, wire, &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}, &r)
 				} else {
-					_, err = tablewire.Decode(rm, out, wire, &r)
+					_, _ = tablewire.Decode(rm, out, wire, &r)
 				}
 				reads = append(reads, !r.Refused)
 				unknown = append(unknown, r.Unknown)
