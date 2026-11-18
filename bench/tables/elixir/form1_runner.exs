@@ -104,8 +104,8 @@ defmodule SchemaTablesBenchElixirForm1 do
   defp load(bytes), do: Benchtable.Table.load("TableMixed", bytes)
 
   defp clean?(report) do
-    report.unknown == 0 and report.kind_mismatch == 0 and report.clamped == 0 and
-      report.malformed == false and Map.get(report, :blob_shared, 0) == 0
+    report.unknown == 0 and report.widened == 0 and report.missing_required == 0 and
+      Map.get(report, :blob_shared, 0) == 0
   end
 
   defp check_loads(variants) do

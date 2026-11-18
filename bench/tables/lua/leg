@@ -22,9 +22,11 @@ case "$1" in
 build)
     [ -x "$LUA" ] || command -v "$LUA" > /dev/null 2>&1 || { echo "no Lua interpreter at $LUA -- run make dist-lua" >&2; exit 2; }
     [ -x bin/schema ] || { echo "missing bin/schema -- run make" >&2; exit 2; }
-    rm -rf "$GEN"
-    mkdir -p "$GEN"
-    ./bin/schema generate --lang lua --out "$GEN" bench/corpus/BenchTable.schema
+    rm -rf "$GEN" "$GEN.src"
+    mkdir -p "$GEN" "$GEN.src"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN.src/BenchTable.schema"
+    ./bin/schema generate --lang lua --out "$GEN" "$GEN.src/BenchTable.schema"
+    rm -rf "$GEN.src"
     ;;
 run)
     shift

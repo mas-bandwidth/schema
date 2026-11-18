@@ -5,25 +5,60 @@
 #   leg build        build bench/tables/go
 #   leg run [args]   run it
 #
-# There is no serialize runtime in this build — the generated table codec names
-# none — so the leg needs the Go toolchain and the generated package and
-# nothing else. Go's own release configuration is its only one: the compiler
-# has no -O flag, so BENCH_OPT records what the board can honestly say about
-# it, which is `default`.
+# A fixed class in Go reads only the fixed form (form 3), and this bench
+# measures form 1, so the build generates a copy of the corpus whose tables
+# are declared variable into build/tables-bench-go, matching python/leg.
 set -e
 
+ROOT=$(pwd -P)
 BIN=build/schema_tables_bench_go
-GEN=generated/bench/tables/go
+STAGE=build/tables-bench-go
+: "${SERIALIZE_GO:=../serialize.go}"
 
 case "$1" in
 build)
-    if [ ! -f "$GEN/BenchTableTable.go" ]; then
-        echo "missing $GEN — run \`make generate\`" >&2
-        exit 2
-    fi
+    [ -x bin/schema ] || { echo "missing bin/schema — run \`make bin/schema\`" >&2; exit 2; }
     command -v go > /dev/null 2>&1 || { echo "no go toolchain" >&2; exit 2; }
+    case "$SERIALIZE_GO" in
+    /*) SGO="$SERIALIZE_GO" ;;
+    *)  SGO="$ROOT/$SERIALIZE_GO" ;;
+    esac
+    if [ ! -f "$SGO/go.mod" ] && [ -f "$ROOT/build/serialize.go/go.mod" ]; then
+        SGO="$ROOT/build/serialize.go"
+    fi
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE/source" "$STAGE/benchtable" "$STAGE/app"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$STAGE/source/BenchTable.schema"
+    if cmp -s bench/corpus/BenchTable.schema "$STAGE/source/BenchTable.schema"; then
+        echo "the corpus declares no fixed table: the variable copy changed nothing" >&2
+        exit 1
+    fi
+    ./bin/schema generate --lang go --runtime standalone --out "$STAGE/benchtable" "$STAGE/source/BenchTable.schema"
+    cat > "$STAGE/benchtable/go.mod" <<EOF
+module benchtable
+
+go 1.24
+
+require github.com/mas-bandwidth/serialize.go/v2 v2.0.0
+
+replace github.com/mas-bandwidth/serialize.go/v2 => $SGO
+EOF
+    cp bench/tables/go/*.go "$STAGE/app/"
+    cat > "$STAGE/app/go.mod" <<EOF
+module schematablesbench
+
+go 1.24
+
+require benchtable v0.0.0
+
+require github.com/mas-bandwidth/serialize.go/v2 v2.0.0 // indirect
+
+replace benchtable => ../benchtable
+
+replace github.com/mas-bandwidth/serialize.go/v2 => $SGO
+EOF
     mkdir -p build
-    ( cd bench/tables/go && go build -o "../../../$BIN" . )
+    ( cd "$STAGE/app" && go build -o "$ROOT/$BIN" . )
     ;;
 run)
     shift

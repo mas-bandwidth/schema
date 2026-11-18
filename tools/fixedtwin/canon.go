@@ -807,7 +807,8 @@ func hasStrictCountTextScanCall(s string) bool {
 	s = applyIdents(s)
 	s = strings.ReplaceAll(s, "->", ".")
 	s = strings.Join(strings.Fields(s), " ")
-	return strings.Contains(s, "if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) ) { report.refused = true; report.reason = why; return -1; }")
+	return strings.Contains(s, "if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) ) { report.refused = true; report.reason = why; if ( why == wire_damaged ) { report.refuse_reason = wire_damaged; } return -1; }") ||
+		strings.Contains(s, "if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) ) { report.refused = true; report.reason = why; return -1; }")
 }
 
 // strictCountTextScan reports whether fn is the whole count/text bound rule:
@@ -827,8 +828,13 @@ func strictCountTextScan(fn string) bool {
 	for _, clause := range []string{
 		"p.op == kTableFixedCount",
 		"if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }",
+		"if ( !TableFixedDeadZero( src, live, end ) ) { why = wire_damaged; return true; }",
 		"p.op == kTableFixedText",
 		"if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }",
+		"if ( !TableFixedDeadZero( src, base + (int64_t) v, base + (int64_t) cap ) ) { why = wire_damaged; return true; }",
+		"p.op == kTableFixedPresentDefaults",
+		"if ( !TableFixedDeadZero( src, base, base + TableFixedOptionalWireBytes( p ) ) ) { why = wire_damaged; return true; }",
+		"!TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool )",
 	} {
 		if !strings.Contains(fn, clause) {
 			return false
@@ -884,9 +890,195 @@ func canonicalize(src string) []string {
 	s = stripZeroing(s)
 	s = stripNamed(s)
 	s = stripOwedC(s)
+	s = stripPairedDeadAndFill(s)
 	s = rewriteKindMismatchBreaks(s)
 	s = normalizeSyntax(s)
 	return collapse(s)
+}
+
+var (
+	reCDeadEntryFields = regexp.MustCompile(`(?s)\buint32_t\s+dead\s*;\s*uint32_t\s+arm\s*;\s*uint32_t\s+arm_count\s*;\s*uint8_t\s+tagw\s*;\s*uint32_t\s+present\s*;`)
+	reCApplyPresent    = regexp.MustCompile(`if\s*\(\s*p(?:->|\.)present\s*!=\s*0\s*&&\s*src\[p(?:->|\.)present\s*-\s*1u\]\s*==\s*0\s*\)\s*\{\s*return\s*;\s*\}`)
+	reCFillRunSig      = regexp.MustCompile(`inline\s+int\s+TableFixedFillRun\s*\(\s*const\s+TableFixedFill\s*\*\s*fill\s*,\s*int32_t\s+count\s*,\s*const\s+uint8_t\s*\*\s*TABLE_RESTRICT\s+defaults\s*,\s*uint8_t\s*\*\s*TABLE_RESTRICT\s+dst\s*,\s*size_t\s+bytes\s*\)`)
+	reCFillBounds      = regexp.MustCompile(`if\s*\(\s*fill\[i\](?:->|\.)dst\s*>\s*bytes\s*\|\|\s*fill\[i\](?:->|\.)size\s*>\s*bytes\s*-\s*fill\[i\](?:->|\.)dst\s*\)\s*\{\s*return\s+0\s*;\s*\}`)
+	reCppOptWire       = regexp.MustCompile(`(?s)const\s+uint32_t\s+payload_wire\s*=\s*te\.size\s*>\s*0u\s*\?\s*\(\s*te\.size\s*-\s*1u\s*\)\s*:\s*0u\s*;\s*e\.meta\s*=\s*\(uint8_t\)\s*\(\s*payload_wire\s*&\s*0xffu\s*\)\s*;\s*e\.dstsize\s*=\s*\(uint8_t\)\s*\(\s*\(\s*payload_wire\s*>>\s*8\s*\)\s*&\s*0xffu\s*\)\s*;`)
+	reCPlanCountAux    = regexp.MustCompile(`^(\s*(?:\{\s*)?\d+u,\s*\d+u,\s*\d+u,\s*)0u(,\s*[^,]+,\s*kTableFixedCount(?:,\s*[^,]+){11},\s*)(\d+u)(\s*,\s*\d+u?\s*,\s*\d+u?\s*,\s*\d+u?\s*,\s*\d+u?\s*\})$`)
+	reCPlanDeadCols    = regexp.MustCompile(`,\s*\d+u?,\s*\d+u?,\s*\d+u?,\s*\d+u?,\s*\d+u?\s*\}$`)
+)
+
+func dropExactFunc(s, prefix string) string {
+	from := 0
+	for {
+		idx := strings.Index(s[from:], prefix)
+		if idx < 0 {
+			return s
+		}
+		i := from + idx
+		open := strings.Index(s[i:], "{")
+		if open < 0 {
+			return s
+		}
+		if semi := strings.Index(s[i:i+open], ";"); semi >= 0 {
+			from = i + semi + 1
+			continue
+		}
+		end := matchingBrace(s, i+open)
+		if end < 0 {
+			return s
+		}
+		s = s[:i] + s[end+1:]
+	}
+}
+
+func rewriteFuncDef(s, prefix string, fn func(string) string) string {
+	from := 0
+	for {
+		idx := strings.Index(s[from:], prefix)
+		if idx < 0 {
+			return s
+		}
+		i := from + idx
+		open := strings.Index(s[i:], "{")
+		if open < 0 {
+			return s
+		}
+		if semi := strings.Index(s[i:i+open], ";"); semi >= 0 {
+			from = i + semi + 1
+			continue
+		}
+		end := matchingBrace(s, i+open)
+		if end < 0 {
+			return s
+		}
+		replaced := fn(s[i+open : end+1])
+		s = s[:i+open] + replaced + s[end+1:]
+		from = i + open + len(replaced)
+	}
+}
+
+func stripPairedDeadAndFill(s string) string {
+	if hasCDeadByteScan(s) {
+		for _, fn := range []string{
+			"inline int TableFixedEntryRuns(",
+			"inline int TableFixedSpanZero(",
+			"inline int TableFixedDeadRefuses(",
+		} {
+			s = dropExactFunc(s, fn)
+		}
+		s = reCDeadEntryFields.ReplaceAllString(s, "")
+		s = reCApplyPresent.ReplaceAllString(s, "")
+		s = rewriteFuncDef(s, "struct TableFixedCompiler", func(body string) string {
+			return strings.ReplaceAll(body, "uint32_t present;", "")
+		})
+		s = rewriteFuncDef(s, "typedef struct TableFixedCompiler", func(body string) string {
+			return strings.ReplaceAll(body, "uint32_t present;", "")
+		})
+		s = rewriteFuncDef(s, "inline void TableFixedPush", func(body string) string {
+			body = strings.ReplaceAll(body, "e.present = c->present;", "")
+			body = strings.ReplaceAll(body, "e.present = c.present;", "")
+			return body
+		})
+		s = rewriteFuncDef(s, "inline void TableFixedCompileEntry", func(body string) string {
+			for _, stmt := range []string{
+				"e->present = c->present;",
+				"e.present = c->present;",
+				"e.present = c.present;",
+				"const uint32_t outer_present = c->present;",
+				"uint32_t outer_present = c->present;",
+				"const uint32_t outer_present = c.present;",
+				"uint32_t outer_present = c.present;",
+				"c->present = their_at + 1u;",
+				"c.present = their_at + 1u;",
+				"c->present = outer_present;",
+				"c.present = outer_present;",
+				"e->dead = te.size > 0u ? te.size - 1u : 0u;",
+				"e.dead = te.size > 0u ? te.size - 1u : 0u;",
+				"e->dead = tel.size;",
+				"e.dead = tel.size;",
+				"none.dead = te.size - their_tag;",
+				"none.tagw = (uint8_t) their_tag;",
+				"none.arm_count = te.children;",
+				"tag.arm = ta.size;",
+			} {
+				body = strings.ReplaceAll(body, stmt, "")
+			}
+			return body
+		})
+	}
+	if hasCppDeadHelpers(s) {
+		for _, fn := range []string{
+			"inline int64_t TableFixedOptionalWireBytes(",
+			"inline int64_t TableFixedEntryEnd(",
+			"inline bool TableFixedDeadZero(",
+			"inline bool TableFixedGuardHolds(",
+			"inline bool TableFixedInAbsentPayload(",
+			"inline bool TableFixedEntryTagArg(",
+			"inline bool TableFixedTagSeen(",
+			"inline bool TableFixedDeadSpan(",
+		} {
+			s = dropExactFunc(s, fn)
+		}
+		s = reCppOptWire.ReplaceAllString(s, "")
+		s = rewriteFuncDef(s, "inline void TableFixedCompileEntry", func(body string) string {
+			return strings.ReplaceAll(body, "e.aux = tel.size;", "")
+		})
+	}
+	// C preflights default fill bounds via TableFixedFillFits and passes object bytes to TableFixedFillRun.
+	s = dropExactFunc(s, "inline int TableFixedFillFits(")
+	s = rewriteFuncDef(s, "inline int TableFixedFillRun(", func(body string) string {
+		body = reCFillBounds.ReplaceAllString(body, "")
+		body = strings.ReplaceAll(body, "return 1;", "")
+		return body
+	})
+	s = reCFillRunSig.ReplaceAllString(s, "inline void TableFixedFillRun( const TableFixedFill * fill, int32_t count, const uint8_t * TABLE_RESTRICT defaults, uint8_t * TABLE_RESTRICT dst )")
+	return s
+}
+
+func canonicalizePlanC(src string) []string {
+	lines := canonicalize(src)
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		line = reCPlanCountAux.ReplaceAllString(line, "${1}${3}${2}${3}${4}")
+		out[i] = reCPlanDeadCols.ReplaceAllString(line, " }")
+	}
+	return out
+}
+
+func hasCppDeadHelpers(s string) bool {
+	norm := strings.Join(strings.Fields(applyIdents(stripPreprocessor(stripComments(s)))), " ")
+	for _, clause := range []string{
+		"inline bool TableFixedDeadZero( const uint8_t * src, int64_t from, int64_t to )",
+		"if ( src[i] != 0 ) { return false; }",
+		"inline bool TableFixedDeadSpan(",
+		"return TableFixedDeadZero( src, dead < arm ? arm : dead, widest );",
+	} {
+		if !strings.Contains(norm, clause) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasCDeadByteScan(s string) bool {
+	norm := strings.Join(strings.Fields(strings.ReplaceAll(applyIdents(stripComments(s)), "->", ".")), " ")
+	for _, clause := range []string{
+		"inline int TableFixedSpanZero( const uint8_t * src, uint32_t from, uint32_t to ) { uint32_t i; for ( i = from; i < to; ++i ) { if ( src[i] != 0 ) { return 0; } } return 1; }",
+		"TableFixedDeadRefuses(",
+		"to = p.src + 4u + p.size * p.dead; if ( !TableFixedSpanZero( src, from, to ) ) { return 1; }",
+		"to = p.src + 4u + p.size; if ( !TableFixedSpanZero( src, from, to ) ) { return 1; }",
+		"if ( src[p.src] == 0 && p.dead != 0 ) { if ( !TableFixedSpanZero( src, p.src + 1u, p.src + 1u + p.dead ) ) { return 1; } }",
+		"to = p.src + p.tagw + p.dead; if ( !TableFixedSpanZero( src, from, to ) ) { return 1; }",
+	} {
+		if !strings.Contains(norm, clause) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasCDeadByteScanCall(s string) bool {
+	norm := strings.Join(strings.Fields(strings.ReplaceAll(applyIdents(stripComments(s)), "->", ".")), " ")
+	return strings.Contains(norm, "if ( TableFixedDeadRefuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )")
 }
 
 func extractRuntime(src string) (string, error) {

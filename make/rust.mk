@@ -1375,7 +1375,8 @@ tables-rust-wide-clamp-negative-control: build/conformance-harness build/conform
 	$(call rust-wide-control,clamp,$(RUST_WIDE_CLAMP_SED),variabletext.go)
 	@grep -q '^  rust / json-hostile: fixed-at-bound' $(RUST_WIDE_CONTROL)/clamp/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-at-bound"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; }
-	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS)|the driver exited [0-9]+$$)' | grep -q . || \
+	    grep '^    driver: ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^    driver: ($(RUST_WIDE_ROWS))' | grep -q .; then \
 		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars went red"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; fi
 	@echo "rust wide-scalar clamp negative control: a fixed range left on the whole-unit scale turns exactly the wide-scalar rows red"
 

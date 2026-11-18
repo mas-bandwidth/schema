@@ -25,13 +25,15 @@ fi
 
 case "$1" in
 build)
-    if [ ! -f "$GEN/BenchTableWire.dart" ]; then
-        echo "missing $GEN — run \`make generate\`" >&2
-        exit 2
-    fi
+    [ -x bin/schema ] || { echo "missing bin/schema — run \`make bin/schema\`" >&2; exit 2; }
     command -v "$DART" > /dev/null 2>&1 || { echo "no dart toolchain" >&2; exit 2; }
-    mkdir -p build
-    "$DART" compile exe -o "$BIN" "$SRC" > /dev/null
+    STAGE=build/tables-bench-dart
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE/source" "$STAGE/gen" build
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$STAGE/source/BenchTable.schema"
+    ./bin/schema generate --lang dart --out "$STAGE/gen" "$STAGE/source/BenchTable.schema"
+    sed 's|../../../generated/bench/tables/dart/|./gen/|g' "$SRC" > "$STAGE/table_form1_main.dart"
+    "$DART" compile exe -o "$BIN" "$STAGE/table_form1_main.dart" > /dev/null
     ;;
 run)
     shift

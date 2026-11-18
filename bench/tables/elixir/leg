@@ -24,15 +24,15 @@ export PATH
 
 case "$1" in
 build)
-    if [ ! -f "$GEN/Table.ex" ]; then
-        echo "missing $GEN — run \`make generate\`" >&2
-        exit 2
-    fi
+    [ -x bin/schema ] || { echo "missing bin/schema — run \`make bin/schema\`" >&2; exit 2; }
     command -v elixirc > /dev/null 2>&1 || { echo "no elixir toolchain" >&2; exit 2; }
-    rm -rf "$EBIN"
-    mkdir -p "$EBIN"
+    STAGE=build/schema_tables_bench_elixir
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE/source" "$STAGE/gen" "$EBIN"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$STAGE/source/BenchTable.schema"
+    ./bin/schema generate --lang elixir --out "$STAGE/gen" "$STAGE/source/BenchTable.schema"
     # make/elixir-strict.sh: this elixirc exits 0 on a warning, so the wrapper is the gate
-    sh make/elixir-strict.sh elixirc -o "$EBIN" "$GEN"/*.ex > /dev/null
+    sh make/elixir-strict.sh elixirc -o "$EBIN" "$STAGE/gen"/*.ex > /dev/null
     ;;
 run)
     shift
