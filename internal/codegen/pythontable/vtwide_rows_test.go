@@ -85,7 +85,7 @@ func wideRowManifest(t *testing.T, repo string) (map[string][]string, []wideRowI
 			wide[r.unit] = ok
 		}
 		if ok {
-			rows = append(rows, wideRowInstance{name: r.name, unit: r.unit, root: r.root, wire: r.wire, refusal: r.refusal})
+			rows = append(rows, wideRowInstance(r))
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].name < rows[j].name })

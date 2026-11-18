@@ -279,15 +279,16 @@ func javaBlobKindProblems(cases []javaBlobKindCase, output string) []string {
 				want = "read " + strconv.Itoa(c.unknown) + map[bool]string{true: " set", false: " null"}[c.set]
 			}
 			answer, ok := got[c.name+" "+path]
-			if !ok {
+			switch {
+			case !ok:
 				problems = append(problems, fmt.Sprintf("%s (%s): no answer", c.name, path))
-			} else if path != "measure" && c.verdict == "refused" && strings.HasPrefix(answer, "refused ") {
+			case path != "measure" && c.verdict == "refused" && strings.HasPrefix(answer, "refused "):
 				// THE VERDICT IS WHAT CONFORMS (docs/rulings.json
 				// refusal-verdict-only): the reason a leg names is its own
 				// detail. The Java leg names a wrong-target pointer
 				// kind_mismatch (TableVariable.judge), the engine wire_damaged.
 				continue
-			} else if answer != want {
+			case answer != want:
 				problems = append(problems, fmt.Sprintf("%s (%s): Java answers %q, the engine %q", c.name, path, answer, want))
 			}
 		}

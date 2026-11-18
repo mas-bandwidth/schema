@@ -324,7 +324,8 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 				known = append(known, entry)
 				continue
 			}
-			if e.Writer != nil {
+			switch {
+			case e.Writer != nil:
 				writerLayout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(e.Writer))
 				valid := bytes.Equal(writerLayout, e.Layout) && e.Record == 8+ir.TableFixedTypeBytes(e.Writer)
 				if e.LegacyLayoutOnly {
@@ -342,11 +343,11 @@ func emitPythonFixedData(u *ir.Unit, lineage map[string][]FixedLineageEntry) (st
 					continue
 				}
 				entry["check_spec"] = fixedSemanticRoot(e.Writer)
-			} else if e.LegacyLayoutOnly || !ownFacts {
+			case e.LegacyLayoutOnly || !ownFacts:
 				// Empty legacy digests do not prove an unconstrained writer:
 				// older renderings could omit definition facts altogether.
 				return "", fmt.Errorf("python: fixed table %s: historical layout 0x%016x needs its checked writer declaration snapshot; import its trusted historical source", st.Name, e.Wire)
-			} else {
+			default:
 				entry["check_spec"] = spec
 			}
 			planMax = max(planMax, len(plan)+len(fills))
@@ -569,11 +570,12 @@ func compilePythonFixedPlan(writer *fixedLayoutNode, reader map[string]any, iden
 			emit("ordinal", src, dst, w.Size, rs, guards, map[string]any{"remap": remap})
 		case "void":
 		default:
-			if w.Size == rs {
+			switch {
+			case w.Size == rs:
 				emit("copy", src, dst, w.Size, 0, guards, nil)
-			} else if w.Size < rs && rs <= 16 {
+			case w.Size < rs && rs <= 16:
 				emit("widen", src, dst, w.Size, rs, guards, map[string]any{"signed": false})
-			} else {
+			default:
 				why = "layout_malformed"
 			}
 		}

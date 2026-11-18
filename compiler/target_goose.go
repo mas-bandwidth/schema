@@ -1,5 +1,3 @@
-//go:build schema_leg_goose
-
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
@@ -111,5 +109,5 @@ func gooseTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]goosetabl
 }
 
 func init() {
-	registerBuiltin(gooseTarget{}, false, false, false, false)
+	registerBuiltin(gooseTarget{}, true, false, false, false)
 }

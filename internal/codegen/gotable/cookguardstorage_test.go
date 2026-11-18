@@ -88,11 +88,11 @@ table Root {gate bool
 				field(field(v, "maybe").Cell.Tab, "dead").Count = 0
 			}
 			var probe strings.Builder
-			probe.WriteString(fmt.Sprintf(`package probe
+			fmt.Fprintf(&probe, `package probe
 import("bytes";"math";"testing")
 var _=math.NaN
 func TestGuardedCook(t *testing.T){t.Parallel();var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var report TableReport;if !RootFromJSON(&b,[]byte(%q),&report){t.Fatal(report)};v:=b.GetRoot();%s
-`, tc.text, tc.setup))
+`, tc.text, tc.setup)
 			for _, big := range []bool{false, true} {
 				want, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
 				if (err != nil) != tc.refuse {

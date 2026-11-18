@@ -142,7 +142,7 @@ func TestFunctionalGooseLongPointerChain(t *testing.T) {
 	}
 	want := "node_chain_two load 1\nnode_chain_two save 1\nnode_chain_two json 1\n" +
 		"node_chain_200000 load 1\nnode_chain_200000 save 1\nnode_chain_200000 json 1\nreleased\n"
-	if string(stdout.Bytes()) != want {
+	if stdout.String() != want {
 		t.Fatalf("long pointer chain probe printed\n%s\nwant\n%s", stdout.Bytes(), want)
 	}
 }

@@ -56,11 +56,12 @@ func nestedScopes(u *ir.Unit, root *ir.Struct, f *wireFrame) map[int]nestedScope
 		}
 		parent := scopes[parentKey]
 		scope := nestedScope{}
-		if i > 0 && f.spots[i-1].kind == spotRecordType {
+		switch {
+		case i > 0 && f.spots[i-1].kind == spotRecordType:
 			if id, ok := f.entryOf(f.spots[i-1].value); ok {
 				scope.owner = nodeTypes[id]
 			}
-		} else if i >= 2 && f.spots[i-1].kind == spotKind && f.spots[i-1].role == roleField && f.spots[i-2].kind == spotRef {
+		case i >= 2 && f.spots[i-1].kind == spotKind && f.spots[i-1].role == roleField && f.spots[i-2].kind == spotRef:
 			id, _ := f.entryOf(f.spots[i-2].value)
 			fd := scopeField(parent.owner, id)
 			if fd != nil && !fd.Deprecated && int(f.spots[i-1].value) == ir.TableWireFieldKind(fd) {
@@ -72,9 +73,9 @@ func nestedScopes(u *ir.Unit, root *ir.Struct, f *wireFrame) map[int]nestedScope
 					scope.union, _ = fd.Type.Ref.(*ir.Union)
 				}
 			}
-		} else if i > 0 && f.spots[i-1].kind == spotKey {
+		case i > 0 && f.spots[i-1].kind == spotKey:
 			scope.owner = parent.element
-		} else if sp.body && parent.element != nil {
+		case sp.body && parent.element != nil:
 			scope.owner = parent.element
 		}
 		// A table-valued union arm carries the arm's declaration, not the union's.

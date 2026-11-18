@@ -28,7 +28,7 @@ fixed table Probe
 }
 `
 
-// one row: the text is head, then fill repeated count times, then tail
+// one row: the text is head, then fill repeated count times, then tail.
 type cJsonNumberRow struct {
 	name  string
 	head  string

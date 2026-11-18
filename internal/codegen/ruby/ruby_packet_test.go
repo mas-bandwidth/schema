@@ -1096,7 +1096,7 @@ func TestRubyPacketShapeBench(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	benchScript := `# frozen_string_literal: true
+	compareScript := `# frozen_string_literal: true
 
 require_relative "bench"
 
@@ -1111,31 +1111,14 @@ values.each_with_index do |v, i|
   raise "variant #{i} round-trip mismatch" if v.write != variants[i]
 end
 
-iters = (ENV["RUBY_SHAPE_ITERS"] || "640").to_i
-runs = (ENV["RUBY_SHAPE_RUNS"] || "2").to_i
 yjit = defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled?
-
-%w[write round_trip].each do |mode|
-  rates = []
-  (runs + 1).times do |r|
-    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    i = 0
-    sink = 0
-    while i < iters
-      idx = i & 63
-      v = mode == "write" ? values[idx] : Bench::BenchMixed.read(variants[idx])
-      sink += v.write.bytesize
-      i += 1
-    end
-    dt = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
-    rates << (iters / dt) if r > 0 && sink > 0
-  end
-  s = rates.sort
-  med = s[s.length / 2]
-  puts format("yjit=%s mode=%s median_msgs_sec=%.0f mb_sec=%.2f", yjit, mode, med, med * size / 1_048_576.0)
-end
+puts "yjit=#{yjit} variants=#{values.length} bytes=#{size}"
 `
 	interp := rubyrun.Interpreter(t)
+	jits := []string{"--disable-yjit"}
+	if probeOut, _, probeErr := rubyrun.TryArgs(t, interp, t.TempDir(), "-e", []string{"print(!defined?(RubyVM::YJIT).nil?)"}, nil, nil); probeErr == nil && strings.TrimSpace(probeOut) == "true" {
+		jits = append(jits, "--yjit")
+	}
 	for _, shape := range []struct {
 		name  string
 		files map[string][]byte
@@ -1143,12 +1126,12 @@ end
 		{"straight-line", straightFiles},
 		{"descriptor-walk", descFiles},
 	} {
-		for _, jitFlag := range []string{"--disable-yjit", "--yjit"} {
+		for _, jitFlag := range jits {
 			t.Run(shape.name+"/"+jitFlag, func(t *testing.T) {
 				dir := t.TempDir()
 				writeTree(t, dir, shape.files)
 				inputs := map[string][]byte{
-					"bench_shape.rb":           []byte(benchScript),
+					"compare_shape.rb":         []byte(compareScript),
 					"bench_mixed.bin":          golden,
 					"bench_mixed.variants.bin": packed,
 				}
@@ -1157,7 +1140,7 @@ end
 						t.Fatal(werr)
 					}
 				}
-				stdout, stderr, rerr := rubyrun.TryArgs(t, interp, dir, jitFlag, []string{"bench_shape.rb"}, nil, nil)
+				stdout, stderr, rerr := rubyrun.TryArgs(t, interp, dir, jitFlag, []string{"compare_shape.rb"}, nil, nil)
 				if rerr != nil || stderr != "" {
 					t.Fatalf("%s %s: %v\nstderr:\n%s\nstdout:\n%s", shape.name, jitFlag, rerr, stderr, stdout)
 				}

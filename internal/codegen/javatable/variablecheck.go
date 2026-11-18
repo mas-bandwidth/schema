@@ -207,7 +207,7 @@ func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 		// ROWS 4 AND 8: UTF-8 length inside N, no lone surrogate, no zero
 		bound := int64(-1)
 		if f.Type.Size > 0 && !f.Type.TextUnbounded() {
-			bound = int64(f.Type.Size)
+			bound = f.Type.Size
 		}
 		fmt.Fprintf(b, "%sassert TableVariable.textWritable(%s, %d) : %q;\n", ind, expr, bound, name)
 	case ir.TBytes:

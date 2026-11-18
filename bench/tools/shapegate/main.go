@@ -105,6 +105,8 @@ var runnerDirs = []string{
 	"bench/js/",
 	"bench/lobster/",
 	"bench/luau/",
+	"bench/python/",
+	"bench/ruby/",
 	"bench/rust/",
 	"bench/tools/",
 	"bench/run.sh",

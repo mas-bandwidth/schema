@@ -294,7 +294,7 @@ func parseCookWrite(out string) (parsedCookWrite, error) {
 			}
 			raw, err := hex.DecodeString(fields[2])
 			if err != nil {
-				return nil, fmt.Errorf("WIRE %s is not hex: %v", fields[1], err)
+				return nil, fmt.Errorf("WIRE %s is not hex: %w", fields[1], err)
 			}
 			seen[fields[1]] = &writtenCook{wire: raw}
 		case "COOK":
@@ -311,15 +311,15 @@ func parseCookWrite(out string) (parsedCookWrite, error) {
 			}
 			measure, err := strconv.Atoi(fields[3])
 			if err != nil {
-				return nil, fmt.Errorf("COOK %s measure %q: %v", fields[1], fields[3], err)
+				return nil, fmt.Errorf("COOK %s measure %q: %w", fields[1], fields[3], err)
 			}
 			length, err := strconv.Atoi(fields[4])
 			if err != nil {
-				return nil, fmt.Errorf("COOK %s length %q: %v", fields[1], fields[4], err)
+				return nil, fmt.Errorf("COOK %s length %q: %w", fields[1], fields[4], err)
 			}
 			raw, err := hex.DecodeString(fields[5])
 			if err != nil {
-				return nil, fmt.Errorf("COOK %s is not hex: %v", fields[1], err)
+				return nil, fmt.Errorf("COOK %s is not hex: %w", fields[1], err)
 			}
 			got.measure = measure
 			got.length[order-1] = length
@@ -346,15 +346,15 @@ func verifyCookWrite(u *ir.Unit, out string) error {
 		inst := m.New(m.Lookup(root))
 		var report tabletext.Report
 		if err := decodeCookWire(m, inst, got.wire, &report); err != nil {
-			return fmt.Errorf("%s: the runtime's wire does not decode: %v", name, err)
+			return fmt.Errorf("%s: the runtime's wire does not decode: %w", name, err)
 		}
 		little, err := tablecook.Cook(m, inst, tablecook.Options{})
 		if err != nil {
-			return fmt.Errorf("%s: the tool cooks no little-endian file: %v", name, err)
+			return fmt.Errorf("%s: the tool cooks no little-endian file: %w", name, err)
 		}
 		big, err := tablecook.Cook(m, inst, tablecook.Options{Big: true})
 		if err != nil {
-			return fmt.Errorf("%s: the tool cooks no big-endian file: %v", name, err)
+			return fmt.Errorf("%s: the tool cooks no big-endian file: %w", name, err)
 		}
 		for order, want := range [][]byte{little, big} {
 			if got.length[order] != len(want) {

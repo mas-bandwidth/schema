@@ -21,7 +21,7 @@ var reflectionUnsupported = regexp.MustCompile(`(?m)(?:^|[[:space:]])(?:codec|el
 // named hole, not a skipped comparison.
 func TestPythonReflectionDriverCorpus(t *testing.T) {
 	t.Parallel()
-	root := filepath.Join("..")
+	root := ".."
 	data, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)

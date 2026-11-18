@@ -106,7 +106,7 @@ else
 end
 `, mod)
 
-	out := strings.TrimSpace(string(luauFixedRun(t, g.dir, probe, inputs)))
+	out := strings.TrimSpace(luauFixedRun(t, g.dir, probe, inputs))
 	if out != "ok" {
 		t.Fatalf("the fixed batch rule did not hold:\n%s", out)
 	}

@@ -29,7 +29,6 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 	}
 	const schemaRel = "test/tables/DeadBytes.schema"
 	const module = "TbldeadTables"
-	const recRoot = "DeadRoot"
 
 	dir := t.TempDir()
 	writeGenerated(t, dir, fixedLoadUnit(t, root, schemaRel))

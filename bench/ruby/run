@@ -9,5 +9,11 @@ case "$version" in
     *) echo "bench-ruby refuses $version: expected CRuby 3.4.12 or 4.0.9" >&2; exit 1 ;;
 esac
 if [ ! -f generated/bench/ruby/bench/Bench.rb ]; then echo "missing generated benchmark: run make generated/bench/ruby/.stamp" >&2; exit 2; fi
-jit_flag=${RUBY_BENCH_JIT:---yjit}
+if [ -n "${RUBY_BENCH_JIT:-}" ]; then
+    jit_flag=$RUBY_BENCH_JIT
+elif [ "$("$RUBY" --disable-gems -e 'print(!defined?(RubyVM::YJIT).nil?)')" = "true" ]; then
+    jit_flag=--yjit
+else
+    jit_flag=--disable-yjit
+fi
 exec "$RUBY" --disable-gems -w "$jit_flag" bench/ruby/main.rb "$@"

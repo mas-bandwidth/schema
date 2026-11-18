@@ -23,7 +23,7 @@ var commentReaders = []commentReader{
 		var v tabledemo.ProfileConfig
 		var r tabledemo.TableReport
 		ok := tabledemo.ProfileConfigFromJSON(&v, text, &r)
-		return ok, string(r.Reason)
+		return ok, r.Reason
 	}},
 	{"Patrol", func(text []byte) (bool, string) {
 		var b tabledemo.PatrolBuilder
@@ -33,7 +33,7 @@ var commentReaders = []commentReader{
 		defer b.Shutdown()
 		var r tabledemo.TableReport
 		ok := tabledemo.PatrolFromJSON(&b, text, &r)
-		return ok, string(r.Reason)
+		return ok, r.Reason
 	}},
 }
 

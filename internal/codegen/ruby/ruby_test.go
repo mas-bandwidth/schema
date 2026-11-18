@@ -14,6 +14,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -139,7 +140,8 @@ func plantBareNext(t *testing.T, src string) string {
 	return planted
 }
 
-func driverAnswersAbsent(driver, dir string) error {
+func driverAnswersAbsent(t *testing.T, driver, dir string) error {
+	slowtest.Gate(t, "sh")
 	list := exec.Command("sh", driver, "manifest.json", "list")
 	list.Dir = dir
 	out, err := list.CombinedOutput()
@@ -153,8 +155,7 @@ func driverAnswersAbsent(driver, dir string) error {
 		cmd := exec.Command("sh", driver, "manifest.json", surface, dir)
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 2 {
 			return fmt.Errorf("%s %s: %w, want exit 2 (ABSENT)\n%s", driver, surface, err, out)
 		}
 	}
@@ -454,7 +455,7 @@ func TestRubySkeleton(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := driverAnswersAbsent(filepath.Join(root, "test", "conformance", "ruby", "driver"), t.TempDir()); err != nil {
+		if err := driverAnswersAbsent(t, filepath.Join(root, "test", "conformance", "ruby", "driver"), t.TempDir()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -479,7 +480,7 @@ func TestRubySkeleton(t *testing.T) {
 		if err := os.WriteFile(copyPath, []byte(planted), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := driverAnswersAbsent(copyPath, dir); err == nil || !strings.Contains(err.Error(), `lists the surfaces "json-read"`) {
+		if err := driverAnswersAbsent(t, copyPath, dir); err == nil || !strings.Contains(err.Error(), `lists the surfaces "json-read"`) {
 			t.Fatalf("a driver listing json-read went %v; want red naming the surface", err)
 		}
 	})

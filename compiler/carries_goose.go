@@ -1,5 +1,3 @@
-//go:build schema_leg_goose
-
 package compiler
 
 // gooseCarried is every construct the Goose target carries (docs/SPEC-TABLES.md;

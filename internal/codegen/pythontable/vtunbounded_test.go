@@ -407,12 +407,8 @@ print("OK")
 		}
 	}
 	for name, runner := range map[string]func(t testing.TB, dir, main string, inputs map[string][]byte) []byte{
-		"python-3.15.2": func(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
-			return pyrun.Run(t, dir, main, inputs)
-		},
-		"python-3.11.18": func(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
-			return pyrun.RunFloor(t, dir, main, inputs)
-		},
+		"python-3.15.2":  pyrun.Run,
+		"python-3.11.18": pyrun.RunFloor,
 	} {
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if !strings.Contains(out, "OK\n") {

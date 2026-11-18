@@ -634,13 +634,14 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 	}
 	for _, st := range tables {
 		emitTable(&b, u, st, surfaces)
-		if surfaceCarries(surfaces, st, "block") {
+		switch {
+		case surfaceCarries(surfaces, st, "block"):
 			emitBlockDescriptors(&b, u, st, blocks)
-		} else if surfaces.Block {
+		case surfaces.Block:
 			// A table excluded as a block root may still be a by-value child
 			// of an included root. Keep its row layout for that enclosing block.
 			emitBlockDescriptors(&b, u, st, nil)
-		} else {
+		default:
 			fmt.Fprintf(&b, "%s.block = None\n\n", st.Name)
 		}
 	}
@@ -765,11 +766,12 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_measure(cls, count: int) -> int:\n        return _s_fixed_measure(cls, count)\n")
 	}
 	b.WriteString("\n    @classmethod\n")
-	if st.FixedDeclared && !surfaces.Fixed {
+	switch {
+	case st.FixedDeclared && !surfaces.Fixed:
 		b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n        raise Refused(\"fixed_surface_not_selected\")\n")
-	} else if st.FixedDeclared {
+	case st.FixedDeclared:
 		fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n        return _s_fixed_load(cls, data, 1, report)[0]\n")
-	} else {
+	default:
 		if straight {
 			fmt.Fprintf(b, "    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> %s:\n", name)
 		} else {
@@ -785,11 +787,12 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		}
 	}
 	b.WriteString("\n    def save(self) -> bytes:\n")
-	if st.FixedDeclared && !surfaces.Fixed {
+	switch {
+	case st.FixedDeclared && !surfaces.Fixed:
 		b.WriteString("        raise InvalidValue(type(self).__name__, \"fixed_surface_not_selected\")\n")
-	} else if st.FixedDeclared {
+	case st.FixedDeclared:
 		b.WriteString("        return _s_fixed_save(type(self), [self])\n")
-	} else {
+	default:
 		call := "save_table(self)"
 		if straight {
 			call = fmt.Sprintf("_s_save_%s(self)", name)
@@ -800,13 +803,14 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		fmt.Fprintf(b, "        return %s\n", call)
 	}
 	b.WriteString("\n    def measure(self) -> int:\n")
-	if st.FixedDeclared && !surfaces.Fixed {
+	switch {
+	case st.FixedDeclared && !surfaces.Fixed:
 		b.WriteString("        raise InvalidValue(type(self).__name__, \"fixed_surface_not_selected\")\n")
-	} else if st.FixedDeclared {
+	case st.FixedDeclared:
 		b.WriteString("        return _s_fixed_measure(type(self), 1)\n")
-	} else if st.Integrity == "crc32c" {
+	case st.Integrity == "crc32c":
 		b.WriteString("        return measure_table(self) + 4\n\n\n")
-	} else {
+	default:
 		b.WriteString("        return measure_table(self)\n")
 	}
 	if surfaces.Retain {
@@ -1634,8 +1638,7 @@ func armFieldDesc(u *ir.Unit, un *ir.Union, v ir.UnionVariant, tag int) string {
 		wire = v.WasName
 	}
 	codec := codecOf(f)
-	switch codec {
-	case "keyed":
+	if codec == "keyed" {
 		codec = "unsupported"
 	}
 	elemCodec := ""
@@ -2083,32 +2086,6 @@ func pyFloatLiteral(v float64) string {
 		s += ".0"
 	}
 	return s
-}
-
-// equalExpr compares one field by value, a float by its bits (so -0.0 and 0.0
-// differ, as their wire bytes do; docs/PORT-PYTHON.md, Classes) and a plain
-// array element by element so a float element is compared by bits too. It is
-// the packet surface's rule (internal/codegen/python, equalExpr).
-func equalExpr(a, b string, f *ir.Field) string {
-	if f.Type.Pointer || f.Type.Optional || f.IsMap() || f.KeyEnum != "" {
-		return a + " == " + b
-	}
-	if f.Array != ir.ArrayNone {
-		elem := *f
-		elem.Array = ir.ArrayNone
-		inner := equalExpr("_s_x", "_s_y", &elem)
-		if inner == "_s_x == _s_y" {
-			return a + " == " + b
-		}
-		return fmt.Sprintf("len(%s) == len(%s) and all(%s for _s_x, _s_y in zip(%s, %s))", a, b, inner, a, b)
-	}
-	switch f.Type.Kind {
-	case ir.TFloat32:
-		return fmt.Sprintf("_s_float32_bits_eq(%s, %s)", a, b)
-	case ir.TFloat64:
-		return fmt.Sprintf("_s_float64_bits_eq(%s, %s)", a, b)
-	}
-	return a + " == " + b
 }
 
 // innerCodecOf is the codec an optional wraps: ?T rides T's own framing, so

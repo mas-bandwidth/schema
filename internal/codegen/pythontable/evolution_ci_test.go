@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Derive names from the same value, reader and writer vectors as the complete
@@ -39,7 +39,7 @@ func evolutionCINames() []string {
 }
 
 func evolutionCICoverage(names []string, source string) error {
-	rows := regexp.MustCompile("(?m)^\\tSCHEMA_SLOW=1 go test[^\\n]+-run '([^']+)'[^\\n]*$").FindAllStringSubmatch(source, -1)
+	rows := regexp.MustCompile(`(?m)^\tSCHEMA_SLOW=1 go test[^\n]+-run '([^']+)'[^\n]*$`).FindAllStringSubmatch(source, -1)
 	if len(rows) != 3 || len(names) == 0 {
 		return fmt.Errorf("Evolution rows=%d, cases=%d", len(rows), len(names))
 	}
@@ -80,7 +80,8 @@ func evolutionCICoverage(names []string, source string) error {
 }
 
 func TestPythonVtEvolutionCICoverage(t *testing.T) {
-	root, err := pyrun.RepoRoot()
+	slowtest.Gate(t, "sh")
+	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +94,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	if err := evolutionCICoverage(names, source); err != nil {
 		t.Fatal(err)
 	}
-	row := regexp.MustCompile("(?m)^\\tSCHEMA_SLOW=1 go test[^\\n]+$").FindString(source)
+	row := regexp.MustCompile(`(?m)^\tSCHEMA_SLOW=1 go test[^\n]+$`).FindString(source)
 	for label, changed := range map[string]string{
 		"deleted":   strings.Replace(source, row, "", 1),
 		"duplicate": source + "\n" + row,

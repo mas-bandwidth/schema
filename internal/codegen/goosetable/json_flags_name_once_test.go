@@ -1,4 +1,4 @@
-package goosetable
+package goosetable_test
 
 // A FLAGS ARRAY NAMES EACH KNOWN VARIANT ONCE (docs/SPEC-TABLES.md §16.2): a
 // flags array that names one known variant twice refuses the whole read, as a
@@ -21,6 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
@@ -75,7 +76,7 @@ func TestGooseJsonFlagsNameOnce(t *testing.T) {
 		}
 	}
 
-	paths, err := compiler.GatherPaths([]string{filepath.Join(fixedRoot, unit)})
+	paths, err := compiler.GatherPaths([]string{filepath.Join(gooseRepoRoot, unit)})
 	if err != nil {
 		t.Fatalf("gather %s: %v", unit, err)
 	}
@@ -113,7 +114,7 @@ func TestGooseJsonFlagsNameOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate %s type surface: %v", unit, err)
 	}
-	tables, err := Generate(u)
+	tables, err := goosetable.Generate(u)
 	if err != nil {
 		t.Fatalf("generate %s table surface: %v", unit, err)
 	}

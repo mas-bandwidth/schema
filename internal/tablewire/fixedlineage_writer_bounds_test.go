@@ -59,19 +59,19 @@ func TestFixedLineageValidatesHistoricalWriterBounds(t *testing.T) {
 		{"union arm", deadFieldAt(t, st, "choice") + 1},
 		{"nested field", deadFieldAt(t, st, "child")},
 	}
-	decode := func(data []byte) (bool, error, tabletext.Report) {
+	decode := func(data []byte) (bool, tabletext.Report, error) {
 		var report tabletext.Report
 		ok, err := tablewire.Decode(now, now.New(now.Lookup("Cfg")), data, &report)
-		return ok, err, report
+		return ok, report, err
 	}
-	if ok, err, report := decode(wire); !ok || err != nil || report.Refused {
+	if ok, report, err := decode(wire); !ok || err != nil || report.Refused {
 		t.Fatalf("lawful old maxima: ok=%v err=%v report=%+v", ok, err, report)
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			forged := append([]byte(nil), wire...)
 			binary.LittleEndian.PutUint16(forged[body+tc.offset:], 1001)
-			ok, err, report := decode(forged)
+			ok, report, err := decode(forged)
 			var refusal *tablewire.FixedRefusal
 			if ok || !errors.As(err, &refusal) || refusal.Reason != tablewire.FixedReasonOutOfRange || !report.Refused {
 				t.Fatalf("old out-of-range but inside new range: ok=%v err=%v report=%+v", ok, err, report)

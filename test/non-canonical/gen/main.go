@@ -96,14 +96,14 @@ func variableWire(m *tabletext.Model) ([]byte, error) {
 	setField(root, "count", 5)
 	head, ok := root.FieldByKey("head")
 	if !ok {
-		return nil, fmt.Errorf("Root has no field head")
+		return nil, fmt.Errorf("root has no field head")
 	}
 	node := m.New(m.Lookup("Node"))
 	setField(node, "value", 3)
 	head.Cell.Node = node
 	pick, ok := root.FieldByKey("pick")
 	if !ok {
-		return nil, fmt.Errorf("Root has no field pick")
+		return nil, fmt.Errorf("root has no field pick")
 	}
 	leaf := m.New(m.Lookup("Leaf"))
 	setField(leaf, "tag", 4)

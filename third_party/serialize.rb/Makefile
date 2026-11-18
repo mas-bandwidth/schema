@@ -58,6 +58,4 @@ negative-control:
 		{ cat build/negative-control/log; echo "NEGATIVE CONTROL FAILED: the empty corpus root went red, but not by name"; exit 1; }
 	@echo "negative control: a corpus root with no vectors turns the corpus test red, by name"
 
-include make/bench.mk
 include make/docs.mk make/roadmap.mk
-include make/fuzz.mk

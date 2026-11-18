@@ -218,7 +218,7 @@ func firstWideValueField(u *ir.Unit) string {
 	var names []string
 	for _, st := range u.Tables {
 		for _, f := range st.Fields {
-			if wideKind(f) != "" && !(st.IsMapEntry() && f.Name == ir.MapKeyFieldName) {
+			if wideKind(f) != "" && (!st.IsMapEntry() || f.Name != ir.MapKeyFieldName) {
 				names = append(names, st.Name+"."+f.Name)
 			}
 		}

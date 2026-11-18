@@ -397,7 +397,7 @@ func TestPythonVtFixedClassBuildVersionImports(t *testing.T) {
 			probe := vtFixedClassBuildVersionProbe(u.Package, ir.BuildVersion(u))
 			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)})
-				if err != nil || strings.TrimSpace(string(out)) != "build-version" {
+				if err != nil || strings.TrimSpace(out) != "build-version" {
 					t.Fatalf("imported build version: %v\n%s\n%s", err, out, stderr)
 				}
 			}
