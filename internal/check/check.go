@@ -3630,6 +3630,20 @@ var reservedLanguages = []struct {
 	{"Python", []string{"python"}, `False None True and as assert async await break class continue def del
 		elif else except finally for from global if import in is lambda nonlocal not or pass raise return
 		try while with yield`},
+	// Ruby's hard keywords (docs/PORT-RUBY.md, IDENTIFIERS), the same on both
+	// pinned interpreters, with the __FILE__, __LINE__ and __ENCODING__
+	// pseudo-variables and the BEGIN and END blocks, less three. defined? is
+	// a keyword, but its question mark is no schema identifier, so no schema
+	// name can spell it. next and alias are keywords the shared corpus spells
+	// as field names in every leg (next in tables/pointers, tables/stream,
+	// tables/blobs and some 150 Go tests; alias in tables/pointers and
+	// tables/blobs), and the Ruby target carries them: it reaches a field only
+	// through an explicit receiver, a symbol, a hash label or an instance
+	// variable, where every keyword is legal (internal/codegen/ruby, fields.go;
+	// docs/PORT-RUBY.md, IDENTIFIERS).
+	{"Ruby", []string{"ruby"}, `and begin break case class def do else elsif end ensure false for if in
+		module nil not or redo rescue retry return self super then true undef unless until when while
+		yield __FILE__ __LINE__ __ENCODING__ BEGIN END`},
 }
 
 // targetReserved maps each reserved word of the supported languages to the

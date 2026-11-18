@@ -103,13 +103,16 @@ func identNewLeg(lang string) error {
 // newLegRecipe is a language's file extension and line comment. The default
 // `#` is no comment in Goose, which names `//` (its files are .goose:
 // docs/PORT-GOOSE.md, THE RUNTIME LAYOUT); Python's files are .py, not
-// .python (docs/PORT-PYTHON.md, THE RUNTIME LAYOUT).
+// .python (docs/PORT-PYTHON.md, THE RUNTIME LAYOUT); Ruby's are .rb, not .ruby
+// (docs/PORT-RUBY.md, THE RUNTIME LAYOUT).
 func newLegRecipe(lang string) (ext, comment string) {
 	switch lang {
 	case "goose":
 		return "goose", "//"
 	case "python":
 		return "py", "#"
+	case "ruby":
+		return "rb", "#"
 	}
 	return lang, "#"
 }

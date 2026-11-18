@@ -26,15 +26,27 @@ func TestRubyPins(t *testing.T) {
 	}
 	mk := string(mkBytes)
 
-	// The leg joins the aggregate toolchain gate only with the skeleton
+	// The leg joins the aggregate toolchain gate with the skeleton
 	// (docs/PORT-RUBY.md, THE PIN): the aggregate's skip names come from
-	// TEST_LEGS, so registering a leg that has no test-ruby yet turns
-	// make toolchain-negative-control red. Until then toolchain-ruby is a
-	// standalone target.
+	// TEST_LEGS, so the registration lives in make/ruby.mk beside test-ruby,
+	// never in the support fragment, and names every pin the fragment probes.
 	if regexp.MustCompile(`(?m)^(TOOLCHAIN_LEGS\s*\+=.*\bruby\b|TOOLCHAIN_PINS_ruby\s*:?=)`).MatchString(mk) {
-		t.Error("make/ruby-toolchain.mk registers ruby in TOOLCHAIN_LEGS before the skeleton defines test-ruby; the aggregate toolchain control refuses a skip that names no registered leg")
+		t.Error("make/ruby-toolchain.mk registers ruby in TOOLCHAIN_LEGS; the registration belongs in make/ruby.mk beside test-ruby")
 	}
 	wantPins := []string{"RUBY", "RUBY_FLOOR", "RUBOCOP", "STEEP", "RBS"}
+	legBytes, err := os.ReadFile(filepath.Join(root, "make", "ruby.mk"))
+	if err != nil {
+		t.Fatalf("read make/ruby.mk: %v", err)
+	}
+	leg := string(legBytes)
+	for _, want := range []string{`(?m)^TEST_LEGS\s*\+=\s*test-ruby\s*$`, `(?m)^TOOLCHAIN_LEGS\s*\+=\s*ruby\s*$`, `(?m)^test-ruby:`} {
+		if !regexp.MustCompile(want).MatchString(leg) {
+			t.Errorf("make/ruby.mk does not match %s", want)
+		}
+	}
+	if m := regexp.MustCompile(`(?m)^TOOLCHAIN_PINS_ruby\s*:=\s*(.*)$`).FindStringSubmatch(leg); m == nil || strings.Join(strings.Fields(m[1]), " ") != strings.Join(wantPins, " ") {
+		t.Errorf("make/ruby.mk's TOOLCHAIN_PINS_ruby is %v, want %v", m, wantPins)
+	}
 	for _, pin := range wantPins {
 		probe := `$(call toolchain_probe,ruby,` + pin + `,`
 		if !strings.Contains(mk, probe) {

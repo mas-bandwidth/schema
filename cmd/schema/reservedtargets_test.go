@@ -32,10 +32,10 @@ func TestGenerateChecksEveryLanguagesWords(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// generate --lang go refuses it: `self` is reserved in Rust, Elixir and
-	// Goose, and a schema name must be legal in every language.
+	// generate --lang go refuses it: `self` is reserved in Rust, Elixir, Goose
+	// and Ruby, and a schema name must be legal in every language.
 	out, status := runFail(t, bin, "generate", "--lang", "go", "--out", filepath.Join(work, "out"), dir)
-	if status != 1 || !strings.Contains(out, `"self" is a reserved word in Elixir, Goose, and Rust`) {
+	if status != 1 || !strings.Contains(out, `"self" is a reserved word in Elixir, Goose, Ruby, and Rust`) {
 		t.Fatalf("generate --lang go on a unit holding `self`: exit %d, want 1 naming every language\n%s", status, out)
 	}
 	// schema check refuses it the same way.
@@ -259,7 +259,7 @@ func TestGenerateCppRefusesHeaderCollidingPackageNames(t *testing.T) {
 }
 
 // Every target refuses every language's words: `class` is reserved in C#,
-// C++, Dart, Java, JavaScript, Lobster and Squirrel, and generate refuses a
+// C++, Dart, Java, JavaScript, Lobster, Python, Ruby and Squirrel, and generate refuses a
 // field so named whichever target it emits, Go and Rust included.
 func TestGenerateEveryTargetRefusesEveryLanguagesWords(t *testing.T) {
 	t.Parallel()
@@ -279,7 +279,7 @@ func TestGenerateEveryTargetRefusesEveryLanguagesWords(t *testing.T) {
 		if status != 1 {
 			t.Errorf("generate --lang %s exited %d, want 1\n%s", lang, status, out)
 		}
-		if !strings.Contains(out, `"class" is a reserved word in C#, C++, Dart, Java, JavaScript, Lobster, Python, and Squirrel`) {
+		if !strings.Contains(out, `"class" is a reserved word in C#, C++, Dart, Java, JavaScript, Lobster, Python, Ruby, and Squirrel`) {
 			t.Errorf("generate --lang %s should refuse class naming every language, got %q", lang, out)
 		}
 	}

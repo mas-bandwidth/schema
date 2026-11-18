@@ -1,0 +1,21 @@
+#!/bin/sh
+# THE RUBY LEG's driver (test/conformance/README.md; docs/PORT-RUBY.md,
+# THE HARNESS).
+#
+# The skeleton answers no surface: `list` names none, and every surface is
+# exit 2 (ABSENT). The conformance layer (docs/plans/ruby-leg.md, R10) replaces
+# this with test/conformance/ruby/main.rb under the pinned interpreter.
+# internal/codegen/ruby's TestRubySkeleton holds it to that.
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+case "$2" in
+list)
+	exit 0
+	;;
+*)
+	exit 2
+	;;
+esac
