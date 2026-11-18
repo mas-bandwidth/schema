@@ -2373,6 +2373,49 @@ export function MixedEntityFixedCheckBody(value) {
 // MixedEntity's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedEntityFixedDecode(value, view, at, report) {
+  { let n;
+    n = view.getUint32(at, true);
+    if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 4, true);
+    if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 8, true);
+    if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 12, true);
+    if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint32(at + 16, true);
+    if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint32(at + 20, true);
+    if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 24, true);
+    if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 28, true);
+    if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 32, true);
+    if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 36, true);
+    if (n < 0 || n > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let tag = 0;
+    tag = view.getUint8(at + 40);
+    if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
   { const b = view.getUint8(at + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   { const b = view.getUint8(at + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   value.entityId = view.getUint32(at, true);
@@ -2422,6 +2465,14 @@ export function MixedStatFixedCheckBody(value) {
 // MixedStat's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedStatFixedDecode(value, view, at, report) {
+  { let n;
+    n = view.getUint32(at, true);
+    if (n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 4, true);
+    if (n < -512 || n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   value.statId = view.getUint32(at, true);
   if (value.statId > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.delta = view.getInt32(at + 4, true);
@@ -2452,6 +2503,18 @@ export function MixedHitEventFixedCheckBody(value) {
 // MixedHitEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedHitEventFixedDecode(value, view, at, report) {
+  { let n;
+    n = view.getUint32(at, true);
+    if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 4, true);
+    if (n < 0 || n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 8, true);
+    if (n < 0 || n > 7) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   { const b = view.getUint8(at + 12); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   value.targetId = view.getUint32(at, true);
   if (value.targetId > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
@@ -2482,6 +2545,14 @@ export function MixedChatEventFixedCheckBody(value) {
 // MixedChatEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedChatEventFixedDecode(value, view, at, report) {
+  { let n;
+    n = view.getInt32(at, true);
+    if (n < 0 || n > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint32(at + 4, true);
+    if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   value.channel = view.getInt32(at, true);
   if (value.channel < 0 || value.channel > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.speaker = view.getUint32(at + 4, true);
@@ -2508,6 +2579,14 @@ export function MixedPickupEventFixedCheckBody(value) {
 // MixedPickupEvent's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedPickupEventFixedDecode(value, view, at, report) {
+  { let n;
+    n = view.getUint32(at, true);
+    if (n > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 4, true);
+    if (n < 0 || n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   value.itemId = view.getUint32(at, true);
   if (value.itemId > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.amount = view.getInt32(at + 4, true);
@@ -2660,10 +2739,73 @@ export function BenchMixedFixedCheckBody(value) {
 // BenchMixed's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function BenchMixedFixedDecode(value, view, at, report) {
+  { let n;
+    n = view.getUint32(at, true);
+    if (n > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 4, true);
+    if (n < 0 || n > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  {
+    const n = view.getInt32(at + 32 + 4, true) * 4294967296 + view.getUint32(at + 32, true);
+    if (n < -1000000000000 || n > 1000000000000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  {
+    const n = view.getUint32(at + 40 + 4, true) * 4294967296 + view.getUint32(at + 40, true);
+    if (n > 281474976710655) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 48, true);
+    if (n < 0 || n > 16776960) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   {
     const n = view.getInt32(at + 52, true);
     if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
     for (let i = 0; i < n; i++) {
+      { let n;
+        n = view.getUint32(at + 56 + i * 51, true);
+        if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 4, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 8, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 12, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getUint32(at + 56 + i * 51 + 16, true);
+        if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getUint32(at + 56 + i * 51 + 20, true);
+        if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 24, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 28, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 32, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 36, true);
+        if (n < 0 || n > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let tag = 0;
+        tag = view.getUint8(at + 56 + i * 51 + 40);
+        if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -2671,13 +2813,58 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   {
     const n = view.getInt32(at + 464, true);
     if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+      { let n;
+        n = view.getUint32(at + 468 + i * 8, true);
+        if (n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 468 + i * 8 + 4, true);
+        if (n < -512 || n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+    }
   }
   {
     let tag = 0;
     tag = view.getUint8(at + 1108);
+    if (tag > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
     switch (tag) {
       case 1: {
+        { let n;
+          n = view.getUint32(at + 1109, true);
+          if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1113, true);
+          if (n < 0 || n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1117, true);
+          if (n < 0 || n > 7) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
         { const b = view.getUint8(at + 1121); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+        break;
+      }
+      case 2: {
+        { let n;
+          n = view.getInt32(at + 1109, true);
+          if (n < 0 || n > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getUint32(at + 1113, true);
+          if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        break;
+      }
+      case 3: {
+        { let n;
+          n = view.getUint32(at + 1109, true);
+          if (n > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1113, true);
+          if (n < 0 || n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
         break;
       }
       default: break;
@@ -2688,12 +2875,48 @@ export function BenchMixedFixedDecode(value, view, at, report) {
     if (n < 0 || n > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
     if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
   }
+  {
+    const n = view.getInt32(at + 1145, true);
+    if (n < 0 || n > 16) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+  }
   if ((view.getUint32(at + 1165, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1165, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
   if ((view.getUint32(at + 1169, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1169, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
   if ((view.getUint32(at + 1173, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1173, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
   if ((view.getUint32(at + 1177, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
   if ((view.getUint32(at + 1185, true) & 0x7ff00000) === 0x7ff00000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  {
+    const n = view.getInt32(at + 1205 + 12, true) * 4294967296 + view.getUint32(at + 1205 + 8, true);
+    if (n < -68719476736 || n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint16(at + 1221, true);
+    if (n > 64000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint32(at + 1223, true);
+    if (n > 16777215) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   { const b = view.getUint8(at + 1227); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+  { let n;
+    n = view.getInt32(at + 1228, true);
+    if (n < 0 || n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 1232, true);
+    if (n < 0 || n > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   value.sequence = view.getUint32(at, true);
   if (value.sequence > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.ackSequence = view.getInt32(at + 4, true);
@@ -2929,10 +3152,73 @@ export function FixedTableFixedCheckBody(value) {
 // FixedTable's loads, out of the reader's own image and into the value the
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function FixedTableFixedDecode(value, view, at, report) {
+  { let n;
+    n = view.getUint32(at, true);
+    if (n > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 4, true);
+    if (n < 0 || n > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  {
+    const n = view.getInt32(at + 32 + 4, true) * 4294967296 + view.getUint32(at + 32, true);
+    if (n < -1000000000000 || n > 1000000000000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  {
+    const n = view.getUint32(at + 40 + 4, true) * 4294967296 + view.getUint32(at + 40, true);
+    if (n > 281474976710655) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 48, true);
+    if (n < 0 || n > 16776960) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   {
     const n = view.getInt32(at + 52, true);
     if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
     for (let i = 0; i < n; i++) {
+      { let n;
+        n = view.getUint32(at + 56 + i * 51, true);
+        if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 4, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 8, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 12, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getUint32(at + 56 + i * 51 + 16, true);
+        if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getUint32(at + 56 + i * 51 + 20, true);
+        if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 24, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 28, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 32, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 36, true);
+        if (n < 0 || n > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let tag = 0;
+        tag = view.getUint8(at + 56 + i * 51 + 40);
+        if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -2940,13 +3226,58 @@ export function FixedTableFixedDecode(value, view, at, report) {
   {
     const n = view.getInt32(at + 464, true);
     if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+      { let n;
+        n = view.getUint32(at + 468 + i * 8, true);
+        if (n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 468 + i * 8 + 4, true);
+        if (n < -512 || n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+    }
   }
   {
     let tag = 0;
     tag = view.getUint8(at + 1108);
+    if (tag > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
     switch (tag) {
       case 1: {
+        { let n;
+          n = view.getUint32(at + 1109, true);
+          if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1113, true);
+          if (n < 0 || n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1117, true);
+          if (n < 0 || n > 7) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
         { const b = view.getUint8(at + 1121); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+        break;
+      }
+      case 2: {
+        { let n;
+          n = view.getInt32(at + 1109, true);
+          if (n < 0 || n > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getUint32(at + 1113, true);
+          if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        break;
+      }
+      case 3: {
+        { let n;
+          n = view.getUint32(at + 1109, true);
+          if (n > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1113, true);
+          if (n < 0 || n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
         break;
       }
       default: break;
@@ -2957,12 +3288,48 @@ export function FixedTableFixedDecode(value, view, at, report) {
     if (n < 0 || n > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
     if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
   }
+  {
+    const n = view.getInt32(at + 1145, true);
+    if (n < 0 || n > 16) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+  }
   if ((view.getUint32(at + 1165, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1165, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
   if ((view.getUint32(at + 1169, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1169, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
   if ((view.getUint32(at + 1173, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1173, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
   if ((view.getUint32(at + 1177, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
   if ((view.getUint32(at + 1185, true) & 0x7ff00000) === 0x7ff00000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  {
+    const n = view.getInt32(at + 1205 + 12, true) * 4294967296 + view.getUint32(at + 1205 + 8, true);
+    if (n < -68719476736 || n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint16(at + 1221, true);
+    if (n > 64000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint32(at + 1223, true);
+    if (n > 16777215) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   { const b = view.getUint8(at + 1227); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+  { let n;
+    n = view.getInt32(at + 1228, true);
+    if (n < 0 || n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 1232, true);
+    if (n < 0 || n > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   {
     const e1 = value.value;
     e1.sequence = view.getUint32(at, true);
@@ -3120,6 +3487,187 @@ export function FixedTableFixedDecode(value, view, at, report) {
     if (e1.extra < 0 || e1.extra > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
     e1.idleTicks = view.getInt32(at + 1232, true);
     if (e1.idleTicks < 0 || e1.idleTicks > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+}
+
+export function FixedTableFixedCheckRead(view, at, report) {
+  { let n;
+    n = view.getUint32(at, true);
+    if (n > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 4, true);
+    if (n < 0 || n > 65535) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  {
+    const n = view.getInt32(at + 32 + 4, true) * 4294967296 + view.getUint32(at + 32, true);
+    if (n < -1000000000000 || n > 1000000000000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  {
+    const n = view.getUint32(at + 40 + 4, true) * 4294967296 + view.getUint32(at + 40, true);
+    if (n > 281474976710655) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 48, true);
+    if (n < 0 || n > 16776960) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  {
+    const n = view.getInt32(at + 52, true);
+    if (n < 0 || n > 8) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+      { let n;
+        n = view.getUint32(at + 56 + i * 51, true);
+        if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 4, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 8, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 12, true);
+        if (n < -16383 || n > 16383) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getUint32(at + 56 + i * 51 + 16, true);
+        if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getUint32(at + 56 + i * 51 + 20, true);
+        if (n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 24, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 28, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 32, true);
+        if (n < -2048 || n > 2047) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 56 + i * 51 + 36, true);
+        if (n < 0 || n > 1000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let tag = 0;
+        tag = view.getUint8(at + 56 + i * 51 + 40);
+        if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+      { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+      { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+    }
+  }
+  {
+    const n = view.getInt32(at + 464, true);
+    if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
+    for (let i = 0; i < n; i++) {
+      { let n;
+        n = view.getUint32(at + 468 + i * 8, true);
+        if (n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+      { let n;
+        n = view.getInt32(at + 468 + i * 8 + 4, true);
+        if (n < -512 || n > 511) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
+    }
+  }
+  {
+    let tag = 0;
+    tag = view.getUint8(at + 1108);
+    if (tag > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
+    switch (tag) {
+      case 1: {
+        { let n;
+          n = view.getUint32(at + 1109, true);
+          if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1113, true);
+          if (n < 0 || n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1117, true);
+          if (n < 0 || n > 7) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { const b = view.getUint8(at + 1121); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+        break;
+      }
+      case 2: {
+        { let n;
+          n = view.getInt32(at + 1109, true);
+          if (n < 0 || n > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getUint32(at + 1113, true);
+          if (n > 4095) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        break;
+      }
+      case 3: {
+        { let n;
+          n = view.getUint32(at + 1109, true);
+          if (n > 1023) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        { let n;
+          n = view.getInt32(at + 1113, true);
+          if (n < 0 || n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+        }
+        break;
+      }
+      default: break;
+    }
+  }
+  {
+    const n = view.getInt32(at + 1126, true);
+    if (n < 0 || n > 15) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+    if (!TableFixedTextOk(TableFixedTextUtf8, view, at + 1130, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }
+  }
+  {
+    const n = view.getInt32(at + 1145, true);
+    if (n < 0 || n > 16) { report.refused = TableFixedRefusal.LengthOverBound; return; }
+  }
+  if ((view.getUint32(at + 1165, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1165, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
+  if ((view.getUint32(at + 1169, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1169, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
+  if ((view.getUint32(at + 1173, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  { let n;
+    n = view.getFloat32(at + 1173, true);
+    if (n < -1 || n > 1) { report.refused = TableFixedRefusal.OutOfRange; return; } else if (n === 0) { n = 0; }
+  }
+  if ((view.getUint32(at + 1177, true) & 0x7f800000) === 0x7f800000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  if ((view.getUint32(at + 1185, true) & 0x7ff00000) === 0x7ff00000) { report.refused = TableFixedRefusal.NonFiniteFloat; return; }
+  {
+    const n = view.getInt32(at + 1205 + 12, true) * 4294967296 + view.getUint32(at + 1205 + 8, true);
+    if (n < -68719476736 || n > 68719476736 || (n === 68719476736 && (view.getUint32(at + 1205, true) | view.getUint32(at + 1205 + 4, true)) !== 0)) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint16(at + 1221, true);
+    if (n > 64000) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getUint32(at + 1223, true);
+    if (n > 16777215) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { const b = view.getUint8(at + 1227); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
+  { let n;
+    n = view.getInt32(at + 1228, true);
+    if (n < 0 || n > 255) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
+  { let n;
+    n = view.getInt32(at + 1232, true);
+    if (n < 0 || n > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
   }
 }
 
