@@ -8,23 +8,28 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// emitRuntime is the unit's one runtime file: the report, the two descriptor
-// types and TableWire, nested in Schema, and any table no schema file
-// declares (a generated map entry).
-func emitRuntime(u *ir.Unit, orphans []*ir.Struct) []byte {
+func emitRuntime(u *ir.Unit, orphans []*ir.Struct, unionOrphans []*ir.Union) []byte {
+	sort.Slice(unionOrphans, func(i, j int) bool { return unionOrphans[i].Name < unionOrphans[j].Name })
 	sort.Slice(orphans, func(i, j int) bool { return orphans[i].Name < orphans[j].Name })
 	var types, schema strings.Builder
 	saves := false
+	for _, un := range unionOrphans {
+		emitTableUnion(&types, &schema, u, un)
+	}
 	for _, st := range orphans {
-		emitStruct(&types, st)
+		emitStruct(&types, u, st)
 		emitDescriptor(&schema, u, st)
-		emitConstruct(&schema, st)
+		emitConstruct(&schema, u, st)
 		if Carried(st) {
 			saves = true
 			emitMeasure(&schema, st)
 			emitSave(&schema, st)
 			emitLoad(&schema, st)
 		}
+	}
+	if fixedRuntimeNeeded(u) {
+		saves = true
+		emitFixedUnitHelpers(&schema, u)
 	}
 	schema.WriteString(runtimeTypes)
 	fmt.Fprintf(&schema, wireHead, ir.BytesWireTypeId, ir.StringWireTypeId, ir.TableWireForm, ir.TableWireMessageForm,
@@ -41,34 +46,29 @@ func emitRuntime(u *ir.Unit, orphans []*ir.Struct) []byte {
 	if saves {
 		usings = append(usings, "System.Diagnostics")
 	}
+	usings = append(usings, "Serialize")
 	var h strings.Builder
 	h.WriteString(header(u, "the unit's tables", usings...))
 	h.WriteString("// The Unity table runtime (docs/UNITY.md): C# 9 over netstandard2.1, no\n")
-	h.WriteString("// `unsafe` code, no reflection, no runtime code generation. Every table value\n")
-	h.WriteString("// is an unmanaged struct; the descriptors are read-only data beside them.\n\n")
+	h.WriteString("// `unsafe` code, no reflection, no runtime code generation.\n\n")
 	return []byte(h.String() + wrap(u, types.String(), schema.String()))
 }
 
-// runtimeTypes is the report and the two descriptor types.
-const runtimeTypes = `// TableReport is one read's report (docs/SPEC-TABLES.md §6.5): the counters of
-// an accepted read, or the verdict and its reason. Reason is diagnostic detail;
-// the verdict and the counters are what a read answers.
+const runtimeTypes = `// TableReport is one read's report (docs/SPEC-TABLES.md §6.5).
 public struct TableReport
 {
     public int Unknown;
     public int Widened;
     public bool Refused;
     public int Reason;
-    // LayoutHash is the file's layout hash on a fixed-form refusal for the
-    // layout (layout_unknown, layout_unsupported), and 0 otherwise.
     public ulong LayoutHash;
 
     public const int Accepted = 0, WireDamaged = 1, KindMismatch = 2, OutOfRange = 3, MissingRequired = 4,
         NewerForm = 5, MessageFormAsFile = 6, CountOverExtentCap = 7, BlobShared = 8, NonFiniteFloat = 9,
         Truncated = 10, PreviousForm = 11, ReservedNotZero = 12, LayoutMalformed = 13, LayoutUnknown = 14,
-        LayoutUnsupported = 15, BatchTooLarge = 16, NoLayout = 17, PlanTooLarge = 18;
+        LayoutUnsupported = 15, BatchTooLarge = 16, NoLayout = 17, PlanTooLarge = 18,
+        CountOverBound = 19, LengthOverBound = 20, TextIllFormed = 21, IntegrityMismatch = 22;
 
-    // ReasonName is a reason's spelling in §6.5's vocabulary.
     public static string ReasonName(int reason)
     {
         switch (reason)
@@ -92,16 +92,15 @@ public struct TableReport
             case BatchTooLarge: return "batch_too_large";
             case NoLayout: return "no_layout";
             case PlanTooLarge: return "plan_too_large";
+            case CountOverBound: return "count_over_bound";
+            case LengthOverBound: return "length_over_bound";
+            case TextIllFormed: return "text_ill_formed";
+            case IntegrityMismatch: return "integrity_mismatch";
         }
         return "unknown_reason";
     }
 }
 
-// TableFieldInfo describes one declared field: its wire id, the kind byte its
-// payload rides under, the codec that carries it in this runtime (0 is
-// "unsupported": no storage member and no Load yet), its declaration ordinal,
-// its value range and default as raw two's complement, an array's bound, and
-// its markers. It is unmanaged, so a descriptor table can sit in native memory.
 public readonly struct TableFieldInfo
 {
     public readonly ulong Id;
@@ -130,9 +129,6 @@ public readonly struct TableFieldInfo
     }
 }
 
-// TableTypeInfo describes one table: its name, its type id, whether it is a
-// variable table (form 1) or a declared fixed one, whether this runtime
-// carries its Load and Save, and every field it declares, in order.
 public sealed class TableTypeInfo
 {
     public readonly string Name;
@@ -155,20 +151,44 @@ public sealed class TableTypeInfo
 
 `
 
-// wireHead opens TableWire with the constants and the primitives every codec
-// uses. Format verbs: the bytes and string blob type ids, the file form, the
-// message form, the id table bound and the nesting bound.
-const wireHead = `// TableWire is the form-1 wire (docs/SPEC-TABLES.md §3): the canonical LEB128,
-// the fixed-width little-endian payloads, and the wire-alone walk every read
-// runs over every byte before it decodes anything.
-internal static class TableWire
+const wireHead = `internal static class TableWire
 {
     internal const ulong NodeTableId = 0xFFFFFFFFFFFFFFFFUL, BuildVersionId = 0xFFFFFFFFFFFFFFFEUL, VocabularyId = 0xFFFFFFFFFFFFFFFDUL;
     internal const ulong BytesTypeId = 0x%016xUL, StringTypeId = 0x%016xUL;
     internal const byte FileForm = %d, MessageForm = %d;
     internal const int IdTableBound = %d, MaxDepth = %d;
 
-    // Width is a fixed-width kind's payload size, 0 for every other kind.
+    private static readonly uint[] IntegrityTable = MakeIntegrityTable();
+
+    private static uint[] MakeIntegrityTable()
+    {
+        uint[] table = new uint[256];
+        for (uint i = 0; i < 256; i++)
+        {
+            uint crc = i;
+            for (int bit = 0; bit < 8; bit++) { crc = (crc >> 1) ^ ((crc & 1) != 0 ? 0x82f63b78u : 0u); }
+            table[i] = crc;
+        }
+        return table;
+    }
+
+    internal static uint IntegrityCrc(ReadOnlySpan<byte> bytes)
+    {
+        uint crc = 0xffffffffu;
+        for (int i = 0; i < bytes.Length; i++) { crc = (crc >> 8) ^ IntegrityTable[(crc ^ bytes[i]) & 255]; }
+        return crc ^ 0xffffffffu;
+    }
+
+    internal static bool IntegrityRead(ref ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 5) { return false; }
+        int end = bytes.Length - 4;
+        uint stored = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(end, 4));
+        if (stored != IntegrityCrc(bytes.Slice(0, end))) { return false; }
+        bytes = bytes.Slice(0, end);
+        return true;
+    }
+
     internal static int Width(byte kind)
     {
         switch (kind)
@@ -182,14 +202,11 @@ internal static class TableWire
         return 0;
     }
 
-    // Signed reports the two's complement integer kinds.
     internal static bool Signed(byte kind)
     {
         return (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
     }
 
-    // Widens reports a kind that GREW since the writer (§4): a narrower integer
-    // of the same signedness, or f32 into f64. The fixed-point kinds never do.
     internal static bool Widens(byte kind, byte declared)
     {
         switch (declared)
@@ -203,8 +220,6 @@ internal static class TableWire
         return false;
     }
 
-    // Leb reads one canonical LEB128 (§3): at most ten bytes, a tenth byte of at
-    // most 1, and no trailing zero byte.
     internal static bool Leb(ReadOnlySpan<byte> b, ref int off, out ulong v)
     {
         v = 0;
@@ -224,7 +239,6 @@ internal static class TableWire
         return false;
     }
 
-    // Ref reads a reference the wire check has already judged.
     internal static ulong Ref(ReadOnlySpan<byte> b, ref int off)
     {
         Leb(b, ref off, out ulong v);
@@ -244,20 +258,16 @@ internal static class TableWire
         b[off++] = (byte)v;
     }
 
-    // PutWidth writes the low w bytes of v, little-endian.
     internal static void PutWidth(Span<byte> b, ref int off, int w, ulong v)
     {
         for (int i = 0; i < w; i++) { b[off++] = (byte)(v >> (8 * i)); }
     }
 
-    // Id is the id a reference names in the file's id table.
     internal static ulong Id(ReadOnlySpan<byte> ids, ulong reference)
     {
         return BinaryPrimitives.ReadUInt64LittleEndian(ids.Slice((int)(reference - 1) * 8, 8));
     }
 
-    // Int reads an integer payload of the declared kind or a kind that widens
-    // into it, sign-extended into value; false is a kind mismatch.
     internal static bool Int(ReadOnlySpan<byte> body, ref int off, byte kind, byte declared, ref int widened, out long value)
     {
         value = 0;
@@ -282,8 +292,6 @@ internal static class TableWire
         return true;
     }
 
-    // Skip steps past one payload by its framing alone; the wire check has
-    // already judged every byte it steps over.
     internal static void Skip(ReadOnlySpan<byte> b, ref int off, byte kind)
     {
         int w = Width(kind);
@@ -307,11 +315,6 @@ internal static class TableWire
         off += (int)n;
     }
 
-    // Open judges a form-1 file whole before any field is decoded: the form
-    // byte, the id table read from the END (§3: at most IdTableBound entries,
-    // no id twice), and every wire-alone condition over every byte (§6.5).
-    // It answers the reason, the root body, the id table, the node record
-    // count, and whether a float anywhere is not finite.
     internal static int Open(ReadOnlySpan<byte> bytes, out ReadOnlySpan<byte> body, out ReadOnlySpan<byte> ids, out int records, out bool nonFinite)
     {
         body = default;
@@ -321,7 +324,6 @@ internal static class TableWire
         if (bytes.Length < 1) { return TableReport.WireDamaged; }
         if (bytes[0] != FileForm)
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM (§3.3)
             return bytes[0] == MessageForm ? TableReport.MessageFormAsFile : TableReport.NewerForm;
         }
         if (bytes.Length < 9) { return TableReport.WireDamaged; }
@@ -334,7 +336,6 @@ internal static class TableWire
         body = bytes.Slice(1, first - 1);
         if (count > 1)
         {
-            // A TABLE THAT CARRIES ONE ID TWICE: the whole wire is damage (§3)
             ulong[] sorted = ArrayPool<ulong>.Shared.Rent((int)count);
             try
             {
@@ -354,21 +355,9 @@ internal static class TableWire
         }
         finally { w.Release(); }
     }
-
 `
 
-// wireCheck is the C# port of the Go engine's wire-alone walk
-// (internal/tablewire/wirecheck.go), condition for condition: the framing,
-// canonical LEB128, the closed element-kind lists, a bool byte, text, a
-// non-finite float, a repeated id in one body or keyed body, the nesting
-// bound, a reserved id out of place, the count cap, the flat node table's
-// scan, the pointer graph (an index past the table, a cycle, an unreachable
-// record, a shared blob) and FIRST-USE ORDER of the id table. It closes
-// TableWire.
-const wireCheck = `    // WireWalk is the declaration-free walk over one file's root body and node
-    // records. It allocates nothing for a file with no pointer and no record
-    // beyond its rented first-use set.
-    ref struct WireWalk
+const wireCheck = `    ref struct WireWalk
     {
         public ReadOnlySpan<byte> Ids, Table;
         public int Count, Words, Depth, Fail, Records, EdgeCount, Next;
@@ -391,9 +380,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
 
         ulong IdAt(ulong reference) { return Id(Ids, reference); }
 
-        // Use records one reference the walk resolved: the id table must be the
-        // order the walk first used each id in, exactly (§3), so a newly used
-        // entry must be the next one and every entry must be used.
         void Use(ulong reference)
         {
             int r = (int)reference;
@@ -425,8 +411,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             int rootEdges = EdgeCount;
             if (Present)
             {
-                // THE AUTHORITATIVE RECORD SCAN (§3.1): records are read until the
-                // payload is consumed, and a node_count it does not match is damage
                 ReadOnlySpan<byte> t = Table;
                 int off = 0;
                 if (!Leb(t, ref off, out ulong declared)) { Damage(); return Fail; }
@@ -436,13 +420,11 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
                 {
                     if (!Leb(t, ref off, out ulong reference) || reference == 0 || reference > (ulong)Count) { Damage(); return Fail; }
                     if (!Leb(t, ref off, out ulong length) || length > (ulong)(t.Length - off)) { Damage(); return Fail; }
-                    // A RESERVED ID IS NO RECORD'S TYPE (§3.1)
                     if (IdAt(reference) >= BuildVersionId - 1) { Damage(); return Fail; }
                     off += (int)length;
                     records++;
                 }
                 if (declared != (ulong)records) { Damage(); return Fail; }
-                // A ROOT THAT REACHES NO NODE WRITES NO NODE TABLE AT ALL (§3.1)
                 if (records == 0) { Damage(); return Fail; }
                 Starts = ArrayPool<int>.Shared.Rent(records + 2);
                 Starts[0] = 0;
@@ -456,7 +438,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
                     off += (int)length;
                     Use(reference);
                     ulong id = IdAt(reference);
-                    // A BLOB RECORD IS ITS BYTES (§2.5, §3.1)
                     if (id == StringTypeId) { if (!TextValid(rec)) { Damage(); return Fail; } }
                     else if (id != BytesTypeId) { if (!Body(rec, false)) { return Fail; } }
                     Starts[k + 2] = EdgeCount;
@@ -468,8 +449,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             return Fail;
         }
 
-        // Graph judges the pointer graph over every slot, known or not (§6.5,
-        // THE GRAPH, DEFINED ONCE): node 0 is the root and node k record k.
         bool Graph()
         {
             int n = Records + 1;
@@ -502,8 +481,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
                         }
                     }
                 }
-                // mark: 0 unvisited, 1 open, 2 closed; next[k] counts node k's
-                // edges already followed
                 int top = 0;
                 path[0] = 0;
                 mark[0] = 1;
@@ -528,9 +505,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             finally { ArrayPool<int>.Shared.Return(marks); }
         }
 
-        // Body walks one table body that must end with its terminator as its
-        // LAST byte. Only the root admits the node table's reserved id, as its
-        // last field, under kind 12.
         bool Body(ReadOnlySpan<byte> buf, bool root)
         {
             Span<ulong> seen = stackalloc ulong[Words];
@@ -565,7 +539,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             }
         }
 
-        // Payload walks one SELF-FRAMED payload of kind at off.
         bool Payload(ReadOnlySpan<byte> buf, ref int off, byte kind)
         {
             int w = Width(kind);
@@ -606,8 +579,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             return Damage();
         }
 
-        // Content walks a payload already framed by a length and requires it to
-        // be consumed exactly.
         bool Content(ReadOnlySpan<byte> b, byte kind)
         {
             int w = Width(kind);
@@ -621,7 +592,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
                 case 14:
                 case 16:
                     {
-                        // THE BINARY NESTING BOUND (§4)
                         if (Depth >= MaxDepth) { return Damage(); }
                         Depth++;
                         bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
@@ -640,8 +610,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             return Damage();
         }
 
-        // Scalar checks a fixed-width value: a bool is 0 or 1, and a float that
-        // is not finite is noted and the walk goes on (§3.3).
         bool Scalar(ReadOnlySpan<byte> b, byte kind)
         {
             if (kind == 1 && b[0] > 1) { return Damage(); }
@@ -650,9 +618,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             return true;
         }
 
-        // Header reads an array or keyed body's element kind and count. THE
-        // HEADER LIES INSIDE ITS OWN L (§4); a count past int.MaxValue is the
-        // storage cap.
         bool Header(ReadOnlySpan<byte> b, out byte kind, out ulong count, out int off)
         {
             kind = 0;
@@ -669,7 +634,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             return true;
         }
 
-        // THE ELEMENT KINDS ARE CLOSED LISTS, judged under any count (§3, §4).
         static bool ArrayKind(byte k) { return (k >= 1 && k <= 13) || k == 15 || k == 17 || (k >= 18 && k <= 29) || k == 30; }
         static bool KeyedKind(byte k) { return (k >= 1 && k <= 11) || k == 13 || (k >= 18 && k <= 29) || k == 30; }
 
@@ -701,7 +665,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
             return off == b.Length || Damage();
         }
 
-        // Union walks a union payload in place. A STRUCTURAL ARM IS A LEVEL (§4).
         bool Union(ReadOnlySpan<byte> buf, ref int off)
         {
             if (!Leb(buf, ref off, out ulong arm)) { return Damage(); }
@@ -722,8 +685,6 @@ const wireCheck = `    // WireWalk is the declaration-free walk over one file's 
         }
     }
 
-    // TextValid is well-formed UTF-8 with no zero byte (§3): no overlong form,
-    // no surrogate, nothing past U+10FFFF.
     internal static bool TextValid(ReadOnlySpan<byte> b)
     {
         int i = 0;

@@ -12,9 +12,9 @@ switch:
 
 The two share the IR, the name mapping (`ir.GoExportName`, so the checker's
 collision registry covers both) and the wire, byte for byte. They share no
-emitter: `internal/codegen/unity` is its own package, and it emits packet types
-today. The Unity table backend is a named follow-on, and `--lang unity` refuses
-a unit that declares tables, by name.
+emitter: `internal/codegen/unity` emits the packet surface, and
+`internal/codegen/unitytable` emits the table surface beside it in `<Base>.Tables.cs`
+and `Tables.Runtime.cs`.
 
 ## What a Unity project already does
 
@@ -167,6 +167,40 @@ public static void ZeroShipCreate(ref ShipCreate value);   // value = default
 - **Debug names.** `EnumName<E>`, `FlagName<F>` and `FlagNames<F>` for logs and
   tools; nothing on the wire path calls them.
 
+## Fixed tables (Form 3)
+
+Every `fixed table` whose closure is fixed is a `[Serializable] public struct`
+satisfying `where T : unmanaged`, using the same inline `Buffer<N><T>`,
+`Int128Value`/`UInt128Value`, enum, flags and union storage as packet types, plus
+`<Name>Present` booleans on `?T` optional fields and `[E]T` enum-keyed inline
+buffers (`E.Max` slots, variant `k` at index `k - 1`). Table-closure unions
+(`union` declarations with inline scalar, text, array or table arms) are emitted
+as unmanaged structs alongside their `<U>Type` tag enums.
+
+On `public static partial class Schema`:
+
+```csharp
+public const ulong <T>FixedHash = ...;
+public const int <T>FixedBodyBytes = ...;
+public const int <T>FixedRecordBytes = 8 + <T>FixedBodyBytes;
+public const int <T>FixedPlanMax = ...;
+
+public static long <T>FixedMeasure(long count);
+public static long <T>FixedSave(ReadOnlySpan<T> values, Span<byte> buffer);
+public static long <T>FixedLoad(Span<T> values, ReadOnlySpan<byte> data, ref TableReport report);
+public static long <T>FixedLoad(Span<T> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity);
+```
+
+- **Compiled lineage plans.** With `--lock <path>`, historical writer entries are
+  compiled ahead of time into static `FixedLane` tables: no layout parser or plan
+  compiler runs on the hot load path, retired entries below the floor refuse
+  `layout_unsupported` with `LayoutHash` populated, and older writers are held to
+  their own bounds and dead-byte zero rules before widening into a record image.
+- **Total strict reads and integrity.** Every record's hash, dead bytes, UTF-8,
+  ordinals, float finiteness and scalar/array bounds are checked before any
+  element of the destination `Span<T>` is written; `| integrity = "crc32c"`
+  appends and verifies the CRC-32C trailer (`integrity_mismatch` on corruption).
+
 ## Using it in a Unity project
 
 1. Put serialize.cs's `src/Serialize.cs` and `src/Int128Pair.cs` in their own
@@ -243,6 +277,14 @@ referenced as its own netstandard2.1 assembly. A small .NET host drives it:
   C++ pins and the construction form, storage byte for byte.
 - `make packet-utf8-unity` — the read-side UTF-8 refusal against the C++ oracle
   over the pinned rows and a bit-flip sweep.
+- `make unity-tables` — the table core surface and Form-1 bool/integer corpus
+  against the Go engine, with planted negative controls.
+- `make unity-fixed` — all 56 fixed-table rows (scalars, 128-bit integers and
+  fixed-point, compressed floats, strings, bytes, nested structs and fixed
+  tables, fixed/counted/keyed arrays, unions and guards, optionals, defaults,
+  compiled lineage evolution, retirement, reports, CRC-32C integrity and hostile
+  sweeps) against the live C++ reference and `build/fixedform-corpus`, with
+  planted negative controls.
 - each with a negative control that plants a defect in a copy of the generated
   source and requires the gate to go red for that reason.
 

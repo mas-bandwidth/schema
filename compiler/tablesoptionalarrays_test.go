@@ -221,6 +221,19 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "unity" {
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang unity refused the supported shape: %v", err)
+			}
+			src := string(files["Probe.Tables.cs"])
+			for _, want := range []string{"public bool EntriesPresent;", "public bool WeightsPresent;", "public bool GradesPresent;", "LogFixedLoad("} {
+				if !strings.Contains(src, want) {
+					t.Errorf("--lang unity: Probe.Tables.cs lacks %q", want)
+				}
+			}
+			continue
+		}
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if err == nil {
