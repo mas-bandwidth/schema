@@ -484,7 +484,10 @@ the form Go makes native: `SERIALIZE_ERROR_VALUE_OUT_OF_RANGE` for a value
 outside its range, a count or length past its bound, a mask bit above the
 flags width, an out-of-set union tag (which
 writes nothing); `SERIALIZE_ERROR_NON_FINITE_FLOAT` for a NaN or an infinity
-(SPEC §4.3). The claims are `refusesEveryBuild` and `tagRefusesEveryBuild` in
+(SPEC §4.3). A stream with less room than the value needs returns
+`SERIALIZE_ERROR_PAST_END` before any bit moves: the check is the value's exact
+encoded size against the room left, and a stream holding `<T>MaxBits` skips it.
+The claims are `refusesEveryBuild` and `tagRefusesEveryBuild` in
 `compiler/countedbirth_test.go` and `compiler/uniontagwrite_test.go`.
 
 **Reads refuse, never clamp,** latching the reason the C target latches:
