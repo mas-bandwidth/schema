@@ -152,6 +152,14 @@ unity-fixed: toolchain-unity build/fixedform-corpus/.stamp
 
 test-unity: unity-fixed
 
+# ---- variable tables, blocks, cooks, retain, JSON & reflection ----
+
+.PHONY: unity-vt
+unity-vt: toolchain-unity
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityVT' ./internal/codegen/unitytable/
+
+test-unity: unity-vt
+
 # ---- tables conformance & release wire-fuzz ----
 
 # Every MANIFEST.txt unit plus tables/cards compiled in the Unity dialect
