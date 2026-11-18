@@ -1,0 +1,47 @@
+#!/bin/sh
+# THE RUBY LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        generate bench/corpus/BenchTable.schema for Ruby
+#   leg run [args]   run bench/tables/ruby/table_main.rb under the pinned CRuby
+set -e
+
+: "${RUBY_BENCH_GEN:=build/tables-bench-ruby}"
+GEN=$RUBY_BENCH_GEN
+: "${RUBY:=dist/ruby-4.0.9/bin/ruby}"
+
+pinned() {
+    case "$RUBY" in
+    */*) ;;
+    *) echo "RUBY=$RUBY is not a path: the bench runs only a pinned interpreter (make dist-ruby)" >&2; exit 2 ;;
+    esac
+    [ -x "$RUBY" ] || { echo "no pinned Ruby at $RUBY -- run make dist-ruby" >&2; exit 2; }
+    version=$("$RUBY" --disable-gems -e 'puts "#{RUBY_ENGINE} #{RUBY_VERSION}"')
+    case "$version" in
+    "ruby 3.4.12"|"ruby 4.0.9") ;;
+    *) echo "the Ruby tables bench refuses $version: expected ruby 3.4.12 or 4.0.9" >&2; exit 1 ;;
+    esac
+}
+
+case "$1" in
+build)
+    pinned
+    [ -x bin/schema ] || { echo "missing bin/schema -- run make" >&2; exit 2; }
+    rm -rf "$GEN"
+    mkdir -p "$GEN/source"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN/source/BenchTable.schema"
+    if cmp -s bench/corpus/BenchTable.schema "$GEN/source/BenchTable.schema"; then
+        echo "the corpus declares no fixed table: the variable copy changed nothing" >&2; exit 1
+    fi
+    ./bin/schema generate --lang ruby --out "$GEN/unit" "$GEN/source/BenchTable.schema"
+    ;;
+run)
+    shift
+    pinned
+    exec "$RUBY" --disable-gems -w bench/tables/ruby/table_main.rb "$GEN/unit" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

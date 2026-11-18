@@ -12,6 +12,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Text;
 
 namespace SchemaUnityConformance
@@ -115,8 +118,19 @@ namespace SchemaUnityConformance
             {
                 return cached;
             }
-            string path = Path.GetFullPath(Path.Combine(rootDir, key, "schemaunit.dll"));
-            Assembly asm = File.Exists(path) ? Assembly.LoadFrom(path) : null;
+            string unitDir = Path.GetFullPath(Path.Combine(rootDir, key));
+            string path = Path.Combine(unitDir, "schemaunit.dll");
+            Assembly asm = null;
+            if (File.Exists(path))
+            {
+                var alc = new AssemblyLoadContext("unity_" + key);
+                alc.Resolving += (ctx, name) =>
+                {
+                    string dep = Path.Combine(unitDir, name.Name + ".dll");
+                    return File.Exists(dep) ? ctx.LoadFromAssemblyPath(dep) : null;
+                };
+                asm = alc.LoadFromAssemblyPath(path);
+            }
             unitCache[cacheKey] = asm;
             return asm;
         }
@@ -171,17 +185,22 @@ namespace SchemaUnityConformance
             return built;
         }
 
+        private delegate void InitRefDel<T>(ref T value);
         private delegate T NewDel<T>();
         private delegate bool LoadDel<T, TRep>(ref T value, ReadOnlySpan<byte> bytes, ref TRep report);
-        private delegate long MeasureDel<T>(T value);
-        private delegate long SaveDel<T>(T value, Span<byte> buffer);
+        private delegate long MeasureRefDel<T>(ref T value);
+        private delegate long SaveRefDel<T>(ref T value, Span<byte> buffer);
         private delegate long LoadMeasureDel(ReadOnlySpan<byte> bytes);
         private delegate long FixedLoadDel<T, TRep>(Span<T> values, ReadOnlySpan<byte> data, ref TRep report, int planCapacity);
         private delegate long FixedMeasureDel(long count);
         private delegate long FixedSaveDel<T>(ReadOnlySpan<T> values, Span<byte> buffer);
         private delegate bool LoadRetainDel<T, TRet, TRep>(ref T value, ReadOnlySpan<byte> bytes, TRet retain, ref TRep report);
+        private delegate long MeasureRetainRefDel<T, TRet>(ref T value, TRet retain);
+        private delegate long SaveRetainRefDel<T, TRet, TRep>(ref T value, TRet retain, Span<byte> bytes, ref TRep report);
         private delegate long MeasureRetainDel<T, TRet>(T value, TRet retain);
         private delegate long SaveRetainDel<T, TRet, TRep>(T value, TRet retain, Span<byte> bytes, ref TRep report);
+        private delegate long CookMeasureRefDel<T>(ref T value);
+        private delegate bool CookRefDel<T, TOrder>(ref T value, Span<byte> bytes, TOrder order);
         private delegate long CookMeasureDel<T>(T value);
         private delegate bool CookDel<T, TOrder>(T value, Span<byte> bytes, TOrder order);
         private delegate ReadOnlySpan<byte> AnnounceDel();
@@ -205,26 +224,31 @@ namespace SchemaUnityConformance
             public bool HasWire => varLoad != null || fixedLoad != null || IsFixed;
             public bool HasJson => fromJson != null && toJson != null && toJsonMeasure != null;
             public bool HasMessage => loadMessages != null && saveMessages != null && measureMessages != null;
-            public bool HasCookWrite => cook != null && cookMeasure != null;
-            public bool HasRetain => loadRetain != null && measureRetain != null && saveRetain != null;
+            public bool HasCookWrite => (cookRef != null || cookVal != null) && (cookMeasureRef != null || cookMeasureVal != null);
+            public bool HasRetain => loadRetain != null && (measureRetainRef != null || measureRetainVal != null) && (saveRetainRef != null || saveRetainVal != null);
             public byte[] Announcement { get; }
 
+            private readonly InitRefDel<T> initRef;
             private readonly NewDel<T> newValue;
             private readonly LoadMeasureDel loadMeasure;
             private readonly LoadDel<T, TRep> varLoad;
-            private readonly MeasureDel<T> varMeasure;
-            private readonly SaveDel<T> varSave;
+            private readonly MeasureRefDel<T> varMeasure;
+            private readonly SaveRefDel<T> varSave;
             private readonly FixedLoadDel<T, TRep> fixedLoad;
             private readonly FixedMeasureDel fixedMeasure;
             private readonly FixedSaveDel<T> fixedSave;
             private readonly LoadRetainDel<T, TRet, TRep> loadRetain;
-            private readonly MeasureRetainDel<T, TRet> measureRetain;
-            private readonly SaveRetainDel<T, TRet, TRep> saveRetain;
+            private readonly MeasureRetainRefDel<T, TRet> measureRetainRef;
+            private readonly SaveRetainRefDel<T, TRet, TRep> saveRetainRef;
+            private readonly MeasureRetainDel<T, TRet> measureRetainVal;
+            private readonly SaveRetainDel<T, TRet, TRep> saveRetainVal;
             private readonly LoadDel<T, TRep> fromJson;
-            private readonly MeasureDel<T> toJsonMeasure;
-            private readonly SaveDel<T> toJson;
-            private readonly CookMeasureDel<T> cookMeasure;
-            private readonly CookDel<T, TOrder> cook;
+            private readonly MeasureRefDel<T> toJsonMeasure;
+            private readonly SaveRefDel<T> toJson;
+            private readonly CookMeasureRefDel<T> cookMeasureRef;
+            private readonly CookRefDel<T, TOrder> cookRef;
+            private readonly CookMeasureDel<T> cookMeasureVal;
+            private readonly CookDel<T, TOrder> cookVal;
             private readonly AnnounceReadDel<TVocab, TRep> announceRead;
             private readonly TVocab ownVocab;
             private readonly MeasureMessagesDel<T> measureMessages;
@@ -247,8 +271,19 @@ namespace SchemaUnityConformance
             private readonly FieldInfo fRetIds = typeof(TRet).GetField("Ids");
             private readonly FieldInfo fRetIdCap = typeof(TRet).GetField("IdCapacity");
 
-            private readonly TOrder orderLittle = (TOrder)Enum.ToObject(typeof(TOrder), 0);
-            private readonly TOrder orderBig = (TOrder)Enum.ToObject(typeof(TOrder), 1);
+            private readonly TOrder orderLittle = (TOrder)Enum.ToObject(typeof(TOrder), 1);
+            private readonly TOrder orderBig = (TOrder)Enum.ToObject(typeof(TOrder), 2);
+
+            private T MakeFresh()
+            {
+                if (initRef != null)
+                {
+                    T v = default;
+                    initRef(ref v);
+                    return v;
+                }
+                return newValue != null ? newValue() : default;
+            }
 
             public TypedCodec(string unit, string root, Assembly asm, Type schema, bool isFixed)
             {
@@ -258,29 +293,45 @@ namespace SchemaUnityConformance
                 IsFixed = isFixed;
 
                 const BindingFlags Flags = BindingFlags.Public | BindingFlags.Static;
-                newValue = Bind<NewDel<T>>(schema.GetMethod("New" + root, Flags, null, Type.EmptyTypes, null));
+                Type refT = typeof(T).MakeByRefType();
+                Type refRep = typeof(TRep).MakeByRefType();
+                initRef = Bind<InitRefDel<T>>(schema.GetMethod("Init" + root, Flags, null, new[] { refT }, null));
+                if (initRef == null)
+                {
+                    newValue = Bind<NewDel<T>>(schema.GetMethod("New" + root, Flags, null, Type.EmptyTypes, null));
+                }
                 loadMeasure = Bind<LoadMeasureDel>(schema.GetMethod(root + "LoadMeasure", Flags, null, new[] { typeof(ReadOnlySpan<byte>) }, null));
-                varLoad = Bind<LoadDel<T, TRep>>(schema.GetMethod(root + "Load", Flags, null, new[] { typeof(T).MakeByRefType(), typeof(ReadOnlySpan<byte>), typeof(TRep).MakeByRefType() }, null));
-                varMeasure = Bind<MeasureDel<T>>(schema.GetMethod(root + "Measure", Flags, null, new[] { typeof(T) }, null));
-                varSave = Bind<SaveDel<T>>(schema.GetMethod(root + "Save", Flags, null, new[] { typeof(T), typeof(Span<byte>) }, null));
+                varLoad = Bind<LoadDel<T, TRep>>(schema.GetMethod(root + "Load", Flags, null, new[] { refT, typeof(ReadOnlySpan<byte>), refRep }, null));
+                varMeasure = Bind<MeasureRefDel<T>>(schema.GetMethod(root + "Measure", Flags, null, new[] { refT }, null));
+                varSave = Bind<SaveRefDel<T>>(schema.GetMethod(root + "Save", Flags, null, new[] { refT, typeof(Span<byte>) }, null));
 
-                fixedLoad = Bind<FixedLoadDel<T, TRep>>(schema.GetMethod(root + "FixedLoad", Flags, null, new[] { typeof(Span<T>), typeof(ReadOnlySpan<byte>), typeof(TRep).MakeByRefType(), typeof(int) }, null));
+                fixedLoad = Bind<FixedLoadDel<T, TRep>>(schema.GetMethod(root + "FixedLoad", Flags, null, new[] { typeof(Span<T>), typeof(ReadOnlySpan<byte>), refRep, typeof(int) }, null));
                 fixedMeasure = Bind<FixedMeasureDel>(schema.GetMethod(root + "FixedMeasure", Flags, null, new[] { typeof(long) }, null));
                 fixedSave = Bind<FixedSaveDel<T>>(schema.GetMethod(root + "FixedSave", Flags, null, new[] { typeof(ReadOnlySpan<T>), typeof(Span<byte>) }, null));
 
-                loadRetain = Bind<LoadRetainDel<T, TRet, TRep>>(schema.GetMethod(root + "LoadRetain", Flags, null, new[] { typeof(T).MakeByRefType(), typeof(ReadOnlySpan<byte>), typeof(TRet), typeof(TRep).MakeByRefType() }, null));
-                measureRetain = Bind<MeasureRetainDel<T, TRet>>(schema.GetMethod(root + "MeasureRetain", Flags, null, new[] { typeof(T), typeof(TRet) }, null));
-                saveRetain = Bind<SaveRetainDel<T, TRet, TRep>>(schema.GetMethod(root + "SaveRetain", Flags, null, new[] { typeof(T), typeof(TRet), typeof(Span<byte>), typeof(TRep).MakeByRefType() }, null));
+                loadRetain = Bind<LoadRetainDel<T, TRet, TRep>>(schema.GetMethod(root + "LoadRetain", Flags, null, new[] { refT, typeof(ReadOnlySpan<byte>), typeof(TRet), refRep }, null));
+                measureRetainRef = Bind<MeasureRetainRefDel<T, TRet>>(schema.GetMethod(root + "MeasureRetain", Flags, null, new[] { refT, typeof(TRet) }, null));
+                saveRetainRef = Bind<SaveRetainRefDel<T, TRet, TRep>>(schema.GetMethod(root + "SaveRetain", Flags, null, new[] { refT, typeof(TRet), typeof(Span<byte>), refRep }, null));
+                if (measureRetainRef == null)
+                {
+                    measureRetainVal = Bind<MeasureRetainDel<T, TRet>>(schema.GetMethod(root + "MeasureRetain", Flags, null, new[] { typeof(T), typeof(TRet) }, null));
+                    saveRetainVal = Bind<SaveRetainDel<T, TRet, TRep>>(schema.GetMethod(root + "SaveRetain", Flags, null, new[] { typeof(T), typeof(TRet), typeof(Span<byte>), refRep }, null));
+                }
 
-                fromJson = Bind<LoadDel<T, TRep>>(schema.GetMethod(root + "FromJson", Flags, null, new[] { typeof(T).MakeByRefType(), typeof(ReadOnlySpan<byte>), typeof(TRep).MakeByRefType() }, null));
-                toJsonMeasure = Bind<MeasureDel<T>>(schema.GetMethod(root + "ToJsonMeasure", Flags, null, new[] { typeof(T) }, null));
-                toJson = Bind<SaveDel<T>>(schema.GetMethod(root + "ToJson", Flags, null, new[] { typeof(T), typeof(Span<byte>) }, null));
+                fromJson = Bind<LoadDel<T, TRep>>(schema.GetMethod(root + "FromJson", Flags, null, new[] { refT, typeof(ReadOnlySpan<byte>), refRep }, null));
+                toJsonMeasure = Bind<MeasureRefDel<T>>(schema.GetMethod(root + "ToJsonMeasure", Flags, null, new[] { refT }, null));
+                toJson = Bind<SaveRefDel<T>>(schema.GetMethod(root + "ToJson", Flags, null, new[] { refT, typeof(Span<byte>) }, null));
 
-                cookMeasure = Bind<CookMeasureDel<T>>(schema.GetMethod(root + "CookMeasure", Flags, null, new[] { typeof(T) }, null));
-                cook = Bind<CookDel<T, TOrder>>(schema.GetMethod(root + "Cook", Flags, null, new[] { typeof(T), typeof(Span<byte>), typeof(TOrder) }, null));
+                cookMeasureRef = Bind<CookMeasureRefDel<T>>(schema.GetMethod(root + "CookMeasure", Flags, null, new[] { refT }, null));
+                cookRef = Bind<CookRefDel<T, TOrder>>(schema.GetMethod(root + "Cook", Flags, null, new[] { refT, typeof(Span<byte>), typeof(TOrder) }, null));
+                if (cookMeasureRef == null)
+                {
+                    cookMeasureVal = Bind<CookMeasureDel<T>>(schema.GetMethod(root + "CookMeasure", Flags, null, new[] { typeof(T) }, null));
+                    cookVal = Bind<CookDel<T, TOrder>>(schema.GetMethod(root + "Cook", Flags, null, new[] { typeof(T), typeof(Span<byte>), typeof(TOrder) }, null));
+                }
 
                 var announce = Bind<AnnounceDel>(schema.GetMethod("Announce", Flags, null, Type.EmptyTypes, null));
-                announceRead = Bind<AnnounceReadDel<TVocab, TRep>>(schema.GetMethod("AnnounceRead", Flags, null, new[] { typeof(TVocab), typeof(ReadOnlySpan<byte>), typeof(TRep).MakeByRefType() }, null));
+                announceRead = Bind<AnnounceReadDel<TVocab, TRep>>(schema.GetMethod("AnnounceRead", Flags, null, new[] { typeof(TVocab), typeof(ReadOnlySpan<byte>), refRep }, null));
                 if (announce != null && announceRead != null)
                 {
                     Announcement = announce().ToArray();
@@ -291,7 +342,7 @@ namespace SchemaUnityConformance
 
                 measureMessages = Bind<MeasureMessagesDel<T>>(schema.GetMethod(root + "MeasureMessages", Flags, null, new[] { typeof(ReadOnlySpan<T>) }, null));
                 saveMessages = Bind<SaveMessagesDel<T>>(schema.GetMethod(root + "SaveMessages", Flags, null, new[] { typeof(ReadOnlySpan<T>), typeof(Span<byte>) }, null));
-                loadMessages = Bind<LoadMessagesDel<T, TVocab, TRep>>(schema.GetMethod(root + "LoadMessages", Flags, null, new[] { typeof(Span<T>), typeof(ReadOnlySpan<byte>), typeof(TVocab), typeof(TRep).MakeByRefType(), typeof(int).MakeByRefType() }, null));
+                loadMessages = Bind<LoadMessagesDel<T, TVocab, TRep>>(schema.GetMethod(root + "LoadMessages", Flags, null, new[] { typeof(Span<T>), typeof(ReadOnlySpan<byte>), typeof(TVocab), refRep, typeof(int).MakeByRefType() }, null));
             }
 
             private static TDel Bind<TDel>(MethodInfo m) where TDel : Delegate
@@ -321,7 +372,7 @@ namespace SchemaUnityConformance
 
             public long LoadMeasure(byte[] wire)
             {
-                return loadMeasure == null ? -1 : loadMeasure(wire);
+                return IsFixed || loadMeasure == null ? -1 : loadMeasure(wire);
             }
 
             public object VariableLoad(byte[] wire, DriverReport report)
@@ -331,7 +382,7 @@ namespace SchemaUnityConformance
                     if (report != null) { report.Refused = true; }
                     return null;
                 }
-                T val = newValue != null ? newValue() : default;
+                T val = MakeFresh();
                 TRep inner = default;
                 bool ok = varLoad(ref val, wire, ref inner);
                 CopyReport(inner, report);
@@ -347,10 +398,9 @@ namespace SchemaUnityConformance
                         if (report != null) { report.Refused = true; report.ReasonText = "no_file_form"; }
                         return null;
                     }
-                    T[] arr = new T[1];
-                    arr[0] = newValue != null ? newValue() : default;
+                    T val = MakeFresh();
                     TRep inner = default;
-                    long n = fixedLoad(arr, wire, ref inner, FixedPlanCapacity);
+                    long n = fixedLoad(MemoryMarshal.CreateSpan(ref val, 1), wire, ref inner, FixedPlanCapacity);
                     CopyReport(inner, report);
                     if (n != 1)
                     {
@@ -360,7 +410,7 @@ namespace SchemaUnityConformance
                         }
                         return null;
                     }
-                    return arr[0];
+                    return val;
                 }
                 return VariableLoad(wire, report);
             }
@@ -371,7 +421,9 @@ namespace SchemaUnityConformance
                 {
                     return fixedMeasure == null ? -1 : fixedMeasure(1);
                 }
-                return varMeasure == null ? -1 : varMeasure((T)value);
+                if (varMeasure == null) { return -1; }
+                T v = (T)value;
+                return varMeasure(ref v);
             }
 
             public long Save(object value, byte[] buffer)
@@ -385,14 +437,16 @@ namespace SchemaUnityConformance
 
             public long VariableSave(object value, byte[] buffer)
             {
-                return varSave == null ? -1 : varSave((T)value, buffer);
+                if (varSave == null) { return -1; }
+                T v = (T)value;
+                return varSave(ref v, buffer);
             }
 
             public long FixedSave(object value, byte[] buffer)
             {
                 if (fixedSave == null) { return -1; }
-                T[] arr = new T[] { (T)value };
-                return fixedSave(arr, buffer);
+                T v = (T)value;
+                return fixedSave(MemoryMarshal.CreateReadOnlySpan(ref v, 1), buffer);
             }
 
             public object FromJson(byte[] text, DriverReport report)
@@ -402,7 +456,7 @@ namespace SchemaUnityConformance
                     if (report != null) { report.Refused = true; }
                     return null;
                 }
-                T val = newValue != null ? newValue() : default;
+                T val = MakeFresh();
                 TRep inner = default;
                 bool ok = fromJson(ref val, text, ref inner);
                 CopyReport(inner, report);
@@ -411,22 +465,31 @@ namespace SchemaUnityConformance
 
             public long ToJsonMeasure(object value)
             {
-                return toJsonMeasure == null ? -1 : toJsonMeasure((T)value);
+                if (toJsonMeasure == null) { return -1; }
+                T v = (T)value;
+                return toJsonMeasure(ref v);
             }
 
             public long ToJson(object value, byte[] buffer)
             {
-                return toJson == null ? -1 : toJson((T)value, buffer);
+                if (toJson == null) { return -1; }
+                T v = (T)value;
+                return toJson(ref v, buffer);
             }
 
             public long CookMeasure(object value)
             {
-                return cookMeasure == null ? -1 : cookMeasure((T)value);
+                T v = (T)value;
+                if (cookMeasureRef != null) { return cookMeasureRef(ref v); }
+                return cookMeasureVal == null ? -1 : cookMeasureVal(v);
             }
 
             public bool Cook(object value, byte[] buffer, bool bigEndian)
             {
-                return cook != null && cook((T)value, buffer, bigEndian ? orderBig : orderLittle);
+                T v = (T)value;
+                TOrder ord = bigEndian ? orderBig : orderLittle;
+                if (cookRef != null) { return cookRef(ref v, buffer, ord); }
+                return cookVal != null && cookVal(v, buffer, ord);
             }
 
             public object MessageLoad(byte[] announcement, byte[] wire, DriverReport report)
@@ -452,13 +515,19 @@ namespace SchemaUnityConformance
                         return null;
                     }
                 }
+                return MessageLoadCore(vocab, wire, report);
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private object MessageLoadCore(TVocab vocab, byte[] wire, DriverReport report)
+            {
                 T[] values = new T[256];
                 int initCount = Math.Min(256, wire.Length >= 2 ? wire[1] + 1 : 1);
                 for (int i = 0; i < initCount; i++)
                 {
-                    values[i] = newValue != null ? newValue() : default;
+                    values[i] = MakeFresh();
                 }
-                inner = default;
+                TRep inner = default;
                 bool ok = loadMessages(values, wire, vocab, ref inner, out int count);
                 CopyReport(inner, report);
                 if (!ok || count < 1)
@@ -475,20 +544,33 @@ namespace SchemaUnityConformance
             public long MessageMeasure(object value)
             {
                 if (measureMessages == null) { return -1; }
-                T[] arr = new T[] { (T)value };
-                return measureMessages(arr);
+                T v = (T)value;
+                return measureMessages(MemoryMarshal.CreateReadOnlySpan(ref v, 1));
             }
 
             public long MessageSave(object value, byte[] buffer)
             {
                 if (saveMessages == null) { return -1; }
-                T[] arr = new T[] { (T)value };
-                return saveMessages(arr, buffer);
+                T v = (T)value;
+                return saveMessages(MemoryMarshal.CreateReadOnlySpan(ref v, 1), buffer);
             }
 
-            private TRet MakeRetain(long byteCap, int idCap)
+            private byte[] scratchRetainBytes;
+            private TRetId[] scratchRetainIds;
+
+            private TRet MakeRetain(long byteCap, int idCap, bool reuseScratch = false)
             {
                 TRet store = new TRet();
+                if (reuseScratch && byteCap <= (1 << 20) && idCap <= (1 << 17))
+                {
+                    scratchRetainBytes ??= new byte[1 << 20];
+                    scratchRetainIds ??= new TRetId[1 << 17];
+                    fRetBytes.SetValue(store, scratchRetainBytes);
+                    fRetCap.SetValue(store, byteCap);
+                    fRetIds.SetValue(store, scratchRetainIds);
+                    fRetIdCap.SetValue(store, idCap);
+                    return store;
+                }
                 fRetBytes.SetValue(store, new byte[1 << 20]);
                 fRetCap.SetValue(store, byteCap);
                 fRetIds.SetValue(store, new TRetId[Math.Max(1, idCap)]);
@@ -509,14 +591,14 @@ namespace SchemaUnityConformance
                 if (shortBytes)
                 {
                     TRet probeStore = MakeRetain(1 << 20, idCapacity);
-                    T probeVal = newValue != null ? newValue() : default;
+                    T probeVal = MakeFresh();
                     TRep probeRep = default;
                     loadRetain(ref probeVal, wire, probeStore, ref probeRep);
                     long used = (long)fRetUsed.GetValue(probeStore);
                     cap = Math.Max(0, used - 1);
                 }
-                TRet store = MakeRetain(cap, idCapacity);
-                T val = newValue != null ? newValue() : default;
+                TRet store = MakeRetain(cap, idCapacity, !shortBytes);
+                T val = MakeFresh();
                 TRep loadRep = default;
                 bool ok = loadRetain(ref val, wire, store, ref loadRep);
                 CopyReport(loadRep, res.Report);
@@ -526,12 +608,12 @@ namespace SchemaUnityConformance
                 if (res.Loaded)
                 {
                     res.Value = val;
-                    long size = measureRetain(val, store);
+                    long size = measureRetainRef != null ? measureRetainRef(ref val, store) : measureRetainVal(val, store);
                     if (size >= 0)
                     {
                         byte[] outBuf = new byte[checked((int)size)];
                         TRep saveRep = default;
-                        long written = saveRetain(val, store, outBuf, ref saveRep);
+                        long written = saveRetainRef != null ? saveRetainRef(ref val, store, outBuf, ref saveRep) : saveRetainVal(val, store, outBuf, ref saveRep);
                         var saveDrv = new DriverReport();
                         CopyReport(saveRep, saveDrv);
                         res.Lost = saveDrv.RetainLost > res.Lost ? saveDrv.RetainLost : (res.Report.RetainLost + saveDrv.RetainLost);
@@ -625,9 +707,9 @@ namespace SchemaUnityConformance
 
         private static int RunWireFuzz()
         {
-            using var input = new BinaryReader(Console.OpenStandardInput(), Encoding.UTF8, true);
-            using var output = new BinaryWriter(Console.OpenStandardOutput(), Encoding.UTF8, true);
-            int count = checked((int)input.ReadUInt32());
+            using var input = new BinaryReader(Console.OpenStandardInput());
+            using var output = new BinaryWriter(Console.OpenStandardOutput());
+            uint count = input.ReadUInt32();
             var roster = new ICodec[count];
             var forms = new byte[count];
             var retaining = new bool[count];
@@ -635,32 +717,39 @@ namespace SchemaUnityConformance
             {
                 string unit = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
                 string root = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
-                forms[i] = input.ReadByte();
-                retaining[i] = input.ReadByte() != 0;
+                byte form = input.ReadByte();
+                byte retain = input.ReadByte();
                 ICodec codec = FindCodec(unit, root);
-                if (codec == null)
+                if (retain != 0 && (codec == null || !codec.HasRetain || codec.IsFixed || form == 2))
                 {
-                    Console.Error.WriteLine($"wire-fuzz: unknown root {unit}.{root}");
-                    return 2;
+                    codec = null;
                 }
-                if (forms[i] == 2 && !codec.HasMessage)
+                if (form == 2 && (codec == null || !codec.HasMessage))
                 {
-                    Console.Error.WriteLine($"wire-fuzz: message root has no message codec: {unit}.{root}");
-                    return 2;
+                    codec = null;
                 }
-                if (retaining[i] && !codec.HasRetain)
+                if (form != 2 && retain == 0 && (codec == null || !codec.HasWire))
                 {
-                    Console.Error.WriteLine($"wire-fuzz: retaining root has no retain codec: {unit}.{root}");
-                    return 2;
+                    codec = null;
                 }
                 roster[i] = codec;
+                forms[i] = form;
+                retaining[i] = retain != 0;
+                output.Write((byte)(codec != null ? 1 : 0));
             }
-            output.Write((byte)1);
             output.Flush();
 
-            while (input.PeekChar() >= 0)
+            for (;;)
             {
-                int index = checked((int)input.ReadUInt32());
+                uint index;
+                try
+                {
+                    index = input.ReadUInt32();
+                }
+                catch (EndOfStreamException)
+                {
+                    return 0;
+                }
                 byte[] bytes = input.ReadBytes(checked((int)input.ReadUInt32()));
                 ICodec codec = roster[index];
                 if (retaining[index])
@@ -692,7 +781,7 @@ namespace SchemaUnityConformance
                 long need = message ? -1 : codec.LoadMeasure(bytes);
                 object value = message
                     ? codec.MessageLoad(codec.Announcement, bytes, rep)
-                    : (forms[index] == 1 && codec.IsFixed ? codec.VariableLoad(bytes, rep) : codec.Load(bytes, rep));
+                    : codec.Load(bytes, rep);
                 bool loaded = value != null && !rep.Refused && !rep.Malformed;
                 output.Write((byte)(loaded ? 1 : 0));
                 output.Write(rep.Unknown);
@@ -715,7 +804,6 @@ namespace SchemaUnityConformance
                 }
                 output.Flush();
             }
-            return 0;
         }
 
         // ---- Manifest helpers & core surfaces ----

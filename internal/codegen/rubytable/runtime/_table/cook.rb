@@ -653,7 +653,11 @@ module SchemaRuntimeUnit
         fd, target_val = edges[next_idx]
         if %w[string_blob bytes_blob].include?(fd.codec)
           bid = target_val.is_a?(BlobRef) ? obj_id(target_val) : nil
-          raise InvalidValue.new(fd.name, 'blob_shared') if bid && blob_index.key?(bid)
+          if bid && blob_index.key?(bid)
+            encode_blob_body(fd, target_val, fd.name)
+            cur_entry.blobs << blob_index[bid]
+            next
+          end
 
           body = encode_blob_body(fd, target_val, fd.name)
           bentry = CookEntry.new(Object, target_val, nil)
@@ -1144,181 +1148,181 @@ module SchemaRuntimeUnit
 
       record_edges = u(nil)
       record_edges = lambda do |desc, at, prefix|
-        edges = SchemaTable.arr
-        desc.fields.each do |fd|
-          nm = prefix.empty? ? fd.name : "#{prefix}.#{fd.name}"
-          slot = at + fd.at
-          if %w[bool int enum float32 float64].include?(fd.codec)
-            emit_ln.call(nm, scalar_at.call(slot, fd.pieces[0][1], fd.codec, fd.codec == 'int' && fd.lo.negative?))
-          elsif %w[string bytes].include?(fd.codec)
-            if fd.codec == 'string' && fd.pieces.length == 1
-              delta = int_at.call(slot, 8, true)
-              start_p = delta.zero? ? 0 : slot + delta
-              cnt = delta.zero? ? 0 : int_at.call(start_p, 4, false)
-              emit_ln.call(nm, format_cook_text(region, start_p + 8, cnt))
-            else
-              cnt = int_at.call(at + fd.pieces[1][0], 4, true)
-              raise Refused.new('bad_layout', 'a text length leaves its buffer') unless cnt.between?(0, fd.size)
-
-              emit_ln.call(nm, format_cook_text(region, slot, cnt))
-            end
-          elsif fd.codec == 'table'
-            child = by_name(fd.target)
-            raise Refused.new('bad_layout', 'a nested table is not registered') if child.nil?
-
-            edges.concat(record_edges.call(child.descriptor, slot, nm))
-          elsif fd.codec == 'array' && fd.array_kind == 3
-            delta = int_at.call(slot, 8, true)
-            cnt = int_at.call(slot + 8, 4, true)
-            cnt.times do |pos|
-              elem_at = slot + delta + (pos * fd.elem_size)
-              if %w[table string text_optional].include?(fd.elem_codec)
-                child = by_name(fd.target)
-                raise Refused.new('bad_layout', 'a list table is not registered') if child.nil?
-
-                edges.concat(record_edges.call(child.descriptor, elem_at, "#{nm}[#{pos}]"))
+        Enumerator.new do |edges|
+          desc.fields.each do |fd|
+            nm = prefix.empty? ? fd.name : "#{prefix}.#{fd.name}"
+            slot = at + fd.at
+            if %w[bool int enum float32 float64].include?(fd.codec)
+              emit_ln.call(nm, scalar_at.call(slot, fd.pieces[0][1], fd.codec, fd.codec == 'int' && fd.lo.negative?))
+            elsif %w[string bytes].include?(fd.codec)
+              if fd.codec == 'string' && fd.pieces.length == 1
+                delta = int_at.call(slot, 8, true)
+                start_p = delta.zero? ? 0 : slot + delta
+                cnt = delta.zero? ? 0 : int_at.call(start_p, 4, false)
+                emit_ln.call(nm, format_cook_text(region, start_p + 8, cnt))
               else
-                emit_ln.call("#{nm}[#{pos}]",
-                             scalar_at.call(elem_at, fd.elem_size, fd.elem_codec,
-                                            fd.elem_codec == 'int' && fd.lo.negative?))
+                cnt = int_at.call(at + fd.pieces[1][0], 4, true)
+                raise Refused.new('bad_layout', 'a text length leaves its buffer') unless cnt.between?(0, fd.size)
+
+                emit_ln.call(nm, format_cook_text(region, slot, cnt))
               end
-            end
-            emit_ln.call("#{nm}#count", cnt.to_s)
-          elsif fd.codec == 'map'
-            delta = int_at.call(slot, 8, true)
-            cnt = int_at.call(slot + 8, 4, true)
-            child = by_name(fd.target)
-            raise Refused.new('bad_layout', 'a map entry is not registered') if child.nil?
+            elsif fd.codec == 'table'
+              child = by_name(fd.target)
+              raise Refused.new('bad_layout', 'a nested table is not registered') if child.nil?
 
-            cnt.times do |pos|
-              edges.concat(record_edges.call(child.descriptor, slot + delta + (pos * fd.elem_size), "#{nm}[#{pos}]"))
-            end
-            emit_ln.call("#{nm}#count", cnt.to_s)
-          elsif fd.codec == 'union_array'
-            ucls = union_by_name(fd.target)
-            raise Refused.new('bad_layout', 'a union is not registered') if ucls.nil?
-
-            ud = ucls.descriptor
-            if fd.array_kind == 3
+              record_edges.call(child.descriptor, slot, nm).each { |edge| edges << edge }
+            elsif fd.codec == 'array' && fd.array_kind == 3
               delta = int_at.call(slot, 8, true)
               cnt = int_at.call(slot + 8, 4, true)
-              start_p = slot + delta
-              stride = fd.elem_size
-            else
-              cnt = fd.bound
-              start_p = slot
-              stride = fd.pieces[0][1] / fd.bound
-            end
-            cnt.times do |pos|
-              uat = start_p + (pos * stride)
-              tag = int_at.call(uat, ud.tag_size, false)
-              enm = "#{nm}[#{pos}]"
-              emit_ln.call("#{enm}#tag", tag.to_s)
+              cnt.times do |pos|
+                elem_at = slot + delta + (pos * fd.elem_size)
+                if %w[table string text_optional].include?(fd.elem_codec)
+                  child = by_name(fd.target)
+                  raise Refused.new('bad_layout', 'a list table is not registered') if child.nil?
+
+                  record_edges.call(child.descriptor, elem_at, "#{nm}[#{pos}]").each { |edge| edges << edge }
+                else
+                  emit_ln.call("#{nm}[#{pos}]",
+                               scalar_at.call(elem_at, fd.elem_size, fd.elem_codec,
+                                              fd.elem_codec == 'int' && fd.lo.negative?))
+                end
+              end
+              emit_ln.call("#{nm}#count", cnt.to_s)
+            elsif fd.codec == 'map'
+              delta = int_at.call(slot, 8, true)
+              cnt = int_at.call(slot + 8, 4, true)
+              child = by_name(fd.target)
+              raise Refused.new('bad_layout', 'a map entry is not registered') if child.nil?
+
+              cnt.times do |pos|
+                record_edges.call(child.descriptor, slot + delta + (pos * fd.elem_size), "#{nm}[#{pos}]").each { |edge| edges << edge }
+              end
+              emit_ln.call("#{nm}#count", cnt.to_s)
+            elsif fd.codec == 'union_array'
+              ucls = union_by_name(fd.target)
+              raise Refused.new('bad_layout', 'a union is not registered') if ucls.nil?
+
+              ud = ucls.descriptor
+              if fd.array_kind == 3
+                delta = int_at.call(slot, 8, true)
+                cnt = int_at.call(slot + 8, 4, true)
+                start_p = slot + delta
+                stride = fd.elem_size
+              else
+                cnt = fd.bound
+                start_p = slot
+                stride = fd.pieces[0][1] / fd.bound
+              end
+              cnt.times do |pos|
+                uat = start_p + (pos * stride)
+                tag = int_at.call(uat, ud.tag_size, false)
+                enm = "#{nm}[#{pos}]"
+                emit_ln.call("#{enm}#tag", tag.to_s)
+                arm = u(tag.positive? ? ud.arms[tag - 1] : nil)
+                if arm&.field
+                  record_edges.call(SingleFieldDescHolder.new([arm.field], SchemaTable.arr), uat + ud.arm_offset, enm).each { |edge| edges << edge }
+                end
+              end
+              if fd.array_kind == 2
+                emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s)
+              elsif fd.array_kind == 3
+                emit_ln.call("#{nm}#count", cnt.to_s)
+              end
+            elsif fd.codec == 'union'
+              ucls = union_by_name(fd.target)
+              raise Refused.new('bad_layout', 'a union is not registered') if ucls.nil?
+
+              ud = ucls.descriptor
+              tag = int_at.call(slot, ud.tag_size, false)
+              emit_ln.call("#{nm}#tag", tag.to_s)
               arm = u(tag.positive? ? ud.arms[tag - 1] : nil)
               if arm&.field
-                edges.concat(record_edges.call(SingleFieldDescHolder.new([arm.field], SchemaTable.arr), uat + ud.arm_offset, enm))
+                record_edges.call(SingleFieldDescHolder.new([arm.field], SchemaTable.arr), slot + ud.arm_offset,
+                                  nm).each { |edge| edges << edge }
               end
-            end
-            if fd.array_kind == 2
-              emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s)
-            elsif fd.array_kind == 3
-              emit_ln.call("#{nm}#count", cnt.to_s)
-            end
-          elsif fd.codec == 'union'
-            ucls = union_by_name(fd.target)
-            raise Refused.new('bad_layout', 'a union is not registered') if ucls.nil?
-
-            ud = ucls.descriptor
-            tag = int_at.call(slot, ud.tag_size, false)
-            emit_ln.call("#{nm}#tag", tag.to_s)
-            arm = u(tag.positive? ? ud.arms[tag - 1] : nil)
-            if arm&.field
-              edges.concat(record_edges.call(SingleFieldDescHolder.new([arm.field], SchemaTable.arr), slot + ud.arm_offset,
-                                             nm))
-            end
-          elsif %w[string_blob bytes_blob].include?(fd.codec)
-            delta = int_at.call(slot, 8, true)
-            emit_ln.call(nm, delta.zero? ? 'null' : "-> @#{slot + delta}")
-          elsif fd.codec == 'pointer_array'
-            child = by_name(fd.target)
-            raise Refused.new('bad_layout', 'a pointer array target is not registered') if child.nil?
-
-            if fd.array_mode == 'list'
+            elsif %w[string_blob bytes_blob].include?(fd.codec)
               delta = int_at.call(slot, 8, true)
-              cnt = int_at.call(slot + 8, 4, true)
-              start_p = slot + delta
-            else
-              start_p = slot
-              cnt = fd.bound
-            end
-            cnt.times do |pos|
-              el = start_p + (pos * 8)
-              d = int_at.call(el, 8, true)
-              emit_ln.call("#{nm}[#{pos}]", d.zero? ? 'null' : "-> @#{el + d}")
-              edges << [el + d, child.descriptor] unless d.zero?
-            end
-            if fd.array_mode == 'counted'
-              emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s)
-            elsif fd.array_mode == 'list'
-              emit_ln.call("#{nm}#count", cnt.to_s)
-            end
-          elsif fd.codec == 'pointer'
-            delta = int_at.call(slot, 8, true)
-            if delta.zero?
-              emit_ln.call(nm, 'null')
-            else
-              target_at = slot + delta
+              emit_ln.call(nm, delta.zero? ? 'null' : "-> @#{slot + delta}")
+            elsif fd.codec == 'pointer_array'
               child = by_name(fd.target)
-              raise Refused.new('bad_layout', 'a pointer target is not registered') if child.nil?
+              raise Refused.new('bad_layout', 'a pointer array target is not registered') if child.nil?
 
-              emit_ln.call(nm, "-> @#{target_at}")
-              edges << [target_at, child.descriptor]
-            end
-          elsif fd.codec == 'array' && [1,
-                                        2].include?(fd.array_kind) && %w[bool int enum float32
-                                                                         float64].include?(fd.elem_codec)
-            stride = fd.pieces[0][1] / fd.bound
-            fd.bound.times do |pos|
-              emit_ln.call("#{nm}[#{pos}]",
-                           scalar_at.call(slot + (pos * stride), stride, fd.elem_codec,
-                                          fd.elem_codec == 'int' && fd.lo.negative?))
-            end
-            emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s) if fd.array_kind == 2
-          elsif fd.codec == 'array' && [1,
-                                        2].include?(fd.array_kind) && %w[table string
-                                                                         text_optional].include?(fd.elem_codec)
-            child = by_name(fd.target)
-            raise Refused.new('bad_layout', 'an array element is not registered') if child.nil?
+              if fd.array_mode == 'list'
+                delta = int_at.call(slot, 8, true)
+                cnt = int_at.call(slot + 8, 4, true)
+                start_p = slot + delta
+              else
+                start_p = slot
+                cnt = fd.bound
+              end
+              cnt.times do |pos|
+                el = start_p + (pos * 8)
+                d = int_at.call(el, 8, true)
+                emit_ln.call("#{nm}[#{pos}]", d.zero? ? 'null' : "-> @#{el + d}")
+                edges << [el + d, child.descriptor] unless d.zero?
+              end
+              if fd.array_mode == 'counted'
+                emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s)
+              elsif fd.array_mode == 'list'
+                emit_ln.call("#{nm}#count", cnt.to_s)
+              end
+            elsif fd.codec == 'pointer'
+              delta = int_at.call(slot, 8, true)
+              if delta.zero?
+                emit_ln.call(nm, 'null')
+              else
+                target_at = slot + delta
+                child = by_name(fd.target)
+                raise Refused.new('bad_layout', 'a pointer target is not registered') if child.nil?
 
-            stride = fd.pieces[0][1] / fd.bound
-            fd.bound.times do |pos|
-              edges.concat(record_edges.call(child.descriptor, slot + (pos * stride), "#{nm}[#{pos}]"))
-            end
-            emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s) if fd.array_kind == 2
-          elsif fd.codec == 'keyed' && fd.elem && %w[bool int enum float32 float64].include?(fd.elem.codec)
-            stride = fd.pieces[0][1] / fd.bound
-            fd.bound.times do |pos|
-              emit_ln.call("#{nm}[#{pos}]",
-                           scalar_at.call(slot + (pos * stride), stride, fd.elem.codec,
-                                          fd.elem.codec == 'int' && fd.elem.lo.negative?))
-            end
-          elsif fd.codec == 'keyed' && fd.elem && fd.elem.codec == 'table'
-            child = by_name(fd.target)
-            raise Refused.new('bad_layout', 'a keyed element is not registered') if child.nil?
+                emit_ln.call(nm, "-> @#{target_at}")
+                edges << [target_at, child.descriptor]
+              end
+            elsif fd.codec == 'array' && [1,
+                                          2].include?(fd.array_kind) && %w[bool int enum float32
+                                                                           float64].include?(fd.elem_codec)
+              stride = fd.pieces[0][1] / fd.bound
+              fd.bound.times do |pos|
+                emit_ln.call("#{nm}[#{pos}]",
+                             scalar_at.call(slot + (pos * stride), stride, fd.elem_codec,
+                                            fd.elem_codec == 'int' && fd.lo.negative?))
+              end
+              emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s) if fd.array_kind == 2
+            elsif fd.codec == 'array' && [1,
+                                          2].include?(fd.array_kind) && %w[table string
+                                                                           text_optional].include?(fd.elem_codec)
+              child = by_name(fd.target)
+              raise Refused.new('bad_layout', 'an array element is not registered') if child.nil?
 
-            stride = fd.pieces[0][1] / fd.bound
-            fd.bound.times do |pos|
-              edges.concat(record_edges.call(child.descriptor, slot + (pos * stride), "#{nm}[#{pos}]"))
+              stride = fd.pieces[0][1] / fd.bound
+              fd.bound.times do |pos|
+                record_edges.call(child.descriptor, slot + (pos * stride), "#{nm}[#{pos}]").each { |edge| edges << edge }
+              end
+              emit_ln.call("#{nm}#count", int_at.call(at + fd.pieces[1][0], 4, true).to_s) if fd.array_kind == 2
+            elsif fd.codec == 'keyed' && fd.elem && %w[bool int enum float32 float64].include?(fd.elem.codec)
+              stride = fd.pieces[0][1] / fd.bound
+              fd.bound.times do |pos|
+                emit_ln.call("#{nm}[#{pos}]",
+                             scalar_at.call(slot + (pos * stride), stride, fd.elem.codec,
+                                            fd.elem.codec == 'int' && fd.elem.lo.negative?))
+              end
+            elsif fd.codec == 'keyed' && fd.elem && fd.elem.codec == 'table'
+              child = by_name(fd.target)
+              raise Refused.new('bad_layout', 'a keyed element is not registered') if child.nil?
+
+              stride = fd.pieces[0][1] / fd.bound
+              fd.bound.times do |pos|
+                record_edges.call(child.descriptor, slot + (pos * stride), "#{nm}[#{pos}]").each { |edge| edges << edge }
+              end
+            elsif fd.codec == 'optional'
+              of = cook_optional_field(fd)
+              record_edges.call(SingleFieldDescHolder.new([of], SchemaTable.arr), slot, prefix).each { |edge| edges << edge }
+              emit_ln.call("#{nm}#present", (!region.getbyte(at + fd.pieces[-1][0]).zero?).to_s)
+            else
+              raise Refused.new('bad_layout', "unsupported cook dump codec #{fd.codec}")
             end
-          elsif fd.codec == 'optional'
-            of = cook_optional_field(fd)
-            edges.concat(record_edges.call(SingleFieldDescHolder.new([of], SchemaTable.arr), slot, prefix))
-            emit_ln.call("#{nm}#present", (!region.getbyte(at + fd.pieces[-1][0]).zero?).to_s)
-          else
-            raise Refused.new('bad_layout', "unsupported cook dump codec #{fd.codec}")
           end
         end
-        edges
       end
 
       begin_node = lambda do |at, desc|
@@ -1338,18 +1342,16 @@ module SchemaRuntimeUnit
       end
 
       first = begin_node.call(0, handle.root.descriptor)
-      stack = [[first, 0]]
+      stack = [first]
       until stack.empty?
-        frame = stack[-1]
-        edges, idx = frame
-        if idx >= edges.length
+        begin
+          target_at, cdesc = stack[-1].next
+        rescue StopIteration
           stack.pop
           next
         end
-        frame[1] = idx + 1
-        target_at, cdesc = edges[idx]
         child_edges = begin_node.call(target_at, cdesc)
-        stack << [child_edges, 0] if child_edges
+        stack << child_edges if child_edges
       end
       "#{lines.join("\n")}\n"
     end

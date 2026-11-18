@@ -7,27 +7,26 @@ module SchemaRuntimeUnit
     JsonNumber = Struct.new(:token)
 
     JSON_ESCAPES = {
-      '"' => '"',
-      '\\' => '\\',
-      '/' => '/',
-      'b' => "\b",
-      'f' => "\f",
-      'n' => "\n",
-      'r' => "\r",
-      't' => "\t"
+      34 => '"',
+      92 => '\\',
+      47 => '/',
+      98 => "\b",
+      102 => "\f",
+      110 => "\n",
+      114 => "\r",
+      116 => "\t"
     }.freeze
 
-    HEX_DIGITS = '0123456789abcdefABCDEF'
-
-    # Scanner over a validated UTF-8 String.
+    # Scanner over a validated UTF-8 String indexed by byte offset.
     class JsonScanner
       attr_reader :text
       attr_accessor :pos
 
       def initialize(text, max_key)
         @text = text
+        @raw = text.b
         @max_key = max_key
-        @pos = text.start_with?("\uFEFF") ? 1 : 0
+        @pos = text.start_with?("\uFEFF") ? 3 : 0
       end
 
       def fail_scan
@@ -35,20 +34,20 @@ module SchemaRuntimeUnit
       end
 
       def skip_space
-        len = @text.length
+        len = @raw.bytesize
         while @pos < len
-          ch = @text[@pos]
-          if [' ', "\t", "\r", "\n"].include?(ch)
+          b = @raw.getbyte(@pos)
+          if b == 32 || b == 9 || b == 13 || b == 10
             @pos += 1
-          elsif @text[@pos, 2] == '//'
-            nl = @text.index("\n", @pos + 2) || len
-            comment = @text[@pos...nl]
+          elsif b == 47 && @raw.getbyte(@pos + 1) == 47
+            nl = @raw.index("\n", @pos + 2) || len
+            comment = @raw.byteslice(@pos, nl - @pos)
             fail_scan if comment.include?("\x00")
             @pos = nl
-          elsif @text[@pos, 2] == '/*'
-            close = @text.index('*/', @pos + 2)
+          elsif b == 47 && @raw.getbyte(@pos + 1) == 42
+            close = @raw.index('*/', @pos + 2)
             fail_scan if close.nil?
-            comment = @text[@pos...close]
+            comment = @raw.byteslice(@pos, close - @pos)
             fail_scan if comment.include?("\x00")
             @pos = close + 2
           else
@@ -59,44 +58,62 @@ module SchemaRuntimeUnit
 
       def peek
         skip_space
-        @pos < @text.length ? @text[@pos] : ''
+        @pos < @raw.bytesize ? @raw.getbyte(@pos) : -1
+      end
+
+      def hex_val(byte)
+        return byte - 48 if byte.between?(48, 57)
+        return byte - 87 if byte.between?(97, 102)
+        return byte - 55 if byte.between?(65, 70)
+
+        fail_scan
       end
 
       def scan_hex4
-        digits = @text[@pos, 4]
-        fail_scan if digits.nil? || digits.length != 4
-        digits.each_char { |c| fail_scan unless HEX_DIGITS.include?(c) }
+        fail_scan if @pos + 4 > @raw.bytesize
+        v = (hex_val(@raw.getbyte(@pos)) << 12) |
+            (hex_val(@raw.getbyte(@pos + 1)) << 8) |
+            (hex_val(@raw.getbyte(@pos + 2)) << 4) |
+            hex_val(@raw.getbyte(@pos + 3))
         @pos += 4
-        digits.to_i(16)
+        v
       end
 
       def scan_string
         @pos += 1
         out = String.new(encoding: Encoding::UTF_8)
-        len = @text.length
+        len = @raw.bytesize
         while @pos < len
-          c = @text[@pos]
-          @pos += 1
-          return out if c == '"'
+          chunk_start = @pos
+          while @pos < len
+            b = @raw.getbyte(@pos)
+            break if b == 34 || b == 92
 
-          ord = c.ord
-          fail_scan if ord < 32 || ord.between?(0xD800, 0xDFFF)
-          if c != '\\'
-            out << c
-            next
+            fail_scan if b < 32
+            @pos += 1
+          end
+          if @pos > chunk_start
+            chunk = @raw.byteslice(chunk_start, @pos - chunk_start)
+            chunk.force_encoding(Encoding::UTF_8)
+            out << chunk
           end
           fail_scan if @pos >= len
-          esc = @text[@pos]
+          b = @raw.getbyte(@pos)
+          @pos += 1
+          return out if b == 34
+
+          fail_scan if @pos >= len
+          esc = @raw.getbyte(@pos)
           @pos += 1
           mapped = JSON_ESCAPES[esc]
           if mapped
             out << mapped
             next
           end
-          fail_scan if esc != 'u'
+          fail_scan if esc != 117
           code = scan_hex4
           if code.between?(0xD800, 0xDBFF)
-            fail_scan if @text[@pos, 2] != '\\u'
+            fail_scan if @raw.getbyte(@pos) != 92 || @raw.getbyte(@pos + 1) != 117
             @pos += 2
             low = scan_hex4
             fail_scan unless low.between?(0xDC00, 0xDFFF)
@@ -111,71 +128,84 @@ module SchemaRuntimeUnit
 
       def scan_digits
         start = @pos
-        len = @text.length
-        @pos += 1 while @pos < len && @text[@pos].between?('0', '9')
+        len = @raw.bytesize
+        while @pos < len
+          b = @raw.getbyte(@pos)
+          break unless b.between?(48, 57)
+
+          @pos += 1
+        end
         @pos > start
       end
 
       def scan_number
         start = @pos
-        @pos += 1 if @text[@pos] == '-'
-        c = @text[@pos]
-        if c == '0'
+        @pos += 1 if @raw.getbyte(@pos) == 45
+        b = @raw.getbyte(@pos)
+        if b == 48
           @pos += 1
-        elsif c&.between?('1', '9')
+        elsif b&.between?(49, 57)
           scan_digits
         else
           fail_scan
         end
-        if @text[@pos] == '.'
+        if @raw.getbyte(@pos) == 46
           @pos += 1
           fail_scan unless scan_digits
         end
-        if %w[e E].include?(@text[@pos])
+        eb = @raw.getbyte(@pos)
+        if eb == 101 || eb == 69
           @pos += 1
-          @pos += 1 if ['+', '-'].include?(@text[@pos])
+          sb = @raw.getbyte(@pos)
+          @pos += 1 if sb == 43 || sb == 45
           fail_scan unless scan_digits
         end
-        JsonNumber.new(@text[start...@pos])
+        tok = @raw.byteslice(start, @pos - start)
+        tok.force_encoding(Encoding::UTF_8)
+        JsonNumber.new(tok)
+      end
+
+      def match_kw(kw)
+        len = kw.bytesize
+        return false if @pos + len > @raw.bytesize
+
+        i = 0
+        while i < len
+          return false if @raw.getbyte(@pos + i) != kw.getbyte(i)
+
+          i += 1
+        end
+        @pos += len
+        true
       end
 
       def scan_value(depth)
-        c = peek
-        if ['{', '['].include?(c)
+        b = peek
+        if b == 123 || b == 91
           fail_scan if depth > MAX_DEPTH
           @pos += 1
-          return c == '{' ? scan_object(depth) : scan_array(depth)
+          return b == 123 ? scan_object(depth) : scan_array(depth)
         end
-        return scan_string if c == '"'
-
-        if @text[@pos, 4] == 'true'
-          @pos += 4
-          return true
-        end
-        if @text[@pos, 5] == 'false'
-          @pos += 5
-          return false
-        end
-        if @text[@pos, 4] == 'null'
-          @pos += 4
-          return nil
-        end
-        return scan_number if !c.empty? && (c == '-' || c.between?('0', '9'))
+        return scan_string if b == 34
+        return true if b == 116 && match_kw('true')
+        return false if b == 102 && match_kw('false')
+        return nil if b == 110 && match_kw('null')
+        return scan_number if b == 45 || (b.between?(48, 57))
 
         fail_scan
       end
 
       def scan_object(depth)
         result = SchemaTable.map_h
-        while peek != '}'
-          fail_scan if peek != '"'
+        while peek != 125
+          fail_scan if peek != 34
           key = scan_string
-          fail_scan if (!@max_key.nil? && key.bytesize > @max_key) || result.key?(key) || peek != ':'
+          fail_scan if (!@max_key.nil? && key.bytesize > @max_key) || result.key?(key) || peek != 58
           @pos += 1
           result[key] = scan_value(depth + 1)
-          break if peek == '}'
+          break if peek == 125
 
-          fail_scan if peek != ','
+          fail_scan if peek != 44
           @pos += 1
         end
         @pos += 1
@@ -184,11 +214,11 @@ module SchemaRuntimeUnit
 
       def scan_array(depth)
         result = SchemaTable.arr
-        while peek != ']'
+        while peek != 93
           result << scan_value(depth + 1)
-          break if peek == ']'
+          break if peek == 93
 
-          fail_scan if peek != ','
+          fail_scan if peek != 44
           @pos += 1
         end
         @pos += 1
@@ -204,7 +234,7 @@ module SchemaRuntimeUnit
       scanner = JsonScanner.new(utf8, max_key)
       val = scanner.scan_value(0)
       scanner.skip_space
-      raise Refused, 'malformed' if scanner.pos != utf8.length
+      raise Refused, 'malformed' if scanner.pos != utf8.bytesize
 
       val
     end

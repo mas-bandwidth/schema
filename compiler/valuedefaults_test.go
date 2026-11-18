@@ -39,7 +39,7 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "python" {
+		if target == "python" || target == "ruby" {
 			if err != nil {
 				t.Fatalf("python refused scalar table defaults: %v", err)
 			}

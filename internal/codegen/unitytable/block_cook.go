@@ -135,7 +135,7 @@ public sealed class TableCookInfo
     public TableCookFieldInfo[] Fields;
 }
 
-public const ulong TableBlockMagic = 0x4B434C424D484353UL;
+public const ulong TableBlockMagic = 0x4B4C42414D484353UL;
 public static ulong TableBlockByteOrder => BitConverter.IsLittleEndian ? 1UL : 2UL;
 
 public const ulong TableCookMagic = 0x4B4F4F434D484353UL;

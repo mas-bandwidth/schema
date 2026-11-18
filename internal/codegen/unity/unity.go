@@ -308,40 +308,84 @@ func bufferLengths(u *ir.Unit) []int64 {
 			}
 		}
 	}
+	const chunk = int64(4096)
+	const megaChunk = chunk * chunk
+	for _, n := range slices.Clone(out) {
+		if n > chunk && !seen[chunk] {
+			seen[chunk] = true
+			out = append(out, chunk)
+		}
+		if n > megaChunk && !seen[megaChunk] {
+			seen[megaChunk] = true
+			out = append(out, megaChunk)
+		}
+	}
 	slices.Sort(out)
 	return out
 }
 
+func emitBufferFieldRun(g *gen, typeName, prefix string, count int64) {
+	for i := int64(0); i < count; i += 16 {
+		end := min(i+16, count)
+		var parts []string
+		for j := i; j < end; j++ {
+			parts = append(parts, fmt.Sprintf("%s%d", prefix, j))
+		}
+		g.tf("    public %s %s;\n", typeName, strings.Join(parts, ", "))
+	}
+}
+
+func bufferFirstField(n int64) string {
+	const chunk = int64(4096)
+	const megaChunk = chunk * chunk
+	if n > megaChunk {
+		return "G0.B0.E0"
+	}
+	if n > chunk {
+		return "B0.E0"
+	}
+	return "E0"
+}
+
 // emitBuffers declares the unit's inline buffer types (home file only): one
-// generic struct per length, N sequential fields of T. The layout is what
-// makes the Span view legal — every field is the same unmanaged T, declared
-// in index order, under LayoutKind.Sequential, so element i sits at i *
-// sizeof(T) from E0 (docs/UNITY.md, "Buffers"); test/unity asserts it.
+// generic struct per length, N sequential fields of T (chunked hierarchically
+// over Buffer4096<T> past 4096 elements so no struct nears ECMA-335's 65535
+// field metadata ceiling). The layout is what makes the Span view legal —
+// every leaf is the same unmanaged T, declared in index order, under
+// LayoutKind.Sequential, so element i sits at i * sizeof(T) from the first
+// element (docs/UNITY.md, "Buffers"); test/unity asserts it.
 func (g *gen) emitBuffers() {
 	lengths := bufferLengths(g.unit)
 	if len(lengths) == 0 {
 		return
 	}
+	const chunk = int64(4096)
+	const megaChunk = chunk * chunk
 	g.needsInterop = true
 	g.tf("// Inline fixed-capacity buffers: a type's arrays, strings and bytes live\n")
 	g.tf("// inside it, so every generated struct is unmanaged and allocation-free.\n")
 	g.tf("// Index with buffer[i] (bounds-checked, by value) or AsSpan() for refs.\n")
 	for _, n := range lengths {
 		name := bufferName(n)
+		first := bufferFirstField(n)
 		g.tf("[Serializable]\n[StructLayout(LayoutKind.Sequential)]\n")
 		g.tf("public struct %s<T> where T : unmanaged\n{\n", name)
 		g.tf("    public const int Capacity = %d;\n\n", n)
-		for i := int64(0); i < n; i += 16 {
-			end := min(i+16, n)
-			var parts []string
-			for j := i; j < end; j++ {
-				parts = append(parts, fmt.Sprintf("E%d", j))
-			}
-			g.tf("    public T %s;\n", strings.Join(parts, ", "))
+		switch {
+		case n > megaChunk:
+			emitBufferFieldRun(g, fmt.Sprintf("%s<T>", bufferName(megaChunk)), "G", n/megaChunk)
+			rem := n % megaChunk
+			emitBufferFieldRun(g, fmt.Sprintf("%s<T>", bufferName(chunk)), "B", rem/chunk)
+			emitBufferFieldRun(g, "T", "R", rem%chunk)
+		case n > chunk:
+			emitBufferFieldRun(g, fmt.Sprintf("%s<T>", bufferName(chunk)), "B", n/chunk)
+			emitBufferFieldRun(g, "T", "R", n%chunk)
+		default:
+			emitBufferFieldRun(g, "T", "E", n)
 		}
 		g.tf("\n    public T this[int index]\n    {\n")
-		g.tf("        get { return MemoryMarshal.CreateReadOnlySpan(ref E0, Capacity)[index]; }\n")
-		g.tf("        set { MemoryMarshal.CreateSpan(ref E0, Capacity)[index] = value; }\n")
+		g.tf("        get { return MemoryMarshal.CreateReadOnlySpan(ref %s, Capacity)[index]; }\n", first)
+		g.tf("        set { MemoryMarshal.CreateSpan(ref %s, Capacity)[index] = value; }\n", first)
 		g.tf("    }\n}\n\n")
 	}
 	g.tf("// %s carries the buffers' Span views. An extension on `ref this` is how\n", buffersClass)
@@ -352,8 +396,10 @@ func (g *gen) emitBuffers() {
 			g.tf("\n")
 		}
 		name := bufferName(n)
+		first := bufferFirstField(n)
 		g.tf("    public static Span<T> AsSpan<T>(ref this %s<T> buffer) where T : unmanaged\n    {\n", name)
-		g.tf("        return MemoryMarshal.CreateSpan(ref buffer.E0, %s<T>.Capacity);\n    }\n", name)
+		g.tf("        return MemoryMarshal.CreateSpan(ref buffer.%s, %s<T>.Capacity);\n", first, name)
+		g.tf("    }\n")
 	}
 	g.tf("}\n\n")
 }

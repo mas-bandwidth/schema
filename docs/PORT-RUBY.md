@@ -124,9 +124,11 @@ is what holds a value to its width.
 | `if` / `else` branches (§4.4) | both sides' fields are stored; a successful read sets the untaken side to its zero values, not its defaults (SPEC §5) | both at their defaults |
 
 **Enums are plain `Integer` constants.** An enum is a module of integer
-constants, one per variant spelled as the schema spells it, from 1, beside
-`None = 0` and `Max`, the spellings every leg uses (SPEC §4.2), with a frozen
-name table. It is not a Ruby `Enum` (there is no such built-in) and not an
+constants, one per variant from 1 (`VariantConstant`: the schema's spelling
+when it starts with an uppercase ASCII letter, otherwise `ir.GoExportName` as
+union tag modules spell theirs, while `NAMES` keeps the schema's exact
+variant spelling), beside `None = 0` and `Max`, the spellings every leg uses
+(SPEC §4.2), with a frozen name table. It is not a Ruby `Enum` (there is no such built-in) and not an
 object per variant, both of which cost construction and comparison on a hot
 path. A read refuses a value above `Max` (SPEC §4.2: no unnamed enum value
 exists), so a plain `Integer` never holds one either. A flags set is a module
@@ -375,8 +377,10 @@ and `TestRubySkeleton` turns each off in turn and requires its case to pass):
 - **Constant names must be valid Ruby constants.** A type, table, union,
   enum, flags set or `const` (a module constant, THE VALUE MAPPING) must start
   with an uppercase ASCII letter and otherwise use only letters, digits and
-  `_`; one that does not is refused by name. An enum or flags variant is also a
-  constant, so it takes the same rule. The spellings `None` and `Max` are
+  `_`; one that does not is refused by name. An enum or flags variant becomes a constant on its module (`VariantConstant`),
+  which must start with an uppercase ASCII letter (`_foo` is refused by name)
+  and must not collide with another variant's constant or the module's own
+  (`None`, `Max`, `Count`, `NAMES`). The spellings `None` and `Max` are
   already refused by the checker (they are every enum's own names).
 - **A declaration named like a core constant or a generated runtime name** is
   refused by name: every top-level constant of either pinned interpreter
@@ -392,8 +396,12 @@ and `TestRubySkeleton` turns each off in turn and requires its case to pass):
   member (`read`, `read_bits`, `write`, `load`, `save`, `descriptor`, `initialize`,
   `inspect`, `hash`, `class`, `freeze`, `dup`, `clone`, `send`,
   `method`) is refused by name (`object_id` is carried because the shared corpus spells it in `examples/Types.schema` and `tables/block/Render.schema`, and generated code uses `equal?` rather than `object_id`); `eql?` is a member too, but no
-  schema identifier can spell it. A union arm takes the same rule and one
-  more: it may not be `type`, the union's arm number. A field or arm spelled
+  schema identifier can spell it. A union arm takes the members a generated
+  union class defines (`type`, the union's arm number, `read`, `read_bits`,
+  `write`, `initialize`, `inspect`, `hash`, `class`, `freeze`, `dup`, `clone`,
+  `send`, `method`); `load`, `save` and `descriptor` are table members, not
+  union members, so the `save` arm of `tables/messages/Messages.schema` and
+  `test/tables/M1.schema` carries as written. A field or arm spelled
   like a Ruby keyword is carried (the field access rule above); `class`
   is refused as a generated member, not as a keyword. The emitter holds the list
   (`generatedMembers`); the table layers claim their runtime's names in

@@ -163,7 +163,7 @@ func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 func TestMapCarriers(t *testing.T) {
 	// squirrel registers from compiler/target_squirrel_maps.go, which carries
 	// no build tag, so it is a carrier in every build.
-	want := withPythonMapLeg(withMooLeg(withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel", "unity"})))
+	want := withPythonMapLeg(withMooLeg(withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "ruby", "rust", "squirrel", "unity"})))
 	if !slices.Equal(pythonMapLegOrdered(gooseLegOrdered(mapTargets)), want) {
 		t.Fatalf("mapTargets = %v, want %v", mapTargets, want)
 	}
@@ -200,7 +200,7 @@ func pythonMapLegSpelled(s string) string {
 	if !pythonMapLegBuilt() {
 		return s
 	}
-	return strings.Replace(s, " rust, ", " python, rust, ", 1)
+	return strings.Replace(s, " ruby, ", " python, ruby, ", 1)
 }
 
 // TestMapFreeUnitIsUntouched: a unit that declares no map generates exactly
@@ -228,7 +228,7 @@ func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{pythonMapLegSpelled(mooLegSpelled(gooseLegSpelled("a map is c, cpp, cs, dart, elixir, go, java, js, lobster, lua, luau, rust, squirrel and unity only today"))), "Fleet.ships", "--lang cpp", "--lang squirrel", "--lang unity"} {
+	for _, want := range []string{pythonMapLegSpelled(mooLegSpelled(gooseLegSpelled("a map is c, cpp, cs, dart, elixir, go, java, js, lobster, lua, luau, ruby, rust, squirrel and unity only today"))), "Fleet.ships", "--lang cpp", "--lang squirrel", "--lang unity"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

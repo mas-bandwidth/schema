@@ -185,6 +185,9 @@ jobs:
 
       # The pinned formatter `make test-java` and the java negative controls require (make/java.mk).
       - uses: ./.github/actions/google-java-format
+      # The Ruby pins `make test-ruby` requires (make/ruby-toolchain.mk:
+      # two CRuby interpreters, RuboCop, Steep and RBS), cached under the pins.
+      - uses: ./.github/actions/ruby
       # The moo pin `make test-moo` requires (make/moo.mk), built once per
       # runner image and cached under the pin.
       - uses: ./.github/actions/moo
@@ -440,6 +443,9 @@ jobs:
 
       # The pinned formatter `make test-java` and the java negative controls require (make/java.mk).
       - uses: ./.github/actions/google-java-format
+      # The Ruby pins `make test-ruby` requires (make/ruby-toolchain.mk:
+      # two CRuby interpreters, RuboCop, Steep and RBS), cached under the pins.
+      - uses: ./.github/actions/ruby
       # The moo pin `make test-moo` requires (make/moo.mk), built once per
       # runner image and cached under the pin.
       - uses: ./.github/actions/moo
@@ -628,6 +634,9 @@ jobs:
 
       # The pinned formatter `make test-java` and the java negative controls require (make/java.mk).
       - uses: ./.github/actions/google-java-format
+      # The Ruby pins `make test-ruby` requires (make/ruby-toolchain.mk:
+      # two CRuby interpreters, RuboCop, Steep and RBS), cached under the pins.
+      - uses: ./.github/actions/ruby
       # The moo pin `make test-moo` requires (make/moo.mk), built once per
       # runner image and cached under the pin.
       - uses: ./.github/actions/moo

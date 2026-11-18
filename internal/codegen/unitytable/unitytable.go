@@ -519,6 +519,8 @@ internal sealed class _R
     public TableWire.Verdict Verdict;
     internal bool Damaged = false;
     internal int KindChanged = 0;
+    internal int Substituted = 0;
+    internal bool Empty = false;
     public ulong LayoutHash = 0;
 }
 
@@ -678,11 +680,13 @@ public sealed class TableFieldInfo
     public int ArrayBound;
     public int ElemWidth;
     public bool HasRange;
+    public bool HasFloatRange = false;
     public double RangeMin;
     public double RangeMax;
     public long EnumMax;
     public Func<ulong, string> EnumName;
     public Func<ulong, ulong> VariantId;
+    public Func<ulong, bool> EnumDeprecated = null;
     public string KeyTypeName;
     public Func<ulong, string> KeyName;
     public Func<ulong, ulong> KeyId;

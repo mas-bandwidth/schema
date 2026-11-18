@@ -241,11 +241,19 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
 
     static bool RetainInRef(ref RetainIn s, bool zero)
     {
-        if (!s.R.Ref(out ulong reference, out ulong id) || reference == 0 && !zero || reference != 0 && (id == 0 || RetainReserved(id)))
+        if (!s.R.Ref(out ulong reference, out ulong id) || reference == 0 && !zero || reference != 0 && RetainReserved(id))
         {
             return false;
         }
-        s.Fixed(id, 8);
+        if (reference == 0)
+        {
+            s.Fixed(0, 1);
+        }
+        else
+        {
+            s.Fixed(1, 1);
+            s.Fixed(id, 8);
+        }
         return true;
     }
 
@@ -270,7 +278,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
                 {
                     int mark = s.R.Offset;
                     if (!s.R.Var(out ulong field)) { return false; }
-                    if (field == 0) { s.Fixed(0, 8); break; }
+                    if (field == 0) { s.Fixed(0, 1); break; }
                     s.R.Offset = mark;
                     if (!RetainInRef(ref s, false) || s.R.Offset >= end) { return false; }
                     byte fieldKind = s.R.Byte();
@@ -504,9 +512,15 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
 
     static bool RetainOutRef(ref RetainOut s, ref RetainIds ids)
     {
+        if (!s.R.Has(1)) { return false; }
+        if (s.R.Byte() == 0)
+        {
+            s.Var(0);
+            return true;
+        }
         if (!s.R.Has(8)) { return false; }
         ulong id = s.R.Fixed(8);
-        s.Var(id == 0 ? 0 : ids.Record(id));
+        s.Var(ids.Record(id));
         return !ids.Lost && !ids.Overflow;
     }
 
@@ -541,10 +555,8 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             case 13:
                 for (;;)
                 {
-                    if (!s.R.Has(8)) { return false; }
-                    ulong id = s.R.Fixed(8);
-                    if (id == 0) { s.Var(0); break; }
-                    s.R.Offset -= 8;
+                    if (!s.R.Has(1)) { return false; }
+                    if (s.R.Buffer[s.R.Offset] == 0) { s.R.Offset++; s.Var(0); break; }
                     if (!RetainOutRef(ref s, ref ids) || !s.R.Has(1)) { return false; }
                     byte field = s.R.Byte();
                     s.Byte(field);
@@ -606,11 +618,10 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             case 16:
                 return RetainOutFrame(ref s, ref ids, kind, depth + 1);
             case 15:
-                if (!s.R.Has(8)) { return false; }
-                ulong arm = s.R.Fixed(8);
-                s.R.Offset -= 8;
+                if (!s.R.Has(1)) { return false; }
+                bool armZero = s.R.Buffer[s.R.Offset] == 0;
                 if (!RetainOutRef(ref s, ref ids)) { return false; }
-                if (arm == 0) { return true; }
+                if (armZero) { return true; }
                 if (!s.R.Has(1)) { return false; }
                 byte armKind = s.R.Byte();
                 s.Byte(armKind);

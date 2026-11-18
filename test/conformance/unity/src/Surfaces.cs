@@ -75,6 +75,8 @@ namespace SchemaUnityConformance
         {
             if (buf is byte[] ba) { return ba.Length; }
             if (buf is Array arr) { return arr.Length; }
+            FieldInfo capField = buf.GetType().GetField("Capacity", BindingFlags.Public | BindingFlags.Static);
+            if (capField != null) { return (int)capField.GetRawConstantValue(); }
             return buf.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance).Length;
         }
 

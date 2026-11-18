@@ -41,7 +41,7 @@ func (m *rbModule) emitEnum(d *ir.Enum) {
 		if i < len(d.VariantDocs) && d.VariantDocs[i] != "" {
 			m.printf("%s", docComment(d.VariantDocs[i], "    ", "#"))
 		}
-		m.line("    %s = %d", v, i+1)
+		m.line("    %s = %d", VariantConstant(v), i+1)
 	}
 	m.line("    Max = %d", d.Max)
 	m.printf("    NAMES = { 0 => \"None\"")
@@ -62,7 +62,7 @@ func (m *rbModule) emitFlags(d *ir.Flags) {
 		if i < len(d.VariantDocs) && d.VariantDocs[i] != "" {
 			m.printf("%s", docComment(d.VariantDocs[i], "    ", "#"))
 		}
-		m.line("    %s = 1 << %d", v, i)
+		m.line("    %s = 1 << %d", VariantConstant(v), i)
 	}
 	m.line("    Count = %d", len(d.Variants))
 	if len(d.Variants) == 0 {

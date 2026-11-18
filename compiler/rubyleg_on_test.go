@@ -1,5 +1,3 @@
-//go:build schema_leg_ruby
-
 // The Ruby packet wire through the compiler's driver (docs/plans/ruby-leg.md,
 // R3 and R4), in a build with the schema_leg_ruby tag:
 // `go test -tags schema_leg_ruby ./compiler -run Ruby` (make test-ruby).
@@ -13,6 +11,10 @@ import (
 
 // TestRubyTargetIsRegistered: the tagged build carries the ruby target,
 // registered from its own init, with its table carries set registered empty.
+func init() {
+	nonGoCarriers["ruby"] = CarryConstructs()
+}
+
 func TestRubyTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "ruby") {

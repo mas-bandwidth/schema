@@ -846,7 +846,10 @@
     class JsonScanner
       @max_key: untyped
       @pos: untyped
+      @raw: untyped
       @text: untyped
+      def hex_val: (untyped) -> untyped
+      def match_kw: (untyped) -> untyped
       def fail_scan: () -> untyped
       def initialize: (untyped, untyped) -> void
       def peek: () -> untyped

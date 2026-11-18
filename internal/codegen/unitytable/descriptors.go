@@ -605,7 +605,22 @@ func (c *descCtx) wireColumns(f *ir.Field) string {
 		owner := c.owner.DeclaredName() + "." + f.Name
 		fmt.Fprintf(&b, ", NonFiniteField = %q, NonFiniteReason = %q", owner, "non_finite_float: "+owner)
 	}
-	if kind == tkBool || isEnumRef(f.Type) {
+	if kind == tkBool {
+		return b.String()
+	}
+	if isEnumRef(f.Type) {
+		if en, ok := f.Type.Ref.(*ir.Enum); ok {
+			var depConds []string
+			for i := range en.Variants {
+				if enumVariantDeprecated(en, i) {
+					depConds = append(depConds, fmt.Sprintf("v == %dUL", i+1))
+				}
+			}
+			if len(depConds) > 0 {
+				fmt.Fprintf(&b, ", EnumDeprecated = delegate (ulong v) { return %s; }", strings.Join(depConds, " || "))
+				fmt.Fprintf(&b, ", WriteValidRaw = delegate (ulong v) { return v <= %dUL && !(%s); }", len(en.Variants), strings.Join(depConds, " || "))
+			}
+		}
 		return b.String()
 	}
 	if f.HasIntRange {
@@ -637,6 +652,7 @@ func (c *descCtx) wireColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", WriteValidRaw = delegate (ulong raw) { return raw <= %dUL; }", high)
 	}
 	if f.HasFloatRange {
+		b.WriteString(", HasFloatRange = true")
 		st := scalarStorageType(f.Type)
 		val := strings.TrimSuffix(strings.TrimPrefix(csRawSet(c.pkg, "v", "raw", f.Type), "v = "), ";")
 		lit := formatFloat64Lit

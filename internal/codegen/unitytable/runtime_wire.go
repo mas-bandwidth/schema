@@ -1667,6 +1667,23 @@ internal static partial class TableWire
         widened = entry.Shape.Elem == elem ? Widen(entry.Kind, mine) : entry.Kind == mine && mine == 14 && Widen(entry.Shape.Elem, elem);
         return entry.Kind == mine && entry.Shape.Elem == elem || widened;
     }
+    static bool MessageShapeEqual(TableMessageShape a, TableMessageShape b)
+    {
+        if (ReferenceEquals(a, b)) { return true; }
+        if (a == null || b == null) { return false; }
+        return a.Packing == b.Packing && a.Elem == b.Elem && a.Bits == b.Bits &&
+            a.Min == b.Min && a.Max == b.Max && a.Base == b.Base &&
+            TableFloatToBits(a.QMin) == TableFloatToBits(b.QMin) &&
+            TableFloatToBits(a.QMax) == TableFloatToBits(b.QMax) &&
+            TableFloatToBits(a.QRes) == TableFloatToBits(b.QRes) &&
+            a.Steps == b.Steps && MessageShapeEqual(a.Inner, b.Inner);
+    }
+    static bool MessageEntryMatchesOwn(TableMessageEntry entry, int slot)
+    {
+        if (slot <= 0 || slot > tableOwnVocabulary.Entries.Length) { return false; }
+        TableMessageEntry own = tableOwnVocabulary.Entries[slot - 1];
+        return entry.Id == own.Id && entry.Kind == own.Kind && MessageShapeEqual(entry.Shape, own.Shape);
+    }
     static bool MessageReadBody(ref BitReader r, MessageRead d, object value, TableTypeInfo type, int depth = 0)
     {
         if (depth > 128) { return false; }
@@ -1692,8 +1709,12 @@ internal static partial class TableWire
                 if (same) { return false; }
                 d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue;
             }
-            if (same && field.Ordinal <= last) { return false; }
-            last = field.Ordinal;
+            bool exact = same && MessageEntryMatchesOwn(entry, field.MessageSlot);
+            if (exact)
+            {
+                if (field.Ordinal <= last) { return false; }
+                last = field.Ordinal;
+            }
             if (!MessageCompatible(entry, field, out bool widened))
             { return Fail(d.Report, "kind_mismatch"); }
             // §3.3 (c): a writer elides a union FIELD at None at every build,
@@ -1701,38 +1722,51 @@ internal static partial class TableWire
             // announced it. A None element of an array of unions is positional.
             if (entry.Kind == 15 && !field.IsArray && !field.Required)
             { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
-            if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
+            int substitutedBefore = d.Report.Substituted;
+            d.Report.Empty = false;
+            if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth, exact)) { return false; }
+            bool empty = d.Report.Empty;
             if (widened && !field.MapKey) { d.Report.Widened++; }
             if (field.Optional && value != null) { field.SetPresent(value, true); }
-            if (same && value != null && MessageAtDefault(value, field)) { return false; }
+            if (exact && !widened && value != null && !field.Optional && !field.Required && d.Report.Substituted == substitutedBefore && MessageAtDefault(value, field, empty)) { return false; }
         }
     }
     // MessageAtDefault is the message writer's elision (MessageRides) of a
     // field that is neither optional nor required, whatever its guard says.
-    static bool MessageAtDefault(object value, TableFieldInfo f)
+    static bool MessageAtDefault(object value, TableFieldInfo f, bool empty)
     {
         if (f.Optional || f.Required) { return false; }
-        if (f.Counted)
+        if (f.KeyId != null) { return empty; }
+        if (f.Kind == 12 || (f.IsArray && f.GetBuffer != null && f.Counted && f.ArrayMin == 0))
         {
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
             return n == 0;
         }
-        if (!f.IsArray) { return DefaultElement(value, f, 0); }
-        if (f.Kind == 13 && f.KeyId == null) { return false; }
+        if (f.Counted)
+        {
+            int n = f.GetCount(value);
+            return n == 0 || (f.ArrayMin > 0 && n == f.ArrayMin && empty);
+        }
+        if (!f.IsArray)
+        {
+            if (f.Kind == 13) { return empty; }
+            return DefaultElement(value, f, 0);
+        }
+        if (f.Kind == 13) { return false; }
         for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }
         return true;
     }
-    static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
+    static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0, bool exact = false)
     {
         if (f.IsArray && f.GetBuffer != null)
         {
             if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128Value raw) || !r.Align()) { return false; }
-            ulong n = (ulong)raw;
+            ulong n = (ulong)raw + shape.Min;
             if (n > (ulong)((r.End - r.At) / 8)) { return false; }
-            if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+            if (n < (ulong)f.ArrayMin || n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
             int kept = (int)n;
-            if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
+            if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); if (f.SetCount != null) { f.SetCount(value, kept); } }
             r.At += (long)n * 8; return true;
         }
         if (kind == 12)
@@ -1751,13 +1785,24 @@ internal static partial class TableWire
             {
                 Span<ulong> few = stackalloc ulong[16];
                 int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                int lastSlot = 0;
                 for (ulong i = 0; i < n; i++)
                 {
                     if (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id)) { return false; }
                     int slot = FindVariant(f, key.Id, true);
                     if (slot == 0) { d.Report.Unknown++; }
-                    if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, slot != 0, depth)) { return false; }
+                    bool knownSlot = slot > 0 && slot <= f.ArrayBound;
+                    if (exact && knownSlot) { if (slot <= lastSlot) { return false; } lastSlot = slot; }
+                    long elemStart = r.At;
+                    int slotSub = d.Report.Substituted;
+                    if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, knownSlot, depth)) { return false; }
+                    if (exact && knownSlot && value != null && d.Report.Substituted == slotSub)
+                    {
+                        bool atDef = shape.Elem == 13 ? (r.At - elemStart == d.Vocabulary.RefBits) : (shape.Inner == null || shape.Inner.Packing != 2) && DefaultElement(value, f, slot - 1);
+                        if (atDef) { return false; }
+                    }
                 }
+                d.Report.Empty = n == 0;
                 return true;
             }
             int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
@@ -1769,14 +1814,36 @@ internal static partial class TableWire
             // its NaN or infinity refuses the batch as a kept one does.
             bool tested = shape.Elem == 11 || shape.Elem == 10 && shape.Inner.Packing != 2;
             ulong walk = run >= 0 && !tested ? (ulong)kept : n;
+            bool allBirth = exact && f.Counted && f.ArrayMin > 0 && n == (ulong)f.ArrayMin && !f.HasFloatRange && (shape.Inner == null || shape.Inner.Packing != 2);
             for (ulong i = 0; i < walk; i++)
             {
+                long elemStart = r.At;
+                bool defRef = false;
+                if (allBirth && (shape.Elem == 30 || shape.Elem == 15))
+                {
+                    BitReader peek = r;
+                    defRef = peek.Get(d.Vocabulary.RefBits, out UInt128Value pr) && pr == 0;
+                }
                 if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept, depth)) { return false; }
+                if (allBirth && value != null)
+                {
+                    if (shape.Elem == 13) { allBirth = (r.At - elemStart) == d.Vocabulary.RefBits; }
+                    else if (shape.Elem == 30 || shape.Elem == 15) { allBirth = defRef; }
+                    else { allBirth = DefaultElement(value, f, (int)i); }
+                }
             }
+            d.Report.Empty = allBirth;
             if (walk < n && !r.Skip((long)(n - walk) * run)) { return false; }
             if (f.Counted && value != null) { ResetCountedTail(value, f, previous, kept); }
             if (f.Optional && value != null) { f.SetPresent(value, true); }
             return true;
+        }
+        if (kind == 13)
+        {
+            long bodyStart = r.At;
+            bool ok = MessageReadBody(ref r, d, value != null ? f.GetChild(value, 0) : null, f.Table, depth + 1);
+            d.Report.Empty = (r.At - bodyStart) == d.Vocabulary.RefBits;
+            return ok;
         }
         return MessageReadElement(ref r, d, value, f, 0, kind, shape, true, depth);
     }
@@ -1790,8 +1857,11 @@ internal static partial class TableWire
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
             int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
-            if (reference != 0 && variant == 0) { d.Report.Unknown++; }
-            if (keep) { f.SetRaw(value, index, (ulong)variant); }
+            ulong raw = (ulong)variant;
+            if (reference != 0 && variant == 0) { d.Report.Unknown++; d.Report.Substituted++; }
+            else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant))
+            { d.Report.Substituted++; raw = f.IsArray ? 0ul : f.DefaultRaw; }
+            if (keep) { f.SetRaw(value, index, raw); }
             return true;
         }
         if (kind == 15)
@@ -1803,7 +1873,7 @@ internal static partial class TableWire
             if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
             int tag = FindVariant(f, entry.Id, false);
             if (tag == 0)
-            { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.Unknown++; return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
+            { if (union != null) { f.Arms.SetTag(union, 0); } d.Report.Unknown++; d.Report.Substituted++; return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
             TableFieldInfo arm = f.Arms.Arms[tag].Field;
             bool widened = false;
             if (arm == null ? entry.Kind != 32 : !MessageCompatible(entry, arm, out widened))
@@ -1832,8 +1902,15 @@ internal static partial class TableWire
             if (keep) { f.SetRaw(value, index, raw); }
             return true;
         }
-        if (kind == 11 && NonFiniteBits(11, (ulong)bits)) { NonFinite(f, d.Report); return true; }
-        if (kind == 1 || kind == 11)
+        if (kind == 11)
+        {
+            if (NonFiniteBits(11, (ulong)bits)) { NonFinite(f, d.Report); return true; }
+            ulong raw64 = (ulong)bits;
+            if (f.RangeRaw != null) { raw64 = f.RangeRaw(raw64, d.Report); if (d.Report.Refused) { return false; } }
+            if (keep) { f.SetRaw(value, index, raw64); }
+            return true;
+        }
+        if (kind == 1)
         { if (keep) { f.SetRaw(value, index, (ulong)bits); } return true; }
         UInt128Value stored = bits; bool negative = false, above = false;
         if (shape.Packing == 1)
@@ -1881,7 +1958,7 @@ internal static partial class TableWire
     }
     public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, _R report, out int count)
     {
-        count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+        count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null; report.Substituted = 0; report.Empty = false;
         if (type.Integrity && bytes.Length > 0 && bytes[0] == 2)
         {
             if (bytes.Length < 6 || !IntegrityRead(ref bytes)) { return IntegrityDamage(report); }
@@ -2135,7 +2212,15 @@ internal static partial class TableWire
     // under a +0 default rides and reads back as -0.
     static bool DefaultRaw(ulong raw, TableFieldInfo f)
     {
-        if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
+        if (f.Kind == 10)
+        {
+            if (f.HasFloatRange) { return TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw); }
+            return (uint)raw == (uint)f.DefaultRaw;
+        }
+        if (f.Kind == 11 && f.HasFloatRange)
+        {
+            return TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw);
+        }
         return raw == f.DefaultRaw;
     }
     static bool DefaultElement(object value, TableFieldInfo f, int i)
@@ -2647,8 +2732,10 @@ internal static partial class TableWire
         {
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
             int variant = reference == 0 ? 0 : FindVariant(f, id, false);
-            if (reference != 0 && variant == 0) { report.Unknown++; if (r.Retain != null) { report.RetainLost++; } }
             raw = (ulong)variant;
+            if (reference != 0 && variant == 0) { report.Unknown++; if (r.Retain != null) { report.RetainLost++; } }
+            else if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant))
+            { report.Substituted++; raw = f.IsArray ? 0ul : f.DefaultRaw; }
         }
         else
         {
@@ -3075,7 +3162,7 @@ internal static partial class TableWire
         if (retain != null) { retain.Reset(); }
         if (report == null) { report = IgnoredReport(); }
         type.Reset(value);
-        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null; report.Substituted = 0; report.Empty = false;
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged, retain); }
         if (bytes[0] != 1)
         {

@@ -307,7 +307,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 				fmt.Fprintf(&b, "\n  module %s\n", d.Name)
 				b.WriteString("    None: Integer\n")
 				for _, v := range d.Variants {
-					fmt.Fprintf(&b, "    %s: Integer\n", v)
+					fmt.Fprintf(&b, "    %s: Integer\n", ruby.VariantConstant(v))
 				}
 				b.WriteString("    Max: Integer\n")
 				b.WriteString("    NAMES: ::Hash[Integer, String]\n")
@@ -315,7 +315,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			case *ir.Flags:
 				fmt.Fprintf(&b, "\n  module %s\n", d.Name)
 				for _, v := range d.Variants {
-					fmt.Fprintf(&b, "    %s: Integer\n", v)
+					fmt.Fprintf(&b, "    %s: Integer\n", ruby.VariantConstant(v))
 				}
 				b.WriteString("    Count: Integer\n")
 				b.WriteString("    NAMES: ::Hash[Integer, String]\n")
