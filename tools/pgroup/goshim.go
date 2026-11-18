@@ -47,6 +47,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -243,10 +244,8 @@ func testFlag(args []string, names ...string) bool {
 		}
 		name := strings.TrimLeft(a, "-")
 		name = strings.TrimSuffix(name, "=true")
-		for _, n := range names {
-			if name == n {
-				return true
-			}
+		if slices.Contains(names, name) {
+			return true
 		}
 	}
 	return false
