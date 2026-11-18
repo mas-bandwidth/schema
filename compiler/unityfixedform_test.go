@@ -828,7 +828,7 @@ internal static class Program
 	cmd.Dir = dir
 	cmd.Env = h.Env()
 	if msg, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("dotnet build the probe host: %v\n%s", err, msg)
+		return "", fmt.Errorf("dotnet build the probe host: %w\n%s", err, msg)
 	}
 	return filepath.Join(out, "fixedhost.dll"), nil
 }

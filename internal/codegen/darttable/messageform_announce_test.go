@@ -545,7 +545,8 @@ func paddedAnnouncementTrailer(prefix []byte, baseIDs []uint64, totalCount int) 
 		body = append(body, ir.TableKindTable)
 		body = append(body, lebBytes(uint64(len(inner)))...)
 		body = append(body, inner...)
-		prefix = append(body, 0)
+		body = append(body, 0)
+		prefix = body
 	}
 	out := make([]byte, 0, len(prefix)+totalCount*8+8)
 	out = append(out, prefix...)

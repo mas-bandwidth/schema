@@ -503,15 +503,6 @@ func (g *fgen) readClose() {
 	}
 }
 
-// readDrop abandons a window's pending advance instead of emitting it. Legal
-// at exactly one place — the end of Read<name>Flat, where the only statement
-// left is `return true`: that entry answers a verdict, not a length, so
-// nothing downstream can observe the cursor. Read<name>FlatBits settles the
-// window and returns the position.
-func (g *fgen) readDrop() {
-	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
-}
-
 // readRefuse emits a value-refusal guard without settling the read window.
 // cond must test decoded values (v, bg) and never the cursor — the read
 // window's whole safety argument rests on it.

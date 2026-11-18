@@ -119,11 +119,12 @@ func (g *gen) emitFixedValues(b *strings.Builder, names []string) {
 			}
 		}
 		fmt.Fprintf(b, "    fn from(value: &%s) -> Self {\n", name)
-		if len(compound) == 0 {
+		switch {
+		case len(compound) == 0:
 			b.WriteString("        Self {\n")
-		} else if len(direct) == 0 {
+		case len(direct) == 0:
 			b.WriteString("        let mut row = Self::default();\n")
-		} else {
+		default:
 			b.WriteString("        let mut row = Self {\n")
 		}
 		for _, f := range direct {

@@ -137,9 +137,7 @@ end
 	for _, c := range cases {
 		inputs[c.name] = []byte(c.text)
 	}
-	start := time.Now()
 	lines := runLongNumberProbe(t, dir, "main.moo", inputs)
-	elapsed := time.Since(start)
 	if len(lines) != 2*len(cases) {
 		t.Fatalf("the probe printed %d lines for %d cases:\n%s", len(lines), len(cases), strings.Join(lines, "\n"))
 	}
@@ -164,7 +162,6 @@ end
 			t.Errorf("%s: moo read %q, the engine %q", c.name, lines[2*i+1], wantValue)
 		}
 	}
-	t.Logf("three million-digit rows placed in %v", elapsed)
 }
 
 // engineLongNumberValue is the engine's cell values in the probe's spelling.

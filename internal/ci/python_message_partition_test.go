@@ -92,7 +92,7 @@ func pythonMessagePlanCheck(tests []string, makefile []byte) error {
 		}
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			return fmt.Errorf("message row %s: %v", row, err)
+			return fmt.Errorf("message row %s: %w", row, err)
 		}
 		claimants = append(claimants, row)
 		expressions = append(expressions, re)

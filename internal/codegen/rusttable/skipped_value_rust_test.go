@@ -173,11 +173,12 @@ fn main() {
 			t.Fatalf("%s: %v", r.file, err)
 		}
 		var call string
-		if r.form == "json" {
+		switch {
+		case r.form == "json":
 			call = "json_verdict"
-		} else if i == annIdx {
+		case i == annIdx:
 			call = "announce_verdict"
-		} else {
+		default:
 			call = "message_verdict"
 		}
 		fmt.Fprintf(&body, "    println!(\"%d {}\", if %s(&%s) { \"read\" } else { \"refused\" });\n",

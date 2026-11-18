@@ -190,7 +190,8 @@ func runWideRangeHarness(t *testing.T, node, dir, name, source, index string, pr
 	if production {
 		env = append(env, "NODE_ENV=production")
 	}
-	cmd.Env = append(env, "SERIALIZE_JS_INDEX="+index)
+	env = append(env, "SERIALIZE_JS_INDEX="+index)
+	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("node: %v\n%s", err, out)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"maps"
 	"math/big"
@@ -257,7 +258,7 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 			s := sabotages[i-1]
 			dir = filepath.Join(h.tmp, fmt.Sprintf("planted%d", i))
 			planted := maps.Clone(files)
-			next := strings.Replace(string(files[s.file]), s.from, s.to, -1)
+			next := strings.ReplaceAll(string(files[s.file]), s.from, s.to)
 			if next == string(files[s.file]) {
 				t.Fatalf("sabotage %s patched nothing in %s", s.name, s.file)
 			}
@@ -637,7 +638,7 @@ func (h *unityTableHarness) build(project, out, artifacts string, props ...strin
 	cmd.Dir = h.root
 	cmd.Env = h.env
 	if msg, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("dotnet build %s: %v\n%s", project, err, msg)
+		return fmt.Errorf("dotnet build %s: %w\n%s", project, err, msg)
 	}
 	return nil
 }
@@ -657,7 +658,7 @@ func (h *unityTableHarness) run(env []string, args ...string) (string, int) {
 	cmd.Env = append(append([]string(nil), h.env...), env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if exit, ok := err.(*exec.ExitError); ok {
+		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 			return string(out), exit.ExitCode()
 		}
 		h.t.Fatalf("run the driver: %v\n%s", err, out)

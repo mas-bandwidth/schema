@@ -48,14 +48,14 @@ func TestPythonSurfaceBehavior(t *testing.T) {
 			}
 			probe += "\nassert Root.descriptor.forms == " + forms + ", 'selected forms metadata drift'\n"
 			if selection == "wire" || selection == "fixed" {
-				probe = probe + "\nassert Root.block is None and not hasattr(Root, 'block_row'), 'block descriptor leaked'\n"
+				probe += "\nassert Root.block is None and not hasattr(Root, 'block_row'), 'block descriptor leaked'\n"
 			}
 			dir := t.TempDir()
 			pythonWriterTree(t, dir, files)
 			inputs := map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probe)}
 			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
-				if err != nil || string(out) != "surface-ok\n" {
+				if err != nil || out != "surface-ok\n" {
 					t.Fatalf("%s: %v\n%s\n%s", pin, err, out, stderr)
 				}
 			}
@@ -147,7 +147,7 @@ func TestPythonReflectionSurfaceSelection(t *testing.T) {
 			probe += "print('ok')\n"
 			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
-				if err != nil || string(out) != "ok\n" {
+				if err != nil || out != "ok\n" {
 					t.Fatalf("%s %s: %v\n%s", tc.selection, pin, err, stderr)
 				}
 			}

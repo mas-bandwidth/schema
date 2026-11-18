@@ -103,11 +103,12 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 		g.elides = elide
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
-		if elide {
+		switch {
+		case elide:
 			g.pf("%s{start:=r.Bits.Offset;if !tableMessageBody%s(r,&%s,starts,depth+1){return false};if exact&&r.Bits.Offset-start==r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, bad)
-		} else if sink != "" {
+		case sink != "":
 			g.pf("%s{start:=r.Bits.Offset;if !tableMessageBody%s(r,&%s,starts,depth+1){return false};if r.Bits.Offset-start!=r.Vocabulary.RefBits{%s}}\n", ind, f.Type.Name, expr, sinkOff(sink))
-		} else {
+		default:
 			g.pf("%sif !tableMessageBody%s(r,&%s,starts,depth+1){return false}\n", ind, f.Type.Name, expr)
 		}
 	case isUnionRef(f.Type):

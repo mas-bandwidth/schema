@@ -969,7 +969,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
-		elide := atField && !(f.Array == ir.ArrayFixed && isStructRef(f.Type) && !f.Type.Pointer && f.KeyEnum == "")
+		elide := atField && (f.Array != ir.ArrayFixed || !isStructRef(f.Type) || f.Type.Pointer || f.KeyEnum != "")
 		g.emitMessageReadArray(f, mem, ind, elide)
 	case isStructRef(f.Type):
 		elideEmpty := "false"

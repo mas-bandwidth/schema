@@ -328,7 +328,7 @@ func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 	build.Dir = dir
 	out, err := build.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%v\n%s", err, out)
+		return fmt.Errorf("%w\n%s", err, out)
 	}
 	return nil
 }
@@ -338,15 +338,15 @@ func buildWire32Probe(t *testing.T, dir, target, bin string) error {
 func rustLLD() (string, error) {
 	sysroot, err := exec.Command("rustc", "--print", "sysroot").Output()
 	if err != nil {
-		return "", fmt.Errorf("rustc --print sysroot: %v", err)
+		return "", fmt.Errorf("rustc --print sysroot: %w", err)
 	}
 	host, err := exec.Command("rustc", "--print", "host-tuple").Output()
 	if err != nil {
-		return "", fmt.Errorf("rustc --print host-tuple: %v", err)
+		return "", fmt.Errorf("rustc --print host-tuple: %w", err)
 	}
 	lld := filepath.Join(strings.TrimSpace(string(sysroot)), "lib", "rustlib", strings.TrimSpace(string(host)), "bin", "rust-lld")
 	if _, err := os.Stat(lld); err != nil {
-		return "", fmt.Errorf("rust-lld is not in the sysroot: %v", err)
+		return "", fmt.Errorf("rust-lld is not in the sysroot: %w", err)
 	}
 	return lld, nil
 }

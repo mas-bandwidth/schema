@@ -260,7 +260,7 @@ run("w200")
 		if at < 0 || line[at+1:] != wantLine {
 			t.Errorf("%s: Luau %q, want %s", key, line, wantLine)
 		}
-		walks[n] = line[:strings.Index(line, "|")]
+		walks[n], _, _ = strings.Cut(line, "|")
 	}
 	if walks[10] != walks[200] {
 		t.Fatalf("a strict load names the unknown field in %s for 10 records and %s for 200: the walk count grows with the record count", walks[10], walks[200])

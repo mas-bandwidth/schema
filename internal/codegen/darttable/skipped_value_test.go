@@ -94,12 +94,12 @@ func dartSkippedValueRun(t *testing.T, rows []dartSkippedValueRow) map[string]st
 	}
 
 	var body strings.Builder
-	body.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&body, `
   final ann = Uint8List.fromList(%s);
   final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
   final annRep = h.TableReport();
   final announced = h.announceRead(vocab, ann, annRep);
-`, dartBytes(announcement)))
+`, dartBytes(announcement))
 
 	var args []string
 	dir := t.TempDir()

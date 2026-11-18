@@ -232,7 +232,7 @@ func TestRustUnusedIDDiagnosticControls(t *testing.T) {
 		{"nonfinite", "non_finite_float", wire}, {"nonfinite-unused", "wire_damaged", compound}, {"count", "count_over_extent_cap", count},
 	} {
 		var rep tabletext.Report
-		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Root")), tc.wire, &rep); ok || string(tablewire.RefusalReason(err)) != tc.reason {
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Root")), tc.wire, &rep); ok || tablewire.RefusalReason(err) != tc.reason {
 			t.Fatalf("Go %s: %v %+v", tc.name, err, rep)
 		}
 		fmt.Fprintf(&body, "{ let mut r=TableReport::default(); assert!(root_load(&[%s], &mut r).is_none(), %q);\n", rustBytes(tc.wire), tc.name)

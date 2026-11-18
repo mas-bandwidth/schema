@@ -180,10 +180,9 @@ func reachableFromRoots(names []string, parsed map[string]*ast.File, declaration
 					continue
 				}
 				ast.Inspect(node, func(node ast.Node) bool {
-					switch node := node.(type) {
-					case *ast.SelectorExpr:
-						if methods[node.Sel.Name] {
-							addEdge(from, node.Sel.Name)
+					if sel, ok := node.(*ast.SelectorExpr); ok {
+						if methods[sel.Sel.Name] {
+							addEdge(from, sel.Sel.Name)
 						}
 						return true
 					}

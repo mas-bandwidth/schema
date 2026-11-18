@@ -44,7 +44,7 @@ print('collision-public-api')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})
-		if err != nil || strings.TrimSpace(string(out)) != "collision-public-api" {
+		if err != nil || strings.TrimSpace(out) != "collision-public-api" {
 			t.Fatalf("public collision API: %v\n%s\n%s", err, out, stderr)
 		}
 	}

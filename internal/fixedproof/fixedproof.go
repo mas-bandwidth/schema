@@ -13,6 +13,7 @@ package fixedproof
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -1513,11 +1514,10 @@ int main( int argc, char ** argv )
 		}
 		out, err := exec.Command(probeBin, "load", candPath).CombinedOutput()
 		if err != nil {
-			status, ok := err.(*exec.ExitError)
-			if !ok || status.ExitCode() != 4 {
+			if status, ok := errors.AsType[*exec.ExitError](err); !ok || status.ExitCode() != 4 {
 				t.Fatalf("C++ load probe failed without a refusal: %v\n%s", err, out)
 			}
-			return fmt.Errorf("C++ refused: %s", strings.TrimSpace(string(out)))
+			return fmt.Errorf("c++ refused: %s", strings.TrimSpace(string(out)))
 		}
 		return nil
 	}

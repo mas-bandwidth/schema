@@ -1,5 +1,3 @@
-//go:build schema_leg_goose
-
 // The Goose target takes the lock's lineage as data (docs/FIXED-FORM-ALGORITHM.md
 // §5.2, §5.9 #1), generated through the driver and never handed in by the test.
 //

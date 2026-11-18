@@ -1,5 +1,3 @@
-//go:build schema_leg_goose
-
 package compiler
 
 // The Goose PACKET WIRE's carried constructs (docs/PORT-GOOSE.md, THE CARD

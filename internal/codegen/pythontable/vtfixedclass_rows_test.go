@@ -144,14 +144,14 @@ func vtFixedClassRowAnswer(t *testing.T, u *ir.Unit, row vtFixedClassRow, wire [
 	inputs := map[string][]byte{"wire": wire}
 	currentOut, currentErr, currentRun := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)
 	if currentRun != nil {
-		return "", "", fmt.Errorf("%s (current): %v\n%s", row.caseName, currentRun, currentErr)
+		return "", "", fmt.Errorf("%s (current): %w\n%s", row.caseName, currentRun, currentErr)
 	}
 	floorOut, floorErr, floorRun := pyrun.Try(t, pyrun.Floor(t), dir, "main.py", inputs)
 	if floorRun != nil {
-		return "", "", fmt.Errorf("%s (floor): %v\n%s", row.caseName, floorRun, floorErr)
+		return "", "", fmt.Errorf("%s (floor): %w\n%s", row.caseName, floorRun, floorErr)
 	}
-	current = strings.TrimSpace(string(currentOut))
-	floor = strings.TrimSpace(string(floorOut))
+	current = strings.TrimSpace(currentOut)
+	floor = strings.TrimSpace(floorOut)
 	if current != floor {
 		return "", "", fmt.Errorf("%s: the pinned interpreters disagree: %q vs %q", row.caseName, current, floor)
 	}

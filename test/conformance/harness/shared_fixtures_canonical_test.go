@@ -414,7 +414,7 @@ func idTableSpellings(data []byte) (map[string]bool, error) {
 		seenIDs[id] = true
 	}
 	limit := len(data)
-	if damage, ok := err.(*fixtureDamage); ok {
+	if damage, ok := errors.AsType[*fixtureDamage](err); ok {
 		limit = damage.PrefixEnd
 	}
 	used := map[uint64]bool{}

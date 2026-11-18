@@ -294,14 +294,16 @@ func TestHashIncludesTheCountWord(t *testing.T) {
 			t.Fatalf("%s: the header's own hash 0x%016x is not this build's constant 0x%016x", tc.name, onWire, tc.hash)
 		}
 		// THE RULE, BY NAME: the layout hash is fnv1a64 over the layout's bytes
-		// as written, the 4-byte count included.
-		want := fnv1a64(asWritten)
+		// as written (the 4-byte count included) followed by the v2 definitions
+		// digest (its header here, because plain int32 fields emit no rows).
+		const emptyDefsDigest = "\x00schema-fixed-definitions\x02"
+		want := fnv1a64(append(append([]byte(nil), asWritten...), emptyDefsDigest...))
 		if tc.hash != want {
-			t.Fatalf("%s: the layout hash is fnv1a64 over the layout's bytes as written, the 4-byte count included: constant 0x%016x, recomputed over the %d bytes as written 0x%016x", tc.name, tc.hash, len(asWritten), want)
+			t.Fatalf("%s: the layout hash is fnv1a64 over the layout's bytes as written + definitions digest, the 4-byte count included: constant 0x%016x, recomputed over the %d bytes as written 0x%016x", tc.name, tc.hash, len(asWritten), want)
 		}
 		// AND THE COUNT IS IN THE INPUT: dropping it must move the number, or
 		// "the count is included" is asserted by nothing.
-		if dropped := fnv1a64(asWritten[4:]); dropped == tc.hash {
+		if dropped := fnv1a64(append(append([]byte(nil), asWritten[4:]...), emptyDefsDigest...)); dropped == tc.hash {
 			t.Fatalf("%s: dropping the 4-byte count leaves the hash at 0x%016x, so the count is not in the input", tc.name, dropped)
 		}
 	}

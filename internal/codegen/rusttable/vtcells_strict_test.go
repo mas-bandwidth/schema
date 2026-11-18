@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -158,7 +159,7 @@ func buildVTShapeVectors(t *testing.T, u *ir.Unit) []vtShapeVector {
 			nt = binary.AppendUvarint(nt, uint64(len(r.body)))
 			nt = append(nt, r.body...)
 		}
-		out := append(nodeRef, byte(ir.TableKindString))
+		out := slices.Concat(nodeRef, []byte{byte(ir.TableKindString)})
 		out = binary.AppendUvarint(out, uint64(len(nt)))
 		return append(out, nt...)
 	}

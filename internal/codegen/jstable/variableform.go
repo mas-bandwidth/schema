@@ -939,14 +939,6 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 	g.pf("TableVariableFreeze(TableVariableUnions);\n\n")
 }
 
-// fieldDesc renders one field's descriptor: its property name, its text key,
-// its wire id, its ordinal (the retain path's step, §6.6), the kind its header
-// carries, its shape and the JSON shape its text takes (§16.2), and what the
-// shape needs. An OPTIONAL ?T (§2.3) is its value's descriptor with `opt`.
-func (g *variableGen) fieldDesc(f *ir.Field, ordinal int, guards []guardStep) string {
-	return g.fieldDescNamed(f, f.Name, ordinal, guards, false)
-}
-
 // fieldDescNamed is fieldDesc under the property name the storage holds the
 // value at: the field's own, or "value" for a union arm's field line, whose
 // holder is the arm object { arm, value } (§2.6).

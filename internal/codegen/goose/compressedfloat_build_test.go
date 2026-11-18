@@ -11,15 +11,12 @@ package goose
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
@@ -148,16 +145,6 @@ func refCompressedFloatLine(iv uint32, bits int) string {
 	return fmt.Sprintf("%x %08x", refCompressedFloatWire(iv, bits), refCompressedFloatRead(iv))
 }
 
-// gooseCommand is exec.Command for the processes this gate starts. The gate
-// must run under a plain `go test` (its done-when sets no environment), so it
-// carries its own wall-clock bound instead of the shared slow-test gate.
-func gooseCommand(t *testing.T, name string, args ...string) *exec.Cmd {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	t.Cleanup(cancel)
-	return exec.CommandContext(ctx, name, args...)
-}
-
 // gooseBuildForTest writes files into dir and builds main with `goose build
 // -O2`, answering the executable beside it. cc, when non-empty, is handed to
 // the build as GOOSE_CC (the negative control's flag-forcing wrapper).
@@ -173,7 +160,7 @@ func gooseBuildForTest(t *testing.T, dir string, files map[string][]byte, main, 
 		t.Fatal(why)
 	}
 	exe := strings.TrimSuffix(main, ".goose")
-	build := gooseCommand(t, goose, "build", "-O2", main, "-o", exe)
+	build := gooserun.Command(t, goose, "build", "-O2", main, "-o", exe)
 	build.Dir = dir
 	if cc != "" {
 		build.Env = append(os.Environ(), "GOOSE_CC="+cc)
@@ -206,7 +193,7 @@ func TestGooseCompressedFloatBuildMatchesGo(t *testing.T) {
 	dir := t.TempDir()
 	exe := gooseBuildForTest(t, dir, files, "main.goose", "")
 
-	run := gooseCommand(t, exe)
+	run := gooserun.Command(t, exe)
 	run.Dir = dir
 	var stdout, stderr bytes.Buffer
 	run.Stdout, run.Stderr = &stdout, &stderr

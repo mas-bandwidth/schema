@@ -273,22 +273,18 @@ func TestMooLoadIsOneDecodeFunctional(t *testing.T) {
 	}
 	unknownID := ir.TableWireId("future")
 	accepted := wire
-	start := time.Now()
 	out, err := runMooDeadline(t, g, oneDecodeLoadProbe, map[string][]byte{"wire": accepted}, limit)
 	if err != nil {
 		t.Fatalf("the accepted load did not finish within %s: %v", limit, err)
 	}
-	t.Logf("the accepted 20,000-record load answered in %s", time.Since(start))
 	if want := "read " + fmt.Sprintf("#%016x", unknownID); out != want {
 		t.Fatalf("the accepted load answered %q, want %q", out, want)
 	}
 	refusedWire := outOfRangeLastRecord(t, accepted, ir.TableWireId("ListNode"), ir.TableWireId("value"), 2000000)
-	start = time.Now()
 	out, err = runMooDeadline(t, g, oneDecodeLoadProbe, map[string][]byte{"wire": refusedWire}, limit)
 	if err != nil {
 		t.Fatalf("the refused load did not finish within %s: %v", limit, err)
 	}
-	t.Logf("the refused 20,000-record load answered in %s", time.Since(start))
 	if want := "refused out_of_range value"; out != want {
 		t.Fatalf("the refused load answered %q, want %q", out, want)
 	}

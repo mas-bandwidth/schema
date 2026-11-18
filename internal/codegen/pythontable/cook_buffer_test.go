@@ -55,7 +55,7 @@ print("OK")
 				interpreter = pyrun.Interpreter
 			}
 			_, stderr, err := pyrun.Try(t, interpreter(t), copyDir, "main.py", map[string][]byte{"main.py": []byte(probe), "sample": oracle.cooks["full"][0]})
-			if err == nil || !(strings.Contains(stderr, "AssertionError") || strings.Contains(stderr, "BufferError")) {
+			if err == nil || (!strings.Contains(stderr, "AssertionError") && !strings.Contains(stderr, "BufferError")) {
 				t.Errorf("%s: buffer control did not fail by name: %v\n%s", name, err, stderr)
 			}
 		}

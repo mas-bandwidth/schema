@@ -329,9 +329,10 @@ func TestPythonWireFuzzVerdictPipe(t *testing.T) {
 	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		for _, arm := range []string{"plain", "mixed-builder", "retain"} {
 			args := []string{"wire-fuzz", "--driver", fmt.Sprintf("%s -W error -I -B %s %s", python, filepath.Join(dir, "wirefuzz.py"), generated), "--seed", "1", "--n", "200", "--failed", filepath.Join(dir, "failed.bin")}
-			if arm == "mixed-builder" {
+			switch arm {
+			case "mixed-builder":
 				args = append(args, "--mixed-builder")
-			} else if arm == "retain" {
+			case "retain":
 				args = append(args, "--retain")
 			}
 			cmd := exec.Command(harness, args...)

@@ -229,23 +229,25 @@ func maskCpp(text string) string {
 				out[i] = ' '
 			}
 		case stringLiteral:
-			if c == '\\' && i+1 < len(b) {
+			switch {
+			case c == '\\' && i+1 < len(b):
 				out[i], out[i+1] = ' ', ' '
 				i++
-			} else if c == '"' {
+			case c == '"':
 				out[i] = ' '
 				state = normal
-			} else if c != '\n' {
+			case c != '\n':
 				out[i] = ' '
 			}
 		case charLiteral:
-			if c == '\\' && i+1 < len(b) {
+			switch {
+			case c == '\\' && i+1 < len(b):
 				out[i], out[i+1] = ' ', ' '
 				i++
-			} else if c == '\'' {
+			case c == '\'':
 				out[i] = ' '
 				state = normal
-			} else if c != '\n' {
+			case c != '\n':
 				out[i] = ' '
 			}
 		}

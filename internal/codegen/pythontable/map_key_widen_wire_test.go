@@ -20,7 +20,7 @@ func mapKeyWireProbe(t *testing.T, u *ir.Unit, root string, wire, canonical []by
 	var report tabletext.Report
 	ok, err := tablewire.Decode(m, value, wire, &report)
 	if why != "" {
-		if ok || string(tablewire.RefusalReason(err)) != why {
+		if ok || tablewire.RefusalReason(err) != why {
 			t.Fatalf("Go refusal: %v %+v, want %s", err, report, why)
 		}
 	} else {

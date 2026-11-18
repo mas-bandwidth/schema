@@ -38,7 +38,7 @@ func TestPythonBlockBuilder(t *testing.T) {
 	writeTree(t, dir, files)
 
 	roots := []string{"RenderFrame", "PaddedFrame", "PaddedRow"}
-	probe := pyrun.ImportPrelude + fmt.Sprintf(`import blockdemo
+	probe := pyrun.ImportPrelude + `import blockdemo
 from blockdemo._schema import blockbuild as BB
 from blockdemo import InvalidValue
 
@@ -61,7 +61,7 @@ except InvalidValue as err:
     print("refused", err.path)
 else:
     raise SystemExit("Begin accepted a count past the declared maximum")
-`)
+`
 	probeFile := "main.py"
 	if err := os.WriteFile(filepath.Join(dir, probeFile), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)

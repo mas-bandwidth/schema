@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -131,7 +132,7 @@ func TestFixedDeadBytesUseWriterLayout(t *testing.T) {
 	record := make([]byte, 8)
 	binary.LittleEndian.PutUint64(record, entry.Wire)
 	record = append(record, body...)
-	clean := append(header, record...)
+	clean := slices.Concat(header, record)
 	src := fmt.Sprintf(`package probe
  import ("reflect"; "testing")
  func TestWriterDead(t *testing.T) {

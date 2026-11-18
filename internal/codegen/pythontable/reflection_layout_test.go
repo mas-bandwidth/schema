@@ -78,7 +78,7 @@ func reflectionLayoutWant(u *ir.Unit) string {
 	cmp := func(a, b *ir.Struct) int { return strings.Compare(a.Name, b.Name) }
 	slices.SortFunc(types, cmp)
 	slices.SortFunc(tables, cmp)
-	records := append(types, tables...)
+	records := slices.Concat(types, tables)
 	var entries []*ir.Struct
 	for _, st := range u.Tables {
 		if st.IsMapEntry() {
@@ -150,11 +150,12 @@ func reflectionLayoutWant(u *ir.Unit) string {
 			_, isStruct := f.Type.Ref.(*ir.Struct)
 			hasTarget := isStruct || f.IsMap()
 			_, elemAlign := ir.ListElementLayout(u, f)
-			if f.IsMap() {
+			switch {
+			case f.IsMap():
 				elemAlign = ir.RecordLayout(u, f.MapEntry).Align
-			} else if f.Type.Pointer && f.Array == ir.ArrayNone {
+			case f.Type.Pointer && f.Array == ir.ArrayNone:
 				elemAlign = 8
-			} else if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+			case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 				elemAlign = 1
 			}
 			var partText []string

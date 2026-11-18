@@ -91,7 +91,7 @@ func pythonRetainPlanCheck(tests []string, makefile []byte) error {
 		}
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			return fmt.Errorf("retention row %s: %v", shard, err)
+			return fmt.Errorf("retention row %s: %w", shard, err)
 		}
 		expressions[i] = re
 	}
@@ -115,7 +115,7 @@ func pythonRetainPlanCheck(tests []string, makefile []byte) error {
 	}
 	control, err := regexp.Compile(runs["python-retain-negative-control"])
 	if err != nil || runs["python-retain-negative-control"] == "" {
-		return fmt.Errorf("retention control row has no valid recipe: %v", err)
+		return fmt.Errorf("retention control row has no valid recipe: %w", err)
 	}
 	for _, name := range tests {
 		if strings.HasSuffix(name, "NegativeControl") && !control.MatchString(name) {
