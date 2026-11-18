@@ -1,0 +1,1443 @@
+  class BlobRef
+    @value: untyped
+    def ==: (untyped) -> untyped
+    def initialize: (untyped) -> void
+    def value: () -> untyped
+  end
+  class TextError < Refused
+    @offset: untyped
+    def initialize: (untyped, untyped) -> void
+    def offset: () -> untyped
+  end
+  class BuildVersionMismatch < Refused
+    @own: untyped
+    @remote: untyped
+    def initialize: (untyped, untyped) -> void
+    def own: () -> untyped
+    def remote: () -> untyped
+  end
+  class TableRetain
+    @directory: untyped
+    @id_root: untyped
+    @id_used: untyped
+    @ids: untyped
+    @loaded_root: untyped
+    @root: untyped
+    @storage: untyped
+    @used: untyped
+    def add_retained_id: (untyped, untyped) -> untyped
+    def begin_save: (?untyped, ?untyped) -> untyped
+    def bit_at: (untyped, untyped) -> untyped
+    def body?: (untyped, untyped) -> untyped
+    def capture: (untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def directory: () -> untyped
+    def directory=: (untyped) -> untyped
+    def each_record_at: (untyped, untyped) ?{ (*untyped) -> untyped } -> untyped
+    def first_difference: (untyped, untyped) -> untyped
+    def id_add: (untyped, untyped) -> untyped
+    def id_balance: (untyped) -> untyped
+    def id_fix: (untyped) -> untyped
+    def id_height: (untyped) -> untyped
+    def id_key: (untyped) -> untyped
+    def id_pop_min: (untyped) -> untyped
+    def id_remove: (untyped, untyped) -> untyped
+    def id_root: () -> untyped
+    def id_root=: (untyped) -> untyped
+    def id_rotate: (untyped, untyped) -> untyped
+    def id_set: (untyped, untyped, untyped) -> untyped
+    def id_used: () -> untyped
+    def id_used=: (untyped) -> untyped
+    def id_word: (untyped, untyped) -> untyped
+    def ids: () -> untyped
+    def initialize: (?untyped, ?untyped) -> void
+    def key_end: (untyped) -> untyped
+    def leaf_for: (untyped) -> untyped
+    def loaded_root: () -> untyped
+    def loaded_root=: (untyped) -> untyped
+    def query_bit: (untyped, untyped, untyped) -> untyped
+    def reset: () -> untyped
+    def retained_id: (untyped) -> untyped
+    def root: () -> untyped
+    def root=: (untyped) -> untyped
+    def set_word: (untyped, untyped) -> untyped
+    def storage: () -> untyped
+    def truncate_ids: (untyped) -> untyped
+    def unplaced: () -> untyped
+    def used: () -> untyped
+    def used=: (untyped) -> untyped
+    def word: (untyped) -> untyped
+    def write_tail: (untyped, untyped, untyped, untyped, untyped) -> untyped
+  end
+  module SchemaTable
+    @registry_by_id: untyped
+    @registry_by_name: untyped
+    @registry_union_by_name: untyped
+    self.@registry_by_id: untyped
+    self.@registry_by_name: untyped
+    self.@registry_union_by_name: untyped
+    ARRAY_ELEMENT_KINDS: untyped
+    BASE64_RE: untyped
+    BLOB_CAP: untyped
+    BLOCK_ALIGN: untyped
+    BLOCK_BYTE_ORDER: untyped
+    BLOCK_FOREIGN_MAGIC_BYTES: untyped
+    BLOCK_MAGIC: untyped
+    BLOCK_MAGIC_BYTES: untyped
+    BLOCK_PROLOGUE: untyped
+    BUILD_VERSION_WIRE_ID: untyped
+    BYTES_WIRE_TYPE_ID: untyped
+    COMPRESSED_FLOAT_VALUES_MAX: untyped
+    COOK_DIRECTORY_ENTRY: untyped
+    COOK_HEADER_BYTES: untyped
+    COOK_MAGIC: untyped
+    COOK_MAX_ALIGN: untyped
+    COOK_NOT_MATERIALIZED: untyped
+    COOK_ORDER_BIG: untyped
+    COOK_ORDER_LITTLE: untyped
+    COUNT_CAP: untyped
+    CRC32C_TABLE: untyped
+    DECIMAL_RE: untyped
+    ELEMENT_ZERO: untyped
+    EMPTY_ARR: untyped
+    EMPTY_HASH: untyped
+    FIXED_POINT_KINDS: untyped
+    FIXED_WIDTH: untyped
+    FLOAT32_MAX: untyped
+    FLOAT32_OVERFLOW: untyped
+    FORM: untyped
+    HEX_DIGITS: untyped
+    HOST_BIG_ENDIAN: untyped
+    ID_BOUND: untyped
+    IVAR_GET: untyped
+    IVAR_SET: untyped
+    JSON_ESCAPES: untyped
+    JSON_QUOTE_MAP: untyped
+    KEYED_ELEMENT_KINDS: untyped
+    LENGTH_KINDS: untyped
+    MAX_DEPTH: untyped
+    MESSAGE_VOCABULARY_WIRE_ID: untyped
+    NEG_ZERO_F: untyped
+    NODE_WIRE_ID: untyped
+    NO_SUB: untyped
+    OBJ_CLASS: untyped
+    OBJ_ID: untyped
+    RETAIN_NULL_ID: untyped
+    RETAIN_RESERVED: untyped
+    SIGNED_WIDEN: untyped
+    STRING_WIRE_TYPE_ID: untyped
+    STRUCTURAL_KINDS: untyped
+    TEXTFORM_KEYWORD_RE: untyped
+    TEXTFORM_NUMBER_RE: untyped
+    TEXT_EDIT_STEP_RE: untyped
+    TEXT_ENCODINGS: untyped
+    TIMESTAMP_RE: untyped
+    UNSIGNED_WIDEN: untyped
+    WIDE_FIXED_KINDS: untyped
+    WIDE_INTEGER_KINDS: untyped
+    def self.align_up: (untyped, untyped) -> untyped
+    def self.announce_read_raw: (untyped, untyped, ?max_bytes: untyped, ?max_entries: untyped) -> untyped
+    def self.arr: () -> untyped
+    def self.attach_text_comments: (untyped, untyped, untyped, untyped) -> untyped
+    def self.binary_input: (untyped) -> untyped
+    def self.block_begin: (untyped, ?untyped) -> untyped
+    def self.block_buffer_bytes: (untyped) -> untyped
+    def self.block_dump: (untyped) -> untyped
+    def self.block_dump_record: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.block_dump_scalar: (untyped, untyped, untyped, untyped) -> untyped
+    def self.block_max_bytes: (untyped) -> untyped
+    def self.block_open: (untyped, untyped, ?build_version: untyped, ?base_offset: untyped) -> untyped
+    def self.block_rows_of: (untyped) -> untyped
+    def self.block_stride_align: (untyped) -> untyped
+    def self.body_end_offset: (untyped) -> untyped
+    def self.by_id: (untyped) -> untyped
+    def self.by_name: (untyped) -> untyped
+    def self.capture_retain_file: (untyped, untyped, untyped, ?untyped) -> untyped
+    def self.check_cook: (untyped, untyped, ?base_offset: untyped) -> untyped
+    def self.check_id_order: (untyped, untyped, ?announcement: untyped) -> untyped
+    def self.check_node_table_wire: (untyped, untyped) -> untyped
+    def self.check_pointer_graph: (untyped) -> untyped
+    def self.check_root_instance: (untyped) -> untyped
+    def self.check_scalar_wire: (untyped, untyped, untyped) -> untyped
+    def self.check_wire_file: (untyped, untyped) -> untyped
+    def self.collect_arm_into: (untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.collect_map_edges_into: (untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.collect_root_graph: (untyped, untyped) -> untyped
+    def self.collect_single_union_into: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.collect_table_edges: (untyped, untyped, untyped, untyped) -> untyped
+    def self.collect_union_edges_into: (untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.collect_walk: (untyped, untyped) -> untyped
+    def self.compare_map_keys: (untyped, untyped, untyped) -> untyped
+    def self.cook_build_layout: (untyped) -> untyped
+    def self.cook_check_directory: (untyped, untyped) -> untyped
+    def self.cook_check_range_overlap!: (untyped, untyped, untyped, untyped) -> untyped
+    def self.cook_collect_edges: (untyped, untyped, untyped, ?inactive_only: untyped, ?inherited_inactive: untyped) -> untyped
+    def self.cook_directory: (untyped) -> untyped
+    def self.cook_directory_find: (untyped, untyped, untyped) -> untyped
+    def self.cook_field_has_extent?: (untyped, untyped) -> untyped
+    def self.cook_get_val: (untyped, untyped) -> untyped
+    def self.cook_has_extent?: (untyped, untyped) -> untyped
+    def self.cook_map_entries: (untyped, untyped) -> untyped
+    def self.cook_measure: (untyped) -> untyped
+    def self.cook_node_class: (untyped) -> untyped
+    def self.cook_number_nodes: (untyped) -> untyped
+    def self.cook_optional_field: (untyped) -> untyped
+    def self.cook_plan_lists: (untyped, untyped, untyped, untyped, untyped, ?ignore_guard: untyped, ?skip_validation: untyped, ?inherited_inactive: untyped) -> untyped
+    def self.cook_scan_record: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.cook_table: (untyped, ?order: untyped, ?capacity: untyped) -> untyped
+    def self.cook_text_entry: (untyped, untyped) -> untyped
+    def self.cook_union_field: (untyped) -> untyped
+    def self.cook_write_record: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped, ?inherited_inactive: untyped) -> untyped
+    def self.cook_write_scalar: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.count_json_graph: (untyped, untyped, untyped, untyped) -> untyped
+    def self.count_json_value: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.crc32c: (untyped) -> untyped
+    def self.decode_strict_base64: (untyped, untyped) -> untyped
+    def self.decode_text: (untyped) -> untyped
+    def self.decode_wire_text: (untyped, untyped) -> untyped
+    def self.dump_cook: (untyped) -> untyped
+    def self.encode_blob_body: (untyped, untyped, untyped) -> untyped
+    def self.encode_message_batch: (untyped, untyped, untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.encode_retain_table: (untyped, untyped, untyped, untyped) -> untyped
+    def self.encode_table: (untyped, untyped) -> untyped
+    def self.encode_text: (untyped) -> untyped
+    def self.fill_json_object: (untyped, untyped, untyped, untyped) -> untyped
+    def self.finite_float32: (untyped, untyped) -> untyped
+    def self.float32_bits: (untyped) -> untyped
+    def self.float32_bits_eq?: (untyped, untyped) -> untyped
+    def self.float32_from_bits: (untyped) -> untyped
+    def self.float32_round: (untyped) -> untyped
+    def self.float64_bits: (untyped) -> untyped
+    def self.float64_bits_eq?: (untyped, untyped) -> untyped
+    def self.float64_from_bits: (untyped) -> untyped
+    def self.format_cook_text: (untyped, untyped, untyped) -> untyped
+    def self.format_json_fixed: (untyped, untyped) -> untyped
+    def self.from_json: (untyped, untyped, ?untyped) -> untyped
+    def self.generated_object?: (untyped) -> untyped
+    def self.graph_eq: (untyped, untyped, ?untyped) -> untyped
+    def self.graph_inspect: (untyped) -> untyped
+    def self.header_end_offset: (untyped) -> untyped
+    def self.ivar_get: (untyped, untyped) -> untyped
+    def self.ivar_set: (untyped, untyped, untyped) -> untyped
+    def self.join_path: (untyped, untyped) -> untyped
+    def self.json_array_element: (untyped) -> untyped
+    def self.json_entry_fields: (untyped) -> untyped
+    def self.json_inner_field: (untyped) -> untyped
+    def self.json_quote: (untyped) -> untyped
+    def self.json_zero_element: (untyped, untyped) -> untyped
+    def self.land_text_root: (untyped, untyped) -> untyped
+    def self.load_message_batch: (untyped, untyped, untyped, untyped, untyped, untyped, ?untyped, ?untyped) -> untyped
+    def self.load_table: (untyped, untyped, ?untyped, ?untyped) -> untyped
+    def self.load_text_form: (untyped, untyped, ?untyped) -> untyped
+    def self.locate_text_node: (untyped, untyped, untyped) -> untyped
+    def self.map_h: () -> untyped
+    def self.measure_message_batch: (untyped, untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.measure_table: (untyped) -> untyped
+    def self.msg_kind_bits: (untyped) -> untyped
+    def self.msg_known_kind?: (untyped) -> untyped
+    def self.msg_name_slot: (untyped, untyped) -> untyped
+    def self.msg_numeric_width: (untyped) -> untyped
+    def self.msg_parse_shape: (untyped, untyped) -> untyped
+    def self.msg_read_body: (untyped, untyped, untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.msg_read_scalar: (untyped, untyped) -> untyped
+    def self.msg_read_value: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped, ?in_field: untyped, ?existing: untyped, ?same_shape: untyped) -> untyped
+    def self.msg_reference: (untyped, untyped) -> untyped
+    def self.msg_scan_body: (untyped, untyped, untyped, untyped) -> untyped
+    def self.msg_skip_value: (untyped, untyped, untyped, untyped, ?in_field: untyped, ?pending: untyped) -> untyped
+    def self.msg_write_body: (untyped, untyped, untyped, untyped) -> untyped
+    def self.msg_write_scalar: (untyped, untyped, untyped) -> untyped
+    def self.msg_write_value: (untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.new_by_name: (untyped) -> untyped
+    def self.new_union_by_name: (untyped) -> untyped
+    def self.nonzero_slice?: (untyped, untyped, untyped) -> untyped
+    def self.obj_class: (untyped) -> untyped
+    def self.obj_id: (untyped) -> untyped
+    def self.open_cook: (untyped, untyped, ?base_offset: untyped) -> untyped
+    def self.open_crc: (untyped, ?untyped) -> untyped
+    def self.pack_int_le: (untyped, untyped, untyped) -> untyped
+    def self.pack_int_order: (untyped, untyped, untyped, untyped) -> untyped
+    def self.parse_array_header: (untyped, untyped) -> untyped
+    def self.parse_edit_path: (untyped) -> untyped
+    def self.parse_exact_decimal_integer: (untyped, untyped) -> untyped
+    def self.parse_id_table: (untyped) -> untyped
+    def self.parse_json_float32: (untyped, untyped) -> untyped
+    def self.parse_json_text: (untyped, ?untyped) -> untyped
+    def self.parse_textform_with_comments: (untyped, untyped) -> untyped
+    def self.placeable_for_root: (untyped) -> untyped
+    def self.reached_fields: (untyped) -> untyped
+    def self.read_array_bulk: (untyped, untyped, untyped) -> untyped
+    def self.read_array_field: (untyped, untyped, untyped) -> untyped
+    def self.read_bool_element: (untyped) -> untyped
+    def self.read_bytes_field: (untyped, untyped) -> untyped
+    def self.read_element_codec: (untyped, untyped, untyped) -> untyped
+    def self.read_enum_element: (untyped, untyped, untyped) -> untyped
+    def self.read_field_codec: (untyped, untyped, untyped) -> untyped
+    def self.read_float_element: (untyped, untyped) -> untyped
+    def self.read_int_element: (untyped, untyped) -> untyped
+    def self.read_json_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.read_json_fixed: (untyped, untyped) -> untyped
+    def self.read_json_float: (untyped, untyped) -> untyped
+    def self.read_json_integer: (untyped, untyped) -> untyped
+    def self.read_json_keyed: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.read_json_timestamp: (untyped, untyped) -> untyped
+    def self.read_keyed_field: (untyped, untyped, untyped) -> untyped
+    def self.read_map_field: (untyped, untyped, untyped) -> untyped
+    def self.read_nested_body: (untyped, untyped, untyped, ?untyped) -> untyped
+    def self.read_node_table: (untyped, untyped) -> untyped
+    def self.read_optional_array: (untyped, untyped, untyped) -> untyped
+    def self.read_optional_field: (untyped, untyped, untyped) -> untyped
+    def self.read_pointer_array_field: (untyped, untyped, untyped) -> untyped
+    def self.read_string_element: (untyped, untyped) -> untyped
+    def self.read_table_body: (untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.read_table_element: (untyped, untyped, untyped) -> untyped
+    def self.read_text_form: (untyped, untyped, ?untyped) -> untyped
+    def self.read_union_array_field: (untyped, untyped, untyped) -> untyped
+    def self.read_union_payload: (untyped, untyped, untyped) -> untyped
+    def self.read_unknown_field: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.read_widened_elements: (untyped, untyped, untyped, untyped) -> untyped
+    def self.read_widened_scalar: (untyped, untyped, untyped) -> untyped
+    def self.record_nonfinite: (untyped) -> untyped
+    def self.register: (untyped) -> untyped
+    def self.register_union: (untyped) -> untyped
+    def self.register_value: (untyped) -> untyped
+    def self.render_edge_path: (untyped) -> untyped
+    def self.render_json_value: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.require_cook_carried!: (untyped) -> untyped
+    def self.resolve_graph: (untyped) -> untyped
+    def self.resolve_text_record: (untyped, untyped, untyped, untyped) -> untyped
+    def self.resolve_text_value: (untyped, untyped, untyped) -> untyped
+    def self.resolve_vocabulary: (untyped, untyped, untyped) -> untyped
+    def self.retain_emit_record: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.retain_in_content: (untyped, untyped, untyped, untyped) -> untyped
+    def self.retain_in_framed: (untyped, untyped, untyped, untyped) -> untyped
+    def self.retain_in_payload: (untyped, untyped, untyped, untyped) -> untyped
+    def self.retain_in_ref: (untyped, untyped, untyped) -> untyped
+    def self.retain_out_content: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.retain_out_frame: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.retain_out_payload: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.retain_out_ref: (untyped, untyped, untyped) -> untyped
+    def self.retain_resolve_payload: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.rollback_ids: (untyped, untyped) -> untyped
+    def self.save_message_batch: (untyped, untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.save_table: (untyped) -> untyped
+    def self.seal_crc: (untyped) -> untyped
+    def self.signed_zero: (untyped) -> untyped
+    def self.skip_array: (untyped, untyped, untyped) -> untyped
+    def self.skip_body: (untyped, untyped, untyped) -> untyped
+    def self.skip_content: (untyped, untyped, untyped, untyped) -> untyped
+    def self.skip_json_unknown: (untyped, untyped) -> untyped
+    def self.skip_keyed: (untyped, untyped, untyped) -> untyped
+    def self.skip_payload: (untyped, untyped, untyped, untyped) -> untyped
+    def self.skip_union: (untyped, untyped, untyped) -> untyped
+    def self.sorted_map_keys: (untyped, untyped) -> untyped
+    def self.text_node_integer: (untyped, untyped) -> untyped
+    def self.text_node_name: (untyped) -> untyped
+    def self.text_node_pairs: (untyped) -> untyped
+    def self.text_node_variant: (untyped) -> untyped
+    def self.to_json: (untyped) -> untyped
+    def self.u: (untyped) -> untyped
+    def self.union_by_name: (untyped) -> untyped
+    def self.unpack_int_le: (untyped, untyped, untyped, untyped) -> untyped
+    def self.unpack_int_order: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_arm_value: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_bool: (untyped, untyped) -> untyped
+    def self.validate_bytes: (untyped, untyped, untyped) -> untyped
+    def self.validate_compressed_float: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_field_edges: (untyped, untyped, untyped) -> untyped
+    def self.validate_float32: (untyped, untyped) -> untyped
+    def self.validate_float64: (untyped, untyped) -> untyped
+    def self.validate_int: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_keyed_edges: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_map_edges: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_optional_array: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_plain_array: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_pointer_array: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_scalar_or_leaf: (untyped, untyped, untyped) -> untyped
+    def self.validate_single_union: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_table_graph: (untyped, untyped, untyped, untyped) -> untyped
+    def self.validate_text: (untyped, untyped, untyped) -> untyped
+    def self.validate_union_edges: (untyped, untyped, untyped, untyped) -> untyped
+    def self.walk_id_order: (untyped, untyped, untyped) -> untyped
+    def self.widens?: (untyped, untyped) -> untyped
+    def self.write_arm_header: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_array_bulk: (untyped, untyped, untyped) -> untyped
+    def self.write_array_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_bytes_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_element_codec: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_enum_element: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_field_codec: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_float_element: (untyped, untyped, untyped) -> untyped
+    def self.write_int_element: (untyped, untyped, untyped) -> untyped
+    def self.write_json_float: (untyped, untyped) -> untyped
+    def self.write_json_scalar: (untyped, untyped) -> untyped
+    def self.write_json_table: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.write_json_timestamp: (untyped, untyped) -> untyped
+    def self.write_keyed_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_map_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_node_table: (untyped, untyped) -> untyped
+    def self.write_optional_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_pointer_array_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_retain_keyed_field: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.write_retain_table_body: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_string_element: (untyped, untyped) -> untyped
+    def self.write_table_body: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_table_element: (untyped, untyped, untyped) -> untyped
+    def self.write_union_array_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_union_element: (untyped, untyped, untyped, untyped) -> untyped
+    def self.write_union_field: (untyped, untyped, untyped, untyped) -> untyped
+    class ArmDesc
+      @deprecated: untyped
+      @doc: untyped
+      @field: untyped
+      @ivar: untyped
+      @json_key: untyped
+      @kind: untyped
+      @name: untyped
+      @pointer: untyped
+      @size: untyped
+      @tag: untyped
+      @tags: untyped
+      @target: untyped
+      @target_desc: untyped
+      @wire_id: untyped
+      def arm_id: () -> untyped
+      def deprecated: () -> untyped
+      def doc: () -> untyped
+      def field: () -> untyped
+      def initialize: (name: untyped, wire_id: untyped, tag: untyped, kind: untyped, ?field: untyped, ?json_key: untyped, ?doc: untyped, ?tags: untyped, ?size: untyped, ?deprecated: untyped, ?target: untyped, ?pointer: untyped) -> void
+      def ivar: () -> untyped
+      def json_key: () -> untyped
+      def kind: () -> untyped
+      def name: () -> untyped
+      def pointer: () -> untyped
+      def size: () -> untyped
+      def tag: () -> untyped
+      def tags: () -> untyped
+      def target: () -> untyped
+      def target_desc: () -> untyped
+      def target_desc=: (untyped) -> untyped
+      def wire_id: () -> untyped
+    end
+    class BlobNode < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def body: () -> untyped
+      def body=: (untyped) -> untyped
+      def string: () -> untyped
+      def string=: (untyped) -> untyped
+    end
+    class BlobValue < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def string: () -> untyped
+      def string=: (untyped) -> untyped
+      def value: () -> untyped
+      def value=: (untyped) -> untyped
+    end
+    class Block
+      @arrays: untyped
+      @base_offset: untyped
+      @build_version: untyped
+      @bytes: untyped
+      @name: untyped
+      @projection: untyped
+      @used: untyped
+      def arrays: () -> untyped
+      def base_offset: () -> untyped
+      def build_version: () -> untyped
+      def bytes: () -> untyped
+      def dump: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def name: () -> untyped
+      def projection: () -> untyped
+      def used: () -> untyped
+    end
+    class BlockArray
+      @elem_align: untyped
+      @element: untyped
+      @maximum: untyped
+      @name: untyped
+      @offset: untyped
+      @stride: untyped
+      def elem_align: () -> untyped
+      def element: () -> untyped
+      def initialize: (name: untyped, offset: untyped, maximum: untyped, stride: untyped, elem_align: untyped, element: untyped) -> void
+      def maximum: () -> untyped
+      def name: () -> untyped
+      def offset: () -> untyped
+      def stride: () -> untyped
+    end
+    class BlockArrayView
+      @count: untyped
+      @desc: untyped
+      @offset: untyped
+      @record: untyped
+      @stride: untyped
+      def count: () -> untyped
+      def desc: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped) -> void
+      def offset: () -> untyped
+      def record: () -> untyped
+      def stride: () -> untyped
+    end
+    class BlockField
+      @array: untyped
+      @bound: untyped
+      @count_offset: untyped
+      @counted: untyped
+      @elem_size: untyped
+      @kind: untyped
+      @name: untyped
+      @offset: untyped
+      @offset_of_offset: untyped
+      @optional: untyped
+      @out_of_line: untyped
+      @present_offset: untyped
+      @size: untyped
+      @stride: untyped
+      @stride_offset: untyped
+      @target: untyped
+      def array: () -> untyped
+      def bound: () -> untyped
+      def count_offset: () -> untyped
+      def counted: () -> untyped
+      def elem_size: () -> untyped
+      def initialize: (name: untyped, kind: untyped, offset: untyped, size: untyped, **untyped) -> void
+      def kind: () -> untyped
+      def name: () -> untyped
+      def offset: () -> untyped
+      def offset_of_offset: () -> untyped
+      def optional: () -> untyped
+      def out_of_line: () -> untyped
+      def present_offset: () -> untyped
+      def size: () -> untyped
+      def stride: () -> untyped
+      def stride_offset: () -> untyped
+      def target: () -> untyped
+    end
+    class BlockRecord
+      @align: untyped
+      @fields: untyped
+      @name: untyped
+      @size: untyped
+      def align: () -> untyped
+      def fields: () -> untyped
+      def initialize: (name: untyped, size: untyped, align: untyped, fields: untyped) -> void
+      def name: () -> untyped
+      def size: () -> untyped
+    end
+    class BlockTable
+      @arrays: untyped
+      @max_bytes: untyped
+      @name: untyped
+      @projection: untyped
+      def arrays: () -> untyped
+      def initialize: (name: untyped, projection: untyped, arrays: untyped, max_bytes: untyped) -> void
+      def max_bytes: () -> untyped
+      def name: () -> untyped
+      def projection: () -> untyped
+    end
+    class CookEntry
+      @blob: untyped
+      @blobs: untyped
+      @cls: untyped
+      @desc: untyped
+      @offset: untyped
+      @placements: untyped
+      @type_id: untyped
+      @value: untyped
+      def blob: () -> untyped
+      def blob=: (untyped) -> untyped
+      def blobs: () -> untyped
+      def cls: () -> untyped
+      def desc: () -> untyped
+      def initialize: (untyped, untyped, untyped) -> void
+      def offset: () -> untyped
+      def offset=: (untyped) -> untyped
+      def placements: () -> untyped
+      def type_id: () -> untyped
+      def type_id=: (untyped) -> untyped
+      def value: () -> untyped
+    end
+    class CookHandle
+      @alignment: untyped
+      @attrib_length: untyped
+      @attrib_offset: untyped
+      @big_endian: untyped
+      @data: untyped
+      @data_length: untyped
+      @data_offset: untyped
+      @directory: untyped
+      @node_base: untyped
+      @node_end: untyped
+      @node_record_end: untyped
+      @ranges: untyped
+      @root: untyped
+      def alignment: () -> untyped
+      def attrib_length: () -> untyped
+      def attrib_offset: () -> untyped
+      def big_endian: () -> untyped
+      def data: () -> untyped
+      def data_length: () -> untyped
+      def data_offset: () -> untyped
+      def directory: () -> untyped
+      def directory=: (untyped) -> untyped
+      def dump: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def node_base: () -> untyped
+      def node_base=: (untyped) -> untyped
+      def node_end: () -> untyped
+      def node_end=: (untyped) -> untyped
+      def node_record_end: () -> untyped
+      def node_record_end=: (untyped) -> untyped
+      def ranges: () -> untyped
+      def ranges=: (untyped) -> untyped
+      def root: () -> untyped
+    end
+    class DiscardEdges
+      def <<: (untyped) -> untyped
+    end
+    class FieldDesc
+      @array: untyped
+      @array_bound: untyped
+      @array_kind: untyped
+      @array_min: untyped
+      @array_mode: untyped
+      @at: untyped
+      @bound: untyped
+      @codec: untyped
+      @count_offset: untyped
+      @counted: untyped
+      @default_factory: untyped
+      @default_scalar: untyped
+      @deprecated: untyped
+      @doc: untyped
+      @elem: untyped
+      @elem_align: untyped
+      @elem_codec: untyped
+      @elem_kind: untyped
+      @elem_size: untyped
+      @element: untyped
+      @enum_max: untyped
+      @f32: untyped
+      @field_deprecated: untyped
+      @field_id: untyped
+      @float_range: untyped
+      @fmax: untyped
+      @fmin: untyped
+      @frac_bits: untyped
+      @guard: untyped
+      @guards: untyped
+      @hi: untyped
+      @inner: untyped
+      @ivar: untyped
+      @json_flags: untyped
+      @json_key: untyped
+      @json_keys: untyped
+      @json_text_list: untyped
+      @json_text_unbounded: untyped
+      @json_variants: untyped
+      @key_enum: untyped
+      @key_names: untyped
+      @keyed_list: untyped
+      @keys: untyped
+      @kind: untyped
+      @lo: untyped
+      @map_entry: untyped
+      @min_count: untyped
+      @name: untyped
+      @optional: untyped
+      @ordinal: untyped
+      @pieces: untyped
+      @pointer: untyped
+      @present_offset: untyped
+      @required: untyped
+      @resolution: untyped
+      @size: untyped
+      @tags: untyped
+      @target: untyped
+      @target_desc: untyped
+      @text_total: untyped
+      @type_name: untyped
+      @unbounded: untyped
+      @unbounded_container: untyped
+      @union_desc: untyped
+      @value_of: untyped
+      @variant_ids: untyped
+      @variant_names: untyped
+      @vocabulary_kind: untyped
+      @wide: untyped
+      @wire_of: untyped
+      def array: () -> untyped
+      def array=: (untyped) -> untyped
+      def array_bound: () -> untyped
+      def array_bound=: (untyped) -> untyped
+      def array_kind: () -> untyped
+      def array_kind=: (untyped) -> untyped
+      def array_min: () -> untyped
+      def array_min=: (untyped) -> untyped
+      def array_mode: () -> untyped
+      def array_mode=: (untyped) -> untyped
+      def at: () -> untyped
+      def at=: (untyped) -> untyped
+      def bound: () -> untyped
+      def bound=: (untyped) -> untyped
+      def build_enum_maps: () -> untyped
+      def codec: () -> untyped
+      def codec=: (untyped) -> untyped
+      def count_offset: () -> untyped
+      def count_offset=: (untyped) -> untyped
+      def counted: () -> untyped
+      def counted=: (untyped) -> untyped
+      def default: () -> untyped
+      def default?: (untyped) -> untyped
+      def default_factory: () -> untyped
+      def default_factory=: (untyped) -> untyped
+      def default_value: () -> untyped
+      def deprecated: () -> untyped
+      def deprecated=: (untyped) -> untyped
+      def doc: () -> untyped
+      def doc=: (untyped) -> untyped
+      def elem: () -> untyped
+      def elem=: (untyped) -> untyped
+      def elem_align: () -> untyped
+      def elem_align=: (untyped) -> untyped
+      def elem_codec: () -> untyped
+      def elem_codec=: (untyped) -> untyped
+      def elem_kind: () -> untyped
+      def elem_kind=: (untyped) -> untyped
+      def elem_size: () -> untyped
+      def elem_size=: (untyped) -> untyped
+      def element: () -> untyped
+      def element=: (untyped) -> untyped
+      def enum_max: () -> untyped
+      def enum_max=: (untyped) -> untyped
+      def f32: () -> untyped
+      def f32=: (untyped) -> untyped
+      def field_deprecated: () -> untyped
+      def field_deprecated=: (untyped) -> untyped
+      def field_id: () -> untyped
+      def field_id=: (untyped) -> untyped
+      def float_range: () -> untyped
+      def float_range=: (untyped) -> untyped
+      def fmax: () -> untyped
+      def fmax=: (untyped) -> untyped
+      def fmin: () -> untyped
+      def fmin=: (untyped) -> untyped
+      def frac_bits: () -> untyped
+      def frac_bits=: (untyped) -> untyped
+      def get: (untyped) -> untyped
+      def get_element: (untyped, untyped) -> untyped
+      def guard: () -> untyped
+      def guard=: (untyped) -> untyped
+      def guard_holds: (untyped) -> untyped
+      def guard_holds?: (untyped) -> untyped
+      def guards: () -> untyped
+      def guards=: (untyped) -> untyped
+      def hi: () -> untyped
+      def hi=: (untyped) -> untyped
+      def initialize: (**untyped) -> void
+      def inner: () -> untyped
+      def inner=: (untyped) -> untyped
+      def is_default: (untyped) -> untyped
+      def ivar: () -> untyped
+      def ivar=: (untyped) -> untyped
+      def json_flags: () -> untyped
+      def json_flags=: (untyped) -> untyped
+      def json_key: () -> untyped
+      def json_key=: (untyped) -> untyped
+      def json_keys: () -> untyped
+      def json_keys=: (untyped) -> untyped
+      def json_text_list: () -> untyped
+      def json_text_list=: (untyped) -> untyped
+      def json_text_unbounded: () -> untyped
+      def json_text_unbounded=: (untyped) -> untyped
+      def json_variants: () -> untyped
+      def json_variants=: (untyped) -> untyped
+      def key_enum: () -> untyped
+      def key_enum=: (untyped) -> untyped
+      def key_id: (untyped) -> untyped
+      def key_name: (untyped) -> untyped
+      def key_names: () -> untyped
+      def key_names=: (untyped) -> untyped
+      def keyed_list: () -> untyped
+      def keyed_list=: (untyped) -> untyped
+      def keys: () -> untyped
+      def keys=: (untyped) -> untyped
+      def kind: () -> untyped
+      def kind=: (untyped) -> untyped
+      def lo: () -> untyped
+      def lo=: (untyped) -> untyped
+      def map_entry: () -> untyped
+      def map_entry=: (untyped) -> untyped
+      def min_count: () -> untyped
+      def min_count=: (untyped) -> untyped
+      def name: () -> untyped
+      def name=: (untyped) -> untyped
+      def optional: () -> untyped
+      def optional=: (untyped) -> untyped
+      def ordinal: () -> untyped
+      def ordinal=: (untyped) -> untyped
+      def pieces: () -> untyped
+      def pieces=: (untyped) -> untyped
+      def pointer: () -> untyped
+      def pointer=: (untyped) -> untyped
+      def present_offset: () -> untyped
+      def present_offset=: (untyped) -> untyped
+      def required: () -> untyped
+      def required=: (untyped) -> untyped
+      def resolution: () -> untyped
+      def resolution=: (untyped) -> untyped
+      def set: (untyped, untyped) -> untyped
+      def set_element: (untyped, untyped, untyped) -> untyped
+      def size: () -> untyped
+      def size=: (untyped) -> untyped
+      def tags: () -> untyped
+      def tags=: (untyped) -> untyped
+      def target: () -> untyped
+      def target=: (untyped) -> untyped
+      def target_desc: () -> untyped
+      def target_desc=: (untyped) -> untyped
+      def text_total: () -> untyped
+      def text_total=: (untyped) -> untyped
+      def type_name: () -> untyped
+      def type_name=: (untyped) -> untyped
+      def unbounded: () -> untyped
+      def unbounded=: (untyped) -> untyped
+      def unbounded_container: () -> untyped
+      def unbounded_container=: (untyped) -> untyped
+      def union_desc: () -> untyped
+      def union_desc=: (untyped) -> untyped
+      def value_of: () -> untyped
+      def value_of=: (untyped) -> untyped
+      def variant_id: (untyped) -> untyped
+      def variant_ids: () -> untyped
+      def variant_ids=: (untyped) -> untyped
+      def variant_name: (untyped) -> untyped
+      def variant_names: () -> untyped
+      def variant_names=: (untyped) -> untyped
+      def vocabulary_kind: () -> untyped
+      def vocabulary_kind=: (untyped) -> untyped
+      def wide: () -> untyped
+      def wide=: (untyped) -> untyped
+      def wire_of: () -> untyped
+      def wire_of=: (untyped) -> untyped
+    end
+    class FirstUseIds
+      @ids: untyped
+      @order: untyped
+      @used: untyped
+      def []: (untyped) -> untyped
+      def finish: () -> untyped
+      def initialize: (untyped) -> void
+      def length: () -> untyped
+    end
+    class JsonNumber < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def token: () -> untyped
+      def token=: (untyped) -> untyped
+    end
+    class JsonScanner
+      @max_key: untyped
+      @pos: untyped
+      @text: untyped
+      def fail_scan: () -> untyped
+      def initialize: (untyped, untyped) -> void
+      def peek: () -> untyped
+      def pos: () -> untyped
+      def pos=: (untyped) -> untyped
+      def scan_array: (untyped) -> untyped
+      def scan_digits: () -> untyped
+      def scan_hex4: () -> untyped
+      def scan_number: () -> untyped
+      def scan_object: (untyped) -> untyped
+      def scan_string: () -> untyped
+      def scan_value: (untyped) -> untyped
+      def skip_space: () -> untyped
+      def text: () -> untyped
+    end
+    class KeyedArray
+      @_s_values: untyped
+      @key_max: untyped
+      def ==: (untyped) -> untyped
+      def []: (untyped) -> untyped
+      def []=: (untyped, untyped) -> untyped
+      def _s_values: () -> untyped
+      def _values: () -> untyped
+      def check_key: (untyped) -> untyped
+      def each: () ?{ (*untyped) -> untyped } -> untyped
+      def initialize: (untyped) ?{ (*untyped) -> untyped } -> void
+      def inspect: () -> untyped
+      def key_max: () -> untyped
+      def length: () -> untyped
+      def size: () -> untyped
+      def to_a: () -> untyped
+    end
+    class LoadCtx
+      @blob_pending: untyped
+      @blobs: untyped
+      @children: untyped
+      @current: untyped
+      @depth: untyped
+      @edges: untyped
+      @ids: untyped
+      @missing: untyped
+      @nodes: untyped
+      @nonfinite: untyped
+      @pending: untyped
+      @placeable: untyped
+      @root: untyped
+      @saw_node: untyped
+      @types: untyped
+      @unknown: untyped
+      @variable: untyped
+      @widened: untyped
+      def blob_pending: () -> untyped
+      def blob_pending=: (untyped) -> untyped
+      def blobs: () -> untyped
+      def blobs=: (untyped) -> untyped
+      def children: () -> untyped
+      def children=: (untyped) -> untyped
+      def current: () -> untyped
+      def current=: (untyped) -> untyped
+      def depth: () -> untyped
+      def depth=: (untyped) -> untyped
+      def edges: () -> untyped
+      def edges=: (untyped) -> untyped
+      def ids: () -> untyped
+      def ids=: (untyped) -> untyped
+      def initialize: (untyped) -> void
+      def missing: () -> untyped
+      def missing=: (untyped) -> untyped
+      def nodes: () -> untyped
+      def nodes=: (untyped) -> untyped
+      def nonfinite: () -> untyped
+      def nonfinite=: (untyped) -> untyped
+      def pending: () -> untyped
+      def pending=: (untyped) -> untyped
+      def placeable: () -> untyped
+      def placeable=: (untyped) -> untyped
+      def root: () -> untyped
+      def root=: (untyped) -> untyped
+      def saw_node: () -> untyped
+      def saw_node=: (untyped) -> untyped
+      def types: () -> untyped
+      def types=: (untyped) -> untyped
+      def unknown: () -> untyped
+      def unknown=: (untyped) -> untyped
+      def variable: () -> untyped
+      def variable=: (untyped) -> untyped
+      def widened: () -> untyped
+      def widened=: (untyped) -> untyped
+    end
+    class MessageVocabulary
+      @announced: untyped
+      @build_version: untyped
+      @entries: untyped
+      @names: untyped
+      @own_version: untyped
+      @refused: untyped
+      @resolved: untyped
+      @slots: untyped
+      @strict: untyped
+      @unknown: untyped
+      @variants: untyped
+      def announced: () -> untyped
+      def announced=: (untyped) -> untyped
+      def build_version: () -> untyped
+      def build_version=: (untyped) -> untyped
+      def entries: () -> untyped
+      def entries=: (untyped) -> untyped
+      def initialize: (?untyped, ?strict: untyped) -> void
+      def names: () -> untyped
+      def names=: (untyped) -> untyped
+      def own_version: () -> untyped
+      def own_version=: (untyped) -> untyped
+      def ref_bits: () -> untyped
+      def refused: () -> untyped
+      def refused=: (untyped) -> untyped
+      def resolved: () -> untyped
+      def resolved=: (untyped) -> untyped
+      def slots: () -> untyped
+      def slots=: (untyped) -> untyped
+      def strict: () -> untyped
+      def strict=: (untyped) -> untyped
+      def unknown: () -> untyped
+      def unknown=: (untyped) -> untyped
+      def variants: () -> untyped
+      def variants=: (untyped) -> untyped
+    end
+    class MsgAnnouncementRoot
+      DESC: untyped
+      def self.descriptor: () -> untyped
+    end
+    class MsgBitReader
+      @data: untyped
+      @position: untyped
+      def align: () -> untyped
+      def data: () -> untyped
+      def finish: () -> untyped
+      def get: (untyped) -> untyped
+      def initialize: (untyped, ?untyped) -> void
+      def position: () -> untyped
+      def position=: (untyped) -> untyped
+      def raw: (untyped) -> untyped
+    end
+    class MsgBitWriter
+      @data: untyped
+      @measure: untyped
+      @position: untyped
+      def align: () -> untyped
+      def data: () -> untyped
+      def finish: () -> untyped
+      def initialize: (?measure: untyped) -> void
+      def measure: () -> untyped
+      def position: () -> untyped
+      def put: (untyped, untyped) -> untyped
+      def raw: (untyped) -> untyped
+    end
+    class MsgEntry < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def field_id: () -> untyped
+      def field_id=: (untyped) -> untyped
+      def key: () -> untyped
+      def key=: (untyped) -> untyped
+      def kind: () -> untyped
+      def kind=: (untyped) -> untyped
+      def shape: () -> untyped
+      def shape=: (untyped) -> untyped
+    end
+    class MsgShape
+      @base: untyped
+      @bits: untyped
+      @element: untyped
+      @inner: untyped
+      @kind: untyped
+      @maximum: untyped
+      @minimum: untyped
+      @packing: untyped
+      @quant: untyped
+      def base: () -> untyped
+      def base=: (untyped) -> untyped
+      def bits: () -> untyped
+      def bits=: (untyped) -> untyped
+      def element: () -> untyped
+      def element=: (untyped) -> untyped
+      def initialize: (untyped) -> void
+      def inner: () -> untyped
+      def inner=: (untyped) -> untyped
+      def kind: () -> untyped
+      def kind=: (untyped) -> untyped
+      def maximum: () -> untyped
+      def maximum=: (untyped) -> untyped
+      def minimum: () -> untyped
+      def minimum=: (untyped) -> untyped
+      def packing: () -> untyped
+      def packing=: (untyped) -> untyped
+      def quant: () -> untyped
+      def quant=: (untyped) -> untyped
+    end
+    class Reader
+      @data: untyped
+      @end_pos: untyped
+      @ids: untyped
+      @pos: untyped
+      def byte: () -> untyped
+      def data: () -> untyped
+      def end_pos: () -> untyped
+      def end_pos=: (untyped) -> untyped
+      def id_at: (untyped) -> untyped
+      def ids: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped) -> void
+      def pos: () -> untyped
+      def pos=: (untyped) -> untyped
+      def take: (untyped) -> untyped
+      def varint: () -> untyped
+    end
+    class RetainCapacity < ::StandardError
+    end
+    class RetainCountSink
+      @pos: untyped
+      def byte: (untyped) -> untyped
+      def initialize: () -> void
+      def pos: () -> untyped
+      def pos=: (untyped) -> untyped
+      def raw: (untyped) -> untyped
+      def varint: (untyped) -> untyped
+    end
+    class RetainExcluded < ::StandardError
+    end
+    class RetainSaveCtx < SchemaTable::SaveCtx
+      @emitted: untyped
+      @ids: untyped
+      @known: untyped
+      @lost: untyped
+      @node: untyped
+      @ordinal: untyped
+      @preview: untyped
+      @refs: untyped
+      @remaining: untyped
+      @reserved: untyped
+      @retain: untyped
+      @steps: untyped
+      def can_id?: (untyped) -> untyped
+      def emitted: () -> untyped
+      def emitted=: (untyped) -> untyped
+      def forget_id: (untyped) -> untyped
+      def idref: (untyped) -> untyped
+      def initialize: (untyped, untyped) -> void
+      def known: () -> untyped
+      def known=: (untyped) -> untyped
+      def lost: () -> untyped
+      def lost=: (untyped) -> untyped
+      def node: () -> untyped
+      def node=: (untyped) -> untyped
+      def ordinal: () -> untyped
+      def ordinal=: (untyped) -> untyped
+      def preview: () -> untyped
+      def preview=: (untyped) -> untyped
+      def remaining: () -> untyped
+      def remaining=: (untyped) -> untyped
+      def reserved: () -> untyped
+      def reserved=: (untyped) -> untyped
+      def retain: () -> untyped
+      def retain=: (untyped) -> untyped
+      def steps: () -> untyped
+      def steps=: (untyped) -> untyped
+      def write_ids: (untyped) -> untyped
+    end
+    class RetainSink
+      @data: untyped
+      @pos: untyped
+      def byte: (untyped) -> untyped
+      def data: () -> untyped
+      def initialize: (untyped, untyped) -> void
+      def pos: () -> untyped
+      def pos=: (untyped) -> untyped
+      def raw: (untyped) -> untyped
+      def u32: (untyped) -> untyped
+      def varint: (untyped) -> untyped
+    end
+    class SaveCtx
+      @blob_next: untyped
+      @blob_refs: untyped
+      @blob_slots: untyped
+      @current: untyped
+      @ids: untyped
+      @indices: untyped
+      @node_blobs: untyped
+      @onstack: untyped
+      @order: untyped
+      @refs: untyped
+      def blob_next: () -> untyped
+      def blob_next=: (untyped) -> untyped
+      def blob_refs: () -> untyped
+      def blob_refs=: (untyped) -> untyped
+      def blob_slots: () -> untyped
+      def blob_slots=: (untyped) -> untyped
+      def current: () -> untyped
+      def current=: (untyped) -> untyped
+      def idref: (untyped) -> untyped
+      def ids: () -> untyped
+      def ids=: (untyped) -> untyped
+      def indices: () -> untyped
+      def indices=: (untyped) -> untyped
+      def initialize: () -> void
+      def node_blobs: () -> untyped
+      def node_blobs=: (untyped) -> untyped
+      def onstack: () -> untyped
+      def onstack=: (untyped) -> untyped
+      def order: () -> untyped
+      def order=: (untyped) -> untyped
+      def refs: () -> untyped
+      def refs=: (untyped) -> untyped
+      def write_ids: (untyped) -> untyped
+    end
+    class SingleFieldDescHolder < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def fields: () -> untyped
+      def fields=: (untyped) -> untyped
+      def padding: () -> untyped
+      def padding=: (untyped) -> untyped
+    end
+    class SingleValueHolder < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def field: () -> untyped
+      def field=: (untyped) -> untyped
+      def val: () -> untyped
+      def val=: (untyped) -> untyped
+    end
+    class TableDesc
+      @align: untyped
+      @build_version: untyped
+      @by_id: untyped
+      @by_name: untyped
+      @bytes_blob_type_id: untyped
+      @cook_align: untyped
+      @doc: untyped
+      @extent_start: untyped
+      @fields: untyped
+      @fixed: untyped
+      @forms: untyped
+      @guards: untyped
+      @integrity: untyped
+      @json_array: untyped
+      @name: untyped
+      @padding: untyped
+      @region_align: untyped
+      @reset: untyped
+      @size: untyped
+      @string_blob_type_id: untyped
+      @table: untyped
+      @tags: untyped
+      @type_id: untyped
+      @variable: untyped
+      def align: () -> untyped
+      def build_version: () -> untyped
+      def by_id: () -> untyped
+      def by_name: () -> untyped
+      def bytes_blob_type_id: () -> untyped
+      def cook_align: () -> untyped
+      def doc: () -> untyped
+      def extent_start: () -> untyped
+      def fields: () -> untyped
+      def fixed: () -> untyped
+      def forms: () -> untyped
+      def guards: () -> untyped
+      def initialize: (**untyped) -> void
+      def integrity: () -> untyped
+      def json_array: () -> untyped
+      def name: () -> untyped
+      def padding: () -> untyped
+      def region_align: () -> untyped
+      def reset: () -> untyped
+      def size: () -> untyped
+      def string_blob_type_id: () -> untyped
+      def table: () -> untyped
+      def tags: () -> untyped
+      def type_id: () -> untyped
+      def variable: () -> untyped
+    end
+    class TextComment < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def end_pos: () -> untyped
+      def end_pos=: (untyped) -> untyped
+      def path: () -> untyped
+      def path=: (untyped) -> untyped
+      def start: () -> untyped
+      def start=: (untyped) -> untyped
+    end
+    class TextDocument
+      @cls: untyped
+      @comments: untyped
+      @limits: untyped
+      @root: untyped
+      @source: untyped
+      @value: untyped
+      def comments: () -> untyped
+      def edit: (untyped, ?untyped) -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def limits: () -> untyped
+      def root: () -> untyped
+      def source: () -> untyped
+      def value: () -> untyped
+      def write: () -> untyped
+    end
+    class TextFormParser
+      @allocation: untyped
+      @comments: untyped
+      @data: untyped
+      @max_allocation: untyped
+      @max_depth: untyped
+      @max_nodes: untyped
+      @max_tokens: untyped
+      @nodes: untyped
+      @pos: untyped
+      @tokens: untyped
+      def comments: () -> untyped
+      def initialize: (untyped, untyped) -> void
+      def parse_node: (untyped) -> untyped
+      def pos: () -> untyped
+      def pos=: (untyped) -> untyped
+      def skip_gap: () -> untyped
+      def validate_utf8_bytes: (untyped) -> untyped
+    end
+    class TextLimits
+      @allocation: untyped
+      @bytes: untyped
+      @depth: untyped
+      @nodes: untyped
+      @tokens: untyped
+      def allocation: () -> untyped
+      def allocation=: (untyped) -> untyped
+      def bytes: () -> untyped
+      def bytes=: (untyped) -> untyped
+      def depth: () -> untyped
+      def depth=: (untyped) -> untyped
+      def initialize: (?bytes: untyped, ?tokens: untyped, ?nodes: untyped, ?allocation: untyped, ?depth: untyped) -> void
+      def nodes: () -> untyped
+      def nodes=: (untyped) -> untyped
+      def tokens: () -> untyped
+      def tokens=: (untyped) -> untyped
+    end
+    class TextNode < ::Struct[untyped]
+      def self.[]: (*untyped) -> untyped
+      def self.inspect: () -> untyped
+      def self.keyword_init?: () -> untyped
+      def self.new: (*untyped) -> untyped
+      def children: () -> untyped
+      def children=: (untyped) -> untyped
+      def end_pos: () -> untyped
+      def end_pos=: (untyped) -> untyped
+      def kind: () -> untyped
+      def kind=: (untyped) -> untyped
+      def start: () -> untyped
+      def start=: (untyped) -> untyped
+      def value: () -> untyped
+      def value=: (untyped) -> untyped
+    end
+    class UnionDesc
+      @arm_offset: untyped
+      @arms: untyped
+      @by_id: untyped
+      @by_tag: untyped
+      @doc: untyped
+      @name: untyped
+      @size: untyped
+      @tag_size: untyped
+      @tags: untyped
+      def arm_offset: () -> untyped
+      def arms: () -> untyped
+      def by_id: () -> untyped
+      def by_tag: () -> untyped
+      def doc: () -> untyped
+      def initialize: (name: untyped, arms: untyped, ?size: untyped, ?tag_size: untyped, ?arm_offset: untyped, ?doc: untyped, ?tags: untyped) -> void
+      def name: () -> untyped
+      def size: () -> untyped
+      def tag_size: () -> untyped
+      def tags: () -> untyped
+    end
+    class UnitViewInfo
+      @constants: untyped
+      @enums: untyped
+      @flags: untyped
+      @package: untyped
+      @protocol_id: untyped
+      @tables: untyped
+      @types: untyped
+      @unions: untyped
+      def constants: () -> untyped
+      def enums: () -> untyped
+      def flags: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def package: () -> untyped
+      def protocol_id: () -> untyped
+      def tables: () -> untyped
+      def types: () -> untyped
+      def unions: () -> untyped
+    end
+    class ViewConstant
+      @doc: untyped
+      @file: untyped
+      @float_value: untyped
+      @int_value: untyped
+      @is_float: untyped
+      @name: untyped
+      @tags: untyped
+      @type_name: untyped
+      def doc: () -> untyped
+      def file: () -> untyped
+      def float_value: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def int_value: () -> untyped
+      def is_float: () -> untyped
+      def name: () -> untyped
+      def tags: () -> untyped
+      def type_name: () -> untyped
+    end
+    class ViewType
+      @doc: untyped
+      @file: untyped
+      @name: untyped
+      @table: untyped
+      @tags: untyped
+      @type: untyped
+      def doc: () -> untyped
+      def file: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def name: () -> untyped
+      def table: () -> untyped
+      def tags: () -> untyped
+      def `type`: () -> untyped
+    end
+    class ViewVariant
+      @doc: untyped
+      @field: untyped
+      @id: untyped
+      @name: untyped
+      @payload: untyped
+      @payload_name: untyped
+      @tags: untyped
+      @value: untyped
+      def doc: () -> untyped
+      def field: () -> untyped
+      def id: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def name: () -> untyped
+      def payload: () -> untyped
+      def payload_name: () -> untyped
+      def tags: () -> untyped
+      def value: () -> untyped
+    end
+    class ViewVocabulary
+      @doc: untyped
+      @file: untyped
+      @max: untyped
+      @name: untyped
+      @payload_offset: untyped
+      @storage_bits: untyped
+      @tags: untyped
+      @variants: untyped
+      def doc: () -> untyped
+      def file: () -> untyped
+      def initialize: (untyped, untyped, untyped, untyped, untyped, untyped, untyped, untyped) -> void
+      def max: () -> untyped
+      def name: () -> untyped
+      def payload_offset: () -> untyped
+      def storage_bits: () -> untyped
+      def tags: () -> untyped
+      def variants: () -> untyped
+    end
+    class Writer
+      @buf: untyped
+      @count: untyped
+      def begin_frame: () -> untyped
+      def buf: () -> untyped
+      def byte: (untyped) -> untyped
+      def count: () -> untyped
+      def finish_frame: (untyped) -> untyped
+      def finish_varint: (untyped, untyped) -> untyped
+      def initialize: (untyped) -> void
+      def raw: (untyped) -> untyped
+      def truncate: (untyped) -> untyped
+      def varint: (untyped) -> untyped
+    end
+  end
