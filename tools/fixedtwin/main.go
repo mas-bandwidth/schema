@@ -69,6 +69,12 @@ func compareHeaders(cSrc, cppSrc string) ([]string, error) {
 	if !hasStrictCountTextScanCall(cppSrc) {
 		leftover = append(leftover, "runtime:cpp: the strict count/text pre-scan (TableFixedRefuseScan) is defined but never invoked as the whole-read refusal")
 	}
+	if !hasCDeadByteScan(cRun) {
+		leftover = append(leftover, "runtime:c: the dead-byte scan (TableFixedDeadRefuses) is missing or weakened")
+	}
+	if !hasCDeadByteScanCall(cSrc) {
+		leftover = append(leftover, "runtime:c: the dead-byte scan (TableFixedDeadRefuses) is defined but never invoked as the whole-read refusal")
+	}
 	leftover = append(leftover, diffLines("runtime", canonicalize(cRun), canonicalize(cppRun))...)
 
 	cPlan, err := extractArray(cSrc, "fixed_table_fixed_plan", "FixedTableFixedPlan")
@@ -79,7 +85,7 @@ func compareHeaders(cSrc, cppSrc string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cpp plan: %w", err)
 	}
-	leftover = append(leftover, diffLines("plan", canonicalize(cPlan), canonicalize(cppPlan))...)
+	leftover = append(leftover, diffLines("plan", canonicalizePlanC(cPlan), canonicalize(cppPlan))...)
 
 	cLay, err := extractArray(cSrc, "fixed_table_fixed_layout", "FixedTableFixedLayout")
 	if err != nil {

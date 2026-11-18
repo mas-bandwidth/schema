@@ -4159,10 +4159,13 @@ tables-float-nan-negative-control: bin/schema build/tables-generated/.stamp
 	@sed -e 's@^inline bool TableBitsFinite32( uint32_t bits ) { return .*@inline bool TableBitsFinite32( uint32_t bits ) { (void) bits; return true; } // SABOTAGED: the read never refuses@' \
 		-e 's@^inline bool TableBitsFinite64( uint64_t bits ) { return .*@inline bool TableBitsFinite64( uint64_t bits ) { (void) bits; return true; } // SABOTAGED@' \
 		internal/codegen/cpptable/cpptable.go > build/float-nan-control/cpptable.go.txt
-	@test "$$(grep -c 'SABOTAGED' build/float-nan-control/cpptable.go.txt)" = 2 || \
-		{ echo "NEGATIVE CONTROL FAILED: the finite-float sabotage did not patch both mask tests"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/float-nan-control/cpptable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/float-nan-control/overlay.json
+	@sed -e 's@if ( non_finite32 || non_finite64 ) { s.refusal = non_finite_float; return false; }@(void) non_finite32; (void) non_finite64; (void) s; // SABOTAGED: strict walk never refuses@' \
+		internal/codegen/cpptable/strictwalk.go > build/float-nan-control/strictwalk.go.txt
+	@test "$$(grep -c 'SABOTAGED' build/float-nan-control/cpptable.go.txt)" = 2 && \
+	 test "$$(grep -c 'SABOTAGED' build/float-nan-control/strictwalk.go.txt)" = 1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the finite-float sabotage did not patch the mask and strict-walk tests"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/float-nan-control/cpptable.go.txt","%s/internal/codegen/cpptable/strictwalk.go":"%s/build/float-nan-control/strictwalk.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/float-nan-control/overlay.json
 	@go build -overlay=build/float-nan-control/overlay.json -o build/schema-float-nan-control ./cmd/schema
 	@./build/schema-float-nan-control generate --lang cpp --out build/float-nan-control/f1 test/tables/F1.schema
 	@./build/schema-float-nan-control generate --lang cpp --out build/float-nan-control/f2 test/tables/F2.schema

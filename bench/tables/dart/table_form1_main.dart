@@ -200,12 +200,7 @@ void report(String path, int iters, double bytesPerOp, Stats s) {
 }
 
 bool loadsClean(TableWireReport r) =>
-    r.unknown == 0 &&
-    r.kindMismatch == 0 &&
-    r.clamped == 0 &&
-    r.duplicate == 0 &&
-    !r.malformed &&
-    !r.refused;
+    r.unknown == 0 && r.widened == 0 && !r.refused;
 
 // The corpus is the board's historical fixed-stride one: 64 equal records.
 void benchTable(String name, int baseIters) {

@@ -85,6 +85,11 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 
 	cppFaults := []struct{ name, from, to string }{
 		{
+			"the C++ dead-byte scan stops refusing non-zero slack",
+			"if ( !TableFixedDeadZero( src, live, end ) )",
+			"if ( false )",
+		},
+		{
 			"the C++ count guard loses its negative half",
 			"if ( v < 0 || v > (int32_t) p.size )",
 			"if ( v > (int32_t) p.size )",
@@ -118,6 +123,11 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	// sending the C present flag back through a plain bool entry, lands the
 	// record's bytes again, and the gate must say so.
 	absentFaults := []struct{ name, from, to string }{
+		{
+			"the C dead-byte scan stops checking span zero",
+			"if ( !table_fixed_span_zero( src, from, to ) ) { return 1; }",
+			"if ( 0 ) { return 1; }",
+		},
 		{
 			"the C present-defaults entry stops copying the declared defaults",
 			"if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }",
