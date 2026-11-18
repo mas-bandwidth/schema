@@ -845,7 +845,7 @@ fixed table Reading
 
 		st := fixedRootStruct(t, uOld, "Reading")
 		d := ir.TableFixedDefinitionsDigest(st)
-		if len(d) < 18 || d[0] != 'R' || d[17] != 'Q' {
+		if v, err := ir.TableFixedDefinitionsDigestVersion(d); err != nil || v != 2 || len(d) < 82 || d[26] != 'D' || d[81] != 'Q' {
 			t.Fatalf("R30: digest does not carry resolution under 'Q': % x", d)
 		}
 		tables, err := Generate(uOld)
