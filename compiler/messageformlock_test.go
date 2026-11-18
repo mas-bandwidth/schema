@@ -54,7 +54,7 @@ var messageFormLockVariable = []string{"varleaf", "varroot", "varplain"}
 // messageFormLockNoForm are the targets that carry no message form at all
 // (docs/SPEC-TABLES.md §3.3, "WHERE THE FORM IS CARRIED"), so their output is
 // not required to name the fixed root's batch.
-var messageFormLockNoForm = map[string]bool{"goose": true, "python": true, "unity": true}
+var messageFormLockNoForm = map[string]bool{"goose": true, "python": true}
 
 // variableMessageViolations names every line of one target's output that puts
 // a variable table beside the message form.

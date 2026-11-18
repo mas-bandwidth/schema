@@ -164,6 +164,20 @@ func TestUnionArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "unity" {
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang unity refused the supported shape: %v", err)
+			}
+			table := false
+			for name := range files {
+				table = table || strings.HasSuffix(name, ".Tables.cs")
+			}
+			if !table {
+				t.Fatal("--lang unity emitted no .Tables.cs")
+			}
+			continue
+		}
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
 			if err == nil {

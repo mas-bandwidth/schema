@@ -40,6 +40,19 @@ func csIntType(bits int) string {
 	return "long"
 }
 
+func unsignedTest(v string, lo, hi *big.Int, inside bool) string {
+	if inside {
+		if lo.Sign() == 0 {
+			return fmt.Sprintf("%s <= %sUL", v, hi.String())
+		}
+		return fmt.Sprintf("%s >= %sUL && %s <= %sUL", v, lo.String(), v, hi.String())
+	}
+	if lo.Sign() == 0 {
+		return fmt.Sprintf("%s > %sUL", v, hi.String())
+	}
+	return fmt.Sprintf("%s < %sUL || %s > %sUL", v, lo.String(), v, hi.String())
+}
+
 func scalarStorageType(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TInt, ir.TFixed:
@@ -100,25 +113,39 @@ func lit128Expr(v *big.Int, signed bool) string {
 	return fmt.Sprintf("new %s(0x%xUL, 0x%xUL)", typ, hi, lo)
 }
 
-func flagsLitExpr(d *ir.Flags, mask *big.Int) string {
+func flagsLitExpr(pkg string, d *ir.Flags, mask *big.Int) string {
+	qual := d.Name
+	if pkg != "" {
+		qual = "global::" + pkg + "." + d.Name
+	}
 	if mask == nil || mask.Sign() == 0 {
-		return fmt.Sprintf("(%s)0", d.Name)
+		return fmt.Sprintf("(%s)0", qual)
 	}
 	rest := new(big.Int).Set(mask)
 	var parts []string
 	for i, v := range d.Variants {
 		if rest.Bit(i) != 0 {
-			parts = append(parts, d.Name+"."+v)
+			parts = append(parts, qual+"."+v)
 			rest.SetBit(rest, i, 0)
 		}
 	}
 	if rest.Sign() != 0 {
-		parts = append(parts, fmt.Sprintf("(%s)0x%sUL", d.Name, rest.Text(16)))
+		parts = append(parts, fmt.Sprintf("(%s)0x%sUL", qual, rest.Text(16)))
 	}
 	return strings.Join(parts, " | ")
 }
 
 func scalarDefaultExpr(f *ir.Field) string {
+	return scalarDefaultExprQual("", f)
+}
+
+func scalarDefaultExprQual(pkg string, f *ir.Field) string {
+	qual := func(name string) string {
+		if pkg == "" {
+			return name
+		}
+		return "global::" + pkg + "." + name
+	}
 	switch {
 	case f.Type.Kind == ir.TBool:
 		if f.HasDefault && f.DefBool {
@@ -126,13 +153,13 @@ func scalarDefaultExpr(f *ir.Field) string {
 		}
 		return "false"
 	case f.DefVariant != "":
-		return f.Type.Name + "." + f.DefVariant
+		return qual(f.Type.Name) + "." + f.DefVariant
 	case f.Type.Kind == ir.TNamed:
 		if fl, ok := f.Type.Ref.(*ir.Flags); ok {
-			return flagsLitExpr(fl, f.DefInt)
+			return flagsLitExpr(pkg, fl, f.DefInt)
 		}
 		if en, ok := f.Type.Ref.(*ir.Enum); ok {
-			return en.Name + ".None"
+			return qual(en.Name) + ".None"
 		}
 	case f.Type.Kind == ir.TFloat32:
 		if f.HasDefault {
@@ -231,10 +258,8 @@ func enumVariantDeprecated(en *ir.Enum, idx int) bool {
 	if idx < len(en.VariantDeprecated) && en.VariantDeprecated[idx] {
 		return true
 	}
-	if idx < len(en.VariantTags) {
-		if slices.Contains(en.VariantTags[idx], "deprecated") {
-			return true
-		}
+	if idx < len(en.VariantTags) && slices.Contains(en.VariantTags[idx], "deprecated") {
+		return true
 	}
 	return false
 }
@@ -264,6 +289,9 @@ func hasFixedFieldClosure(u *ir.Unit, f *ir.Field, visiting map[string]bool) boo
 }
 
 func hasFixedStructClosure(u *ir.Unit, st *ir.Struct, visiting map[string]bool) bool {
+	if st.IsMapEntry() && !st.TextElem {
+		return false
+	}
 	key := "s:" + st.Name
 	if visiting[key] {
 		return false
@@ -295,6 +323,54 @@ func hasFixedUnionClosure(u *ir.Unit, un *ir.Union, visiting map[string]bool) bo
 
 func hasFixedStorageClosure(u *ir.Unit, st *ir.Struct) bool {
 	return hasFixedStructClosure(u, st, map[string]bool{})
+}
+
+func isFixedStruct(u *ir.Unit, st *ir.Struct) bool {
+	return !st.IsTable || hasFixedStorageClosure(u, st)
+}
+
+func isFixedUnion(u *ir.Unit, un *ir.Union) bool {
+	return u.TableUnions[un.Name] == nil || hasFixedUnionClosure(u, un, map[string]bool{})
+}
+
+func isUserClassType(u *ir.Unit, t ir.FieldType) bool {
+	if t.Kind != ir.TNamed {
+		return false
+	}
+	switch r := t.Ref.(type) {
+	case *ir.Struct:
+		return !isFixedStruct(u, r)
+	case *ir.Union:
+		return !isFixedUnion(u, r)
+	}
+	return false
+}
+
+func userValueType(pkg string, t ir.FieldType) string {
+	if t.Kind == ir.TNamed {
+		return "global::" + pkg + "." + t.Name
+	}
+	return scalarStorageType(t)
+}
+
+func userPointerType(u *ir.Unit, pkg string, t ir.FieldType) string {
+	if t.Blob() {
+		return "Schema.TableBlob"
+	}
+	if st, ok := t.Ref.(*ir.Struct); ok && isFixedStruct(u, st) {
+		return "Schema.Ref<global::" + pkg + "." + st.Name + ">"
+	}
+	return "global::" + pkg + "." + t.Name
+}
+
+func userElementType(u *ir.Unit, pkg string, f *ir.Field) string {
+	if f.IsMap() {
+		return "global::" + pkg + "." + f.MapEntry.Name
+	}
+	if f.Type.Pointer {
+		return userPointerType(u, pkg, f.Type)
+	}
+	return userValueType(pkg, f.Type)
 }
 
 func packetStructHasInit(st *ir.Struct) bool {
@@ -343,10 +419,92 @@ func emitFixedStorageField(b *strings.Builder, f *ir.Field, memberName string) {
 	}
 }
 
-func emitTableUnion(types, schema *strings.Builder, u *ir.Unit, un *ir.Union) {
-	if !hasFixedUnionClosure(u, un, map[string]bool{}) {
+func emitVariableStorageField(b *strings.Builder, u *ir.Unit, pkg string, f *ir.Field, memberName string) {
+	elemT := userElementType(u, pkg, f)
+	switch {
+	case f.IsList(), f.IsMap():
+		fmt.Fprintf(b, "    public %s[] %s = Array.Empty<%s>();\n", elemT, memberName, elemT)
+		fmt.Fprintf(b, "    public int %sCount;\n", memberName)
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		fmt.Fprintf(b, "    public %s %s;\n", elemT, memberName)
+	case f.Type.TextUnbounded():
+		fmt.Fprintf(b, "    public byte[] %s = Array.Empty<byte>();\n", memberName)
+		fmt.Fprintf(b, "    public int %sLength;\n", memberName)
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		fmt.Fprintf(b, "    public byte[] %s = new byte[%d];\n", memberName, f.Type.Size)
+		fmt.Fprintf(b, "    public int %sLength;\n", memberName)
+	case f.KeyEnum != "":
+		keyT := "global::" + pkg + "." + f.KeyEnum
+		fmt.Fprintf(b, "    public Schema.TableKeyed<%s, %s> %s = new Schema.TableKeyed<%s, %s>();\n", elemT, keyT, memberName, elemT, keyT)
+	case f.Array == ir.ArrayFixed:
+		fmt.Fprintf(b, "    public %s[] %s = new %s[%d];\n", elemT, memberName, elemT, f.ArrayBound)
+	case f.Array == ir.ArrayCounted:
+		fmt.Fprintf(b, "    public %s[] %s = new %s[%d];\n", elemT, memberName, elemT, f.ArrayBound)
+		if f.BornCount() > 0 && !f.Type.Optional {
+			fmt.Fprintf(b, "    public int %sCount = %d;\n", memberName, f.BornCount())
+		} else {
+			fmt.Fprintf(b, "    public int %sCount;\n", memberName)
+		}
+	default:
+		init := ""
+		if isUserClassType(u, f.Type) {
+			init = " = new " + elemT + "()"
+		} else if f.HasDefault || (f.Type.Kind == ir.TNamed && isEnumRef(f.Type)) {
+			init = " = " + scalarDefaultExprQual(pkg, f)
+		}
+		fmt.Fprintf(b, "    public %s %s%s;\n", elemT, memberName, init)
+	}
+	if f.Type.Optional {
+		fmt.Fprintf(b, "    public bool %sPresent;\n", memberName)
+	}
+}
+
+func isEnumRef(t ir.FieldType) bool {
+	_, ok := t.Ref.(*ir.Enum)
+	return ok
+}
+
+func emitVariableClassCtor(b *strings.Builder, u *ir.Unit, pkg, className string, fields []*ir.Field, isTable bool) {
+	var body strings.Builder
+	for _, f := range fields {
+		m := member(f)
+		switch {
+		case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer && !f.Type.TextUnbounded() && f.HasDefault && len(f.DefBytes) > 0 && !f.Type.Optional:
+			for i, by := range f.DefBytes {
+				fmt.Fprintf(&body, "        %s[%d] = 0x%02x;\n", m, i, by)
+			}
+			fmt.Fprintf(&body, "        %sLength = %d;\n", m, len(f.DefBytes))
+		case f.Array != ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Pointer && f.Type.Kind == ir.TNamed:
+			slots := m
+			if f.KeyEnum != "" && isTable {
+				slots = m + ".Slots"
+			}
+			if isUserClassType(u, f.Type) {
+				elemT := userValueType(pkg, f.Type)
+				fmt.Fprintf(&body, "        for (int i = 0; i < %s.Length; i++) { %s[i] = new %s(); }\n", slots, slots, elemT)
+			} else if inner, ok := f.Type.Ref.(*ir.Struct); ok && structHasInitFn(inner) && !f.Type.Optional {
+				cnt := f.ArrayBound
+				if f.Array == ir.ArrayCounted {
+					cnt = f.BornCount()
+				}
+				if cnt > 0 {
+					fmt.Fprintf(&body, "        for (int i = 0; i < %d; i++) { Schema.Init%s(ref %s[i]); }\n", cnt, inner.Name, slots)
+				}
+			}
+		case f.Array == ir.ArrayNone && !f.IsMap() && !f.Type.Pointer && f.Type.Kind == ir.TNamed && !f.Type.Optional:
+			if inner, ok := f.Type.Ref.(*ir.Struct); ok && isFixedStruct(u, inner) && structHasInitFn(inner) {
+				fmt.Fprintf(&body, "        Schema.Init%s(ref %s);\n", inner.Name, m)
+			}
+		}
+	}
+	if body.Len() == 0 {
 		return
 	}
+	fmt.Fprintf(b, "\n    public %s()\n    {\n%s    }\n", className, body.String())
+}
+
+func emitTableUnion(types, schema *strings.Builder, u *ir.Unit, un *ir.Union) {
+	pkg := namespaceOf(u.Package)
 	tagBits := ir.StorageBitsFor(int64(len(un.Variants)))
 	fmt.Fprintf(types, "public enum %sType : %s\n{\n    None = 0,\n", un.Name, csUintType(tagBits))
 	for i, v := range un.Variants {
@@ -364,14 +522,86 @@ func emitTableUnion(types, schema *strings.Builder, u *ir.Unit, un *ir.Union) {
 	schema.WriteString("        default: return \"???\";\n    }\n}\n\n")
 
 	types.WriteString(ir.DocComment(un.Doc, "", "//"))
-	fmt.Fprintf(types, "[Serializable]\npublic struct %s\n{\n    public %sType Type;\n", un.Name, un.Name)
+	if hasFixedUnionClosure(u, un, map[string]bool{}) {
+		fmt.Fprintf(types, "[Serializable]\npublic struct %s\n{\n    public %sType Type;\n", un.Name, un.Name)
+		for _, v := range un.Variants {
+			if v.Void() {
+				continue
+			}
+			emitFixedStorageField(types, v.F, ir.GoExportName(v.Name))
+		}
+		types.WriteString("}\n\n")
+		return
+	}
+	fmt.Fprintf(types, "[Serializable]\npublic sealed class %s\n{\n    public %sType Type;\n", un.Name, un.Name)
+	var armFields []*ir.Field
 	for _, v := range un.Variants {
 		if v.Void() {
 			continue
 		}
-		emitFixedStorageField(types, v.F, ir.GoExportName(v.Name))
+		emitVariableStorageField(types, u, pkg, v.F, ir.GoExportName(v.Name))
+		armFields = append(armFields, v.F)
 	}
+	emitVariableClassCtor(types, u, pkg, un.Name, armFields, false)
 	types.WriteString("}\n\n")
+}
+
+func emitTableStorageType(types *strings.Builder, u *ir.Unit, st *ir.Struct) {
+	pkg := namespaceOf(u.Package)
+	types.WriteString(ir.DocComment(st.Doc, "", "//"))
+	if hasFixedStorageClosure(u, st) {
+		fmt.Fprintf(types, "[Serializable]\npublic struct %s\n{\n", st.Name)
+		for _, f := range st.Fields {
+			types.WriteString(ir.DocComment(f.Doc, "    ", "//"))
+			emitFixedStorageField(types, f, member(f))
+		}
+		types.WriteString("}\n\n")
+		return
+	}
+	fmt.Fprintf(types, "[Serializable]\npublic sealed class %s\n{\n", st.Name)
+	for _, f := range st.Fields {
+		types.WriteString(ir.DocComment(f.Doc, "    ", "//"))
+		emitVariableStorageField(types, u, pkg, f, member(f))
+	}
+	emitVariableClassCtor(types, u, pkg, st.Name, st.Fields, true)
+	types.WriteString("}\n\n")
+}
+
+var schemaNestedTypeNames = map[string]bool{
+	"Ref": true, "RefEq": true, "TableReport": true, "_R": true,
+	"TableFieldInfo": true, "TableTypeInfo": true, "TableUnionInfo": true, "TableUnionArmInfo": true,
+	"TableBlob": true, "TableByteOrder": true, "TableKeyed": true, "TableRetain": true, "RetainPath": true,
+	"TableMessageEntry": true, "TableMessageShape": true, "TableVocabulary": true,
+	"TableBlockFieldInfo": true, "TableBlockInfo": true, "TableBlockRefusal": true,
+	"TableCookStorage": true, "TableCookFieldInfo": true, "TableCookInfo": true, "TableRefuseReason": true,
+	"ViewConstant": true, "ViewVariant": true, "ViewVocabulary": true, "ViewType": true, "UnitViewInfo": true,
+	"TableWire": true, "TableJson": true,
+}
+
+func typeRefInSchema(pkg, name string) string {
+	if schemaNestedTypeNames[name] {
+		return "global::" + pkg + "." + name
+	}
+	return name
+}
+
+func emitConstruct(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
+	if st.IsMapEntry() {
+		return
+	}
+	pkg := namespaceOf(u.Package)
+	qual := typeRefInSchema(pkg, st.Name)
+	if hasFixedStorageClosure(u, st) {
+		fmt.Fprintf(b, "public static void Init%s(ref %s value)\n{\n    value = default;\n", st.Name, qual)
+		for _, f := range st.Fields {
+			emitInitFixedField(b, f, "value.", "    ")
+		}
+		b.WriteString("}\n\n")
+		fmt.Fprintf(b, "public static %s New%s()\n{\n    %s value = default;\n    Init%s(ref value);\n    return value;\n}\n\n", qual, st.Name, qual, st.Name)
+		return
+	}
+	fmt.Fprintf(b, "public static void Init%s(ref %s value)\n{\n    value = new %s();\n}\n\n", st.Name, qual, qual)
+	fmt.Fprintf(b, "public static %s New%s()\n{\n    return new %s();\n}\n\n", qual, st.Name, qual)
 }
 
 func emitInitFixedField(b *strings.Builder, f *ir.Field, prefix, ind string) {
@@ -409,35 +639,4 @@ func emitInitFixedField(b *strings.Builder, f *ir.Field, prefix, ind string) {
 			fmt.Fprintf(b, "%sInit%s(ref %s);\n", ind, inner.Name, name)
 		}
 	}
-}
-
-func unitUses128(u *ir.Unit) bool {
-	checkField := func(f *ir.Field) bool {
-		return f != nil && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Width == 128
-	}
-	for _, st := range u.Tables {
-		if slices.ContainsFunc(st.Fields, checkField) {
-			return true
-		}
-	}
-	for _, st := range u.Structs {
-		if slices.ContainsFunc(st.Fields, checkField) {
-			return true
-		}
-	}
-	for _, un := range u.TableUnions {
-		for _, v := range un.Variants {
-			if checkField(v.F) {
-				return true
-			}
-		}
-	}
-	for _, un := range u.Unions {
-		for _, v := range un.Variants {
-			if checkField(v.F) {
-				return true
-			}
-		}
-	}
-	return false
 }

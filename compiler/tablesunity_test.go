@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -61,6 +60,11 @@ table Mixed
     name  string(16)
     ratio float32
     child Toggles
+}
+
+table WireOnly | forms = "wire"
+{
+    x int32
 }
 `
 
@@ -157,34 +161,37 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 		t.Fatalf("--lang unity emitted no table files for a unit with tables: %v", slices.Sorted(maps.Keys(files)))
 	}
 	for _, want := range []string{
-		"public struct Toggles", "public struct Numbers", "public struct Mixed",
-		"public static readonly TableTypeInfo TogglesTableType", "public static readonly TableTypeInfo NumbersTableType",
-		"public static readonly TableTypeInfo MixedTableType",
+		"public struct Toggles", "public struct Numbers", "public struct Mixed", "public struct WireOnly",
+		"public static TableTypeInfo TogglesTableType =>", "public static TableTypeInfo NumbersTableType =>",
+		"public static TableTypeInfo MixedTableType =>", "public static TableTypeInfo WireOnlyTableType =>",
 		"public static bool NumbersLoad(ref Numbers value, ReadOnlySpan<byte> bytes, ref TableReport report)",
-		"public static int NumbersSave(ref Numbers value, Span<byte> buffer)",
-		"public static int NumbersMeasure(ref Numbers value)",
+		"public static long NumbersSave(ref Numbers value, Span<byte> buffer)",
+		"public static long NumbersMeasure(ref Numbers value)",
+		"public static bool MixedLoad(ref Mixed value, ReadOnlySpan<byte> bytes, ref TableReport report)",
+		"public static long MixedSave(ref Mixed value, Span<byte> buffer)",
+		"public static long MixedMeasure(ref Mixed value)",
 		"public static void InitNumbers(ref Numbers value)", "public static Numbers NewNumbers()",
 		"public sbyte A;", "public short B;", "public int C;", "public long D;", "public byte E;", "public ushort F;",
 		"public uint G;", "public ulong H;", "public uint Mask;", "public ulong Wide;",
 		"public Buffer16<byte> Name;", "public int NameLength;", "public float Ratio;", "public Toggles Child;",
-		`Debug.Assert(value.Angle >= -180 && value.Angle <= 180, "angle is outside its declared range [-180, 180]");`,
+		"WriteValidRaw = delegate (ulong raw) { int v = unchecked((int)(long)raw); return v >= -180 && v <= 180; }",
 	} {
 		if !strings.Contains(tables, want) {
 			t.Errorf("Probe.Tables.cs lacks %q", want)
 		}
 	}
-	for _, unwanted := range []string{"MixedLoad", "MixedSave", "MixedMeasure"} {
+	for _, unwanted := range []string{"WireOnlyFromJson", "WireOnlyToJson", "WireOnlyToJsonMeasure", "WireOnlyCook", "WireOnlyCookMeasure"} {
 		if strings.Contains(tables, unwanted) {
-			t.Errorf("Probe.Tables.cs carries %q for a table no codec carries whole", unwanted)
+			t.Errorf("Probe.Tables.cs carries %q for a table whose forms include wire only", unwanted)
 		}
 	}
-	for _, want := range []string{"internal static class TableWire", "public struct TableReport", "public readonly struct TableFieldInfo", "public sealed class TableTypeInfo", "ref struct WireWalk"} {
+	for _, want := range []string{"internal static partial class TableWire", "internal static class TableJson", "public struct TableReport", "public sealed class TableFieldInfo", "public sealed class TableTypeInfo", "public sealed class TableRetain", "ref struct Reader"} {
 		if !strings.Contains(runtime, want) {
 			t.Errorf("%s lacks %q", unitytable.RuntimeFile, want)
 		}
 	}
-	// every field has a descriptor row, carried or not
-	for _, row := range []string{"// on: bool", "// angle: int", "// wide: int", "// name: unsupported", "// ratio: float", "// child: unsupported", "// n: int"} {
+	// every field has a descriptor row
+	for _, row := range []string{`Name = "on"`, `Name = "angle"`, `Name = "wide"`, `Name = "name"`, `Name = "ratio"`, `Name = "child"`, `Name = "n"`, `Name = "x"`} {
 		if !strings.Contains(tables, row) {
 			t.Errorf("Probe.Tables.cs has no descriptor row %q", row)
 		}
@@ -231,14 +238,14 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 		name, file, from, to, decides string
 	}
 	sabotages := []sabotage{
-		{"first-use order", unitytable.RuntimeFile, "if (OrderBad || Next != Count) { Damage(); }", "if (OrderBad || Next < 0) { Damage(); }", "unused-id-entry"},
-		{"form byte", unitytable.RuntimeFile, "if (bytes[0] != FileForm)", "if (bytes[0] == 255)", "form-3"},
-		{"out_of_range", "Probe.Tables.cs", "reason = TableReport.OutOfRange;", "reason = TableReport.Accepted;", "angle-out-of-range"},
-		{"kind_mismatch", "Probe.Tables.cs", "reason = TableReport.KindMismatch;", "reason = TableReport.Accepted;", "on-kind-mismatch"},
-		{"widened", unitytable.RuntimeFile, "            widened++;", "            widened += 0;", "narrow-writer"},
-		{"bool byte", unitytable.RuntimeFile, "if (kind == 1 && b[0] > 1)", "if (kind == 0 && b[0] > 1)", "bool-byte-2"},
-		{"canonical LEB128", unitytable.RuntimeFile, "if (i > 0 && c == 0) { return false; }", "if (i > 99 && c == 0) { return false; }", "noncanonical-ref"},
-		{"unreachable record", unitytable.RuntimeFile, "if (mark[k] == 0) { return Damage(); }", "if (mark[k] == 3) { return Damage(); }", "unreachable-record"},
+		{"first-use order", unitytable.RuntimeFile, "if (w.Fail == WireWhole && (w.OutOfOrder || w.Used != ids.Length / 8)) { w.Fail = WireDamaged; }", "if (w.Fail == WireWhole && (w.OutOfOrder && w.Used < 0)) { w.Fail = WireDamaged; }", "unused-id-entry"},
+		{"form byte", unitytable.RuntimeFile, "if (bytes[0] != 1)", "if (bytes[0] == 255)", "form-3"},
+		{"out_of_range", "Probe.Tables.cs", "r.Refused = true; r.Reason = \"out_of_range\";", "r.Refused = false;", "angle-out-of-range"},
+		{"kind_mismatch", unitytable.RuntimeFile, "return Fail(report, \"kind_mismatch\");", "return true;", "on-kind-mismatch"},
+		{"widened", unitytable.RuntimeFile, "if (Widen(from, to)) { report.Widened++; return true; }", "if (Widen(from, to)) { return true; }", "narrow-writer"},
+		{"bool byte", unitytable.RuntimeFile, "if (kind == 1 && boolRaw > 1)", "if (kind == 0 && boolRaw > 1)", "bool-byte-2"},
+		{"canonical LEB128", unitytable.RuntimeFile, "if (i > 0 && c == 0)", "if (i > 99 && c == 0)", "noncanonical-ref"},
+		{"unreachable record", unitytable.RuntimeFile, "for (int k = 1; k < n; k++) { if (mark[k] == 0) { Damage(); return; } }", "for (int k = 1; k < n; k++) { if (mark[k] == 3) { Damage(); return; } }", "unreachable-record"},
 	}
 	// at most four builds at once
 	slots := make(chan struct{}, 4)
@@ -561,9 +568,9 @@ func unityTableCorpus(t *testing.T, reader *ir.Unit) []unityTableCase {
 	cycle[3] = 1
 	add("cycle-to-root", "Toggles", cycle)
 
-	// a root the core does not carry answers absent
-	mixed := rm.New(reader.Tables["Mixed"])
-	cases = append(cases, unityTableCase{name: "mixed-absent", root: "Mixed", wire: encodeOrFail(t, rm, mixed), want: "absent"})
+	// an undeclared root answers absent
+	wireOnly := rm.New(reader.Tables["WireOnly"])
+	cases = append(cases, unityTableCase{name: "undeclared-absent", root: "UndeclaredRoot", wire: encodeOrFail(t, rm, wireOnly), want: "absent"})
 
 	// mutants of every seed
 	for _, s := range seeds {
@@ -687,7 +694,7 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 	var b strings.Builder
 	var rows []unityTableCase
 	for _, c := range cases {
-		if (strings.HasPrefix(c.name, "reader-") && !strings.Contains(c.name, "-flip") && !strings.HasSuffix(c.name, "-cut") && !strings.HasSuffix(c.name, "-grown")) || c.name == "mixed-absent" {
+		if (strings.HasPrefix(c.name, "reader-") && !strings.Contains(c.name, "-flip") && !strings.HasSuffix(c.name, "-cut") && !strings.HasSuffix(c.name, "-grown")) || c.name == "undeclared-absent" {
 			rows = append(rows, c)
 		}
 	}
@@ -704,13 +711,19 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 	if err := os.WriteFile(manifest, []byte(b.String()), 0o644); err != nil {
 		h.t.Fatal(err)
 	}
-	if out, code := h.run(nil, manifest, "list"); code != 0 || strings.TrimSpace(out) != "wire" {
-		h.t.Errorf("list: exit %d, %q; want the wire surface alone", code, out)
+	wantSurfaces := []string{
+		"wire", "message", "report", "framing", "retain", "retain-save",
+		"json-read", "json-write", "json-hostile",
+		"cook", "cook-write", "cook-foreign",
+		"block", "block-foreign", "block-dump",
+		"forgery", "cook-forgery",
+		"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
 	}
-	for _, surface := range []string{"report", "json-write", "write-refusal", "block"} {
-		if out, code := h.run(nil, manifest, surface, filepath.Join(h.tmp, "absent-"+surface)); code != 2 {
-			h.t.Errorf("surface %s: exit %d, want 2 (absent):\n%s", surface, code, out)
-		}
+	if out, code := h.run(nil, manifest, "list"); code != 0 || !slices.Equal(strings.Fields(out), wantSurfaces) {
+		h.t.Errorf("list: exit %d, %q; want %v", code, out, wantSurfaces)
+	}
+	if out, code := h.run(nil, manifest, "unknown-surface", filepath.Join(h.tmp, "absent-unknown")); code != 2 {
+		h.t.Errorf("unknown-surface: exit %d, want 2 (absent):\n%s", code, out)
 	}
 	outdir := filepath.Join(h.tmp, "wire-out")
 	if out, code := h.run([]string{"UNITY_CONFORMANCE_UNITS=" + filepath.Join(h.tmp, "units0")}, manifest, "wire", outdir); code != 0 {
@@ -718,9 +731,9 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 	}
 	for i, c := range rows {
 		got, err := os.ReadFile(filepath.Join(outdir, fmt.Sprintf("case%d", i)))
-		if c.root == "Mixed" {
+		if c.root == "UndeclaredRoot" {
 			if _, aerr := os.Stat(filepath.Join(outdir, fmt.Sprintf("case%d.absent", i))); aerr != nil || err == nil {
-				h.t.Errorf("wire surface: the uncarried root Mixed was not answered absent")
+				h.t.Errorf("wire surface: UndeclaredRoot was not answered absent")
 			}
 			continue
 		}
@@ -728,70 +741,49 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 			h.t.Errorf("wire surface %s: wrote % x, want the oracle's % x (%v)", c.name, got, c.wire, err)
 		}
 	}
-	h.t.Logf("wire surface: %d cases answered, the uncarried root absent", len(rows))
+	h.t.Logf("wire surface: %d cases answered, the undeclared root absent", len(rows))
 }
 
-// TestUnityTableCarrySetStaysEmpty: the core registers no construct in the
-// carries registry. Each construct is a later card's, which registers it in
-// its own file.
-func TestUnityTableCarrySetStaysEmpty(t *testing.T) {
+func TestUnityTableCarrySet(t *testing.T) {
 	t.Parallel()
 	carried, ok := Carried("unity")
 	if !ok {
 		t.Fatal("unity has no carries registration")
 	}
-	want := []string{carryForms, carryIntegrity, carryOneSidedRange}
-	if !slices.Equal(carried, want) {
-		t.Errorf("unity carries %v, want %v", carried, want)
-	}
-}
-
-// TestUnityTableKindLayout: the codecs are one file each, registered by name,
-// and `unsupported` is the last resort every unclaimed field falls to.
-func TestUnityTableKindLayout(t *testing.T) {
-	t.Parallel()
-	kinds := unitytable.Kinds()
-	if len(kinds) == 0 || kinds[len(kinds)-1] != "unsupported" {
-		t.Fatalf("the codec registry is %v; unsupported must close it", kinds)
-	}
-	for _, k := range kinds {
-		path := filepath.Join("..", "internal", "codegen", "unitytable", "kind_"+k+".go")
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("codec %s has no file of its own (%s)", k, path)
-		}
+	want := slices.Clone(carryConstructs)
+	slices.Sort(want)
+	got := slices.Clone(carried)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("unity carries %v, want %v", got, want)
 	}
 	u := unitFromSource(t, unityTableProbe)
-	for _, f := range u.Tables["Mixed"].Fields {
-		want := map[string]string{"n": "int", "name": "unsupported", "ratio": "float", "child": "unsupported"}[f.Name]
-		if got := unitytable.CodecOf(f); got != want {
-			t.Errorf("Mixed.%s is carried by %s, want %s", f.Name, got, want)
-		}
+	if !unitytable.Carried(u.Tables["Numbers"]) || !unitytable.Carried(u.Tables["Mixed"]) || !unitytable.Carried(u.Tables["WireOnly"]) {
+		t.Error("Carried must hold Numbers, Mixed and WireOnly")
 	}
-	if unitytable.Carried(u.Tables["Mixed"]) || !unitytable.Carried(u.Tables["Numbers"]) {
-		t.Error("Carried must hold Numbers and not Mixed")
+	if unitytable.Carried(nil) {
+		t.Error("Carried must refuse nil")
 	}
 }
 
-// TestUnityTableRuntimeNamesAreClaimed: every Table* identifier the Unity
-// table files spell is registered in internal/tablenames, and every name the
-// registry says Unity defines is spelled.
 func TestUnityTableRuntimeNamesAreClaimed(t *testing.T) {
 	t.Parallel()
-	files := unityGenerate(t, unityTableProbe)
-	ident := regexp.MustCompile(`\bTable[A-Za-z0-9_]*\b`)
-	emitted := map[string]bool{}
-	for name, data := range files {
-		if !strings.HasSuffix(name, ".Tables.cs") && name != unitytable.RuntimeFile {
-			continue
-		}
-		for line := range strings.SplitSeq(string(data), "\n") {
-			if i := strings.Index(line, "//"); i >= 0 {
-				line = line[:i]
-			}
-			for _, m := range ident.FindAllString(line, -1) {
-				emitted[m] = true
-			}
-		}
+	source := runtimeSrc + `
+table NativeRoot
+{
+    next *NativeRoot
+    values []int32
+    keys map[uint32]int32
+}
+`
+	files, err := New().Generate(unitFromSource(t, source), "unity", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	namespace := capitalizeFirst(unitFromSource(t, runtimeSrc).Package)
+	emitted := csEmittedNames(files, namespace)
+	if len(emitted) == 0 {
+		t.Fatal("the scan found no Table* identifier in the emitted Unity C#")
 	}
 	for name := range emitted {
 		if !tablenames.Registered(name) {
@@ -802,5 +794,19 @@ func TestUnityTableRuntimeNamesAreClaimed(t *testing.T) {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says Unity defines %s, and nothing emitted spells it", name)
 		}
+	}
+
+	sabotaged := maps.Clone(files)
+	rt, ok := sabotaged[unitytable.RuntimeFile]
+	if !ok {
+		t.Fatalf("--lang unity emitted no %s", unitytable.RuntimeFile)
+	}
+	sabotaged[unitytable.RuntimeFile] = append([]byte("namespace Probe\n{\n    public struct TableProbe { }\n    public enum TableProbeKind { A, B }\n}\n\n"), rt...)
+	planted := csEmittedNames(sabotaged, namespace)
+	if !planted["TableProbe"] || !planted["TableProbeKind"] {
+		t.Fatal("the Unity runtime-name scan did not see planted TableProbe / TableProbeKind")
+	}
+	if tablenames.Registered("TableProbe") || tablenames.Registered("TableProbeKind") {
+		t.Fatal("TableProbe / TableProbeKind is registered, so the negative control proves nothing")
 	}
 }

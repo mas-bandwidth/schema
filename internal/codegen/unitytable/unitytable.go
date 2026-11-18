@@ -1,92 +1,24 @@
-// Package unitytable emits the Unity C# TABLE backend (--lang unity,
-// docs/UNITY.md): the table surface beside the packet types
-// internal/codegen/unity emits, in the same namespace and the same
-// `public static partial class Schema`, in the same dialect — C# 9 over
-// netstandard2.1, no `unsafe`, no reflection, IL2CPP and Burst safe.
 package unitytable
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// RuntimeFile is the one file per unit that carries the table runtime.
 const RuntimeFile = "Tables.Runtime.cs"
 
 func tablesFile(base string) string { return base + ".Tables.cs" }
 
-func Generate(u *ir.Unit) (map[string][]byte, error) {
-	return GenerateLineage(u, nil)
-}
-
-func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
-	if len(u.Tables) == 0 && len(u.TableUnions) == 0 {
-		return map[string][]byte{}, nil
-	}
-	out := map[string][]byte{}
-	seenTables := map[string]bool{}
-	seenUnions := map[string]bool{}
-	for _, f := range u.Files {
-		if len(f.Tables) == 0 && len(f.TableUnions) == 0 {
-			continue
-		}
-		tables := append([]*ir.Struct(nil), f.Tables...)
-		for _, st := range tables {
-			seenTables[st.Name] = true
-		}
-		unions := append([]*ir.Union(nil), f.TableUnions...)
-		for _, un := range unions {
-			seenUnions[un.Name] = true
-		}
-		data, err := emitTables(u, f.Base, tables, unions, lineage)
-		if err != nil {
-			return nil, err
-		}
-		out[tablesFile(f.Base)] = data
-	}
-	var orphans []*ir.Struct
-	names := make([]string, 0, len(u.Tables))
-	for name := range u.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		if !seenTables[name] {
-			orphans = append(orphans, u.Tables[name])
-		}
-	}
-	var unionOrphans []*ir.Union
-	uNames := make([]string, 0, len(u.TableUnions))
-	for name := range u.TableUnions {
-		uNames = append(uNames, name)
-	}
-	sort.Strings(uNames)
-	for _, name := range uNames {
-		if !seenUnions[name] {
-			unionOrphans = append(unionOrphans, u.TableUnions[name])
-		}
-	}
-	out[RuntimeFile] = emitRuntime(u, orphans, unionOrphans)
-	return out, nil
-}
-
-// Carried reports whether a table has the form-1 Load, Save and Measure.
 func Carried(st *ir.Struct) bool {
-	if st.FixedDeclared || !st.CarriesForm("wire") {
+	if st == nil || !st.CarriesForm("wire") {
 		return false
 	}
-	if st.Integrity != "" && st.Integrity != "crc32c" {
-		return false
-	}
-	for _, f := range st.Fields {
-		if !kindOf(f).carried() {
-			return false
-		}
-	}
-	return true
+	return st.Integrity == "" || st.Integrity == "crc32c"
 }
 
 func namespaceOf(pkg string) string {
@@ -140,312 +72,714 @@ func indent(s string) string {
 	return b.String()
 }
 
-func emitTables(u *ir.Unit, base string, tables []*ir.Struct, unions []*ir.Union, lineage map[string][]FixedLineageEntry) ([]byte, error) {
-	sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
+func closureEnums(u *ir.Unit, closure map[string]bool) map[string]*ir.Enum {
+	used := map[string]*ir.Enum{}
+	seen := map[*ir.Union]bool{}
+	var walkField func(*ir.Field)
+	walkField = func(f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if f.KeyEnumRef != nil {
+			used[f.KeyEnumRef.Name] = f.KeyEnumRef
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Enum:
+			used[ref.Name] = ref
+		case *ir.Union:
+			if seen[ref] {
+				return
+			}
+			seen[ref] = true
+			for _, arm := range ref.Variants {
+				if !arm.Void() {
+					walkField(arm.F)
+				}
+			}
+		}
+	}
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st != nil {
+			for _, f := range st.Fields {
+				walkField(f)
+			}
+		}
+	}
+	return used
+}
+
+func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	if len(u.Tables) == 0 && len(u.TableUnions) == 0 {
+		return map[string][]byte{}, nil
+	}
+	out := emitBlockAndCookFiles(u)
+	closure := ir.TableClosure(u)
+	reachedVocab := ir.TableClosureVocabulary(u)
+	usedEnums := closureEnums(u, closure)
+	msgS, msgU := messageClosure(u)
+	pkg := namespaceOf(u.Package)
+
+	seenStructs := map[string]bool{}
+	seenUnions := map[string]bool{}
+	seenEnums := map[string]bool{}
+
+	for _, f := range u.Files {
+		var fileTables []*ir.Struct
+		var fileClosureTypes []*ir.Struct
+		var fileTableUnions []*ir.Union
+		var filePacketUnions []*ir.Union
+		var fileUsedEnums []*ir.Enum
+
+		for _, st := range f.Tables {
+			seenStructs[st.Name] = true
+			fileTables = append(fileTables, st)
+		}
+		for _, un := range f.TableUnions {
+			seenUnions[un.Name] = true
+			fileTableUnions = append(fileTableUnions, un)
+		}
+		for _, d := range f.Decls {
+			switch decl := d.(type) {
+			case *ir.Struct:
+				if !decl.IsTable && closure[decl.Name] && !seenStructs[decl.Name] {
+					seenStructs[decl.Name] = true
+					fileClosureTypes = append(fileClosureTypes, decl)
+				}
+			case *ir.Union:
+				if u.TableUnions[decl.Name] == nil && reachedVocab[decl.Name] && !seenUnions[decl.Name] {
+					seenUnions[decl.Name] = true
+					filePacketUnions = append(filePacketUnions, decl)
+				}
+			case *ir.Enum:
+				if e, ok := usedEnums[decl.Name]; ok && !seenEnums[decl.Name] {
+					seenEnums[decl.Name] = true
+					fileUsedEnums = append(fileUsedEnums, e)
+				}
+			}
+		}
+
+		if len(fileTables) == 0 && len(fileClosureTypes) == 0 && len(fileTableUnions) == 0 && len(filePacketUnions) == 0 && len(fileUsedEnums) == 0 {
+			continue
+		}
+		data, err := emitFileTables(u, pkg, f.Base+".schema", fileTables, fileClosureTypes, fileTableUnions, filePacketUnions, fileUsedEnums, msgS, msgU, lineage)
+		if err != nil {
+			return nil, err
+		}
+		out[tablesFile(f.Base)] = data
+	}
+
+	var orphanTables []*ir.Struct
+	for _, name := range sortedMapKeys(u.Tables) {
+		if !seenStructs[name] {
+			seenStructs[name] = true
+			orphanTables = append(orphanTables, u.Tables[name])
+		}
+	}
+	var orphanTypes []*ir.Struct
+	for _, name := range sortedMapKeys(u.Structs) {
+		st := u.Structs[name]
+		if !st.IsTable && closure[name] && !seenStructs[name] {
+			seenStructs[name] = true
+			orphanTypes = append(orphanTypes, st)
+		}
+	}
+	var orphanTableUnions []*ir.Union
+	for _, name := range sortedMapKeys(u.TableUnions) {
+		if !seenUnions[name] {
+			seenUnions[name] = true
+			orphanTableUnions = append(orphanTableUnions, u.TableUnions[name])
+		}
+	}
+	var orphanPacketUnions []*ir.Union
+	for _, name := range sortedMapKeys(u.Unions) {
+		if u.TableUnions[name] == nil && reachedVocab[name] && !seenUnions[name] {
+			seenUnions[name] = true
+			orphanPacketUnions = append(orphanPacketUnions, u.Unions[name])
+		}
+	}
+	var orphanEnums []*ir.Enum
+	for _, name := range sortedMapKeys(usedEnums) {
+		if !seenEnums[name] {
+			seenEnums[name] = true
+			orphanEnums = append(orphanEnums, usedEnums[name])
+		}
+	}
+
+	rtData, err := emitRuntimeFile(u, pkg, orphanTables, orphanTypes, orphanTableUnions, orphanPacketUnions, orphanEnums, msgS, msgU, lineage)
+	if err != nil {
+		return nil, err
+	}
+	out[RuntimeFile] = rtData
+	out[ViewFile] = emitViewFile(u, closure)
+	return out, nil
+}
+
+func emitFileTables(
+	u *ir.Unit,
+	pkg, from string,
+	tables, closureTypes []*ir.Struct,
+	tableUnions, packetUnions []*ir.Union,
+	enums []*ir.Enum,
+	msgS, msgU map[string]bool,
+	lineage map[string][]FixedLineageEntry,
+) ([]byte, error) {
+	sort.Slice(tableUnions, func(i, j int) bool { return tableUnions[i].Name < tableUnions[j].Name })
+	sort.Slice(packetUnions, func(i, j int) bool { return packetUnions[i].Name < packetUnions[j].Name })
 	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+	sort.Slice(closureTypes, func(i, j int) bool { return closureTypes[i].Name < closureTypes[j].Name })
+
 	var types, schema strings.Builder
-	saves := false
-	needBins := false
-	for _, un := range unions {
+	for _, un := range tableUnions {
 		emitTableUnion(&types, &schema, u, un)
+		emitCarrierUnion(&schema, u, un)
+	}
+	for _, un := range packetUnions {
+		emitCarrierUnion(&schema, u, un)
+	}
+	for _, e := range enums {
+		emitEnumIdentity(&schema, pkg, e)
+	}
+	for _, st := range closureTypes {
+		emitCarrierStruct(&schema, u, st)
+		emitTableDescriptor(&schema, u, st, false, msgS, msgU)
 	}
 	for _, st := range tables {
-		emitStruct(&types, u, st)
-		emitDescriptor(&schema, u, st)
+		emitTableStorageType(&types, u, st)
+		emitCarrierStruct(&schema, u, st)
+		emitTableDescriptor(&schema, u, st, false, msgS, msgU)
 		emitConstruct(&schema, u, st)
-		if Carried(st) {
-			saves = true
-			needBins = true
-			emitMeasure(&schema, st)
-			emitSave(&schema, st)
-			emitLoad(&schema, st)
-		}
+		emitTableSurfaces(&schema, u, st, msgS)
 		if FixedCarried(u, st) {
 			root, err := buildFixedRoot(u, st, lineage[st.Name])
 			if err != nil {
 				return nil, err
 			}
-			saves = true
-			needBins = true
 			emitFixed(&schema, u, root)
 		}
 	}
-	usings := []string{"System"}
-	if needBins {
-		usings = append(usings, "System.Buffers.Binary")
-	}
-	if saves {
-		usings = append(usings, "System.Diagnostics")
-	}
-	if unitUses128(u) {
-		usings = append(usings, "Serialize")
-	}
-	return []byte(header(u, base+".schema", usings...) + wrap(u, types.String(), schema.String())), nil
+
+	usings := []string{"System", "System.Buffers.Binary", "System.Diagnostics", "Serialize"}
+	return []byte(header(u, from, usings...) + wrap(u, types.String(), schema.String())), nil
 }
 
-func emitStruct(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
-	b.WriteString(ir.DocComment(st.Doc, "", "//"))
-	fmt.Fprintf(b, "// table %s — an unmanaged struct; Schema.%sTableType describes every field\n", st.Name, st.Name)
-	fmt.Fprintf(b, "[Serializable]\npublic struct %s\n{\n", st.Name)
-	fixedClosure := hasFixedStorageClosure(u, st)
-	for _, f := range st.Fields {
-		b.WriteString(ir.DocComment(f.Doc, "    ", "//"))
-		if fixedClosure {
-			emitFixedStorageField(b, f, member(f))
-			continue
-		}
-		k := kindOf(f)
-		if t := k.storage(f); t != "" {
-			fmt.Fprintf(b, "    public %s %s;\n", t, member(f))
-			continue
-		}
-		fmt.Fprintf(b, "    // %s: no codec carries this construct yet (descriptor only)\n", f.Name)
+func emitRuntimeFile(
+	u *ir.Unit,
+	pkg string,
+	orphanTables, orphanTypes []*ir.Struct,
+	orphanTableUnions, orphanPacketUnions []*ir.Union,
+	orphanEnums []*ir.Enum,
+	msgS, msgU map[string]bool,
+	lineage map[string][]FixedLineageEntry,
+) ([]byte, error) {
+	var types, schema strings.Builder
+	for _, un := range orphanTableUnions {
+		emitTableUnion(&types, &schema, u, un)
+		emitCarrierUnion(&schema, u, un)
 	}
-	b.WriteString("}\n\n")
-}
-
-func descriptorKind(f *ir.Field) int {
-	if f.Type.Pointer && f.Array == ir.ArrayNone {
-		return ir.TableKindPointer
+	for _, un := range orphanPacketUnions {
+		emitCarrierUnion(&schema, u, un)
 	}
-	if f.Type.Kind == ir.TBytes {
-		return ir.TableKindArray
+	for _, e := range orphanEnums {
+		emitEnumIdentity(&schema, pkg, e)
 	}
-	return ir.TableWireFieldKind(f)
-}
-
-func descriptorFlags(f *ir.Field) string {
-	var flags []string
-	add := func(on bool, name string) {
-		if on {
-			flags = append(flags, "TableFieldInfo."+name)
-		}
+	for _, st := range orphanTypes {
+		emitCarrierStruct(&schema, u, st)
+		emitTableDescriptor(&schema, u, st, false, msgS, msgU)
 	}
-	add(f.Type.Pointer, "Pointer")
-	add(f.Type.Optional, "Optional")
-	add(f.Array != ir.ArrayNone, "Array")
-	add(f.Required, "Required")
-	add(f.Guard != "", "Guarded")
-	add(f.Deprecated, "Deprecated")
-	add(f.IsMap(), "Map")
-	if len(flags) == 0 {
-		return "0"
-	}
-	return "(byte)(" + strings.Join(flags, " | ") + ")"
-}
-
-func emitDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
-	fmt.Fprintf(b, "// %s's descriptor: every field it declares, in declaration order.\n", st.Name)
-	fmt.Fprintf(b, "public static readonly TableTypeInfo %sTableType = new TableTypeInfo(\n", st.Name)
-	fmt.Fprintf(b, "    %q, 0x%016xUL, %t, %t,\n", st.Name, ir.TableWireId(st.WireName()), ir.VariableTables(u)[st.Name], Carried(st))
-	if len(st.Fields) == 0 {
-		b.WriteString("    Array.Empty<string>(),\n    Array.Empty<TableFieldInfo>());\n\n")
-		return
-	}
-	b.WriteString("    new string[]\n    {\n")
-	for _, f := range st.Fields {
-		fmt.Fprintf(b, "        %q,\n", f.Name)
-	}
-	b.WriteString("    },\n    new TableFieldInfo[]\n    {\n")
-	for ordinal, f := range st.Fields {
-		k := kindOf(f)
-		lo, hi := int64(0), uint64(0)
-		if k.name() == "int" {
-			lo, hi = descriptorRange(f)
-		}
-		bound := f.ArrayBound
-		fmt.Fprintf(b, "        new TableFieldInfo(0x%016xUL, %d, %d, %d, %dL, 0x%016xUL, 0x%016xUL, %dL, %s), // %s: %s\n",
-			ir.TableFieldWireId(f), descriptorKind(f), k.codec(), ordinal, lo, hi, k.defaultBits(f), bound, descriptorFlags(f), f.Name, k.name())
-	}
-	b.WriteString("    });\n\n")
-}
-
-func emitConstruct(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
-	fmt.Fprintf(b, "// Init%s puts value back to its declared defaults.\n", st.Name)
-	fmt.Fprintf(b, "public static void Init%s(ref %s value)\n{\n", st.Name, st.Name)
-	b.WriteString("    value = default;\n")
-	if hasFixedStorageClosure(u, st) {
-		for _, f := range st.Fields {
-			emitInitFixedField(b, f, "value.", "    ")
-		}
-	} else {
-		for _, f := range st.Fields {
-			k := kindOf(f)
-			if k.storage(f) == "" || k.defaultBits(f) == 0 {
-				continue
+	for _, st := range orphanTables {
+		emitTableStorageType(&types, u, st)
+		emitCarrierStruct(&schema, u, st)
+		emitTableDescriptor(&schema, u, st, false, msgS, msgU)
+		emitConstruct(&schema, u, st)
+		emitTableSurfaces(&schema, u, st, msgS)
+		if FixedCarried(u, st) {
+			root, err := buildFixedRoot(u, st, lineage[st.Name])
+			if err != nil {
+				return nil, err
 			}
-			fmt.Fprintf(b, "    value.%s = %s;\n", member(f), k.defaultValue(f))
+			emitFixed(&schema, u, root)
 		}
 	}
-	b.WriteString("}\n\n")
-	fmt.Fprintf(b, "// New%s answers a value at its declared defaults.\n", st.Name)
-	fmt.Fprintf(b, "public static %s New%s()\n{\n", st.Name, st.Name)
-	fmt.Fprintf(b, "    %s value = default;\n    Init%s(ref value);\n    return value;\n}\n\n", st.Name, st.Name)
+
+	if fixedRuntimeNeeded(u) {
+		emitFixedUnitHelpers(&schema, u)
+	}
+
+	fmt.Fprintf(&schema, "public const ulong BuildVersion = 0x%016xUL;\n\n", ir.BuildVersion(u))
+	fmt.Fprintf(&schema, "static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(tablewire.Announce(u)))
+	schema.WriteString("static readonly TableVocabulary tableOwnVocabulary = TableWire.OwnVocabulary(tableAnnouncement);\n")
+	schema.WriteString("public static int AnnounceMeasure() { return tableAnnouncement.Length; }\n")
+	schema.WriteString("public static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }\n")
+	schema.WriteString("public static bool AnnounceRead(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes, ref TableReport report)\n{\n    var box = new _R();\n    bool ok = TableWire.AnnounceRead(vocabulary, bytes, box) == TableWire.Verdict.Ok;\n    _FinishReport(box, ref report, ok);\n    return ok;\n}\n\n")
+
+	schema.WriteString(unityCoreRuntimeTypesSource)
+	schema.WriteString(unityBlockCookRuntimeSource)
+	schema.WriteString(unityMessageTypesSource)
+	schema.WriteString("\n")
+	schema.WriteString(unityTableJsonSource)
+	schema.WriteString("\n")
+	schema.WriteString(unityTableWireSource)
+	schema.WriteString("\n")
+	emitRetainRuntime(&schema, u)
+	if fixedRuntimeNeeded(u) {
+		schema.WriteString("internal static partial class TableWire\n{\n")
+		schema.WriteString(fixedRuntime)
+		schema.WriteString("}\n")
+	}
+
+	_ = maps.Clone[map[string]bool]
+	usings := []string{"System", "System.Buffers", "System.Buffers.Binary", "System.Diagnostics", "System.Globalization", "System.Runtime.CompilerServices", "Serialize"}
+	return []byte(header(u, "the unit's tables", usings...) + wrap(u, types.String(), schema.String())), nil
 }
 
-func rides(f *ir.Field) string {
-	if f.Deprecated {
-		return "false"
-	}
-	if f.Required {
-		return "true"
-	}
-	return kindOf(f).differs(f, "value."+member(f))
+const unityCoreRuntimeTypesSource = `public sealed class Ref<T> where T : struct
+{
+    public T Value;
+    public Ref() { }
+    public Ref(T value) { Value = value; }
 }
 
-func emitMeasure(b *strings.Builder, st *ir.Struct) {
-	crc := 0
-	if st.Integrity == "crc32c" {
-		crc = 4
-	}
-	fmt.Fprintf(b, "// %sMeasure is the exact byte count %sSave writes for value.\n", st.Name, st.Name)
-	fmt.Fprintf(b, "public static int %sMeasure(ref %s value)\n{\n", st.Name, st.Name)
-	if len(st.Fields) == 0 {
-		fmt.Fprintf(b, "    return %d;\n}\n\n", 1+1+8+crc)
-		return
-	}
-	fmt.Fprintf(b, "    int size = %d;\n    ulong n = 0;\n", 1+1+8+crc)
-	for _, f := range st.Fields {
-		if f.Deprecated {
-			continue
-		}
-		k := kindOf(f)
-		fmt.Fprintf(b, "    if (%s) { n++; size += TableWire.LebSize(n) + 1 + %d + 8; }\n", rides(f), k.width(f))
-	}
-	b.WriteString("    return size;\n}\n\n")
+internal sealed class RefEq : System.Collections.Generic.IEqualityComparer<object>
+{
+    internal static readonly RefEq Instance = new RefEq();
+    public new bool Equals(object x, object y) { return ReferenceEquals(x, y); }
+    public int GetHashCode(object obj) { return RuntimeHelpers.GetHashCode(obj); }
 }
 
-func emitSave(b *strings.Builder, st *ir.Struct) {
-	fmt.Fprintf(b, "// %sSave writes value as a form-1 file (docs/SPEC-TABLES.md §3) into buffer,\n", st.Name)
-	fmt.Fprintf(b, "// which holds at least %sMeasure(ref value) bytes, and answers the count.\n", st.Name)
-	b.WriteString("// The write contracts are Debug.Assert lines (Unity is an assert leg).\n")
-	fmt.Fprintf(b, "public static int %sSave(ref %s value, Span<byte> buffer)\n{\n", st.Name, st.Name)
-	var body strings.Builder
-	for _, f := range st.Fields {
-		if f.Deprecated {
-			continue
-		}
-		kindOf(f).emitAsserts(&body, f, "value."+member(f))
-	}
-	fmt.Fprintf(&body, "Debug.Assert(buffer.Length >= %sMeasure(ref value), \"the buffer is shorter than %sMeasure\");\n", st.Name, st.Name)
-	body.WriteString("int off = 0;\n")
-	fmt.Fprintf(&body, "buffer[off++] = %d;\n", ir.TableWireForm)
-	if len(st.Fields) == 0 {
-		body.WriteString("buffer[off++] = 0;\nTableWire.PutWidth(buffer, ref off, 8, 0);\n")
-		if st.Integrity == "crc32c" {
-			body.WriteString("TableWire.PutWidth(buffer, ref off, 4, TableWire.IntegrityCrc(buffer.Slice(0, off)));\n")
-		}
-		body.WriteString("return off;\n")
-		b.WriteString(indent(body.String()))
-		b.WriteString("}\n\n")
-		return
-	}
-	body.WriteString("ulong n = 0;\n")
-	for _, f := range st.Fields {
-		if f.Deprecated {
-			continue
-		}
-		k := kindOf(f)
-		v := "value." + member(f)
-		fmt.Fprintf(&body, "if (%s)\n{\n", rides(f))
-		fmt.Fprintf(&body, "    n++;\n    TableWire.PutLeb(buffer, ref off, n);\n    buffer[off++] = %d;\n    ", ir.TableWireFieldKind(f))
-		k.emitPayload(&body, f, v)
-		body.WriteString("\n}\n")
-	}
-	body.WriteString("buffer[off++] = 0;\n")
-	body.WriteString("// THE ID TABLE, in first-use order: the ids of the fields that rode\n")
-	for _, f := range st.Fields {
-		if f.Deprecated {
-			continue
-		}
-		fmt.Fprintf(&body, "if (%s) { TableWire.PutWidth(buffer, ref off, 8, 0x%016xUL); }\n", rides(f), ir.TableFieldWireId(f))
-	}
-	body.WriteString("TableWire.PutWidth(buffer, ref off, 8, n);\n")
-	if st.Integrity == "crc32c" {
-		body.WriteString("TableWire.PutWidth(buffer, ref off, 4, TableWire.IntegrityCrc(buffer.Slice(0, off)));\n")
-	}
-	body.WriteString("return off;\n")
-	b.WriteString(indent(body.String()))
-	b.WriteString("}\n\n")
+internal static readonly object _StructRootOwner = new object();
+
+internal static void _RecordOldOwner(object userObj, object carrierObj, System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)
+{
+    if (oldMap == null || oldOwners == null || userObj == null || carrierObj == null) { return; }
+    for (int i = 1; i < oldOwners.Length; i++)
+    {
+        if (ReferenceEquals(oldOwners[i], userObj))
+        {
+            oldMap[carrierObj] = (uint)i;
+            return;
+        }
+    }
 }
 
-func emitLoad(b *strings.Builder, st *ir.Struct) {
-	fmt.Fprintf(b, "// %sLoad reads a form-1 file into value: the whole value, or false with\n", st.Name)
-	b.WriteString("// report.Refused set and value back at its declared defaults (docs/SPEC-TABLES.md\n")
-	b.WriteString("// §6.5, STRICT ONE READ). Unknown fields and node records count report.Unknown;\n")
-	b.WriteString("// a narrower writer's integer kind counts report.Widened.\n")
-	fmt.Fprintf(b, "public static bool %sLoad(ref %s value, ReadOnlySpan<byte> bytes, ref TableReport report)\n{\n", st.Name, st.Name)
-	var body strings.Builder
-	fmt.Fprintf(&body, "Init%s(ref value);\nreport = default;\n", st.Name)
-	body.WriteString("int reason = TableReport.Accepted;\n")
-	if st.Integrity == "crc32c" {
-		body.WriteString("if (bytes.Length < 1) { reason = TableReport.WireDamaged; goto done; }\n")
-		body.WriteString("if (bytes[0] != TableWire.FileForm) { reason = bytes[0] == TableWire.MessageForm ? TableReport.MessageFormAsFile : TableReport.NewerForm; goto done; }\n")
-		body.WriteString("if (!TableWire.IntegrityRead(ref bytes)) { reason = TableReport.IntegrityMismatch; goto done; }\n")
-	}
-	body.WriteString("reason = TableWire.Open(bytes, out ReadOnlySpan<byte> body, out ReadOnlySpan<byte> ids, out int records, out bool nonFinite);\n")
-	body.WriteString("if (reason != TableReport.Accepted) { goto done; }\n")
-	body.WriteString("{\n")
-	var inner strings.Builder
-	inner.WriteString("int off = 0;\n")
-	ints := false
-	for _, f := range st.Fields {
-		if kindOf(f).name() == "int" && !f.Deprecated {
-			ints = true
-		}
-		if f.Required && !f.Deprecated {
-			fmt.Fprintf(&inner, "bool seen%s = false;\n", member(f))
-		}
-	}
-	if ints {
-		inner.WriteString("long iv;\n")
-	}
-	inner.WriteString("while (true)\n{\n")
-	var loop strings.Builder
-	loop.WriteString("ulong reference = TableWire.Ref(body, ref off);\n")
-	loop.WriteString("if (reference == 0) { break; }\n")
-	loop.WriteString("ulong id = TableWire.Id(ids, reference);\n")
-	loop.WriteString("byte kind = body[off++];\n")
-	loop.WriteString("switch (id)\n{\n")
-	var cases strings.Builder
-	for _, f := range st.Fields {
-		fmt.Fprintf(&cases, "case 0x%016xUL: // %s\n{\n", ir.TableFieldWireId(f), f.Name)
-		var read strings.Builder
-		if f.Deprecated {
-			read.WriteString("TableWire.Skip(body, ref off, kind);\n")
-		} else {
-			kindOf(f).emitRead(&read, f, "value."+member(f))
-			if f.Required {
-				fmt.Fprintf(&read, "seen%s = true;\n", member(f))
-			}
-		}
-		read.WriteString("break;\n")
-		cases.WriteString(indent(read.String()))
-		cases.WriteString("}\n")
-	}
-	cases.WriteString("default:\n")
-	cases.WriteString("    if (id != TableWire.NodeTableId) { report.Unknown++; }\n")
-	cases.WriteString("    TableWire.Skip(body, ref off, kind);\n")
-	cases.WriteString("    break;\n")
-	loop.WriteString(indent(cases.String()))
-	loop.WriteString("}\n")
-	inner.WriteString(indent(loop.String()))
-	inner.WriteString("}\n")
-	for _, f := range st.Fields {
-		if f.Required && !f.Deprecated {
-			fmt.Fprintf(&inner, "if (!seen%s) { reason = TableReport.MissingRequired; goto done; }\n", member(f))
-		}
-	}
-	inner.WriteString("report.Unknown += records;\n")
-	inner.WriteString("if (nonFinite) { reason = TableReport.NonFiniteFloat; goto done; }\n")
-	body.WriteString(indent(inner.String()))
-	body.WriteString("}\n")
-	b.WriteString(indent(body.String()))
-	b.WriteString("done:\n")
-	var tail strings.Builder
-	tail.WriteString("if (reason != TableReport.Accepted)\n{\n")
-	fmt.Fprintf(&tail, "    Init%s(ref value);\n", st.Name)
-	tail.WriteString("    report = default;\n    report.Refused = true;\n    report.Reason = reason;\n    return false;\n}\nreturn true;\n")
-	b.WriteString(indent(tail.String()))
-	b.WriteString("}\n\n")
+internal static int Log2Bits(ulong value)
+{
+    if (value == 0) { return 0; }
+    int n = 0;
+    if ((value >> 32) != 0) { n += 32; value >>= 32; }
+    if ((value >> 16) != 0) { n += 16; value >>= 16; }
+    if ((value >> 8) != 0) { n += 8; value >>= 8; }
+    if ((value >> 4) != 0) { n += 4; value >>= 4; }
+    if ((value >> 2) != 0) { n += 2; value >>= 2; }
+    if ((value >> 1) != 0) { n += 1; }
+    return n;
 }
+
+internal static string HexBytes(ReadOnlySpan<byte> bytes)
+{
+    if (bytes.Length == 0) { return ""; }
+    char[] chars = new char[bytes.Length * 2];
+    const string hex = "0123456789ABCDEF";
+    for (int i = 0; i < bytes.Length; i++)
+    {
+        byte b = bytes[i];
+        chars[i * 2] = hex[b >> 4];
+        chars[i * 2 + 1] = hex[b & 15];
+    }
+    return new string(chars);
+}
+
+internal static int WideCompareUnsigned(UInt128Value a, UInt128Value b)
+{
+    return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+internal static int WideCompareSigned(Int128Value a, Int128Value b)
+{
+    return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+internal static int FormatWideUnsigned(UInt128Value value, Span<char> dst)
+{
+    if (value.Hi == 0)
+    {
+        string s = value.Lo.ToString(CultureInfo.InvariantCulture);
+        s.AsSpan().CopyTo(dst);
+        return s.Length;
+    }
+    Span<char> rev = stackalloc char[40];
+    int n = 0;
+    UInt128Value ten = (UInt128Value)10UL;
+    while (value != UInt128Value.Zero)
+    {
+        UInt128Value rem = value % ten;
+        value = value / ten;
+        rev[n++] = (char)('0' + (int)(uint)rem);
+    }
+    for (int i = 0; i < n; i++)
+    {
+        dst[i] = rev[n - 1 - i];
+    }
+    return n;
+}
+
+public const string TableDocNone = "";
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+public static float TableBitsToFloat(uint bits)
+{
+    return BitConverter.Int32BitsToSingle(unchecked((int)bits));
+}
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+public static uint TableFloatToBits(float value)
+{
+    return unchecked((uint)BitConverter.SingleToInt32Bits(value));
+}
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+public static double TableBitsToDouble(ulong bits)
+{
+    return BitConverter.Int64BitsToDouble(unchecked((long)bits));
+}
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+public static ulong TableDoubleToBits(double value)
+{
+    return unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
+}
+
+public struct TableReport
+{
+    public int Unknown;
+    public int Widened;
+    public int Retained;
+    public int RetainLost;
+    public bool Refused;
+    public bool Damaged;
+    public int Reason;
+    public string ReasonText;
+    public string NonFiniteField;
+    public ulong LayoutHash;
+
+    public const int Accepted = 0, WireDamaged = 1, KindMismatch = 2, OutOfRange = 3, MissingRequired = 4,
+        NewerForm = 5, MessageFormAsFile = 6, CountOverExtentCap = 7, BlobShared = 8, NonFiniteFloat = 9,
+        Truncated = 10, PreviousForm = 11, ReservedNotZero = 12, LayoutMalformed = 13, LayoutUnknown = 14,
+        LayoutUnsupported = 15, BatchTooLarge = 16, NoLayout = 17, PlanTooLarge = 18,
+        CountOverBound = 19, LengthOverBound = 20, TextIllFormed = 21, IntegrityMismatch = 22;
+
+    public static string ReasonName(int reason)
+    {
+        switch (reason)
+        {
+            case Accepted: return "accepted";
+            case WireDamaged: return "wire_damaged";
+            case KindMismatch: return "kind_mismatch";
+            case OutOfRange: return "out_of_range";
+            case MissingRequired: return "missing_required";
+            case NewerForm: return "newer_form";
+            case MessageFormAsFile: return "message_form_as_file";
+            case CountOverExtentCap: return "count_over_extent_cap";
+            case BlobShared: return "blob_shared";
+            case NonFiniteFloat: return "non_finite_float";
+            case Truncated: return "truncated";
+            case PreviousForm: return "previous_form";
+            case ReservedNotZero: return "reserved_not_zero";
+            case LayoutMalformed: return "layout_malformed";
+            case LayoutUnknown: return "layout_unknown";
+            case LayoutUnsupported: return "layout_unsupported";
+            case BatchTooLarge: return "batch_too_large";
+            case NoLayout: return "no_layout";
+            case PlanTooLarge: return "plan_too_large";
+            case CountOverBound: return "count_over_bound";
+            case LengthOverBound: return "length_over_bound";
+            case TextIllFormed: return "text_ill_formed";
+            case IntegrityMismatch: return "integrity_mismatch";
+        }
+        return "unknown_reason";
+    }
+}
+
+internal sealed class _R
+{
+    public int Unknown;
+    public int Widened;
+    public int Retained, RetainLost;
+    public bool Refused;
+    public string Reason;
+    public string NonFiniteFloat;
+    internal string NonFiniteReason;
+    public TableWire.Verdict Verdict;
+    internal bool Damaged = false;
+    internal int KindChanged = 0;
+    public ulong LayoutHash = 0;
+}
+
+internal static int _MapReasonCode(_R box)
+{
+    string s = box.Reason;
+    if (!string.IsNullOrEmpty(s))
+    {
+        if (s == "integrity_mismatch") { return TableReport.IntegrityMismatch; }
+        if (s == "kind_mismatch") { return TableReport.KindMismatch; }
+        if (s == "out_of_range") { return TableReport.OutOfRange; }
+        if (s == "missing_required") { return TableReport.MissingRequired; }
+        if (s == "newer_form") { return TableReport.NewerForm; }
+        if (s == "previous_form") { return TableReport.PreviousForm; }
+        if (s == "message_form_as_file") { return TableReport.MessageFormAsFile; }
+        if (s == "count_over_extent_cap") { return TableReport.CountOverExtentCap; }
+        if (s == "blob_shared") { return TableReport.BlobShared; }
+        if (s == "batch_too_large") { return TableReport.BatchTooLarge; }
+        if (s == "truncated") { return TableReport.Truncated; }
+        if (s.StartsWith("non_finite_float", StringComparison.Ordinal)) { return TableReport.NonFiniteFloat; }
+        if (s.StartsWith("count_over_bound", StringComparison.Ordinal)) { return TableReport.CountOverBound; }
+        if (s.StartsWith("length_over_bound", StringComparison.Ordinal)) { return TableReport.LengthOverBound; }
+    }
+    return TableReport.WireDamaged;
+}
+
+internal static void _FinishReport(_R box, ref TableReport report, bool ok)
+{
+    report = default;
+    if (ok)
+    {
+        report.Unknown = box.Unknown;
+        report.Widened = box.Widened;
+        report.Retained = box.Retained;
+        report.RetainLost = box.RetainLost;
+        report.Reason = TableReport.Accepted;
+        return;
+    }
+    report.Unknown = box.Unknown;
+    report.Widened = box.Widened;
+    report.Retained = 0;
+    report.RetainLost = box.RetainLost;
+    report.Refused = true;
+    report.Damaged = box.Damaged;
+    report.Reason = _MapReasonCode(box);
+    report.ReasonText = box.Reason ?? (box.Damaged ? "wire_damaged" : TableReport.ReasonName(report.Reason));
+    report.NonFiniteField = box.NonFiniteFloat;
+    report.LayoutHash = box.LayoutHash;
+}
+
+public sealed class TableKeyed<T, E> where E : struct, Enum
+{
+    public static readonly int SlotCount = MaxDeclared();
+
+    static int MaxDeclared()
+    {
+        long max = 0;
+        foreach (object v in Enum.GetValues(typeof(E)))
+        {
+            max = Math.Max(max, Convert.ToInt64(v, CultureInfo.InvariantCulture));
+        }
+        return (int)max;
+    }
+
+    public readonly T[] Slots;
+
+    public TableKeyed()
+    {
+        Slots = new T[SlotCount];
+    }
+
+    public T this[int key]
+    {
+        get
+        {
+            RefuseKey(key);
+            return Slots[key - 1];
+        }
+        set
+        {
+            RefuseKey(key);
+            Slots[key - 1] = value;
+        }
+    }
+
+    static void RefuseKey(int key)
+    {
+        if ((uint)(key - 1) >= (uint)SlotCount)
+        {
+            throw new ArgumentOutOfRangeException("key",
+                "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max");
+        }
+    }
+
+    public Enumerator GetEnumerator()
+    {
+        return new Enumerator(Slots);
+    }
+
+    public readonly struct Entry
+    {
+        public readonly int Key;
+        public readonly T Element;
+
+        public Entry(int key, T element)
+        {
+            Key = key;
+            Element = element;
+        }
+
+        public void Deconstruct(out int key, out T element)
+        {
+            key = Key;
+            element = Element;
+        }
+    }
+
+    public struct Enumerator
+    {
+        readonly T[] slots;
+        int index;
+
+        public Enumerator(T[] slots)
+        {
+            this.slots = slots;
+            this.index = -1;
+        }
+
+        public bool MoveNext()
+        {
+            index++;
+            return index < slots.Length;
+        }
+
+        public Entry Current => new Entry(index + 1, slots[index]);
+    }
+}
+
+public sealed class TableFieldInfo
+{
+    internal bool MapKey = false;
+    internal int Ordinal = 0;
+    internal int NativeOffset = 0, NativeElementSize = 0, NativeCountOffset = 0, NativePresentOffset = 0;
+    internal int MessageSlot = 0;
+    internal bool MessageBounded = false, MessageSigned = false;
+    internal UInt128Value MessageMin = UInt128Value.Zero, MessageMax = UInt128Value.Zero;
+    public string Name;
+    public string Json;
+    public string TypeName;
+    public ulong Id;
+    public byte Kind;
+    public bool IsArray;
+    public bool Counted;
+    public bool Required;
+    public bool Optional;
+    public int ArrayMin;
+    public int ArrayBound;
+    public int ElemWidth;
+    public bool HasRange;
+    public double RangeMin;
+    public double RangeMax;
+    public long EnumMax;
+    public Func<ulong, string> EnumName;
+    public Func<ulong, ulong> VariantId;
+    public string KeyTypeName;
+    public Func<ulong, string> KeyName;
+    public Func<ulong, ulong> KeyId;
+    public string NonFiniteField, NonFiniteReason;
+    public ulong DefaultRaw;
+    public Func<object, bool> WireGuard;
+    public int[] NativeGuardOffsets;
+    public bool[] NativeGuardValues;
+    internal Func<ulong, _R, ulong> RangeRaw = null;
+    internal Func<ulong, _R, ulong> RangeJsonInteger = null;
+    public Func<ulong, bool> RequiredValidRaw;
+    public Func<ulong, bool> WriteValidRaw;
+    public UInt128Value DefaultWide;
+    public int FracBits;
+    public bool WideSigned;
+    internal Func<UInt128Value, _R, UInt128Value> RangeWide = null;
+    public Func<UInt128Value, bool> RequiredValidWide;
+    public Func<UInt128Value, bool> WriteValidWide;
+    public Func<object, int, UInt128Value> GetWide;
+    public Action<object, int, UInt128Value> SetWide;
+    public byte[] DefaultBytes;
+    public Action<object> ResetField;
+    public string Guard;
+    public Func<TableTypeInfo> TableRef;
+    public TableTypeInfo Table => TableRef == null ? null : TableRef();
+    public TableUnionInfo Arms;
+    public string Doc;
+    public int NumTags;
+    public string[] Tags;
+    public Func<object, int, ulong> GetRaw;
+    public Action<object, int, ulong> SetRaw;
+    public Func<object, int, object> GetChild;
+    public Action<object, int, object> SetChild;
+    public Action<object, int> EnsureCount;
+    public bool Dynamic, Map, TextList, Unbounded;
+    public string TextField;
+    public long TextTotal;
+    public int StorageSize, StorageAlign;
+    public ulong PointerTypeId;
+    public byte BlobKind;
+    public Func<object, byte[]> GetBuffer;
+    public Func<object, int> GetCount;
+    public Action<object, int> SetCount;
+    public Func<object, bool> GetPresent;
+    public Action<object, bool> SetPresent;
+}
+
+public sealed class TableUnionArmInfo
+{
+    internal int MessageSlot = 0;
+    public TableFieldInfo Field;
+    public Func<TableTypeInfo> TableRef;
+    public TableTypeInfo Table => TableRef == null ? null : TableRef();
+    public Func<object, object> Payload;
+}
+
+public sealed class TableUnionInfo
+{
+    internal int NativeTagSize = 0, NativeArmOffset = 0;
+    public Func<object> Create;
+    public Func<object, ulong> GetTag;
+    public Action<object, ulong> SetTag;
+    public TableUnionArmInfo[] Arms;
+}
+
+public sealed class TableBlob
+{
+    public byte[] Data;
+    public TableBlob(byte[] data) { Data = data; }
+}
+
+public enum TableByteOrder { Little = 1, Big = 2 }
+
+public sealed class TableTypeInfo
+{
+    public Func<object> Create;
+    public int StorageSize, StorageAlign, RegionAlign;
+    public bool Fixed;
+    public bool Variable;
+    public bool Integrity;
+    public bool JsonArray;
+    internal bool HasRequired = false;
+    internal int RootElemSlots;
+    public Func<TableTypeInfo[]> PointerTypes;
+    public Func<ulong, TableTypeInfo> PointerType;
+    internal Func<ulong, TableTypeInfo> DeclaredType;
+    public bool BytesEdge, StringEdge;
+    public string Name;
+    public ulong Id;
+    public int NumFields;
+    public TableFieldInfo[] Fields;
+    internal TableFieldInfo[] IdIndex;
+    internal int IdMask;
+    public Action<object> Reset;
+    public string Doc;
+    public int NumTags;
+    public string[] Tags;
+}
+
+`

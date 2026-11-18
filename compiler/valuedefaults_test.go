@@ -127,9 +127,9 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
-		if target == "cs" {
+		if target == "cs" || target == "unity" {
 			if err != nil {
-				t.Fatalf("cs refused table defaults: %v", err)
+				t.Fatalf("%s refused table defaults: %v", target, err)
 			}
 			continue
 		}
@@ -341,11 +341,6 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 	u := unitFromSource(t, fixedValueDefaultsUnit)
 	c := New()
 	for _, target := range c.Targets() {
-		// The Unity table core carries no fixed form and no string, bytes or
-		// flags field yet, so a fixed table's prefill is not its surface.
-		if target == "unity" {
-			continue
-		}
 		out, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Errorf("%s refused a fixed table's string, bytes and flags defaults: %v", target, err)

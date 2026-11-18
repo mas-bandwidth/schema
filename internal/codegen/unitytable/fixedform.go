@@ -1019,7 +1019,7 @@ func buildFixedRoot(_ *ir.Unit, st *ir.Struct, lineage []FixedLineageEntry) (*fi
 
 func validateWriterSnapshot(st *ir.Struct, e FixedLineageEntry) error {
 	w := e.Writer
-	wlayout, whash := ownLayout(w)
+	wlayout, _ := ownLayout(w)
 	if !bytes.Equal(wlayout, e.Layout) || 8+ir.TableFixedTypeBytes(w) != e.Record {
 		return fmt.Errorf("fixed root %s: the writer snapshot of lineage entry 0x%016x does not state the entry's own layout, hash and record size (docs/FIXED-FORM-ALGORITHM.md §5.2)", st.Name, e.Wire)
 	}
@@ -1029,14 +1029,8 @@ func validateWriterSnapshot(st *ir.Struct, e FixedLineageEntry) error {
 		}
 		return nil
 	}
-	if len(e.Digest) > 0 {
-		recorded, err := ir.TableFixedDefinitionsDigestForRecorded(w, e.Digest)
-		if err != nil || !bytes.Equal(recorded, e.Digest) || ir.TableFixedLayoutHashRecorded(wlayout, e.Digest) != e.Wire {
-			return fmt.Errorf("fixed root %s: the writer snapshot of lineage entry 0x%016x does not state the entry's own layout, hash and record size (docs/FIXED-FORM-ALGORITHM.md §5.2)", st.Name, e.Wire)
-		}
-		return nil
-	}
-	if whash != e.Wire {
+	recorded, err := ir.TableFixedDefinitionsDigestForRecorded(w, e.Digest)
+	if err != nil || !bytes.Equal(recorded, e.Digest) || ir.TableFixedLayoutHashRecorded(wlayout, e.Digest) != e.Wire {
 		return fmt.Errorf("fixed root %s: the writer snapshot of lineage entry 0x%016x does not state the entry's own layout, hash and record size (docs/FIXED-FORM-ALGORITHM.md §5.2)", st.Name, e.Wire)
 	}
 	return nil
