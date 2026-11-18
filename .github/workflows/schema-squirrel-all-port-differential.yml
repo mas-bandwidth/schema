@@ -18,9 +18,16 @@ name: Squirrel all-port differential
 #     no toolchain, and the whole job is well inside the owner's one-minute
 #     rule.
 #   * the WHOLE differential builds every leg and runs every driver, so it is
-#     HEAVY and runs nightly and on demand, never per commit. The wall budget
-#     is the job's timeout-minutes, and the make target's own go test carries
-#     -timeout 600s.
+#     HEAVY and runs nightly and on demand, never per commit, with no wall
+#     budget: the nightly rule below.
+
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
 
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
@@ -33,12 +40,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
 jobs:
   fast:
     name: fast (comparison and planted control)
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -61,7 +71,6 @@ jobs:
     name: whole differential (every registered port)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 45
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

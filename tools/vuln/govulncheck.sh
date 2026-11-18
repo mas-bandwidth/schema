@@ -130,11 +130,12 @@ run)
     strict=0
     [ "$2" = "--strict" ] && strict=1
 
-    # THREE ATTEMPTS AND TWO SLEEPS, inside the job's 10-minute cap with room
-    # to spare: the scan itself measures 9.4 s on a 64-core Linux bench and 35 s
-    # on a hosted ubuntu runner, so the worst case that still answers is
-    # 3 x 35 s + 15 s + 45 s = 2:45. A scan that HANGS rather than failing is
-    # what the cap is for, and it still ends the job.
+    # THREE ATTEMPTS AND TWO SLEEPS: the scan itself measures 9.4 s on a
+    # 64-core Linux bench and 35 s on a hosted ubuntu runner, so the worst case
+    # that still answers is 3 x 35 s + 15 s + 45 s = 2:45. The nightly jobs
+    # that run this carry no cap (the owner, 2026-11-16: nightly runs have no
+    # timeout); a scan that HANGS rather than failing runs to GitHub's
+    # 360-minute backstop, reads cancelled, and the run's verdict job is red.
     log=${RUNNER_TEMP:-${TMPDIR:-/tmp}}/govulncheck.log
     attempt=1
     while true; do

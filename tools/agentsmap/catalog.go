@@ -175,6 +175,7 @@ var catalog = []Entry{
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
 	e("tools/cellmerge", "three-way PORTING.md row merge for diff3 hunks", "go test ./tools/cellmerge", "go run ./tools/cellmerge docs/PORTING.md"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
+	e("tools/gotestreport", "nightly go test -json row report", "go test ./tools/gotestreport", "go run ./tools/gotestreport build/go-test-json"),
 	e("tools/gotestrows", "ci-fast go-test matrix rows", "go test ./tools/gotestrows", "go run ./tools/gotestrows ./..."),
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
 	e("tools/hostilecorpusexec", "native-port hostile-corpus driver", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),

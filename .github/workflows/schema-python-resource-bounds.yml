@@ -24,10 +24,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # NIGHTLY RUNS HAVE NO TIMEOUT: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
 jobs:
   fast:
     runs-on: [self-hosted, linux, x64, fleet]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -40,7 +43,6 @@ jobs:
         run: make schema-python-resource-bounds-negative-control
   nightly:
     runs-on: [self-hosted, linux, x64, fleet]
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

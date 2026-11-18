@@ -8,11 +8,14 @@ concurrency:
   cancel-in-progress: false
 permissions:
   contents: read
+env:
+  # NIGHTLY RUNS HAVE NO TIMEOUT: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
 jobs:
   nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
-    timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 4

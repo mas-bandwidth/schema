@@ -17,6 +17,14 @@ name: schema lua resource bounds
 # FORK SAFETY: as in the sibling lanes, every fleet job carries the fork guard
 # so a fork's pull request never runs on fleet hardware.
 
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
   # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
@@ -28,11 +36,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
 jobs:
   fast:
     runs-on: [self-hosted, linux, x64, fleet]
-    # measured: 10-44 s
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -45,8 +55,6 @@ jobs:
         run: make schema-lua-resource-bounds-negative-control
   nightly:
     runs-on: [self-hosted, linux, x64, fleet]
-    # measured: 12-27 s
-    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

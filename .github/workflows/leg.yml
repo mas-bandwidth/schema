@@ -14,11 +14,17 @@ name: schema leg
 # deliberate — the caller `uses:` this workflow with no inputs and gets the
 # same set of legs, whatever the caller's own matrix looks like.
 #
-# THIS FILE CARRIES THE TIMEOUTS, NOT THE CALLER. The pull-request gate
-# makes each fan-out row fit its own two-minute rule; certification lets each
-# row run to thirty, because a leg that cannot fit certification's whole-
-# toolchain budget has no business running here at all. The caller names
-# nothing except `uses:` and gets that budget for free.
+# ONLY certify.yml (nightly and dispatch) calls this file, so it is held to
+# the nightly rule below: no row carries a timeout. Its env block repeats
+# PGROUP_GO_TEST_TIMEOUT because a called workflow does not see its caller's.
+
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
 
 on:
   workflow_call:
@@ -28,6 +34,8 @@ on:
 # them: a sibling merging mid-day must not change what a certify run proves.
 # The three files move together; bumping a pin here is the same edit as there.
 env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
@@ -41,7 +49,6 @@ jobs:
   # No inputs come from the caller: the matrix is the registry, full stop.
   leg-matrix:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -67,7 +74,6 @@ jobs:
     if: needs.leg-matrix.outputs.matrix != '[]'
     name: leg (${{ matrix.lang }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 30
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
