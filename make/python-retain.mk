@@ -15,7 +15,7 @@ python-retain-1: dist-python
 python-retain-2: dist-python
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(UnionArrayCapture|RootBodyInternal|TableArrayInternal|EnumArrayCapture|NestedBodyInternal|NodeBodyInternal|CrossVersionInternal|UnionEnumArrayArm|UnionUnionArrayArm|OptionalEnumArray|OptionalTableArray|PointerArrayIdentity)$$' ./internal/codegen/pythontable/
 python-retain-3: dist-python
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(KeyedAndMapInternal|FixedRefusal|SelectedRuntime|OptionalMap|KeyedEnum|FixedArrayGrowth|ArrayWideningReport|GuardedBody|Depth128|ZeroIDField|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(KeyedAndMapInternal|FixedRefusal|SelectedRuntime|OptionalMap|KeyedEnum|FixedArrayGrowth|ArrayWideningReport|GuardedBody|Depth128|ZeroIDField|MapNestedZeroHash|MapNestedZeroHashNegativeControl|ContainerWidening|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
 python-retain-negative-control: dist-python
-	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(ResolverNegativeControl|PathIndexNegativeControl|NodeRemapNegativeControl|KnownIDNegativeControl|TailNegativeControl|PublicNegativeControl|DriverNegativeControl|ReadSurfaceNegativeControl|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -tags schema_leg_python -count=1 -timeout 600s -run '^TestPythonRetain(ResolverNegativeControl|PathIndexNegativeControl|NodeRemapNegativeControl|KnownIDNegativeControl|TailNegativeControl|PublicNegativeControl|DriverNegativeControl|ReadSurfaceNegativeControl|MapNestedZeroHashNegativeControl|ZeroIDNegativeControl)$$' ./internal/codegen/pythontable/
 test-python: $(PYTHON_RETAIN_SHARDS) python-retain-negative-control
