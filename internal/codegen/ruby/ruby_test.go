@@ -144,7 +144,7 @@ func driverAnswersAbsent(driver, dir string) error {
 	list.Dir = dir
 	out, err := list.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s list: %v\n%s", driver, err, out)
+		return fmt.Errorf("%s list: %w\n%s", driver, err, out)
 	}
 	if s := strings.TrimSpace(string(out)); s != "" {
 		return fmt.Errorf("%s lists the surfaces %q; the skeleton answers none", driver, s)
@@ -155,7 +155,7 @@ func driverAnswersAbsent(driver, dir string) error {
 		out, err := cmd.CombinedOutput()
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || exit.ExitCode() != 2 {
-			return fmt.Errorf("%s %s: %v, want exit 2 (ABSENT)\n%s", driver, surface, err, out)
+			return fmt.Errorf("%s %s: %w, want exit 2 (ABSENT)\n%s", driver, surface, err, out)
 		}
 	}
 	return nil
@@ -235,7 +235,7 @@ func TestRubySkeleton(t *testing.T) {
 	t.Run("generates", func(t *testing.T) {
 		t.Parallel()
 		files := generate(t, emptyUnit("hello", "Wire", "Hello"))
-		want := []string{"hello.rb", "hello/Hello.rb", "hello/Wire.rb", "hello/_schema.rb"}
+		want := []string{"hello.rb", "hello.rbs", "hello/Hello.rb", "hello/Wire.rb", "hello/_schema.rb", "hello/serialize.rb", "hello/serialize/core.rb"}
 		if got := slices.Sorted(maps.Keys(files)); !slices.Equal(got, want) {
 			t.Fatalf("emitted %v\nwant    %v", got, want)
 		}
@@ -290,20 +290,20 @@ func TestRubySkeleton(t *testing.T) {
 
 	t.Run("refuses-declarations", func(t *testing.T) {
 		t.Parallel()
-		for _, c := range []struct {
-			decl ir.Decl
-			want string
-		}{
-			{&ir.Const{Name: "MaxPlayers"}, "declares const MaxPlayers, and the Ruby target does not carry constants yet (docs/plans/ruby-leg.md, R4 the packet wire)"},
-			{&ir.Enum{Name: "Weapon"}, "declares enum Weapon, and the Ruby target does not carry enums yet (docs/plans/ruby-leg.md, R4 the packet wire)"},
-			{&ir.Flags{Name: "Caps"}, "declares flags Caps, and the Ruby target does not carry flags sets yet (docs/plans/ruby-leg.md, R4 the packet wire)"},
-			{&ir.Struct{Name: "Player"}, "declares type Player, and the Ruby target does not carry types yet (docs/plans/ruby-leg.md, R4 the packet wire)"},
-			{&ir.Union{Name: "Event"}, "declares union Event, and the Ruby target does not carry unions yet (docs/plans/ruby-leg.md, R4 the packet wire)"},
+		for _, decl := range []ir.Decl{
+			&ir.Const{Name: "MaxPlayers"},
+			&ir.Enum{Name: "Weapon", Variants: []string{"Laser"}, Max: 1},
+			&ir.Flags{Name: "Caps", Variants: []string{"Jump"}, WireBits: 1},
+			&ir.Struct{Name: "Player"},
+			&ir.Union{Name: "Event"},
 		} {
-			files, err := Generate(withDecl(c.decl))
-			if err == nil || !strings.Contains(err.Error(), "ruby: Game.schema "+c.want) {
-				t.Errorf("%T: got %v (%d files), want a refusal containing %q", c.decl, err, len(files), c.want)
+			if _, err := Generate(withDecl(decl)); err != nil {
+				t.Errorf("%T: packet declaration refused in R4: %v", decl, err)
 			}
+		}
+		ptrStruct := &ir.Struct{Name: "Node", Fields: []*ir.Field{{Name: "child", Type: ir.FieldType{Kind: ir.TNamed, Name: "Node", Pointer: true}}}}
+		if _, err := Generate(withDecl(ptrStruct)); err == nil || !strings.Contains(err.Error(), "Node's field child uses pointer") {
+			t.Errorf("pointer field in packet struct: got %v", err)
 		}
 		u := emptyUnit("game", "Game")
 		u.Files[0].Tables = []*ir.Struct{{Name: "Fleet", IsTable: true}}

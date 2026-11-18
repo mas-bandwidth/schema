@@ -61,6 +61,7 @@ var guardComment = map[string]string{
 	"lobster":  "", // Lobster emits no branch storage comment
 	"moo":      "", // moo emits no branch storage comment
 	"python":   "", // Python emits no branch storage comment
+	"ruby":     " — wire branch",
 	"lua":      " — wire branch",
 	"rust":     " — wire branch",
 	"squirrel": " — wire branch",

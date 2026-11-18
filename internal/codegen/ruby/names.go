@@ -18,7 +18,7 @@ const HelperPrefix = "_s_"
 // points, the constructor, and the Object methods the generated code and its
 // callers call on a value. A field spelled like one would replace it.
 var generatedMembers = wordSet(`read read_bits write load save descriptor initialize inspect hash
-	class freeze dup clone send method object_id`)
+	class freeze dup clone send method`)
 
 // unionMembers are the names a generated union class defines beside its arms:
 // type, the arm number (docs/PORT-RUBY.md, THE VALUE MAPPING).
@@ -28,7 +28,7 @@ var unionMembers = wordSet(`type`)
 // declarations: the runtime's (Refused, InvalidValue, LoadReport) and
 // serialize.rb's streams, which the generated code names unqualified inside
 // the unit module, and the unit's PROTOCOL_ID.
-var runtimeNames = wordSet(`Refused InvalidValue LoadReport Stream WriteStream ReadStream MeasureStream
+var runtimeNames = wordSet(`Refused InvalidValue LoadReport Serialize Stream WriteStream ReadStream MeasureStream
 	PROTOCOL_ID`)
 
 // The rules of docs/PORT-RUBY.md, IDENTIFIERS, by name. A refusal names its

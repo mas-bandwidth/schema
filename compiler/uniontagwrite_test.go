@@ -91,6 +91,7 @@ var tagRefusesEveryBuild = map[string][]string{
 	// (returns false) in every build, as Lua's does.
 	"moo":      {"if not isInt(value.Type, 0, 2) then -- the tag validates before it rides (SPEC §4.8)"},
 	"python":   {`if _s_type(_s_v1) is not _s_int or _s_v1 < 0 or _s_v1 > 2:`, `validate_int(_s_v1, path + ".type", 0, 2)`},
+	"ruby":     {`unless _s_v1.is_a?(::Integer) && _s_v1 >= 0 && _s_v1 <= 2`, `._s_validate_int(_s_v1, "#{path}.type", 0, 2)`},
 	"squirrel": {`if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;`},
 }
 

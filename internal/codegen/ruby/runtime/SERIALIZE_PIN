@@ -1,0 +1,5 @@
+# Vendored from third_party/serialize.rb/lib, serialize.rb staged in this tree
+# until mas-bandwidth/serialize.rb is public and tagged (docs/PORT-RUBY.md, THE BIT LAYER).
+# Rewrite with: make vendor-serialize-ruby (make/ruby-serialize.mk)
+sha256  9d609186a2f709a8f3d85afaeb544626b29287cfdce6285b3d6b4f8b533acd74  serialize.rb
+sha256  cfc6ad92d2fca17da1564c71f66f90efdd62d3b1146efa68bccf606ac49809b1  serialize/core.rb

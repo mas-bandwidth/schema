@@ -56,6 +56,7 @@ var countName = map[string]string{
 	"lobster":  "WindowCount",
 	"moo":      "WindowCount",
 	"python":   "window", // the list length is the count
+	"ruby":     "window", // the Array length is the count
 	"rust":     "window_count",
 	"squirrel": "WindowCount",
 }
@@ -78,6 +79,7 @@ var bornAtMinimum = map[string]string{
 	"lobster":  "WindowCount: 2",
 	"moo":      "WindowCount = 2,",
 	"python":   "self.window = [0] * 2",
+	"ruby":     "@window = ::Array.new(2, 0)",
 	"rust":     "window_count: 2,",
 	"squirrel": "this.WindowCount = 2;",
 }
@@ -114,6 +116,7 @@ var refusesEveryBuild = map[string][]string{
 	// (returns false) in every build, as Lua's does
 	"moo":      {"if not isInt(value.WindowCount, 2, 8) then"},
 	"python":   {"if _s_type(_s_v1) is not _s_list or not 2 <= len(_s_v1) <= 8:", "validate_array(_s_v1, path + \".window\", 2, 8)"},
+	"ruby":     {"unless _s_v1.instance_of?(::Array) && _s_v1.length >= 2 && _s_v1.length <= 8", "::Born._s_validate_array(_s_v1, \"#{path}.window\", 2, 8)"},
 	"squirrel": {`if (typeof value.WindowCount != "integer" || value.WindowCount < 2 || value.WindowCount > 8) return false;`},
 }
 

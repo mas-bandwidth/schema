@@ -1,0 +1,202 @@
+# serialize conformance vectors: serialize_float
+#
+# The format is specified in STANDARD.md, "The vector format". Records are
+# separated by blank lines.
+#
+# STANDARD.md, "float": the 32 bits of the IEEE-754 single-precision
+# representation, written as a 32-bit group. No conversion, no compression.
+#
+# "Finite values only, every one bit exact": NaN with any payload or sign,
+# signaling or quiet, and both infinities, are refused with non_finite_float.
+# Every finite pattern is accepted and reproduced exactly: negative zero and the
+# subnormals are finite, and a reader must not flush, canonicalize or re-sign
+# them. The exponent field decides, and nothing else does: all ones is refused,
+# anything else is kept.
+#
+# The comparison rule stands: these vectors compare BIT PATTERNS, NOT VALUES.
+# -0.0 == 0.0 in value space, so only a bit comparison can see a reader that
+# canonicalizes the sign of zero, and a tolerance comparison cannot see a
+# flushed subnormal. Every accepted expectation below is `expect bits`.
+
+operation float
+name float-positive-zero
+bytes 00 00 00 00
+expect bits = 0x00000000
+consumed 32
+writer canonical
+
+# -0.0 compares EQUAL to 0.0 in value space, so only a bit comparison can see a
+# reader that canonicalizes the sign of zero.
+
+operation float
+name float-negative-zero
+bytes 00 00 00 80
+expect bits = 0x80000000
+consumed 32
+writer canonical
+
+operation float
+name float-one
+bytes 00 00 80 3F
+expect bits = 0x3F800000
+consumed 32
+writer canonical
+
+operation float
+name float-negative-one
+bytes 00 00 80 BF
+expect bits = 0xBF800000
+consumed 32
+writer canonical
+
+# The golden message's float field.
+
+operation float
+name float-pi
+bytes DB 0F 49 40
+expect bits = 0x40490FDB
+consumed 32
+writer canonical
+
+# Subnormals, which a reader that flushes to zero destroys. They are finite, and
+# kept bit exact.
+
+operation float
+name float-smallest-positive-denormal
+bytes 01 00 00 00
+expect bits = 0x00000001
+consumed 32
+writer canonical
+
+operation float
+name float-largest-denormal
+bytes FF FF 7F 00
+expect bits = 0x007FFFFF
+consumed 32
+writer canonical
+
+operation float
+name float-negative-denormal
+bytes 01 00 00 80
+expect bits = 0x80000001
+consumed 32
+writer canonical
+
+operation float
+name float-largest-negative-denormal
+bytes FF FF 7F 80
+expect bits = 0x807FFFFF
+consumed 32
+writer canonical
+
+operation float
+name float-smallest-positive-normal
+bytes 00 00 80 00
+expect bits = 0x00800000
+consumed 32
+writer canonical
+
+# The edges of the finite rule: the largest finite values, one exponent step
+# below the all-ones exponent that marks infinity and NaN.
+
+operation float
+name float-largest-finite
+bytes FF FF 7F 7F
+expect bits = 0x7F7FFFFF
+consumed 32
+writer canonical
+
+operation float
+name float-most-negative-finite
+bytes FF FF 7F FF
+expect bits = 0xFF7FFFFF
+consumed 32
+writer canonical
+
+# The non-finite patterns, every one refused for the same reason. The bytes are
+# what a writer without the finite rule would have sent for each value.
+
+operation float
+name float-refuse-positive-infinity
+bytes 00 00 80 7F
+expect refused non_finite_float
+
+operation float
+name float-refuse-negative-infinity
+bytes 00 00 80 FF
+expect refused non_finite_float
+
+operation float
+name float-refuse-quiet-nan
+bytes 00 00 C0 7F
+expect refused non_finite_float
+
+operation float
+name float-refuse-negative-quiet-nan
+bytes 00 00 C0 FF
+expect refused non_finite_float
+
+# A SIGNALING NaN: the quiet bit is clear and only the lowest payload bit is set,
+# the pattern nearest infinity that is still NaN.
+
+operation float
+name float-refuse-signaling-nan
+bytes 01 00 80 7F
+expect refused non_finite_float
+
+operation float
+name float-refuse-nan-with-payload
+bytes 00 AD DE 7F
+expect refused non_finite_float
+
+operation float
+name float-refuse-negative-nan-all-payload-bits
+bytes FF FF FF FF
+expect refused non_finite_float
+
+operation float
+name float-refuse-nan-all-payload-bits
+bytes FF FF FF 7F
+expect refused non_finite_float
+
+operation float
+name float-refuse-past-end-24-of-32
+bytes 00 00 00
+expect refused past_end
+
+operation float
+name float-refuse-past-end-empty-stream
+bytes
+expect refused past_end
+
+# A finite float between two raw 32-bit groups shaped like float32 signalling
+# NaNs (exponent all ones, top mantissa bit clear, mantissa non-zero), one on
+# each side of it. A finite float can never be sNaN shaped itself, so the
+# discriminating case is its neighbours: an implementation that moves 32-bit
+# groups through a float32 view (dart2wasm canonicalises signalling NaNs that
+# way) quiets the raw groups and changes their bytes, in either direction.
+# Found by the cross-port security audit, 2026-10-27.
+
+operation sequence
+name float-finite-between-snan-shaped-groups
+param step = bits 32
+param step = float
+param step = bits 32
+bytes 00 00 A0 7F 00 00 80 3F 01 00 80 FF
+expect value = 0x7FA00000 | 0x3F800000 | 0xFF800001
+consumed 96
+writer canonical
+
+# The largest finite float, whose exponent field is one below all ones, beside
+# an sNaN-shaped group on each side, unaligned by a leading bool.
+
+operation sequence
+name float-largest-finite-between-snan-shaped-groups-unaligned
+param step = bool
+param step = bits 32
+param step = float
+param step = bits 32
+bytes 03 00 40 FF FE FF FF FE 02 00 00 FF 01
+expect value = true | 0x7FA00001 | 0x7F7FFFFF | 0xFF800001
+consumed 97
+writer canonical
