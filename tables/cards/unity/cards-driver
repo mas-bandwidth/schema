@@ -1,0 +1,6 @@
+#!/bin/sh
+# THE UNITY CARD LEG's driver (tables/cards/conformance/FORMAT.md).
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+exec dotnet build/cards-driver-unity/CardsDriver.dll "$@"

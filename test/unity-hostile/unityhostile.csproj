@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pooled-worker runner host driving unityhostileunits.dll over the shared hostile corpus. -->
+  <Import Project="../../test/unity/HostDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>unityhostile</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Runner.cs" />
+    <Compile Include="$(HostileGeneratedDir)/Dispatch.cs" />
+    <ProjectReference Include="units/unityhostileunits.csproj" />
+    <ProjectReference Include="../../test/unity/serialize/serializeunity.csproj" />
+  </ItemGroup>
+
+</Project>

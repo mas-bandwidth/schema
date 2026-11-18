@@ -1,0 +1,1 @@
+{"group": "cs-nightly", "targets": ["cards-unity-conformance-hash-negative-control", "cards-unity-conformance-negative-control", "cards-unity-conformance-upgrade-negative-control", "conformance-negative-control-unity", "tables-unity-bench-gate-negative-control", "tables-unity-wire-fuzz-negative-control"]}

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- THE UNITY CARD FACADE LIBRARY (tables/cards/conformance/FORMAT.md;
+       docs/UNITY.md). Compiled in the strict Unity dialect (C# 9 over
+       netstandard2.1, warnings as errors, unsafe disallowed) beside the
+       generated Unity card unit in build/tables-generated-unity/cards. -->
+  <Import Project="../../../test/unity/UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>Cards</AssemblyName>
+    <CardsGeneratedDir Condition="'$(CardsGeneratedDir)' == ''">../../../build/tables-generated-unity/cards</CardsGeneratedDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Cards.cs" />
+    <Compile Include="$(CardsGeneratedDir)/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CardsTests" />
+    <InternalsVisibleTo Include="CardsDriver" />
+  </ItemGroup>
+
+</Project>

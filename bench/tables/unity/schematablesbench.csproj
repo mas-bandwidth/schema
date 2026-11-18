@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Unity C# tables bench host runner (bench/tables/README.md). -->
+  <Import Project="../../../test/unity/HostDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>schematablesbench</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/*.cs" />
+    <ProjectReference Include="unit/benchunit.csproj" />
+  </ItemGroup>
+
+</Project>

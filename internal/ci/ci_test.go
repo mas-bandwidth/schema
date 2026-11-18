@@ -1519,6 +1519,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-squirrel-resource-bounds.yml:nightly",
 		"schema-squirrel-runs-hostile-corpus.yml:fast",
 		"schema-squirrel-runs-hostile-corpus.yml:nightly",
+		"schema-unity-runs-hostile-corpus.yml:corpus",
+		"schema-unity-runs-hostile-corpus.yml:negative-control",
 		"tla-nightly.yml:tlc",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {

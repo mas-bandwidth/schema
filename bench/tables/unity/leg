@@ -1,0 +1,42 @@
+#!/bin/sh
+# THE UNITY C# LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        generate variable BenchTable for Unity and dotnet build -c Release
+#   leg run [args]   run compiled bench runner
+#
+# A fixed class in Unity reads and writes the fixed form (form 3); this bench
+# measures the form-1 tolerant corpus, so build stages a variable-table copy
+# into build/tables-bench-unity, matching python/leg and go/leg.
+set -e
+
+STAGE=build/tables-bench-unity
+PROJ=bench/tables/unity/schematablesbench.csproj
+
+case "$1" in
+build)
+    [ -x bin/schema ] || { echo "missing bin/schema — run \`make bin/schema\`" >&2; exit 2; }
+    command -v dotnet >/dev/null 2>&1 || { echo "no dotnet" >&2; exit 2; }
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE/source" "$STAGE/gen" "$STAGE/bin"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$STAGE/source/BenchTable.schema"
+    if cmp -s bench/corpus/BenchTable.schema "$STAGE/source/BenchTable.schema"; then
+        echo "the corpus declares no fixed table: the variable copy changed nothing" >&2
+        exit 1
+    fi
+    ./bin/schema generate --lang unity --out "$STAGE/gen" "$STAGE/source/BenchTable.schema"
+    if [ -n "$SERIALIZE_CS" ]; then
+        dotnet build "$PROJ" -c Release -o "$STAGE/bin" -v q --nologo -property:UseSharedCompilation=false "-property:SerializeCsRoot=$SERIALIZE_CS" >&2
+    else
+        dotnet build "$PROJ" -c Release -o "$STAGE/bin" -v q --nologo -property:UseSharedCompilation=false >&2
+    fi
+    ;;
+run)
+    shift
+    exec dotnet "$STAGE/bin/schematablesbench.dll" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

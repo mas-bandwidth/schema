@@ -88,4 +88,5 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
 | `unity/` | Unity C# packet wire tests | `make test-unity` | `make unity-wire` |
+| `unity-hostile/` | Unity C# hostile-corpus runner | `make schema-unity-runs-hostile-corpus` | `make schema-unity-runs-hostile-corpus` |
 | `vocabgen/` | wide-vocabulary generator | `make check` | `go run ./test/vocabgen` |

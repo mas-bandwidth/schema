@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Generated BenchTable unit compiled in the strict Unity dialect
+       (C# 9 over netstandard2.1, warnings as errors, unsafe disallowed). -->
+  <Import Project="../../../../test/unity/UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>benchunit</AssemblyName>
+    <UnityBenchUnitDir Condition="'$(UnityBenchUnitDir)' == ''">../../../../build/tables-bench-unity/gen</UnityBenchUnitDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(UnityBenchUnitDir)/*.cs" />
+  </ItemGroup>
+
+</Project>
