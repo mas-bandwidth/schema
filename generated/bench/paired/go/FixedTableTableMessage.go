@@ -87,7 +87,7 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -110,11 +110,14 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 28
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
 					if false {
@@ -139,7 +142,7 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}

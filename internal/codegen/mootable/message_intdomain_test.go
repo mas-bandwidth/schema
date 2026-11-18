@@ -230,7 +230,12 @@ func intDomainWire(t *testing.T, u *ir.Unit, fields []intDomainField, ends map[s
 		}
 		parts = append(parts, intDomainPart{slot: f.slot, bits: e.bits, offset: e.offset})
 	}
-	ann = intDomainAnnounce(ir.BuildVersion(u), entries)
+	// A sender that re-declares the fields ranged is another build of the
+	// record, so the batch announces another build version. Under the reader's
+	// own, a value at its declared default (the uint8's minimum, 0) is a field
+	// its writer elides and is refused (§3.3), which is not the kind rule this
+	// test holds.
+	ann = intDomainAnnounce(ir.BuildVersion(u)+1, entries)
 	msg = intDomainBatch(ir.TableMessageRefBits(len(entries)), parts)
 	return ann, msg
 }

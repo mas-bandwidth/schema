@@ -23,3 +23,25 @@
   so the id table's first-use order is the field's id, then the ids inside the
   body, as the Go engine writes it; a nested table holding fields saves to
   the engine's bytes.
+- **The roadmap row is held over the conformance manifest**
+  (`port/python/vt/enum-keyed-arrays`; `TestPythonVtKeyedRows`,
+  `make python-vt-keyed-rows`). Every instance and report row whose root
+  reaches a keyed array is named, and a completeness check turns red on a
+  corpus row that reaches one and is not: 41 rows, among them the keyed demo,
+  the rename pair, the scalar state, the versioned config pair and the keyed
+  arrays inside map values. Each is read then written under both pinned
+  interpreters: an instance saves back byte for byte with its measure its
+  length, a report row answers reports.txt's verdict, and a refusal leaves the
+  caller's buffer and report as they were. A root declared `fixed table` is
+  read as form 3, and each accepted instance at such a root is also read on
+  form 1, the engine's variable-form bytes of the same value at the same root
+  declared variable, so the keyed body (kind 16) is held on the manifest's
+  own data. The map rows' roots (`Depth` and `Slots` in mapdemo) are declared
+  `table`, so they are read in their declared form 1 and get no separate
+  copy. luatable's construct for
+  the row (`unions_maps_keyed`) rides beside them. The manifest found no gap
+  in `kind_keyed.py`. `TestPythonVtKeyedRowsNegativeControl`
+  (`make python-vt-keyed-rows-negative-control`) writes the variable form's
+  slots in descending order, then reads the fixed form's keyed slots in
+  reverse, in a copy of the runtime; each turns the rows with two or more
+  distinct present slots on its form red by name.

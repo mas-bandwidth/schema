@@ -3601,10 +3601,17 @@ namespace Benchtable
             internal const int WireWhole = 0, WireDamaged = 1, WireCountCap = 2, WireBlobShared = 3;
             internal static int WireCheck(ReadOnlySpan<byte> body, ReadOnlySpan<byte> ids, bool announcement, out bool nonFinite)
             {
-                WireWalk w = new WireWalk { Ids = ids, Words = (ids.Length / 8 + 64) / 64, Announcement = announcement };
+                int words = (ids.Length / 8 + 64) / 64;
+                Span<ulong> used = stackalloc ulong[words];
+                WireWalk w = new WireWalk { Ids = ids, Words = words, Announcement = announcement, UsedIds = used };
                 try
                 {
                     w.Root(body);
+                    // THE ID TABLE IS ITS FIRST-USE ORDER (docs/SPEC-TABLES.md §3,
+                    // docs/rulings.json reads-refuse-non-canonical): an entry no
+                    // reference names, or one met out of its place, is a spelling no
+                    // conforming writer produces. Judged after every other condition.
+                    if (w.Fail == WireWhole && (w.OutOfOrder || w.Used != ids.Length / 8)) { w.Fail = WireDamaged; }
                     nonFinite = w.NonFinite;
                     return w.Fail;
                 }
@@ -3613,8 +3620,19 @@ namespace Benchtable
             ref struct WireWalk
             {
                 public ReadOnlySpan<byte> Ids, Table;
-                public int Words, Depth, Fail, Nodes, EdgeCount;
-                public bool Announcement, NonFinite, Present;
+                public int Words, Depth, Fail, Nodes, EdgeCount, Used;
+                public bool Announcement, NonFinite, Present, OutOfOrder;
+                // UsedIds marks each id-table reference the walk has resolved; Used
+                // counts them. The table is distinct, so first-use order holds while
+                // each newly met reference is the next entry.
+                public Span<ulong> UsedIds;
+                void Use(ulong reference)
+                {
+                    int r = (int)reference;
+                    if ((UsedIds[r >> 6] & (1ul << (r & 63))) != 0) { return; }
+                    UsedIds[r >> 6] |= 1ul << (r & 63);
+                    if (r != ++Used) { OutOfOrder = true; }
+                }
                 // Edges holds every non-null kind 17 payload in wire order, the root
                 // body's first and then each record's; Starts[k] is node k's first edge
                 // (node 0 the root, node k record k).
@@ -3675,6 +3693,9 @@ namespace Benchtable
                             off += (int)length; records++;
                         }
                         if (declared != (ulong)records) { Damage(); return; }
+                        // A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL
+                        // (§3.1): a table of no records is refused, not read.
+                        if (records == 0) { Damage(); return; }
                         Starts = System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
                         Starts[0] = 0; Starts[1] = rootEdges;
                         off = first;
@@ -3683,6 +3704,7 @@ namespace Benchtable
                             Leb(t, ref off, out ulong reference); Leb(t, ref off, out ulong length);
                             ReadOnlySpan<byte> rec = t.Slice(off, (int)length); off += (int)length;
                             ulong id = Read64(Ids, (int)(reference - 1) * 8);
+                            Use(reference);
                             // A BLOB RECORD IS ITS BYTES (§2.5, §3.1): a text blob's content
                             // rule is a wire-alone condition
                             if (id == StringTypeId) { if (!TextValid(rec)) { Damage(); return; } }
@@ -3754,11 +3776,16 @@ namespace Benchtable
                 {
                     Span<ulong> seen = stackalloc ulong[Words];
                     int off = 0;
+                    bool tableSeen = false;
                     while (true)
                     {
                         if (!Leb(buf, ref off, out ulong reference)) { return Damage(); }
                         if (reference == 0) { return off == buf.Length || Damage(); }
+                        // A NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field
+                        // after it is a node table out of its place.
+                        if (tableSeen) { return Damage(); }
                         if (reference > (ulong)(Ids.Length / 8)) { return Damage(); }
+                        Use(reference);
                         int r = (int)reference;
                         if ((seen[r >> 6] & (1ul << (r & 63))) != 0) { return Damage(); }
                         seen[r >> 6] |= 1ul << (r & 63);
@@ -3774,6 +3801,7 @@ namespace Benchtable
                             if (!root || kind != 12) { return Damage(); }
                             if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                             Table = buf.Slice(off, (int)n); Present = true; off += (int)n;
+                            tableSeen = true;
                             continue;
                         }
                         if (!Payload(buf, ref off, kind)) { return false; }
@@ -3797,6 +3825,7 @@ namespace Benchtable
                             Edge(index); return true;
                         case 30:
                             if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
+                            if (variant != 0) { Use(variant); }
                             return true;
                         case 15: return Union(buf, ref off);
                         case 12:
@@ -3881,6 +3910,7 @@ namespace Benchtable
                     for (ulong i = 0; i < count; i++)
                     {
                         if (!Leb(b, ref off, out ulong key) || key == 0 || key > (ulong)(Ids.Length / 8)) { return Damage(); }
+                        Use(key);
                         int k = (int)key;
                         if ((seen[k >> 6] & (1ul << (k & 63))) != 0) { return Damage(); }
                         seen[k >> 6] |= 1ul << (k & 63);
@@ -3898,6 +3928,7 @@ namespace Benchtable
                     if (!Leb(buf, ref off, out ulong arm)) { return Damage(); }
                     if (arm == 0) { return true; }
                     if (arm > (ulong)(Ids.Length / 8) || off >= buf.Length) { return Damage(); }
+                    Use(arm);
                     byte kind = buf[off++];
                     if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                     off += (int)n;
@@ -4185,6 +4216,11 @@ namespace Benchtable
                     if (node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
                     if (node.BlobKind != 0)
                     {
+                        // A blob kind this root does not reach is not placed. Both reserved
+                        // ids stay named: a declared slot that points at the unplaced record
+                        // refuses, and the record itself counts unknown (docs/SPEC-TABLES.md §3.1).
+                        bool reached = (node.BlobKind == 14 && type.BytesEdge) || (node.BlobKind == 12 && type.StringEdge);
+                        if (!reached) { node.Declared = true; report.Unknown++; continue; }
                         ReadOnlySpan<byte> data = payload.Buffer.Slice(node.Offset, node.Length);
                         if (node.BlobKind == 12 && !TextValid(data)) { Damage(report); continue; }
                         node.Value = new TableBlob(data.ToArray()); continue;
@@ -4648,7 +4684,8 @@ namespace Benchtable
             static bool MessageRides(object value, TableFieldInfo f)
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
-                if (!f.Optional && f.Counted) { return f.GetCount(value) != 0; }
+                // text or bytes with a declared default elide at it, as Rides says
+                if (!f.Optional && f.Counted && f.DefaultBytes == null) { return f.GetCount(value) != 0; }
                 return Rides(value, f);
             }
             static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
@@ -4898,6 +4935,14 @@ namespace Benchtable
                 if (value != null) { type.Reset(value); }
                 Span<ulong> few = stackalloc ulong[16];
                 int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                // THE SENDER'S OWN BUILD VERSION IS THIS READER'S (§3.3 (a), (b)):
+                // there every field's default and every record's field order are this
+                // reader's, so a field it does not declare, a field out of declaration
+                // order and a field stored at the default the writer elides are
+                // spellings no conforming writer produces (docs/rulings.json
+                // reads-refuse-non-canonical). Under another build none is judged.
+                bool same = d.Vocabulary.BuildVersion == tableOwnVocabulary.BuildVersion;
+                int last = -1;
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
@@ -4905,13 +4950,40 @@ namespace Benchtable
                     if (Reserved(entry.Id) || !SeenOnce(few, ref count, ref more, entry.Id)) { return false; }
                     TableFieldInfo field = FindField(type, entry.Id);
                     if (field == null)
-                    { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
+                    {
+                        if (same) { return false; }
+                        d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue;
+                    }
+                    if (same && field.Ordinal <= last) { return false; }
+                    last = field.Ordinal;
                     if (!MessageCompatible(entry, field, out bool widened))
                     { return Fail(d.Report, "kind_mismatch"); }
+                    // §3.3 (c): a writer elides a union FIELD at None at every build,
+                    // so arm reference 0 stored at one is refused whatever build
+                    // announced it. A None element of an array of unions is positional.
+                    if (entry.Kind == 15 && !field.IsArray && !field.Required)
+                    { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
                     if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
                     if (widened && !field.MapKey) { d.Report.Widened++; }
                     if (field.Optional && value != null) { field.SetPresent(value, true); }
+                    if (same && value != null && MessageAtDefault(value, field)) { return false; }
                 }
+            }
+            // MessageAtDefault is the message writer's elision (MessageRides) of a
+            // field that is neither optional nor required, whatever its guard says.
+            static bool MessageAtDefault(object value, TableFieldInfo f)
+            {
+                if (f.Optional || f.Required) { return false; }
+                if (f.Counted)
+                {
+                    int n = f.GetCount(value);
+                    if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+                    return n == 0;
+                }
+                if (!f.IsArray) { return DefaultElement(value, f, 0); }
+                if (f.Kind == 13 && f.KeyId == null) { return false; }
+                for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }
+                return true;
             }
             static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
             {
@@ -9752,7 +9824,7 @@ namespace Benchtable
 
         public const long TableEntityFixedBodyBytes = 51;
         public const long TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes;
-        public const ulong TableEntityFixedHash = 0x45d64db53ce7ac1ful;
+        public const ulong TableEntityFixedHash = 0x5eac483826ba8dadul;
 
         public static readonly byte[] TableEntityFixedLayout = new byte[] {
             0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
@@ -10191,7 +10263,7 @@ namespace Benchtable
             0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableEntityFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x45d64db53ce7ac1ful, TableEntityFixedLayout0, 59),
+            new TableFixedKnownLayout(0x5eac483826ba8dadul, TableEntityFixedLayout0, 59),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -10479,7 +10551,7 @@ namespace Benchtable
 
         public const long TableStatFixedBodyBytes = 8;
         public const long TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes;
-        public const ulong TableStatFixedHash = 0x1cdc2a66a7601422ul;
+        public const ulong TableStatFixedHash = 0x085b325df6d7f019ul;
 
         public static readonly byte[] TableStatFixedLayout = new byte[] {
             0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
@@ -10785,7 +10857,7 @@ namespace Benchtable
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableStatFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x1cdc2a66a7601422ul, TableStatFixedLayout0, 16),
+            new TableFixedKnownLayout(0x085b325df6d7f019ul, TableStatFixedLayout0, 16),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -11073,7 +11145,7 @@ namespace Benchtable
 
         public const long TableMixedFixedBodyBytes = 1224;
         public const long TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes;
-        public const ulong TableMixedFixedHash = 0x301b55c58e640302ul;
+        public const ulong TableMixedFixedHash = 0xd9aba5d49eb0840cul;
 
         public static readonly byte[] TableMixedFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
@@ -12843,7 +12915,7 @@ namespace Benchtable
             0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableMixedFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0x301b55c58e640302ul, TableMixedFixedLayout0, 1232),
+            new TableFixedKnownLayout(0xd9aba5d49eb0840cul, TableMixedFixedLayout0, 1232),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the

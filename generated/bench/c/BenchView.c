@@ -232,7 +232,7 @@ const bench_unit_view_info_t * schema_bench_unit_view_(void)
         { "MixedPickupEvent", "Bench.schema", 0, &schema_bench_mixed_pickup_event_info_, BENCH_TABLE_DOC_NONE, 0, NULL },
         { "MixedStat", "Bench.schema", 0, &schema_bench_mixed_stat_info_, BENCH_TABLE_DOC_NONE, 0, NULL },
     };
-    static const bench_unit_view_info_t info = { "bench", 0xc93127c82f083edfull,
+    static const bench_unit_view_info_t info = { "bench", 0xc52a41defad6ebb0ull,
         9, types,
         0, NULL,
         1, enums,

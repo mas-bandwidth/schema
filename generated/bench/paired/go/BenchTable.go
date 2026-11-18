@@ -132,7 +132,7 @@ type MixedEventRow struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so an endpoint's build is knowable.
-const BuildVersion uint64 = 0x41d3559378bfa852
+const BuildVersion uint64 = 0xba2dad78ebdbfff0
 
 // TableReport is the table-wire read report (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
 // A read RETURNS the whole value or REFUSES the whole load: Err is nil on a read
@@ -1842,13 +1842,13 @@ type TableMessageShape struct {
 	QCount        uint32
 }
 
-// An entry also keeps, in the caller's storage, the first slot announcing its
-// id and when and at which nesting levels a body read last named it.
+// An entry keeps its matching own encoded-entry slot, if any, and in the
+// caller's storage the first slot for its id and the body-read duplicate marks.
 type TableMessageEntry struct {
-	ID                    uint64
-	Shape, Element        TableMessageShape
-	bodyFirst, bodySeenAt uint64
-	bodySeenBelow         [2]uint64
+	ID                             uint64
+	Shape, Element                 TableMessageShape
+	ownSlot, bodyFirst, bodySeenAt uint64
+	bodySeenBelow                  [2]uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.

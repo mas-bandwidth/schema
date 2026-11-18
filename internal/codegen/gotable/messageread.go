@@ -24,8 +24,8 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	// A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE (docs/SPEC-TABLES.md §3.3):
 	// its fields in the writer's declaration order, no union field at None, and
 	// no field at the default its writer elides where this reader knows that
-	// default exactly, under its own build version (exact).
-	g.pf("exact:=r.Vocabulary.BuildVersion==BuildVersion\n")
+	// default exactly, under its own build and complete encoded entry (exact).
+	g.pf("ownBuild:=r.Vocabulary.BuildVersion==BuildVersion\n")
 	if len(st.Fields) > 0 {
 		g.pf("order:=-1\n")
 	}
@@ -33,7 +33,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	for ordinal, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
-		g.pf("if exact&&order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d\n", ordinal, ordinal)
+		g.pf("exact:=ownBuild&&entry.ownSlot==%d;if exact {if order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d}\n", g.messageSlot(mine), ordinal, ordinal)
 		g.emitMessageCompatibility(f, mine, "entry", "", "\t")
 		elides := !f.Type.Optional && !f.Required
 		g.elides = elides
@@ -52,7 +52,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf("}\n")
 	}
-	g.pf("default:if exact{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
+	g.pf("default:if ownBuild{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
 	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): the
 	// batch is a fixed root's, and a variable table has no message form.
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {

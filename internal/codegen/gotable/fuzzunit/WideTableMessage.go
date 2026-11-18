@@ -154,7 +154,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []uint64, depth int) bool {
 	tableMessageSeenOpen(r.Vocabulary, starts, depth)
 	WideBlobReset(value)
-	exact := r.Vocabulary.BuildVersion == BuildVersion
+	ownBuild := r.Vocabulary.BuildVersion == BuildVersion
 	order := -1
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -177,11 +177,14 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
-				if exact && order >= 0 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 101
+				if exact {
+					if order >= 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 0
 				}
-				order = 0
 				widened := false
 				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
 					if false {
@@ -225,11 +228,14 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
-				if exact && order >= 1 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 102
+				if exact {
+					if order >= 1 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 1
 				}
-				order = 1
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 6 {
 					if false {
@@ -268,11 +274,14 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 			}
 		case 0xe3b1ca6a3b48dddc:
 			{
-				if exact && order >= 2 {
-					r.Report.Refuse(TableRefuseWireDamaged, "")
-					return false
+				exact := ownBuild && entry.ownSlot == 103
+				if exact {
+					if order >= 2 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					order = 2
 				}
-				order = 2
 				widened := false
 				if entry.Shape.Kind != 14 || entry.Element.Kind != 7 {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 7) {
@@ -340,7 +349,7 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 				}
 			}
 		default:
-			if exact {
+			if ownBuild {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}

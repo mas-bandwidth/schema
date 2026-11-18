@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute original-nine (and Goose and MOO) acceptance gates; a report or carried finding is not a pass.
+"""Execute original-nine (and Goose, MOO and Python) acceptance gates; a report or carried finding is not a pass.
 
 This entrypoint adds no wall-clock timeout. Native test execution uses -timeout=0;
 protocol deadlines and the existing negative controls' intended oracles stay intact.
@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose", "moo")
+LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose", "moo", "python")
 PACKAGES = {
     "cpp": ("cpp", "cpptable"), "c": ("c", "ctable"),
     "cs": ("csharp", "cstable"), "go": ("golang", "gotable"),
@@ -25,9 +25,16 @@ PACKAGES = {
     "elixir": ("elixir", "elixirtable"),
     "goose": ("goose", "goosetable"),
     "moo": ("moo", "mootable"),
+    "python": ("python", "pythontable"),
 }
 # The pinned Goose release, as internal/codegen/goose/gooserun.Dist names it.
 GOOSE_DIST = "dist/goose-v2026.2-linux-x64"
+# The current Python pin, as make/python-toolchain.mk names it ($(PYTHON)):
+# the leg runs only its pinned interpreters, never one found on PATH.
+PYTHON_DIST = "dist/python-3.15.2/bin/python3.15"
+# Build tags a leg's Go test phases run under: Python's gates run under the
+# leg's tag everywhere else (make/python.mk's python-ci-packages), so here too.
+GO_TAGS = {"python": "schema_leg_python"}
 # Mutable variable-file loads, with the full fixed/message roster still
 # exercising each root's form-specific reader. Goose's load grows its own
 # value table, so it has no caller region and no LoadMeasure.
@@ -144,6 +151,9 @@ DRIVER_BUILD = {
     "goose": "build/conformance-goose-wirefuzz",
     # the units, and the native host its one process runs under (make/moo-readiness.mk)
     "moo": "moo-wire-fuzz-ready",
+    # the generated units, the pins and the refusal check the release fuzz
+    # (make/wire-fuzz-release.mk, WFR_DEPS_python) also builds
+    "python": "build/conformance-python python-toolchain-check python-wirefuzz-release-check",
 }
 WIRE_CONTROLS = {
     "cpp": "tables-wire-fuzz-negative-control tables-wire-fuzz-retain-negative-control",
@@ -157,6 +167,7 @@ WIRE_CONTROLS = {
     "elixir": "tables-elixir-wire-fuzz-refusal-negative-control tables-elixir-retain-negative-control",
     "goose": "tables-goose-wire-fuzz-negative-control",
     "moo": "tables-moo-wire-fuzz-negative-control",
+    "python": "tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control",
 }
 # The external fixed-form/packet executables complement the full native Go
 # packages. The workflow supplies the once-written C++ corpora before this step.
@@ -174,6 +185,13 @@ FIXED_GATES = {
              "tables-goose-message-form tables-goose-message-form-negative-control "
              "tables-goose-message-peer-negative-control",
     "moo": "tables-moo-fixed tables-moo-message-form tables-moo-compiler-claims",
+    # The leg's Go packages run whole under native-python and
+    # native-pythontable; these are its gates outside them: the fixed writer's
+    # lineage in the tagged compiler, the message form against the live C++
+    # reference through the conformance driver, and the tables bench leg.
+    "python": "python-fixed-writer-lineage python-fixed-writer-lineage-negative-control "
+              "python-message-conformance python-message-surface-negative-control "
+              "tables-python-bench-gate tables-python-bench-gate-negative-control",
 }
 
 
@@ -196,6 +214,11 @@ def required_phases(lang):
         # one interpreter, one mode per shape.
         required |= {"packet-normal-0", "packet-ludicrous-0"}
         required |= {"retain-moo-" + name for name in MOO_RETENTION_CONTROLS}
+    elif lang == "python":
+        # Python's packet programs are its package's probes too
+        # (run_python_packets), each running both pinned interpreters.
+        required |= {"packet-normal-0", "packet-ludicrous-0"}
+        required |= {"retain-python-" + name for name in PYTHON_RETENTION_CONTROLS}
     elif lang == "cpp":
         required.add("readiness-contracts")
         required |= {"packet-" + name for name in
@@ -452,15 +475,16 @@ def run_native(runner, lang):
     packages = ["lockfile", *PACKAGES[lang]]
     if lang == "cpp":
         packages.extend(SHARED_PACKAGES)
+    tags = ["-tags", GO_TAGS[lang]] if lang in GO_TAGS else []
     for package in packages:
         path = "./" + package_path(package)
         listed_text, status = runner.run("native-list-" + package,
-                                        ["go", "test", "-timeout=0", "-list", "^(Test|Example|Fuzz)", path])
+                                        ["go", "test", *tags, "-timeout=0", "-list", "^(Test|Example|Fuzz)", path])
         listed = [line for line in listed_text.splitlines() if re.fullmatch(r"(?:Test|Example|Fuzz)\w+", line)]
         if status or not listed or len(listed) != len(set(listed)):
             runner.missing("native-list-" + package, "missing, empty or duplicate native test inventory")
         text, status = runner.run("native-" + package,
-                   ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2", path],
+                   ["go", "test", *tags, "-json", "-timeout=0", "-count=1", "-parallel=2", path],
                    validate=lambda text, names=listed, pkg=package:
                        native_result(text, names, pkg, runner.native_passes))
         if status == 0 and not runner.results[-1]["errors"]:
@@ -479,6 +503,9 @@ def packet_result(text, random=False, compilation=False):
 def run_packets(runner, lang):
     if lang == "moo":
         run_moo_packets(runner)
+        return
+    if lang == "python":
+        run_python_packets(runner)
         return
     if lang == "cpp":
         binaries = ("schema_test", "schema_test_guard",
@@ -568,6 +595,79 @@ def run_moo_packets(runner):
                                             for tail in ("", "-negative-control")))
 
 
+# Python's packet programs: internal/codegen/python's probes generate each
+# corpus and run the generated package under both pinned interpreters (the
+# packet core over every wire pin, the close gate and its analyzer, and each
+# packet kind); the ludicrous shape is the int128 and fixed point probe. Each
+# shape's probes run as their own phase and every one must report a pass.
+PYTHON_PACKET_PROBES = {
+    "normal": ("TestPythonPacketCore", "TestPythonPacketClose", "TestPythonPacketCloseAnalyzer",
+               "TestPythonPacketArrays", "TestPythonPacketFloats", "TestPythonPacketLayout",
+               "TestPythonPacketRangedBits", "TestPythonPacketText", "TestPythonPacketUnions"),
+    "ludicrous": ("TestPythonPacketInt128",),
+}
+# The packet feature gates, as every other leg's: defaults, UTF-8 and finite
+# floats, each with its control.
+PYTHON_PACKET_FEATURES = " ".join("packet-" + feature + "-python" + tail
+                                  for feature in ("defaults", "utf8", "finite")
+                                  for tail in ("", "-negative-control"))
+
+
+def run_python_packets(runner):
+    runner.make("packet-build", "dist-python python-toolchain-check build/schema-python")
+    for label, tests in PYTHON_PACKET_PROBES.items():
+        runner.run("packet-" + label + "-0",
+                   ["go", "test", "-tags", GO_TAGS["python"], "-json", "-timeout=0", "-count=1", "-parallel=2",
+                    "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/python"],
+                   validate=lambda text, t=tests: native_result(text, list(t), "python"))
+    makefile = python_uncapped_makefile(runner, PYTHON_PACKET_FEATURES, "packet-features")
+    if makefile is not None:
+        runner.make("packet-features", PYTHON_PACKET_FEATURES, makefile=makefile)
+
+
+def python_uncapped_makefile(runner, targets, phase):
+    """The Python gates' make recipes, with only their Go suite cap lifted.
+
+    Each recipe that runs go test, directly or through test/slowgate/proof, is
+    copied from make/python*.mk with its `-timeout 600s` replaced by
+    -timeout=0 (a bare go test gains -timeout=0), and the copy overrides the
+    recipe in a private makefile that includes the real one. Prerequisites,
+    plants and assertions stay the reviewed source's. A recipe that is not
+    unique, or that names any other cap, fails the phase closed.
+    """
+    sources = {path: path.read_text() for path in sorted((runner.root / "make").glob("python*.mk"))}
+    text, replaced = "include Makefile\n", {}
+    for target in targets.split():
+        found = [(path, match) for path, source in sources.items()
+                 for match in re.finditer(r"^" + re.escape(target) + r":[^\n]*\n((?:\t[^\n]*\n)+)",
+                                          source, re.MULTILINE)]
+        if len(found) != 1:
+            runner.missing(phase, "the reviewed Python recipe is not unique: " + target)
+            return None
+        recipe = found[0][1][1]
+        lines = recipe.splitlines(keepends=True)
+        runs_go = [i for i, line in enumerate(lines) if "go test " in line or "test/slowgate/proof " in line]
+        if not runs_go:
+            continue
+        for i in runs_go:
+            if " -timeout 600s" in lines[i]:
+                lines[i] = lines[i].replace(" -timeout 600s", " -timeout=0")
+            elif "go test " in lines[i] and "-timeout" not in lines[i]:
+                lines[i] = lines[i].replace("go test ", "go test -timeout=0 ")
+            if re.search(r"-timeout[= ](?!0(?:\s|$))", lines[i]) or not re.search(r"-timeout=0(?:\s|$)", lines[i]):
+                runner.missing(phase, "the reviewed Python recipe carries another suite cap: " + target)
+                return None
+        amended = "".join(lines)
+        text += target + ":\n" + amended
+        replaced[target] = {"source": str(found[0][0].relative_to(runner.root)),
+                            "source_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
+                            "execution_sha256": hashlib.sha256(amended.encode()).hexdigest()}
+    makefile = runner.out / ("Makefile.python-uncapped-" + phase)
+    makefile.write_text(text)
+    runner.out.joinpath("Makefile.python-uncapped-" + phase + ".json").write_text(json.dumps(replaced, indent=2) + "\n")
+    return makefile
+
+
 def moo_uncapped_makefile(runner, targets):
     """The MOO gates' make recipes, with only Go's default suite cap removed.
 
@@ -649,6 +749,11 @@ def run_external(runner, lang):
         if makefile is not None:
             runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
         return
+    if lang == "python":
+        makefile = python_uncapped_makefile(runner, FIXED_GATES[lang], "external-table-gates")
+        if makefile is not None:
+            runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
+        return
     if lang != "cpp":
         runner.make("external-table-gates", FIXED_GATES[lang])
         return
@@ -699,6 +804,10 @@ def driver_command(root, lang, builder=False):
         # one process over every unit (test/conformance/moo/wirefuzz.moo
         # requires each unit from its own directory), so no dispatcher
         return "test/conformance/moo/wirefuzz-driver"
+    if lang == "python":
+        # one process over every generated unit, under the current pin, as
+        # the release fuzz runs it (make/wire-fuzz-release.mk, WFR_DRIVER_python)
+        return PYTHON_DIST + " -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python"
     return "test/conformance/" + lang + "/driver wire-fuzz"
 
 
@@ -799,8 +908,24 @@ MOO_RETENTION_CONTROLS = {
 }
 
 
+# Python's retention controls plant their fault in a copy of the emitted
+# runtime or the conformance driver in-test (internal/codegen/pythontable) and
+# must pass.
+PYTHON_RETENTION_CONTROLS = {
+    "save": ("TestPythonRetainPublicNegativeControl", "TestPythonRetainDriverNegativeControl"),
+    "remap": ("TestPythonRetainNodeRemapNegativeControl", "TestPythonRetainKnownIDNegativeControl"),
+}
+
+
 def run_controls(runner, lang):
-    runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0")
+    if lang == "python":
+        # The verdict-pipe controls run go test in their recipes: uncapped.
+        makefile = python_uncapped_makefile(runner, WIRE_CONTROLS[lang], "wire-retain-controls")
+        if makefile is not None:
+            runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0",
+                        makefile=makefile)
+    else:
+        runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0")
     if lang == "c":
         overlay_control(runner, "retain-c", "internal/codegen/ctable/retain.go",
                         "TestCTableRetainFile", "./compiler", "report.retained==13",
@@ -830,12 +955,18 @@ def run_controls(runner, lang):
                        ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
                         "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/mootable"],
                        validate=lambda text, t=tests: native_result(text, list(t), "mootable"))
+    elif lang == "python":
+        for name, tests in PYTHON_RETENTION_CONTROLS.items():
+            runner.run("retain-python-" + name,
+                       ["go", "test", "-tags", GO_TAGS["python"], "-json", "-timeout=0", "-count=1", "-parallel=2",
+                        "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/pythontable"],
+                       validate=lambda text, t=tests: native_result(text, list(t), "pythontable"))
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1 or argv[0] not in LANGUAGES:
-        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir|goose|moo>",
+        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir|goose|moo|python>",
               file=sys.stderr)
         return 2
     lang = argv[0]
@@ -869,6 +1000,12 @@ def main(argv=None):
         # target's tag, where compiler.Carried("moo") has its registrations.
         prerequisites += " moo-toolchain-ready build/conformance-harness-moo"
         harness = "./build/conformance-harness-moo"
+    if lang == "python":
+        # The pinned interpreters and analyzer, built from the pin when absent
+        # and then probed, and a harness built with the target's tag, the only
+        # build that admits `implementation --lang python`.
+        prerequisites += " dist-python python-toolchain-check build/conformance-harness-python"
+        harness = "./build/conformance-harness-python"
     runner.make("prerequisites", prerequisites)
     runner.run("implementation", [harness, "implementation", "--lang", lang],
                validate=lambda text: implementation_result(text, lang))

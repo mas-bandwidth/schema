@@ -19,6 +19,10 @@ Run from the repository root with the usual language toolchain variables:
 make table-base64-cpp table-base64-c table-base64-go table-base64-cs
 ```
 
+The Python leg runs the same corpus under both pinned interpreters with
+`make table-base64-python`; its negative control is
+`make table-base64-python-negative-control`.
+
 These checks run in each language's pull-request conformance job and under
 `make test` / each corresponding `test-<lang>`.
 No runtime repository supplies Base64; these codecs belong to the schema

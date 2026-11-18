@@ -96,7 +96,8 @@ end
 	}
 	probe.WriteString(`alias Probe.ProbeFixed,as: F
 alias Probe.TableMessage,as: M
-{:ok,vocabulary}=M.announce_read(M.announce())
+{:ok,announced}=M.announce_read(M.announce())
+{:ok,vocabulary}=M.for_root(announced,"Tick")
 `)
 	for _, n := range []int64{0, 1, -1, -9223372036854775808, 9223372036854775807} {
 		inst := m.New(u.Tables["Tick"])

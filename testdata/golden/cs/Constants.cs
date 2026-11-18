@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xf35accd0582cdd84
+// package example — protocol id 0x2bf51af687ac0abd
 //
 // Wire functions return bool — the C++-style early-out. A READ-side schema
 // validation failure (a wrong wire constant, nonzero reserved bits, an
@@ -134,7 +134,7 @@ namespace Example
     {
         // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
         // sides at the same id speak identical bits; there is no other versioning.
-        public const ulong ProtocolId = 0xf35accd0582cdd84;
+        public const ulong ProtocolId = 0x2bf51af687ac0abd;
 
         // TextValid is the string(N) content rule: no zero byte and well-formed
         // UTF-8 over the used bytes (SPEC §4.7, §5.1 row 8).

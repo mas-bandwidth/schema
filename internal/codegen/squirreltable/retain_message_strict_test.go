@@ -11,6 +11,7 @@ package squirreltable_test
 // network.
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"maps"
@@ -25,6 +26,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 type sqRetainMessageCase struct {
@@ -110,23 +112,26 @@ func sqRetainMessageOracle(t *testing.T) (map[string][]byte, []byte, []byte) {
 
 	// Wire with unknown extra="hi" followed by a mismatched kind on x (string instead of int32)
 	// and a wire with unknown extra="hi" followed by a repeated field id for extra (body damage).
-	extraWire := saves["extra"]
-	count := int(extraWire[len(extraWire)-8])
-	trailerStart := len(extraWire) - 8 - count*8
-	trailer := extraWire[trailerStart:]
+	var mismatchTrailer []byte
+	mismatchTrailer = binary.LittleEndian.AppendUint64(mismatchTrailer, ir.TableWireId("extra"))
+	mismatchTrailer = binary.LittleEndian.AppendUint64(mismatchTrailer, ir.TableWireId("x"))
+	mismatchTrailer = binary.LittleEndian.AppendUint64(mismatchTrailer, 2)
 	mismatchWire := append([]byte{
 		1,                    // form 1
-		3, 12, 2, 0x68, 0x69, // extra = "hi" (captured into retain store)
+		1, 12, 2, 0x68, 0x69, // extra = "hi" (captured into retain store)
 		2, 12, 0, // x with kind 12 (string) -> kind_mismatch on int32 field x
 		0, // root terminator
-	}, trailer...)
+	}, mismatchTrailer...)
 
+	var repeatTrailer []byte
+	repeatTrailer = binary.LittleEndian.AppendUint64(repeatTrailer, ir.TableWireId("extra"))
+	repeatTrailer = binary.LittleEndian.AppendUint64(repeatTrailer, 1)
 	damagedRepeatWire := append([]byte{
 		1,                    // form 1
-		3, 12, 2, 0x68, 0x69, // extra = "hi" (captured into retain store)
-		3, 12, 2, 0x79, 0x6f, // repeated unknown id 3 in the same body -> bodyDamaged
+		1, 12, 2, 0x68, 0x69, // extra = "hi" (captured into retain store)
+		1, 12, 2, 0x79, 0x6f, // repeated unknown id 1 in the same body -> bodyDamaged
 		0, // root terminator
-	}, trailer...)
+	}, repeatTrailer...)
 
 	return saves, mismatchWire, damagedRepeatWire
 }

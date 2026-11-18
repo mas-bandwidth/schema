@@ -1228,7 +1228,9 @@ final class TableWireReader {
     limit = tableEnd;
     pos = tableStart;
     final count = readLeb();
-    if (count == null) {
+    // AN EMPTY NODE TABLE is one no writer produces (§3.1; docs/rulings.json
+    // reads-refuse-non-canonical): a wire with no record carries no table.
+    if (count == null || count == 0) {
       limit = bodyLimit;
       report.refuse('wire_damaged');
       nodeTableGood = false;

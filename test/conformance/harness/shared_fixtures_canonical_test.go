@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestSharedFixturesCanonical inventories shared file, message and witness
@@ -53,6 +56,15 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	for _, x := range m.Rewrites {
 		files = append(files, fileRow{x.Name, x.Unit, x.Root, x.Wire, true, true})
 	}
+	// Every pinned framing vector, the HELD ones with no manifest row
+	// included: each holds its one purpose and no spelling beside it. A row
+	// above that reads the same file keeps it judged as read.
+	for _, v := range append(append([]framingVector{}, framingVectors...), noWriterVectors...) {
+		if v.unit == "" || v.root == "" {
+			continue
+		}
+		files = append(files, fileRow{v.name, v.unit, v.root, filepath.Join(framingDir, v.name+".bin"), false, true})
+	}
 	for _, x := range m.Retains {
 		files = append(files, fileRow{x.Name, x.Unit, x.Root, x.Wire, true, false})
 	}
@@ -70,11 +82,11 @@ func TestSharedFixturesCanonical(t *testing.T) {
 		}
 		files = append(files, fileRow{x.Name, unit, x.Root, x.Wire, true, false})
 	}
-	// These are assertions of named purposes, not exemptions.
-	shapesWant := map[string]string{"testdata/wire/tables/framing/array_L2_empty.bin": "stored-default", "testdata/wire/tables/framing/union_arm_zero_in_field.bin": "union-arm-zero", "testdata/wire/tables/framing/node_index_null.bin": "explicit-null-pointer"}
-	idsWant := map[string]string{"testdata/wire/tables/framing/frame_unreferenced_entry.bin": "unused ID-table entries", "testdata/wire/tables/rewrite_ids_reversed.bin": "first use of ID slot", "testdata/wire/tables/framing/frame_duplicate_entry.bin": "duplicate ID-table entry"}
+	// THE PURPOSE TABLE. Each row is an assertion that the file holds exactly
+	// its one named spelling and no other, never an exemption. Every other
+	// fixture, read or refused, holds none of them.
+	purposes := sharedFixturePurposes
 	seen := map[string]bool{}
-	writerPaths := map[string]bool{}
 	foundPurposes := map[string]bool{}
 	counts := map[string]int{}
 	checkFile := func(x fileRow) {
@@ -130,7 +142,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 			return
 		}
 		counts["variable"]++
-		fault, walkErr := damageAwareIDTableFault(data)
+		idShapes, walkErr := idTableSpellings(data)
 		var damage *fixtureDamage
 		if walkErr != nil {
 			if _, ok := errors.AsType[*fixtureUnsupported](walkErr); ok {
@@ -153,16 +165,8 @@ func TestSharedFixturesCanonical(t *testing.T) {
 			return
 		}
 		purpose := filepath.ToSlash(rel)
-		wantID := idsWant[purpose]
-		if wantID != "" || shapesWant[purpose] != "" {
+		if purposes[purpose] != "" {
 			foundPurposes[purpose] = true
-		}
-		if wantID != "" {
-			if !strings.Contains(fault, wantID) {
-				t.Errorf("%s: ID fault=%q, want %q", x.name, fault, wantID)
-			}
-		} else if fault != "" {
-			t.Errorf("%s (%s): %s", x.name, x.path, fault)
 		}
 		// Framing rows deliberately exercise the variable surface even when
 		// their declared type also has a fixed file representation.
@@ -179,37 +183,24 @@ func TestSharedFixturesCanonical(t *testing.T) {
 			if x.read {
 				t.Errorf("%s: fixed reader receives variable form", x.name)
 			}
+			judgeSharedFixture(t, x.name, x.path, purposes[purpose], idShapes)
 			return
 		}
-		shapes, e := damageAwareFileSpellings(u, st, data)
+		// A shared fixture's writer is known: it is the unit its row names.
+		// So every spelling a writer of that unit would not produce is
+		// judged against that declaration, whatever a reader of some other
+		// build may be able to infer.
+		shapes, e := sharedFixtureSpellings(u, st, data)
 		if e != nil {
 			if !errors.As(e, &damage) {
 				t.Errorf("%s: %v", x.name, e)
 				return
 			}
 		}
-		want := shapesWant[purpose]
-		if want != "" {
-			if len(shapes) != 1 || !shapes[want] {
-				t.Errorf("%s: shapes=%v, want %s", x.name, shapes, want)
-			}
-		} else {
-			// The current reader cannot know whether a variable writer made
-			// a field required or optional. These observations are not
-			// refusal evidence. For this reader's own canonical outputs the
-			// writer declaration is known, so elision remains testable.
-			for shape := range shapes {
-				switch shape {
-				case "stored-default", "explicit-null-pointer", "union-arm-zero":
-					counts["writer-dependent-descriptions"]++
-					if writerPaths[x.unit+"/"+x.table+"/"+x.path] {
-						t.Errorf("%s (%s): own-writer output stores %s", x.name, x.path, shape)
-					}
-				default:
-					t.Errorf("%s (%s): structural spelling %s", x.name, x.path, shape)
-				}
-			}
+		for shape := range idShapes {
+			shapes[shape] = true
 		}
+		judgeSharedFixture(t, x.name, x.path, purposes[purpose], shapes)
 	}
 	// Canonical output files are fixtures too: read every declared save and
 	// rewrite, and every file side of a message row.
@@ -257,11 +248,6 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	// Aggregate repeated surface rows before walking so a refused occurrence
 	// cannot hide another row that requires the same bytes to read.
 	rows := map[string]fileRow{}
-	for _, x := range files {
-		if strings.HasSuffix(x.name, "/save") || strings.HasSuffix(x.name, "/canonical") {
-			writerPaths[x.unit+"/"+x.table+"/"+x.path] = true
-		}
-	}
 	for _, x := range files {
 		key := fmt.Sprintf("%s/%s/%s/variable=%t", x.unit, x.table, x.path, x.variable)
 		if old, ok := rows[key]; ok {
@@ -361,12 +347,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 	}{{"messages", TestSharedMessageManifestSpellings}, {"message-purposes", TestSharedMessagePurposeSpellings}, {"message-damage-boundary", TestSharedMessageDamageDiscardsProvisionalSpellings}, {"message-value-domains", TestSharedMessageTextFloatDomains}, {"blob-witnesses", TestSharedBlobWitnessSpellings}, {"variable-purposes", TestNoncanonicalVariablePurposeShapes}, {"framing-purposes", TestFramingPurposeSpellingsRemain}, {"reordered-variable", TestVariableFieldOrderAcrossDeclarations}, {"unknown-required-union", TestUnknownEmptyUnionPurpose}, {"damage-boundaries", TestDamageAwareBoundaries}, {"reserved-node-kind", TestDamageAwareReservedNodeKind}, {"boolean-text-domains", TestDamageAwareBooleanAndText}, {"damage-id-controls", TestDamageAwareIDTableControls}, {"retaining-pins", TestRetainingFuzzCanonicalPins}, {"array-retaining-pins", TestRetainedArrayDuplicatePins}, {"blob-owner-pin", TestBlobDuplicateOwnerPin}, {"unknown-arm-pin", TestUnknownArmTextPin}, {"map-kind-pin", TestMapDepthRootKindPin}, {"list-child-pins", TestListDamagedChildPins}, {"variable-arm-pins", TestVariableArmKindPins}, {"a2-pointer-pin", TestFixedRootVariablePointerArmPin}, {"unknown-node-pin", TestUnknownNodeFixedReaderPin}} {
 		t.Run(sub.name, sub.fn)
 	}
-	for path := range idsWant {
-		if !foundPurposes[path] {
-			t.Errorf("missing ID purpose %s", path)
-		}
-	}
-	for path := range shapesWant {
+	for path := range purposes {
 		if !foundPurposes[path] {
 			t.Errorf("missing spelling purpose %s", path)
 		}
@@ -375,4 +356,132 @@ func TestSharedFixturesCanonical(t *testing.T) {
 		t.Fatal("empty shared fixture inventory")
 	}
 	t.Logf("inventoried %d unit/root/files: %s", len(seen), fmt.Sprint(counts))
+}
+
+// sharedFixturePurposes is the purpose table: each file whose PURPOSE is one
+// non-canonical spelling, and that spelling. The testdata/wire/non-canonical
+// corpus asserts its own rows against its MANIFEST.tsv (the variable-purposes
+// subtest).
+var sharedFixturePurposes = map[string]string{
+	"testdata/wire/tables/framing/frame_unreferenced_entry.bin": "unused-id-entry",
+	"testdata/wire/tables/framing/frame_duplicate_entry.bin":    "duplicate-id-entry",
+	"testdata/wire/tables/rewrite_ids_reversed.bin":             "id-table-out-of-order",
+	"testdata/wire/tables/rewrite_fields_reversed.bin":          "fields-out-of-order",
+	"testdata/wire/tables/framing/array_L2_empty.bin":           "stored-default",
+	"testdata/wire/tables/framing/union_arm_zero_in_field.bin":  "union-arm-zero",
+	"testdata/wire/tables/framing/node_index_null.bin":          "explicit-null-pointer",
+}
+
+// judgeSharedFixture fails a purpose file that does not hold exactly its one
+// spelling, and any other file that holds a spelling at all.
+func judgeSharedFixture(t *testing.T, name, path, want string, shapes map[string]bool) {
+	t.Helper()
+	if want != "" {
+		if len(shapes) != 1 || !shapes[want] {
+			t.Errorf("%s (%s): spellings %v, want exactly %s", name, path, sortedShapes(shapes), want)
+		}
+		return
+	}
+	for _, shape := range sortedShapes(shapes) {
+		t.Errorf("%s (%s): non-canonical spelling %s", name, path, shape)
+	}
+}
+
+func sortedShapes(shapes map[string]bool) []string {
+	var out []string
+	for shape := range shapes {
+		out = append(out, shape)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// idTableSpellings is every id-table spelling of one file: a duplicate entry,
+// an entry out of first-use order, and an entry nothing uses. First-use order
+// is judged on the trustworthy prefix of a damaged file; unused entries only on
+// a complete walk, since an unframed suffix may use any remaining entry.
+func idTableSpellings(data []byte) (map[string]bool, error) {
+	out := map[string]bool{}
+	f, err := damageAwareFrame(data)
+	if f.countAt == 0 {
+		return out, err
+	}
+	seenIDs := map[uint64]bool{}
+	for _, id := range f.entries {
+		if seenIDs[id] {
+			out["duplicate-id-entry"] = true
+		}
+		seenIDs[id] = true
+	}
+	limit := len(data)
+	if damage, ok := err.(*fixtureDamage); ok {
+		limit = damage.PrefixEnd
+	}
+	used := map[uint64]bool{}
+	next := uint64(1)
+	for _, sp := range f.spots {
+		if sp.off >= limit {
+			continue
+		}
+		switch sp.kind {
+		case spotRef, spotArm, spotKey, spotVariant, spotRecordType:
+		default:
+			continue
+		}
+		if sp.value == 0 || sp.value > uint64(len(f.entries)) || used[sp.value] {
+			continue
+		}
+		used[sp.value] = true
+		if sp.value != next {
+			out["id-table-out-of-order"] = true
+		}
+		next++
+	}
+	if err == nil && len(used) != len(f.entries) {
+		out["unused-id-entry"] = true
+	}
+	return out, err
+}
+
+// sharedFixtureSpellings is damageAwareFileSpellings plus FIELD ORDER judged
+// against the fixture's own declaration: within every body whose declaration
+// the walk knows, the declared fields it stores appear in declaration order.
+// A reader of another build cannot judge a file's order; a shared fixture's
+// writer is the unit its row names, so here it can. Unknown fields and
+// repeats are not judged here.
+func sharedFixtureSpellings(u *ir.Unit, root *ir.Struct, data []byte) (map[string]bool, error) {
+	out, err := damageAwareFileSpellings(u, root, data)
+	f, _ := damageAwareFrame(data)
+	scopes := damageAwareScopes(u, root, f)
+	complete := map[int]bool{}
+	for _, field := range f.fields {
+		complete[field.start] = true
+	}
+	last := map[int]int{}
+	for _, sp := range f.spots {
+		if sp.kind != spotRef || sp.value == 0 || !complete[sp.off] {
+			continue
+		}
+		key := -1
+		if len(sp.enclosing) > 0 {
+			key = sp.enclosing[len(sp.enclosing)-1]
+		}
+		owner := scopes[key].owner
+		if owner == nil {
+			continue
+		}
+		id, ok := f.entryOf(sp.value)
+		if !ok {
+			continue
+		}
+		at := slices.IndexFunc(owner.Fields, func(fd *ir.Field) bool { return ir.TableFieldWireId(fd) == id })
+		if at < 0 {
+			continue
+		}
+		if prev, ok := last[key]; ok && at < prev {
+			out["fields-out-of-order"] = true
+		}
+		last[key] = at
+	}
+	return out, err
 }

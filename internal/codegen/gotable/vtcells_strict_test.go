@@ -225,7 +225,7 @@ fixed table Root { flag bool
 `
 		wires := [][]byte{
 			vtCellsOracleWire(t, schema, `{}`),
-			vtCellsOracleWire(t, schema, `{"flag":true,"child":{"n":12},"values":[{"number":5},{"words":"hello"}],"value":{"empty":null}}`),
+			vtCellsOracleWire(t, schema, `{"flag":true,"child":{"n":12},"values":[{"number":"5"},{"words":"hello"}],"value":{"empty":null}}`),
 		}
 		var src strings.Builder
 		src.WriteString("package probe\nimport(\"testing\")\nfunc TestStrict(t *testing.T){\n")
@@ -455,7 +455,7 @@ fixed table Root { flag bool
  values [..3]Value
  value Value }
 `
-		wire0 := vtCellsOracleWire(t, schema, `{"flag":true,"child":{"n":12},"values":[{"number":5},{"words":"hello"}],"value":{"empty":null}}`)
+		wire0 := vtCellsOracleWire(t, schema, `{"flag":true,"child":{"n":12},"values":[{"number":"5"},{"words":"hello"}],"value":{"empty":null}}`)
 		src := fmt.Sprintf("package probe\nimport(\"testing\")\nfunc TestFixed(t *testing.T){\nwire0:=%#v\nplan:=make([]TableFixedEntry,4096)\nvar value Root\nvar report TableReport\nn:=RootFixedLoad([]Root{value},wire0,plan,&report)\nif n!=1||report.Err()!=nil{t.Fatalf(\"fixed row 0 must read whole: n=%%d report=%%+v\",n,report)}\n}\n", wire0)
 		out, err := vtCellsRun(t, schema, src, func(files map[string][]byte) {
 			vtCellsSabotage(t, files, "fixed form byte",

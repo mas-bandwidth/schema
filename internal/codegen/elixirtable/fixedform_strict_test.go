@@ -225,6 +225,9 @@ func TestElixirFixedFormHarnessStrict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("test/elixir-fixedform/main.exs failed: %v\n%s", err, out)
 	}
+	if strings.Contains(out, "warning:") {
+		t.Fatalf("test/elixir-fixedform/main.exs compiled with a warning:\n%s", out)
+	}
 	if !strings.Contains(out, "fixed form: the Elixir leg matches the C++ reference") {
 		t.Fatalf("test/elixir-fixedform/main.exs did not print its completion banner:\n%s", out)
 	}

@@ -138,6 +138,13 @@ def _write_arm_header(w: Any, arm: ArmDesc, value: Any, ctx: Any) -> None:
         w.varint(0)
         return
     f = arm.field
+    if isinstance(ctx, _save._RetainCtx) and f.codec == "union":
+        w.varint(ctx.idref(arm.arm_id))
+        w.byte(f.kind)
+        frame = w.begin_frame()
+        _write_union_element(w, _union_class(f.target), value, ctx)
+        w.finish_frame(frame)
+        return
     if f.kind == 17 and value is None:
         w.varint(ctx.idref(arm.arm_id))
         w.byte(arm.kind)
@@ -169,7 +176,13 @@ def _write_union_element(w: Any, un: type[Any], value: Any, ctx: Any) -> None:
         return
     arm = _arm(un, value.type, un.descriptor.name)
     payload = None if arm.field is None else getattr(value, arm.name)
-    _write_arm_header(w, arm, payload, ctx)
+    if isinstance(ctx, _save._RetainCtx):
+        parent = ctx.steps
+        ctx.steps = parent + ((ctx.ordinal, arm.tag),)
+        _write_arm_header(w, arm, payload, ctx)
+        ctx.steps = parent
+    else:
+        _write_arm_header(w, arm, payload, ctx)
 
 
 def _validate_union(value: Any, name: str, path: str, seen: set[int]) -> None:
@@ -378,7 +391,13 @@ class _Union:
             return
         arm = _arm(_union_class(fd.target), value.type, fd.name)
         payload = None if arm.field is None else getattr(value, arm.name)
-        _write_arm_header(w, arm, payload, ctx)
+        if isinstance(ctx, _save._RetainCtx):
+            parent = ctx.steps
+            ctx.steps = parent + ((ctx.ordinal, arm.tag),)
+            _write_arm_header(w, arm, payload, ctx)
+            ctx.steps = parent
+        else:
+            _write_arm_header(w, arm, payload, ctx)
 
 
 class _UnionArray:
@@ -427,17 +446,32 @@ class _UnionArray:
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
         reference = ctx.idref(fd.field_id)
-        body = bytearray()
-        bw = _writer(body)
-        bw.byte(15)
-        bw.varint(len(value))
-        un = _union_class(fd.target)
-        for element in value:
-            _write_union_element(bw, un, element, ctx)
-        w.varint(reference)
-        w.byte(fd.kind)
-        w.varint(len(body))
-        w.raw(body)
+        if isinstance(ctx, _save._RetainCtx):
+            w.varint(reference)
+            w.byte(fd.kind)
+            frame = w.begin_frame()
+            w.byte(15)
+            w.varint(len(value))
+            un = _union_class(fd.target)
+            parent = ctx.steps
+            ordinal = ctx.ordinal
+            for index, element in enumerate(value):
+                ctx.steps = parent + ((ordinal, index),)
+                _write_union_element(w, un, element, ctx)
+            ctx.steps = parent
+            w.finish_frame(frame)
+        else:
+            body = bytearray()
+            bw = _writer(body)
+            bw.byte(15)
+            bw.varint(len(value))
+            un = _union_class(fd.target)
+            for element in value:
+                _write_union_element(bw, un, element, ctx)
+            w.varint(reference)
+            w.byte(fd.kind)
+            w.varint(len(body))
+            w.raw(body)
 
 
 kinds.register("union", _Union())

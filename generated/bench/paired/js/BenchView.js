@@ -163,7 +163,7 @@ export const TableUnitView = (() => {
   for (const set of [enums, flags, unions]) { for (const r of Object.values(set)) { for (const x of r.variants) { Object.freeze(x); } Object.freeze(r.variants); Object.freeze(r); } }
   return Object.freeze({
     package: "bench",
-    protocolId: 0xc93127c82f083edfn,
+    protocolId: 0xc52a41defad6ebb0n,
     constants: Object.freeze(constants.map((c) => Object.freeze(c))),
     enums: Object.freeze([enums["MixedWeapon"]]),
     flags: Object.freeze([flags["MixedDamage"]]),

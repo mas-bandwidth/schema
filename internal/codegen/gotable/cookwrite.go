@@ -73,19 +73,18 @@ func tableCookWriteSource(u *ir.Unit) string {
 	if len(variableTableNames(u)) == 0 {
 		return s + `func(w *tableCookWriter) reference(slot *int64,at int64)bool{return *slot==0}
 func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool{return false}
+func(w *tableCookWriter) empty(base unsafe.Pointer,f *TableFieldInfo)bool{return true}
 `
 	}
 	s = tableSourceReplace(s, "type tableCookWriter struct {", "type tableCookWriter struct { numbering *TableNumbering;", 1)
-	// §2.3: an absent ?T over a variable closure owns no node, so the cooked
-	// writer follows its references only while it rides and writes them null
-	// otherwise. The gate is presence, not a dead counted-array slot: §7.6
-	// still refuses a non-null pointer in storage the numbering walk did not
-	// reach, so a slot past the count is written fully live and meets
-	// reference's refusal. Emitted only where the construct is, so no other
-	// unit moves.
-	if len(ir.TableOptionalPointerClosures(u)) > 0 {
-		s = tableSourceReplace(s, " if f.Pointer{return w.reference((*int64)(p),at)}\n", " if f.Pointer{if !live{return true};return w.reference((*int64)(p),at)}\n", 1)
-		s = tableSourceReplace(s, "live&&i<used", "live", 1)
+	if unitHasContainers(u) || ir.UnitHasUnboundedText(u) {
+		empty := goCookEmptyExtentSource
+		if !unitHasContainers(u) {
+			empty = tableSourceReplace(empty, " if f.List||f.Map{return (*tableContainer)(p).Count==0}\n", "", 1)
+		}
+		s += empty
+	} else {
+		s += "func(w *tableCookWriter) empty(base unsafe.Pointer,f *TableFieldInfo)bool{return true}\n"
 	}
 	s += goCookRegionWriteRuntime
 	if !unitHasContainers(u) {
@@ -103,25 +102,26 @@ const (TableByteOrderLittle TableByteOrder=1;TableByteOrderBig TableByteOrder=2)
 type tableCookWriter struct { buffer []byte; order TableByteOrder; at int64 }
 func(w *tableCookWriter) put(at int64,value uint64,width uint32){if w.buffer==nil{return};for i := range width {shift:=i;if w.order==TableByteOrderBig{shift=width-1-i};w.buffer[at+int64(i)]=byte(value>>(shift*8))}}
 func(w *tableCookWriter) header(data,nodes,align int64){w.put(0,0x4b4f4f434d484353,8);w.put(8,tableCookBuildVersion,8);w.put(16,uint64(w.order),8);w.put(24,uint64(data),8);w.put(32,uint64(nodes)*16,8);w.put(40,uint64(align),8)}
-func(w *tableCookWriter) record(p unsafe.Pointer,t *TableTypeInfo,at int64,live bool)bool {
- for i:=range t.Fields {f:=&t.Fields[i];rides:=live&&tableJSONGuardHolds(p,t,f.Guard);if f.Optional {rides=rides&&*(*bool)(unsafe.Add(p,f.PresentOffset))};if !w.field(p,f,at,rides){return false}};return true
+// A branch guard controls numbering; inline storage still writes its value.
+func(w *tableCookWriter) record(p unsafe.Pointer,t *TableTypeInfo,at int64,reached bool)bool {
+ for i:=range t.Fields {f:=&t.Fields[i];rides:=reached&&tableJSONGuardHolds(p,t,f.Guard);if !w.field(p,f,at,rides){return false}};return true
 }
-func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
+func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,reached bool)bool {
  p:=unsafe.Add(base,f.Offset);dest:=at+int64(f.CookOffset)
- if f.Optional {v:=uint64(0);if *(*bool)(unsafe.Add(base,f.PresentOffset)){v=1};w.put(at+int64(f.CookPresentOffset),v,1)}
- if f.List||f.Map {return w.container(p,f,dest,live)}
+ if f.Optional {if !*(*bool)(unsafe.Add(base,f.PresentOffset)){return w.empty(base,f)};w.put(at+int64(f.CookPresentOffset),1,1)}
+ if f.List||f.Map {return w.container(p,f,dest,reached)}
  count:=int32(1);used:=int32(1)
  if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
  if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes") {
   width:=f.CookElemSize;for i := range used {v:=tableJSONGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }
- if f.IsArray {count=f.ArrayBound;if !f.Counted{used=count}}
- for i:=int32(0);i<count;i++ {if !w.value(unsafe.Add(p,int64(i)*int64(f.ElemSize)),f,dest+int64(i)*int64(f.CookElemSize),live&&i<used){return false}};return true
+ if f.IsArray {count=f.ArrayBound;if f.Counted{count=used}}
+ for i:=int32(0);i<count;i++ {if !w.value(unsafe.Add(p,int64(i)*int64(f.ElemSize)),f,dest+int64(i)*int64(f.CookElemSize),reached){return false}};return true
 }
-func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live bool)bool {
+func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,reached bool)bool {
  if f.Pointer{return w.reference((*int64)(p),at)}
- if f.Arms!=nil {u:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};w.put(at,tag,u.CookTagSize);if tag==0||u.Arms[tag].Void{return true};return w.field(p,&u.Arms[tag].Field,at,live)}
- if f.Table!=nil{return w.record(p,f.Table(),at,live)}
+ if f.Arms!=nil {u:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(p,u.TagOffset),u.TagSize);if tag>=uint64(len(u.Arms)){return false};w.put(at,tag,u.CookTagSize);if tag==0||u.Arms[tag].Void{return true};return w.field(p,&u.Arms[tag].Field,at,reached)}
+ if f.Table!=nil{return w.record(p,f.Table(),at,reached)}
  width:=f.CookElemSize
  if width==16 {lo:=*(*uint64)(p);hi:=*(*uint64)(unsafe.Add(p,8));if w.order==TableByteOrderBig {lo,hi=hi,lo};w.put(at,lo,8);w.put(at+8,hi,8);return true}
  // A cooked float is finite (docs/SPEC-TABLES.md §3.3): NaN and infinity refuse.
@@ -149,5 +149,18 @@ func(w *tableCookWriter) container(p unsafe.Pointer,f *TableFieldInfo,at int64,l
  h:=(*tableContainer)(p);if h.Count<0||!live&&h.Count!=0{return false};if h.Count==0{return true};if w.numbering==nil{return false}
  alignment:=int64(f.ElemAlign);w.at=(w.at+alignment-1)& -alignment;start:=w.at;w.at+=int64(h.Count)*int64(f.CookElemSize);if w.at<start{return false};w.put(at,uint64(start-at),8);w.put(at+8,uint64(h.Count),4)
  cursor:=tableMapCursor(h,f,w.numbering.arena);defer cursor.Release();for i := range h.Count {elem:=cursor.Next();if elem==nil||!w.value(elem,f,start+int64(i)*int64(f.CookElemSize),true){return false}};return true
+}
+`
+
+// An absent optional writes no payload, but cannot hide owned extent storage.
+// Unlike Lock's walk, counted tails are ignored completely by the cook.
+const goCookEmptyExtentSource = `
+func(w *tableCookWriter) empty(base unsafe.Pointer,f *TableFieldInfo)bool {
+ p:=unsafe.Add(base,f.Offset)
+ if f.List||f.Map{return (*tableContainer)(p).Count==0}
+ if f.Pointer||f.CookElemSize==0{return true}
+ if f.Table==nil&&f.Arms==nil{return true}
+ count:=int32(1);if f.IsArray {count=f.ArrayBound;if f.Counted{count=max(int32(0),min(count,*(*int32)(unsafe.Add(base,f.CountOffset))))}}
+ for i:=int32(0);i<count;i++ {q:=unsafe.Add(p,int64(i)*int64(f.ElemSize));if f.Table!=nil {t:=f.Table();for j:=range t.Fields {if !w.empty(q,&t.Fields[j]){return false}}};if f.Arms!=nil {u:=f.Arms();tag:=tableJSONGetRaw(unsafe.Add(q,u.TagOffset),u.TagSize);if tag==0||tag>=uint64(len(u.Arms))||u.Arms[tag].Void{continue};if !w.empty(q,&u.Arms[tag].Field){return false}}};return true
 }
 `

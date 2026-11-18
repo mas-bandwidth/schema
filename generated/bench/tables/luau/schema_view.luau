@@ -2,7 +2,7 @@
 -- UnitView returns the unit registry as constant data (docs/SPEC-TABLES.md §8.3).
 local manifest: any = table.freeze({
 	package = "benchtable",
-	protocol_id = "0926221bcb6f475f",
+	protocol_id = "4c9383ebe3cde248",
 	constants = {
 	},
 	enums = {

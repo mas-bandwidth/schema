@@ -272,7 +272,9 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, Elixir and Java carry both table wires, form
+these surfaces too. Python carries both classes, form 1 and form 3, JSON,
+retain-unknown, the block form's read and build, and the cook's read and
+write (docs/PORT-PYTHON.md). Rust, Elixir and Java carry both table wires, form
 1 and form 3 (§3.4), beside the block and cook read halves. **Dart and
 JavaScript carry both wires too**, form 1 and form 3 (§3.4): form 3 is
 the FIXED form — the write template, the plan-driven read and the LAYOUT /
@@ -289,8 +291,9 @@ language has a table backend; refusal is scoped to a construct, never the table 
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
 reference, the compiler engine (`internal/tablewire`), C, C#, Go, Dart,
-JavaScript, Rust, Elixir and Java. Section 3.4's FIXED form is carried by the C++ reference, by Go,
-by Rust, by Elixir, by Java, by Dart, and by JavaScript, whose
+JavaScript, Rust, Elixir, Java and Python. Section 3.4's FIXED form is carried by the C++ reference, by Go,
+by Rust, by Elixir, by Java, by Python (`fixed_load`, `fixed_save`;
+docs/port-python/table-fixed-form.md), by Dart, and by JavaScript, whose
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
 OPTIONAL corpus the reference writes at every place a present byte can ride —
@@ -1748,6 +1751,8 @@ reads.
 **Backend status: the C++ REFERENCE and the TOOL carry it; C carries its file
 wire, region and text forms; Go carries `*bytes` and `*string`** with the
 blob-node runtime, the region and cook views and the text form (§8, §16.8).
+Python carries both on its wire, cook and text form
+(docs/port-python/table-blobs.md).
 Every writer of the wire, the message form and the text refuses a blob named
 from two slots by name, `blob_shared`, and the strict read refuses it too
 (§6.5); the remaining ports refuse a unit that declares one, by name (§11), and
@@ -3559,7 +3564,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 8` and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3781,18 +3786,11 @@ writes it down. It is idempotent — a
 lock that is already current is left untouched — and `--print` writes nothing
 at all.
 
-**A lock written under rendering version 6 is SALVAGED, not deleted.** Its one
-layout becomes the first lineage entry, its field lines are carried forward
-unchanged, and `schema lock` writes the file as version 8. Rendering 7 is also SALVAGED with every existing lineage entry preserved; a missing writer snapshot stays unknown until explicitly imported. Deleting this file
-now means wiping a fleet's lineage. A lock older than the salvage floor holds
-nothing a lineage can start from, and is refused with the one remedy that
-works: write it again with `schema lock`. A lock written by a NEWER compiler
-than this one is refused in its own sentence: *"this lock is rendering version
-9 and this compiler writes version 8 — it was written by a NEWER compiler than
-this one, and this one cannot know what it holds: build the compiler this tree
-pins, or relock with it"*.
+**Old lock renderings are SALVAGED, not deleted.** Rendering7/8 lineage entries keep their exact saved layout, digest, wire key, order and retirement. Rendering6 predates lineage: when the checked source still matches all saved declaration facts, its layout-only key becomes the first entry with unknown writer metadata. A changed rendering6 source must first be restored to its exact historical declaration, migrated, then evolved; the wider reader cannot reconstruct historical layout bytes. Relocking writes rendering9 and appends the prospective current identity. Missing snapshots stay unknown until explicitly imported. Deleting the lock wipes a fleet’s lineage. A lock older than the salvage floor is refused, as is a rendering from a NEWER compiler.
 
-**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, digest, record-body size and hash must match. Different captured constraints under one legacy hash are refused, not overwritten. The caller establishes provenance; anonymous legacy digests cannot recover all historical bounds. Missing metadata never implies retirement. The complete migration and compatibility boundary are in `FIXED-FORM-ALGORITHM.md` §5.2.
+**Explicit writer-metadata import adds facts, not a new layout.** `schema lock --writer 'Table@0x<hash>' --from historical/unit current/unit` enriches only that existing entry from trusted checked historical source. Root, layout, recorded-scheme digest, record-body size and raw hash must match. The default API remains strict: an empty historical digest cannot silently erase source constraints.
+
+For an old layout-only key, the additional `--legacy-layout-only` option explicitly trusts the supplied historical source’s provenance. It requires an empty saved digest and still validates checked-source closure, root, layout, body size and raw layout-only key. The complete snapshot and a `legacy-layout-only` marker are saved in rendering9 and bound by the lineage roll-up. The paired options must be repeated to validate an already imported layout-only entry. This operation does not authenticate old bounds from the hash or distinguish files from two historical writers that shared that key. Different captured constraints are refused rather than overwritten; missing metadata never implies retirement. See `FIXED-FORM-ALGORITHM.md` §5.2 for the compatibility boundary.
 
 **`--retire` is the lock's ONE NON-APPEND EDIT.** `schema lock --retire Table@0x… --reason <text>` marks one lineage entry retired; the entry stays in
 the lineage forever, and a file carrying that layout is then answered
@@ -5412,8 +5410,8 @@ pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
 **Backend status for this section: the TOOL, the C++ REFERENCE, C and GO
-write and read it; the other backends refuse a pointered unit's wire by name
-(§11).**
+write and read it, and so does PYTHON; the other backends refuse a pointered
+unit's wire by name (§11).**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -5639,20 +5637,43 @@ the payload opens with the count and then carries the records:
   **A blob is owned by one slot (§2.5)**: a wire CAN spell two slots naming one
   blob record, but every writer refuses that graph by the name `blob_shared`,
   and every read refuses that wire by the same name (§6.5).
-- **A ROOT that reaches no blob of that shape skips it by its length and
-  counts it `unknown`**, as it does any record whose type id it cannot name,
-  and the record keeps its index. The reserved ids are named on the same terms
-  a table's name id is (§3.1): a blob node is a pointer's pointee, so a
-  `*string` record under a root that no `*string` edge sits below is a node
-  this reader cannot place, and it commands no storage. A file never carries
-  one, because a writer writes only the ids its own body used; a MESSAGE can,
-  because §3.3's tail announces every reserved id whether or not the root
-  names it. A reader that names the id and meets a length past the field it
-  rides in refuses the whole wire `wire_damaged`, as it refuses any record
-  that does; nothing reads a blob's bytes from outside its record. A blob record under a `*T` slot, or a table record under a `*bytes`
-  slot, is the type-id check below: damage, `wire_damaged` (a wrong-type pointer target, §6.5). A
-  `*bytes` slot and a `*string` slot are two ids for the same reason
-  `string(N)` and `bytes(N)` are two kinds on this wire.
+- **The two reserved ids are types EVERY reader of the variable form can
+  name, whatever its root reaches.** A blob record named from a slot this
+  reader DECLARES whose target is not that blob kind — a `*string` slot naming
+  a `*bytes` record, a `*bytes` slot naming a `*string` record, a `*T` slot
+  naming either — refuses the whole read `wire_damaged` (a wrong-type pointer
+  target, §6.5), whether or not the root's closure has an edge of that kind;
+  so does a table record under a `*bytes` or `*string` slot. A `*bytes` slot
+  and a `*string` slot are two ids for the same reason `string(N)` and
+  `bytes(N)` are two kinds on this wire.
+- **A blob record of a kind the root's closure lacks, reached only from fields
+  this reader does not declare** — a newer writer's field — is skipped by its
+  length and counted `unknown`, and it keeps its index: that is evolution, and
+  the load is accepted. Its bytes are still held to the rules every reader
+  applies to them (the text rule above, the size cap, §6.5), and it commands
+  no storage.
+- **A blob record no pointer reaches** is damage, `wire_damaged`, as every
+  unreachable record is (§6.5, THE GRAPH). No conforming writer emits one: a
+  save numbers only the records its written slots name. A MESSAGE's tail
+  announces both reserved ids whether or not the root names them (§3.3); an
+  announced id is not a record, and only a record is judged here. A reader
+  that meets a blob record whose length runs past the field it rides in
+  refuses the whole wire `wire_damaged`, as it refuses any record that does;
+  nothing reads a blob's bytes from outside its record.
+- **Why the blob kinds are refused, and where evolution stays accepted**
+  (docs/rulings.json `blob-target-outside-closure-refused`, 2026-11-17). The
+  maintainer's standing principle: "if there is ever any uncertainty about how
+  to read something, and it is weird or not a natural case for somebody
+  sending us well formed data, the answer is always reject." A blob of the
+  wrong kind under a declared slot is input no conforming writer emits, so
+  every leg refuses it, in every build. A newer writer's TYPE is not this
+  case: a declared slot naming a record whose type id is a TABLE id the
+  reader's unit does not declare reads null with the load accepted (the bullet
+  "A node whose TYPE this reader does not DECLARE" below; vector
+  `next-writer-only`). The wire tells the two apart by the record's type id
+  alone: a reserved blob id is always one this reader names, and a table id
+  is one it names exactly when its unit declares that table. The vectors are
+  testdata/wire/pointer-target-type/blobkind.
 - The blob rides ONLY as a record. A `*bytes` field's own payload is the
   node index under kind `17`, so an edit between `*bytes` and
   `bytes(N)` — kind `17` against kind `14` — is §4's kind mismatch in both
@@ -6486,16 +6507,18 @@ the float already lies on the announced grid, because the file carries the raw
 float and the message carries its nearest grid point, and an off-grid value and a
 rounding tie each come back as the grid point the rule chose (the round-trip paragraph, below).
 
-**A RANGED OFFSET ABOVE THE SENDER'S OWN `max` IS A VALUE OUTSIDE THE WRITER'S
-RANGE, AND IT REFUSES `out_of_range`.** A ranged value's `bits` can spell
-offsets past the sender's own range whenever `max - min` is not one less than a
-power of two, exactly as a reference's width can spell values past `E`. No
-writer emits one, and the announcement says what the writer's range was, so the
-reader refuses the batch `out_of_range` (§6.5), and never clamps
-(the maintainer, 2026-11-03: a value outside the writer's range refuses). A value inside
-the sender's range and outside this reader's own refuses by the same name
-(§4). The quantized float's index above `count` refuses as the packet wire
-refuses it (the quantization paragraph, above).
+**A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW.** A ranged
+value's `bits` can spell offsets above the writer's declared maximum whenever
+`max - min` is not one less than a power of two. The announcement carries the
+base and width, not that maximum: for example `[0,5]` and `[0,7]` announce the
+same base and three-bit width. A writer refuses a value outside its own declared
+range. A reader holds the reconstructed value to the announced kind's storage
+domain and its own declared range, refusing `out_of_range` without clamping.
+When the announced build version and shape match its own declaration, the
+reader also knows the writer's exact maximum and holds the value to it. Under a
+different build it cannot infer that maximum from the shape alone. A quantized
+float's index above `count` refuses as the packet wire refuses it (the
+quantization paragraph, above).
 
 **THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
 because an announcement carrying a kind outside the closed set is malformed and
@@ -6652,7 +6675,7 @@ announcement decide — an enum-keyed array's key names a declared no-payload
 entry and no key repeats, a string's bytes are well-formed UTF-8 with no zero
 byte, a float is finite and a quantized float's index is at most its `count`, an
 array's or keyed array's count is within `[min, max]` and a ranged integer's
-offset is within the sender's `max`, and a nested body names no field id twice
+reconstructed value is within its announced kind's storage domain, and a nested body names no field id twice
 and no reserved id — and a failure refuses the batch. **The skip walk is bounded
 at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
 
@@ -7054,10 +7077,13 @@ is the checkout's emitters, not a claim that a release tag already said so.
 - **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
   emits `<Package>.TableMessage` when the unit has a fixed root and does not
   emit it otherwise. The module carries the announcement (`announce`,
-  `announce_measure`, `announce_read`) and the bitpacked batch
-  (`measure_messages`, `save_messages`, `load_messages`). The batch verbs are
-  the module's, over the vocabulary `announce_read` resolved, not a generated
-  verb per root. The entry bound and the byte bound are fields of that
+  `announce_measure`, `announce_read`), `for_root`, which binds the vocabulary
+  `announce_read` resolved to one fixed root's record, and the bitpacked batch
+  (`measure_messages`, `save_messages`, `load_messages`) over a bound
+  vocabulary; on a vocabulary no root is bound to the three answer
+  `:no_root`. Each fixed root also gets `<root>_measure_messages`,
+  `<root>_save_messages` and `<root>_load_messages`, which bind and act in one
+  call (`messageBinding`, in `integrity.go`). The entry bound and the byte bound are fields of that
   vocabulary (default 4096 and 64 KiB), because the BEAM has no caller-owned
   array.
 
@@ -9981,7 +10007,8 @@ evolution a read accepts (§4).
   field; map key order and repeats (a map and a `[..N]Pair` are the same
   bytes); and a pointer to a record of a type this reader names that is not
   the type its slot requires. A pointer to a record of a type this reader
-  CANNOT name is evolution: the pointer reads null (§3.1).
+  CANNOT name — a table type the reader's unit does not declare, never one of
+  the two reserved blob ids — is evolution: the pointer reads null (§3.1).
 
 **EVERY RECORD OF A TYPE THIS READER NAMES IS DECODED** and held to the
 declaration, whether or not a slot the reader knows reaches it, on the region
@@ -10919,7 +10946,10 @@ the conformance `retain` rows. The reference emits
 `TableRetain`, the three verbs on every variable-class root, the refusal on
 every fixed-class one, `LoadRetainMessages` and `SaveRetainMessages` among
 them (§3.3), and a second family of body functions beside the three the wire
-already had, so `Load`, `Measure` and `Save` are unchanged. What is still owed
+already had, so `Load`, `Measure` and `Save` are unchanged. Python emits
+`TableRetain` and `load_retain`, `measure_retain` and `save_retain` on every
+variable-class root and refusals by name on every fixed-class one, and refuses
+message-form retention by name (docs/port-python/table-retain.md). What is still owed
 is the other seven ports.
 
 ## 7. The cooked form
@@ -10950,8 +10980,8 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 
 `schema cook` writes the file; the runtime only ever points at one.
 
-**Backend status: the TOOL, EVERY READ SIDE, and the C, C++ and Go WRITE sides
-for BOTH classes are built (schema#251).** `schema cook`, `schema cook-check` and
+**Backend status: the TOOL, EVERY READ SIDE, and the C, C++, Go and Python
+WRITE sides for BOTH classes are built (schema#251).** `schema cook`, `schema cook-check` and
 `schema uncook` produce, validate and read back the form below, in both byte
 orders, over the same IR the emitters consume — and `wire → cook → wire` is
 byte-identical over the corpus, which is what proves the accelerator loses no
@@ -13475,7 +13505,20 @@ imply, intersected with each table's `forms` declaration (§2.12); the one list
 it refuses is one naming `json`, `cook` or `block` for a table whose `forms`
 declaration leaves that form out, and the default full set refuses nothing.
 
-Only the Go target honors the flag; any other `--lang` refuses it by name.
+Go honors all nine names. Python also honors the flag for `wire`, `fixed`
+and `block`; explicit requests for its remaining unconnected surfaces are
+refused by name. Python's absent option and explicit full default set preserve
+its existing output while those surfaces are connected. Every other `--lang`
+refuses the flag by name.
+
+Python's `wire` selection keeps the table descriptors and the variable-table
+wire methods. If `fixed` is omitted, it emits no fixed batch methods, layout
+metadata or fixed runtime. A declared fixed root still cannot borrow form `1`:
+its plain file load, save and measure refuse `fixed_surface_not_selected`.
+Selecting `fixed` (which implies `wire`) restores the fixed batch methods and
+makes those plain file methods use form `3`. The default does the same. Omitting
+`block` removes the table's block descriptor. This selection does not opt Python
+into the separate per-table `forms` declaration (§2.12).
 
 **A default generate removes stale surface files.** A `generate --lang go`
 without `--surface` removes from the output directory every `.go` file whose
@@ -15864,11 +15907,15 @@ SceneFromJson( builder, text, text_bytes, &report );
 
 **Backend status for this section: the FIXED class in every table backend —
 C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO,
-Rust and Squirrel — and the VARIABLE class in C and C++ (§16.7).** A pointered unit's text form reads through the builder. In C#, Dart,
+Rust and Squirrel, and Python beside them — and the VARIABLE class in C, C++
+and Python (§16.7).** In C and C++ a pointered unit's text form reads through the builder. In C#, Dart,
 Elixir, Go, Java, JavaScript and Rust the absence is already made one level
 up: a
 pointered unit gets no table source at all (§11), so it has no text form for
-the same reason it has no wire codec.
+the same reason it has no wire codec. Python carries the text form in both
+classes, a pointered unit's included: `T.from_json(text)` reads into the
+generated classes and `value.to_json()` writes a node two pointers name once,
+labelled `"&node"`, and names it by label after.
 
 **The FLOAT SPELLING is C's `%.*g`, byte for byte, in every port**, and each
 says how it gets there rather than reaching for its runtime's default. C++
@@ -19572,6 +19619,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | `?T` presence companion | layout | `optional=true`, and the `size=`/`offset=`s the companion moves |
 | `*T` reference slot | layout | kind `17` with `type=` naming the pointee |
 | a `flags` field's storage width | layout | `size=` |
+| a counted array’s minimum count | **meaning** | `countmin=` beside `bound=` — the announced shape and the admitted counts depend on it even when storage does not |
 | a specified DEFAULT | **meaning** | `default=` — an elided field materializes it (§3) |
 | a declared `min`/`max`; a compressed float's range; `bits(N)`'s implied range | **meaning** | `min=` / `max=` — §4 holds a load to the reader's bounds |
 | a compressed float's RESOLUTION | **meaning** | `step=` |
@@ -19640,7 +19688,7 @@ record <Name> sizeof=<n> alignof=<n>
     field <id> kind=<n> offset=<n> size=<n> [ frac=<n> ]
         [ type=<Name> | enum=<Name> | union=<Name> ]
         [ elem=<n> ] [ elemkind=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
-        [ bound=<n> ] [ key=<Name> ]
+        [ bound=<n> ] [ countmin=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
         [ total=<n> ]
@@ -19648,6 +19696,11 @@ record <Name> sizeof=<n> alignof=<n>
 
 **The optional tokens appear in that order and only where the fact exists**,
 and they are one line on the wire — the display above is wrapped for reading.
+A counted array always carries `countmin=`, including zero, beside its maximum
+`bound=`. It is separate from an integer element’s `min=` range. The same tail
+applies to general union arms. This is prospective projection form 6: changing a
+count minimum changes message admission/shape even when storage is unchanged.
+Historical form 5 projections and build ids are not recomputed under form 6.
 `frac=` is a fixed field's `F`: the slot holds units × 2^F, so the scale
 is a meaning fact like a bound (§20.1, group 3) and rides beside the kind;
 a fixed field's `default=` is the raw integer its slot holds.
@@ -19851,7 +19904,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 5
+schema-build-version 6
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -19866,12 +19919,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0x482a6d07fc09a843`**. `ShipConfig` gets no
+and the build version is **`0xdf9d79c984aaa892`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xfb3cc9032b967207`**, deliberately not equal to the protocol id, so no
+**`0x2b425f3c41ab10cf`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 
@@ -20259,10 +20312,13 @@ that data the same way"* / *"and each implementation MUST write out the exact
 same bytes, so there needs to be some specification for how iteration is done
 on write, and in what order etc. that is cross language."*
 
-The reader-side sections now hold a writer to one order rather than leave it
-free: field order inside a body and the id table's first-use order are part of
-the READ contract (§3), and a body or a table out of them is refused, not
-re-encoded. **A CONFORMING WRITER HAS NO
+A writer emits a body's fields in the WRITING build's declaration order
+(§22.2). A variable-file reader checks observable first-use ID order and
+rejects duplicate fields within a body; it does not compare body field order
+with its own declaration (§3). A message reader compares field references
+with its own declaration order only under a matching full announced shape
+and build version (§3.3(b)). Lawful file reordering remains a rewrite case
+(§22.7). **A CONFORMING WRITER HAS NO
 FREEDOM AT ALL**: every spelling a reader refuses is pinned below
 to one answer, so a value has one canonical byte string per form, and two
 implementations that follow this section produce it byte for byte. Each step

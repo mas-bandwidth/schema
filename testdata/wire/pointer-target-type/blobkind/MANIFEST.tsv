@@ -1,0 +1,32 @@
+# BLOB-KIND VECTORS (docs/SPEC-TABLES.md §3.1, §6.5; docs/rulings.json
+# blob-target-outside-closure-refused). The roots are in
+# test/pointer-target-type/blobkind/reader: Text (body *string) and Bin
+# (data *bytes), so each root's closure holds ONE blob kind.
+# test/pointer-target-type/blobkind/writer is the reader's successor: its Text
+# adds a field the reader does not declare, extra *bytes. Every vector is
+# written by test/pointer-target-type/blobkind/gen.
+#
+# Columns, tab-separated:
+#
+#   case     what the wire carries
+#   unit     the schema directory the root is read against, from the repo root
+#   root     the table the wire is read at
+#   file     the wire file, in this directory
+#   verdict  `read` or `refused`
+#   unknown  the report's unknown count, or `-` where the row does not pin one
+#
+# The two reserved blob ids are types every reader can name, whatever its root
+# reaches: a declared slot naming a blob record of the other kind refuses the
+# whole read (wire_damaged, a wrong-type pointer target), and so does a blob
+# record no pointer reaches. A blob record of a kind the root's closure lacks,
+# named only from a field the reader does not declare (a newer writer's
+# field), reads, and counts two `unknown`: the field the reader does not
+# declare, and the record it names. A newer writer's TYPE under a declared slot is
+# the separate case ../MANIFEST.tsv holds as next-writer-only: it reads, the
+# pointer null.
+
+text-canonical	test/pointer-target-type/blobkind/reader	Text	text-canonical.bin	read	0
+text-names-bytes	test/pointer-target-type/blobkind/reader	Text	text-names-bytes.bin	refused	-
+data-names-string	test/pointer-target-type/blobkind/reader	Bin	data-names-string.bin	refused	-
+text-unknown-field-bytes	test/pointer-target-type/blobkind/reader	Text	text-unknown-field-bytes.bin	read	2
+text-orphan-bytes	test/pointer-target-type/blobkind/reader	Text	text-orphan-bytes.bin	refused	-

@@ -1,0 +1,17 @@
+// The READER unit of the blob-kind vectors (docs/SPEC-TABLES.md §3.1;
+// docs/rulings.json blob-target-outside-closure-refused). Each root's closure
+// holds ONE blob kind: below Text sits only a `*string` edge, below Bin only a
+// `*bytes` edge. A blob record of the other kind named from a slot this reader
+// declares is damage, whatever the root's closure reaches. (Text's field is
+// `body`, not `text`: a member may not share its declaring type's name.)
+package blobkind
+
+table Text
+{
+    body *string
+}
+
+table Bin
+{
+    data *bytes
+}

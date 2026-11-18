@@ -819,6 +819,16 @@ func TestALockFromThePreLineageRenderingSalvages(t *testing.T) {
 	var body []string
 	for line := range strings.SplitSeq(string(current[len(head):]), "\n") {
 		if !strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
+			if strings.HasPrefix(line, "fixed table ") {
+				parts := strings.Fields(line)
+				var held []string
+				for _, part := range parts {
+					if !strings.HasPrefix(part, "lineage=") {
+						held = append(held, part)
+					}
+				}
+				line = strings.Join(held, " ")
+			}
 			body = append(body, line)
 		}
 	}
@@ -829,8 +839,8 @@ func TestALockFromThePreLineageRenderingSalvages(t *testing.T) {
 
 	// IT READS: the check is silent, because the law the file holds has not
 	// moved and the lineage is salvage rather than a hole
-	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
-		t.Fatalf("a lock one rendering back salvages (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.8): %v", errs)
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) == 0 || !strings.Contains(errs[0].Error(), "not the lineage's last entry") {
+		t.Fatalf("the prospective identity requires explicit relocking: %v", errs)
 	}
 	// and `schema lock` writes THIS rendering back, the layout it held standing
 	// as the first lineage entry
@@ -841,8 +851,17 @@ func TestALockFromThePreLineageRenderingSalvages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(got, current) {
-		t.Errorf("the salvage reproduces this rendering exactly:\n--- want ---\n%s\n--- got ---\n%s", current, got)
+	migrated, err := lockfile.Parse(path, got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range migrated.Tables {
+		if table.Decl != lockfile.DeclFixedTable {
+			continue
+		}
+		if len(table.Lineage) != 2 || table.Lineage[0].Writer != nil || len(table.Lineage[0].Digest) != 0 || table.Lineage[1].Writer == nil {
+			t.Fatalf("%s lost pre-lineage history or current writer", table.Name)
+		}
 	}
 	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
 		t.Errorf("the salvaged lock checks clean: %v", errs)

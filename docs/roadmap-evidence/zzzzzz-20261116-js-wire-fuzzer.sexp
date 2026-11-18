@@ -1,0 +1,6 @@
+(:id "vt/wire-fuzzer/js" :state :done
+ :evidence ("docs/validation/2026-11-16-js-wire-fuzzer.json: 23-phase strict JavaScript readiness, three plain and three retaining seeds, 1,678,398 mutants with zero divergences and no absent eligible codecs"
+            "test/conformance/nightly-readiness js: tables-js-wire-fuzz-negative-control and cards-js-conformance-upgrade-negative-control detect their planted faults"
+            "internal/codegen/jstable/fixed_nested_check_test.go: TestJavaScriptFixedNestedArrayCheck; the original fixed nested-array witness and all 18 forged storage shapes refuse")
+ :tested-revision "6d5190530bc6441bda0e410032d0f15a530d1562"
+ :note "2026-11-16: an unmodified 23-phase readiness run passed on Linux with Node 26.7.0. Plain covers 327 seeds and 63 roots per seed; retaining covers all 130 applicable seeds and 29 roots, with 197 outside the retaining domain. Each of three seeds per arm includes 100000 random mutations and the full enumerated pass. There were no divergences or absent eligible codecs. The frozen source and sibling pins are recorded in the validation receipt. The invalid earlier staging attempt is excluded; this evidence requires the fixed-read prerequisites to land before merging the evidence.")

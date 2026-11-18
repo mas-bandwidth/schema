@@ -224,7 +224,7 @@ func TestElixirLoadMessagesRefusesTextOffShape(t *testing.T) {
   def run do
     vocab =
       case M.announce_read(File.read!(%s)) do
-        {:ok, v} -> v
+        {:ok, v} -> elem(M.for_root(v, "Root"), 1)
         other -> raise "announce_read refused the bytes: #{inspect(other)}"
       end
 

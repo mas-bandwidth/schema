@@ -27,6 +27,8 @@ package elixirtable
 // files (testdata/wire/tables/announce_*.bin).
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,6 +39,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -140,6 +144,81 @@ func TestMessageFormAnnounceElixir(t *testing.T) {
 			t.Fatalf("%v\n%s", err, out)
 		}
 	})
+
+	// THE ANNOUNCEMENT IS A FILE (§3.3), and its id table is in FIRST-USE
+	// ORDER like every other (§3): the reference's lawful announcement, then
+	// broken one way each, every break malformed and setting no vocabulary,
+	// and refused by the engine on the same bytes first.
+	t.Run("first_use_order", func(t *testing.T) {
+		t.Parallel()
+		u := messageLoadUnit(t, root, units["backenddemo"])
+		ann := filepath.Join(root, connections["backenddemo"].path)
+		lawful, err := os.ReadFile(ann)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var lawfulVocab tablewire.Vocabulary
+		if err := lawfulVocab.AnnounceRead(lawful, &tabletext.Report{}); err != nil {
+			t.Fatalf("the engine refuses the lawful announcement: %v", err)
+		}
+		var probe strings.Builder
+		probe.WriteString("  {:ok, _} = M.announce_read(File.read!(file()))\n")
+		for _, c := range announcementFirstUseBreaks(t, lawful) {
+			var vocab tablewire.Vocabulary
+			err := vocab.AnnounceRead(c.wire, &tabletext.Report{})
+			if tablewire.RefusalReason(err) != "wire_damaged" || !strings.Contains(err.Error(), "first-use order") || vocab.Announced() {
+				t.Fatalf("%s: the engine does not refuse it for its id table: %v", c.label, err)
+			}
+			fmt.Fprintf(&probe, "  check(\n    match?(\n      {:error, :malformed, %%{announced: false}},\n      M.announce_read(Base.decode16!(%q, case: :lower))\n    ),\n    %q\n  )\n",
+				hex.EncodeToString(c.wire), c.label+": the announcement read did not answer malformed")
+		}
+		out, err := runMessageProbe(t, u, ann, probe.String())
+		if err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+	})
+}
+
+type announcementBreak struct {
+	label string
+	wire  []byte
+}
+
+// announcementFirstUseBreaks breaks a lawful announcement's id table (the
+// build version at reference 1, offset 0, and the vocabulary at reference 2,
+// offset 10) three ways: an unused entry after the last, an unused entry
+// between the two (the vocabulary's reference renumbered past it), and the
+// two entries swapped with their references, so each field keeps its
+// identity and payload and only the table's order differs.
+func announcementFirstUseBreaks(t *testing.T, lawful []byte) []announcementBreak {
+	t.Helper()
+	n := int(binary.LittleEndian.Uint64(lawful[len(lawful)-8:]))
+	start := len(lawful) - 8 - 8*n
+	body := lawful[1:start]
+	if n != 2 || len(body) < 12 || body[0] != 1 || body[1] != ir.TableKindU64 || body[10] != 2 || body[11] != ir.TableKindArray {
+		t.Fatalf("the announcement is not its build version then its vocabulary: % x", lawful)
+	}
+	ids := []uint64{binary.LittleEndian.Uint64(lawful[start:]), binary.LittleEndian.Uint64(lawful[start+8:])}
+	unused := ir.TableWireId("first_use_unused_announcement_entry")
+	for unused == ids[0] || unused == ids[1] {
+		unused++
+	}
+	wire := func(body []byte, ids ...uint64) []byte {
+		w := append([]byte{ir.TableWireForm}, body...)
+		for _, id := range ids {
+			w = binary.LittleEndian.AppendUint64(w, id)
+		}
+		return binary.LittleEndian.AppendUint64(w, uint64(len(ids)))
+	}
+	shifted := append([]byte(nil), body...)
+	shifted[10] = 3
+	crossed := append([]byte(nil), body...)
+	crossed[0], crossed[10] = 2, 1
+	return []announcementBreak{
+		{"unused_trailing", wire(body, ids[0], ids[1], unused)},
+		{"unused_middle", wire(shifted, ids[0], unused, ids[1])},
+		{"swapped", wire(crossed, ids[1], ids[0])},
+	}
 }
 
 // ---- the manifest ------------------------------------------------------------
@@ -244,6 +323,19 @@ func messageLoadUnit(t *testing.T, root string, paths []string) *ir.Unit {
 		t.Fatalf("check %v: %v", paths, cerrs[0])
 	}
 	return u
+}
+
+// writeOtherBuildAnnouncement writes the unit's own vocabulary announced under
+// another build version: a peer whose record this reader does not hold, so a
+// bound read or write judges each value by its announced shape alone, never by
+// the root's record (docs/SPEC-TABLES.md §3.3). Probes about a value's shape
+// over a whole corpus unit read through it.
+func writeOtherBuildAnnouncement(t *testing.T, u *ir.Unit, file string) {
+	t.Helper()
+	ann := depthBoundaryEncodeAnnouncement(ir.BuildVersion(u)^1, ir.TableVocabularyBytes(tablewire.MessageVocabulary(u)))
+	if err := os.WriteFile(file, ann, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // runMessageProbe generates the table library and runs one generated probe

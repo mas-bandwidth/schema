@@ -58,6 +58,7 @@ public final class MixedPickupEventMessage {
     private static boolean loadMessageBodyFields(
             TableMessage.Reader r, MixedPickupEventFixed.Value v, int seenFieldMark) {
         reset(v);
+        int lastField = -1;
         while (true) {
             TableVocabulary.Entry entry = r.ref();
             if (r.err) {
@@ -74,6 +75,11 @@ public final class MixedPickupEventMessage {
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;
             if (idHi == 0x9e7fd06d && idLo == 0x864fbd56) {
+                if (0 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 0;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 7 || elemKind != 0) {
@@ -88,6 +94,7 @@ public final class MixedPickupEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v1 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 10);
                     if (r.err) {
@@ -96,10 +103,23 @@ public final class MixedPickupEventMessage {
                     }
                     v.itemId = (int) (v1);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.itemId != 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else if (idHi == 0x8113fe7e && idLo == 0xa2b16969) {
+                if (1 < lastField && r.vocab.ownBuild()) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
+                lastField = 1;
                 boolean widened = false;
                 int elemKind = entry.element != null ? entry.element.kind : 0;
                 if (entry.kind != 4 || elemKind != 0) {
@@ -114,6 +134,7 @@ public final class MixedPickupEventMessage {
                         continue;
                     }
                 }
+                int canonUnk = r.report.unknown;
                 {
                     long v2 = TableMessage.readSigned(r, entry.shape, 0L, 255L, true);
                     if (r.err) {
@@ -122,10 +143,22 @@ public final class MixedPickupEventMessage {
                     }
                     v.amount = (int) (v2);
                 }
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(v.amount != 0)) {
+                    r.report.refuse("non_canonical");
+                    return false;
+                }
                 if (widened) {
                     r.report.widened++;
                 }
             } else {
+                if (r.vocab.ownBuild()) {
+                    r.report.damaged = true;
+                    return false;
+                }
                 r.report.unknown++;
                 if (!TableMessage.skip(r, entry)) {
                     r.report.damaged = true;
