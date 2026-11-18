@@ -13,8 +13,9 @@ switch:
 The two share the IR, the name mapping (`ir.GoExportName`, so the checker's
 collision registry covers both) and the wire, byte for byte. They share no
 emitter: `internal/codegen/unity` emits the packet surface, and
-`internal/codegen/unitytable` emits the table surface beside it in `<Base>.Tables.cs`
-and `Tables.Runtime.cs`.
+`internal/codegen/unitytable` emits the full table surface beside it in
+`<Base>.Tables.cs`, `<Base>.Block.cs`, `<Base>.Cook.cs`, `Tables.View.cs` and
+`Tables.Runtime.cs`.
 
 ## What a Unity project already does
 
@@ -200,6 +201,53 @@ public static long <T>FixedLoad(Span<T> values, ReadOnlySpan<byte> data, ref Tab
   ordinals, float finiteness and scalar/array bounds are checked before any
   element of the destination `Span<T>` is written; `| integrity = "crc32c"`
   appends and verifies the CRC-32C trailer (`integrity_mismatch` on corruption).
+- **The message form (Form 2).** Every `fixed table` also carries bit-packed
+  connection batches (`Schema.Announce`, `Schema.AnnounceRead`,
+  `<T>MeasureMessages`, `<T>SaveMessages` and `<T>LoadMessages` over
+  `TableVocabulary`), enforcing canonical field order and default elision at the
+  sender's own build version and refusing variable tables by construction.
+
+## Variable tables, blocks, cooks and reflection
+
+When a table or union closure holds variable-class constructs (`*T` pointers and
+DAG/cyclic graphs, `*string` / `*bytes` blobs, unbounded `[]T` lists, unbounded
+`string` / `bytes` fields, or `map[K]V` maps), `internal/codegen/unitytable`
+emits IL2CPP/AOT-safe C# 9 reference types (`public sealed partial class`) with
+static generated codecs and zero runtime `System.Reflection` or `unsafe` code:
+
+- **Variable storage.** Pointer fields to class tables hold the target class
+  directly; pointer fields to `fixed table` structs hold `Schema.Ref<T>` so node
+  sharing and nullability are preserved without boxing. Enum-keyed arrays on
+  class tables use `Schema.TableKeyed<T, E>` (1-indexed over named variants,
+  refusing `None` and out-of-range keys). Blobs (`*string`, `*bytes`) use
+  `Schema.TableBlob`, preserving shared node identity across `Load`, `Save` and
+  `Cook`. Unbounded text lists (`[]string(N)`) emit `<Holder><Field>Text` value
+  elements (`Buffer<N><byte> Value` + `int ValueLength`) and enforce
+  `| max_bytes` (`TextTotal`).
+- **Form-1 wire and `retain-unknown`.** `<T>Load`, `<T>LoadMeasure`,
+  `<T>Measure` and `<T>Save` implement strict Form-1 decoding and canonical
+  writing (including `| id` table wire identity, `was` renames, widening,
+  `timestamp` `int64` nanoseconds, and `crc32c` integrity). `<T>LoadRetain`,
+  `<T>MeasureRetain` and `<T>SaveRetain` preserve unknown scalar, nested, array
+  and map-entry fields in `Schema.TableRetain`, discarding retained entries on
+  subsequent field mutation and accounting `Retained` / `RetainLost` on
+  `TableReport`.
+- **Strict JSON text form.** `<T>FromJson`, `<T>ToJsonMeasure` and `<T>ToJson`
+  implement the strict JSON text form (including `| json = "array"` roots, RFC
+  3339 `timestamp` formatting/parsing, 128-bit integer and `fixed(I, F)` decimal
+  strings, canonical base64 `bytes`, duplicate-key/unknown-key refusal, and DAG
+  cycle refusal on `ToJson`).
+- **Block and Cook surfaces.** `<Base>.Block.cs` emits `<T>Block.Begin` and
+  `<T>Block.Open` (`SCHMABLK` framing, zero-copy `<Row>Row` cursors without
+  per-element heap allocation). `<Base>.Cook.cs` emits `<T>Cook.Open` O(1)
+  `<T>Row` cursors (binary-searched `<Map>Find` on integer and string map keys,
+  guarded union/field accessors, and `NonFiniteFloat` tracking) alongside
+  `Schema.<T>CookMeasure` and `Schema.<T>Cook` (`Little` and `Big` endian).
+- **Descriptors and `UnitView`.** Every in-closure and out-of-closure `type`,
+  `table`, `enum`, `flags`, `union` and `const` is described statically via
+  `<T>TableType` (`TableTypeInfo` / `TableFieldInfo`, sharing `TableDocNone`
+  when undocumented, with `Id == 0` and `Json == null` outside the table
+  closure) and `Schema.UnitView()` (`Tables.View.cs`).
 
 ## Using it in a Unity project
 
@@ -285,6 +333,12 @@ referenced as its own netstandard2.1 assembly. A small .NET host drives it:
   compiled lineage evolution, retirement, reports, CRC-32C integrity and hostile
   sweeps) against the live C++ reference and `build/fixedform-corpus`, with
   planted negative controls.
+- `make unity-vt` — variable-table, message-form, `retain-unknown`, strict JSON,
+  `Block`, `Cook`, descriptor and `UnitView` proofs compiled in the Unity
+  dialect with planted negative controls.
+- `build/conformance-unity/.stamp` and `make tables-wire-fuzz-release-unity` —
+  all 21 table conformance surfaces, C++ `cross-read` byte-identity, and the
+  release-tier `wire-fuzz` gate (`plain` and `--retain` across seeds `1, 2, 3`).
 - each with a negative control that plants a defect in a copy of the generated
   source and requires the gate to go red for that reason.
 

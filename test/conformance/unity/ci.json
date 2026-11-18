@@ -1,0 +1,3 @@
+{"targets": "build/conformance-harness build/conformance-unity/.stamp",
+ "runtime": "serialize.cs", "runtime_tag": "SERIALIZE_CS_TAG",
+ "dotnet": ".github/dotnet-version"}

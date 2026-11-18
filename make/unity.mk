@@ -151,3 +151,36 @@ unity-fixed: toolchain-unity build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestUnityFixed' ./compiler/ ./internal/codegen/unitytable/
 
 test-unity: unity-fixed
+
+# ---- variable tables, blocks, cooks, retain, JSON & reflection ----
+
+.PHONY: unity-vt
+unity-vt: toolchain-unity
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityVT' ./internal/codegen/unitytable/
+
+test-unity: unity-vt
+
+# ---- tables conformance & release wire-fuzz ----
+
+# Every MANIFEST.txt unit plus tables/cards compiled in the Unity dialect
+# (test/conformance/unity/unit/schemaunit.csproj: C# 9, netstandard2.1,
+# AllowUnsafeBlocks=false, Debug so §5.1 write assertions trap), hosted by
+# build/conformance-unity/driver/unityconformance.dll.
+build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.txt tables/cards/Card.schema make/unity.mk $(CONFORMANCE_UNIT_SCHEMAS) test/conformance/unity/unityconformance.csproj test/conformance/unity/unit/schemaunit.csproj test/conformance/unity/src/Driver.cs test/conformance/unity/src/Surfaces.cs
+	@rm -rf build/conformance-unity && mkdir -p build/conformance-unity
+	$(DOTNET) build test/conformance/unity/unityconformance.csproj -c Release \
+		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_driver" \
+		-o build/conformance-unity/driver --nologo -v quiet
+	$(DOTNET) restore test/conformance/unity/unit/schemaunit.csproj \
+		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_restore" --nologo -v quiet
+	@{ awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; sub(/^ +/, ""); print key "\t" $$0 }' testdata/conformance/tables/MANIFEST.txt; printf 'cards\ttables/cards\n'; } | \
+		xargs -P 8 -I {} sh -c 'key=$$(printf "%s" "{}" | cut -f1); paths=$$(printf "%s" "{}" | cut -f2-); \
+		mkdir -p "build/conformance-unity/_gen/$$key"; \
+		./bin/schema generate --lang unity --out "build/conformance-unity/_gen/$$key" $$paths && \
+		$(DOTNET) build test/conformance/unity/unit/schemaunit.csproj -c Debug \
+			-p:UnityUnitDir="$(CURDIR)/build/conformance-unity/_gen/$$key" \
+			-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art/$$key" \
+			-o "build/conformance-unity/$$key" --nologo -v quiet >/dev/null'
+	@touch $@
+
+CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)

@@ -165,6 +165,8 @@ func TestCsCarriesBlobs(t *testing.T) {
 		legs = append(legs, "squirrel")
 		wants = append(wants, "--lang squirrel")
 	}
+	legs = append(legs, "unity")
+	wants = append(wants, "--lang unity")
 	carry := strings.Join(legs[:len(legs)-1], ", ") + " and " + legs[len(legs)-1]
 	wants = append(wants, mooLegSpelled(gooseLegSpelled("*bytes and *string are "+carry+" only today")))
 	for _, want := range wants {

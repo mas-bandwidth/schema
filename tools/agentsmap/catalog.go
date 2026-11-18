@@ -278,6 +278,7 @@ var catalog = []Entry{
 	e("test/slowgate", "SCHEMA_SLOW proof wrapper", "make slow-gate-scan", "make slow-gate-scan"),
 	e("test/table-base64", "table base64 gates", "make test", "make test"),
 	e("test/tables", "C++ table tests", "make test", "./build/schema_test_tables"),
+	e("test/unity-hostile", "Unity C# hostile-corpus runner", "make schema-unity-runs-hostile-corpus", "make schema-unity-runs-hostile-corpus"),
 	e("test/unity", "Unity C# packet wire tests", "make test-unity", "make unity-wire"),
 	e("test/vocabgen", "wide-vocabulary generator", "make check", "go run ./test/vocabgen"),
 }

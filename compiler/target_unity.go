@@ -84,6 +84,10 @@ func unityTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]unitytabl
 
 func init() {
 	registerPacketValueDefaultCarrier("unity")
+	valueDefaultTargets = append(valueDefaultTargets, "unity")
+	wasRowTargets = append(wasRowTargets, "unity")
 	registerOptionalArrayCarrier("unity")
-	registerBuiltin(unityTarget{}, true, false, false, false)
+	registerMapCarrier("unity")
+	registerListCarrier("unity")
+	registerBuiltin(unityTarget{}, true, true, true, true)
 }

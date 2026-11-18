@@ -65,6 +65,7 @@ func TestListCarriers(t *testing.T) {
 		// the tagged leg (compiler/target_squirrel_lists.go) is a carrier too
 		want = append(want, "squirrel")
 	}
+	want = append(want, "unity")
 	want = withMooLeg(withGooseLeg(want))
 	if !slices.Equal(gooseLegOrdered(listTargets), want) {
 		t.Fatalf("listTargets = %v, want %v", listTargets, want)

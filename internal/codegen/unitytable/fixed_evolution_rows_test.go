@@ -479,7 +479,8 @@ static class Program
 		t.Fatalf("clean own load: %s, want ok 1 u0 w0", cleanRes.head())
 	}
 	nc := unityRowLoad(t, newer, "C", lin, ownClean, plantInFile(t, "probe.Tables.cs",
-		"report = default;", "// report = default;"))
+		"CFixedLoad(Span<C> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n        {\n            report = default;",
+		"CFixedLoad(Span<C> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n        {\n            // report = default;"))
 	if nc.head() == "ok 1 u0 w0" {
 		t.Errorf("negative control: un-reset report still produced %s", nc.head())
 	}

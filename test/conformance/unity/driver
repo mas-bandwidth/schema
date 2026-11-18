@@ -1,0 +1,7 @@
+#!/bin/sh
+# THE UNITY C# LEG's conformance driver (test/conformance/README.md; docs/UNITY.md).
+# Each manifest unit is compiled in the Unity dialect (C# 9 over netstandard2.1,
+# AllowUnsafeBlocks=false) under build/conformance-unity/<unit>/schemaunit.dll,
+# and build/conformance-unity/driver/unityconformance.dll hosts the surfaces.
+set -e
+exec "${DOTNET:-dotnet}" build/conformance-unity/driver/unityconformance.dll "$@"
