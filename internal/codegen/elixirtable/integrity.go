@@ -100,11 +100,12 @@ func variableIntegrity(u *ir.Unit, runtime, retain string) (string, string) {
 	return runtime, retain
 }
 
+// messageIntegrity seals and opens the batch of a root that declares
+// integrity. The binding itself (messageBinding) is every unit's.
 func messageIntegrity(u *ir.Unit, source string) string {
 	if !hasIntegrity(u) {
 		return source
 	}
-	source = strings.Replace(source, "  defstruct announced: false,", "  defstruct announced: false,\n            integrity: false,\n            root: nil,", 1)
 	source = strings.Replace(source, "{:ok, 2 + div(nbits + 7, 8)}", "{:ok, 2 + div(nbits + 7, 8) + if(vocab.integrity, do: 4, else: 0)}", 1)
 	source = strings.Replace(source, "{:ok, bits} -> {:ok, frame_batch(n, bits)}\n        :error -> {:error, :malformed}", `{:ok, bits} ->
           data = frame_batch(n, bits)
@@ -112,30 +113,19 @@ func messageIntegrity(u *ir.Unit, source string) string {
 
         :error ->
           {:error, :malformed}`, 1)
-	for _, verb := range []string{"measure", "save"} {
-		head := "  def " + verb + "_messages(%__MODULE__{announced: true} = vocab, values)"
-		prefix := "  def " + verb + `_messages(%__MODULE__{announced: true, root: nil}, _values),
-    do: {:error, :no_root}
-
-`
-		source = strings.Replace(source, head, prefix+head, 1)
-	}
-	// Keep the legacy raw body's exact framing and capacity behavior after opening.
-	source = strings.ReplaceAll(source, "  def load_messages(", "  defp load_messages_raw(")
-	source = strings.Replace(source, `  defp load_messages_raw(vocab, data, capacity \\ @batch_max)`, `  def load_messages(vocab, data, capacity \\ @batch_max)
-
-  def load_messages(%__MODULE__{announced: true, root: nil}, _data, _capacity),
-    do: {:error, :no_root}
-
-  def load_messages(%__MODULE__{announced: true, integrity: true} = vocab, data, capacity) do
+	// Keep the batch's exact framing and capacity behavior after opening.
+	source = strings.Replace(source, "  def load_messages(vocab, data, capacity), do: load_messages_raw(vocab, data, capacity)", `  def load_messages(%__MODULE__{announced: true, integrity: true} = vocab, data, capacity) do
     with {:ok, body} <- integrity_open(data, 2),
          do: load_messages_raw(vocab, body, capacity)
   end
 
   def load_messages(vocab, data, capacity), do: load_messages_raw(vocab, data, capacity)`, 1)
-	var b strings.Builder
-	b.WriteString(source)
-	b.WriteString("\n  # Bind the root explicitly: the raw vocabulary alone has no table identity.\n")
+	return source + "\n" + integritySource(false)
+}
+
+// messageRoots are the unit's fixed tables that carry the message form: the
+// roots for_root/2 binds.
+func messageRoots(u *ir.Unit) []string {
 	var names []string
 	for name, st := range u.Tables {
 		if st.FixedDeclared && st.CarriesForm("message") {
@@ -143,29 +133,41 @@ func messageIntegrity(u *ir.Unit, source string) string {
 		}
 	}
 	sort.Strings(names)
+	return names
+}
+
+// messageBinding emits THE BOUND BATCH (docs/SPEC-TABLES.md §3.3): for_root/2
+// binds a resolved vocabulary to one fixed root, and the per-root verbs bind
+// and act in one call. A message read or write is always bound to its root
+// record; the module's own load_messages, save_messages and measure_messages
+// answer :no_root on a vocabulary no root is bound to.
+func messageBinding(u *ir.Unit) string {
+	var b strings.Builder
+	b.WriteString("\n  @doc \"\"\"\n")
+	b.WriteString("  Bind a resolved vocabulary to one fixed root, the record its batches are read\n")
+	b.WriteString("  and written against (docs/SPEC-TABLES.md §3.3). A name that is not a fixed\n")
+	b.WriteString("  message root of this unit is `:unknown_root`.\n")
+	b.WriteString("  \"\"\"\n")
+	names := messageRoots(u)
 	for _, name := range names {
 		st := u.Tables[name]
 		fmt.Fprintf(&b, "  def for_root(%%__MODULE__{} = vocab, %q),\n    do: {:ok, %%{vocab | integrity: %v, root: %q}}\n\n", name, st.Integrity != "", name)
 	}
 	b.WriteString("  def for_root(%__MODULE__{}, _table), do: {:error, :unknown_root}\n\n")
+	// the with/do: pair on one line where it fits, else the formatter's wrap
+	with := func(name, call string) string {
+		head := fmt.Sprintf("    with {:ok, bound} <- for_root(vocab, %q)", name)
+		if one := head + ", do: " + call; exWidth(one) <= exLineLimit {
+			return one + "\n"
+		}
+		return head + ",\n         do: " + call + "\n"
+	}
 	for _, name := range names {
 		snake := ir.RustSnake(name)
 		for _, verb := range []string{"measure", "save"} {
-			fmt.Fprintf(&b, "  def %s_%s_messages(vocab, values) do\n    with {:ok, bound} <- for_root(vocab, %q), do: %s_messages(bound, values)\n  end\n\n", snake, verb, name, verb)
+			fmt.Fprintf(&b, "  def %s_%s_messages(vocab, values) do\n%s  end\n\n", snake, verb, with(name, verb+"_messages(bound, values)"))
 		}
-		fmt.Fprintf(&b, "  def %s_load_messages(vocab, data, capacity \\\\ @batch_max) do\n    with {:ok, bound} <- for_root(vocab, %q), do: load_messages(bound, data, capacity)\n  end\n\n", snake, name)
+		fmt.Fprintf(&b, "  def %s_load_messages(vocab, data, capacity \\\\ @batch_max) do\n%s  end\n\n", snake, with(name, "load_messages(bound, data, capacity)"))
 	}
-	b.WriteString(`  # Explicit low-level operation without any root framing policy.
-  def raw_measure_messages(vocab, values),
-    do: measure_messages(%{vocab | root: :raw, integrity: false}, values)
-
-  def raw_save_messages(vocab, values),
-    do: save_messages(%{vocab | root: :raw, integrity: false}, values)
-
-  def raw_load_messages(vocab, data, capacity \\ @batch_max),
-    do: load_messages(%{vocab | root: :raw, integrity: false}, data, capacity)
-
-`)
-	b.WriteString(integritySource(false))
-	return b.String()
+	return strings.TrimRight(b.String(), "\n") + "\n"
 }

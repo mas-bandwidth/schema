@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package benchtable — protocol id 0x0926221bcb6f475f
+# package benchtable — protocol id 0x4c9383ebe3cde248
 #
 # The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
 # read windows (every intermediate a BEAM small integer), single
@@ -201,7 +201,7 @@ defmodule Benchtable.BenchTable do
   sides at the same id speak identical bits; there is no other versioning.
   """
   @spec protocol_id() :: non_neg_integer()
-  def protocol_id, do: 0x0926221BCB6F475F
+  def protocol_id, do: 0x4C9383EBE3CDE248
 
   @doc """
   The debug/log/tooling name of a TableWeapon value, by atom or by wire

@@ -39,8 +39,13 @@ def _slots(fd: FieldDesc, value: Any, path: str) -> list[Any]:
 
 def _rollback(ctx: Any, mark: int) -> None:
     """Forget the ids first used after mark: an elided slot leaves no id."""
+    from .save import _RetainCtx
+
     for table_id in ctx.ids[mark:]:
-        del ctx.refs[table_id]
+        if isinstance(ctx, _RetainCtx):
+            ctx.forget_id(table_id)
+        else:
+            del ctx.refs[table_id]
     del ctx.ids[mark:]
 
 
@@ -138,10 +143,13 @@ class _Keyed:
         return out
 
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None:
-        from .save import Writer, write_body
+        from .save import _RetainCtx, Writer, write_body
 
         elem = _elem(fd)
         values = value if fd.keyed_list else value._values
+        if isinstance(ctx, _RetainCtx):
+            _write_retain(w, fd, elem, values, ctx)
+            return
         # THE FIELD'S ID IS USED FIRST, then each present slot's key and its
         # element's ids, in the order the bytes ride (§3)
         mark = len(ctx.ids)
@@ -184,6 +192,54 @@ class _Keyed:
         w.byte(fd.kind)
         w.varint(len(inner))
         w.raw(inner)
+
+
+def _write_retain(w: Any, fd: FieldDesc, elem: FieldDesc, values: list[Any], ctx: Any) -> None:
+    from .save import write_body
+
+    start = w.count
+    ids_start = len(ctx.ids)
+    w.varint(ctx.idref(fd.field_id))
+    w.byte(fd.kind)
+    frame = w.begin_frame()
+    w.byte(elem.kind)
+    count_mark = w.begin_frame()
+    present = 0
+    for slot in range(len(fd.keys)):
+        current = values[slot]
+        default = elem.is_default(current)
+        if default:
+            if elem.codec != "table" or ctx.preview:
+                continue
+            child = ctx.steps + ((fd.ordinal, slot),)
+            if not ctx.retain.has_body(ctx.node, child) or not ctx.can_id(fd.keys[slot]):
+                continue
+        start_slot = w.count
+        ids_slot = len(ctx.ids)
+        w.varint(ctx.idref(fd.keys[slot]))
+        element_frame = w.begin_frame()
+        if elem.codec == "table":
+            parent = ctx.steps
+            ctx.steps = parent + ((fd.ordinal, slot),)
+            write_body(w, current, ctx, False)
+            ctx.steps = parent
+            if w.count == element_frame + 11:
+                _rollback(ctx, ids_slot)
+                w.truncate(start_slot)
+                continue
+        elif elem.codec == "enum":
+            codec = cast(kinds._ElementKind, kinds._REGISTRY[elem.codec])
+            codec.write_element(w, elem, current, ctx)
+        else:
+            _write_scalar(w, elem, current)
+        w.finish_frame(element_frame)
+        present += 1
+    if not present and not fd.required:
+        _rollback(ctx, ids_start)
+        w.truncate(start)
+        return
+    w.finish_varint(count_mark, present)
+    w.finish_frame(frame)
 
 
 def _write_scalar(w: Any, elem: FieldDesc, value: Any) -> None:

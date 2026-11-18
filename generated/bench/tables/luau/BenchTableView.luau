@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package benchtable — protocol id 0x0926221bcb6f475f — the Luau type view (docs/PORT-LUAU.md)
+-- package benchtable — protocol id 0x4c9383ebe3cde248 — the Luau type view (docs/PORT-LUAU.md)
 
 local _Rt = require("./schema_runtime")
 local _BenchTable = require("./BenchTable")

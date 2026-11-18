@@ -144,7 +144,7 @@ and that this run did not write. With `--surface` nothing is removed; only
 
 A declaration's name and its fields' names are checked against the reserved
 words of EVERY supported language (SPEC §4.6) — C, C++, C#, Go, Rust, Java,
-JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose and Lobster — whatever
+JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose, Lobster and Python — whatever
 target is generated, one diagnostic per name listing every language it
 collides with: a schema compiled only for C++ today must still compile for
 Elixir tomorrow. Go is the exception (SPEC §4.6, the Go
@@ -1821,6 +1821,18 @@ takes an array of values, and a variable table has no message functions at all.
 Message reads allocate nothing. A damaged body can return a partially decoded root, but
 the output count includes only complete bodies.
 
+In Elixir the operations live on `<Package>.TableMessage`: `announce/0`,
+`announce_measure/0` and `announce_read/1,2`, then `for_root/2` binds the
+resolved vocabulary to one fixed root, and `measure_messages/2`,
+`save_messages/2` and `load_messages/2,3` act on the bound vocabulary. Each
+fixed root also has `<root>_measure_messages/2`, `<root>_save_messages/2` and
+`<root>_load_messages/2,3`, which bind and act in one call. On a vocabulary no
+root is bound to, the three batch verbs answer `{:error, :no_root}`, and
+`for_root/2` answers `{:error, :unknown_root}` for a name that is not a fixed
+root. A body is a list of `{reference, value}` pairs in declaration order with
+every field at its default left out; against the unit's own announcement the
+bound write refuses any other body with `{:error, :invalid_value}`.
+
 **What you get.** The three backend messages measured on schema#523 go from
 106, 273 and 104 bytes to 52, 148 and 43, and from 10, 43 and 10 to 3, 11 and 3
 when every field sits at its declared default. Sent as ONE batch under an
@@ -3196,7 +3208,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xc06e89a209a3dda7
+0xbf7128181c3025bc
 ```
 
 ```cpp
@@ -4423,8 +4435,15 @@ your own header is needed.
 **C#** — modern .NET: .NET 8 or later and C# 12 or later. Types and unions
 are structs with `[InlineArray]` buffers, taken by `ref`; assigning one
 copies it. Reads scalars without boxing. Unity's runtime (C# 9,
-netstandard2.1) is the job of a separate Unity generator, which is not
-landed yet; this target no longer compiles there.
+netstandard2.1) is the job of the separate Unity generator, `--lang unity`;
+this target no longer compiles there.
+
+**Unity** — `--lang unity`: C# 9 over netstandard2.1, the surface Unity
+2021.2 through Unity 6 compiles, under IL2CPP and AOT. Packet types only.
+Types and unions are unmanaged structs with fixed-size buffers, taken by
+`ref`, against serialize.cs's streams. Writes are checked in debug asserts
+only; a public read checks the whole packet, its end included. See
+[UNITY.md](UNITY.md).
 
 **Dart** — Dart 3, VM and AOT (Flutter release ships AOT — the deployment
 the backend is tuned for). Generated code is **self-contained**: it imports
@@ -5115,8 +5134,99 @@ while node:
 ```
 <!-- /lobster-table-usage -->
 
-All nine are generated from the same IR and compared against each other in CI
-on every push. The wire is bit-packed, so the property being checked is
+**Python** — CPython 3.11 or later, standard library only, no dependencies
+(the leg is tested on CPython 3.11.18 and 3.15.2; [PORT-PYTHON.md](PORT-PYTHON.md)
+is its design). `schema generate --lang python --out <dir> <unit>` writes one
+package per unit, named for the unit's `package`, with its runtime in the
+package's own `_schema/` directory, so there is nothing to install: put
+`<dir>` on `sys.path` and import the package. A value is an instance of a
+generated class with `__slots__`, every field born at its declared default.
+Integers of every width are `int`, an enum is a class of plain `int`
+constants (`ShipType.Corvette`; the implicit zero is spelled `None_`), and a
+flags set is an `int` mask (`ShipFlags.Boosting | ShipFlags.Aiming`). A
+packet type reads with `T.read(data)` and writes with `value.write()`; a
+table loads with `T.load(data, report)` and saves with `value.save()`, and
+has `T.from_json(text)` and `value.to_json()` for its text form. A read takes
+`bytes`, `bytearray` or a byte-format `memoryview` and returns the whole value or raises
+`Refused`, whose `reason` names the rule; a write checks the whole value
+before it writes a byte and raises `InvalidValue`, whose `path` and `rule`
+name the field and what it broke. Both are `ValueError` subclasses. A `*T`
+holds the instance or `None`, and two slots holding one instance are one node
+on the wire and one object again after the load. These two fragments are run
+against the `examples` and `tables/pointers` units under both pinned
+interpreters by `make tables-python-usage`:
+
+<!-- python-usage examples -->
+```python
+from example import InvalidValue, Refused, ShipCreate, ShipFlags, ShipType
+
+ship = ShipCreate()                          # every field at its declared default
+ship.ship_type = ShipType.Corvette           # an enum is a plain int
+ship.has_flags = True
+ship.flags = ShipFlags.Boosting | ShipFlags.Aiming
+ship.health = 750
+
+data = ship.write()                          # the packed bits, as bytes
+back = ShipCreate.read(data)                 # the whole value, or raises Refused
+if back != ship:
+    raise SystemExit("the ship did not read back")
+try:
+    ShipCreate.read(data[:1])                # a truncated packet
+except Refused as refusal:
+    print("refused:", refusal.reason)        # past_end
+else:
+    raise SystemExit("a truncated packet was read")
+
+ship.health = -1                             # outside its declared [0, MaxHealth]
+try:
+    ship.write()
+except InvalidValue as refusal:
+    print("refused:", refusal.path, refusal.rule)
+else:
+    raise SystemExit("an out-of-range health was written")
+```
+<!-- /python-usage -->
+
+<!-- python-usage tables/pointers -->
+```python
+from graphdemo import ListNode, LoadReport, Refused, Scene
+
+# a two-node list, its tail also named by `alias`: one node on the wire
+tail = ListNode()
+tail.value = 2
+head = ListNode()
+head.value = 1
+head.next = tail
+scene = Scene()                              # every field at its declared default
+scene.name = "intro"
+scene.head = head
+scene.alias = tail
+
+data = scene.save()                          # the id-table wire, or raises InvalidValue
+report = LoadReport()                        # its counters change only on success
+back = Scene.load(data, report)              # the whole value, or raises Refused
+values = []
+node = back.head
+while node is not None:
+    values.append(node.value)
+    node = node.next                         # None is the null reference
+if values != [1, 2] or back.alias is not back.head.next:
+    raise SystemExit("the scene did not load back")
+
+text = back.to_json()                        # the JSON text form
+if Scene.from_json(text) != back:
+    raise SystemExit("the JSON did not read back")
+try:
+    Scene.load(data[:-1])                    # a truncated file
+except Refused as refusal:
+    print("refused:", refusal.reason)
+else:
+    raise SystemExit("a truncated file was loaded")
+```
+<!-- /python-usage -->
+
+All of them are generated from the same IR and held to the same golden bytes
+in CI. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
 
 ---

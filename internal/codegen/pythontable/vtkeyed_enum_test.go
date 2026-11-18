@@ -14,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// These probes exercise the variable wire and its keyed-field evolution controls.
+// Declared fixed roots use form 3 and are covered by the fixed-form proof suite.
 const pyKeyedEnumSchema = `package enumkey
 
 enum Slot { head, body, feet }
@@ -22,7 +24,7 @@ enum Grade {
     Mid
     Old | deprecated
 }
-fixed table Root {
+table Root {
     ranks [Slot]Grade
     tail int32
 }
@@ -53,7 +55,7 @@ enum Grade {
     Old | deprecated
 }
 type Scores { ranks [Slot]Grade }
-fixed table Holder {
+table Holder {
     values Scores
     tail int32
 }

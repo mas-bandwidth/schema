@@ -34,9 +34,9 @@ var corpora = []string{
 	"../../test/table-base64",
 }
 
-// TestCorpusLocksAreCurrent checks the declaration, then compares every legacy
-// byte under its recorded rendering. A format upgrade alone does not make a
-// shipped lock stale, and the v8 snapshot tests exercise the new rendering.
+// TestCorpusLocksAreCurrent checks the current declaration and canonical lock
+// bytes while retaining real history. Render knows only the live entry; a
+// committed lineage may legitimately include any number of older epochs.
 func TestCorpusLocksAreCurrent(t *testing.T) {
 	for _, dir := range corpora {
 		t.Run(strings.TrimPrefix(dir, "../../"), func(t *testing.T) {
@@ -61,13 +61,20 @@ func TestCorpusLocksAreCurrent(t *testing.T) {
 				t.Fatal(errs)
 			}
 			live := lockfile.Render(u)
-			if locked.Version < lockfile.Version {
-				live.Version = locked.Version
-				for i := range live.Tables {
-					for j := range live.Tables[i].Lineage {
-						live.Tables[i].Lineage[j].Writer = nil
-					}
+			if got := locked.Text(); got != string(want) {
+				t.Fatal("committed lock is not a canonical rendering")
+			}
+			live.Version = locked.Version
+			for i := range live.Tables {
+				current := &live.Tables[i]
+				held := locked.Table(current.Name)
+				if held == nil || len(current.Lineage) == 0 {
+					continue
 				}
+				if len(held.Lineage) == 0 || lockfile.LineageHash(current.Lineage) != lockfile.LineageHash(held.Lineage[len(held.Lineage)-1:]) {
+					t.Fatalf("%s current writer metadata does not match its last entry", current.Name)
+				}
+				current.Lineage = held.Lineage
 			}
 			if got := live.Text(); got != string(want) {
 				t.Errorf("%s is stale — a fixed table's layout moved:\n  ./bin/schema lock %s\n--- committed ---\n%s\n--- current ---\n%s",

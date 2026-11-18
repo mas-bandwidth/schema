@@ -1,0 +1,59 @@
+"""Exercise the framing adapter with real generated classes and wire vectors."""
+
+import importlib.util
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+
+root = Path(__file__).resolve().parent
+sys.path.insert(0, str(root / "surfaces"))
+source = (root / "surfaces" / "framing.py").read_text(encoding="utf-8")
+negative = "--negative" in sys.argv[1:]
+negative_save = "--negative-save" in sys.argv[1:]
+override = "--override" in sys.argv[1:]
+if negative:
+    old = 'write_bytes(outdir, case, b"refused\\n")'
+    assert source.count(old) == 1
+    source = source.replace(old, 'write_bytes(outdir, case, b"read\\n")')
+
+if negative_save:
+    old = "saved = fixed_cls.from_json(text).save()"
+    assert source.count(old) == 1
+    source = source.replace(old, "saved = write_wire(cls, value)")
+
+with tempfile.TemporaryDirectory() as temp:
+    temp = Path(temp)
+    if override:
+        tree = temp / "generated"
+        shutil.copytree("build/conformance-python/tblr1", tree / "tblr1")
+        os.environ["PYTHON_CONFORMANCE_GENERATED"] = str(tree)
+    adapter = temp / "framing.py"
+    adapter.write_text(source, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("framing_probe", adapter)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    manifest = temp / "manifest.txt"
+    manifest.write_text(
+        "framing value tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin read -\n"
+        "framing no_value tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin read - no-value\n"
+        "framing unused tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin refused -\n",
+        encoding="utf-8",
+    )
+    module.run(str(manifest), str(temp))
+    refused = (temp / "unused").read_bytes()
+    if negative:
+        assert refused != b"refused\n", "the planted refusal fault escaped"
+    elif negative_save:
+        expected = Path("testdata/conformance/tables/save-wire/frame_empty_table.bin").read_bytes()
+        assert (temp / "value.wire").read_bytes() != expected, "the planted wrong saver escaped"
+    else:
+        assert refused == b"refused\n", refused
+        assert (temp / "no_value").read_bytes() == b"read\n"
+        assert (temp / "value").read_bytes().startswith(b"read\n{")
+        value_wire = (temp / "value.wire").read_bytes()
+        expected = Path("testdata/conformance/tables/save-wire/frame_empty_table.bin").read_bytes()
+        assert value_wire == expected == (temp / "no_value.wire").read_bytes()
+print("framing adapter fault detected" if negative or negative_save else "framing adapter passed")

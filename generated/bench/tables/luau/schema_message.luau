@@ -530,10 +530,31 @@ local function countOf(r: any, s: any): (number, boolean)
 	return raw + s.min, true
 end
 
+-- a field's index in its record's declaration order
+local fieldIndexMaps = setmetatable({}, { __mode = "k" })
+local function fieldIndex(desc: any, id: integer): number?
+	local m = fieldIndexMaps[desc]
+	if m == nil then
+		m = {}
+		for i, f in desc.fields do m[f.id] = i end
+		fieldIndexMaps[desc] = m
+	end
+	return m[id]
+end
+
+local messageFieldDefault: any
+
 skipBody = function(r: any, st: any, desc: any, dep: any): boolean
 	-- AN ID TWICE IN ONE BODY IS DAMAGE, whether this reader can name it or
 	-- not (docs/SPEC-TABLES.md §3.1, §3.3).
 	local seen: { [integer]: boolean } = {}
+	-- THE ORDER IS THE SENDER'S DECLARATION ORDER (§3.3 (b)). Under this
+	-- reader's own build version (st.same) that is this record's declaration
+	-- order, and every field the sender's record declares is one this record
+	-- declares: a field out of that order, or one this record cannot name, is
+	-- refused. Under another build version neither is judged (§4).
+	local ordered = st.same == true and desc ~= nil and desc.fields ~= nil
+	local last = 0
 	while true do
 		local ref, ok = get(r, st.refBits)
 			if not ok then return false end
@@ -543,11 +564,130 @@ skipBody = function(r: any, st: any, desc: any, dep: any): boolean
 		seen[e.id] = true
 		if dep ~= nil and desc ~= nil then dep.table = desc.name end
 		if desc ~= nil then st.owner = desc.name end
-		if not skipShape(r, st, e, fieldById(desc, e.id), dep) then return false end
+		local fd = fieldById(desc, e.id)
+		if ordered then
+			local i = fieldIndex(desc, e.id)
+			if i == nil or i <= last then return false end
+			last = i
+			-- A FIELD STORED AT THE DEFAULT ITS WRITER ELIDES (§3.3 (a)) is
+			-- refused at this reader's own build version, where the sender's
+			-- default is this reader's: the payload is peeked, not consumed.
+			local at = r.off
+			local def = messageFieldDefault(fd, r, e, st)
+			r.off = at
+			if def then return false end
+		end
+		if not skipShape(r, st, e, fd, dep, true) then return false end
 	end
 end
 
-skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
+-- the declared default as the little-endian two's-complement 32-bit words of
+-- an unpacked integer payload `w` bits wide (the low word alone, reduced, when
+-- w is under 32), or nil when the default is not an integer
+local defScratch = buffer.create(16)
+local function defaultWords(def: any, w: number): { number }?
+	buffer.fill(defScratch, 0, 0)
+	if typeof(def) == "table" then
+		if typeof(def.lo) ~= "integer" or typeof(def.hi) ~= "integer" then return nil end
+		buffer.writeinteger(defScratch, 0, def.lo)
+		buffer.writeinteger(defScratch, 8, def.hi)
+	elseif typeof(def) == "integer" then
+		buffer.writeinteger(defScratch, 0, def)
+		if integer.lt(def, 0i) then buffer.fill(defScratch, 8, 0xFF, 8) end
+	elseif typeof(def) == "number" then
+		if def ~= math.floor(def) then return nil end
+		buffer.writeu32(defScratch, 0, def % 2 ^ 32)
+		buffer.writeu32(defScratch, 4, math.floor(def / 2 ^ 32) % 2 ^ 32)
+		if def < 0 then buffer.fill(defScratch, 8, 0xFF, 8) end
+	else
+		return nil
+	end
+	if w < 32 then return { buffer.readu32(defScratch, 0) % 2 ^ w } end
+	local words = {}
+	for i = 1, w // 32 do words[i] = buffer.readu32(defScratch, (i - 1) * 4) end
+	return words
+end
+
+-- messageFieldDefault is the message writer's elision rule read off the bits
+-- (docs/SPEC-TABLES.md §3.3 (a), tablewire's messageElides): whether a field,
+-- neither required nor optional, holds what its writer leaves out. A string or
+-- bytes at the default's own bytes; a counted array or an enum-keyed array of
+-- no element; a nested body that is its terminator alone; a bool, an unpacked
+-- integer of any width, or a fixed-point raw at the default's own bits; a
+-- plain float at the default's own bit pattern; an enum naming the default
+-- variant, or None where the default is None. A union's None is refused where
+-- it is read (skipShape). A packed integer, a compressed float and a fixed
+-- array are not judged here and read as before.
+messageFieldDefault = function(fd: any, r: any, e: any, st: any): boolean
+	if fd == nil or fd.required == true or fd.present ~= nil then return false end
+	local k = e.shape.kind
+	if k == 12 then
+		local def = fd.def or ""
+		if typeof(def) ~= "string" then return false end
+		local n, ok = countOf(r, e.shape)
+		if not ok or n ~= #def then return false end
+		if n == 0 then return true end
+		if not align(r) or r.off + n * 8 > r.n then return false end
+		return buffer.readstring(r.b, math.floor(r.off / 8), n) == def
+	end
+	if k == 13 then
+		if fd.s ~= "tab" then return false end
+		local ref, ok = get(r, st.refBits)
+		return ok and ref == 0
+	end
+	if k == 14 or k == 16 then
+		if k == 14 and e.shape.min == e.shape.max then return false end
+		local n, ok = countOf(r, e.shape)
+		return ok and n == 0
+	end
+	if k == 30 then
+		if fd.s ~= "enum" then return false end
+		local ref, ok = get(r, st.refBits)
+		if not ok then return false end
+		local def = fd.def or 0
+		if typeof(def) == "integer" then def = integer.tonumber(def) end
+		if ref == 0 then return def == 0 end
+		if def == 0 or fd.vs == nil or fd.vs[def] == nil then return false end
+		local en = entryOf(st.v, ref)
+		return en ~= nil and en.id == fd.vs[def][2]
+	end
+	if (e.shape.packing or 0) ~= 0 then return false end
+	if k == 10 or k == 11 then
+		if fd.s ~= "float" then return false end
+		local def = fd.def or 0
+		if typeof(def) == "integer" then def = integer.tonumber(def) end
+		if typeof(def) ~= "number" then return false end
+		if k == 10 then
+			buffer.writef32(defScratch, 0, def)
+			local bits, ok = get(r, 32)
+			return ok and bits == buffer.readu32(defScratch, 0)
+		end
+		buffer.writef64(defScratch, 0, def)
+		local lo, lok = get(r, 32)
+		local hi, hok = get(r, 32)
+		return lok and hok and lo == buffer.readu32(defScratch, 0) and hi == buffer.readu32(defScratch, 4)
+	end
+	local w = kindBits(k)
+	if w <= 0 or (e.shape.bits or 0) ~= w then return false end
+	if k == 1 then
+		local raw, ok = get(r, 1)
+		return ok and (raw ~= 0) == (fd.def == true)
+	end
+	if not ((k >= 2 and k <= 9) or (k >= 18 and k <= 29)) then return false end
+	local words = defaultWords(fd.def or 0, w)
+	if words == nil then return false end
+	if w < 32 then
+		local raw, ok = get(r, w)
+		return ok and raw == words[1]
+	end
+	for i = 1, #words do
+		local x, ok = get(r, 32)
+		if not ok or x ~= words[i] then return false end
+	end
+	return true
+end
+
+skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boolean?): boolean
 	local k = e.shape.kind
 	if k == 0 or k == 32 then return true end
 	if plainFloat(e.shape) then return floatStep(r, st, k, fd) end
@@ -594,7 +734,14 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 	elseif k == 15 then
 		local ref, ok = get(r, st.refBits)
 		if not ok then return false end
-		if ref == 0 then return true end
+		if ref == 0 then
+			-- A UNION FIELD WRITTEN WITH ARM REFERENCE 0 IS REFUSED at every
+			-- build version (§3.3 (c)): a conforming writer elides a None
+			-- field, one this reader cannot name included. An array element's
+			-- or a nested arm's None is positional and stays lawful.
+			if fieldEntry == true and not (fd ~= nil and fd.required == true) then return false end
+			return true
+		end
 		local arm = entryOf(st.v, ref)
 		if arm == nil or reserved(arm.id) or arm.shape.kind == 0 then return false end
 		local armFd = nil
@@ -713,7 +860,10 @@ end
 -- a copy, so a clean batch allocates nothing and the caller's buffer is never
 -- changed.
 local function walkBodies(v: any, data: buffer, desc: any, count: number, write: boolean): (number, any, boolean, any, string?)
-	local st: any = { v = v, refBits = v.refBits, owner = nil, nonFinite = nil }
+	-- same: the sender announced this reader's own build version, the one
+	-- place its declaration is the sender's (§3.3 (a), (b))
+	local own = S.buildOf(desc.name)
+	local st: any = { v = v, refBits = v.refBits, owner = nil, nonFinite = nil, same = own ~= nil and own == v.buildVersion }
 	local r = newReader(data, 16)
 	local dep = { write = write, found = false, field = nil, table = nil }
 	local bodies = {}

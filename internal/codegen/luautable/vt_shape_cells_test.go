@@ -163,7 +163,7 @@ func vtShapeKeyedWire(entries [][2]int32, trailing, elemExtra bool) []byte {
 	wire = append(wire, vtShapeLeb(uint64(len(body)))...)
 	wire = append(wire, body...)
 	wire = append(wire, 0)
-	ids := []uint64{ir.TableWireId("keyed"), ir.TableWireId("Red"), ir.TableWireId("Green"), ir.TableWireId("Blue")}
+	ids := []uint64{ir.TableWireId("keyed"), ir.TableWireId("Red"), ir.TableWireId("Blue")}
 	for _, id := range ids {
 		wire = append(wire, vtShapeU64(id)...)
 	}
@@ -241,8 +241,8 @@ one("trailing")
 one("elemExtra")
 `
 	b.WriteString(vtShapeRun(t, vtShapeKeyedSchema, kmain, map[string][]byte{
-		"clean":     vtShapeKeyedWire([][2]int32{{2, 11}, {4, 33}}, false, false),
-		"dup":       vtShapeKeyedWire([][2]int32{{2, 11}, {2, 22}}, false, false),
+		"clean":     vtShapeKeyedWire([][2]int32{{2, 11}, {3, 33}}, false, false),
+		"dup":       vtShapeKeyedWire([][2]int32{{2, 11}, {2, 22}, {3, 33}}, false, false),
 		"trailing":  vtShapeKeyedWire([][2]int32{{2, 11}}, true, false),
 		"elemExtra": vtShapeKeyedWire([][2]int32{{2, 11}}, false, true),
 	}, from, to))

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package graphdemo — protocol id 0x36ff4b4cd88bf37a (packets only: tables version by field id, not by protocol id)
+// package graphdemo — protocol id 0xef0260949bdd7a2b (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-strict, docs/SPEC-TABLES.md): no serialize
 // dependency — includable from any TU.
 
@@ -2400,14 +2400,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0x5c,
-    0x1d,
-    0xd8,
-    0x26,
-    0x47,
-    0xbe,
-    0xaa,
-    0xfd,
+    0xae,
+    0xf1,
+    0xbf,
+    0xc2,
+    0xd1,
+    0xc8,
+    0x0d,
+    0x2e,
     0x02,
     0x0e,
     0x46,
@@ -8855,7 +8855,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xfdaabe4726d81d5cull;
+static const uint64_t BuildVersion = 0x2e0dc8d1c2bff1aeull;
 
 } // namespace graphdemo
 
@@ -10159,7 +10159,7 @@ inline bool TallyFixedClamp( Tally & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TallyFixedBodyBytes = 4;
 constexpr int64_t TallyFixedRecordBytes = 8 + TallyFixedBodyBytes; // the hash and the body
-constexpr uint64_t TallyFixedHash = 0xe155ccfe28f460d7ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t TallyFixedHash = 0x2f1aee497da7bbbcull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -10220,9 +10220,10 @@ constexpr int32_t TallyFixedCoverCount = 1;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t TallyFixedLineage[] = {
-    0xe155ccfe28f460d7ull, // identity
+    0xe155ccfe28f460d7ull, // lock
+    0x2f1aee497da7bbbcull, // identity
 };
-constexpr int32_t TallyFixedLineageCount = 1;
+constexpr int32_t TallyFixedLineageCount = 2;
 constexpr int32_t TallyFixedFloor = 0;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t TallyFixedFloorLive = TallyFixedFloor;
@@ -10234,14 +10235,21 @@ constexpr uint8_t TallyFixedKnown0Layout[] = {
     0x00, 0x01, 0x00, 0x00, 0x00, 0xbb, 0xf0, 0x0c, 0x9b, 0xcc, 0xfb, 0x2d, 0x73, 0x04, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+constexpr uint8_t TallyFixedKnown1Layout[] = {
+    0x02, 0x00, 0x00, 0x00, 0x3d, 0xa7, 0x42, 0x42, 0x90, 0x34, 0xff, 0x69, 0x0d, 0x04, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x00, 0x00, 0xbb, 0xf0, 0x0c, 0x9b, 0xcc, 0xfb, 0x2d, 0x73, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 constexpr TableFixedKnownLayout TallyFixedKnown[] = {
-    { 0xe155ccfe28f460d7ull, TallyFixedKnown0Layout, 38, 12 }, // identity
+    { 0xe155ccfe28f460d7ull, TallyFixedKnown0Layout, 38, 12 }, // lock
+    { 0x2f1aee497da7bbbcull, TallyFixedKnown1Layout, 38, 12 }, // identity
 };
 
 constexpr const TableFixedKnownRange * TallyFixedKnownRanges[] = {
     NULL,
+    NULL,
 };
-constexpr int32_t TallyFixedKnownRangeCounts[] = { 0 };
+constexpr int32_t TallyFixedKnownRangeCounts[] = { 0, 0 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

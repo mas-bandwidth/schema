@@ -213,6 +213,15 @@ public final class TableVocabulary {
         this.maxBytes = 65536;
     }
 
+    // ownBuild answers whether the sender announced this unit's own build
+    // version: the one case where a reader knows the sender's declared
+    // defaults exactly, so a field written at the default it elides is not the
+    // one encoding (§3.3 (a)). Under another build version the sender's
+    // default is not this reader's to know, and the field reads as today.
+    boolean ownBuild() {
+        return announced && buildVersion == tableBuildVersion;
+    }
+
     // NO RE-ANNOUNCEMENT, EVER, and REFUSAL IS TERMINAL (§3.3): a first
     // announcement sets the vocabulary or is refused, and every announcement
     // after it — refused or not — is ` + "`" + `second_announcement` + "`" + `.
@@ -1492,6 +1501,10 @@ type messageGen struct {
 	// owner is the declaration whose body a load is being emitted for, the
 	// <Owner> of a non_finite_float refusal's <Owner>.<field> (§3.3)
 	owner string
+	// canonicalField asks the next emitLoadPayload for a keyed field's
+	// one-encoding test (emitLoadFieldCase); the payload takes it and clears it,
+	// so a union arm's payload inside never inherits it.
+	canonicalField bool
 }
 
 func (g *messageGen) pf(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -2304,13 +2317,20 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	g.pf("        }\n")
 	g.pf("    }\n\n")
 	g.pf("    private static boolean loadMessageBodyFields(TableMessage.Reader r, %s v, int seenFieldMark) {\n", valType)
+	// AT THE READER'S OWN BUILD VERSION (§3.3 (b)) the record's field order
+	// is digested into the build, so the body's fields come in declaration
+	// order and every field the sender declares is one this record declares:
+	// a field out of that order, or one this record does not name, is not
+	// the one encoding. Under another build neither is judged (§4).
 	g.pf("        reset(v);\n")
+	g.pf("        int lastField = -1;\n")
 	g.pf("        while (true) {\n")
 	g.pf("            TableVocabulary.Entry entry = r.ref();\n")
 	g.pf("            if (r.err) { r.report.damaged = true; return false; }\n")
 	g.pf("            if (entry == null) { return true; }\n")
 	g.pf("            if (!r.seenAdd(seenFieldMark, entry.id)) { r.report.damaged = true; return false; }\n")
 	if len(st.Fields) == 0 {
+		g.pf("            if (r.vocab.ownBuild()) { r.report.damaged = true; return false; }\n")
 		g.pf("            r.report.unknown++;\n")
 		g.pf("            if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
 	} else {
@@ -2325,9 +2345,12 @@ func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 				prefix = "} else if"
 			}
 			g.pf("            %s (idHi == 0x%08x && idLo == 0x%08x) {\n", prefix, uint32(hi), uint32(lo))
+			g.pf("                if (%d < lastField && r.vocab.ownBuild()) { r.report.refuse(\"non_canonical\"); return false; }\n", idx)
+			g.pf("                lastField = %d;\n", idx)
 			g.emitLoadFieldCase(f, mine, "v", "entry", 16)
 		}
 		g.pf("            } else {\n")
+		g.pf("                if (r.vocab.ownBuild()) { r.report.damaged = true; return false; }\n")
 		g.pf("                r.report.unknown++;\n")
 		g.pf("                if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
 		g.pf("            }\n")
@@ -2353,7 +2376,7 @@ func (g *messageGen) emitLoadFieldCase(f *ir.Field, mine ir.TableVocabularyEntry
 	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
 
-	g.emitLoadPayload(f, owner, entryVar, indent)
+	g.emitLoadPayloadCanonical(f, owner, entryVar, indent)
 	if f.Type.Optional {
 		g.pf("%s%sPresent = true;\n", ind, expr)
 	}
@@ -2364,6 +2387,8 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 	ind := strings.Repeat(" ", indent)
 	name := javaName(f.Name)
 	expr := owner + "." + name
+	canonical := g.canonicalField
+	g.canonicalField = false
 
 	switch {
 	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone && f.KeyEnum == "":
@@ -2433,7 +2458,13 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 			g.pf("%s    }\n", ind)
 		}
 		g.pf("%s    if (%s >= 0) {\n", ind, slotVar)
+		if canonical {
+			g.pf("%s        %s\n", ind, g.messageSlotPre(f))
+		}
 		g.emitLoadElement(f, expr+"["+slotVar+"]", entryVar+".element", indent+8)
+		if canonical {
+			g.pf("%s        if (%s) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, g.messageSlotAtDefault(f, expr+"["+slotVar+"]"))
+		}
 		g.pf("%s    } else {\n", ind)
 		g.pf("%s        r.report.unknown++;\n", ind)
 		g.pf("%s        %s %s = %s;\n", ind, typ, scratchVar, g.scratchInitExpr(f))
@@ -2441,6 +2472,9 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%s    }\n", ind)
 		g.pf("%s}\n", ind)
 		g.pf("%sr.seenRollback(seenSlotMark);\n", ind)
+		if canonical {
+			g.pf("%sif (%s == 0L && r.vocab.ownBuild()) { r.report.refuse(\"non_canonical\"); return false; }\n", ind, nVar)
+		}
 
 	case f.Array != ir.ArrayNone:
 		nVar := g.nextTemp("n")

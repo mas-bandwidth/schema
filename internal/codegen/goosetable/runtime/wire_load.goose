@@ -2095,6 +2095,8 @@ recursive fn wc_body(w: WireCheck&, at: i64, end: i64, root: bool) -> bool {
             if off != end { return wc_damage(w); } // bytes after a body's terminator inside its L
             return true;
         }
+        // THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1)
+        if root && !w.announcement && w.table_present { wc_close(w, mark); return wc_damage(w); }
         if ref > w.ids_n as! u64 { wc_close(w, mark); return wc_damage(w); }
         if !wc_use(w, ref) { wc_close(w, mark); return false; }
         if !wc_name(w, ref, scope) { wc_close(w, mark); return wc_damage(w); } // the same field id twice in one body
@@ -2190,7 +2192,8 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
         // THE NODE TABLE, READ WHOLE (§3.1): its count, then records of a
         // type reference and an L, consumed exactly and as many as declared
         let declared, after, ok = leb_at(data, w.table_off, w.table_end);
-        if !ok { wc_damage(w); return w.fail, w.non_finite; }
+        // a writer with no records writes no node table (§3.1)
+        if !ok || (!w.announcement && declared == 0) { wc_damage(w); return w.fail, w.non_finite; }
         var off = after;
         var found: u64 = 0;
         while off < w.table_end {

@@ -1,0 +1,31 @@
+#!/bin/sh
+# Compare both Python message surfaces with the shared reference manifest.
+set -eu
+manifest=${PYTHON_MESSAGE_MANIFEST:-testdata/conformance/tables/MANIFEST.txt}
+: "${PYTHON:?the current pinned Python is required}"
+: "${PYTHON_FLOOR:?the floor pinned Python is required}"
+grep -q '^message ' "$manifest"
+grep -q '^write-refusal-message ' "$manifest"
+work=$(mktemp -d "${TMPDIR:-/tmp}/python-message-conformance.XXXXXX")
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+for pin in "$PYTHON" "$PYTHON_FLOOR"; do
+    out="$work/$(basename "$(dirname "$(dirname "$pin")")")"
+    mkdir -p "$out/message" "$out/refusal"
+    PYTHON="$pin" test/conformance/python/driver "$manifest" message "$out/message"
+    PYTHON="$pin" test/conformance/python/driver "$manifest" write-refusal-message "$out/refusal"
+    awk '$1 == "message" {print $2, $6}' "$manifest" | while read -r name golden; do
+        if [ "$golden" = '-' ]; then
+            test -s "$out/message/$name.absent"
+        else
+            cmp "$out/message/$name" "$golden"
+        fi
+    done
+    awk '$1 == "write-refusal-message" {print $2, $9}' "$manifest" | while read -r name expected; do
+        actual=$(cat "$out/refusal/$name")
+        if [ "$actual" != "$expected" ]; then
+            echo "message write refusal $name: got $actual, expected $expected" >&2
+            exit 1
+        fi
+    done
+    echo "message and write-refusal-message: $(basename "$pin") passed"
+done

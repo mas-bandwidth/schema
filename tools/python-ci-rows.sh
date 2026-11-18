@@ -4,31 +4,88 @@
 # float tests apart; the table package has thirty-two; other packages use eight.
 # The table corpus import test is split by its existing unit subtests, so each
 # unit still runs both interpreters and strict mypy. New tests are added automatically.
-# stale hand-maintained list. The unsplit make target stays the local/nightly
+# The unsplit make target stays the local/nightly
 # contract; each support target is one named portion of its prerequisites.
 set -eu
 rows=$(mktemp)
 packages=$(mktemp)
 trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
 : > "$rows"
-supports=$(make -s python-ci-support-list)
-printf '%s\n' "$supports" | while IFS= read -r target; do
-  jq -cn --arg name "$target" --arg target "$target" '{name:$name,target:$target,package:"",test:""}' >> "$rows"
+support=$(make -s python-ci-support-list)
+printf '%s\n' "$support" | while IFS= read -r target; do
+  if [ "$target" = python-ci-compiler ]; then
+    # Group matching compiler tests into deterministic namespace shards.
+    # Keep the local/nightly aggregate, but bound every per-commit row.
+    listed=$(go test -tags schema_leg_python -list Python ./compiler)
+    names=$(printf '%s\n' "$listed" | awk '/^(Test|Example|Fuzz)[A-Za-z0-9_]*$/ { print }')
+    [ -n "$names" ] || { echo "no Python compiler tests discovered" >&2; exit 1; }
+    selected=$(printf '%s\n' "$names" | while IFS= read -r test; do
+      if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$support" | grep -qx python-ci-required-shape-0; then
+        for part in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+          printf '%s\n' "$support" | grep -qx "python-ci-required-shape-$part" || { echo "missing required shape shard $part" >&2; exit 1; }
+        done
+        continue
+      fi
+      printf '%s\n' "$test"
+    done)
+    printf '%s\n' "$selected" | paste -d+ - - - - - | sed 's/+*$//' | while IFS= read -r group; do
+      [ -n "$group" ] || continue
+      jq -cn --arg name "python compiler $group" --arg target "python-ci-compiler-shard-$group" '{name:$name,target:$target,package:"",test:"",corpus:false}' >> "$rows"
+    done
+    continue
+  fi
+  corpus=false
+  case "$target" in python-fixed-*|python-retain-[0-9]*|python-retain-negative-control|python-ci-framing-driver|python-ci-message-applicability|python-reflection-ci-corpus|python-wirefuzz-*|tables-python-wire-fuzz*-negative-control) corpus=true ;; esac
+  jq -cn --arg name "$target" --arg target "$target" --argjson corpus "$corpus" '{name:$name,target:$target,package:"",test:"",corpus:$corpus}' >> "$rows"
 done
 go list -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... > "$packages"
 while IFS= read -r package; do
+  corpus=false
+  case "$package" in */internal/codegen/pythontable|*/internal/codegen/pythontable/*) corpus=true ;; esac
   tests=$(go test -tags schema_leg_python -list '^(Test|Example|Fuzz)' "$package")
-  names=$(printf '%s\n' "$tests" | sed -n '/^\(Test\|Example\|Fuzz\)[A-Za-z0-9_]*$/p')
-  skip=
+  names=$(printf '%s\n' "$tests" | awk '/^(Test|Example|Fuzz)[A-Za-z0-9_]*$/ { print }')
+  # These fixed proof tests are delegated to the support row shards above.
+  # Keeping a monolithic parent in an automatic package shard would
+  # still hit the two-minute limit. New test names remain auto-discovered.
+  case "$package" in */internal/codegen/pythontable)
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofShapes$/d; /^TestPythonFixedProofShapesText$/d; /^TestPythonFixedProofShapesArrayBounds$/d; /^TestPythonFixedProofShapesNegativeControl$/d; /^TestPythonFixedProofValues$/d; /^TestPythonFixedProofValuesNegativeControl$/d; /^TestPythonFixedProofValuesTypes$/d; /^TestPythonFixedProofValuesReadRules$/d; /^TestPythonFixedProofValuesFloatBounds$/d; /^TestPythonFixedProofUnionsOptionals$/d; /^TestPythonFixedProofSuite$/d') ;;
+  esac
+  # Positive fixed-evolution families are delegated to bounded support rows.
+  case "$package" in */internal/codegen/pythontable)
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonFixedProofEvolution$/d; /^TestPythonFixedProofEvolutionValues$/d; /^TestPythonFixedProofEvolutionStrict$/d; /^TestPythonFixedProofEvolutionNumeric$/d; /^TestPythonFixedProofEvolutionWideningCorpus$/d; /^TestPythonFixedProofEvolutionWriterBounds$/d; /^TestPythonFixedProofEvolutionHostile$/d; /^TestPythonFixedProofEvolutionHostileEnvelope$/d; /^TestPythonFixedProofEvolutionHostileShapes$/d; /^TestPythonFixedProofEvolutionHostileSweep$/d; /^TestPythonFixedProofEvolutionRetirementControl$/d') ;;
+  esac
+  # Complete array-widening cases and pointer-array proof phases have their
+  # own support rows; keeping either parent here would rerun the monolith.
+  case "$package" in */internal/codegen/pythontable)
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonArrayWidening$/d; /^TestPythonVtPointerArrays$/d') ;;
+  esac
+  # The full fuzz omnibus is covered by all 48 explicit shard rows; keep
+  # its focused pipe and fault controls in automatically discovered shards.
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonWireFuzzVerdictPipe$/d')
+  fi
+  skip=
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
+    printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
+    for part in 0 1 2 3 4 5 6 7; do
+      [ "$(printf '%s\n' "$support" | grep -cx "python-ci-packet-core-$part")" -eq 1 ] || { echo "missing or duplicate packet core shard $part" >&2; exit 1; }
+    done
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonPacketCore$/d')
+  fi
+  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonVtEvolution$/d')
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
-    for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical; do
+    for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical TestPythonMapShapeBench TestPythonReflectionStrictTypes; do
       printf '%s\n' "$names" | grep -qx "$delegated" || { echo "missing $delegated" >&2; exit 1; }
     done
-    for target in python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3; do
-      [ "$(printf '%s\n' "$supports" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
+    for target in python-ci-map-bench-current python-ci-map-bench-floor python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3 python-ci-widen-scalar-4 python-ci-widen-scalar-5 python-ci-widen-scalar-6 python-ci-widen-scalar-7; do
+      [ "$(printf '%s\n' "$support" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
     done
-    names=$(printf '%s\n' "$names" | sed '/^TestPythonScalarWidenHistorical$/d; /^TestPythonContainerWidenHistorical$/d')
+    # Strict mypy over the reflection units runs in its own twenty-four shards.
+    for part in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23; do
+      [ "$(printf '%s\n' "$support" | grep -cx "python-ci-reflection-strict-$part")" -eq 1 ] || { echo "missing or duplicate reflection strict shard $part" >&2; exit 1; }
+    done
+    names=$(printf '%s\n' "$names" | sed '/^TestPythonScalarWidenHistorical$/d; /^TestPythonContainerWidenHistorical$/d; /^TestPythonMapShapeBench$/d; /^TestPythonReflectionStrictTypes$/d')
     skip=TestPythonVtFixedClassBuildVersionImports
     units=$(awk '$1 == "unit" { print $2 }' testdata/conformance/tables/MANIFEST.txt)
     [ -n "$units" ] || { echo "missing table corpus units" >&2; exit 1; }
@@ -37,13 +94,13 @@ while IFS= read -r package; do
     while [ "$part" -lt 8 ]; do
       selected=$(printf '%s\n' "$units" | awk -v part="$part" '(NR-1)%8 == part' | paste -sd '|' -)
       if [ -n "$selected" ]; then
-        jq -cn --arg name "python-build-version-imports-$part" --arg package "$package" --arg test "TestPythonVtFixedClassBuildVersionImports$/($selected)" '{name:$name,target:"",package:$package,test:$test}' >> "$rows"
+        jq -cn --arg name "python-build-version-imports-$part" --arg package "$package" --arg test "TestPythonVtFixedClassBuildVersionImports$/($selected)" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:$test,corpus:$corpus}' >> "$rows"
       fi
       part=$((part+1))
     done
   fi
   if [ -z "$names" ]; then
-    jq -cn --arg name "$package (compile)" --arg package "$package" '{name:$name,target:"",package:$package,test:""}' >> "$rows"
+    jq -cn --arg name "$package (compile)" --arg package "$package" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:"",corpus:$corpus}' >> "$rows"
   else
     shards=8
     case "$package" in */internal/codegen/python) shards=16 ;; */internal/codegen/pythontable) shards=32 ;; esac
@@ -51,7 +108,7 @@ while IFS= read -r package; do
     while [ "$shard" -lt "$shards" ]; do
       selected=$(printf '%s\n' "$names" | awk -v shard="$shard" -v shards="$shards" -v skip="$skip" '(NR-1)%shards == shard && $0 != skip' | paste -sd '|' -)
       if [ -n "$selected" ]; then
-        jq -cn --arg name "$package shard $((shard+1))/$shards" --arg package "$package" --arg test "^($selected)$" '{name:$name,target:"",package:$package,test:$test}' >> "$rows"
+        jq -cn --arg name "$package shard $((shard+1))/$shards" --arg package "$package" --arg test "^($selected)$" --argjson corpus "$corpus" '{name:$name,target:"",package:$package,test:$test,corpus:$corpus}' >> "$rows"
       fi
       shard=$((shard+1))
     done

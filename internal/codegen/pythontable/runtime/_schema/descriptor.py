@@ -10,7 +10,7 @@ built once at import, so the codec modules only ever read them.
 from __future__ import annotations
 
 import struct
-from typing import Any
+from typing import Any, Callable
 
 # An array element is born at its kind's zero: an element carries no
 # specified default (docs/SPEC.md §4.6; docs/SPEC-TABLES.md §2.9).
@@ -38,7 +38,45 @@ class FieldDesc:
     """
 
     __slots__ = (
+        "at",
+        "pieces",
+        "elem_size",
+        "elem_align",
         "name",
+        "json_key",
+        "required",
+        "frac_bits",
+        "json_variants",
+        "json_keys",
+        "json_flags",
+        "unbounded",
+        "json_text_list",
+        "json_text_unbounded",
+        "doc",
+        "tags",
+        "type_name",
+        "counted",
+        "count_offset",
+        "present_offset",
+        "unbounded_container",
+        "array_bound",
+        "wide",
+        "guard",
+        "field_deprecated",
+        "variant_names",
+        "key_names",
+        "vocabulary_kind",
+        "enum_max",
+        "variant_name",
+        "variant_id",
+        "key_name",
+        "key_id",
+        "get",
+        "set",
+        "get_element",
+        "set_element",
+        "_target_desc",
+        "_union_desc",
         "field_id",
         "kind",
         "codec",
@@ -50,7 +88,6 @@ class FieldDesc:
         "map_entry",
         "pointer",
         "optional",
-        "required",
         "array",
         "bound",
         "size",
@@ -61,6 +98,8 @@ class FieldDesc:
         "array_min",
         "elem_kind",
         "variant_ids",
+        "wire_of",
+        "value_of",
         "deprecated",
         "default",
         "elem_codec",
@@ -76,7 +115,45 @@ class FieldDesc:
         "float_range",
     )
 
+    at: int
+    pieces: tuple[tuple[int, int], ...]
+    elem_size: int
+    elem_align: int
     name: str
+    json_key: str | None
+    required: bool
+    frac_bits: int
+    json_variants: tuple[str, ...]
+    json_keys: tuple[str, ...]
+    json_flags: bool
+    unbounded: bool
+    json_text_list: bool
+    json_text_unbounded: bool
+    doc: str
+    tags: tuple[str, ...]
+    type_name: str
+    counted: bool
+    count_offset: int
+    present_offset: int
+    unbounded_container: bool
+    array_bound: int
+    wide: tuple[int, int] | None
+    guard: str
+    field_deprecated: bool
+    variant_names: tuple[str, ...]
+    key_names: tuple[str, ...]
+    vocabulary_kind: str
+    enum_max: int
+    variant_name: Callable[[int], str | None] | None
+    variant_id: Callable[[int], int] | None
+    key_name: Callable[[int], str | None] | None
+    key_id: Callable[[int], int] | None
+    get: Callable[[Any], Any]
+    set: Callable[[Any, Any], None]
+    get_element: Callable[[Any, int], Any]
+    set_element: Callable[[Any, int, Any], None]
+    _target_desc: TableDesc | None
+    _union_desc: UnionDesc | None
     field_id: int
     kind: int
     codec: str
@@ -88,7 +165,6 @@ class FieldDesc:
     map_entry: str
     pointer: bool
     optional: bool
-    required: bool
     array: bool
     bound: int
     size: int
@@ -99,6 +175,8 @@ class FieldDesc:
     array_min: int
     elem_kind: int
     variant_ids: tuple[int, ...]
+    wire_of: dict[int, int]
+    value_of: dict[int, int]
     deprecated: frozenset[int]
     default: Any
     elem_codec: str
@@ -119,6 +197,15 @@ class FieldDesc:
         field_id: int,
         kind: int,
         codec: str,
+        json_key: str | None = None,
+        required: bool = False,
+        frac_bits: int = 0,
+        json_variants: tuple[str, ...] = (),
+        json_keys: tuple[str, ...] = (),
+        json_flags: bool = False,
+        unbounded: bool = False,
+        json_text_list: bool = False,
+        json_text_unbounded: bool = False,
         ordinal: int = 0,
         lo: int = 0,
         hi: int = 0,
@@ -126,7 +213,6 @@ class FieldDesc:
         map_entry: str = "",
         pointer: bool = False,
         optional: bool = False,
-        required: bool = False,
         array: bool = False,
         bound: int = 0,
         size: int = 0,
@@ -150,8 +236,65 @@ class FieldDesc:
         fmax: float = 0.0,
         float_range: bool = False,
         keyed_list: bool = False,
+        doc: str = "",
+        tags: tuple[str, ...] = (),
+        type_name: str = "",
+        at: int = 0,
+        pieces: tuple[tuple[int, int], ...] = (),
+        elem_size: int = 0,
+        elem_align: int = 1,
+        counted: bool = False,
+        count_offset: int = -1,
+        present_offset: int = -1,
+        unbounded_container: bool = False,
+        array_bound: int = 0,
+        wide: tuple[int, int] | None = None,
+        guard: str = "",
+        field_deprecated: bool = False,
+        variant_names: tuple[str, ...] = (),
+        key_names: tuple[str, ...] = (),
+        vocabulary_kind: str = "",
+        enum_max: int = 0,
     ) -> None:
+        self.variant_names = variant_names
+        self.key_names = key_names
+        self.vocabulary_kind = vocabulary_kind
+        self.enum_max = enum_max
+        self.variant_name = self._variant_name if vocabulary_kind else None
+        self.variant_id = self._variant_id if vocabulary_kind in ("enum", "union") else None
+        self.key_name = self._key_name if key_enum else None
+        self.key_id = self._key_id if key_enum else None
+        self.get = self._get
+        self.set = self._set
+        self.get_element = self._get_element
+        self.set_element = self._set_element
+        self.wide = wide
+        self.guard = guard
+        self.field_deprecated = field_deprecated
+        self.counted = counted
+        self.count_offset = count_offset
+        self.present_offset = present_offset
+        self.unbounded_container = unbounded_container
+        self.array_bound = array_bound
+        self._target_desc = None
+        self._union_desc = None
+        self.type_name = type_name
+        self.at = at
+        self.pieces = pieces
+        self.elem_size = elem_size
+        self.elem_align = elem_align
         self.name = name
+        self.json_key = json_key
+        self.required = required
+        self.frac_bits = frac_bits
+        self.json_variants = json_variants
+        self.json_keys = json_keys
+        self.json_flags = json_flags
+        self.unbounded = unbounded
+        self.json_text_list = json_text_list
+        self.json_text_unbounded = json_text_unbounded
+        self.doc = doc
+        self.tags = tags
         self.field_id = field_id
         self.kind = kind
         self.codec = codec
@@ -163,7 +306,6 @@ class FieldDesc:
         self.map_entry = map_entry
         self.pointer = pointer
         self.optional = optional
-        self.required = required
         self.array = array
         self.bound = bound
         self.size = size
@@ -174,6 +316,10 @@ class FieldDesc:
         self.array_min = array_min
         self.elem_kind = elem_kind
         self.variant_ids = variant_ids
+        # an enum's two lookups, built once: variant k (from 1) to its wire id,
+        # and back (docs/PORT-PYTHON.md, THE TABLE FRAME, Enum lookup bench)
+        self.wire_of = {value: wire_id for value, wire_id in enumerate(variant_ids, 1)}
+        self.value_of = {wire_id: value for value, wire_id in enumerate(variant_ids, 1)}
         # the ordinals of the variants marked `| deprecated` (§2.15)
         self.deprecated = frozenset(deprecated)
         self.default = default
@@ -194,17 +340,27 @@ class FieldDesc:
                 pointer=pointer,
                 size=size,
                 variant_ids=variant_ids,
+                variant_names=variant_names,
+                vocabulary_kind=vocabulary_kind,
+                enum_max=enum_max,
                 deprecated=tuple(deprecated),
                 default=_ELEMENT_ZERO.get(elem_codec),
                 f32=f32,
                 fmin=fmin,
                 fmax=fmax,
                 float_range=float_range,
+                frac_bits=frac_bits,
+                json_variants=json_variants,
+                json_flags=json_flags,
+                unbounded=json_text_unbounded if json_text_list else unbounded,
+                wide=wide,
             )
-            if codec == "array" and elem_codec
+            if array and elem_codec
             else None
         )
         self.elem = elem
+        if self.element is None:
+            self.element = elem
         self.keys = keys
         self.array_mode = array_mode
         self.min_count = min_count
@@ -216,6 +372,84 @@ class FieldDesc:
             if (getattr(owner, cond_name) is True) != want:
                 return False
         return True
+
+    def _variant_name(self, value: int) -> str | None:
+        if self.vocabulary_kind == "flags":
+            return self.variant_names[value] if 0 <= value < len(self.variant_names) else None
+        if value == 0 and self.vocabulary_kind in ("enum", "union"):
+            return "None"
+        if 1 <= value <= len(self.variant_names):
+            return self.variant_names[value - 1]
+        return None
+
+    def _variant_id(self, value: int) -> int:
+        if self.vocabulary_kind == "flags" or value <= 0 or value > len(self.variant_ids):
+            return 0
+        return self.variant_ids[value - 1]
+
+    def _key_name(self, key: int) -> str | None:
+        if key == 0 and self.key_enum:
+            return "None"
+        if 1 <= key <= len(self.key_names):
+            return self.key_names[key - 1] or None
+        return None
+
+    def _key_id(self, key: int) -> int:
+        if 1 <= key <= len(self.keys):
+            return self.keys[key - 1]
+        return 0
+
+    def _get(self, value: Any) -> Any:
+        return getattr(value, self.name)
+
+    def _set(self, value: Any, field_value: Any) -> None:
+        setattr(value, self.name, field_value)
+
+    def _get_element(self, value: Any, index: int) -> Any:
+        return getattr(value, self.name)[index]
+
+    def _set_element(self, value: Any, index: int, element_value: Any) -> None:
+        field_value = getattr(value, self.name)
+        if isinstance(field_value, str):
+            characters = list(field_value)
+            characters[index] = element_value
+            setattr(value, self.name, "".join(characters))
+        elif isinstance(field_value, bytes) or (
+            isinstance(field_value, memoryview) and field_value.readonly
+        ):
+            octets = bytearray(field_value)
+            octets[index] = element_value
+            setattr(value, self.name, bytes(octets))
+        else:
+            field_value[index] = element_value
+
+    @property
+    def target_desc(self) -> TableDesc | None:
+        if self._target_desc is not None:
+            return self._target_desc
+        cls = by_name(self.map_entry or self.target)
+        if cls is None:
+            return None
+        descriptor: TableDesc = cls.descriptor
+        return descriptor
+
+    @target_desc.setter
+    def target_desc(self, value: TableDesc | None) -> None:
+        self._target_desc = value
+
+    @property
+    def union_desc(self) -> UnionDesc | None:
+        if self._union_desc is not None:
+            return self._union_desc
+        cls = _union_by_name(self.target)
+        if cls is None:
+            return None
+        descriptor: UnionDesc = cls.descriptor
+        return descriptor
+
+    @union_desc.setter
+    def union_desc(self, value: UnionDesc | None) -> None:
+        self._union_desc = value
 
     def is_default(self, value: Any) -> bool:
         """Whether the writer elides this field (docs/SPEC-TABLES.md §3)."""
@@ -329,13 +563,27 @@ def _as_bytes(value: Any) -> bytes | None:
 class TableDesc:
     """One generated table: its name, type id and fields."""
 
-    __slots__ = ("name", "type_id", "variable", "fields", "by_id", "forms")
+    __slots__ = ("name", "json_array", "forms", "type_id", "variable", "fields", "by_id", "doc", "tags", "table", "size", "align", "cook_align", "region_align", "extent_start", "padding", "build_version", "bytes_blob_type_id", "string_blob_type_id", "reset")
 
     name: str
     type_id: int
     variable: bool
     fields: tuple[FieldDesc, ...]
     by_id: dict[int, FieldDesc]
+    table: bool
+    size: int
+    align: int
+    region_align: int
+    cook_align: int
+    extent_start: int
+    padding: tuple[tuple[int, int], ...]
+    build_version: int
+    bytes_blob_type_id: int
+    string_blob_type_id: int
+    reset: Callable[[Any], None]
+    doc: str
+    tags: tuple[str, ...]
+    json_array: bool
     forms: tuple[str, ...]
 
     def __init__(
@@ -344,14 +592,54 @@ class TableDesc:
         type_id: int,
         variable: bool,
         fields: tuple[FieldDesc, ...],
+        json_array: bool = False,
         forms: tuple[str, ...] = ("wire", "json", "block", "cook"),
+        doc: str = "",
+        tags: tuple[str, ...] = (),
+        table: bool = True,
+        size: int = 0,
+        align: int = 0,
+        region_align: int = 0,
+        cook_align: int = 1,
+        extent_start: int = 0,
+        padding: tuple[tuple[int, int], ...] = (),
+        build_version: int = 0,
+        bytes_blob_type_id: int = 0,
+        string_blob_type_id: int = 0,
     ) -> None:
+        self.reset = self._reset
+        self.cook_align = cook_align
+        self.extent_start = extent_start
+        self.padding = padding
+        self.build_version = build_version
+        self.bytes_blob_type_id = bytes_blob_type_id
+        self.string_blob_type_id = string_blob_type_id
         self.forms = forms
+        self.table = table
+        self.size = size
+        self.align = align
+        self.region_align = region_align
         self.name = name
+        self.doc = doc
+        self.tags = tags
         self.type_id = type_id
         self.variable = variable
         self.fields = fields
+        self.json_array = json_array
         self.by_id = {field.field_id: field for field in fields}
+        self.size = size
+        self.align = align
+        self.cook_align = cook_align
+        self.build_version = build_version
+        self.region_align = region_align
+        self.bytes_blob_type_id = bytes_blob_type_id
+        self.string_blob_type_id = string_blob_type_id
+        self.padding = padding
+        self.extent_start = extent_start
+
+    def _reset(self, value: Any) -> None:
+        """Restore one generated value's declared defaults in place."""
+        value.__init__()
 
     def field(self, name: str) -> FieldDesc | None:
         for field in self.fields:
@@ -363,7 +651,7 @@ class TableDesc:
 class ArmDesc:
     """One arm of a table-side union."""
 
-    __slots__ = ("name", "tag", "arm_id", "kind", "target", "pointer", "field")
+    __slots__ = ("name", "tag", "arm_id", "kind", "target", "pointer", "field", "size", "doc", "tags", "_target_desc")
 
     name: str
     tag: int
@@ -372,6 +660,10 @@ class ArmDesc:
     target: str
     pointer: bool
     field: FieldDesc | None
+    size: int
+    doc: str
+    tags: tuple[str, ...]
+    _target_desc: TableDesc | None
 
     def __init__(
         self,
@@ -382,7 +674,14 @@ class ArmDesc:
         pointer: bool = False,
         tag: int = 0,
         field: FieldDesc | None = None,
+        size: int = 0,
+        doc: str = "",
+        tags: tuple[str, ...] = (),
     ) -> None:
+        self.size = size
+        self.doc = doc
+        self.tags = tags
+        self._target_desc = None
         self.name = name
         self.tag = tag
         self.arm_id = arm_id
@@ -390,21 +689,51 @@ class ArmDesc:
         self.target = target
         self.pointer = pointer
         self.field = field
+        self.size = size
+
+    @property
+    def target_desc(self) -> TableDesc | None:
+        if self._target_desc is not None:
+            return self._target_desc
+        cls = by_name(self.target)
+        if cls is None:
+            return None
+        descriptor: TableDesc = cls.descriptor
+        return descriptor
+
+    @target_desc.setter
+    def target_desc(self, value: TableDesc | None) -> None:
+        self._target_desc = value
 
 
 class UnionDesc:
     """One generated table-side union: its arms, in declaration order."""
 
-    __slots__ = ("name", "arms", "by_id")
+    __slots__ = ("name", "arms", "by_id", "size", "tag_size", "arm_offset", "doc", "tags")
 
     name: str
     arms: tuple[ArmDesc, ...]
     by_id: dict[int, ArmDesc]
+    size: int
+    tag_size: int
+    arm_offset: int
+    doc: str
+    tags: tuple[str, ...]
 
-    def __init__(self, name: str, arms: tuple[ArmDesc, ...]) -> None:
+    def __init__(self, name: str, arms: tuple[ArmDesc, ...], size: int = 0,
+                 tag_size: int = 0, arm_offset: int = 0, doc: str = "",
+                 tags: tuple[str, ...] = ()) -> None:
+        self.size = size
+        self.tag_size = tag_size
+        self.arm_offset = arm_offset
+        self.doc = doc
+        self.tags = tags
         self.name = name
         self.arms = arms
         self.by_id = {arm.arm_id: arm for arm in arms}
+        self.size = size
+        self.tag_size = tag_size
+        self.arm_offset = arm_offset
 
 
 _REGISTRY_BY_ID: dict[int, type[Any]] = {}

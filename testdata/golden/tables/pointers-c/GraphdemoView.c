@@ -30,7 +30,7 @@ const graphdemo_unit_view_info_t * schema_graphdemo_unit_view_(void)
     static const graphdemo_view_constant_t constants[] = {
         { "MaxLayers", "Graph.schema", "int64", 0, INT64_C(4), 0.0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL },
     };
-    static const graphdemo_unit_view_info_t info = { "graphdemo", 0x36ff4b4cd88bf37aull,
+    static const graphdemo_unit_view_info_t info = { "graphdemo", 0xef0260949bdd7a2bull,
         1, types,
         11, tables,
         1, enums,

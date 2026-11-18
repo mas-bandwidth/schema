@@ -51,6 +51,16 @@ var (
 // conformance row names it rather than restating the version.
 const dotnetPinFile = ".github/dotnet-version"
 
+// The Unity dialect (test/unity/UnityDialect.props): the one property file a
+// library imports to compile generated Unity code, and the framework it must
+// then target.
+const (
+	unityDialectProps = "UnityDialect.props"
+	unityTFM          = "netstandard2.1"
+)
+
+var unityDialect = regexp.MustCompile(`<Import\s+Project="[^"]*/UnityDialect\.props"\s*/>`)
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs("../..")
@@ -190,6 +200,17 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 			return nil
 		}
 		projects++
+		// A library compiled in the Unity dialect targets the surface Unity
+		// exposes, netstandard2.1, not the SDK pin (docs/UNITY.md); the pinned
+		// SDK builds it, and its .NET host beside it targets the pin.
+		if unityDialect.MatchString(string(src)) {
+			for _, m := range found {
+				if got := strings.TrimSpace(m[1]); got != unityTFM {
+					t.Errorf("%s imports %s and targets %s: a Unity dialect library targets %s", rel, unityDialectProps, got, unityTFM)
+				}
+			}
+			return nil
+		}
 		for _, m := range found {
 			if got := strings.TrimSpace(m[1]); got != want {
 				t.Errorf("%s targets %s while %s pins %s: certification would run on an SDK no workflow installs (issue #470)", rel, got, dotnetPinFile, pin)
@@ -1310,6 +1331,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-python-nightly-fuzz.yml:nightly",
+		"schema-python-resource-bounds.yml:nightly",
+		"schema-python-runs-hostile-corpus.yml:nightly",
 		"schema-rust-runs-hostile-corpus.yml:corpus",
 		"schema-rust-runs-hostile-corpus.yml:negative-control",
 	} {
@@ -1413,6 +1437,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:pr-select",
 		"ci-full.yml:proof",
 		"ci-full.yml:shape-gate",
+		"ci-full.yml:unity",
 		"ci-full.yml:vuln",
 		"cla.yml:caa",
 		"leg.yml:leg-matrix",
@@ -1424,11 +1449,14 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
 		"promotion-tag.yml:tag",
+		"python-leg.yml:fixed-corpus",
 		"python-leg.yml:plan",
 		"python-leg.yml:test",
+		"python-leg.yml:test-second",
 		"release.yml:release",
 		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
+		"ruby-leg.yml:test",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",
 		"schema-cpp-runs-hostile-corpus.yml:corpus",
@@ -1469,6 +1497,11 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-generated-analyze-strict-gate.yml:gate",
 		"schema-moo-nightly-fuzz.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:wiring",
+		"schema-python-nightly-fuzz.yml:nightly",
+		"schema-python-resource-bounds.yml:fast",
+		"schema-python-resource-bounds.yml:nightly",
+		"schema-python-runs-hostile-corpus.yml:fast",
+		"schema-python-runs-hostile-corpus.yml:nightly",
 		"schema-rust-runs-hostile-corpus.yml:corpus",
 		"schema-rust-runs-hostile-corpus.yml:negative-control",
 		"schema-shared-hostile-corpus.yml:drift",

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -794,6 +795,24 @@ func TestMapDepthRootKindPin(t *testing.T) {
 		t.Fatal("missing original scalar field")
 	}
 	wire[1] = byte(target)
+	// The renamed field now carries the LAST declared field's id, so it moves
+	// to the end of the root body: every field stays in declaration order and
+	// the kind mismatch is the one thing a reader meets.
+	g := frameWire(wire)
+	moved, lastEnd := wireField{start: -1}, 0
+	for _, field := range g.fields {
+		if len(field.enclosing) != 0 {
+			continue
+		}
+		if field.start == 1 {
+			moved = field
+		}
+		lastEnd = max(lastEnd, field.end)
+	}
+	if moved.start != 1 || moved.end == lastEnd {
+		t.Fatal("renamed field is not the first of several root fields")
+	}
+	wire = slices.Concat(wire[:moved.start], wire[moved.end:lastEnd], wire[moved.start:moved.end], wire[lastEnd:])
 	wire, err = firstUseOrder(wire)
 	if err != nil {
 		t.Fatal(err)

@@ -87,7 +87,7 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
       {:table, _name, b} ->
         if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
 
-      {:unknown, b} when is_binary(b) ->
+      {kind, b} when kind in [:unknown, :unplaced] and is_binary(b) ->
         if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
 
       _ ->
@@ -345,7 +345,9 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
       for {node, idx} <- indexed, node != :malformed, do: idx
 
     unknown_fields =
-      for {{:unknown, body}, idx} <- indexed, is_binary(body), into: %{} do
+      for {{kind, body}, idx} <- indexed,
+          kind in [:unknown, :unplaced] and is_binary(body),
+          into: %{} do
         case entries(body, ids, false, :nested) do
           {:ok, fs, []} -> {idx, fs}
           _ -> throw(:wire_damaged)
@@ -383,7 +385,7 @@ const strictHelpers = `  # AN UNKNOWN FIELD IS SKIPPED, NEVER TRUSTED (docs/SPEC
   end
 
   defp blob_node?({:blob, _kind, _bytes}), do: true
-  defp blob_node?({:unknown, :blob}), do: true
+  defp blob_node?({:unplaced, :blob}), do: true
   defp blob_node?(_node), do: false
 
   # wire_walk is the depth-first descent from the root over an explicit

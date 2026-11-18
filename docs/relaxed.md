@@ -102,14 +102,17 @@ listed case that passes fails the leg until its line is removed.
   red. Files: `make/negative-controls.json`. Real fix: aim the sabotage at the
   check that now holds the whole-load discard (or drop the discard if it is
   dead code), then return the group to the pull-request tier. WIP: none.
-- `relax/cook-dead-slots-zero-ports`: the Go cook writer is gated again.
-  `TestCookWriterMatchesIndependentLayout/fixed` runs, the ten Go cook-write
-  rows are removed from `test/conformance/relaxed.txt`, and all 142 Go
-  cook-write rows pass in both byte orders. The writer ignores dead counted
-  slots and absent optional payloads, and a generated-artifact negative
-  control restores the dead writes and fails the independent byte oracle.
-  This discharges the Go relaxation; other ports' whole-cell proofs remain
-  tracked by their own roadmap evidence.
+- `relax/cook-dead-slots-zero-ports`: since #3424 (fixed-dead-bytes-are-zero)
+  the tool and the C writer leave a counted array's slots past its count zero,
+  and #3486 regenerated the five cook-write fixtures (archive, loadout_full,
+  profile_elide, root_default, root_full) to match. Real fix: every cook
+  writer zeroes the dead slots.
+  The same slug relaxes the ten cook-write cases (the five rows, both orders)
+  of the conformance leg goose
+  in `test/conformance/relaxed.txt`: each still writes
+  the element defaults into dead counted slots (CI full 43656719730). C, JS
+  (its ten cases pass and are gated again, 2026-11-15), Go and the tool are
+  right. WIP: none.
 
 ## CI time (the 110 s per-commit wall)
 

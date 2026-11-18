@@ -109,7 +109,10 @@ import (
 // deleting this file now means wiping a fleet's lineage.
 // 8 adds an optional complete writer snapshot per lineage entry. Older entries
 // remain legacy-unknown until explicitly imported; their wire facts are unchanged.
-const Version = 8
+// 9 records prospective, path-addressed full-width fixed definitions digests.
+// Existing v6/v7/v8 entries retain their exact legacy digest and wire key; a
+// relock appends the current identity rather than rewriting a shipped entry.
+const Version = 9
 
 // salvageFrom is the oldest rendering version this compiler reads and carries
 // forward rather than refusing (§11.8). Below it a lock holds nothing a hand or
@@ -1094,6 +1097,16 @@ func Parse(path string, data []byte) (*Unit, error) {
 			l, err := parseLineage(line, cur.Name)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
+			}
+			scheme, err := ir.TableFixedDefinitionsDigestVersion(l.Digest)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", where, err)
+			}
+			if scheme == 2 && u.Version < 9 {
+				return nil, fmt.Errorf("%s: prospective fixed definitions digests require schema-lock rendering 9", where)
+			}
+			if l.LegacyLayoutOnly && u.Version < 9 {
+				return nil, fmt.Errorf("%s: explicit legacy-layout-only trust requires schema-lock rendering 9", where)
 			}
 			if l.Writer != nil && u.Version < 8 {
 				return nil, fmt.Errorf("%s: writer snapshots require schema-lock rendering 8", where)

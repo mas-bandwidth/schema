@@ -2,7 +2,6 @@ package ci
 
 import (
 	"encoding/json"
-	"os/exec"
 	"regexp"
 	"testing"
 )
@@ -10,12 +9,7 @@ import (
 // The slow historical widening parents must run in their own support rows,
 // while unrelated tests remain in the automatically discovered package rows.
 func TestPythonWidenCIPlan(t *testing.T) {
-	cmd := exec.Command("sh", "tools/python-ci-rows.sh")
-	cmd.Dir = "../.."
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("python CI plan: %v\n%s", err, out)
-	}
+	out := pythonCIPlan(t)
 	var rows []struct {
 		Target  string `json:"target"`
 		Package string `json:"package"`
@@ -43,7 +37,7 @@ func TestPythonWidenCIPlan(t *testing.T) {
 			}
 		}
 	}
-	for _, target := range []string{"python-ci-widen-container", "python-ci-widen-scalar-0", "python-ci-widen-scalar-1", "python-ci-widen-scalar-2", "python-ci-widen-scalar-3", "python-ci-widen-coverage"} {
+	for _, target := range []string{"python-ci-widen-container", "python-ci-widen-scalar-0", "python-ci-widen-scalar-1", "python-ci-widen-scalar-2", "python-ci-widen-scalar-3", "python-ci-widen-scalar-4", "python-ci-widen-scalar-5", "python-ci-widen-scalar-6", "python-ci-widen-scalar-7", "python-ci-widen-coverage"} {
 		if targets[target] != 1 {
 			t.Errorf("support target %s appears %d times, want one", target, targets[target])
 		}

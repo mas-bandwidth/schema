@@ -131,6 +131,14 @@ fn msg_put_bytes(w: MsgWriter&, out: u8[>..]&, s: const u8[:], n: i64) {
     }
 }
 
+// msg_text_is is the elision test of a string or bytes field with a declared
+// default: the first n bytes of s are exactly want, length and bytes both.
+fn msg_text_is(s: const u8[:], n: i64, want: const u8[:]) -> bool {
+    if n != want.len { return false; }
+    for i in n { if s[i] != want[i] { return false; } }
+    return true;
+}
+
 // msg_refuse records a write refusal; the caller returns false.
 fn msg_refuse(w: MsgWriter&, code: i64) -> bool {
     w.ok = false;
@@ -636,6 +644,11 @@ struct MsgReader {
     widened: i64 = 0,
     oor: i64 = 0,
     depth: i64 = 0,
+    // canon is true when the sender announced this reader's own build
+    // version: only then are a field's default and the writer's field order
+    // known, so only then does a body's non-canonical spelling refuse
+    // (docs/SPEC-TABLES.md §3.3(a), (b)).
+    canon: bool = false,
     // seen is the skip walk's id scratch: one body's or keyed array's ids
     // from its mark, so a repeated id is found without a local the recursive
     // walk could not carry (§3.3, §4).

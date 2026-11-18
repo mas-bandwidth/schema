@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
@@ -155,7 +156,11 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 			files, err = lua.Generate(u)
 			entry.module = strings.TrimSuffix(filepath.Base(c.Schema), ".schema")
 		} else {
-			files, err = luatable.Generate(u)
+			// The driver's own path, so the table reader carries every layout
+			// the unit's lock records (docs/FIXED-FORM-ALGORITHM.md §5.9 #1): a
+			// corpus file written under a recorded older layout is the lock's
+			// lineage, which a bare backend call cannot see.
+			files, err = compiler.New().Generate(u, "lua", compiler.Options{})
 			entry.module = luatable.ModuleName(u)
 		}
 		if err != nil {

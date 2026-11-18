@@ -29,11 +29,8 @@ name: Nightly conformance
 # <branch>` runs it on any branch once this file is on main (GitHub refuses a
 # dispatch of a workflow the default branch does not have).
 #
-# A PULL REQUEST THAT CHANGES THIS FILE RUNS IT, and no other does: an edit to
-# the nightly is proved by the nightly before it lands, including the first one
-# (dispatch cannot reach a file main does not have yet). Only this
-# repository's own pull requests: a fork's never reaches the fleet, by the
-# guard every job carries (ci-fast.yml, "ONLY THE TABLE PUSHES").
+# This workflow runs on its schedule and explicit dispatch only. A pull request
+# editing it receives structural fast checks; it does not launch this sweep.
 
 on:
   # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
@@ -173,6 +170,12 @@ jobs:
           ./build/conformance-harness pin
           ./build/conformance-harness generate
 
+      - name: C++ writes and checks the populated feature witnesses
+        id: feature_positive
+        run: |
+          rm -f build/feature-witness-cpp/outputs/Root.bin build/feature-witness-cpp/outputs/ArrayRoot.bin
+          make conformance-cpp-positive-features
+
       - name: the C++ reference writes the fixed form (form 3)
         run: make tables-fixedform-corpus tables-fixedform-bench-corpus
 
@@ -189,11 +192,20 @@ jobs:
 
       - name: pack the C++ corpus
         if: always()
+        env:
+          FEATURE_OUTCOME: ${{ steps.feature_positive.outcome }}
         run: |
           set -euo pipefail
+          test "$FEATURE_OUTCOME" = success
           rm -rf build/nightly/cpp-corpus
           mkdir -p build/nightly/cpp-corpus/testdata build/nightly/cpp-corpus/build
           cp -R testdata/wire testdata/conformance build/nightly/cpp-corpus/testdata/
+          # Publish the C++-written instances only after exact pin comparison.
+          feature_dest=build/nightly/cpp-corpus/testdata/conformance/feature-witnesses/full
+          rm -f "$feature_dest/Root.bin" "$feature_dest/ArrayRoot.bin"
+          cmp build/feature-witness-cpp/outputs/Root.bin testdata/conformance/feature-witnesses/full/Root.bin
+          cmp build/feature-witness-cpp/outputs/ArrayRoot.bin testdata/conformance/feature-witnesses/full/ArrayRoot.bin
+          cp build/feature-witness-cpp/outputs/Root.bin build/feature-witness-cpp/outputs/ArrayRoot.bin "$feature_dest/"
           if [ -d build/fixedform-corpus ]; then cp -R build/fixedform-corpus build/nightly/cpp-corpus/build/; fi
           if [ -d build/fixedform-bench-corpus ]; then cp -R build/fixedform-bench-corpus build/nightly/cpp-corpus/build/; fi
           if [ -d build/conformance/out/cpp ]; then cp -R build/conformance/out/cpp build/nightly/cpp-corpus/cpp-answers; fi
@@ -269,6 +281,9 @@ jobs:
     # whole readiness gate in 31-33 min (main, 2026-11-03..04), so the bound
     # is 50
     timeout-minutes: 50
+    env:
+      SHARED_FIXED_REFERENCE: build/nightly/cpp-corpus/build
+      SHARED_FIXED_RECEIPT: build/nightly/report/fixedform-corpus-identity.json
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -380,13 +395,17 @@ jobs:
           path: build/nightly/cpp-corpus
       - name: read the C++ corpus
         run: |
+          mkdir -p build/nightly/report
+          python3 test/conformance/fixed-corpus-identity.py snapshot "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT"
           cp -R build/nightly/cpp-corpus/testdata/. testdata/
           # Reuse the reference's fixed-form and benchmark corpus as well.
           cp -R build/nightly/cpp-corpus/build/. build/
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase overlay
 
       - name: build the ${{ matrix.lang }} driver and the nightly harness
         run: |
           set -euo pipefail
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase driver-before
           extra=
           # the row's RUSTUP_BIN names the hosted image's cargo; a fleet
           # runner's is on PATH (ci-fast.yml's leg-gate does the same)
@@ -394,25 +413,30 @@ jobs:
           # shellcheck disable=SC2086
           make ${{ matrix.targets }} ${{ matrix.env }} $extra
           go build -tags "$HARNESS_TAGS" -o build/nightly-harness ./test/conformance/harness
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase driver-after
 
       - name: the ${{ matrix.lang }} leg reads the C++ corpus (claims enforced)
         run: |
           mkdir -p build/nightly/report
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase wire-before
           env ${{ matrix.env }} ./build/nightly-harness run --only ${{ matrix.lang }} --claims \
             --coverage build/nightly/report/coverage-${{ matrix.lang }}.json
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase wire-after
 
       - name: the original-nine leg checks the four BOM entry cases
         if: contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang)
         run: |
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase bom-before
           env ${{ matrix.env }} make conformance-bom-entry CONFORMANCE_BOM_LANG=${{ matrix.lang }} \
             CONFORMANCE_BOM_HARNESS=build/nightly-harness CONFORMANCE_BOM_OUT=build/nightly/report/bom
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase bom-after
 
       # THE FIXED FORM (form 3) is read from the C++ reference's byte oracle,
       # build/fixedform-corpus, by each leg's own gate — the targets ci-fast.yml's
-      # leg-gate runs. The gate rebuilds the oracle from this commit's C++
-      # reference (its make prerequisites always do); the oracle cpp-writes
-      # published is the same bytes, kept in cpp-corpus for reading. A leg with
-      # no gate yet is `none` in the coverage table.
+      # leg-gate runs. Prerequisites may rebuild the oracle; every successful
+      # phase must still match the exact downloaded data and manifest bytes.
+      # Only stamps and the compiled benchmark producer are non-inputs. A leg
+      # with no gate yet is `none` in the coverage table.
       - name: the ${{ matrix.lang }} leg reads the C++ fixed form
         if: ${{ !cancelled() }}
         run: |
@@ -430,7 +454,12 @@ jobs:
             elixir) gate="make tables-elixir-fixed-form ELIXIR_BIN=$(command -v elixir) ERL_BIN=$(dirname "$(command -v erl)")" ;;
             *)      echo none > "$record"; echo "no fixed-form gate is registered for ${{ matrix.lang }}"; exit 0 ;;
           esac
-          if $gate; then echo pass > "$record"; else echo fail > "$record"; exit 1; fi
+          echo fail > "$record"
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase fixed-before || exit 1
+          if $gate; then
+            python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase fixed-after || exit 1
+            echo pass > "$record"
+          else echo fail > "$record"; exit 1; fi
 
       - name: the original-nine runtime readiness gate
         if: ${{ !cancelled() && contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang) }}
@@ -440,8 +469,10 @@ jobs:
           record=build/nightly/report/readiness-${{ matrix.lang }}.txt
           echo fail > "$record"
           git rev-parse HEAD > "${record%.txt}.revision" || exit 1
+          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase readiness-before || exit 1
           if env ${{ matrix.env }} python3 test/conformance/nightly-readiness ${{ matrix.lang }} 2>&1 | tee build/nightly/report/readiness-${{ matrix.lang }}.log; then
             if [ "$(grep -Ec '^NIGHTLY_READINESS_PASS language=${{ matrix.lang }} phases=[1-9][0-9]*$' build/nightly/report/readiness-${{ matrix.lang }}.log)" = 1 ]; then
+              python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase readiness-after || exit 1
               echo pass > "$record"
             else
               echo "::error::readiness command returned without its complete acceptance result"; exit 1

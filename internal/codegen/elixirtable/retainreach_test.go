@@ -15,7 +15,6 @@ package elixirtable
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -26,7 +25,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestElixirRetainingLoadRefusesUnreachedNode(t *testing.T) {
@@ -55,9 +53,18 @@ func TestElixirRetainingLoadRefusesUnreachedNode(t *testing.T) {
 	}
 	unreached := bytes.Clone(clean)
 	unreached[15] = 0
-	unknown := appendRootPointerField(t, unreached, ir.TableWireId("future_tree"), 3)
+	unknown := movedToUnknownPointerField(t, paths, clean, "future_tree")
 
 	model := tabletext.NewModel(u)
+	// the unknown field is the wire's only path to the subtree: this reader
+	// lands `tree` null and counts one field it does not declare
+	{
+		v := model.New(u.Tables["Scene"])
+		var report tabletext.Report
+		if ok, err := tablewire.Decode(model, v, unknown, &report); !ok || err != nil || report.Unknown != 1 || instanceField(t, v, "tree").Cell.Node != nil {
+			t.Fatalf("unknown-field-reached: ok=%v err=%v report=%+v, want the subtree reached only through one unknown field", ok, err, report)
+		}
+	}
 	cases := []struct {
 		name string
 		wire []byte
@@ -138,33 +145,68 @@ IO.puts("ELIXIR_RETAIN_REACH_OK")
 	}
 }
 
-// appendRootPointerField adds one field to the root body, naming an existing
-// node record by an id the reader does not declare. The field rides after the
-// directory and before the body's terminator, so the wire's only path to the
-// node is a skipped pointer payload.
-func appendRootPointerField(t *testing.T, wire []byte, id, index uint64) []byte {
+// movedToUnknownPointerField is the clean wire with the root's `tree` subtree
+// named instead by a pointer field `name` that the reader does not declare,
+// and `tree` null, so the wire's only path to the subtree is a skipped pointer
+// payload. The engine's writer spells it, over the same unit with `name`
+// declared beside `tree`: the field rides in the root body before the node
+// table, which is the root body's last field (docs/SPEC-TABLES.md §3.1), and
+// the id table is in first-use order (§3).
+func movedToUnknownPointerField(t *testing.T, paths []string, clean []byte, name string) []byte {
 	t.Helper()
-	if len(wire) < 8 {
-		t.Fatal("the wire carries no id count")
+	dir := t.TempDir()
+	var widened []string
+	declared := false
+	for _, p := range paths {
+		src, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(src)
+		if filepath.Base(p) == "Graph.schema" {
+			const tree = "    tree     *TreeNode\n"
+			if !strings.Contains(text, tree) {
+				t.Fatal("Graph.schema's Scene.tree declaration moved")
+			}
+			text = strings.Replace(text, tree, tree+"    "+name+" *TreeNode\n", 1)
+			declared = true
+		}
+		out := filepath.Join(dir, filepath.Base(p))
+		if err := os.WriteFile(out, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		widened = append(widened, out)
 	}
-	count := binary.LittleEndian.Uint64(wire[len(wire)-8:])
-	idsStart := len(wire) - 8 - int(count)*8
-	if idsStart < 2 || wire[idsStart-1] != 0 {
-		t.Fatal("the wire's root body does not end in its terminator")
+	if !declared {
+		t.Fatal("no Graph.schema among the pointer schemas")
 	}
-	for i := 0; i < int(count); i++ {
-		if binary.LittleEndian.Uint64(wire[idsStart+i*8:]) == id {
-			t.Fatal("the unknown field's id is already in the wire's id table")
+	u := loadUnit(t, widened...)
+	model := tabletext.NewModel(u)
+	v := model.New(u.Tables["Scene"])
+	var report tabletext.Report
+	if ok, err := tablewire.Decode(model, v, clean, &report); !ok || err != nil {
+		t.Fatalf("the widened unit reads graph_shared: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	tree, moved := instanceField(t, v, "tree"), instanceField(t, v, name)
+	if tree.Cell.Node == nil {
+		t.Fatal("graph_shared's root names no tree")
+	}
+	moved.Cell.Node, tree.Cell.Node = tree.Cell.Node, nil
+	wire, err := tablewire.Encode(model, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wire
+}
+
+// instanceField is the storage of the field declared as `name`.
+func instanceField(t *testing.T, v *tabletext.Instance, name string) *tabletext.Field {
+	t.Helper()
+	for i := range v.Fields {
+		if v.Fields[i].Def.Name == name {
+			return &v.Fields[i]
 		}
 	}
-	field := binary.AppendUvarint(nil, count+1)
-	field = append(field, byte(ir.TableKindPointer))
-	field = binary.AppendUvarint(field, index)
-	out := make([]byte, 0, len(wire)+len(field)+8)
-	out = append(out, wire[:idsStart-1]...)
-	out = append(out, field...)
-	out = append(out, 0)
-	out = append(out, wire[idsStart:len(wire)-8]...)
-	out = binary.LittleEndian.AppendUint64(out, id)
-	return binary.LittleEndian.AppendUint64(out, count+1)
+	t.Fatalf("%s declares no field %s", v.Def.Name, name)
+	return nil
 }
