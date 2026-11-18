@@ -314,7 +314,7 @@ func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyE
 	if f.Type.Optional || f.Array == ir.ArrayFixed || f.KeyEnum != "" {
 		return false
 	}
-	return !(f.Type.Kind == ir.TFloat32 && entry.Shape.Packing == ir.TableMessageQuantized)
+	return f.Type.Kind != ir.TFloat32 || entry.Shape.Packing != ir.TableMessageQuantized
 }
 
 // emitMessageElidedCheck refuses a field the read just decoded at a value its

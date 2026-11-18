@@ -64,8 +64,7 @@ func announceGrown(t *testing.T, golden []byte, n int, repeat bool) []byte {
 	if repeat {
 		copy(ids[len(ids)-8:], ids[:8])
 	}
-	out := append(body, 0)
-	out = append(out, ids...)
+	out := slices.Concat(body, []byte{0}, ids)
 	return binary.LittleEndian.AppendUint64(out, uint64(n))
 }
 

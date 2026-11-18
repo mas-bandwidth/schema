@@ -52,9 +52,9 @@ func pythonFixedRun(t *testing.T, files map[string][]byte, script string, inputs
 			t.Fatal(readErr)
 		}
 		if index == 0 {
-			first = string(out)
+			first = out
 			saved = value
-		} else if first != string(out) || string(saved) != string(value) {
+		} else if first != out || string(saved) != string(value) {
 			t.Fatalf("the interpreter pins disagree:\ncurrent %s\nfloor %s", first, out)
 		}
 	}

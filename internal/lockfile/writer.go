@@ -256,7 +256,7 @@ func parseWriter(data []byte, maxEntries int) (*ir.Struct, error) {
 		if kind < 0 {
 			return nil, fmt.Errorf("writer snapshot field %s has unknown kind %s", raw.Name, raw.Kind)
 		}
-		f := &ir.Field{Name: raw.Name, WasName: raw.Was, Type: ir.FieldType{Kind: ir.FieldTypeKind(kind), Signed: raw.Signed, Width: raw.Width, IntBits: raw.I, FracBits: raw.F, Size: raw.Size, Name: raw.Type, Optional: raw.Optional, Timestamp: raw.Timestamp}, ArrayBound: raw.Bound, ArrayMin: raw.Minimum, KeyEnum: raw.Key, Deprecated: raw.Deprecated, Required: raw.Required, HasDefault: raw.HasDefault, DefFloat: math.Float64frombits(raw.DefFloat), DefBool: raw.DefBool, DefBytes: raw.DefBytes, DefVariant: raw.DefVariant, HasIntRange: raw.HasIntRange, HasFloatRange: raw.HasFloatRange, FMin: math.Float64frombits(raw.FLo), FMax: math.Float64frombits(raw.FHi), Resolution: math.Float64frombits(raw.Resolution), Round: raw.Round, Steps: raw.Steps}
+		f := &ir.Field{Name: raw.Name, WasName: raw.Was, Type: ir.FieldType{Kind: kind, Signed: raw.Signed, Width: raw.Width, IntBits: raw.I, FracBits: raw.F, Size: raw.Size, Name: raw.Type, Optional: raw.Optional, Timestamp: raw.Timestamp}, ArrayBound: raw.Bound, ArrayMin: raw.Minimum, KeyEnum: raw.Key, Deprecated: raw.Deprecated, Required: raw.Required, HasDefault: raw.HasDefault, DefFloat: math.Float64frombits(raw.DefFloat), DefBool: raw.DefBool, DefBytes: raw.DefBytes, DefVariant: raw.DefVariant, HasIntRange: raw.HasIntRange, HasFloatRange: raw.HasFloatRange, FMin: math.Float64frombits(raw.FLo), FMax: math.Float64frombits(raw.FHi), Resolution: math.Float64frombits(raw.Resolution), Round: raw.Round, Steps: raw.Steps}
 		switch raw.Array {
 		case "":
 		case "fixed":
@@ -381,8 +381,7 @@ func sameWriterConstraints(a, b *ir.Struct) bool {
 		Lo, Hi                   string
 		FLo, FHi, Resolution     uint64
 	}
-	var rows func(*ir.Struct) []bound
-	rows = func(root *ir.Struct) []bound {
+	rows := func(root *ir.Struct) []bound {
 		var out []bound
 		var record func(*ir.Struct, []int)
 		var field func(*ir.Field, []int)

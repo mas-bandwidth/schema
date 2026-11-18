@@ -279,8 +279,8 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 			scalar(8, false, w.g.TypeRef(r.Name, false))
 		case *ir.Struct:
 			rTyp := w.g.TypeRef(r.Name, r.IsTable)
-			switch {
-			case f.Array == ir.ArrayCounted:
+			switch f.Array {
+			case ir.ArrayCounted:
 				lb := strings.LastIndexByte(src, '[')
 				arr, idx := src[:lb], strings.TrimSuffix(src[lb+1:], "]")
 				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")

@@ -1,4 +1,4 @@
-package goosetable
+package goosetable_test
 
 // A JSON COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2): the bytes inside a line
 // comment (`//` to the end of the line feed or of the input) and inside a
@@ -25,6 +25,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -35,13 +36,15 @@ type commentVector struct {
 	verdict string
 }
 
+const gooseRepoRoot = "../../.."
+
 const commentVectorDir = "testdata/wire/json-comment-text-rules"
 
 // commentVectors reads the manifest's comment rows: every line-comment and
 // block-comment vector, each named with the verdict it must hold.
 func commentVectors(t *testing.T) []commentVector {
 	t.Helper()
-	f, err := os.Open(filepath.Join(fixedRoot, commentVectorDir, "manifest.tsv"))
+	f, err := os.Open(filepath.Join(gooseRepoRoot, commentVectorDir, "manifest.tsv"))
 	if err != nil {
 		t.Fatalf("the vectors' manifest: %v", err)
 	}
@@ -120,7 +123,7 @@ func TestGooseJsonCommentIsText(t *testing.T) {
 	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the JSON read)")
 
 	rows := commentVectors(t)
-	paths, err := compiler.GatherPaths([]string{filepath.Join(fixedRoot, "tables", "examples")})
+	paths, err := compiler.GatherPaths([]string{filepath.Join(gooseRepoRoot, "tables", "examples")})
 	if err != nil {
 		t.Fatalf("gather tables/examples: %v", err)
 	}
@@ -132,7 +135,7 @@ func TestGooseJsonCommentIsText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("goose: %v", err)
 	}
-	tables, err := Generate(u)
+	tables, err := goosetable.Generate(u)
 	if err != nil {
 		t.Fatalf("goosetable: %v", err)
 	}
@@ -142,7 +145,7 @@ func TestGooseJsonCommentIsText(t *testing.T) {
 	main := commentProbe(t, goose.Namespace(u), files, dir, rows)
 	inputs := map[string][]byte{}
 	for i, r := range rows {
-		data, err := os.ReadFile(filepath.Join(fixedRoot, commentVectorDir, r.name))
+		data, err := os.ReadFile(filepath.Join(gooseRepoRoot, commentVectorDir, r.name))
 		if err != nil {
 			t.Fatalf("the vector %q: %v", r.name, err)
 		}

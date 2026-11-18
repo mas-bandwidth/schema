@@ -3,6 +3,7 @@ package darttable
 import (
 	"encoding/binary"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -28,7 +29,7 @@ func announceRootReferences(t *testing.T, u *ir.Unit, count int) ([]byte, map[in
 		ids = binary.LittleEndian.AppendUint64(ids, 0x5100000000000000+uint64(ref))
 	}
 	body = append(body, 0)
-	wire := append(body, ids...)
+	wire := slices.Concat(body, ids)
 	wire = binary.LittleEndian.AppendUint64(wire, uint64(count))
 	return wire, positions, count - seedCount
 }

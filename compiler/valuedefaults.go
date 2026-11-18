@@ -58,7 +58,7 @@ func refuseValueDefaults(u *ir.Unit, target string) error {
 			packetNames = append(packetNames, name)
 		}
 	}
-	if len(form1Names) > 0 && !slices.Contains(valueDefaultTargets, target) && !(target == "python" && pythonScalarValueDefaults(u, form1Names)) {
+	if len(form1Names) > 0 && !slices.Contains(valueDefaultTargets, target) && (target != "python" || !pythonScalarValueDefaults(u, form1Names)) {
 		// Rust has no form-1 table wire, but form 3's prefill image IS the
 		// declared defaults — string and bytes included. A unit whose every
 		// table is a fixed root therefore carries them. A variable table in

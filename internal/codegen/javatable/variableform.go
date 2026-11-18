@@ -5627,7 +5627,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		}
 		elementBound := int64(-1)
 		if !ir.TextListUnbounded(f) {
-			elementBound = int64(ir.TextListValue(f).Type.Size)
+			elementBound = ir.TextListValue(f).Type.Size
 		}
 		if elementBound >= 0 || f.TextTotal > 0 {
 			b.WriteString("            long spent = 0L;\n")

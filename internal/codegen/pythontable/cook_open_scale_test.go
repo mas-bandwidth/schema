@@ -1,7 +1,6 @@
 package pythontable
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,7 +50,7 @@ for n in (1 << 20, 100 << 20, 1 << 30):
 		if hi > 5*lo {
 			t.Errorf("%s: opening time grew more than fivefold: %s", name, out)
 		}
-		t.Log(fmt.Sprintf("%s ns/open: %s", name, strings.ReplaceAll(strings.TrimSpace(out), "\n", "; ")))
+		t.Logf("%s ns/open: %s", name, strings.ReplaceAll(strings.TrimSpace(out), "\n", "; "))
 	}
 	planted := cloneFiles(files)
 	const path = "openscale/_schema/cook.py"

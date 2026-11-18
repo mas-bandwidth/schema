@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -482,7 +483,7 @@ func damageAwareIDTableFault(data []byte) (string, error) {
 		seenIDs[id] = true
 	}
 	limit := len(data)
-	if damage, ok := err.(*fixtureDamage); ok {
+	if damage, ok := errors.AsType[*fixtureDamage](err); ok {
 		limit = damage.PrefixEnd
 	}
 	used := map[uint64]bool{}
@@ -530,11 +531,12 @@ func damageAwareScopes(u *ir.Unit, root *ir.Struct, f *wireFrame) map[int]nested
 		}
 		parent := scopes[parentKey]
 		scope := nestedScope{}
-		if i > 0 && f.spots[i-1].kind == spotRecordType && slices.Equal(f.spots[i-1].enclosing, sp.enclosing) {
+		switch {
+		case i > 0 && f.spots[i-1].kind == spotRecordType && slices.Equal(f.spots[i-1].enclosing, sp.enclosing):
 			if id, ok := f.entryOf(f.spots[i-1].value); ok {
 				scope.owner = nodeTypes[id]
 			}
-		} else if i >= 2 && f.spots[i-1].kind == spotKind && f.spots[i-1].role == roleField && f.spots[i-2].kind == spotRef && slices.Equal(f.spots[i-1].enclosing, sp.enclosing) && slices.Equal(f.spots[i-2].enclosing, sp.enclosing) {
+		case i >= 2 && f.spots[i-1].kind == spotKind && f.spots[i-1].role == roleField && f.spots[i-2].kind == spotRef && slices.Equal(f.spots[i-1].enclosing, sp.enclosing) && slices.Equal(f.spots[i-2].enclosing, sp.enclosing):
 			id, _ := f.entryOf(f.spots[i-2].value)
 			fd := scopeField(parent.owner, id)
 			if fd != nil && !fd.Deprecated && int(f.spots[i-1].value) == ir.TableWireFieldKind(fd) {
@@ -546,9 +548,9 @@ func damageAwareScopes(u *ir.Unit, root *ir.Struct, f *wireFrame) map[int]nested
 					scope.union, _ = fd.Type.Ref.(*ir.Union)
 				}
 			}
-		} else if i > 0 && f.spots[i-1].kind == spotKey && slices.Equal(f.spots[i-1].enclosing, sp.enclosing) {
+		case i > 0 && f.spots[i-1].kind == spotKey && slices.Equal(f.spots[i-1].enclosing, sp.enclosing):
 			scope.owner = parent.element
-		} else if sp.body && parent.element != nil {
+		case sp.body && parent.element != nil:
 			scope.owner = parent.element
 		}
 		// A table-valued union arm carries the arm's declaration, not the union's.

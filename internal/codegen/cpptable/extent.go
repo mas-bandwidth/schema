@@ -746,25 +746,6 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 	g.pf("    return true;\n}\n\n")
 }
 
-// emitNodeBytes emits the bytes ONE NODE takes in a packed region: the
-// record's own storage rounded to the arena's alignment, plus the extent its
-// lists and maps take (docs/SPEC-TABLES.md §2.8, §2.9, §6.3), the sum rounded
-// again so the next node starts aligned. A unit with neither construct emits
-// exactly the term it always emitted.
-func (g *tableGen) emitNodeBytes(table, expr, ind, onBad string, plain func(term string), extent func(term string)) {
-	target := memberOf(g.unit, table)
-	if !g.anyExtent || target == nil || !g.hasExtent(target) {
-		// a node with no container below it takes exactly the term it always
-		// took, so a unit without one emits what it emitted before either
-		// construct existed
-		plain(fmt.Sprintf("TableAlignUp64( (int64_t) sizeof( %s ) )", table))
-		return
-	}
-	g.pf("%sint64_t node_extent = %sExtent( ctx, %s );\n", ind, table, expr)
-	g.pf("%sif ( node_extent < 0 ) { %s }\n", ind, onBad)
-	extent(fmt.Sprintf("TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + node_extent )", table))
-}
-
 // emitWireExtent emits `<T>WireExtent`: the region bytes one record's lists
 // and maps command, read from the wire FRAMING alone at every depth
 // (docs/SPEC-TABLES.md §2.8, §2.9, §6.5). False is the refusal, carrying its

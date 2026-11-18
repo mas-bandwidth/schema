@@ -21,7 +21,7 @@ func main() {
 	if err != nil {
 		fatal("open cases: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	count := 0

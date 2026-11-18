@@ -1,5 +1,3 @@
-//go:build schema_leg_goose
-
 package compiler
 
 // THE GOOSE TABLE WIRE's carries (docs/PORT-GOOSE.md, THE CARRIES PATTERN):

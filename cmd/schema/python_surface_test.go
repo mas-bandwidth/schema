@@ -81,7 +81,7 @@ assert Root.fixed_save([r])==wire
 			probe += "print('cli-surface-ok')\n"
 			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 				stdout, stderr, err := pyrun.Try(t, pin, out, "main.py", map[string][]byte{"main.py": []byte(probe)})
-				if err != nil || string(stdout) != "cli-surface-ok\n" {
+				if err != nil || stdout != "cli-surface-ok\n" {
 					t.Fatalf("%v\n%s\n%s", err, stdout, stderr)
 				}
 			}

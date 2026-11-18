@@ -1,4 +1,4 @@
-package goosetable
+package goosetable_test
 
 // A REPEATED KEY REFUSES THE READ IN EVERY OBJECT OF THE TEXT
 // (docs/SPEC-TABLES.md §16.2, §16.12). The rule reaches an object's keys at
@@ -26,6 +26,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
@@ -118,7 +119,7 @@ func repeatedKeyRemoveSkipSet(t *testing.T, files map[string][]byte) {
 // (or with each other's expected verdict).
 func repeatedKeyRun(t *testing.T, edit func(*testing.T, map[string][]byte)) (fails []string, cases int) {
 	t.Helper()
-	paths, err := compiler.GatherPaths([]string{filepath.Join(fixedRoot, "tables", "examples")})
+	paths, err := compiler.GatherPaths([]string{filepath.Join(gooseRepoRoot, "tables", "examples")})
 	if err != nil {
 		t.Fatalf("gather tables/examples: %v", err)
 	}
@@ -135,7 +136,7 @@ func repeatedKeyRun(t *testing.T, edit func(*testing.T, map[string][]byte)) (fai
 	if err != nil {
 		t.Fatalf("goose: %v", err)
 	}
-	tables, err := Generate(u)
+	tables, err := goosetable.Generate(u)
 	if err != nil {
 		t.Fatalf("goosetable: %v", err)
 	}

@@ -21,7 +21,7 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 	if dotnet == "" {
 		t.Fatal("dotnet is not on PATH")
 	}
-	root := filepath.Join("..")
+	root := ".."
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		t.Fatal(err)

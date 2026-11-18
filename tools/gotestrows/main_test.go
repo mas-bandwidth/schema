@@ -237,7 +237,7 @@ func TestGoNamespaceSplitPreservesOldBoundary(t *testing.T) {
 		}
 	}
 	old := regexp.MustCompile("^TestGo[^S]")
-	for _, char := range []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789λ") {
+	for _, char := range "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789λ" {
 		name := "TestGo" + string(char) + "FutureCase"
 		count := 0
 		for _, pattern := range patterns {

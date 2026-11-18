@@ -358,7 +358,7 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 				nutGood: nutTextTwin(location),
 				goGood:  goTextTwin(location),
 			}
-			if !(location == "text" && text.name == "zero") {
+			if location != "text" || text.name != "zero" {
 				set := goTextField(location)
 				data := bad(text.data)
 				c.goBad = func(m *tabletext.Model, inst *tabletext.Instance) { set(m, inst, data) }

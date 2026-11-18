@@ -72,10 +72,12 @@ func cardBranchSkipErrors(wfs map[string]string) []string {
 			}
 			// startsWith is case-insensitive in Actions
 			prefix := strings.ToLower(m[1])
-			if strings.HasPrefix("sprint-group/schema-main", prefix) {
+			groupRef := "sprint-group/schema-main"
+			cardRef := "sprint/schema-main/a-card"
+			if strings.HasPrefix(groupRef, prefix) {
 				errs = append(errs, fmt.Sprintf("%s:%s skips on head_ref prefix %q, which also skips the group branch sprint-group/schema-main: the landing gate would run nothing", name, j, m[1]))
 			}
-			if !strings.HasPrefix("sprint/schema-main/a-card", prefix) {
+			if !strings.HasPrefix(cardRef, prefix) {
 				errs = append(errs, fmt.Sprintf("%s:%s skips on head_ref prefix %q, which does not skip the card branch sprint/schema-main/a-card", name, j, m[1]))
 			}
 			if rest := cond[len(m[0]):]; rest != "" && (!strings.HasPrefix(rest, " && (") || !strings.HasSuffix(rest, ")")) {

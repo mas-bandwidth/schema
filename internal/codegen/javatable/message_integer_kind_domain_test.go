@@ -263,7 +263,7 @@ func TestJavaMessageIntegerHeldToReaderKind(t *testing.T) {
 			widened = "1"
 		}
 		want := fmt.Sprintf("count=1 damaged=false refused=false widened=%s a=%d b=%d c=%d",
-			widened, int64(oracleValues["a"]), int64(oracleValues["b"]), int64(oracleValues["c"]))
+			widened, oracleValues["a"], oracleValues["b"], oracleValues["c"])
 		if line != want {
 			t.Errorf("%s: Java read %q, want %q", tc.id, line, want)
 		}

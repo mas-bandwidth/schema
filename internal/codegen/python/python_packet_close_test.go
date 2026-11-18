@@ -92,7 +92,7 @@ func TestPythonPacketClose(t *testing.T) {
 func packetCloseMulti(t *testing.T, root, name string) {
 	t.Helper()
 	u := loadPythonUnit(t, filepath.Join(root, "examples"))
-	roots := []string{}
+	var roots []string
 	var sequence string
 	switch name {
 	case "degenerate":

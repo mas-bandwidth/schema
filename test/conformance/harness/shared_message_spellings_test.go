@@ -95,7 +95,7 @@ func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableM
 			}
 			n, err := r.leb()
 			if err != nil || n > uint64(ir.TableKindWidth(int(kind))*8) {
-				return s, fmt.Errorf("invalid numeric width for kind %d: %v", kind, err)
+				return s, fmt.Errorf("invalid numeric width for kind %d: %w", kind, err)
 			}
 			s.Bits = int64(n)
 			if kind >= 18 {
@@ -149,7 +149,7 @@ func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableM
 	case 12:
 		n, err := r.leb()
 		if err != nil || n > math.MaxInt32 {
-			return s, fmt.Errorf("invalid string capacity: %v", err)
+			return s, fmt.Errorf("invalid string capacity: %w", err)
 		}
 		s.Max = int64(n)
 		return s, nil
@@ -157,13 +157,13 @@ func sharedMessageShape(r *sharedMessageBytes, kind uint8, depth int) (ir.TableM
 		if kind == 14 {
 			n, err := r.leb()
 			if err != nil || n > math.MaxUint32 {
-				return s, fmt.Errorf("invalid array minimum: %v", err)
+				return s, fmt.Errorf("invalid array minimum: %w", err)
 			}
 			s.Min = int64(n)
 		}
 		n, err := r.leb()
 		if err != nil || n > math.MaxUint32 || int64(n) < s.Min {
-			return s, fmt.Errorf("invalid collection bound: %v", err)
+			return s, fmt.Errorf("invalid collection bound: %w", err)
 		}
 		s.Max = int64(n)
 		s.Elem, err = r.octet()
@@ -340,7 +340,7 @@ type sharedMessageWalk struct {
 func (w *sharedMessageWalk) reference() (uint64, error) {
 	v, err := w.r.small(w.refBits)
 	if err != nil || v > uint64(len(w.entries)) {
-		return 0, fmt.Errorf("invalid message reference at bit %d: %v", w.r.at, err)
+		return 0, fmt.Errorf("invalid message reference at bit %d: %w", w.r.at, err)
 	}
 	return v, nil
 }
@@ -495,7 +495,7 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 	case 12:
 		n, err := w.r.small(mathbits.Len64(uint64(s.Max)))
 		if err != nil || n > uint64(s.Max) {
-			return false, fmt.Errorf("invalid message string length: %v", err)
+			return false, fmt.Errorf("invalid message string length: %w", err)
 		}
 		p, err := w.r.bytes(n)
 		if err != nil {
@@ -515,7 +515,7 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 		n, err := w.r.small(mathbits.Len64(uint64(s.Max - s.Min)))
 		n += uint64(s.Min)
 		if err != nil || n > uint64(s.Max) {
-			return false, fmt.Errorf("invalid message collection count %d: %v", n, err)
+			return false, fmt.Errorf("invalid message collection count %d: %w", n, err)
 		}
 		if n > 1<<20 {
 			return false, sharedMessageUnsupportedf("unsupported message collection count %d past walk limit", n)
@@ -540,7 +540,7 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 			if e.Kind == 16 {
 				ref, err := w.reference()
 				if err != nil || ref == 0 || w.entries[ref-1].Kind != 0 {
-					return false, fmt.Errorf("invalid keyed message reference: %v", err)
+					return false, fmt.Errorf("invalid keyed message reference: %w", err)
 				}
 			}
 			dflt, err := w.payload(ir.TableVocabularyEntry{Kind: s.Elem, Shape: *s.Inner}, element, depth+1)
@@ -590,7 +590,7 @@ func (w *sharedMessageWalk) payload(e ir.TableVocabularyEntry, f *ir.Field, dept
 	case 30:
 		ref, err := w.reference()
 		if err != nil || ref != 0 && w.entries[ref-1].Kind != 0 {
-			return false, fmt.Errorf("invalid enum reference: %v", err)
+			return false, fmt.Errorf("invalid enum reference: %w", err)
 		}
 		if f == nil {
 			return false, nil

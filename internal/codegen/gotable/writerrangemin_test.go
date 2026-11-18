@@ -157,7 +157,7 @@ func TestReadersHoldCountMin(t *testing.T){
 	probe = strings.Replace(probe, "OLDWIRE", fmt.Sprintf("%q", oldWire), 1)
 	runGenerated(t, writerRangeMinSchema, probe)
 	// Both message envelope branches must preflight the complete batch.
-	sealedProbe := probe[:strings.Index(probe, "func TestReadersHoldCountMin")]
+	sealedProbe, _, _ := strings.Cut(probe, "func TestReadersHoldCountMin")
 	sealedProbe = strings.Replace(sealedProbe, `"encoding/binary";`, "", 1)
 	runGenerated(t, strings.Replace(writerRangeMinSchema, "fixed table Root {", `fixed table Root | integrity = "crc32c" {`, 1), sealedProbe)
 	goWriterVariableCountMin(t)

@@ -986,8 +986,8 @@ static void test_message_form_pad()
 // ---- THE MASK'S WIDTH (docs/SPEC-TABLES.md §3.3, §4) -----------------------
 //
 // A `flags` field of three variants: three bits on the message wire, eight
-// bytes in a file. A file carrying a bit above W, saved as a message, drops it,
-// which is the §4 round-trip row the form moves.
+// bytes in a file. A file carrying a bit above W preserves it across a file
+// round trip; passing a mask wider than W to message save is caller error.
 
 static void test_message_form_mask_width()
 {
@@ -1013,7 +1013,8 @@ static void test_message_form_mask_width()
     const int64_t masked_file = tabledemo::LoadoutConfigMeasure( masked );
     CHECK( masked_file - plain_file == 1 + 1 + 8 + 8 ); // the header, the raw u64, and the trailer entry the new id costs
 
-    // A BIT ABOVE W survives a FILE round trip and not a MESSAGE one
+    // A BIT ABOVE W survives a FILE round trip (on the message wire, passing a
+    // mask wider than W is caller error per docs/rulings.json message-flags-width-is-caller-error)
     tabledemo::LoadoutConfig appended;
     tabledemo::LoadoutConfigReset( appended );
     appended.perks = ( 1u << 3 ) | 1u; // a fourth bit no variant names, beside Shielded
@@ -1025,15 +1026,6 @@ static void test_message_form_mask_width()
     tabledemo::LoadoutConfigReset( from_file );
     CHECK( tabledemo::LoadoutConfigLoad( from_file, file, file_bytes, &report ) && !report.damaged );
     CHECK( from_file.perks == ( ( 1u << 3 ) | 1u ) ); // the file kept the appended bit
-    static uint8_t message[4096];
-    const int64_t message_bytes = tabledemo::LoadoutConfigSaveMessages( &from_file, 1, message, sizeof( message ), &report );
-    CHECK( message_bytes > 0 );
-    pin_table_golden( "loadout_appended_bit_message", message, message_bytes );
-    tabledemo::LoadoutConfig from_message;
-    tabledemo::LoadoutConfigReset( from_message );
-    int64_t count = 1;
-    CHECK( tabledemo::LoadoutConfigLoadMessages( &from_message, &count, vocabulary, message, message_bytes, &report ) && !report.damaged );
-    CHECK( from_message.perks == 1u ); // the message DROPPED the bit above W, by width
 }
 
 // ---- THE ANNOUNCEMENT'S TWO STRICT CHECKS, AND ITS TOLERANCE ---------------

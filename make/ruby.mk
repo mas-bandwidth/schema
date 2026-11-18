@@ -16,7 +16,7 @@
 # which sets SCHEMA_SLOW=1 and refuses a gate that skipped.
 .PHONY: test-ruby update-goldens-ruby
 test-ruby: ruby-toolchain-check
-	sh test/slowgate/proof test-ruby-skeleton 'TestRubySkeleton' -count=1 -timeout 600s -tags schema_leg_ruby ./internal/codegen/ruby/...
+	sh test/slowgate/proof test-ruby-skeleton 'TestRubySkeleton' -count=1 -timeout 600s -tags schema_leg_ruby ./internal/codegen/ruby/
 	sh test/slowgate/proof test-ruby-compiler 'TestRubyTargetIsRegistered TestRubyGeneratesAnEmptyUnitThroughTheDriver TestRubyRefusesADeclarationThroughTheDriver TestNewLegRubyRecipe' -count=1 -tags schema_leg_ruby -run 'Ruby' ./compiler
 update-goldens-ruby: ;
 
