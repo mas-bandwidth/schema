@@ -140,24 +140,35 @@ func plantBareNext(t *testing.T, src string) string {
 	return planted
 }
 
-func driverAnswersAbsent(t *testing.T, driver, dir string) error {
-	slowtest.Gate(t, "sh")
-	list := exec.Command("sh", driver, "manifest.json", "list")
+func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error {
+	slowtest.Gate(t, "Ruby conformance driver")
+	rubyBin := rubyrun.Interpreter(t)
+	manifest := filepath.Join(dir, "MANIFEST.txt")
+	if err := os.WriteFile(manifest, []byte("# empty manifest\n"), 0o644); err != nil {
+		return err
+	}
+	list := exec.Command("sh", driver, manifest, "list")
 	list.Dir = dir
+	list.Env = append(os.Environ(), "RUBY="+rubyBin)
 	out, err := list.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s list: %w\n%s", driver, err, out)
 	}
-	if s := strings.TrimSpace(string(out)); s != "" {
-		return fmt.Errorf("%s lists the surfaces %q; the skeleton answers none", driver, s)
+	listed := strings.Fields(string(out))
+	if len(listed) == 0 {
+		return fmt.Errorf("%s list returned no surfaces", driver)
 	}
-	for _, surface := range []string{"json-read", "binary-read", "block"} {
-		cmd := exec.Command("sh", driver, "manifest.json", surface, dir)
-		cmd.Dir = dir
-		out, err := cmd.CombinedOutput()
-		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 2 {
-			return fmt.Errorf("%s %s: %w, want exit 2 (ABSENT)\n%s", driver, surface, err, out)
+	for _, surface := range listed {
+		if _, statErr := os.Stat(filepath.Join(surfacesDir, surface+".rb")); statErr != nil {
+			return fmt.Errorf("%s lists the unimplemented surface %q", driver, surface)
 		}
+	}
+	cmd := exec.Command("sh", driver, manifest, "unknown-absent-surface", filepath.Join(dir, "out"))
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "RUBY="+rubyBin)
+	out, err = cmd.CombinedOutput()
+	if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 2 {
+		return fmt.Errorf("%s unknown-absent-surface: %w, want exit 2 (ABSENT)\n%s", driver, err, out)
 	}
 	return nil
 }
@@ -337,8 +348,9 @@ func TestRubySkeleton(t *testing.T) {
 		{"type lowercase", ruleConstantSpelling, withDecl(&ir.Struct{Name: "player"}), "type player is not a Ruby constant"},
 		{"const lowercase", ruleConstantSpelling, withDecl(&ir.Const{Name: "max_players"}), "const max_players is not a Ruby constant"},
 		{"enum leading underscore", ruleConstantSpelling, withDecl(&ir.Enum{Name: "_Weapon"}), "enum _Weapon is not a Ruby constant"},
-		{"variant lowercase", ruleConstantSpelling, withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"laser"}}), "Weapon's variant laser is not a Ruby constant"},
-		{"flag lowercase", ruleConstantSpelling, withDecl(&ir.Flags{Name: "Caps", Variants: []string{"fly"}}), "Caps's flag fly is not a Ruby constant"},
+		{"variant leading underscore", ruleConstantSpelling, withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"_laser"}}), "Weapon's variant _laser is not a Ruby constant"},
+		{"variant constant collision", ruleConstantSpelling, withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"laser", "Laser"}}), "Weapon's variant Laser spells constant Laser, colliding with laser"},
+		{"flag leading underscore", ruleConstantSpelling, withDecl(&ir.Flags{Name: "Caps", Variants: []string{"_fly"}}), "Caps's flag _fly is not a Ruby constant"},
 		{"type named like a core constant", ruleCoreConstant, withDecl(&ir.Struct{Name: "Integer"}), "type Integer is a constant the Ruby interpreter or the generated runtime defines"},
 		{"union named like a runtime name", ruleCoreConstant, withDecl(&ir.Union{Name: "Refused"}), "union Refused is a constant the Ruby interpreter or the generated runtime defines"},
 		{"const named PROTOCOL_ID", ruleCoreConstant, withDecl(&ir.Const{Name: "PROTOCOL_ID"}), "const PROTOCOL_ID is a constant the Ruby interpreter or the generated runtime defines"},
@@ -346,7 +358,7 @@ func TestRubySkeleton(t *testing.T) {
 		{"field helper prefix", ruleHelperPrefix, withDecl(&ir.Struct{Name: "Player", Fields: fields("_s_hp")}), "Player's field _s_hp starts with _s_"},
 		{"field generated member", ruleGeneratedMember, withDecl(&ir.Struct{Name: "Player", Fields: fields("save")}), "Player's field save is the name of a member the generated class defines"},
 		{"field generated member read_bits", ruleGeneratedMember, withDecl(&ir.Struct{Name: "Player", Fields: fields("read_bits")}), "Player's field read_bits is the name of a member"},
-		{"arm generated member", ruleGeneratedMember, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "load"}}}), "union Event's arm load is the name of a member the generated union class defines"},
+		{"arm generated member", ruleGeneratedMember, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "read"}}}), "union Event's arm read is the name of a member the generated union class defines"},
 		{"arm named type", ruleGeneratedMember, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "type"}}}), "union Event's arm type is the name of a member the generated union class defines"},
 	}
 
@@ -372,6 +384,8 @@ func TestRubySkeleton(t *testing.T) {
 			{"field with one leading underscore", withDecl(&ir.Struct{Name: "Player", Fields: fields("_hp")})},
 			{"type with a digit and an underscore", withDecl(&ir.Struct{Name: "Player_2"})},
 			{"enum variant in capitals", withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"LASER", "Rail"}})},
+			{"enum variant lowercase exported", withDecl(&ir.Enum{Name: "Tier", Variants: []string{"flash", "pro"}})},
+			{"union arm named save", withDecl(&ir.Union{Name: "ToolBody", Variants: []ir.UnionVariant{{Name: "save"}}})},
 			{"arm named like a field", withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "Spawn"}, {Name: "hit"}}})},
 			// the field access rule carries every keyword (fields.go)
 			{"fields named next and alias", withDecl(&ir.Struct{Name: "Node", Fields: fields("next", "alias")})},
@@ -455,7 +469,8 @@ func TestRubySkeleton(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := driverAnswersAbsent(t, filepath.Join(root, "test", "conformance", "ruby", "driver"), t.TempDir()); err != nil {
+		conformanceDir := filepath.Join(root, "test", "conformance", "ruby")
+		if err := driverSurfaceContract(t, filepath.Join(conformanceDir, "driver"), filepath.Join(conformanceDir, "surfaces"), t.TempDir()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -468,20 +483,45 @@ func TestRubySkeleton(t *testing.T) {
 			t.Fatal(err)
 		}
 		dir := t.TempDir()
-		src, err := os.ReadFile(filepath.Join(root, "test", "conformance", "ruby", "driver"))
+		src, err := os.ReadFile(filepath.Join(root, "test", "conformance", "ruby", "main.rb"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		planted := strings.Replace(string(src), "list)\n", "list)\n\techo json-read\n", 1)
-		if planted == string(src) {
-			t.Fatal("the driver has no list) arm to plant a surface in")
+		anchor := "surface_names.each { |name| puts name }"
+		plantedMain := strings.Replace(string(src), anchor, anchor+"\n    puts 'planted-unimplemented-surface'", 1)
+		if plantedMain == string(src) {
+			t.Fatal("main.rb has no surface_names anchor to plant a surface in")
 		}
-		copyPath := filepath.Join(dir, "driver")
-		if err := os.WriteFile(copyPath, []byte(planted), 0o755); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "main.rb"), []byte(plantedMain), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := driverAnswersAbsent(t, copyPath, dir); err == nil || !strings.Contains(err.Error(), `lists the surfaces "json-read"`) {
-			t.Fatalf("a driver listing json-read went %v; want red naming the surface", err)
+		surfacesSrc := filepath.Join(root, "test", "conformance", "ruby", "surfaces")
+		surfacesDst := filepath.Join(dir, "surfaces")
+		if err := os.MkdirAll(surfacesDst, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		entries, err := os.ReadDir(surfacesSrc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				b, rerr := os.ReadFile(filepath.Join(surfacesSrc, e.Name()))
+				if rerr != nil {
+					t.Fatal(rerr)
+				}
+				if werr := os.WriteFile(filepath.Join(surfacesDst, e.Name()), b, 0o644); werr != nil {
+					t.Fatal(werr)
+				}
+			}
+		}
+		wrapper := "#!/bin/sh\nset -eu\nexec \"$RUBY\" --disable-gems -w \"" + filepath.Join(dir, "main.rb") + "\" \"$@\"\n"
+		copyPath := filepath.Join(dir, "driver")
+		if err := os.WriteFile(copyPath, []byte(wrapper), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := driverSurfaceContract(t, copyPath, surfacesDst, dir); err == nil || !strings.Contains(err.Error(), `lists the unimplemented surface "planted-unimplemented-surface"`) {
+			t.Fatalf("a driver listing planted-unimplemented-surface went %v; want red naming the surface", err)
 		}
 	})
 

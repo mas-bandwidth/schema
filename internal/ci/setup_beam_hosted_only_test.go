@@ -88,7 +88,7 @@ func checkEverySetupBeamIsHostedOnly(wfs map[string]string) []string {
 // exemption so the list cannot outlive the steps it names.
 var setupBeamExemptSteps = map[string][]int{
 	"leg.yml":     {138},
-	"certify.yml": {198, 451, 638, 952},
+	"certify.yml": {201, 457, 647, 961},
 }
 
 // nonExemptSetupBeamErrorsFrom drops only the errors naming an exempt

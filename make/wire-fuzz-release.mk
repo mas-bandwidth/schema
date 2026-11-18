@@ -28,7 +28,7 @@ WIRE_FUZZ_RELEASE_N     ?= 100000
 WIRE_FUZZ_RELEASE_SEEDS ?= 1 2 3
 WIRE_FUZZ_RELEASE_ARMS  := plain retain
 WIRE_FUZZ_RELEASE_DIR   ?= build/wire-fuzz-release
-WIRE_FUZZ_RELEASE_LEGS  := c cpp cs dart elixir go goose java js lobster lua luau moo python rust squirrel
+WIRE_FUZZ_RELEASE_LEGS  := c cpp cs dart elixir go goose java js lobster lua luau moo python rust squirrel ruby
 
 WFR_DEPS_c       = build/wire-fuzz-c
 WFR_DRIVER_c     = ./build/wire-fuzz-c
@@ -78,6 +78,9 @@ WFR_ENV_moo      = MOOFUZZ_NOTE=/dev/null
 
 WFR_DEPS_python   = build/conformance-python python-toolchain-check python-wirefuzz-release-check
 WFR_DRIVER_python = $(PYTHON) -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python
+
+WFR_DEPS_ruby     = build/conformance-ruby ruby-toolchain-check ruby-wirefuzz-release-check
+WFR_DRIVER_ruby   = $(RUBY) --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby
 
 WFR_DEPS_rust    = build/conformance-rust-all
 WFR_DRIVER_rust  = build/conformance-rust-all

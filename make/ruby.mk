@@ -8,7 +8,7 @@
 # (R5 fixed tables and R6 variable tables) satisfy the cross-leg table gates,
 # so R4 builds build/schema-ruby with -tags schema_leg_ruby.
 
-build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null)
+build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null)
 	@mkdir -p build
 	go build -tags schema_leg_ruby -o $@ ./cmd/schema
 
@@ -22,9 +22,25 @@ update-goldens-ruby: ;
 ruby-skeleton-negative-control: ruby-toolchain-check
 	sh test/slowgate/proof ruby-skeleton-negative-control 'TestRubySkeleton' -count=1 -timeout 600s -tags schema_leg_ruby -run 'TestRubySkeleton/negative-control' ./internal/codegen/ruby/
 
-# The conformance driver answers every surface ABSENT until the table layers
-# carry them (test/conformance/ruby/driver).
-build/conformance-ruby: ;
+# build/conformance-ruby generates every MANIFEST.txt tables unit for Ruby,
+# plus the variable-class framing sibling for tblr1 (test/tables/R1.schema).
+build/conformance-ruby: build/schema-ruby testdata/conformance/tables/MANIFEST.txt make/ruby.mk $(CONFORMANCE_UNIT_SCHEMAS)
+	@rm -rf $@ && mkdir -p $@
+	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
+	while read -r key paths; do \
+		if ./build/schema-ruby generate --lang ruby --out $@/$$key $$paths > $@/$$key.log 2>&1; then \
+			rm -f $@/$$key.log; \
+		else \
+			rm -rf $@/$$key; mv $@/$$key.log $@/$$key.refused; \
+			echo "conformance-ruby: $$key refused: $$(head -1 $@/$$key.refused)"; \
+		fi; \
+	done
+	@echo "conformance-ruby: $$(ls -d $@/*/ 2>/dev/null | wc -l | tr -d ' ') units generated, $$(ls $@/*.refused 2>/dev/null | wc -l | tr -d ' ') refused by name"
+	@test "$$(grep -c '^fixed table Cfg$$' test/tables/R1.schema)" = 1
+	@test "$$(grep -c '^package tblr1$$' test/tables/R1.schema)" = 1
+	@mkdir -p $@/tblr1/_framing/source $@/tblr1/_framing/tblr1
+	@sed -e 's/^fixed table Cfg$$/table Cfg/' -e 's/^package tblr1$$/package tblr1_framing/' test/tables/R1.schema > $@/tblr1/_framing/source/R1.schema
+	./build/schema-ruby generate --lang ruby --out $@/tblr1/_framing/tblr1 $@/tblr1/_framing/source/R1.schema
 
 generated/bench/ruby/.stamp: build/schema-ruby $(SCHEMAS_BENCH)
 	@rm -rf generated/bench/ruby && mkdir -p generated/bench/ruby
@@ -41,7 +57,10 @@ generated/ruby-ludicrous/.stamp: build/schema-ruby $(SCHEMAS128)
 	./build/schema-ruby generate --lang ruby --out generated/ruby-ludicrous examples128
 	@touch $@
 
+generated/bench/tables/ruby/.stamp: ;
+
 TEST_LEGS           += test-ruby
+BENCH_TABLES_LEGS   += generated/bench/tables/ruby/.stamp
 TOOLCHAIN_LEGS      += ruby
 TOOLCHAIN_PINS_ruby := RUBY RUBY_FLOOR RUBOCOP STEEP RBS
 CONFORMANCE_LEGS    += $(call unless_skipped,ruby,build/conformance-ruby)

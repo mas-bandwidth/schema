@@ -141,7 +141,7 @@ module SchemaRuntimeUnit
               begin
                 scanner = JsonScanner.new(raw_utf8, nil)
                 decoded = scanner.scan_string
-                raise Refused, 'malformed' if scanner.pos != raw_utf8.length
+                raise Refused, 'malformed' if scanner.pos != raw_utf8.bytesize
               rescue Refused
                 raise TextError.new('text_encoding', start)
               end

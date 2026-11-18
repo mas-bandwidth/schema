@@ -21,8 +21,20 @@ var generatedMembers = wordSet(`read read_bits write load save descriptor initia
 	class freeze dup clone send method`)
 
 // unionMembers are the names a generated union class defines beside its arms:
-// type, the arm number (docs/PORT-RUBY.md, THE VALUE MAPPING).
-var unionMembers = wordSet(`type`)
+// type, the arm number, the packet union codec entry points, and the Object
+// methods generated code relies on (docs/PORT-RUBY.md, IDENTIFIERS).
+var unionMembers = wordSet(`type read read_bits write initialize inspect hash
+	class freeze dup clone send method`)
+
+// VariantConstant returns the Ruby constant name for an enum or flags variant:
+// verbatim when it already starts with an uppercase ASCII letter, otherwise
+// ir.GoExportName as union tag modules spell theirs (docs/PORT-RUBY.md).
+func VariantConstant(v string) string {
+	if v != "" && v[0] >= 'a' && v[0] <= 'z' {
+		return ir.GoExportName(v)
+	}
+	return v
+}
 
 // runtimeNames are the constants the unit module holds besides its
 // declarations: the runtime's (Refused, InvalidValue, LoadReport) and
@@ -149,19 +161,31 @@ func (c checker) checkDecl(file string, d ir.Decl) error {
 		if err := c.checkConstant(file, "enum "+d.Name, d.Name); err != nil {
 			return err
 		}
+		seen := map[string]string{"None": "built-in", "Max": "built-in", "NAMES": "built-in"}
 		for _, v := range d.Variants {
-			if err := c.checkVariant(file, d.Name+"'s variant "+v, v); err != nil {
+			vc := VariantConstant(v)
+			if err := c.checkVariant(file, d.Name+"'s variant "+v, vc); err != nil {
 				return err
 			}
+			if prev, dup := seen[vc]; dup && c.on(ruleConstantSpelling) {
+				return fmt.Errorf("ruby: %s.schema: enum %s's variant %s spells constant %s, colliding with %s; rename it", file, d.Name, v, vc, prev)
+			}
+			seen[vc] = v
 		}
 	case *ir.Flags:
 		if err := c.checkConstant(file, "flags "+d.Name, d.Name); err != nil {
 			return err
 		}
+		seen := map[string]string{"Count": "built-in", "NAMES": "built-in"}
 		for _, v := range d.Variants {
-			if err := c.checkVariant(file, d.Name+"'s flag "+v, v); err != nil {
+			vc := VariantConstant(v)
+			if err := c.checkVariant(file, d.Name+"'s flag "+v, vc); err != nil {
 				return err
 			}
+			if prev, dup := seen[vc]; dup && c.on(ruleConstantSpelling) {
+				return fmt.Errorf("ruby: %s.schema: flags %s's flag %s spells constant %s, colliding with %s; rename it", file, d.Name, v, vc, prev)
+			}
+			seen[vc] = v
 		}
 	case *ir.Struct:
 		if err := c.checkConstant(file, "type "+d.Name, d.Name); err != nil {
@@ -183,8 +207,8 @@ func (c checker) checkUnion(file string, un *ir.Union) error {
 		if err := c.checkMethod(file, what, a.Name); err != nil {
 			return err
 		}
-		if (generatedMembers[a.Name] || unionMembers[a.Name]) && c.on(ruleGeneratedMember) {
-			return fmt.Errorf("ruby: %s.schema: %s is the name of a member the generated union class defines (%s); rename the arm", file, what, memberList(unionMembers))
+		if unionMembers[a.Name] && c.on(ruleGeneratedMember) {
+			return fmt.Errorf("ruby: %s.schema: %s is the name of a member the generated union class defines (%s); rename the arm", file, what, unionMemberList())
 		}
 	}
 	return nil
@@ -234,6 +258,15 @@ func (c checker) checkMethod(file, what, name string) error {
 		return fmt.Errorf("ruby: %s.schema: %s starts with %s, the prefix of the generated code's own names; rename it", file, what, HelperPrefix)
 	}
 	return nil
+}
+
+func unionMemberList() string {
+	names := make([]string, 0, len(unionMembers))
+	for n := range unionMembers {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
 }
 
 func memberList(extra map[string]bool) string {

@@ -141,6 +141,12 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # The Ruby pins (make/ruby-toolchain.mk), for a row naming `ruby`:
+      # .github/actions/ruby restores or builds CRuby 3.4.12, CRuby 4.0.9 and
+      # the locked analyzers under dist/.
+      - uses: ./.github/actions/ruby
+        if: matrix.ruby != ''
+
       # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
       # names `moo`: .github/actions/moo builds it once per runner image and
       # caches it under the pin.

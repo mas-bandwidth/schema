@@ -1,5 +1,3 @@
-//go:build schema_leg_ruby
-
 package compiler_test
 
 import (

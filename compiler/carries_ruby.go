@@ -1,5 +1,3 @@
-//go:build schema_leg_ruby
-
 package compiler
 
 // rubyCarried is every construct the Ruby target carries (docs/SPEC-TABLES.md;

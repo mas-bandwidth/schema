@@ -1,5 +1,3 @@
-//go:build schema_leg_ruby
-
 package compiler
 
 // THE RUBY TABLE WIRE's carries (docs/PORT-RUBY.md, THE CARD MAP: R6-R9):
@@ -22,8 +20,6 @@ var (
 
 func init() {
 	rubyWideTableKinds = true
-	registerListCarrier("ruby")
-	registerMapCarrier("ruby")
 	registerOptionalArrayCarrier("ruby")
 	valueDefaultTargets = append(valueDefaultTargets, "ruby")
 	wasRowTargets = append(wasRowTargets, "ruby")

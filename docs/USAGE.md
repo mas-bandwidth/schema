@@ -5225,6 +5225,100 @@ else:
 ```
 <!-- /python-usage -->
 
+**Ruby** — CRuby 3.4 or later, standard library only, no gems or C extensions
+(the leg is tested on CRuby 3.4.12 and 4.0.9 under `ruby --disable-gems -w`,
+RuboCop 1.92.2 and Steep 2.1.0 strict; [PORT-RUBY.md](PORT-RUBY.md) is its
+design). `schema generate --lang ruby --out <dir> <unit>` writes `<package>.rb`,
+`<package>.rbs` and `<package>/` with its vendored `serialize.rb` and table
+runtime inside the unit directory, so there is nothing to install:
+`require_relative '<package>'` loads the whole unit under `module <Package>`. A
+value is an instance of a generated class, every field born at its declared
+default. Integers of every width are `Integer`, an enum is a module of plain
+`Integer` constants (`ShipType::Corvette`; the implicit zero is `ShipType::None`),
+and a flags set is an `Integer` mask (`ShipFlags::Boosting | ShipFlags::Aiming`).
+A packet type reads with `T.read(data)` (or `T.read_bits(data)`) and writes with
+`value.write`; a table loads with `T.load(data, report)` and saves with
+`value.save`, and has `T.from_json(text)` and `value.to_json` for its text form.
+A read takes an `ASCII-8BIT` `String` and returns the whole value or raises
+`Refused`, whose `reason` names the rule; a write checks the whole value before
+it writes a byte and raises `InvalidValue`, whose `path` and `rule` name the
+field and what it broke. Both inherit from `StandardError`. A `*T` holds the
+instance or `nil`, and two slots holding one instance are one node on the wire
+and the `equal?`-same object again after the load. These two fragments are run
+against the `examples` and `tables/pointers` units under both pinned
+interpreters by `make tables-ruby-usage`:
+
+<!-- ruby-usage examples -->
+```ruby
+require_relative 'example'
+
+ship = Example::ShipCreate.new                 # every field at its declared default
+ship.ship_type = Example::ShipType::Corvette   # an enum is a plain Integer
+ship.has_flags = true
+ship.flags = Example::ShipFlags::Boosting | Example::ShipFlags::Aiming
+ship.health = 750
+
+data = ship.write                              # the packed bits, as an ASCII-8BIT String
+back = Example::ShipCreate.read(data)          # the whole value, or raises Refused
+abort 'the ship did not read back' if back != ship
+
+begin
+  Example::ShipCreate.read(data.byteslice(0, 1))
+  abort 'a truncated packet was read'
+rescue Example::Refused => e
+  puts "refused: #{e.reason}"                  # past_end
+end
+
+ship.health = -1                               # outside its declared [0, MaxHealth]
+begin
+  ship.write
+  abort 'an out-of-range health was written'
+rescue Example::InvalidValue => e
+  puts "refused: #{e.path} #{e.rule}"
+end
+```
+<!-- /ruby-usage -->
+
+<!-- ruby-usage tables/pointers -->
+```ruby
+require_relative 'graphdemo'
+
+# a two-node list, its tail also named by `alias`: one node on the wire
+tail = Graphdemo::ListNode.new
+tail.value = 2
+head = Graphdemo::ListNode.new
+head.value = 1
+head.next = tail
+scene = Graphdemo::Scene.new                   # every field at its declared default
+scene.name = 'intro'
+scene.head = head
+scene.alias = tail
+
+data = scene.save                              # the id-table wire, or raises InvalidValue
+report = Graphdemo::LoadReport.new
+back = Graphdemo::Scene.load(data, report)     # the whole graph, or raises Refused
+values = []
+node = back.head
+until node.nil?
+  values << node.value
+  node = node.next                             # nil is the null reference
+end
+if values != [1, 2] || !back.alias.equal?(back.head.next)
+  abort 'the scene did not load back'
+end
+
+text = back.to_json                            # the JSON text form
+abort 'the JSON did not read back' if Graphdemo::Scene.from_json(text) != back
+
+begin
+  Graphdemo::Scene.load(data.byteslice(0, data.bytesize - 1))
+  abort 'a truncated file was loaded'
+rescue Graphdemo::Refused => e
+  puts "refused: #{e.reason}"
+end
+```
+<!-- /ruby-usage -->
+
 All of them are generated from the same IR and held to the same golden bytes
 in CI. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
