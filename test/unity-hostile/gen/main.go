@@ -268,7 +268,7 @@ func generate(schemaBin, out string, u *unit) error {
 		}
 	} else if !strings.HasSuffix(src, ".schema") {
 		if _, err := os.Stat(src); err != nil {
-			src = src + ".schema"
+			src += ".schema"
 		}
 	}
 	if err := generateUnit(schemaBin, dir, src); err != nil {
