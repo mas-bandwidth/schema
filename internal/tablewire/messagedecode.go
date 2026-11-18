@@ -190,11 +190,9 @@ type bitDecoder struct {
 	empty bool
 }
 
-// sameBuild reports whether the sender announced this reader's own build
-// version. Every field's default and every record's field order are digested
-// into the build version (§20.1, §20.2), so there, and only there, this
-// reader's declaration IS the sender's: the default a field elides at and the
-// order a body's fields ride in (§3.3 (a), (b)).
+// sameBuild compares the announced version. Reader-relative default and order
+// checks also require the complete encoded field entry to match (§3.3).
+// Record membership depends on the build alone.
 func (d *bitDecoder) sameBuild() bool {
 	if !d.buildKnown {
 		d.build, d.buildKnown = ir.BuildVersion(d.m.Unit), true
@@ -334,20 +332,12 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
 	// name it or not, exactly as on the variable form (§3).
 	seen := map[uint64]bool{}
-	// THE ORDER IS THE SENDER'S DECLARATION ORDER, THE ONE THE ANNOUNCEMENT
-	// GIVES (§3.3 (b), §20.2), and a body out of it is refused. Under the
-	// reader's own build version that order is this reader's declaration
-	// order, field for field, because record field order is digested into the
-	// build version; and there every field the sender's record declares is one
-	// this record declares, so a field this reader cannot name has no place in
-	// that order and is refused too. Under another build version the sender may
-	// have lawfully reordered its fields (docs/VERSIONING.md, "Reorder
-	// freely"), and the announcement does not give one record's order on its
-	// own: its entries are shared across records, each placed once, so slot
-	// order is not any one record's declaration order. There the body's order
-	// is not judged, and an unnamed field is skipped and counted (§4).
-	ordered := d.sameBuild()
-	// lastKnown is the declaration index of the last field this body carried
+	// A matching build establishes record membership. Reader-relative order
+	// and elision additionally require this field's full encoded entry shape.
+	// The announcement's slots are shared across records, so slot order alone
+	// never identifies any one record's declaration order (§3.3, §4).
+	ownBuild := d.sameBuild()
+	// lastKnown is the declaration index of the last matching-shape field.
 	lastKnown := -1
 	for {
 		ref, ok := d.reference()
@@ -364,7 +354,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		}
 		i, known := index[entry.Id]
 		if !known {
-			if ordered {
+			if ownBuild {
 				d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a field the record does not declare at the reader's own build version"})
 				return false
 			}
@@ -375,13 +365,16 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 			}
 			continue
 		}
-		if ordered && i <= lastKnown {
-			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "fields out of the writer's declaration order"})
-			return false
-		}
-		lastKnown = i
 		fv := &inst.Fields[i]
 		mine := ir.TableFieldEntry(fv.Def)
+		exact := ownBuild && entry.Key() == mine.Key()
+		if exact {
+			if i <= lastKnown {
+				d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "fields out of the writer's declaration order"})
+				return false
+			}
+			lastKnown = i
+		}
 		if entry.Kind != mine.Kind || entry.Shape.Elem != mine.Shape.Elem {
 			if messageWidens(entry, mine) {
 				// WIDENED (§4), and §3.3 holds that row to the variable form's
@@ -424,8 +417,8 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		// UNION field's None is its own spelling and is refused where it is
 		// read; a field whose read substituted a value (a deprecated variant)
 		// is not judged. The default refusal needs the sender's default, which
-		// the reader knows only at its own build version.
-		if d.sameBuild() && !fv.Def.Required && !fv.Def.Type.Optional && substitutedCount(d.fail) == substituted && messageElides(d.m, fv, empty) {
+		// the reader knows only at its own build version and complete entry shape.
+		if exact && !fv.Def.Required && !fv.Def.Type.Optional && substitutedCount(d.fail) == substituted && messageElides(d.m, fv, empty) {
 			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})
 			return false
 		}
@@ -688,6 +681,8 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3), a key this
 	// reader cannot name included.
 	seen := map[uint64]bool{}
+	exact := d.sameBuild() && entry.Key() == ir.TableFieldEntry(f).Key()
+	lastKnown := int64(0)
 	for range n {
 		key, ok := d.keyedReference(seen)
 		if !ok {
@@ -704,8 +699,29 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		default:
 			cell = &fv.Elems[value-1]
 		}
+		known := value > 0 && value <= int64(tabletext.KeyedSlotCount(f))
+		if exact && known {
+			if value <= lastKnown {
+				d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "keyed slots out of the writer's declaration order"})
+				return false
+			}
+			lastKnown = value
+		}
+		start, substituted := d.r.off, substitutedCount(d.fail)
 		if !d.element(fv, int(value-1), cell, shape) {
 			return false
+		}
+		if exact && known && substitutedCount(d.fail) == substituted {
+			atDefault := false
+			if shape.Elem == ir.TableKindTable {
+				atDefault = d.r.off-start == d.refBits
+			} else if shape.Inner == nil || shape.Inner.Packing != ir.TableMessageQuantized {
+				atDefault = cellIsDefaultIn(d.m, f, cell)
+			}
+			if atDefault {
+				d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a keyed slot stored at its declared default"})
+				return false
+			}
 		}
 	}
 	d.empty = n == 0 // no slot rode (set last: an element's own body reads reset it)

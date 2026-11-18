@@ -1,0 +1,18 @@
+// The WRITER unit of the blob-kind vectors (docs/SPEC-TABLES.md §3.1;
+// docs/rulings.json blob-target-outside-closure-refused). It is the reader
+// unit's successor: its Text adds a field the reader does not declare, `extra
+// *bytes`. A save of it can name a `*bytes` record from that field alone, which
+// a reader of Text skips by its length and counts `unknown`: a newer writer's
+// field is evolution, and the load is accepted.
+package blobkind
+
+table Text
+{
+    body  *string
+    extra *bytes
+}
+
+table Bin
+{
+    data *bytes
+}

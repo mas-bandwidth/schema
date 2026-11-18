@@ -1,5 +1,5 @@
 # make/wire-fuzz-release.mk — THE RELEASE-TIER WIRE-FUZZ GATE, one per leg,
-# all fifteen the same shape (docs/SPEC-TABLES.md §4.2, §6.6; the read-path
+# all legs the same shape (docs/SPEC-TABLES.md §4.2, §6.6; the read-path
 # layers' bar, step e). Included by the Makefile's wildcard include.
 #
 #   make tables-wire-fuzz-release-<leg>     one leg: both arms, three seeds
@@ -28,7 +28,7 @@ WIRE_FUZZ_RELEASE_N     ?= 100000
 WIRE_FUZZ_RELEASE_SEEDS ?= 1 2 3
 WIRE_FUZZ_RELEASE_ARMS  := plain retain
 WIRE_FUZZ_RELEASE_DIR   ?= build/wire-fuzz-release
-WIRE_FUZZ_RELEASE_LEGS  := c cpp cs dart elixir go goose java js lobster lua luau moo rust squirrel
+WIRE_FUZZ_RELEASE_LEGS  := c cpp cs dart elixir go goose java js lobster lua luau moo python rust squirrel
 
 WFR_DEPS_c       = build/wire-fuzz-c
 WFR_DRIVER_c     = ./build/wire-fuzz-c
@@ -75,6 +75,9 @@ WFR_ENV_luau     = LUAUFUZZ_NOTE=/dev/null
 WFR_DEPS_moo     = toolchain-moo build/conformance-moo $(MOOFUZZHOST)
 WFR_DRIVER_moo   = test/conformance/moo/wirefuzz-driver
 WFR_ENV_moo      = MOOFUZZ_NOTE=/dev/null
+
+WFR_DEPS_python   = build/conformance-python python-toolchain-check python-wirefuzz-release-check
+WFR_DRIVER_python = $(PYTHON) -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python
 
 WFR_DEPS_rust    = build/conformance-rust-all
 WFR_DRIVER_rust  = build/conformance-rust-all

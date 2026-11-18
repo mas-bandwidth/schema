@@ -20,7 +20,38 @@ func (pythonTarget) Names() []string { return []string{"python"} }
 // Generate selects the table frame for a table unit and the packet core
 // otherwise. Each emitter holds the identifier rules and names any construct
 // outside its carried surface (docs/PORT-PYTHON.md).
-func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+// ValidateOptions names surface conflicts before the shared forms refusal.
+func (pythonTarget) ValidateOptions(u *ir.Unit, opts Options) error {
+	surfaces, err := pythontable.ParseSurfaces(opts["surface"])
+	if err != nil {
+		return err
+	}
+	if err := pythontable.ValidateSurfaces(u, surfaces); err != nil {
+		return err
+	}
+	return pythontable.ValidateAvailableSurfaces(surfaces)
+}
+
+func (pythonTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return pythonGenerate(u, opts, nil)
+}
+
+func (pythonTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
+	return pythonGenerate(u, opts, lineage)
+}
+
+func pythonGenerate(u *ir.Unit, opts Options, lineage *FixedLineage) (map[string][]byte, error) {
+	surfaces, err := pythontable.ParseSurfaces(opts["surface"])
+	if err != nil {
+		return nil, err
+	}
+	if err := pythontable.ValidateSurfaces(u, surfaces); err != nil {
+		return nil, err
+	}
+	if err := pythontable.ValidateAvailableSurfaces(surfaces); err != nil {
+		return nil, err
+	}
+
 	if len(u.Tables) == 0 {
 		if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
 			return nil, err
@@ -42,12 +73,21 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		return nil, err
 	}
 	if len(u.Tables) > 0 {
-		return pythontable.Generate(u)
+		return pythontable.GenerateSurfaceLineage(u, surfaces, pythonTableLineage(u, lineage))
 	}
 	if err := refuseTables(u, "python"); err != nil {
 		return nil, err
 	}
-	return python.Generate(u)
+	out, err := python.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	if surfaces.View {
+		if err := pythontable.AddView(u, out); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // Python's list codec currently carries only a subset of list element shapes.

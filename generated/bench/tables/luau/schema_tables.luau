@@ -168,6 +168,21 @@ function S.tableId(id: integer): boolean
 	return tableTypeIds[id] == true
 end
 
+-- buildVersion registers the unit's build version (ir.BuildVersion) under each
+-- of its tables, so a message read knows when the sender announced this
+-- reader's own build (docs/SPEC-TABLES.md §3.3 (a), (b)).
+local builds: { [string]: integer } = {}
+function S.buildVersion(version: integer, names: { string })
+	for _, name in names do
+		builds[name] = version
+	end
+end
+
+-- buildOf is the build version registered for the table, or nil.
+function S.buildOf(name: string): integer?
+	return builds[name]
+end
+
 -- lookup is the descriptor a field's t names: every module a descriptor
 -- names requires the module that registers it, so a loaded root's closure is
 -- registered.

@@ -19,7 +19,7 @@ from .Bench import MixedEvent
 from .Bench import MixedEventType
 from .Bench import BenchMixed
 
-PROTOCOL_ID: Final = 0xc93127c82f083edf
+PROTOCOL_ID: Final = 0xc52a41defad6ebb0
 
 __all__ = [
     "Bench",
@@ -40,3 +40,11 @@ __all__ = [
     "PROTOCOL_ID",
     "Refused",
 ]
+
+from ._schema.view import UnitViewInfo as _s_UnitViewInfo
+
+def UnitView() -> "_s_UnitViewInfo":
+    from ._schema.unit_view import UnitView as _s_unit_view
+    return _s_unit_view()
+
+__all__.append("UnitView")

@@ -290,7 +290,7 @@ func main() {
 				os.Exit(2)
 			}
 			err = r.add(f, *budget)
-			f.Close()
+			_ = f.Close()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "gotestreport: %s: %v\n", m, err)
 				os.Exit(2)
@@ -306,8 +306,8 @@ func main() {
 	fmt.Print(f.text)
 	if s := os.Getenv("GITHUB_STEP_SUMMARY"); s != "" {
 		if out, err := os.OpenFile(s, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
-			fmt.Fprintf(out, "```\n%s```\n", f.text)
-			out.Close()
+			_, _ = fmt.Fprintf(out, "```\n%s```\n", f.text)
+			_ = out.Close()
 		}
 	}
 	if f.red {

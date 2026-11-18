@@ -89,6 +89,12 @@ type Group struct {
 	// restores or builds into dist/. Like moo it is a marker, "pin", and never a
 	// version: the versions and their sha256 live in make/python-toolchain.mk.
 	Python string `json:"python,omitempty"`
+	// Ruby says the row needs the Ruby leg's pins (make/ruby-toolchain.mk: the
+	// two CRuby interpreters and the locked analyzers), which
+	// .github/actions/ruby restores or builds into dist/. Like python it is a
+	// marker, "pin", and never a version: the versions and their sha256 live
+	// in make/ruby-toolchain.mk.
+	Ruby string `json:"ruby,omitempty"`
 	// ClangFormat says the row needs the pinned clang-format (make/c.mk's
 	// CLANG_FORMAT_PIN), which the row installs from PyPI as ci-fast's C and
 	// C++ legs do. Like dotnet it is a marker, "pin", and never a version: the
@@ -295,6 +301,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		Lobster     string `json:"lobster"`
 		Squirrel    string `json:"squirrel"`
 		Python      string `json:"python"`
+		Ruby        string `json:"ruby"`
 		ClangFormat string `json:"clang_format"`
 	}
 	if when != whenPullRequest && when != whenNightly {
@@ -321,6 +328,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			Lobster:     g.Lobster,
 			Squirrel:    g.Squirrel,
 			Python:      g.Python,
+			Ruby:        g.Ruby,
 			ClangFormat: g.ClangFormat,
 		})
 	}

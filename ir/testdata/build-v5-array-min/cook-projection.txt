@@ -1,0 +1,6 @@
+schema-build-version 5
+protocol 1dc63b4bd7da3bcb
+byteorder little
+block prologue=magic:8,build_version:8,byte_order:8
+record Probe sizeof=20 alignof=4
+    field 3e7884bf4f412c6f kind=4 offset=0 size=20 elem=4 array=bounded bound=4

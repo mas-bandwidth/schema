@@ -155,6 +155,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"text_valid", "trailer", "u8", "union_cell", "union_shape", "unlink_unreached", "value_edges",
 		"widens", "scalar_admitted", "int_fits",
 		"read_refuse", "read_reset", "WireCheck", "binary_max_depth", "wire_scalar", "wire_payload", "wire_content", "wire_content_at", "wire_body", "wire_graph", "wire_check",
+		"load_elem_is_default", "load_field_elides", "load_is_default", "wire_ref",
 	},
 	"message.lobster": {
 		"MessageBits", "MessageEntry", "MessageRead", "MessageShape", "MessageSlots", "MessageUnitFacts",
@@ -170,7 +171,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"message_slots_of", "message_text", "message_union", "message_unit", "message_value",
 		"message_vocabulary_max_bytes", "mw_align", "mw_body", "mw_cell", "mw_cell_rides",
 		"mw_keyed_pairs", "mw_put", "mw_raw", "mw_rides", "mw_scalar", "mw_union", "mw_value", "new_vocabulary",
-		"own_vocabulary", "save_messages",
+		"own_vocabulary", "save_messages", "message_same_encoding",
 	},
 	"optionals.lobster": {
 		"present_optionals",

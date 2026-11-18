@@ -32,7 +32,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	const (
 		refEntries   = 75
 		refBlockLen  = 4 + refEntries*fixedEntryBytes
-		refHash      = uint64(0x5f1320927e9ad910)
+		refHash      = uint64(0xcde672e9249dd5e0)
 		refBodyBytes = int64(1236)
 	)
 	if len(w.entries) != refEntries {
@@ -498,7 +498,7 @@ func TestFixedOptionalRowsMatchReference(t *testing.T) {
 	// this same schema), and test/js-tables/fixedoptional_corpus.cpp prints them
 	const (
 		refEntries   = 25
-		refHash      = uint64(0xde3aa2874e2260e8)
+		refHash      = uint64(0x33d0e7f006c03fc0)
 		refBodyBytes = int64(72)
 	)
 	w := fixedWalkRoot(st)

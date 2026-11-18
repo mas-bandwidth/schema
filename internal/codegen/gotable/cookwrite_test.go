@@ -186,3 +186,70 @@ func TestWideRegion(t *testing.T){
 }
 `)
 }
+
+// The real generated cook writer must make the independent dead-slot oracle red.
+func TestGoCookDeadSlotNegativeControl(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+type Child {n int32 = 7}
+fixed table Root {items [..2]Child}`
+	u := unitFrom(t, schema)
+	m := tabletext.NewModel(u)
+	want, err := tablecook.Cook(m, m.New(m.Lookup("Root")), tablecook.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := fmt.Sprintf(`package probe
+import("bytes";"testing")
+func TestDeadCook(t *testing.T){t.Parallel();var v Root;RootReset(&v);got:=make([]byte,RootCookMeasure(&v));if !RootCookFrom(&v,got,TableByteOrderLittle)||!bytes.Equal(got,%#v){t.Fatal("dead slot differs")}}
+`, want)
+	out, err := runGeneratedEdited(t, schema, probe, func(files map[string][]byte) {
+		changed := 0
+		for name, data := range files {
+			if !strings.HasSuffix(name, "Cook.go") {
+				continue
+			}
+			text := string(data)
+			needle := "count = used"
+			changed += strings.Count(text, needle)
+			files[name] = []byte(strings.ReplaceAll(text, needle, "count = f.ArrayBound"))
+		}
+		if changed != 1 {
+			t.Fatalf("cook live-count hook changed: %d", changed)
+		}
+	})
+	if err == nil || !strings.Contains(string(out), "dead slot differs") {
+		t.Fatalf("dead cook control did not fail by name: %v\n%s", err, out)
+	}
+}
+
+// A nonempty list inside a dead counted slot does not enter the cooked region.
+func TestGoCookDeadContainerMatchesTool(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+table Holder {values []int32}
+table Root {tail [..2]Holder}`
+	m := tabletext.NewModel(unitFrom(t, schema))
+	v := m.New(m.Lookup("Root"))
+	dead := &v.Fields[0].Elems[1].Tab.Fields[0]
+	dead.Count = 1
+	dead.Elems = []tabletext.Cell{{I: 9, U: 9}}
+	var probe strings.Builder
+	probe.WriteString(`package probe
+import("bytes";"testing")
+func TestDeadContainer(t *testing.T){t.Parallel();var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();*HolderValuesAdd(&b.Main,&b.GetRoot().Tail[1].Values)=9
+`)
+	for _, big := range []bool{false, true} {
+		want, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
+		if err != nil {
+			t.Fatal(err)
+		}
+		order := "TableByteOrderLittle"
+		if big {
+			order = "TableByteOrderBig"
+		}
+		fmt.Fprintf(&probe, "{want:=%#v;n,err:=RootCookMeasureReason(b.GetRoot(),&b.Arena);if n!=int64(len(want))||err!=nil{t.Fatalf(\"dead container measure: %%d %%v\",n,err)};got:=make([]byte,n);if !RootCookFrom(b.GetRoot(),got,%s,&b.Arena)||!bytes.Equal(got,want){t.Fatal(\"dead container differs from tool\")}}\n", want, order)
+	}
+	probe.WriteString("}\n")
+	runGenerated(t, schema, probe.String())
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestEngineReadsRefuseNonCanonical holds the engine's read entries to the
@@ -142,6 +143,49 @@ func readVerdict(t *testing.T, nc, one *tabletext.Model, ncVocab, oneVocab *tabl
 	}
 	t.Fatalf("manifest names form %q", r.form)
 	return ""
+}
+
+// TestVariableReadRefusesNodeTableOutOfPlace holds the misplaced node table
+// (§3.1) on its own: the node-table field moved to the front of the root body
+// and the id table renumbered to the first-use order of that body, so the
+// table's place is the one thing wrong. Every variable-form read entry refuses
+// it, and the same fields with the node table last read.
+func TestVariableReadRefusesNodeTableOutOfPlace(t *testing.T) {
+	t.Parallel()
+	m := listModel(t, `package nodeplace
+table Node { v int32 }
+table Root
+{
+    a    int32
+    head *Node
+}
+`)
+	canonical, err := tablewire.Encode(m, place(t, m, "Root", `{"a":1,"head":{"v":2}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, ids := trailerOf(t, canonical)
+	// The writer's body: a (ref 1, i32), head (ref 2, node index 2), then the
+	// node table (ref 3, kind 12, L, records), then the terminator.
+	if len(ids) != 5 || ids[0] != ir.TableWireId("a") || ids[1] != ir.TableWireId("head") || ids[2] != ir.TableNodeWireId ||
+		len(body) < 12 || body[0] != 1 || body[1] != byte(ir.TableKindI32) || body[6] != 2 || body[7] != byte(ir.TableKindPointer) ||
+		body[8] != 2 || body[9] != 3 || body[10] != byte(ir.TableKindString) || body[len(body)-1] != 0 {
+		t.Fatalf("the writer's layout moved: ids=%x body=%x", ids, body)
+	}
+	field := func(ref byte, b []byte) []byte { return append([]byte{ref}, b[1:]...) }
+	nodes := field(1, body[9:len(body)-1])
+	a := field(2, body[0:6])
+	head := field(3, body[6:9])
+	// The records name ids 4 and 5, which keep their slots.
+	order := []uint64{ids[2], ids[0], ids[1], ids[3], ids[4]}
+	misplaced := noWriterWire(order, nwCat(nodes, a, head, []byte{0}))
+	noWriterRefuse(t, m, misplaced)
+
+	// The control: the writer's own bytes, the node table last, read.
+	back := m.New(m.Lookup("Root"))
+	if ok, err := tablewire.Decode(m, back, canonical, &tabletext.Report{}); !ok || err != nil {
+		t.Fatalf("the writer's bytes were refused: %v", err)
+	}
 }
 
 func loadNonCanonicalModel(t *testing.T, path string) *tabletext.Model {

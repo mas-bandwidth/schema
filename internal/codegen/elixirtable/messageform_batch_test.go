@@ -120,11 +120,8 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Parallel()
 		u := messageLoadUnit(t, root, units["backenddemo"])
 		ann := filepath.Join(root, connections["backenddemo"].path)
-		body := `    vocab =
-      case M.announce_read(File.read!(file())) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
-      end
+		body := `    {:ok, announced} = M.announce_read(File.read!(file()))
+    {:ok, vocab} = M.for_root(announced, "LoginRequest")
 
     check({:error, :no_vocabulary} == M.load_messages(M.new(), <<>>), "load with no vocabulary decoded")
     check({:error, :no_vocabulary} == M.measure_messages(M.new(), []), "measure with no vocabulary answered")
@@ -151,11 +148,9 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Parallel()
 		u := messageLoadUnit(t, root, units["backenddemo"])
 		ann := filepath.Join(root, connections["backenddemo"].path)
-		body := `    vocab =
-      case M.announce_read(File.read!(file())) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
-      end
+		body := `    {:ok, announced} = M.announce_read(File.read!(file()))
+    {:ok, vocab} = M.for_root(announced, "LoginRequest")
+    {:ok, store} = M.for_root(announced, "StorePurchase")
 
     # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
     # (docs/SPEC-TABLES.md §3.3, §4): the reference pins a three-body
@@ -167,7 +162,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
     # trailing pad to the byte boundary is not zero" (§3.3).
     {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("login_full_bad_pad_message.bin")))
     # "BYTES AFTER THE PAD ARE MALFORMED" (§3.3).
-    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("store_full_trailing_byte_message.bin")))
+    {:malformed, 0, []} = M.load_messages(store, File.read!(golden("store_full_trailing_byte_message.bin")))
 
     # "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does
     # not know is a REFUSAL by name and never damage." (docs/SPEC-TABLES.md §3.3)
@@ -207,6 +202,16 @@ func TestMessageFormBatchElixir(t *testing.T) {
 			t.Fatal(err)
 		}
 		ns := ir.GoExportName(u.Package)
+		// The hand-built announcements ride the ids of LoginRequest's own
+		// fields, so the bound read keeps their values under the peer's
+		// shapes; the build version is another, so no order or default is
+		// judged.
+		login := u.Tables["LoginRequest"]
+		if login == nil || len(login.Fields) < 2 {
+			t.Fatalf("LoginRequest has %d fields", len(login.Fields))
+		}
+		id0 := ir.TableFieldEntry(login.Fields[0]).Id
+		id1 := ir.TableFieldEntry(login.Fields[1]).Id
 
 		t.Run("source", func(t *testing.T) {
 			t.Parallel()
@@ -215,7 +220,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 
 		t.Run("values", func(t *testing.T) {
 			t.Parallel()
-			out, err := runElixirModuleProbe(t, module, boundsValuesProbe(ns))
+			out, err := runElixirModuleProbe(t, module, boundsValuesProbe(ns, id0, id1))
 			if err != nil {
 				t.Fatalf("%v\n%s", err, out)
 			}
@@ -224,7 +229,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_descending_range", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageDescendingEmptyRange(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsDescendingProbe(ns))
+			out, err := runElixirModuleProbe(t, bad, boundsDescendingProbe(ns, id0, id1))
 			if err == nil || !strings.Contains(out, "empty text") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad descending range did not fail for the empty-text reason:\nerr=%v\n%s", err, out)
 			}
@@ -233,7 +238,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_count_loop", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageCountLoop(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsCountProbe(ns))
+			out, err := runElixirModuleProbe(t, bad, boundsCountProbe(ns, id0, id1))
 			if err == nil || !strings.Contains(out, "count-driven zero-progress materialization") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad count loop did not fail for the count-driven reason:\nerr=%v\n%s", err, out)
 			}
@@ -242,7 +247,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_declared_capacity_cap", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageDeclaredCapacityCap(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsDeclaredProbe(ns))
+			out, err := runElixirModuleProbe(t, bad, boundsDeclaredProbe(ns, id0, id1))
 			if err == nil || !strings.Contains(out, "declared capacity shrank") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad declared capacity cap did not fail for the element-cap reason:\nerr=%v\n%s", err, out)
 			}
@@ -254,11 +259,8 @@ func TestMessageFormBatchElixir(t *testing.T) {
 // body against the values the form-1 instance's pinned text pins, SaveMessages
 // the values back, and MeasureMessages the length.
 func roundTripBody(row messageBatchRow, expected string) string {
-	b := `    vocab =
-      case M.announce_read(File.read!(file())) do
-        {:ok, v} -> v
-        other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
-      end
+	b := `    {:ok, announced} = M.announce_read(File.read!(file()))
+    {:ok, vocab} = M.for_root(announced, "` + row.root + `")
 
     # "THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE ... loading either form and
     # saving the other, which reproduces the other's pinned bytes", and "a
@@ -623,7 +625,7 @@ func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, er
 	return string(out), err
 }
 
-func boundsValuesProbe(ns string) string {
+func boundsValuesProbe(ns string, id0, id1 uint64) string {
 	return boundsProbe(ns, boundsValueFns, `
     empty_text_and_lengths()
     small_arrays()
@@ -632,28 +634,31 @@ func boundsValuesProbe(ns string) string {
     second_body_damage()
     fixed_nine_last_field()
     declared_capacity_above_budget()
-`)
+`, id0, id1)
 }
 
-func boundsDescendingProbe(ns string) string {
+func boundsDescendingProbe(ns string, id0, id1 uint64) string {
 	return boundsProbe(ns, boundsDescendingFn, `
     descending_control()
-`)
+`, id0, id1)
 }
 
-func boundsCountProbe(ns string) string {
+func boundsCountProbe(ns string, id0, id1 uint64) string {
 	return boundsProbe(ns, boundsCountFn, `
     count_control()
-`)
+`, id0, id1)
 }
 
-func boundsDeclaredProbe(ns string) string {
+func boundsDeclaredProbe(ns string, id0, id1 uint64) string {
 	return boundsProbe(ns, boundsDeclaredFn, `
     declared_capacity_control()
-`)
+`, id0, id1)
 }
 
-func boundsProbe(ns, fns, body string) string {
+func boundsProbe(ns, fns, body string, id0, id1 uint64) string {
+	fns = strings.ReplaceAll(fns, "0x1000", fmt.Sprintf("%#x", id0))
+	fns = strings.ReplaceAll(fns, "0x1001", fmt.Sprintf("%#x", id1))
+	fns = strings.ReplaceAll(fns, "0x2000", fmt.Sprintf("%#x", id1))
 	return fmt.Sprintf(`# GENERATED BY internal/codegen/elixirtable/messageform_batch_test.go.
 defmodule Probe do
   import Bitwise
@@ -710,7 +715,7 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
           raise "count-driven zero-progress materialization"
         end
 
-        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)`
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth, sub)`
 	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
 }
 
@@ -771,9 +776,14 @@ const boundsElixirHelpers = `
         2, 0, 0, 0, 0, 0, 0, 0>>
   end
 
+  # a hand-built announcement at build version 0, bound to LoginRequest: its
+  # entries ride that root's own field ids, and another build's batch is not
+  # judged for declaration order or defaults
   defp read!(words) do
-    case M.announce_read(announce(words)) do
-      {:ok, vocab} -> vocab
+    with {:ok, vocab} <- M.announce_read(announce(words)),
+         {:ok, bound} <- M.for_root(vocab, "LoginRequest") do
+      bound
+    else
       other -> raise "announce_read #{inspect(other)}"
     end
   end

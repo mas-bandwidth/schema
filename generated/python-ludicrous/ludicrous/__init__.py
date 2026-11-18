@@ -15,7 +15,7 @@ from .Ludicrous import DegenerateProbe
 from .Ludicrous import FixedVec
 from .Ludicrous import FixedQuat
 
-PROTOCOL_ID: Final = 0xf4a226f4166d919b
+PROTOCOL_ID: Final = 0xd2ded2cc8a482aa1
 
 __all__ = [
     "DegenerateProbe",
@@ -32,3 +32,11 @@ __all__ = [
     "UnsignedProbe",
     "WideProbe",
 ]
+
+from ._schema.view import UnitViewInfo as _s_UnitViewInfo
+
+def UnitView() -> "_s_UnitViewInfo":
+    from ._schema.unit_view import UnitView as _s_unit_view
+    return _s_unit_view()
+
+__all__.append("UnitView")

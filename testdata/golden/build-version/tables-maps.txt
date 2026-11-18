@@ -1,6 +1,6 @@
-0xe652c379324b8aa1
-schema-build-version 5
-protocol 1ac124decde5b2aa
+0x22d61a379e549de3
+schema-build-version 6
+protocol 45d9d3ccd4c2f4b9
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record 033de3f1246bba76.755332609c470fbd sizeof=24 alignof=8
@@ -50,7 +50,7 @@ record Crews sizeof=24 alignof=8
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Depth sizeof=136 alignof=8
     field 1a08aa1921ca5caf kind=13 offset=0 size=16 type=Squad
-    field 1f6459a2cea1fc02 kind=13 offset=16 size=52 type=Squad elem=16 array=bounded bound=3
+    field 1f6459a2cea1fc02 kind=13 offset=16 size=52 type=Squad elem=16 array=bounded bound=3 countmin=0
     field 70551ff29550f15d kind=13 offset=72 size=32 type=Squad elem=16 array=keyed bound=2 key=Slot
     field e756c0190570ccb5 kind=15 offset=104 size=24 union=Force
     field bf82010f6f71eae9 kind=4 offset=128 size=4
@@ -110,7 +110,7 @@ record b4578774a78fb150.124250ad5a5b6d14 sizeof=24 alignof=8
     field 7ce4fd9430e80cea kind=14 offset=8 size=16 type=Item elem=8 elemkind=17 array=unbounded
 record c85b940060088651.79d594675e391090 sizeof=32 alignof=8
     field 3dc94a19365b10ec kind=8 offset=0 size=4
-    field 7ce4fd9430e80cea kind=17 offset=8 size=20 type=Item elem=8 array=bounded bound=2
+    field 7ce4fd9430e80cea kind=17 offset=8 size=20 type=Item elem=8 array=bounded bound=2 countmin=0
 record e8130af045a036f8.2b7dea192bb7be29 sizeof=16 alignof=8
     field 3dc94a19365b10ec kind=9 offset=0 size=8
     field 7ce4fd9430e80cea kind=13 offset=8 size=4 type=Item
@@ -119,7 +119,7 @@ record e8130af045a036f8.afb728fff268814f sizeof=312 alignof=4
     field 7ce4fd9430e80cea kind=13 offset=308 size=4 type=Item
 record ea7bdd2b70c8c2bb.437dfc8ab2566816 sizeof=24 alignof=4
     field 3dc94a19365b10ec kind=7 offset=0 size=2
-    field 7ce4fd9430e80cea kind=13 offset=4 size=20 type=Item elem=4 array=bounded bound=4
+    field 7ce4fd9430e80cea kind=13 offset=4 size=20 type=Item elem=4 array=bounded bound=4 countmin=0
 record ec07a2f760550a91.1c84390d304f4f42 sizeof=8 alignof=4
     field 3dc94a19365b10ec kind=6 offset=0 size=1
     field 7ce4fd9430e80cea kind=13 offset=4 size=4 type=Item

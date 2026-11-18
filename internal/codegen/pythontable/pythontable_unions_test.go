@@ -868,12 +868,22 @@ table Root { least [2..4]Pick }
 		t.Fatal(err)
 	}
 	const path = "unionbirth/Core.py"
-	const born = `self.least = [new_union_by_name("Pick"), new_union_by_name("Pick")]`
-	source := string(files[path])
-	if strings.Count(source, born) != 1 {
-		t.Fatalf("birth control target occurs %d times", strings.Count(source, born))
+	// Both the original literal and the bounded-size comprehension allocate
+	// distinct union elements; sabotage whichever form the emitter uses.
+	forms := []string{
+		`self.least = [new_union_by_name("Pick"), new_union_by_name("Pick")]`,
+		`self.least = [new_union_by_name("Pick") for _s_i in range(2)]`,
 	}
-	files[path] = []byte(strings.Replace(source, born, `self.least = []`, 1))
+	source := string(files[path])
+	matches := 0
+	for _, born := range forms {
+		matches += strings.Count(source, born)
+		source = strings.Replace(source, born, `self.least = []`, 1)
+	}
+	if matches != 1 {
+		t.Fatalf("birth control target occurs %d times", matches)
+	}
+	files[path] = []byte(source)
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `from unionbirth import Root

@@ -31,8 +31,37 @@
   `pythonRefusePacketUnionArrays` (compiler/target_python.go), names an array
   of a union whose arms are all packet types until P4 carries packet types
   into tables.
-- **Not here.** A scalar arm under a kind its declared kind widens to is the
-  widening card's; this leg refuses it `kind_mismatch` until that lands.
+- **Widening is the widening cell's.** A scalar arm under a kind its declared
+  kind widens to is read and counted by the kind-pair ladder, held in
+  `TestPythonVtWidening` (`port/python/vt/widening`).
+
+### The union rows
+
+The three roadmap rows, `port/python/vt/union-table-arms`, `union-arrays` and
+`union-arms-any`, are held over the conformance manifest by
+`TestPythonVtUnionsRows` (`internal/codegen/pythontable/vtunions_rows_test.go`,
+`make python-vt-unions-rows`), one subtest per row over the same instance and
+report rows as the Lua leg's `TestLuaVariableTableCells`, and the
+`unions_maps_keyed` construct beside them. Each row's wire is read by the Go
+engine and by the generated package under both pins, at the root as the unit
+declares it: a `fixed table` root (`tblm1`, `tblm2`, `tbla2`, `ToolMessage`)
+reads form 3 alone, so the evolution report rows, whose files are form 1,
+refuse there as `previous_form`, which `reports.txt` also says; the variable
+roots (`Feed`, `ToolEnvelope`, the construct's `Kit`) read form 1. A read
+writes back the canonical wire byte for byte with its measure equal to the
+length; a refusal leaves no value, and either way the caller's buffer and
+`LoadReport` are untouched. The arm retypes on form 1 are the widening cell's
+rows, held there with the root variable.
+
+`TestPythonVtUnionsRowsNegativeControl` (`make
+python-vt-unions-rows-negative-control`) plants five faults in a copy of the
+emitted runtime: the variable arm's `L` one byte long, a length-kind arm framed
+a second time instead of written in place, the arm's trailing-bytes check off,
+every fixed arm read as none, and a fixed form refusal that writes into the
+caller's report. Each names the cases it must turn red, and
+`TestPythonVtUnionsRowsControlsCoverEveryCase` requires every case of every
+row to be named by some control. No runtime change was needed: every row read
+as the engine reads at the first run.
 
 ### Unions bench
 

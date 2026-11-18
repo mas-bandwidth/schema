@@ -27,6 +27,23 @@
   holds the two shapes to the same value and bytes and times them (Bench
   below); the bulk shape is kept.
 
+### The roadmap row
+
+`TestPythonVtUnboundedRows` holds `port/python/vt/unbounded-arrays` over every
+manifest row of the construct (the corpus the Lua leg names for the same row:
+`list_tables`, `list_scalars`, `list_empty`, `list_erased`, `list_mixed`,
+`list_shared`, `list_nested`, `list_of_maps`, `list_migrates` and the report
+row `list_scalar_widen`) and the Go-engine construct `blobs_pointers`, under
+both pinned interpreters. Each instance reads and saves back to its own wire
+byte for byte with its measure its length; the report row is refused, as
+reports.txt and the engine refuse it; a refusal leaves no value and the
+caller's buffer and report untouched. Every root of the corpus is a variable
+table, so the row reads form 1. The rows needed no runtime change.
+`TestPythonVtUnboundedRowsNegativeControl` plants, in a copy of
+`kind_array.py` and `kind_pointer_array.py`, the save's count one too many, the
+read's count one too few and the trailing-bytes check removed, and requires the
+rows each fault reaches red by name (`make python-vt-unbounded-rows-negative-control`).
+
 ### Array bench
 
 The array bench (`TestPythonVtUnboundedShapeBench`) reads and writes one

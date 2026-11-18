@@ -168,6 +168,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitWriteBody(st)
 			g.gen.emitCheckBody(st)
 			g.gen.emitDecodeBody(st)
+			g.gen.emitReadCheckBody(st)
 			g.gen.emitDeadCheckBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
@@ -223,6 +224,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.needHome(st.Name+"FixedWriteBody", st.Name+"FixedDecode", st.Name, "Init"+st.Name)
 	if fixedStructHasDead(st) {
 		g.needHome(st.Name + "FixedCheckDead")
+	}
+	if fixedStructChecked(st) {
+		g.needHome(st.Name + "FixedCheckRead")
 	}
 	finite := slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
 	if finite {
@@ -390,11 +394,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	}
 
 	// ---- the read ----
-	g.pf("// A REFUSAL AT RECORD k KEEPS NOTHING OF THE BATCH (docs/SPEC-TABLES.md §4,\n")
-	g.pf("// §6.5): every record this read wrote, k included, goes back to its declared\n")
-	g.pf("// defaults, and the refusal and the damage are the report's; no counter moves.\n")
-	g.pf("function %sFixedRefuseBatch(values, k, stage, report) {\n", st.Name)
-	g.pf("  for (let j = 0; j <= k; j++) { Init%s(values[j]); }\n", st.Name)
+	g.pf("// CHECK refuses before LAND touches any caller record (§5.3).\n")
+	g.pf("function %sFixedRefuseBatch(stage, report) {\n", st.Name)
 	g.pf("  report.refused = stage.refused;\n")
 	g.pf("  report.damaged = stage.damaged;\n")
 	g.pf("  return -1;\n")
@@ -525,32 +526,38 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// prefill, loop and projection over the image. fixedform_test.go holds the
 	// door to exactly this shape and only while §3.4 lists javascript, and
 	// fixedform_inplace_test.go holds both paths' results equal.
+	g.pf("  // Check EVERY record hash before any content or destination.\n")
+	g.pf("  for (let at = layoutAt + layoutBytes; at < byteLength; at += recordBytes) {\n")
+	g.pf("    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {\n")
+	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n    }\n  }\n")
 	g.pf("  const identity = entries === %sFixedIdentity && holeN === 0;\n", st.Name)
+	g.pf("  // CHECK the complete batch first; only LAND may project caller values.\n")
+	g.pf("  for (let phase = 0; phase < 2; phase++) {\n")
+	g.pf("  TableFixedResetReport(stage); // the check pass commits no counters\n")
 	g.pf("  let at = layoutAt + layoutBytes;\n")
 	g.pf("  for (let k = 0; k < n; k++) {\n")
-	g.pf("    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
-	g.pf("    // NAME, never a guess and never damage: nothing is decoded, no counter moves.\n")
-	g.pf("    if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {\n")
-	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
-	g.pf("    }\n")
 	g.pf("    if (identity) {\n")
-	if fixedStructHasDead(st) {
-		g.pf("      %sFixedCheckDead(srcView, at + 8, stage);\n", st.Name)
-		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+	if fixedStructHasDead(st) || fixedStructChecked(st) {
+		g.pf("      if (phase === 0) {\n")
+		if fixedStructHasDead(st) {
+			g.pf("        %sFixedCheckDead(srcView, at + 8, stage);\n", st.Name)
+			g.pf("        if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", st.Name)
+		}
+		if fixedStructChecked(st) {
+			g.pf("        %sFixedCheckRead(srcView, at + 8, stage);\n", st.Name)
+		}
+		g.pf("        if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", st.Name)
+		g.pf("      } else {\n")
+		g.pf("        %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
+		g.pf("      }\n")
+	} else {
+		g.pf("      if (phase === 1) { %sFixedDecode(values[k], srcView, at + 8, stage); }\n", st.Name)
 	}
-	g.pf("      %sFixedDecode(values[k], srcView, at + 8, stage);\n", st.Name)
-	g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
-	g.pf("      at += recordBytes;\n")
-	g.pf("      continue;\n")
-	g.pf("    }\n")
+	g.pf("      at += recordBytes;\n      continue;\n    }\n")
 	if fixedStructHasDead(st) {
-		// THE IDENTITY PLAN IS ONE COPY, so its dead bytes are checked on the
-		// SOURCE record just as the in-place door checks them; a COMPILED plan
-		// carries its own dead-byte entries (docs/FIXED-FORM-ALGORITHM.md §4.5,
-		// §5.3 step 11).
-		g.pf("    if (entries === %sFixedIdentity && holeN === 0) {\n", st.Name)
+		g.pf("    if (phase === 0 && entries === %sFixedIdentity && holeN === 0) {\n", st.Name)
 		g.pf("      %sFixedCheckDead(srcView, at + 8, stage);\n", st.Name)
-		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", st.Name)
 		g.pf("    }\n")
 	}
 	g.pf("    for (let h = 0; h < holeN; h++) {\n")
@@ -558,23 +565,21 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)
 	g.pf("    }\n")
 	g.pf("    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);\n")
-	g.pf("    // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the\n")
-	g.pf("    // projection: refuse is total, no counter moves and no record lands.\n")
-	g.pf("    if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+	g.pf("    if (phase === 0) {\n")
+	g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", st.Name)
 	if writerBounds {
-		g.pf("    // THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own pass on\n")
-		g.pf("    // the image. A value past what that writer could have written REFUSES by\n")
-		g.pf("    // name here, never clamping onto the writer's bound.\n")
-		g.pf("    if (writerBounds !== null) { writerBounds(imageView, stage); }\n")
-		g.pf("    if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+		g.pf("      if (writerBounds !== null) { writerBounds(imageView, stage); }\n")
+		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", st.Name)
 	}
-	g.pf("    %sFixedDecode(values[k], imageView, 0, stage);\n", st.Name)
-	g.pf("    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries\n")
-	g.pf("    // no text op, so the decode is where a byte string or a wide string\n")
-	g.pf("    // refuses by name, here and at the in-place door alike.\n")
-	g.pf("    if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", st.Name)
+	if fixedStructChecked(st) {
+		g.pf("      %sFixedCheckRead(imageView, 0, stage);\n", st.Name)
+		g.pf("      if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", st.Name)
+	}
+	g.pf("    } else {\n")
+	g.pf("      %sFixedDecode(values[k], imageView, 0, stage);\n", st.Name)
+	g.pf("    }\n")
 	g.pf("    at += recordBytes;\n")
-	g.pf("  }\n")
+	g.pf("  }\n  }\n")
 	g.pf("  // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on\n")
 	g.pf("  // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and\n")
 	g.pf("  // mismatch land zero, always (§5.9 #30).\n")

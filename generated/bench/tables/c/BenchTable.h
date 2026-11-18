@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package benchtable — protocol id 0x0926221bcb6f475f */
+   package benchtable — protocol id 0x4c9383ebe3cde248 */
 
 #ifndef SCHEMA_BENCHTABLE_BENCH_TABLE_H
 #define SCHEMA_BENCHTABLE_BENCH_TABLE_H
@@ -21,7 +21,7 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define BENCHTABLE_PROTOCOL_ID 0x0926221bcb6f475fULL
+#define BENCHTABLE_PROTOCOL_ID 0x4c9383ebe3cde248ULL
 
 
 /* enum TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15]

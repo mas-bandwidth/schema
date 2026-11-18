@@ -75,12 +75,14 @@ table Root { a int32 = 0 }
 	root := model.Lookup("Root")
 	known := ir.TableWireId("a")
 	unknown := ir.TableWireId("zzz")
-	slot := ir.TableWireId("A")
-	ids := []uint64{known, unknown, slot}
+	// The id table holds exactly the ids every row's body references, in
+	// first-use order (docs/SPEC-TABLES.md §3): the known field, then the
+	// unknown field, whose id each keyed slot's key also names.
+	ids := []uint64{known, unknown}
 
 	// The i32 bytes satisfy Root's declared field; the unknown field carries
 	// the body under test. Key references are 1-based indices into the id
-	// table, so 2 and 3 name ids the table holds.
+	// table, so 2 names an id the table holds and 99 names none.
 	withUnknown := func(field []byte) []byte {
 		body := ukwCat(
 			ukwScalar(1, ir.TableKindI32, make([]byte, 4)),
@@ -143,6 +145,9 @@ end
 		}
 		if ok && row.damage != "" {
 			t.Fatalf("%s: the engine read what the row calls damage: %s", row.name, row.damage)
+		}
+		if !ok && row.damage == "" {
+			t.Fatalf("%s: the engine refused what the row calls lawful: %v", row.name, err)
 		}
 		fmt.Fprintf(&probe, `
 case %s.load("Root", Base.decode16!(%q, case: :lower)) do

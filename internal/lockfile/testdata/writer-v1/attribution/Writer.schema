@@ -1,0 +1,5 @@
+package lockdemo
+fixed table Row {
+ a int32 | min = 0, max = 10
+ b int32
+}

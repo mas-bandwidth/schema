@@ -451,7 +451,7 @@ func recordGoTest(real string, args []string, dir, named string, summary bool) i
 	}
 	var w io.Writer
 	if record != nil {
-		defer record.Close()
+		defer func() { _ = record.Close() }()
 		w = record
 	}
 	if summary {
@@ -476,12 +476,14 @@ func prepareGoShim() (func(), error) {
 	if os.Getenv(envRealGo) == "" {
 		goPath, err := exec.LookPath("go")
 		if err != nil {
-			return func() {}, fmt.Errorf("%s is set but no go is on PATH: %v", envGoTestTimeout, err)
+			return func() {}, fmt.Errorf("%s is set but no go is on PATH: %w", envGoTestTimeout, err)
 		}
 		if goPath, err = filepath.Abs(goPath); err != nil {
 			return func() {}, err
 		}
-		os.Setenv(envRealGo, goPath)
+		if err := os.Setenv(envRealGo, goPath); err != nil {
+			return func() {}, err
+		}
 	}
 	self, err := os.Executable()
 	if err != nil {
@@ -496,11 +498,14 @@ func prepareGoShim() (func(), error) {
 		name = "go.exe"
 	}
 	if err := linkOrCopy(self, filepath.Join(dir, name)); err != nil {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 		return func() {}, err
 	}
-	os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return func() { os.RemoveAll(dir) }, nil
+	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH")); err != nil {
+		_ = os.RemoveAll(dir)
+		return func() {}, err
+	}
+	return func() { _ = os.RemoveAll(dir) }, nil
 }
 
 func linkOrCopy(src, dst string) error {

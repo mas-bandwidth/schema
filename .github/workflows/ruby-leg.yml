@@ -1,0 +1,78 @@
+name: ruby leg
+
+# THE RUBY LEG (docs/PORT-RUBY.md): `make test-ruby` on the pinned
+# interpreters, on Linux and macOS. The pins are CRuby 3.4.12 (the floor) and
+# CRuby 4.0.9 (the current pin), with RuboCop 1.92.2, Steep 2.1.0 and RBS
+# 4.2.0 in each, built and installed into dist/ by `make dist-ruby`;
+# .github/actions/ruby restores them from a store keyed on every pin and the
+# lock, and checks the restored tree against the pins before anything runs on
+# it. No step runs an interpreter from PATH.
+#
+# Until the skeleton lands make/ruby.mk and defines test-ruby, this runs the
+# toolchain check, and it always runs the toolchain control.
+#
+# NIGHTLY AND DISPATCH ONLY. On a cache miss the hosted macOS row builds both
+# CRubies from source, which does not fit a push or pull request's two
+# minutes (internal/ci/nightly_test.go), so this is off those events. The
+# macOS job carries no timeout: a nightly run has no time limit. The fleet job
+# carries the bound every self-hosted job carries
+# (internal/ci/selfhosted_bounds_test.go).
+
+on:
+  schedule:
+    - cron: '29 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # NIGHTLY RUNS HAVE NO TIMEOUT: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
+jobs:
+  test:
+    name: make test-ruby (fleet)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/ruby
+      - name: make test-ruby (or the toolchain check until the skeleton lands)
+        run: |
+          if make -n test-ruby >/dev/null 2>&1; then
+            make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
+          else
+            make ruby-toolchain-check
+          fi
+      - name: make ruby-toolchain-negative-control
+        run: make ruby-toolchain-negative-control
+
+  macos:
+    name: make test-ruby (macos-latest)
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: ./.github/actions/ruby
+      - name: make test-ruby (or the toolchain check until the skeleton lands)
+        run: |
+          if make -n test-ruby >/dev/null 2>&1; then
+            make -j"$(getconf _NPROCESSORS_ONLN)" test-ruby
+          else
+            make ruby-toolchain-check
+          fi
+      - name: make ruby-toolchain-negative-control
+        run: make ruby-toolchain-negative-control

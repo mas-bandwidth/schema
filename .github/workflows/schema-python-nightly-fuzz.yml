@@ -1,0 +1,52 @@
+name: schema python nightly fuzz
+on:
+  schedule:
+    - cron: '27 3 * * *'
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  # NIGHTLY RUNS HAVE NO TIMEOUT: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
+jobs:
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        seed: ['24845619678', '2']
+        pin: [current, floor]
+        mode: [normal, dev]
+        arm: [plain, mixed, retain]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Pinned Python interpreters
+        uses: ./.github/actions/python
+      - name: Stage pinned siblings and reference corpus
+        run: |
+          make serialize-siblings
+          sh tools/python-ci-corpus.sh build
+      - name: Full-roster Python verdict pipe
+        env:
+          FUZZ_SEED: ${{ matrix.seed }}
+          FUZZ_PIN: ${{ matrix.pin }}
+          FUZZ_MODE: ${{ matrix.mode }}
+          FUZZ_ARM: ${{ matrix.arm }}
+        run: make "python-wirefuzz-${FUZZ_PIN}-${FUZZ_MODE}-${FUZZ_ARM}" "SEED=${FUZZ_SEED}" N=500000 PYTHON_WIRE_FUZZ_DIR=build/python-wirefuzz-nightly
+      - name: Preserve the row log and failing mutant
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-wire-fuzz-${{ matrix.seed }}-${{ matrix.pin }}-${{ matrix.mode }}-${{ matrix.arm }}
+          path: build/python-wirefuzz-nightly/
+          if-no-files-found: ignore
+          retention-days: 30

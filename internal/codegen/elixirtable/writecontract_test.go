@@ -77,14 +77,15 @@ defmodule WCProbe do
 
   def message(field, value, want, label) do
     m = Writecontract.TableMessage
-    {:ok, vocab} = m.announce_read(m.announce())
+    {:ok, announced} = m.announce_read(m.announce())
+    {:ok, vocab} = m.for_root(announced, "Order")
     desc = Writecontract.Table.descriptors()["Order"]
     ref = fn id -> Enum.find_index(vocab.entries, &(&1.id == id)) + 1 end
     id = fn name -> Enum.find(desc.fields, &(&1.name == name)).id end
     coin = Enum.find(desc.fields, &(&1.name == "coin"))
 
     body =
-      for {name, v} <- Map.put(@base, field, value) do
+      for {name, v} <- in_declaration_order(desc, Map.put(@base, field, value)) do
         case {name, v} do
           {"coin", {:field_ref, other}} -> {ref.(id.("coin")), ref.(id.(other))}
           {"coin", member} -> {ref.(id.("coin")), ref.(Map.fetch!(coin.by_name, member))}
@@ -100,6 +101,11 @@ defmodule WCProbe do
       end
 
     check(got == want, label <> ": got " <> inspect(got))
+  end
+
+  # A message body names its fields in declaration order (SPEC-TABLES §3.3).
+  defp in_declaration_order(desc, fields) do
+    Enum.sort_by(fields, fn {name, _} -> Enum.find_index(desc.fields, &(&1.name == name)) end)
   end
 end
 

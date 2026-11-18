@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0xc93127c82f083edf — the Lobster unit registry (docs/PORT-LOBSTER.md)
+// package bench — protocol id 0xc52a41defad6ebb0 — the Lobster unit registry (docs/PORT-LOBSTER.md)
 
 import .descriptors
 import .Bench
@@ -280,7 +280,7 @@ let BenchMixedDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     ]::schema_rt.FieldDescriptor
 })
 
-schema_rt.set_unit("bench", 0xc93127c82f083edf)
+schema_rt.set_unit("bench", 0xc52a41defad6ebb0)
 schema_rt.view_type(BenchPacketDescriptor, "Bench.schema", "", []::string)
 schema_rt.view_type(BenchIntsDescriptor, "Bench.schema", "", []::string)
 schema_rt.view_type(BenchBitsDescriptor, "Bench.schema", "", []::string)

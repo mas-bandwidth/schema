@@ -7,6 +7,8 @@ package darttable
 // defaults, exactly as the Go engine refuses the same bytes.
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"testing"
@@ -401,7 +403,19 @@ func TestDartMessageBodyFieldOnceNegativeControl(t *testing.T) {
 	t.Parallel()
 	u := batchUnit(t, "tables/backend")
 	root, vectors := backendFieldOnceVectors(t, u)
-	body := fieldOnceProbeBody(root, tablewire.Announce(u), vectors)
+	// The control reads under ANOTHER BUILD VERSION: under this reader's own
+	// build a repeated field is also out of the declaration order and a
+	// repeated unknown entry is also undeclared, both refused on their own
+	// (docs/SPEC-TABLES.md §3.3 (b)), so only another build isolates the
+	// repeat check this control removes.
+	ann := tablewire.Announce(u)
+	own := binary.LittleEndian.AppendUint64(nil, ir.BuildVersion(u))
+	if len(ann) < 11 || !bytes.Equal(ann[3:11], own) {
+		t.Fatalf("the announcement does not carry its build version at bytes 3..10: %x", ann)
+	}
+	other := append([]byte(nil), ann...)
+	other[3] ^= 1
+	body := fieldOnceProbeBody(root, other, vectors)
 	replaced := 0
 	out, err := runBatchProbe(t, u, root, body, func(files map[string][]byte) {
 		for name, data := range files {

@@ -176,6 +176,12 @@ jobs:
           ./build/conformance-harness pin
           ./build/conformance-harness generate
 
+      - name: C++ writes and checks the populated feature witnesses
+        id: feature_positive
+        run: |
+          rm -f build/feature-witness-cpp/outputs/Root.bin build/feature-witness-cpp/outputs/ArrayRoot.bin
+          make conformance-cpp-positive-features
+
       - name: the C++ reference writes the fixed form (form 3)
         run: make tables-fixedform-corpus tables-fixedform-bench-corpus
 
@@ -192,11 +198,20 @@ jobs:
 
       - name: pack the C++ corpus
         if: always()
+        env:
+          FEATURE_OUTCOME: ${{ steps.feature_positive.outcome }}
         run: |
           set -euo pipefail
+          test "$FEATURE_OUTCOME" = success
           rm -rf build/nightly/cpp-corpus
           mkdir -p build/nightly/cpp-corpus/testdata build/nightly/cpp-corpus/build
           cp -R testdata/wire testdata/conformance build/nightly/cpp-corpus/testdata/
+          # Publish the C++-written instances only after exact pin comparison.
+          feature_dest=build/nightly/cpp-corpus/testdata/conformance/feature-witnesses/full
+          rm -f "$feature_dest/Root.bin" "$feature_dest/ArrayRoot.bin"
+          cmp build/feature-witness-cpp/outputs/Root.bin testdata/conformance/feature-witnesses/full/Root.bin
+          cmp build/feature-witness-cpp/outputs/ArrayRoot.bin testdata/conformance/feature-witnesses/full/ArrayRoot.bin
+          cp build/feature-witness-cpp/outputs/Root.bin build/feature-witness-cpp/outputs/ArrayRoot.bin "$feature_dest/"
           if [ -d build/fixedform-corpus ]; then cp -R build/fixedform-corpus build/nightly/cpp-corpus/build/; fi
           if [ -d build/fixedform-bench-corpus ]; then cp -R build/fixedform-bench-corpus build/nightly/cpp-corpus/build/; fi
           if [ -d build/conformance/out/cpp ]; then cp -R build/conformance/out/cpp build/nightly/cpp-corpus/cpp-answers; fi

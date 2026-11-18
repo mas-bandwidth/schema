@@ -39,6 +39,25 @@ table Scene
 }
 `
 
+// oneDecodeNewerSchema is the same unit a later build extended with one root
+// field, future, after head: its writer spells the unknown field the load skips
+// canonically, in its declaration order and its id in first-use order
+// (docs/SPEC-TABLES.md §3).
+const oneDecodeNewerSchema = `package onepass
+
+table ListNode
+{
+    value int32 | min = 0, max = 1000000
+    next  *ListNode
+}
+
+table Scene
+{
+    head   *ListNode
+    future uint32
+}
+`
+
 func oneDecodeBuildProbe(records int) string {
 	return fmt.Sprintf(`--!strict
 local T = require("./SceneTable")
@@ -53,6 +72,7 @@ for i = %d, 1, -1 do
 	head = n
 end
 value.Head = head
+value.Future = 7
 local out, why = save.save(St.lookup("Scene"), value)
 if out == nil then
 	print("SAVENIL " .. tostring(if why ~= nil then why.name else nil))
@@ -157,29 +177,6 @@ func skipWire(t *testing.T, b []byte, pos, end, kind int) (int, bool) {
 	return pos, false
 }
 
-// addUnknownRootField inserts one root field this reader does not declare,
-// with its id appended to the id table: a legal later addition the read skips
-// by its kind and counts unknown.
-func addUnknownRootField(t *testing.T, wire []byte, id uint64, kind byte, payload []byte) []byte {
-	t.Helper()
-	n := len(wire)
-	count := binary.LittleEndian.Uint64(wire[n-8:])
-	idStart := n - 8 - int(count)*8
-	if idStart < 2 || wire[idStart-1] != 0 {
-		t.Fatalf("the wire is not a form-1 file: id table at %d, byte before it %02x", idStart, wire[idStart-1])
-	}
-	field := append(leb(count+1), kind)
-	field = append(field, payload...)
-	out := make([]byte, 0, len(wire)+len(field)+8)
-	out = append(out, wire[:idStart-1]...)
-	out = append(out, field...)
-	out = append(out, wire[idStart-1:]...)
-	out = out[:len(out)-8]
-	out = append(out, u64le(id)...)
-	out = append(out, u64le(count+1)...)
-	return out
-}
-
 // outOfRangeLastRecord replaces the value of the last ListNode record with a
 // value past the field's declared maximum, so the load refuses out_of_range.
 func outOfRangeLastRecord(t *testing.T, wire []byte, listNodeID, valueID uint64, bad uint32) []byte {
@@ -265,7 +262,8 @@ func TestMooLoadIsOneDecodeFunctional(t *testing.T) {
 	const records = 20000
 	const limit = 60 * time.Second
 	g := generateFiles(t, map[string]string{"Scene.schema": oneDecodeSchema})
-	built, err := runMooDeadline(t, g, oneDecodeBuildProbe(records), nil, limit)
+	newer := generateFiles(t, map[string]string{"Scene.schema": oneDecodeNewerSchema})
+	built, err := runMooDeadline(t, newer, oneDecodeBuildProbe(records), nil, limit)
 	if err != nil {
 		t.Fatalf("building the Scene wire: %v", err)
 	}
@@ -274,7 +272,7 @@ func TestMooLoadIsOneDecodeFunctional(t *testing.T) {
 		t.Fatalf("the writer's wire is not hex: %v", err)
 	}
 	unknownID := ir.TableWireId("future")
-	accepted := addUnknownRootField(t, wire, unknownID, 4, []byte{7, 0, 0, 0})
+	accepted := wire
 	start := time.Now()
 	out, err := runMooDeadline(t, g, oneDecodeLoadProbe, map[string][]byte{"wire": accepted}, limit)
 	if err != nil {

@@ -23,7 +23,9 @@ var scalarWidenCases = []struct{ old, new, value, check string }{
 	{"float32", "float64", "-1.5", "-1.5"},
 }
 
-const scalarWidenShards = 4
+// Each case runs strict mypy over the generated unit and loads on both pins
+// (about 9 s at two cores), so a shard holds at most three cases.
+const scalarWidenShards = 8
 
 func scalarWidenShard(value string) (int, error) {
 	if value == "" {
@@ -64,7 +66,7 @@ func TestPythonScalarWidenShardPlan(t *testing.T) {
 			t.Errorf("case %s selected %d times", name, count)
 		}
 	}
-	for _, invalid := range []string{"-1", "4", "00", "x"} {
+	for _, invalid := range []string{"-1", strconv.Itoa(scalarWidenShards), "00", "x"} {
 		if _, err := scalarWidenShard(invalid); err == nil {
 			t.Errorf("accepted invalid shard %q", invalid)
 		}

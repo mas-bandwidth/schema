@@ -21,14 +21,14 @@ public final class TableVocabulary {
                 (byte) 0x01,
                 (byte) 0x01,
                 (byte) 0x09,
-                (byte) 0x52,
-                (byte) 0xa8,
-                (byte) 0xbf,
+                (byte) 0xf0,
+                (byte) 0xff,
+                (byte) 0xdb,
+                (byte) 0xeb,
                 (byte) 0x78,
-                (byte) 0x93,
-                (byte) 0x55,
-                (byte) 0xd3,
-                (byte) 0x41,
+                (byte) 0xad,
+                (byte) 0x2d,
+                (byte) 0xba,
                 (byte) 0x02,
                 (byte) 0x0e,
                 (byte) 0xcf,
@@ -909,7 +909,7 @@ public final class TableVocabulary {
 
     // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
     // the endpoint's against (docs/SPEC-TABLES.md §3.3).
-    private static final long tableBuildVersion = 0x41d3559378bfa852L;
+    private static final long tableBuildVersion = 0xba2dad78ebdbfff0L;
 
     public static int announceMeasure() {
         return tableAnnouncement.length;
@@ -1001,6 +1001,15 @@ public final class TableVocabulary {
         this.strict = false;
         this.maxEntries = capacity;
         this.maxBytes = 65536;
+    }
+
+    // ownBuild answers whether the sender announced this unit's own build
+    // version: the one case where a reader knows the sender's declared
+    // defaults exactly, so a field written at the default it elides is not the
+    // one encoding (§3.3 (a)). Under another build version the sender's
+    // default is not this reader's to know, and the field reads as today.
+    boolean ownBuild() {
+        return announced && buildVersion == tableBuildVersion;
     }
 
     // NO RE-ANNOUNCEMENT, EVER, and REFUSAL IS TERMINAL (§3.3): a first

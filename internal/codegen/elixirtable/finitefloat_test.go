@@ -390,7 +390,8 @@ defmodule FiniteProbe do
   end
 
   def message do
-    {:ok, vocab} = M.announce_read(M.announce())
+    {:ok, announced} = M.announce_read(M.announce())
+    {:ok, vocab} = M.for_root(announced, "Rec")
     entries = Enum.with_index(vocab.entries, 1)
 
     {_, r10} =

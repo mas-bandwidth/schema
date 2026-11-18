@@ -21,6 +21,29 @@ func rootStoredDefaults(st *ir.Struct, data []byte) map[string]bool {
 
 // bodyStoredDefaults applies the same byte checks to one known body scope.
 func bodyStoredDefaults(st *ir.Struct, data []byte, f *wireFrame, scope int) map[string]bool {
+	return bodyStoredDefaultsAt(st, data, f, refsByScope(f)[scope])
+}
+
+// refsByScope is, for each body scope (the length spot enclosing it, -1 for
+// the root), the indexes of the reference spots directly inside it, in wire
+// order. One pass, so a file of many bodies is judged in linear time.
+func refsByScope(f *wireFrame) map[int][]int {
+	out := map[int][]int{}
+	for i, sp := range f.spots {
+		if sp.kind != spotRef || sp.value == 0 || i+1 >= len(f.spots) {
+			continue
+		}
+		key := -1
+		if len(sp.enclosing) > 0 {
+			key = sp.enclosing[len(sp.enclosing)-1]
+		}
+		out[key] = append(out[key], i)
+	}
+	return out
+}
+
+// bodyStoredDefaultsAt judges the reference spots refs of one body.
+func bodyStoredDefaultsAt(st *ir.Struct, data []byte, f *wireFrame, refs []int) map[string]bool {
 	lebAt := func(off, end int) (uint64, int, bool) {
 		value, width := readLeb(data, off, end)
 		return value, off + width, width > 0
@@ -30,17 +53,8 @@ func bodyStoredDefaults(st *ir.Struct, data []byte, f *wireFrame, scope int) map
 	for _, fd := range st.Fields {
 		fields[ir.TableFieldWireId(fd)] = fd
 	}
-	for i, sp := range f.spots {
-		if sp.kind != spotRef || sp.value == 0 || i+1 >= len(f.spots) {
-			continue
-		}
-		key := -1
-		if len(sp.enclosing) > 0 {
-			key = sp.enclosing[len(sp.enclosing)-1]
-		}
-		if key != scope {
-			continue
-		}
+	for _, i := range refs {
+		sp := f.spots[i]
 		id, ok := f.entryOf(sp.value)
 		if !ok {
 			continue

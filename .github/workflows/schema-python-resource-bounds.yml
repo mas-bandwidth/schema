@@ -1,0 +1,55 @@
+name: schema python resource bounds
+
+# THE PYTHON PORT'S BOUNDED MEMORY/TIME GATE (schema-python-resource-bounds). A
+# hostile input (deep nesting, recursion, a huge count, a giant string, many
+# unknown fields) must cost bounded memory and time: allocation is bounded by
+# input size times the documented factor over tracemalloc, and nesting past
+# section 16.9.4's depth cap of 128 is refused by name. Time is asserted by
+# executed line events, never wall clock.
+#
+# THE HEAVY PART IS NIGHTLY ONLY, so the gate stays inside the fast lane's
+# one-minute budget: the full bounds sweep runs on the schedule and on
+# workflow_dispatch. A dispatch also runs the planted-bad-pattern control,
+# which proves the gate has a blade and is seconds of work.
+#
+# FORK SAFETY: as in the sibling lanes, every fleet job carries the fork guard
+# so a fork's pull request never runs on fleet hardware.
+
+on:
+  schedule:
+    - cron: '21 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # NIGHTLY RUNS HAVE NO TIMEOUT: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
+jobs:
+  fast:
+    runs-on: [self-hosted, linux, x64, fleet]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Python interpreters
+        run: make dist-python
+      - name: planted-bad-pattern control
+        run: make schema-python-resource-bounds-negative-control
+  nightly:
+    runs-on: [self-hosted, linux, x64, fleet]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Python interpreters
+        run: make dist-python
+      - name: bounded memory/time sweep
+        run: make schema-python-resource-bounds

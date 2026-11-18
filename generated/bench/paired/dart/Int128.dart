@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0xc93127c82f083edf
+// package bench — protocol id 0xc52a41defad6ebb0
 //
 // The emulated 128-bit pair: Dart has no native 128-bit integer, so
 // int128/uint128 storage speaks these types — two's-complement math on

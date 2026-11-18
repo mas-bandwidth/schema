@@ -174,7 +174,10 @@ func TestSlowestSkipsSubtestsAndOutputOnlyLines(t *testing.T) {
 {"Action":"pass","Package":"p","Elapsed":9}
 `
 	f := reportOf(t, 0, s).findings(5)
-	slowest := f.text[strings.Index(f.text, "slowest tests:"):]
+	_, slowest, ok := strings.Cut(f.text, "slowest tests:")
+	if !ok {
+		t.Fatalf("missing slowest tests section:\n%s", f.text)
+	}
 	if strings.Contains(slowest, "/child") {
 		t.Errorf("a subtest is listed among the slowest:\n%s", f.text)
 	}

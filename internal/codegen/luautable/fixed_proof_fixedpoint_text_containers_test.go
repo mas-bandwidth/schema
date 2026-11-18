@@ -396,11 +396,11 @@ func TestLuauFixedProofGroupBNegativeControl(t *testing.T) {
 			u := fixedproof.ParseCheckUnit(t, tc.Schema)
 			st := fixedproof.RootStruct(t, u, tc.Root)
 			layout, _, body := fixedproof.RootFacts(st)
-			cppBytes, verifyInCpp := fixedproof.CppOracle(t, tc, u)
+			cppBytes, verifyInCpp, loadInCpp := fixedproof.CppOracleWithLoadVerdict(t, tc, u)
 
 			corruptForm := bytes.Clone(cppBytes)
 			corruptForm[0] ^= 0x01
-			if err := verifyInCpp(corruptForm); err == nil {
+			if err := loadInCpp(corruptForm); err == nil {
 				t.Fatalf("%s: file negative control failed: C++ FixedLoad accepted a corrupted form byte", id)
 			}
 			if _, err := runner.LoadAndResave(t, tc, u, corruptForm); err == nil {
@@ -414,7 +414,7 @@ func TestLuauFixedProofGroupBNegativeControl(t *testing.T) {
 			}
 			mutated[at] ^= 0x01
 			if err := verifyInCpp(mutated); err == nil {
-				t.Fatalf("%s: file negative control failed: C++ FixedLoad accepted a mutated body byte", id)
+				t.Fatalf("%s: file negative control failed: C++ equality oracle accepted a mutated body byte", id)
 			}
 			if resaved, err := runner.LoadAndResave(t, tc, u, mutated); err == nil && bytes.Equal(resaved, cppBytes) {
 				t.Fatalf("%s: file negative control failed: luau re-saved the damaged file as the reference's bytes", id)
@@ -428,7 +428,7 @@ func TestLuauFixedProofGroupBNegativeControl(t *testing.T) {
 				t.Fatalf("%s: writer negative control failed: the planted writer still produced the reference's bytes", id)
 			}
 			if err := verifyInCpp(mutatedWrite); err == nil {
-				t.Fatalf("%s: writer negative control failed: C++ accepted the planted writer's file", id)
+				t.Fatalf("%s: writer negative control failed: C++ equality oracle accepted the planted writer's file", id)
 			}
 		})
 	}

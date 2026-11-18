@@ -291,9 +291,10 @@ generated class per table and per map entry, each with its descriptor
 (SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
 
 - **One module per field kind.** `_schema/kinds.py` is the dispatch table;
-  each `_schema/kind_<kind>.py` beside it registers a kind this cut carries
-  (today `kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_optional.py`,
-  `kind_table.py` and `kind_pointer.py`; the directory is the list). A later
+  each `_schema/kind_<kind>.py` beside it registers a kind the leg carries
+  (`kind_bool.py`, `kind_int.py`, `kind_map.py`, `kind_optional.py`,
+  `kind_table.py`, `kind_pointer.py` and the modules later cards added
+  beside them; the directory is the list). A later
   card adds its module and one registration line in it, never an edit to the
   body walk; `kinds.py` imports every `kind_*.py` itself, so no other file
   names a new module. A kind that wraps another names the wrapped codec in the
@@ -335,6 +336,27 @@ generated class per table and per map entry, each with its descriptor
   joins the optional-array carriers (`compiler/tablesoptionalarrays.go`). An
   optional array of an element kind this cut does not carry keeps
   `inner` "unsupported" and refuses by name.
+- **Widening is decided by the kind pair.** A field, a union arm, an array
+  element or a map key whose writer's kind is below the reader's on the same
+  ladder (`2, 3, 4, 5, 18` signed and `6, 7, 8, 9, 19` unsigned, plus `10` into
+  `11`) reads at the writer's width, lands the exact value, and counts ONE
+  `widened` — one per field, arm, array or map, never per element. The ladder
+  and the widened-width read live once, in `kind_array.py` (`_widens`,
+  `_read_widened`, a bulk `struct.unpack` followed by the reader's range
+  check), and the field, arm, keyed, optional-array and map sites call them;
+  every other retype, every narrowing and every crossed signedness refuses the
+  whole read `kind_mismatch` before a value lands. A widened value outside the
+  reader's declared range refuses `out_of_range`; a NaN or an infinity never
+  reaches the float rung (`non_finite_float`). The construct has no §2 carry
+  key, so `compiler/carries_python_widening.go` registers no line and the
+  emitter carries it directly; `TestPythonVtWidening` holds every manifest
+  report row the engine widens (and the sibling refusals at each site) under
+  both pins, and its negative control plants the ladder and each counter fault
+  in a copy of the emitted runtime. A root declared `fixed table` reads form 3
+  alone and refuses a form-1 file as `previous_form`; that gate is the fixed
+  form's row, so the widening cell asks the engine through the same
+  declaration with the root variable, as the conformance harness does for a
+  fixed root's framing rows.
 - **The shape is measured.** A table whose fields are all carried kinds and
   that holds no map gets the straight-line generated root save/load pair,
   unrolled with each field descriptor and codec bound to a local and any
@@ -370,6 +392,9 @@ generated class per table and per map entry, each with its descriptor
 
   - `*T` pointers to tables: carried
 
+  - enums and the id-table wire's escape and payload-free kinds: carried
+    ([the id table](port-python/table-idtable.md))
+
   - pointer arrays `[]*T`, `[N]*T`, `[..N]*T` and `[Min..N]*T`: carried
     ([the table pointer arrays](port-python/table-pointer-arrays.md))
 
@@ -381,8 +406,10 @@ generated class per table and per map entry, each with its descriptor
   - `*string`: carried ([the table blobs](port-python/table-blobs.md))
 
   - `?T` over the base kinds, over a variable closure included: carried
+    ([the table optionals](port-python/table-optional.md))
 
   - `?[N]T` and `?[..N]T` over the base kinds: carried
+    ([the table optionals](port-python/table-optional.md))
 
   - `[]T`: carried ([the table unbounded arrays](port-python/table-unbounded.md))
 
@@ -391,7 +418,7 @@ generated class per table and per map entry, each with its descriptor
   - `map[K]V` for the base key and value kinds: carried
     ([the table maps](port-python/table-maps.md))
 
-  - `?map[K]V`: refused
+  - `?map[K]V`: carried ([the table optional maps](port-python/table-optional-map.md))
 
   - unions with table arms, and arrays of them: carried
     ([the table unions](port-python/table-unions.md))
@@ -528,9 +555,12 @@ out as lowercase hex lines.**
 
 ## THE REGISTER
 
-The `python` column of [PORTING.md](PORTING.md) holds every technique ❌,
-citing #381 (the language list) and the `port/python` layer that carries it,
-or `—` with the platform's reason:
+The `python` column of [PORTING.md](PORTING.md) marks a technique ✅ where
+the leg carries it, naming the tests and targets that prove it; ❌ citing #381
+(the language list) and the `port/python` layer that carries it; or `—` with
+the platform's reason. M17's reason (every blob is one `bytes` or `str` of
+its own length, so there is no slab to outgrow) is in its cell; the others
+are:
 
 - **M2 and M3**: every CPython `int` and `float` is a heap object, so there is
   no unboxed form to keep.
@@ -563,9 +593,9 @@ A cell becomes ✅ when the layer that carries it lands with its proof.
 | P10 | the conformance driver, every surface | `port/python/p10-conformance` |
 | P11 | the wire-fuzz differential | `port/python/p11-wirefuzz` |
 | P12 | the hostile corpus runner and resource bounds | `port/python/p12-hostile` |
-| P13 | cards | `port/python/p13-cards` |
+| P13 | [cards](port-python/table-cards.md) | `port/python/p13-cards` |
 | P14 | the strict analyzer gate and every negative control | `port/python/p14-lint-controls` |
-| P15 | CI, nightly fuzz, readiness, bench legs, release tier | `port/python/p15-ci` |
+| P15 | [CI, nightly fuzz, readiness, bench legs, release tier](port-python/table-ci-release.md) | `port/python/p15-ci` |
 | P16 | USAGE fragments, per-language prose, the register complete | `port/python/p16-docs` |
 
 Each layer is secured before the one above it starts: its gates green, each
@@ -690,3 +720,45 @@ Each kind a card adds to the packet or the table leg has its own page under
 (`packet-<kind>.md`, `table-<kind>.md`): what the kind carries, its code
 shape and its measured bench numbers. The first is
 [packet-floats.md](port-python/packet-floats.md).
+
+The form-3 codec's current oracle-gated `FixedLoad` and `FixedSave` timings,
+method and reproducible target are recorded in
+[Python fixed-form files](port-python/table-fixed-form.md).
+
+### THE FIXED IDENTITY-PLAN SHAPES
+
+docs/FIXED-FORM-ALGORITHM.md §4.2 permits two shapes for the identity plan:
+coalesced runs straight into the reader's storage, or one whole-body copy into
+a record image followed by a scatter. Python's storage is objects, so the
+first shape is the scatter run directly over the file's own bytes: when every
+operation of a plan is an unguarded copy to the same offset and nothing is
+reset or prefilled, the image would equal the body byte for byte, and the
+runtime decodes each record from the file without building it. Every other
+plan (widening, remaps, guards, fills, holes) still runs through the image.
+`make python-fixed-form-bench` measures both shapes on every run: the kept
+runtime and a scratch copy with the direct switch turned off. Median of five
+samples, an oracle-checked two-`int32` record, macOS arm64, `gc` disabled:
+
+| interpreter | shape | FixedLoad, 1 record | FixedLoad, 1024 records | FixedSave, 1 record | FixedSave, 1024 records |
+|---|---|---:|---:|---:|---:|
+| CPython 3.15.2 | direct decode (kept) | 3.54 µs | 1.97 µs/record | 1.91 µs | 1.52 µs/record |
+| CPython 3.15.2 | record image | 4.04 µs | 2.49 µs/record | 1.92 µs | 1.50 µs/record |
+| CPython 3.11.18 | direct decode (kept) | 3.96 µs | 2.17 µs/record | 1.84 µs | 1.42 µs/record |
+| CPython 3.11.18 | record image | 4.41 µs | 2.79 µs/record | 1.79 µs | 1.42 µs/record |
+
+The direct decode is 11–12% faster for a one-record file and 21–22% faster per
+record in a batch on both pins, so it is kept. The writer has one shape; its
+rows differ only by noise.
+
+
+### Selecting table surfaces
+
+`schema generate --lang python --surface wire` emits table descriptors and
+variable-table wire methods while omitting fixed batch methods, fixed layout
+metadata and block descriptors. A declared fixed root's plain `load`, `save`
+and `measure` refuse `fixed_surface_not_selected`; they never fall back to
+form 1. Select `fixed` to include its batch API and form-3 file methods, or
+`block` to include block descriptors; both imply `wire`. The absent option and
+explicit full default set preserve existing output. Other explicit Python
+surface requests are refused until their emitters connect selection; this does
+not register support for per-table `forms` declarations (SPEC-TABLES §8.8).

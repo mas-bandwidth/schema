@@ -273,3 +273,14 @@ func TestEmitterTemplatesNameOnlyClaimedSuffixes(t *testing.T) {
 		})
 	}
 }
+
+func TestJavaScriptFixedReadCheckSuffixIsClaimed(t *testing.T) {
+	t.Parallel()
+	errs := runUnit(t, map[string]string{"T.schema": "package t\ntable Ship { x int32 }\ntype ShipFixedCheckRead { y int32 }\n"})
+	if len(errs) == 0 {
+		t.Fatal("ShipFixedCheckRead must be claimed for the fixed reader's read-only check")
+	}
+	if !strings.Contains(errs[0].Error(), "ShipFixedCheckRead") {
+		t.Fatalf("collision was not named: %v", errs)
+	}
+}
