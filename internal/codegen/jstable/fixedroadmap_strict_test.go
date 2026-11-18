@@ -7,9 +7,8 @@ package jstable
 //     or counting report.oor / report.clamped;
 //   - the runtime's count, text, ordinal and const ops refuse by name, never
 //     clamping and counting report.oor;
-//   - a refusal at record k in <T>FixedLoad resets every record the read wrote
-//     (0..k) back to its Init<T> defaults via <T>FixedRefuseBatch before
-//     returning -1.
+//   - CHECK covers the whole batch before LAND writes a destination; a
+//     refusal propagates diagnostics without resetting or writing any value.
 
 import (
 	"slices"
@@ -67,14 +66,17 @@ func checkJsFixedRoadmapRowsStrict(loadBody, refuseBatchBody, decodeBody, runBod
 	}
 	if refuseBatchBody == "" {
 		faults = append(faults, "no RFixedRefuseBatch emitted")
-	} else if !strings.Contains(refuseBatchBody, "for (let j = 0; j <= k; j++) { InitR(values[j]); }") {
-		faults = append(faults, "RFixedRefuseBatch does not reset values[0..k] via InitR")
+	} else if strings.Contains(refuseBatchBody, "values") || strings.Contains(refuseBatchBody, "InitR(") {
+		faults = append(faults, "RFixedRefuseBatch writes caller storage")
 	}
-	if !strings.Contains(loadBody, "return RFixedRefuseBatch(values, k, stage, report);") {
-		faults = append(faults, "RFixedLoad does not call RFixedRefuseBatch on stage.refused")
+	if strings.Contains(refuseBatchBody, "report.widened") || strings.Contains(refuseBatchBody, "report.oor") {
+		faults = append(faults, "RFixedRefuseBatch commits counters")
 	}
-	if strings.Contains(loadBody, "if (stage.refused !== 0) { report.refused = stage.refused;") {
-		faults = append(faults, "RFixedLoad exits on stage.refused without RFixedRefuseBatch")
+	if !strings.Contains(loadBody, "for (let phase = 0; phase < 2; phase++)") {
+		faults = append(faults, "RFixedLoad lacks batch CHECK before LAND")
+	}
+	if !strings.Contains(loadBody, "return RFixedRefuseBatch(stage, report);") {
+		faults = append(faults, "RFixedLoad does not propagate the check refusal")
 	}
 	return faults
 }
@@ -123,27 +125,26 @@ func TestJsFixedRoadmapRowsStrictNegativeControl(t *testing.T) {
 		t.Fatalf("clean artifact should hold the strict fixed roadmap read:\n  %s", strings.Join(faults, "\n  "))
 	}
 
-	// 1. Mutate RFixedLoad in the real artifact so a record-loop refusal returns
-	// -1 directly without calling RFixedRefuseBatch.
-	loadNoReset := strings.Replace(loadBody,
-		"if (stage.refused !== 0) { return RFixedRefuseBatch(values, k, stage, report); }",
-		"if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }", 1)
-	if loadNoReset == loadBody {
-		t.Fatal("could not find RFixedRefuseBatch call in RFixedLoad to mutate")
+	// 1. Skipping CHECK in the actual load must lose the batch boundary.
+	loadNoCheck := strings.Replace(loadBody,
+		"for (let phase = 0; phase < 2; phase++)",
+		"for (let phase = 1; phase < 2; phase++)", 1)
+	if loadNoCheck == loadBody {
+		t.Fatal("could not find the CHECK phase to mutate")
 	}
-	if faults := checkJsFixedRoadmapRowsStrict(loadNoReset, refuseBatchBody, decodeBody, runBody); !slices.Contains(faults, "RFixedLoad exits on stage.refused without RFixedRefuseBatch") {
-		t.Fatalf("negative control did not flag RFixedLoad skipping RFixedRefuseBatch: %v", faults)
+	if faults := checkJsFixedRoadmapRowsStrict(loadNoCheck, refuseBatchBody, decodeBody, runBody); !slices.Contains(faults, "RFixedLoad lacks batch CHECK before LAND") {
+		t.Fatalf("negative control did not flag skipped CHECK: %v", faults)
 	}
 
-	// 2. Mutate RFixedRefuseBatch in the real artifact so it omits the InitR loop.
-	batchNoInit := strings.Replace(refuseBatchBody,
-		"for (let j = 0; j <= k; j++) { InitR(values[j]); }",
-		"", 1)
-	if batchNoInit == refuseBatchBody {
-		t.Fatal("could not find InitR loop in RFixedRefuseBatch to mutate")
+	// 2. A refusal never commits the private pass's staged counters.
+	batchCounters := strings.Replace(refuseBatchBody,
+		"report.refused = stage.refused;",
+		"report.refused = stage.refused; report.widened += stage.widened;", 1)
+	if batchCounters == refuseBatchBody {
+		t.Fatal("could not find the refusal diagnostic to mutate")
 	}
-	if faults := checkJsFixedRoadmapRowsStrict(loadBody, batchNoInit, decodeBody, runBody); !slices.Contains(faults, "RFixedRefuseBatch does not reset values[0..k] via InitR") {
-		t.Fatalf("negative control did not flag RFixedRefuseBatch omitting InitR: %v", faults)
+	if faults := checkJsFixedRoadmapRowsStrict(loadBody, batchCounters, decodeBody, runBody); !slices.Contains(faults, "RFixedRefuseBatch commits counters") {
+		t.Fatalf("negative control did not flag refusal counter commit: %v", faults)
 	}
 
 	// 3. Mutate the ranged-scalar refusal in the real RFixedDecode into a clamp

@@ -357,7 +357,7 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 }
 
 // THE DATA LITERALS THE VARIABLE FORM WRITES (@tables, @unions, @node_types,
-// @known_ids, @uncarried) are laid out in `mix format`'s shape as they are
+// @declared_types, @known_ids, @uncarried) are laid out in `mix format`'s shape as they are
 // emitted (issue #547). The descriptor builders spell each literal as one
 // flat term (maps, lists, tuples, binaries and leaves; whitespace between
 // tokens is free) and exTerm lays that term out by the formatter's rules for

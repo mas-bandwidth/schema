@@ -1198,7 +1198,13 @@ final class TableWireReader {
   final Map<int, int> refToId;
   final List<int> nodeTypes;
   final List<Uint8List> nodes;
+  // knownTypes is every table the unit DECLARES: a record of one is a type
+  // this reader can name, so a slot naming it at the wrong type is damage.
+  // placeTypes is the tables a pointer below THIS root targets: only a record
+  // of one is decoded; any other table record is counted unknown at the scan
+  // (docs/SPEC-TABLES.md §3.1; internal/tablewire/decodenodes.go).
   final Set<int> knownTypes;
+  final Set<int> placeTypes;
   final List<Object?> decoded;
   final Map<int, Object> stringBlobTokens;
   final Set<int> namedBlobs;
@@ -1234,6 +1240,7 @@ final class TableWireReader {
       nodeTypes = <int>[],
       nodes = <Uint8List>[],
       knownTypes = <int>{},
+      placeTypes = <int>{},
       decoded = <Object?>[],
       stringBlobTokens = <int, Object>{},
       namedBlobs = <int>{},
@@ -1254,6 +1261,7 @@ final class TableWireReader {
       nodeTypes = parent.nodeTypes,
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
+      placeTypes = parent.placeTypes,
       decoded = parent.decoded,
       stringBlobTokens = parent.stringBlobTokens,
       namedBlobs = parent.namedBlobs,
@@ -1282,6 +1290,7 @@ final class TableWireReader {
       nodeTypes = parent.nodeTypes,
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
+      placeTypes = parent.placeTypes,
       decoded = parent.decoded,
       stringBlobTokens = parent.stringBlobTokens,
       namedBlobs = parent.namedBlobs,
@@ -1789,9 +1798,11 @@ final class TableWireReader {
           }
         } else if (typeId == _kBytesBlobId && bytesBlob) {
           nodeTypes.add(typeId);
-        } else if (knownTypes.contains(typeId)) {
+        } else if (placeTypes.contains(typeId)) {
           nodeTypes.add(typeId);
         } else {
+          // a record this ROOT cannot place, declared or not, is unknown: a
+          // slot this reader declares naming it still refuses at resolve
           report.unknown++;
           if (retain != null) report.retainLost++;
           nodeTypes.add(typeId);
@@ -1820,7 +1831,7 @@ final class TableWireReader {
     for (var rec = 0; rec < nodes.length; rec++) {
       final typeId = nodeTypes[rec];
       if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
-      if (!knownTypes.contains(typeId)) continue;
+      if (!placeTypes.contains(typeId)) continue;
       final obj = _newNode(typeId);
       if (obj == null) continue;
       decoded[rec] = obj;
@@ -3455,9 +3466,12 @@ func (g *wireGen) emitKnownTypes(st *ir.Struct, recv, root string) {
 	// of the unit, not only the ones a pointer below this root reaches. A node
 	// record of a declared type that is not its slot's target is damage; one of
 	// a type the unit does not declare is a newer writer's type, counted
-	// `unknown` once and read as null. A root with no table pointer places no
-	// node, so it names none of them.
-	if len(ir.PointerReachable(st)) == 0 || len(g.unit.Tables) == 0 {
+	// `unknown` once and read as null. A root with only blob pointers names
+	// them too: what a reader can NAME is decided by its unit, never by its
+	// root's closure (docs/rulings.json blob-target-outside-closure-refused;
+	// internal/tablewire/decodenodes.go resolveCell). A value-only root reads
+	// no node table, so it names none of them.
+	if !ir.VariableTables(g.unit)[st.Name] || len(g.unit.Tables) == 0 {
 		return
 	}
 	g.pf("\t%s.knownTypes.addAll(<int>[", recv)
@@ -3466,6 +3480,21 @@ func (g *wireGen) emitKnownTypes(st *ir.Struct, recv, root string) {
 			g.pf(", ")
 		}
 		g.pf("%s", dartU64Literal(ir.TableWireId(g.unit.Tables[name].WireName())))
+	}
+	g.pf("]);\n")
+	// THE TYPES THIS ROOT PLACES: the tables a pointer below it targets. A
+	// record of any other table is counted `unknown` at the scan and never
+	// decoded, declared or not (internal/tablewire/decodenodes.go byTypeId).
+	reach := ir.PointerReachable(st)
+	if len(reach) == 0 {
+		return
+	}
+	g.pf("\t%s.placeTypes.addAll(<int>[", recv)
+	for i, ps := range reach {
+		if i > 0 {
+			g.pf(", ")
+		}
+		g.pf("%s", dartU64Literal(ir.TableWireId(ps.WireName())))
 	}
 	g.pf("]);\n")
 }

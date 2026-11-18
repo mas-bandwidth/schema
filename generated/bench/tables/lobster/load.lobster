@@ -1897,8 +1897,15 @@ def decode_variable(st:LoadState, root:Record, hi:int):
                 node = Node { kind: 1, rec: new_record(d), blob: nil }
             elif rec.tid == string_blob_id or rec.tid == bytes_blob_id or declares(root.d, rec.tid):
                 // a type this reader declares is never evolution: every
-                // pointer slot naming it refuses in resolve_cell (§3.1)
+                // pointer slot naming it refuses in resolve_cell (§3.1).
+                // The record still sits outside the root's closure, so no
+                // slot this reader declares places it: it is unknown, the
+                // same count the engine gives an unplaceable record.
                 node = Node { kind: 4, rec: nil, blob: nil }
+                rep.unknown++
+                let retain = active_retain_capture()
+                if retain:
+                    retain.lost()
             else:
                 rep.unknown++
                 let retain = active_retain_capture()

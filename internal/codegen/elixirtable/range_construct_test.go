@@ -47,7 +47,8 @@ end
 alias Probe.Table, as: T
 alias Probe.ProbeFixed, as: F
 alias Probe.TableMessage, as: M
-{:ok,vocabulary}=M.announce_read(M.announce())
+{:ok,announced}=M.announce_read(M.announce())
+{:ok,vocabulary}=M.for_root(announced,"Ranges")
 `)
 	count := 0
 	for line := range strings.SplitSeq(string(cases), "\n") {

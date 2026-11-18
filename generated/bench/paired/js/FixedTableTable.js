@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedCheckRead, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -388,11 +388,8 @@ export function FixedTableFixedSave(values, count, bytes) {
   return need;
 }
 
-// A REFUSAL AT RECORD k KEEPS NOTHING OF THE BATCH (docs/SPEC-TABLES.md §4,
-// §6.5): every record this read wrote, k included, goes back to its declared
-// defaults, and the refusal and the damage are the report's; no counter moves.
-function FixedTableFixedRefuseBatch(values, k, stage, report) {
-  for (let j = 0; j <= k; j++) { InitFixedTable(values[j]); }
+// CHECK refuses before LAND touches any caller record (§5.3).
+function FixedTableFixedRefuseBatch(stage, report) {
   report.refused = stage.refused;
   report.damaged = stage.damaged;
   return -1;
@@ -486,40 +483,48 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   // §4.5, §5.3: stage the record loop's counters so a refusal leaves the
   // caller's oor and widened untouched; commit after the loop.
   const stage = TableFixedResetReport(plan.stage);
-  const identity = entries === FixedTableFixedIdentity && holeN === 0;
-  let at = layoutAt + layoutBytes;
-  for (let k = 0; k < n; k++) {
-    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
-    // NAME, never a guess and never damage: nothing is decoded, no counter moves.
+  // Check EVERY record hash before any content or destination.
+  for (let at = layoutAt + layoutBytes; at < byteLength; at += recordBytes) {
     if (srcView.getUint32(at, true) !== hashLo || srcView.getUint32(at + 4, true) !== hashHi) {
       report.refused = TableFixedRefusal.NoLayout; return -1;
     }
+  }
+  const identity = entries === FixedTableFixedIdentity && holeN === 0;
+  // CHECK the complete batch first; only LAND may project caller values.
+  for (let phase = 0; phase < 2; phase++) {
+  TableFixedResetReport(stage); // the check pass commits no counters
+  let at = layoutAt + layoutBytes;
+  for (let k = 0; k < n; k++) {
     if (identity) {
-      FixedTableFixedCheckDead(srcView, at + 8, stage);
-      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
-      FixedTableFixedDecode(values[k], srcView, at + 8, stage);
-      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
+      if (phase === 0) {
+        FixedTableFixedCheckDead(srcView, at + 8, stage);
+        if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(stage, report); }
+        FixedTableFixedCheckRead(srcView, at + 8, stage);
+        if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(stage, report); }
+      } else {
+        FixedTableFixedDecode(values[k], srcView, at + 8, stage);
+      }
       at += recordBytes;
       continue;
     }
-    if (entries === FixedTableFixedIdentity && holeN === 0) {
+    if (phase === 0 && entries === FixedTableFixedIdentity && holeN === 0) {
       FixedTableFixedCheckDead(srcView, at + 8, stage);
-      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
+      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(stage, report); }
     }
     for (let h = 0; h < holeN; h++) {
       const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];
       for (let i = 0; i < z; i++) { image[o + i] = FixedTableFixedPrefill[o + i]; }
     }
     TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, stage);
-    // A TEXT OP THAT REFUSED ITS CONTENT stops the read HERE, before the
-    // projection: refuse is total, no counter moves and no record lands.
-    if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
-    FixedTableFixedDecode(values[k], imageView, 0, stage);
-    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries
-    // no text op, so the decode is where a byte string or a wide string
-    // refuses by name, here and at the in-place door alike.
-    if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(values, k, stage, report); }
+    if (phase === 0) {
+      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(stage, report); }
+      FixedTableFixedCheckRead(imageView, 0, stage);
+      if (stage.refused !== 0) { return FixedTableFixedRefuseBatch(stage, report); }
+    } else {
+      FixedTableFixedDecode(values[k], imageView, 0, stage);
+    }
     at += recordBytes;
+  }
   }
   // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on
   // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and

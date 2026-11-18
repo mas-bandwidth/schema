@@ -240,7 +240,9 @@ int main(void) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	cmd := exec.CommandContext(ctx, filepath.Join(dir, "probe"))
+	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
+	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
 

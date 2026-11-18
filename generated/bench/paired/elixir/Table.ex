@@ -1384,6 +1384,11 @@ defmodule Bench.Table do
     0x3D827CB76B809D8C => "MixedPickupEvent",
     0xC42975BFE5E07BAA => "MixedStat"
   }
+  # the types this reader NAMES whatever a root reaches (docs/SPEC-TABLES.md
+  # §3.1, §6.5): every table the unit declares. A record of one, or of
+  # either reserved blob id, under a declared slot of another type is damage;
+  # only a record of a type outside this set is evolution.
+  @declared_types %{0x85DF369CDCA746B3 => "FixedTable"}
   # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool
   # walks a record by name and kind with, no per-version struct on hand.
   def descriptors, do: @tables
@@ -2606,7 +2611,7 @@ defmodule Bench.Table do
       {:table, _name, b} ->
         if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
 
-      {:unknown, b} when is_binary(b) ->
+      {kind, b} when kind in [:unknown, :unplaced] and is_binary(b) ->
         if not unknown_body?(b, ids, 0, MapSet.new()), do: throw(:wire_damaged)
 
       _ ->
@@ -2864,7 +2869,9 @@ defmodule Bench.Table do
       for {node, idx} <- indexed, node != :malformed, do: idx
 
     unknown_fields =
-      for {{:unknown, body}, idx} <- indexed, is_binary(body), into: %{} do
+      for {{kind, body}, idx} <- indexed,
+          kind in [:unknown, :unplaced] and is_binary(body),
+          into: %{} do
         case entries(body, ids, false, :nested) do
           {:ok, fs, []} -> {idx, fs}
           _ -> throw(:wire_damaged)
@@ -2902,7 +2909,7 @@ defmodule Bench.Table do
   end
 
   defp blob_node?({:blob, _kind, _bytes}), do: true
-  defp blob_node?({:unknown, :blob}), do: true
+  defp blob_node?({:unplaced, :blob}), do: true
   defp blob_node?(_node), do: false
 
   # wire_walk is the depth-first descent from the root over an explicit
@@ -3585,6 +3592,12 @@ defmodule Bench.Table do
       {0, _rest} ->
         {:ok, Enum.reverse(acc), node_bin}
 
+      {_ref, _rest} when node_bin != nil ->
+        # THE NODE TABLE IS THE ROOT BODY'S LAST FIELD (§3.1): a field after
+        # it is a spelling no conforming writer produces, and the read refuses
+        # it (docs/rulings.json reads-refuse-non-canonical)
+        throw(:wire_damaged)
+
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
@@ -3662,6 +3675,10 @@ defmodule Bench.Table do
         content = binary_part(rest, 0, l)
 
         case leb(content) do
+          # AN EMPTY NODE TABLE is a spelling no conforming writer produces: a
+          # writer with no node writes no table (§3.1; docs/rulings.json
+          # reads-refuse-non-canonical)
+          {0, _cr} -> throw(:wire_damaged)
           {n, cr} -> node_records(cr, n, [], ids, allowed)
           :error -> :error
         end
@@ -3684,7 +3701,11 @@ defmodule Bench.Table do
 
       # A RECORD THIS READER CANNOT NAME keeps its body ({:unknown, body}):
       # the value reads it as nothing, but the reach walk still reads its
-      # pointer payloads, as every record's are (§3.1, §4)
+      # pointer payloads, as every record's are (§3.1, §4). A record this
+      # reader NAMES that the root cannot place ({:unplaced, body}) is counted
+      # and walked the same way, but a declared slot naming it is damage:
+      # the two reserved blob ids and every declared table are nameable
+      # whatever the root reaches (§3.1, §6.5)
       node =
         case resolve(ids, sref) do
           :error ->
@@ -3698,13 +3719,13 @@ defmodule Bench.Table do
             :malformed
 
           @string_id ->
-            # a *string blob this reader can name is its UTF-8 bytes; a record
-            # whose content is not text is malformed, and the root that reaches
-            # no *string cannot place the record at all (§3.1)
+            # a *string blob is its UTF-8 bytes; a record whose content is not
+            # text is malformed, and the root that reaches no *string cannot
+            # place the record (§3.1)
             cond do
               not utf8_valid?(bytes) -> :malformed
               is_map(allowed) and allowed.string_blob -> {:blob, :string, bytes}
-              true -> {:unknown, :blob}
+              true -> {:unplaced, :blob}
             end
 
           tid ->
@@ -3712,12 +3733,19 @@ defmodule Bench.Table do
               {:ok, :bytes} ->
                 if is_map(allowed) and allowed.bytes_blob,
                   do: {:blob, :bytes, bytes},
-                  else: {:unknown, :blob}
+                  else: {:unplaced, :blob}
 
               {:ok, name} ->
-                if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
-                  do: {:table, name, bytes},
-                  else: {:unknown, bytes}
+                cond do
+                  is_map(allowed) and Map.get(allowed.node_types, tid) == name ->
+                    {:table, name, bytes}
+
+                  Map.has_key?(@declared_types, tid) ->
+                    {:unplaced, bytes}
+
+                  true ->
+                    {:unknown, bytes}
+                end
 
               :error ->
                 {:unknown, bytes}
@@ -3887,6 +3915,13 @@ defmodule Bench.Table do
           # naming it reads null (docs/SPEC-TABLES.md §3.1), as the
           # retaining read and Go's oracle (internal/tablewire) already do
           :null
+
+        {:unplaced, _body} ->
+          # A NODE OF A TYPE THIS READER NAMES that the root cannot place is
+          # never this slot's target (the slot's own target is placed), so a
+          # declared slot naming it is a wrong-type pointer: damage (§3.1,
+          # §6.5; docs/rulings.json blob-target-outside-closure-refused)
+          {:value, :wrong_type}
       end
     end
   end
@@ -3906,7 +3941,7 @@ defmodule Bench.Table do
   defp directory_report(nodes, report, retaining) do
     if :malformed in nodes, do: throw(:wire_damaged)
 
-    unknown = Enum.count(nodes, &match?({:unknown, _}, &1))
+    unknown = Enum.count(nodes, &(match?({:unknown, _}, &1) or match?({:unplaced, _}, &1)))
 
     %{
       report
@@ -8097,6 +8132,10 @@ defmodule Bench.Table do
       {0, _rest} ->
         measure_found_nodes(found, ids, desc)
 
+      # a field after the node table: the read refuses it (§3.1)
+      {_ref, _rest} when found != nil ->
+        :error
+
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
@@ -8136,7 +8175,8 @@ defmodule Bench.Table do
          content = binary_part(rest, 0, l),
          {n, cr} <- leb(content),
          {:ok, records} <- scan_measure_records(cr, n, ids, []) do
-      measure_records(records, ids, desc, 0, 0)
+      # an empty node table: the read refuses it (§3.1)
+      if n == 0, do: :error, else: measure_records(records, ids, desc, 0, 0)
     else
       _ -> {:ok, 0, 0}
     end

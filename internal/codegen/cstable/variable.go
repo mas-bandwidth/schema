@@ -276,6 +276,11 @@ const tableVariableWireSource = `
             if (node.TypeId == 0x704be0d8faaffc58ul) { node.BlobKind = 12; }
             if (node.BlobKind != 0)
             {
+                // A blob kind this root does not reach is not placed. Both reserved
+                // ids stay named: a declared slot that points at the unplaced record
+                // refuses, and the record itself counts unknown (docs/SPEC-TABLES.md §3.1).
+                bool reached = (node.BlobKind == 14 && type.BytesEdge) || (node.BlobKind == 12 && type.StringEdge);
+                if (!reached) { node.Declared = true; report.Unknown++; continue; }
                 ReadOnlySpan<byte> data = payload.Buffer.Slice(node.Offset, node.Length);
                 if (node.BlobKind == 12 && !TextValid(data)) { Damage(report); continue; }
                 node.Value = new TableBlob(data.ToArray()); continue;

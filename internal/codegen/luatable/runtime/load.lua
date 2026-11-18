@@ -2137,7 +2137,17 @@ local function read_form1(T, name, bytes, report, state, into)
       end
       ctx.nodes = nodes
     end
+    local reach = desc.reach
     for _, rec in ipairs(raw) do
+      -- A BLOB RECORD OF A KIND THE ROOT'S CLOSURE LACKS is one this root
+      -- cannot place, and is counted unknown as the engine counts it
+      -- (decodenodes.go; docs/rulings.json blob-target-outside-closure-refused):
+      -- only a field this reader does not declare can lawfully name it. It
+      -- still keeps its kind, because the two reserved blob ids are types every
+      -- reader can name: a declared slot naming it at the wrong kind is damage.
+      local outside = (rec.tid == STRING_BLOB_ID and not reach.string_blob)
+        or (rec.tid == BYTES_BLOB_ID and not reach.bytes_blob)
+      if outside then report.unknown = report.unknown + 1 end
       -- A BLOB NODE KEEPS ITS IDENTITY (§3.1: every reachable node is written
       -- once and two references to one node are one node; §6.3: sharing and a
       -- back-reference are the same fact). A Lua string is a value, so two

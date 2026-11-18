@@ -9,9 +9,13 @@ map, optional variable closure containing a pointer, bounded and optional text
 lists, a total text budget, unbounded list text and map keys, declared forms,
 and CRC32C integrity. `ArrayRoot` exercises populated array-root JSON.
 
-The `.input.json` files are authoring inputs. The binary files and canonical
-`tables/json/feature_*.json` files were produced by compiled generated Go using
-the standalone runtime, independently of the neutral codec used by the gate.
+The `.input.json` files are authoring inputs. The committed binary files and
+canonical `tables/json/feature_*.json` files were produced by compiled generated
+Go using the standalone runtime, independently of the neutral codec used by the
+gate. `conformance-cpp-positive-features` separately generates both binaries
+from those inputs with generated C++, asserts their native values and checks
+both wire and JSON bytes against the unchanged pins. The nightly artifact uses
+the C++ output after verifying that it matches the committed binary pins.
 `TestPopulatedFeatureWitnessNativePins` compares both representations without
 rewriting them. Its explicit `-update-feature-witnesses` flag is for reviewed
 fixture maintenance, never part of a normal gate or nightly run.

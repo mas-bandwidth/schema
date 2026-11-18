@@ -4579,6 +4579,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		fmt.Fprintf(&b, "    }\n\n")
 	} else {
 		fmt.Fprintf(&b, "        report.rootTypeId = TYPE_ID;\n")
+		bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
@@ -4588,9 +4589,15 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		fmt.Fprintf(&b, "                        rec.typeId = 0;\n")
 		fmt.Fprintf(&b, "                    } else {\n")
 		fmt.Fprintf(&b, "                        rec.value = new String(rec.body, StandardCharsets.UTF_8);\n")
+		if !strBlob {
+			writeBlobOutsideClosure(&b, "                        ", "report.unknown++;")
+		}
 		fmt.Fprintf(&b, "                    }\n")
 		fmt.Fprintf(&b, "                } else if (rec.typeId == TableVariable.BYTES_ID) {\n")
 		fmt.Fprintf(&b, "                    rec.bytes = rec.body;\n")
+		if !bytesBlob {
+			writeBlobOutsideClosure(&b, "                    ", "report.unknown++;")
+		}
 		fmt.Fprintf(&b, "                } else if (!rec.textMalformed) {\n")
 		fmt.Fprintf(&b, "                    // §3.1: a cleared text node is damage; an actual id of zero is unknown.\n")
 		fmt.Fprintf(&b, "                    rec.table = createNode(rec.typeId);\n")
@@ -4660,6 +4667,19 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		}
 	}
 	return source, nil
+}
+
+// writeBlobOutsideClosure emits the count of a blob record whose kind the
+// root's pointer closure lacks (docs/SPEC-TABLES.md §3.1, §6.5; docs/rulings.json
+// blob-target-outside-closure-refused), as the engine counts it
+// (internal/tablewire/decodenodes.go decodeValue): the root cannot place it, so
+// it is unknown once. Its type id is KEPT: the two reserved blob ids are types
+// every reader can name, so a declared slot naming it at the wrong kind still
+// refuses the read (TableVariable.judge), and only a record reached from
+// fields this reader does not declare reads as evolution.
+func writeBlobOutsideClosure(b *strings.Builder, indent, count string) {
+	b.WriteString(indent + "// A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.\n")
+	b.WriteString(indent + count + "\n")
 }
 
 func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {

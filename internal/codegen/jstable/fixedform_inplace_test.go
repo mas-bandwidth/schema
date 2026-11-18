@@ -66,18 +66,27 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 	t.Helper()
 	allowed := specInPlaceLanguages(t)["javascript"]
 	decl := fmt.Sprintf("const identity = entries === %sFixedIdentity && holeN === 0;", root)
-	door := fmt.Sprintf("if (identity) {\n"+
-		"      %sFixedDecode(values[k], srcView, at + 8, stage);\n"+
-		"      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n"+
-		"      at += recordBytes;\n"+
-		"      continue;\n"+
-		"    }", root, root)
-	// A ROOT WITH DEAD BYTES ALSO CHECKS THEM ON THE FILE BEFORE THE PROJECTION
-	// (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3 step 11).
-	dead := fmt.Sprintf("if (identity) {\n"+
-		"      %sFixedCheckDead(srcView, at + 8, stage);\n"+
-		"      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n", root, root) +
-		door[len("if (identity) {\n"):]
+	door := "if (identity) {\n"
+	checked := strings.Contains(load, root+"FixedCheckRead(")
+	deadBytes := strings.Contains(load, root+"FixedCheckDead(")
+	if checked || deadBytes {
+		door += "      if (phase === 0) {\n"
+		if deadBytes {
+			door += fmt.Sprintf("        %sFixedCheckDead(srcView, at + 8, stage);\n", root)
+			door += fmt.Sprintf("        if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", root)
+		}
+		if checked {
+			door += fmt.Sprintf("        %sFixedCheckRead(srcView, at + 8, stage);\n", root)
+		}
+		door += fmt.Sprintf("        if (stage.refused !== 0) { return %sFixedRefuseBatch(stage, report); }\n", root)
+		door += "      } else {\n"
+		door += fmt.Sprintf("        %sFixedDecode(values[k], srcView, at + 8, stage);\n", root)
+		door += "      }\n"
+	} else {
+		door += fmt.Sprintf("      if (phase === 1) { %sFixedDecode(values[k], srcView, at + 8, stage); }\n", root)
+	}
+	door += "      at += recordBytes;\n      continue;\n    }"
+
 	if !allowed {
 		if strings.Contains(load, "if (identity") {
 			t.Error("the load grew a second reader and docs/SPEC-TABLES.md §3.4 does not list javascript")
@@ -88,9 +97,7 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 		t.Errorf("the in-place door must be chosen exactly once, by the identity plan with no holes: %q appears %d times", decl, n)
 	}
 	if n := strings.Count(load, door); n != 1 {
-		if d := strings.Count(load, dead); d != 1 {
-			t.Errorf("the in-place door must be exactly §3.4's shape (project from srcView at the body, refuse as the shared path does); found %d without dead bytes and %d with them", n, d)
-		}
+		t.Errorf("the in-place door must CHECK before LAND, projecting directly from srcView; found %d canonical doors", n)
 	}
 	// NOTHING ELSE BRANCHES ON IDENTITY: the declaration and the door are the
 	// only two mentions in the load's code (its comments may say why).

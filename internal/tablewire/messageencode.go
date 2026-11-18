@@ -386,9 +386,8 @@ func encodeBitValue(e *bitEncoder, w *bitWriter, f *ir.Field, kind uint8, shape 
 			return nil
 		}
 		if fl, isFlags := f.Type.Ref.(*ir.Flags); isFlags && f.Type.Kind == ir.TNamed && fl != nil {
-			// A MASK RIDES AT ITS DECLARED WIDTH, and bits a newer build
-			// appended past it are dropped by width, the one row of §4 this
-			// form moves (docs/SPEC-TABLES.md §3.3): masked here on purpose
+			// EncodeMessages validates the complete flags value before reaching here.
+			// Emit the admitted mask at the declaration's announced width.
 			w.put(cell.U&lowBits(bits), bits)
 			return nil
 		}
