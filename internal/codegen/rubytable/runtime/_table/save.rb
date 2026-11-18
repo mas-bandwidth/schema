@@ -545,6 +545,8 @@ module SchemaRuntimeUnit
           validate_pointer_array(value_field, cur, where, edges)
         when 'map'
           validate_map_edges(value_field, cur, where, edges)
+        when 'keyed'
+          validate_keyed_edges(value_field, cur, where, edges)
         when 'union', 'union_array'
           validate_union_edges(value_field, cur, where, edges)
         else

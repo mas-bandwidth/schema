@@ -8,8 +8,8 @@ document disagree, one of them is a bug (see VERSIONING.md).
 
 **schema** is a small language for describing bitpacked network data, and a
 compiler — written in Go — that translates `*.schema` files into generated C,
-C++, C#, Dart, Elixir, Go, Java, JavaScript, Rust, Lobster, Lua, Luau, Python and
-Squirrel source code. Eleven of the fourteen targets read and write through a
+C++, C#, Dart, Elixir, Go, Java, JavaScript, Rust, Lobster, Lua, Luau, Python, Ruby and
+Squirrel source code. Twelve of the fifteen targets read and write through a
 serialize-family runtime library; the other three carry the bit reader and
 writer in the generated code itself and
 need nothing but their own toolchain:
@@ -29,6 +29,7 @@ need nothing but their own toolchain:
 | Lua | [serialize.lua](https://github.com/mas-bandwidth/serialize.lua) |
 | Luau | [serialize.luau](https://github.com/mas-bandwidth/serialize.luau) |
 | Python | serialize.py, staged in this repository at `third_party/serialize.py/` and shipped inside each generated package |
+| Ruby | [serialize.rb](https://github.com/mas-bandwidth/serialize.rb), staged at `third_party/serialize.rb/` and vendored into each generated package |
 | Squirrel | [serialize.nut](https://github.com/mas-bandwidth/serialize.nut) |
 
 The runtimes are bit-for-bit wire compatible, pinned in CI with shared golden
@@ -844,7 +845,7 @@ FloatExpr   = float expression over float literals, int literals and const names
     language — every packet target emits it in its own spelling:
     `CapsCount` in C++, C#, Go, JavaScript, Lua, Luau, Squirrel, MOO,
     Goose and Lobster; `CAPS_COUNT` in C, Rust and Java; `capsCount` in Dart;
-    `caps_count/0` in Elixir; `Caps.Count`, a class attribute, in Python.
+    `caps_count/0` in Elixir; `Caps.Count`, a class attribute, in Python; `Caps::Count` in Ruby.
     **`flags` is a
     contextual keyword, not reserved** — it introduces a declaration at file
     scope only, so a *field* named `flags` stays fully legal; declarations at
@@ -1250,8 +1251,8 @@ it (§4.6).
   a write traps naming `non_finite_float`, a read refuses with it. Luau
   (serialize.luau v2.1.3) enforces it through its vendored serialize
   runtime: a write traps naming the finite rule, a read refuses with
-  `non_finite_float`. Python's generated writer refuses one with
-  `InvalidValue` naming the field, and its vendored serialize.py refuses one
+  `non_finite_float`. Python's and Ruby's generated writers refuse one with
+  `InvalidValue` naming the field, and their vendored serialize.py and serialize.rb refuse one
   on read with `non_finite_float`. Every packet target enforces it. A
   *quantized* `float32` is a different field: its wire is the step index and
   not the pattern, per its row below. The table forms take the same rule
@@ -2247,7 +2248,7 @@ face untrusted bytes; writers do not.
 The packet `Write` contract includes row 8 (§5.1): a zero byte or used bytes
 that are not well-formed UTF-8. Each leg checks writes by its own mechanism.
 C, C++, C#, Rust, Java and Dart use a debug-only assert; Go, JavaScript,
-Elixir, Lua, Luau, Squirrel, MOO, Goose and Python use a refusal in every build.
+Elixir, Lua, Luau, Squirrel, MOO, Goose, Python and Ruby use a refusal in every build.
 The reader independently refuses the same ill-formed text in every build
 (§4.7). Ranges are trusted inputs everywhere: generated code never feeds
 attacker-influenced values as min/max.

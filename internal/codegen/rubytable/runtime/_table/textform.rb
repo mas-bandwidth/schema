@@ -230,7 +230,7 @@ module SchemaRuntimeUnit
         raise TextError.new('text_missing_required', node.start) if field.required && active && !seen[field.json_key]
       end
       labels[label] = desc.name unless label.empty?
-      return parts[0] || 'SchemaTable.arr' if array_root
+      return parts[0] || '[]' if array_root
 
       "{#{parts.join(',')}}"
     end

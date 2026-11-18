@@ -1,5 +1,3 @@
-//go:build schema_leg_ruby
-
 package compiler
 
 // The Ruby PACKET WIRE's carried constructs (docs/PORT-RUBY.md, THE CARD MAP):

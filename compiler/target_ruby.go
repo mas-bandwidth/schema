@@ -1,5 +1,3 @@
-//go:build schema_leg_ruby
-
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
@@ -109,4 +107,6 @@ func rubyTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]rubytable.
 
 func init() {
 	registerBuiltin(rubyTarget{}, true, true, true, true)
+	registerListCarrier("ruby")
+	registerMapCarrier("ruby")
 }

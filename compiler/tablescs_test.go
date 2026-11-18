@@ -156,6 +156,10 @@ func TestCsCarriesBlobs(t *testing.T) {
 		legs = append(legs, "python")
 		wants = append(wants, "--lang python")
 	}
+	if slices.Contains(blobTargets, "ruby") {
+		legs = append(legs, "ruby")
+		wants = append(wants, "--lang ruby")
+	}
 	legs = append(legs, "rust")
 	if slices.Contains(blobTargets, "squirrel") {
 		legs = append(legs, "squirrel")

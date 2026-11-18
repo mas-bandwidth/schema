@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH='' cd -- "$HERE/../../.." && pwd)
+RUBY_BIN=${RUBY:-"$ROOT/dist/ruby-4.0.9/bin/ruby"}
+exec "$RUBY_BIN" --disable-gems -w "$HERE/wirefuzz.rb" "$@"

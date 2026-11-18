@@ -1,0 +1,28 @@
+name: schema ruby hostile corpus
+
+on:
+  schedule:
+    - cron: '27 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
+jobs:
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/ruby
+      - name: every shared hostile-corpus verdict, reason and digest
+        run: make schema-ruby-runs-hostile-corpus
+      - name: replay the corpus and require the planted reader bug to be observed
+        run: make schema-ruby-runs-hostile-corpus-negative-control

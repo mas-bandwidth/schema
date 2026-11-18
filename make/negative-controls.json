@@ -3391,6 +3391,13 @@
         "packet-finite-python-negative-control"
       ],
       "python": "pin"
+    },
+    {
+      "name": "ruby-vt",
+      "when": "nightly",
+      "why": "the Ruby variable-table, conformance, wire-fuzz, hostile-corpus, resource-bounds, cards, strict-analyzer, readiness, bench and usage-fragment controls (make/*ruby*.mk, docs/PORT-RUBY.md, R6-R16) under both pinned CRuby 3.4.12 and 4.0.9 interpreters. Nightly because a cache miss builds both CRubies from source tarballs.",
+      "targets": [],
+      "ruby": "pin"
     }
   ],
   "excluded": [

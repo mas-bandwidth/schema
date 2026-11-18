@@ -108,7 +108,14 @@ module SchemaRuntimeUnit
     def self.read_json_float(field, token)
       raise Refused.new('kind_mismatch', field.name) unless token.is_a?(JsonNumber)
 
-      val = field.kind == 10 ? parse_json_float32(token.token, field) : Float(token.token)
+      val = 0.0
+      old_v = $VERBOSE
+      begin
+        $VERBOSE = nil
+        val = field.kind == 10 ? parse_json_float32(token.token, field) : Float(token.token)
+      ensure
+        $VERBOSE = old_v
+      end
       raise Refused.new('out_of_range', field.name) unless val.finite?
 
       if field.float_range
@@ -140,7 +147,14 @@ module SchemaRuntimeUnit
       low, high = single ? [6, 9] : [15, 17]
       (low..high).each do |prec|
         txt = format("%.#{prec}g", value)
-        parsed = single ? parse_json_float32(txt, field) : Float(txt)
+        parsed = 0.0
+        old_v = $VERBOSE
+        begin
+          $VERBOSE = nil
+          parsed = single ? parse_json_float32(txt, field) : Float(txt)
+        ensure
+          $VERBOSE = old_v
+        end
         return txt if prec == high || parsed == value
       end
       format("%.#{high}g", value)
@@ -774,7 +788,7 @@ module SchemaRuntimeUnit
       end
       if %w[array pointer_array union_array].include?(field.codec)
         element = json_array_element(field)
-        return 'SchemaTable.arr' if item.empty?
+        return '[]' if item.empty?
 
         if field.json_text_list
           parts = SchemaTable.arr
@@ -847,7 +861,7 @@ module SchemaRuntimeUnit
         field.json_variants.each_with_index do |v_name, idx|
           parts << "#{'  ' * (depth + 1)}#{json_quote(v_name)}" if item.anybits?(1 << idx)
         end
-        return 'SchemaTable.arr' if parts.empty?
+        return '[]' if parts.empty?
 
         return "[\n#{parts.join(",\n")}\n#{'  ' * depth}]"
       end

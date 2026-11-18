@@ -57,7 +57,7 @@ class FakeRunner(m.Runner):
             text = fuzz(arm,int(seed),self.lang)
         elif name.startswith("wire-builder-"):
             text = fuzz("plain", int(name.rsplit("-", 1)[1]), self.lang, builder=True)
-        elif self.lang in ("moo", "python") and name in ("packet-normal-0", "packet-ludicrous-0"):
+        elif self.lang in ("moo", "python", "ruby") and name in ("packet-normal-0", "packet-ludicrous-0"):
             tests = argv[argv.index("-run")+1][2:-2].split("|")
             text = "\n".join("\n".join(native(self.lang,t).splitlines()[:-1]) for t in tests)
             text += "\n" + native(self.lang).splitlines()[-1]
@@ -81,6 +81,10 @@ class FakeRunner(m.Runner):
             tests = argv[argv.index("-run")+1][2:-2].split("|")
             text = "\n".join("\n".join(native("pythontable",t).splitlines()[:-1]) for t in tests)
             text += "\n" + native("pythontable").splitlines()[-1]
+        elif name.startswith("retain-ruby-"):
+            tests = argv[argv.index("-run")+1][2:-2].split("|")
+            text = "\n".join("\n".join(native("rubytable",t).splitlines()[:-1]) for t in tests)
+            text += "\n" + native("rubytable").splitlines()[-1]
         elif name.startswith("retain-"):
             test = argv[argv.index("-run")+1][1:-1]
             package = argv[-1].split("/")[-1]
@@ -451,12 +455,12 @@ class Contracts(unittest.TestCase):
                 expected=["packet-"+feature+"-"+lang+tail
                           for feature in ("defaults","utf8")
                           for tail in ("","-negative-control")]
-                if lang in ("go","java","dart","elixir","goose","moo","python"):
+                if lang in ("go","java","dart","elixir","goose","moo","python","ruby"):
                     expected += ["packet-finite-"+lang,"packet-finite-"+lang+"-negative-control"]
                 targets=features[features.index("-j2")+1:]
-                if lang=="python":
+                if lang in ("python","ruby"):
                     # through the uncapped copy of the reviewed recipes
-                    self.assertEqual(targets[:2],["-f",str(runner.out/"Makefile.python-uncapped-packet-features")])
+                    self.assertEqual(targets[:2],["-f",str(runner.out/f"Makefile.{lang}-uncapped-packet-features")])
                     targets=targets[2:]
                 self.assertEqual(targets,expected)
             self.assertFalse(any("packet-wide-" in word or word.startswith("wide-") for word in features))
@@ -487,7 +491,9 @@ class Contracts(unittest.TestCase):
                         "moo-toolchain-ready","build/conformance-harness-moo","build/schema-moo","moo-packet-driver",
                         "packet-finite-moo","packet-finite-moo-negative-control",
                         "dist-python","python-toolchain-check","build/conformance-harness-python","build/schema-python",
-                        "packet-finite-python","packet-finite-python-negative-control"))
+                        "packet-finite-python","packet-finite-python-negative-control",
+                        "dist-ruby","ruby-toolchain-check","build/conformance-harness-ruby","build/schema-ruby",
+                        "packet-finite-ruby","packet-finite-ruby-negative-control"))
         for lang in m.LANGUAGES:
             if lang!="cpp":
                 for feature in ("defaults","utf8"):
@@ -507,7 +513,8 @@ class Contracts(unittest.TestCase):
         # that makes them: the packet features, the external gates and the
         # verdict-pipe controls.
         python_outer={name for name in outer if "python" in name}
-        self.assertEqual(outer-goose_outer-moo_outer-python_outer,{"tables-view","tables-fixed-twin"})
+        ruby_outer={name for name in outer if "ruby" in name}
+        self.assertEqual(outer-goose_outer-moo_outer-python_outer-ruby_outer,{"tables-view","tables-fixed-twin"})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
         runner=FakeRunner(ROOT,"python")
