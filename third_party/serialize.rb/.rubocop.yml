@@ -1,0 +1,26 @@
+# RuboCop for serialize.rb: every cop of the pinned RuboCop is on, at the
+# floor's language version, except the few below, each with its reason.
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
+
+# The streams are one flat method per wire operation, each a straight line of
+# checks in the order STANDARD.md states them; splitting them to meet a size
+# metric would add a call to every read and write on the hot path.
+Metrics:
+  Enabled: false
+
+# The family's names: min, max, s (a stream), r (a Ref), n (a bit count).
+Naming/MethodParameterName:
+  Enabled: false
+
+# Every serialize operation returns true or false, and its name is the
+# family's (serialize_bits, serialize_end, ...), so it carries no `?`.
+Naming/PredicateMethod:
+  Enabled: false
+
+# `x > 0` and `x.zero?` read the same; the comparison is kept where it is a
+# bit count compared against a width.
+Style/NumericPredicate:
+  Enabled: false

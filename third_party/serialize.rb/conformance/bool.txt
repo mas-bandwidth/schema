@@ -1,0 +1,47 @@
+# serialize conformance vectors: serialize_bool
+#
+# The format is specified in STANDARD.md, "The vector format". Records are
+# separated by blank lines.
+#
+# STANDARD.md, "bool": one bit, 1 for true and 0 for false. There is no range
+# rule — both bit values are legal — so the only refusal STANDARD.md states for
+# this operation is reading past the end of the stream.
+
+operation bool
+name bool-false
+bytes 00
+expect value = false
+consumed 1
+writer canonical
+
+operation bool
+name bool-true
+bytes 01
+expect value = true
+consumed 1
+writer canonical
+
+# A field read looks at its own bit and no others: the rest of the byte belongs
+# to whatever reads next, and only an end looks at the unused bits of a final
+# byte (end.txt). A reader that tests the whole byte rather than the low bit
+# fails this.
+
+operation bool
+name bool-true-reader-ignores-trailing-bits
+bytes FF
+expect value = true
+consumed 1
+
+# Only the low bit is the value. A reader that tests the byte against zero
+# would call this true.
+
+operation bool
+name bool-false-with-higher-bits-set
+bytes FE
+expect value = false
+consumed 1
+
+operation bool
+name bool-refuse-past-end-empty-stream
+bytes
+expect refused past_end

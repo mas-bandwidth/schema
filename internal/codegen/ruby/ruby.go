@@ -1,20 +1,14 @@
 // Package ruby emits the Ruby target (docs/PORT-RUBY.md): one namespace per
-// unit, named for the unit's package, holding one file per schema file and the
-// runtime beside them, deterministic to the byte (SPEC §6.1).
+// unit, named for the unit's package, holding one file per schema file, its
+// RBS signature, and the runtime beside them, deterministic to the byte
+// (SPEC §6.1).
 //
-//	<package>.rb             the unit module: its protocol id; requires the runtime and every file
-//	<package>/<Base>.rb      one file per schema file, reopening the unit module
-//	<package>/_schema.rb     the runtime: Refused and InvalidValue
-//
-// serialize.rb, the bit layer, is vendored beside _schema.rb by the packet
-// layer (docs/PORT-RUBY.md, THE RUNTIME LAYOUT; R4).
-//
-// This is the skeleton (docs/plans/ruby-leg.md, R3). It carries no
-// declaration: a unit that declares anything is refused by name, naming the
-// layer that carries it, and a unit that declares nothing generates a
-// namespace that loads under both pinned interpreters with no warning under
-// ruby -w. Every name the namespace spells is held to the rules of
-// IDENTIFIERS first (CheckNames).
+//	<package>.rb                 the unit module: its protocol id; requires the runtime and every file
+//	<package>.rbs                the unit's RBS type signature for Steep strict mode
+//	<package>/<Base>.rb          one file per schema file, reopening the unit module
+//	<package>/_schema.rb         the runtime: Refused, InvalidValue, LoadReport and validators
+//	<package>/serialize.rb       serialize.rb entrypoint, vendored by sha256
+//	<package>/serialize/core.rb  serialize.rb bit layer, scoped inside the unit module
 package ruby
 
 import (
@@ -34,30 +28,32 @@ const ext = "rb"
 const RuntimeBase = "_schema"
 
 // SerializeBase is the base name serialize.rb takes beside the runtime
-// (docs/PORT-RUBY.md, THE RUNTIME LAYOUT). The packet layer vendors it; the
-// skeleton reserves the name, so no schema file can take it first.
+// (docs/PORT-RUBY.md, THE RUNTIME LAYOUT).
 const SerializeBase = "serialize"
 
-// runtimeUnitToken is the one module name the runtime source opens. A unit's
-// runtime is that source with this token replaced by the unit's module
-// constant, so each unit defines its own Refused and InvalidValue, reached as
-// <Unit>::Refused (docs/PORT-RUBY.md, THE RUNTIME LAYOUT): a Ruby file loaded
-// by require_relative is evaluated at the top level, so the module it opens
-// has to be spelled in the file.
+// runtimeUnitToken is the one module name the runtime source opens.
 const runtimeUnitToken = "module SchemaRuntimeUnit\n"
 
-// runtimeSource is the runtime, runtime/_schema.rb, embedded.
-//
 //go:embed runtime/_schema.rb
 var runtimeSource string
 
+//go:embed runtime/serialize.rb
+var serializeEntrySource string
+
+//go:embed runtime/serialize/core.rb
+var serializeCoreSource string
+
 // Generate returns path -> file contents for the unit, every path relative to
-// the output directory: <package>.rb and the files under <package>/.
+// the output directory: <package>.rb, <package>.rbs, and the files under
+// <package>/.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := CheckNames(u); err != nil {
 		return nil, err
 	}
 	if err := refuseDeclarations(u); err != nil {
+		return nil, err
+	}
+	if err := checkCarried(u); err != nil {
 		return nil, err
 	}
 	mod := ModuleName(u.Package)
@@ -66,20 +62,23 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	bases := make([]string, 0, len(u.Files))
 	for _, f := range u.Files {
 		bases = append(bases, f.Base)
-		out[path.Join(pkg, f.Base+"."+ext)] = []byte(fileModule(f, mod))
+		out[path.Join(pkg, f.Base+"."+ext)] = []byte(emitModule(u, f, mod))
 	}
 	sort.Strings(bases)
 	out[pkg+"."+ext] = []byte(unitModule(u, mod, bases))
-	runtime, err := Runtime(mod)
+	out[pkg+".rbs"] = []byte(emitRBS(u, mod))
+	rtFiles, err := RuntimeFiles(mod)
 	if err != nil {
 		return nil, err
 	}
-	out[path.Join(pkg, RuntimeBase+"."+ext)] = runtime
+	for rel, data := range rtFiles {
+		out[path.Join(pkg, rel)] = data
+	}
 	return out, nil
 }
 
-// Runtime returns the runtime file for the unit whose module constant is mod:
-// the embedded source with its one module line naming mod.
+// Runtime returns the unit's _schema.rb file for the unit whose module
+// constant is mod.
 func Runtime(mod string) ([]byte, error) {
 	if n := strings.Count(runtimeSource, runtimeUnitToken); n != 1 {
 		return nil, fmt.Errorf("ruby: runtime/_schema.rb opens %q %d times; it must open it once", strings.TrimSpace(runtimeUnitToken), n)
@@ -87,9 +86,69 @@ func Runtime(mod string) ([]byte, error) {
 	return []byte(strings.Replace(runtimeSource, runtimeUnitToken, "module "+mod+"\n", 1)), nil
 }
 
+// RuntimeFiles returns every runtime file emitted under <package>/ for the
+// unit whose module constant is mod.
+func RuntimeFiles(mod string) (map[string][]byte, error) {
+	schemaRB, err := Runtime(mod)
+	if err != nil {
+		return nil, err
+	}
+	coreRB, err := scopedSerializeCore(mod)
+	if err != nil {
+		return nil, err
+	}
+	return map[string][]byte{
+		RuntimeBase + "." + ext:   schemaRB,
+		SerializeBase + "." + ext: []byte(serializeEntrySource),
+		"serialize/core.rb":       coreRB,
+	}, nil
+}
+
+// RawSerializeRuntime returns the verbatim vendored serialize.rb files as
+// embedded in runtime/.
+func RawSerializeRuntime() map[string][]byte {
+	return map[string][]byte{
+		"serialize.rb":      []byte(serializeEntrySource),
+		"serialize/core.rb": []byte(serializeCoreSource),
+	}
+}
+
+// scopedSerializeCore wraps the vendored serialize/core.rb inside module <mod>
+// and aliases Stream, WriteStream, ReadStream and MeasureStream onto <mod>, so
+// two generated units loaded in one interpreter never share or re-initialize
+// a top-level Serialize module under ruby -w.
+func scopedSerializeCore(mod string) ([]byte, error) {
+	const magic = "# frozen_string_literal: true\n"
+	if !strings.HasPrefix(serializeCoreSource, magic) {
+		return nil, fmt.Errorf("ruby: runtime/serialize/core.rb lacks frozen_string_literal header")
+	}
+	rest := strings.TrimPrefix(serializeCoreSource, magic)
+	rest = strings.TrimLeft(rest, "\n")
+	var b strings.Builder
+	b.WriteString(magic)
+	b.WriteString("\nmodule ")
+	b.WriteString(mod)
+	b.WriteString("\n")
+	for line := range strings.SplitSeq(strings.TrimRight(rest, "\n"), "\n") {
+		if line == "" {
+			b.WriteString("\n")
+		} else {
+			b.WriteString("  ")
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("\n")
+	b.WriteString("  Stream = Serialize::Stream\n")
+	b.WriteString("  WriteStream = Serialize::WriteStream\n")
+	b.WriteString("  ReadStream = Serialize::ReadStream\n")
+	b.WriteString("  MeasureStream = Serialize::MeasureStream\n")
+	b.WriteString("end\n")
+	return []byte(b.String()), nil
+}
+
 // ModuleName is the Ruby module constant of a package: split on `_`, each
-// segment capitalized (tabledemo is Tabledemo, my_game is MyGame). CheckNames
-// holds the package to the rules that make the mapping one to one.
+// segment capitalized (tabledemo is Tabledemo, my_game is MyGame).
 func ModuleName(pkg string) string {
 	var b strings.Builder
 	for seg := range strings.SplitSeq(pkg, "_") {
@@ -102,14 +161,9 @@ func ModuleName(pkg string) string {
 	return b.String()
 }
 
-// refuseDeclarations refuses the first declaration of the unit, by name and
-// kind, naming the layer that carries its kind. The skeleton carries none.
+// refuseDeclarations refuses tables and table unions until R5 and R6 carry them.
 func refuseDeclarations(u *ir.Unit) error {
 	for _, f := range u.Files {
-		for _, d := range f.Decls {
-			kind, plural, name := declKind(d)
-			return fmt.Errorf("ruby: %s.schema declares %s %s, and the Ruby target does not carry %s yet (docs/plans/ruby-leg.md, R4 the packet wire)", f.Base, kind, name, plural)
-		}
 		for _, t := range f.Tables {
 			return fmt.Errorf("ruby: %s.schema declares table %s, and the Ruby target does not carry tables yet (docs/plans/ruby-leg.md, R5 fixed tables, R6 variable tables)", f.Base, t.Name)
 		}
@@ -120,47 +174,15 @@ func refuseDeclarations(u *ir.Unit) error {
 	return nil
 }
 
-func declKind(d ir.Decl) (kind, plural, name string) {
-	switch d := d.(type) {
-	case *ir.Const:
-		return "const", "constants", d.Name
-	case *ir.Enum:
-		return "enum", "enums", d.Name
-	case *ir.Flags:
-		return "flags", "flags sets", d.Name
-	case *ir.Struct:
-		return "type", "types", d.Name
-	case *ir.Union:
-		return "union", "unions", d.Name
-	}
-	return "declaration", "declarations", fmt.Sprintf("%T", d)
-}
-
-// header is the first lines of every generated file: the magic comment Ruby
-// reads only on the first line, then the generated-code marker.
-func header(from string) string {
-	return "# frozen_string_literal: true\n\n# Code generated by the schema compiler from " + from + ". DO NOT EDIT.\n"
-}
-
-// fileModule is one schema file's file: it reopens the unit module. The
-// declarations arrive with the packet layer.
-func fileModule(f *ir.File, mod string) string {
-	var b strings.Builder
-	b.WriteString(header(f.Base + ".schema"))
-	fmt.Fprintf(&b, "\n# The declarations of %s.schema.\nmodule %s\nend\n", f.Base, mod)
-	return b.String()
-}
-
-// unitModule is <package>.rb: the runtime and one require_relative per schema
-// file, so requiring it loads the whole unit, then the protocol id.
 func unitModule(u *ir.Unit, mod string, bases []string) string {
 	var b strings.Builder
-	b.WriteString(header("the unit " + u.Package))
-	b.WriteString("\n")
-	fmt.Fprintf(&b, "require_relative %q\n", u.Package+"/"+RuntimeBase)
+	b.WriteString("# frozen_string_literal: true\n\n")
+	fmt.Fprintf(&b, "# Code generated by the schema compiler from the unit %s. DO NOT EDIT.\n\n", u.Package)
+	fmt.Fprintf(&b, "require_relative \"%s/%s\"\n", u.Package, RuntimeBase)
+	fmt.Fprintf(&b, "require_relative \"%s/%s\"\n", u.Package, SerializeBase)
 	for _, base := range bases {
-		fmt.Fprintf(&b, "require_relative %q\n", u.Package+"/"+base)
+		fmt.Fprintf(&b, "require_relative \"%s/%s\"\n", u.Package, base)
 	}
-	fmt.Fprintf(&b, "\n# The schema unit %s.\nmodule %s\n  PROTOCOL_ID = 0x%016x\nend\n", u.Package, mod, u.ProtocolId)
+	fmt.Fprintf(&b, "\nmodule %s\n  PROTOCOL_ID = 0x%016x\nend\n", mod, u.ProtocolId)
 	return b.String()
 }

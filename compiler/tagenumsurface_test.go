@@ -141,6 +141,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "    Max = 2",
 		nameFunc: `NAMES: Final = {0: "None", 1: "laser", 2: "missile"}`,
 	},
+	"ruby": {
+		noCount:  "    Count = ",
+		max:      "    Max = 2",
+		nameFunc: `NAMES = { 0 => "None", 1 => "laser", 2 => "missile" }.freeze`,
+	},
 	"squirrel": {
 		noCount:  "  Count = ",
 		max:      "  Max = 2, // the exported extent (SPEC §4.2)",
@@ -325,7 +330,7 @@ func TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T) {
 			t.Errorf("%s: the tag enum has no name function, %q not emitted", target, claim.nameFunc)
 			continue
 		}
-		if target == "python" {
+		if target == "python" || target == "ruby" {
 			// Python exports the complete ordinal-to-schema-name dictionary;
 			// an absent ordinal is handled with dict.get's caller-supplied fallback.
 			continue

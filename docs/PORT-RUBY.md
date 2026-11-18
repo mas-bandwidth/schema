@@ -391,7 +391,7 @@ and `TestRubySkeleton` turns each off in turn and requires its case to pass):
   Fields keep snake_case and become methods, so a field named for a generated
   member (`read`, `read_bits`, `write`, `load`, `save`, `descriptor`, `initialize`,
   `inspect`, `hash`, `class`, `freeze`, `dup`, `clone`, `send`,
-  `method`, `object_id`) is refused by name; `eql?` is a member too, but no
+  `method`) is refused by name (`object_id` is carried because the shared corpus spells it in `examples/Types.schema` and `tables/block/Render.schema`, and generated code uses `equal?` rather than `object_id`); `eql?` is a member too, but no
   schema identifier can spell it. A union arm takes the same rule and one
   more: it may not be `type`, the union's arm number. A field or arm spelled
   like a Ruby keyword is carried (the field access rule above); `class`
