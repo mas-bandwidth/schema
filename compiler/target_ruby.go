@@ -93,11 +93,14 @@ func rubyTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]rubytable.
 	for _, st := range ir.TableFixedRoots(u) {
 		for _, e := range lineage.Entries(st.Name) {
 			out[st.Name] = append(out[st.Name], rubytable.FixedLineageEntry{
-				Wire:    e.Wire,
-				Layout:  e.Layout,
-				Record:  e.Record,
-				Retired: e.Retired,
-				Reason:  e.Reason,
+				Wire:             e.Wire,
+				Layout:           e.Layout,
+				Record:           e.Record,
+				Retired:          e.Retired,
+				Reason:           e.Reason,
+				Digest:           e.Digest,
+				Writer:           e.Writer,
+				LegacyLayoutOnly: e.LegacyLayoutOnly,
 			})
 		}
 	}

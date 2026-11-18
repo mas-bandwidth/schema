@@ -1093,6 +1093,13 @@
       "ruby": "pin"
     },
     {
+      "name": "ruby-fixed",
+      "when": "nightly",
+      "why": "the Ruby Form-3 fixed-table controls (make/ruby-fixed-form.mk, docs/PORT-RUBY.md, R5): envelope and batch sabotage, per-scalar and per-shape read/write bounds removal, union tag and optional flag corruption, evolution widening and retirement floor sabotage, CRC-32C trailer bit-flip and truncation, unrecorded definition-hash refusal, and writer lineage lock tampering under both pinned CRuby 3.4.12 and 4.0.9 interpreters. Nightly because a cache miss builds both CRubies from source tarballs.",
+      "targets": [],
+      "ruby": "pin"
+    },
+    {
       "name": "python-serialize",
       "when": "pull-request",
       "why": "serialize.py's corpus runner (third_party/serialize.py, make/python-serialize.mk), on the pins .github/actions/python restores into dist/: the corpus test pointed at a root with no vectors must go red by that name. The eighteen per-rule sabotage controls run inside python-serialize-test itself. One interpreter run, under 1 s on a bench, so the row is the pins' cache restore.",

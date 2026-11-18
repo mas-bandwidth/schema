@@ -377,6 +377,12 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 					t.Errorf("dart fixed-form storage lacks %q", want)
 				}
 			}
+		case "ruby":
+			for _, want := range []string{`"untitled"`, `"fx"`, `"ab".b.freeze`, `@caps = 3`} {
+				if !strings.Contains(got, want) {
+					t.Errorf("ruby fixed-form storage lacks %q", want)
+				}
+			}
 		case "rust":
 			// constructed Row::default(), not length-only zeroed: C++ writes
 			// `char label[8 + 1] = "fx"` and `uint8_t tag[4] = { 0x61, 0x62 }`
