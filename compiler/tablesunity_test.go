@@ -166,16 +166,14 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 		"public static void InitNumbers(ref Numbers value)", "public static Numbers NewNumbers()",
 		"public sbyte A;", "public short B;", "public int C;", "public long D;", "public byte E;", "public ushort F;",
 		"public uint G;", "public ulong H;", "public uint Mask;", "public ulong Wide;",
-		"// name: no codec carries this construct yet (descriptor only)",
-		"// ratio: no codec carries this construct yet (descriptor only)",
-		"// child: no codec carries this construct yet (descriptor only)",
+		"public Buffer16<byte> Name;", "public int NameLength;", "public float Ratio;", "public Toggles Child;",
 		`Debug.Assert(value.Angle >= -180 && value.Angle <= 180, "angle is outside its declared range [-180, 180]");`,
 	} {
 		if !strings.Contains(tables, want) {
 			t.Errorf("Probe.Tables.cs lacks %q", want)
 		}
 	}
-	for _, unwanted := range []string{"MixedLoad", "MixedSave", "MixedMeasure", "public float Ratio"} {
+	for _, unwanted := range []string{"MixedLoad", "MixedSave", "MixedMeasure"} {
 		if strings.Contains(tables, unwanted) {
 			t.Errorf("Probe.Tables.cs carries %q for a table no codec carries whole", unwanted)
 		}
@@ -186,7 +184,7 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 		}
 	}
 	// every field has a descriptor row, carried or not
-	for _, row := range []string{"// on: bool", "// angle: int", "// wide: int", "// name: unsupported", "// ratio: unsupported", "// child: unsupported", "// n: int"} {
+	for _, row := range []string{"// on: bool", "// angle: int", "// wide: int", "// name: unsupported", "// ratio: float", "// child: unsupported", "// n: int"} {
 		if !strings.Contains(tables, row) {
 			t.Errorf("Probe.Tables.cs has no descriptor row %q", row)
 		}
@@ -742,8 +740,9 @@ func TestUnityTableCarrySetStaysEmpty(t *testing.T) {
 	if !ok {
 		t.Fatal("unity has no carries registration")
 	}
-	if len(carried) != 0 {
-		t.Errorf("unity carries %v; the table core carries no registered construct", carried)
+	want := []string{carryForms, carryIntegrity, carryOneSidedRange}
+	if !slices.Equal(carried, want) {
+		t.Errorf("unity carries %v, want %v", carried, want)
 	}
 }
 
@@ -763,7 +762,7 @@ func TestUnityTableKindLayout(t *testing.T) {
 	}
 	u := unitFromSource(t, unityTableProbe)
 	for _, f := range u.Tables["Mixed"].Fields {
-		want := map[string]string{"n": "int", "name": "unsupported", "ratio": "unsupported", "child": "unsupported"}[f.Name]
+		want := map[string]string{"n": "int", "name": "unsupported", "ratio": "float", "child": "unsupported"}[f.Name]
 		if got := unitytable.CodecOf(f); got != want {
 			t.Errorf("Mixed.%s is carried by %s, want %s", f.Name, got, want)
 		}

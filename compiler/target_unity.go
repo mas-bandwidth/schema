@@ -28,16 +28,7 @@ func (t unityTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, erro
 // #1: the driver read the unit's lock once (compiler/lineage.go) and hands the
 // lineage down as DATA, so a build reads every layout the lock records.
 func (unityTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Wide table kinds first, so a unit that declares them is refused with
-	// the shared diagnostic before any other follow-on. Then each construct
-	// this target does not carry, by name.
-	if err := ir.RefuseWideTableKinds(u, "unity"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "unity"); err != nil {
-		return nil, err
-	}
-	if err := refuseOptionalArrays(u, "unity"); err != nil {
 		return nil, err
 	}
 	if err := refuseMaps(u, "unity"); err != nil {
@@ -77,13 +68,14 @@ func unityTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]unitytabl
 	for _, st := range ir.TableFixedRoots(u) {
 		for _, e := range lineage.Entries(st.Name) {
 			out[st.Name] = append(out[st.Name], unitytable.FixedLineageEntry{
-				Wire:    e.Wire,
-				Layout:  e.Layout,
-				Digest:  e.Digest,
-				Record:  e.Record,
-				Retired: e.Retired,
-				Reason:  e.Reason,
-				Writer:  e.Writer,
+				Wire:             e.Wire,
+				Layout:           e.Layout,
+				Digest:           e.Digest,
+				Record:           e.Record,
+				Retired:          e.Retired,
+				Reason:           e.Reason,
+				Writer:           e.Writer,
+				LegacyLayoutOnly: e.LegacyLayoutOnly,
 			})
 		}
 	}
@@ -92,5 +84,6 @@ func unityTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]unitytabl
 
 func init() {
 	registerPacketValueDefaultCarrier("unity")
+	registerOptionalArrayCarrier("unity")
 	registerBuiltin(unityTarget{}, true, false, false, false)
 }

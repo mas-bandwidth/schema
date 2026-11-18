@@ -73,7 +73,7 @@ func refuseCollisions(u *ir.Unit) error {
 		return fmt.Errorf("unity: constant %s collides with the generated Schema member of that name; rename it", utf8Helper)
 	}
 	taken := func(name string) bool {
-		return u.Structs[name] != nil || u.Unions[name] != nil || u.Enums[name] != nil || u.Flags[name] != nil || u.Tables[name] != nil
+		return u.Structs[name] != nil || u.Unions[name] != nil || u.Enums[name] != nil || u.Flags[name] != nil || u.Tables[name] != nil || u.TableUnions[name] != nil
 	}
 	names := []string{buffersClass}
 	for _, n := range bufferLengths(u) {
@@ -220,15 +220,91 @@ func fieldBufferLength(f *ir.Field) int64 {
 	return 0
 }
 
-// bufferLengths is every buffer length the unit's types use, ascending.
+func unmanagedTableField(u *ir.Unit, f *ir.Field, visiting map[string]bool) bool {
+	if f.Type.Pointer || f.IsList() || f.IsMap() || f.Type.TextUnbounded() {
+		return false
+	}
+	if f.Type.Kind != ir.TNamed {
+		return true
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Enum, *ir.Flags:
+		return true
+	case *ir.Struct:
+		if !r.IsTable {
+			return true
+		}
+		return unmanagedTableStruct(u, r, visiting)
+	case *ir.Union:
+		if u.TableUnions[r.Name] == nil {
+			return true
+		}
+		return unmanagedTableUnion(u, r, visiting)
+	}
+	return false
+}
+
+func unmanagedTableStruct(u *ir.Unit, st *ir.Struct, visiting map[string]bool) bool {
+	key := "s:" + st.Name
+	if visiting[key] {
+		return false
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	for _, f := range st.Fields {
+		if !unmanagedTableField(u, f, visiting) {
+			return false
+		}
+	}
+	return true
+}
+
+func unmanagedTableUnion(u *ir.Unit, un *ir.Union, visiting map[string]bool) bool {
+	key := "u:" + un.Name
+	if visiting[key] {
+		return false
+	}
+	visiting[key] = true
+	defer delete(visiting, key)
+	for _, v := range un.Variants {
+		if !v.Void() && !unmanagedTableField(u, v.F, visiting) {
+			return false
+		}
+	}
+	return true
+}
+
+// bufferLengths is every buffer length the unit's types and unmanaged tables use, ascending.
 func bufferLengths(u *ir.Unit) []int64 {
 	seen := map[int64]bool{}
 	var out []int64
+	add := func(f *ir.Field) {
+		if f.IsList() || f.IsMap() || f.Type.TextUnbounded() {
+			return
+		}
+		if n := fieldBufferLength(f); n > 0 && !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
 	for _, st := range u.Structs {
 		for _, f := range st.Fields {
-			if n := fieldBufferLength(f); n > 0 && !seen[n] {
-				seen[n] = true
-				out = append(out, n)
+			add(f)
+		}
+	}
+	for _, st := range u.Tables {
+		if unmanagedTableStruct(u, st, map[string]bool{}) {
+			for _, f := range st.Fields {
+				add(f)
+			}
+		}
+	}
+	for _, un := range u.TableUnions {
+		if unmanagedTableUnion(u, un, map[string]bool{}) {
+			for _, v := range un.Variants {
+				if !v.Void() {
+					add(v.F)
+				}
 			}
 		}
 	}

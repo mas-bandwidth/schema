@@ -78,6 +78,8 @@ weight ./internal/codegen/rusttable 100 322
 weight ./internal/codegen/squirrel 1 1
 weight ./internal/codegen/squirrel/sqrun 0 0
 weight ./internal/codegen/squirreltable 17 3
+weight ./internal/codegen/unity 1 1
+weight ./internal/codegen/unitytable 5 10
 weight ./internal/docgate 19 12
 weight ./internal/fixedproof 2 2
 weight ./internal/fixedvector 1 1

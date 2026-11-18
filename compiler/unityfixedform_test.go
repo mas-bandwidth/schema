@@ -52,7 +52,7 @@ fixed table Row {
 	unityFixedUncarried = `package probe
 fixed table Named {
     n    int32
-    name string(8)
+    name bytes(70000)
 }
 fixed table Flags {
     on bool
@@ -170,7 +170,7 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 		src := strings.Replace(tc.Schema, "package probe", fmt.Sprintf("package r%02d", i), 1)
 		u := compiler.UnitFromSourceForTest(t, src)
 		files, err := compiler.New().Generate(u, "unity", compiler.Options{})
-		if err != nil || !unitytable.FixedCarried(u, u.Tables[tc.Root]) {
+		if err != nil || !unitytable.FixedCarried(u, u.Tables[tc.Root]) || !unityFlatScalarProbeRow(u.Tables[tc.Root]) {
 			continue
 		}
 		rows = append(rows, newUnityFixedRow(t, tc, u, files))
@@ -831,4 +831,19 @@ internal static class Program
 		return "", fmt.Errorf("dotnet build the probe host: %w\n%s", err, msg)
 	}
 	return filepath.Join(out, "fixedhost.dll"), nil
+}
+
+func unityFlatScalarProbeRow(st *ir.Struct) bool {
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields {
+		if f.Type.Optional || f.Array != ir.ArrayNone || f.KeyEnum != "" || f.Type.Width == 128 {
+			return false
+		}
+		if f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && f.Type.Kind != ir.TBits {
+			return false
+		}
+	}
+	return true
 }

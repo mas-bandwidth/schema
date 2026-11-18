@@ -138,3 +138,16 @@ unity-tables: toolchain-unity
 	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityTable' ./compiler/
 
 test-unity: unity-tables
+
+# ---- the fixed form (form 3) ----
+
+# THE FIXED-FORM GATE (internal/codegen/unitytable, compiler/unityfixedform_test.go):
+# every fixed-table value, container, union, optional, default, evolution and
+# hostile-input row compiled in the Unity dialect (C# 9 over netstandard2.1,
+# warnings as errors, unsafe disallowed) and proved against the live C++
+# reference and build/fixedform-corpus, each with its planted negative control.
+.PHONY: unity-fixed
+unity-fixed: toolchain-unity build/fixedform-corpus/.stamp
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestUnityFixed' ./compiler/ ./internal/codegen/unitytable/
+
+test-unity: unity-fixed

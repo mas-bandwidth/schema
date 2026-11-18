@@ -1,5 +1,5 @@
 package compiler
 
 func init() {
-	registerCarries("unity")
+	registerCarries("unity", carryOneSidedRange, carryForms, carryIntegrity)
 }
