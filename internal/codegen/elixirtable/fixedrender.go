@@ -243,6 +243,14 @@ func (f forNode) render(at, ind, tail int) string {
 	if one := f.flat(); fits(at, tail, one) {
 		return one
 	}
-	pad := indentOf(ind + 2)
-	return "for " + f.gen + ",\n" + pad + "do: " + f.body.render(ind+2+4, ind+2, tail)
+	gen := f.gen
+	doInd := ind + 2
+	if !fits(at, 1, "for "+gen) {
+		if lhs, rhs, ok := strings.Cut(gen, " <- "); ok {
+			gen = lhs + " <-\n" + indentOf(ind+8) + rhs
+			doInd = ind + 4
+		}
+	}
+	pad := indentOf(doInd)
+	return "for " + gen + ",\n" + pad + "do: " + f.body.render(doInd+4, doInd, tail)
 }

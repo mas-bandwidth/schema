@@ -87,6 +87,7 @@ func mooTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]mootable.Fi
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Writer:  e.Writer,
 			})
 		}
 	}

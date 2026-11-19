@@ -75,6 +75,7 @@ func luaTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]luatable.Fi
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

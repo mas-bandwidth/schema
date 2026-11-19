@@ -90,6 +90,7 @@ func goTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]gotable.Fixe
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

@@ -211,6 +211,7 @@ enum TableRefuseReason {
   @override
   String toString() => word;
 }
+
 // TableEntity's block: bytes, a base and a length, and then rows in place. Opening
 // one is ONE check and no copy; reading a row is one add (docs/SPEC-TABLES.md
 // §19.2).

@@ -290,19 +290,21 @@ const messageBatchRuntimeBody = `  @batch_max 256
       with {:ok, kpe} <- entry_at(from_vocab, key_peer_ref),
            true <- allowed_keys == nil or MapSet.member?(allowed_keys, kpe.id),
            {to_key_ref, _} <- Map.get(to_by_id, kpe.id) do
-        [{to_key_ref,
-          rebind_val(
-            from_vocab,
-            to_vocab,
-            to_by_id,
-            rules,
-            fid,
-            elem.kind,
-            Map.get(elem, :element),
-            kv,
-            :never,
-            sub
-          )}]
+        [
+          {to_key_ref,
+           rebind_val(
+             from_vocab,
+             to_vocab,
+             to_by_id,
+             rules,
+             fid,
+             elem.kind,
+             Map.get(elem, :element),
+             kv,
+             :never,
+             sub
+           )}
+        ]
       else
         _ -> []
       end
@@ -334,8 +336,19 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp rebind_val(_from_vocab, _to_vocab, _to_by_id, _rules, _fid, _kind, _elem, val, _rule, _sub),
-    do: val
+  defp rebind_val(
+         _from_vocab,
+         _to_vocab,
+         _to_by_id,
+         _rules,
+         _fid,
+         _kind,
+         _elem,
+         val,
+         _rule,
+         _sub
+       ),
+       do: val
 
   @doc """
   Read one batch into at most ` + "`" + `capacity` + "`" + ` bodies (docs/SPEC-TABLES.md §3.3), against
@@ -805,10 +818,12 @@ const messageBatchRuntimeBody = `  @batch_max 256
                        false <- stored_at_default?(vocab, decl, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
+
                     acc2 =
                       if entry.kind == 15 and value == :unknown_arm,
                         do: acc,
                         else: [{ref, value} | acc]
+
                     read_body(vocab, rest2, acc2, seen, depth, rec, last)
                   else
                     _ -> :malformed
@@ -965,7 +980,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)
   defp arm_sub(_sub, _id), do: nil
 
-  defp arm_known?({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)
+  defp arm_known?({:union, name}, id),
+    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)
+
   defp arm_known?(_sub, id), do: id >= 0
 
   # An undeclared field under another build version is stepped over by its
@@ -2250,7 +2267,7 @@ func messageRecords(u *ir.Unit) (string, bool) {
 // messageArmSubUnion is arm_sub/2's union clause in messageBatchRuntimeBody,
 // dropped from a unit no union reaches (messageRecords).
 const messageArmSubUnion = "  defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)\n"
-const messageArmKnownUnion = "  defp arm_known?({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)\n"
+const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)\n\n"
 
 // messageSub is what a body under field f is read against: a record's name, a
 // union's arms by name, or nil.

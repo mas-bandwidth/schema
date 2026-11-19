@@ -282,7 +282,7 @@ func TestPythonReadinessNegativeControl(t *testing.T) {
 		{"bench-leg", "bench/tables/python/leg", "*/*) ;;", "*) ;;"},
 		{"bench-leg", "bench/tables/python/table_main.py", `bench_table(getattr(module, ROOT)`, `bench_table(getattr(module, "TableMixed")`},
 		{"ci-full-pins", ".github/workflows/ci-full.yml", "      - uses: ./.github/actions/python\n        if: matrix.python != ''\n\n      # THE LOBSTER PIN", "\n      # THE LOBSTER PIN"},
-		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/python\n\n      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1\n        with:", "\n      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1\n        with:"},
+		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/python\n\n      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1\n        if: runner.environment == 'github-hosted'\n        with:", "\n      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1\n        if: runner.environment == 'github-hosted'\n        with:"},
 		{"leg-pins", ".github/workflows/leg.yml", "      - uses: ./.github/actions/python\n        if: matrix.python != ''\n", ""},
 		{"leg-pins", ".github/workflows/leg.yml", "        if: matrix.python != ''\n", "        if: matrix.moo != ''\n"},
 		{"ci-json-pin", "test/conformance/python/ci.json", `"python": "pin"`, `"python": ""`},

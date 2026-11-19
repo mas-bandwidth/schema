@@ -180,6 +180,7 @@ const MESSAGE_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "StorePurchase"), ("backenddemo", "Envelope"),
     ("vocabdemo", "Wide00"), ("vocabdemo", "Wide09"),
     ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
+    ("tblvarevo1", "EvoMsg"), ("tblvarevo3", "EvoMsg"),
 ];
 
 fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
@@ -192,6 +193,8 @@ fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("vocabdemo", "Wide09") => message_arm!(vocabdemo, wide09_message_default, wide09_load_messages, wide09_measure_messages, wide09_save_messages, wire),
         ("vocab9demo", "Wide00") => message_arm!(vocab9demo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, wire),
         ("vocab9demo", "Wide19") => message_arm!(vocab9demo, wide19_message_default, wide19_load_messages, wide19_measure_messages, wide19_save_messages, wire),
+        ("tblvarevo1", "EvoMsg") => message_arm!(tblvarevo1, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, wire),
+        ("tblvarevo3", "EvoMsg") => message_arm!(tblvarevo3, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, wire),
         _ => None,
     }
 }

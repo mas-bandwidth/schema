@@ -591,6 +591,7 @@ func TableFixedWidens(from, to int) bool {
 // shifted by F, TableRawRange).
 type TableFixedWriterRange struct {
 	Name   string
+	ID     uint64
 	Kind   int
 	Lo, Hi int64
 }
@@ -598,9 +599,9 @@ type TableFixedWriterRange struct {
 // TableFixedWriterRanges lists the ranged integer leaves of a fixed table's root
 // that a writer's bounds can hold on a cross-version read: a scalar or a fixed
 // array of an integer, bits or fixed-point kind, at most eight bytes wide,
-// whose raw bounds fit int64. A counted array, an optional and a keyed array
-// are left to the reader's own pass, as the C++ reference's
-// collectKnownRanges leaves them.
+// whose raw bounds fit int64 (including a bare bits(N) ceiling below its
+// storage width). A counted array, an optional and a keyed array are left to
+// the reader's own pass, as the C++ reference's collectKnownRanges leaves them.
 func TableFixedWriterRanges(st *Struct) []TableFixedWriterRange {
 	if st == nil {
 		return nil
@@ -618,27 +619,54 @@ func TableFixedWriterRanges(st *Struct) []TableFixedWriterRange {
 		default:
 			continue
 		}
-		if w := TableFixedStorageBytes(f.Type); w <= 0 || w > 8 {
+		w := TableFixedStorageBytes(f.Type)
+		if w <= 0 || w > 8 {
 			continue
 		}
 		lo, hi, ok := TableRawRange(f)
+		if f.Type.Kind == TBits && f.Type.Width > 0 && int64(f.Type.Width) < 8*w {
+			bmax := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+			if !ok {
+				lo, hi, ok = big.NewInt(0), bmax, true
+			} else {
+				if lo.Sign() < 0 {
+					lo = big.NewInt(0)
+				}
+				if hi.Cmp(bmax) > 0 {
+					hi = bmax
+				}
+			}
+		}
 		if !ok || !lo.IsInt64() || !hi.IsInt64() {
 			continue
 		}
-		out = append(out, TableFixedWriterRange{Name: f.Name, Kind: TableScalarKind(f), Lo: lo.Int64(), Hi: hi.Int64()})
+		out = append(out, TableFixedWriterRange{
+			Name: f.Name,
+			ID:   TableFieldWireId(f),
+			Kind: TableScalarKind(f),
+			Lo:   lo.Int64(),
+			Hi:   hi.Int64(),
+		})
 	}
 	return out
 }
 
 // TableFixedWriterField resolves one writer range onto the READER's field of
-// the same name: a copy of the reader's field whose declared bounds are the
-// writer's, so a backend's own clamp emitter spells the writer's pass with
-// the reader's storage, arrays and literals. ok is false where the writer's
-// range cannot hold the reader's value: a different name, a different scalar
-// kind (and so a different width or scale), a shape TableFixedWriterRanges does
-// not carry, or a range the storage already holds.
+// the same wire id (or name): a copy of the reader's field whose declared
+// bounds are the writer's, so a backend's own clamp emitter spells the writer's
+// pass with the reader's storage, arrays and literals. ok is false where the
+// writer's range cannot hold the reader's value: a different field, an
+// incompatible scalar kind, a shape TableFixedWriterRanges does not carry, or a
+// range the storage already holds.
 func TableFixedWriterField(f *Field, r TableFixedWriterRange) (*Field, bool) {
-	if f == nil || f.Name != r.Name || f.Type.Optional || f.KeyEnum != "" {
+	if f == nil || f.Type.Optional || f.KeyEnum != "" {
+		return nil, false
+	}
+	if r.ID != 0 {
+		if TableFieldWireId(f) != r.ID {
+			return nil, false
+		}
+	} else if f.Name != r.Name && f.WasName != r.Name {
 		return nil, false
 	}
 	if f.Array != ArrayNone && f.Array != ArrayFixed {
@@ -650,7 +678,7 @@ func TableFixedWriterField(f *Field, r TableFixedWriterRange) (*Field, bool) {
 		return nil, false
 	}
 	kind := TableScalarKind(f)
-	if kind != r.Kind || r.Lo > r.Hi {
+	if (kind != r.Kind && !TableFixedWidens(r.Kind, kind)) || r.Lo > r.Hi {
 		return nil, false
 	}
 	lo, hi := big.NewInt(r.Lo), big.NewInt(r.Hi)
@@ -671,6 +699,9 @@ func TableFixedWriterField(f *Field, r TableFixedWriterRange) (*Field, bool) {
 		hi.Rsh(hi, uint(f.Type.FracBits))
 	}
 	w := *f
+	if w.Type.Kind == TBits {
+		w.Type.Width = int(8 * TableFixedStorageBytes(f.Type))
+	}
 	w.HasIntRange, w.IntMin, w.IntMax = true, lo, hi
 	w.IntMinExpr, w.IntMaxExpr = nil, nil
 	w.HasFloatRange = false

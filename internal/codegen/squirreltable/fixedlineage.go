@@ -289,20 +289,18 @@ func emitFixedWriterRanges(m *Module, st *ir.Struct, root *fixedLayoutNode, rang
 			}
 			expr := "v." + squirrel.Member(f)
 			storage := fixedStorageBytes(f.Type)
-			wStorage := fixedStorageBytes(w.Type)
 			switch {
 			case f.Array == ir.ArrayFixed:
 				m.Printf("  for (local i = 0; i < %s.len(); i++) {\n", expr)
-				if storage == 16 && wStorage < 16 {
-					m.Printf("    local x = %s[i][0];\n", expr)
-					fixedEmitRangeGuard(m, w, "x", "    ", 8)
+				m.Printf("    local x = %s[i];\n", expr)
+				if storage == 16 {
+					fixedEmitRange128Guard(m, w, "x", "    ", "return \"out_of_range\";")
 				} else {
-					m.Printf("    local x = %s[i];\n", expr)
 					fixedEmitRangeGuard(m, w, "x", "    ", storage)
 				}
 				m.Printf("  }\n")
-			case storage == 16 && wStorage < 16:
-				fixedEmitRangeGuard(m, w, expr+"[0]", "  ", 8)
+			case storage == 16:
+				fixedEmitRange128Guard(m, w, expr, "  ", "return \"out_of_range\";")
 			default:
 				fixedEmitRangeGuard(m, w, expr, "  ", storage)
 			}

@@ -121,15 +121,26 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, lower string, entries []Fi
 		g.pf("/// holds this reader's own range.\n")
 		g.emitFn("void", names[i], []string{"ByteData view", "TableFixedReport report"})
 		for k, b := range rows {
-			get, le := fixedGetter(b.field.Type)
-			set, _ := fixedSetter(b.field.Type)
 			at := fmt.Sprintf("%d", b.at)
 			n := fmt.Sprintf("n%d", k)
-			args := []string{at}
-			if le {
-				args = append(args, "Endian.little")
+			if fixedIs128(b.field.Type) {
+				cls := "UInt128"
+				if fixedSigned(b.field.Type) {
+					cls = "Int128"
+				}
+				g.needClass(cls)
+				g.pf("  final %s = %s(\n", n, cls)
+				g.pf("    view.getUint64(%d, Endian.little),\n", b.at+8)
+				g.pf("    view.getUint64(%d, Endian.little),\n", b.at)
+				g.pf("  );\n")
+			} else {
+				get, le := fixedGetter(b.field.Type)
+				args := []string{at}
+				if le {
+					args = append(args, "Endian.little")
+				}
+				g.call("  ", "final "+n+" = ", "view."+get, args, ";")
 			}
-			g.call("  ", "final "+n+" = ", "view."+get, args, ";")
 			lead := "  if"
 			for _, end := range []struct {
 				on bool
@@ -141,11 +152,18 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, lower string, entries []Fi
 				}
 				lhs, cmp, assign := g.gen.fixedClampTerms(b.field.Type, n, end.v)
 				g.pf("%s (%s %s %s) {\n", lead, lhs, end.op, cmp)
-				put := []string{at, assign}
-				if le {
-					put = append(put, "Endian.little")
+				if fixedIs128(b.field.Type) {
+					loHalf, hiHalf := fixed128Halves(end.v)
+					g.call("    ", "", "view.setUint64", []string{at, fixedHexLit(loHalf), "Endian.little"}, ";")
+					g.call("    ", "", "view.setUint64", []string{fmt.Sprintf("%d", b.at+8), fixedHexLit(hiHalf), "Endian.little"}, ";")
+				} else {
+					set, le := fixedSetter(b.field.Type)
+					put := []string{at, assign}
+					if le {
+						put = append(put, "Endian.little")
+					}
+					g.call("    ", "", "view."+set, put, ";")
 				}
-				g.call("    ", "", "view."+set, put, ";")
 				g.pf("    report.refused = TableFixedRefusal.outOfRange;\n")
 				g.pf("  }")
 				lead = " else if"

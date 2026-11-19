@@ -6916,6 +6916,38 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
     for ( int32_t i = 0; i < n; ++i )
     {
         const TableFixedKnownRange & b = ranges[i];
+        if ( b.width == 16 )
+        {
+            const uint64_t lo_lane = TableFixedLoadNative( dst + b.dst, 8u );
+            const uint64_t hi_lane = TableFixedLoadNative( dst + b.dst + 8u, 8u );
+            bool below = false;
+            bool above = false;
+            if ( b.sgn != 0 )
+            {
+                const uint64_t lo_b_hi = ( b.lo < 0 ) ? ~0ull : 0ull;
+                const uint64_t hi_b_hi = ( b.hi < 0 ) ? ~0ull : 0ull;
+                below = ( hi_lane != lo_b_hi )
+                    ? ( (int64_t) hi_lane < (int64_t) lo_b_hi )
+                    : ( lo_lane < (uint64_t) b.lo );
+                above = ( hi_lane != hi_b_hi )
+                    ? ( (int64_t) hi_lane > (int64_t) hi_b_hi )
+                    : ( lo_lane > (uint64_t) b.hi );
+            }
+            else
+            {
+                below = ( hi_lane == 0ull ) && ( lo_lane < (uint64_t) b.lo );
+                above = ( hi_lane != 0ull ) || ( lo_lane > (uint64_t) b.hi );
+            }
+            if ( below || above )
+            {
+                const uint64_t landed = below ? (uint64_t) b.lo : (uint64_t) b.hi;
+                const uint64_t landed_hi = ( b.sgn != 0 && (int64_t) landed < 0 ) ? ~0ull : 0ull;
+                TableFixedStoreNative( dst + b.dst, landed, 8u );
+                TableFixedStoreNative( dst + b.dst + 8u, landed_hi, 8u );
+                oor_count++;
+            }
+            continue;
+        }
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
         raw = TableFixedLoadNative( dst + b.dst, b.width );
@@ -16295,11 +16327,17 @@ constexpr TableFixedKnownLayout TeamConfigFixedKnown[] = {
     { 0xfe8fd48489b27684ull, TeamConfigFixedKnown1Layout, 55, 32 }, // identity
 };
 
-constexpr const TableFixedKnownRange * TeamConfigFixedKnownRanges[] = {
-    NULL,
-    NULL,
+constexpr TableFixedKnownRange TeamConfigFixedKnown0Ranges[] = {
+    { 0u, 4u, 1u, 0, 64 },
 };
-constexpr int32_t TeamConfigFixedKnownRangeCounts[] = { 0, 0 };
+constexpr TableFixedKnownRange TeamConfigFixedKnown1Ranges[] = {
+    { 0u, 4u, 1u, 0, 64 },
+};
+constexpr const TableFixedKnownRange * TeamConfigFixedKnownRanges[] = {
+    TeamConfigFixedKnown0Ranges,
+    TeamConfigFixedKnown1Ranges,
+};
+constexpr int32_t TeamConfigFixedKnownRangeCounts[] = { 1, 1 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

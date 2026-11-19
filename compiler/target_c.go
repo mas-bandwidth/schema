@@ -97,6 +97,7 @@ func cTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]ctable.FixedL
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

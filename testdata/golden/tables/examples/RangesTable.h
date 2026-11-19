@@ -6916,6 +6916,38 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
     for ( int32_t i = 0; i < n; ++i )
     {
         const TableFixedKnownRange & b = ranges[i];
+        if ( b.width == 16 )
+        {
+            const uint64_t lo_lane = TableFixedLoadNative( dst + b.dst, 8u );
+            const uint64_t hi_lane = TableFixedLoadNative( dst + b.dst + 8u, 8u );
+            bool below = false;
+            bool above = false;
+            if ( b.sgn != 0 )
+            {
+                const uint64_t lo_b_hi = ( b.lo < 0 ) ? ~0ull : 0ull;
+                const uint64_t hi_b_hi = ( b.hi < 0 ) ? ~0ull : 0ull;
+                below = ( hi_lane != lo_b_hi )
+                    ? ( (int64_t) hi_lane < (int64_t) lo_b_hi )
+                    : ( lo_lane < (uint64_t) b.lo );
+                above = ( hi_lane != hi_b_hi )
+                    ? ( (int64_t) hi_lane > (int64_t) hi_b_hi )
+                    : ( lo_lane > (uint64_t) b.hi );
+            }
+            else
+            {
+                below = ( hi_lane == 0ull ) && ( lo_lane < (uint64_t) b.lo );
+                above = ( hi_lane != 0ull ) || ( lo_lane > (uint64_t) b.hi );
+            }
+            if ( below || above )
+            {
+                const uint64_t landed = below ? (uint64_t) b.lo : (uint64_t) b.hi;
+                const uint64_t landed_hi = ( b.sgn != 0 && (int64_t) landed < 0 ) ? ~0ull : 0ull;
+                TableFixedStoreNative( dst + b.dst, landed, 8u );
+                TableFixedStoreNative( dst + b.dst + 8u, landed_hi, 8u );
+                oor_count++;
+            }
+            continue;
+        }
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
         raw = TableFixedLoadNative( dst + b.dst, b.width );
@@ -18378,11 +18410,39 @@ constexpr TableFixedKnownLayout RangedSignedFixedKnown[] = {
     { 0xc8326482ca449565ull, RangedSignedFixedKnown1Layout, 327, 80 }, // identity
 };
 
-constexpr const TableFixedKnownRange * RangedSignedFixedKnownRanges[] = {
-    NULL,
-    NULL,
+constexpr TableFixedKnownRange RangedSignedFixedKnown0Ranges[] = {
+    { 1u, 1u, 1u, -128, 126 },
+    { 2u, 1u, 1u, -127, 127 },
+    { 3u, 1u, 1u, -127, 126 },
+    { 6u, 2u, 1u, -32768, 32766 },
+    { 8u, 2u, 1u, -32767, 32767 },
+    { 10u, 2u, 1u, -32767, 32766 },
+    { 16u, 4u, 1u, -2147483648, 2147483646 },
+    { 20u, 4u, 1u, -2147483647, 2147483647 },
+    { 24u, 4u, 1u, -2147483647, 2147483646 },
+    { 40u, 8u, 1u, ( -9223372036854775807ll - 1 ), 9223372036854775806 },
+    { 48u, 8u, 1u, -9223372036854775807, 9223372036854775807 },
+    { 56u, 8u, 1u, -9223372036854775807, 9223372036854775806 },
 };
-constexpr int32_t RangedSignedFixedKnownRangeCounts[] = { 0, 0 };
+constexpr TableFixedKnownRange RangedSignedFixedKnown1Ranges[] = {
+    { 1u, 1u, 1u, -128, 126 },
+    { 2u, 1u, 1u, -127, 127 },
+    { 3u, 1u, 1u, -127, 126 },
+    { 6u, 2u, 1u, -32768, 32766 },
+    { 8u, 2u, 1u, -32767, 32767 },
+    { 10u, 2u, 1u, -32767, 32766 },
+    { 16u, 4u, 1u, -2147483648, 2147483646 },
+    { 20u, 4u, 1u, -2147483647, 2147483647 },
+    { 24u, 4u, 1u, -2147483647, 2147483646 },
+    { 40u, 8u, 1u, ( -9223372036854775807ll - 1 ), 9223372036854775806 },
+    { 48u, 8u, 1u, -9223372036854775807, 9223372036854775807 },
+    { 56u, 8u, 1u, -9223372036854775807, 9223372036854775806 },
+};
+constexpr const TableFixedKnownRange * RangedSignedFixedKnownRanges[] = {
+    RangedSignedFixedKnown0Ranges,
+    RangedSignedFixedKnown1Ranges,
+};
+constexpr int32_t RangedSignedFixedKnownRangeCounts[] = { 12, 12 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -18964,11 +19024,33 @@ constexpr TableFixedKnownLayout RangedUnsignedFixedKnown[] = {
     { 0xc5feb1700db1e921ull, RangedUnsignedFixedKnown1Layout, 327, 104 }, // identity
 };
 
-constexpr const TableFixedKnownRange * RangedUnsignedFixedKnownRanges[] = {
-    NULL,
-    NULL,
+constexpr TableFixedKnownRange RangedUnsignedFixedKnown0Ranges[] = {
+    { 1u, 1u, 0u, 0, 254 },
+    { 2u, 1u, 0u, 1, 255 },
+    { 3u, 1u, 0u, 1, 254 },
+    { 6u, 2u, 0u, 0, 65534 },
+    { 8u, 2u, 0u, 1, 65535 },
+    { 10u, 2u, 0u, 1, 65534 },
+    { 16u, 4u, 0u, 0, 4294967294 },
+    { 20u, 4u, 0u, 1, 4294967295 },
+    { 24u, 4u, 0u, 1, 4294967294 },
 };
-constexpr int32_t RangedUnsignedFixedKnownRangeCounts[] = { 0, 0 };
+constexpr TableFixedKnownRange RangedUnsignedFixedKnown1Ranges[] = {
+    { 1u, 1u, 0u, 0, 254 },
+    { 2u, 1u, 0u, 1, 255 },
+    { 3u, 1u, 0u, 1, 254 },
+    { 6u, 2u, 0u, 0, 65534 },
+    { 8u, 2u, 0u, 1, 65535 },
+    { 10u, 2u, 0u, 1, 65534 },
+    { 16u, 4u, 0u, 0, 4294967294 },
+    { 20u, 4u, 0u, 1, 4294967295 },
+    { 24u, 4u, 0u, 1, 4294967294 },
+};
+constexpr const TableFixedKnownRange * RangedUnsignedFixedKnownRanges[] = {
+    RangedUnsignedFixedKnown0Ranges,
+    RangedUnsignedFixedKnown1Ranges,
+};
+constexpr int32_t RangedUnsignedFixedKnownRangeCounts[] = { 9, 9 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -19461,11 +19543,23 @@ constexpr TableFixedKnownLayout RangedWidthsFixedKnown[] = {
     { 0x829cea699ec90a73ull, RangedWidthsFixedKnown1Layout, 123, 40 }, // identity
 };
 
-constexpr const TableFixedKnownRange * RangedWidthsFixedKnownRanges[] = {
-    NULL,
-    NULL,
+constexpr TableFixedKnownRange RangedWidthsFixedKnown0Ranges[] = {
+    { 0u, 4u, 0u, 0, 255 },
+    { 4u, 4u, 0u, 0, 65535 },
+    { 24u, 4u, 0u, 0, 4095 },
+    { 32u, 8u, 0u, 0, 281474976710655 },
 };
-constexpr int32_t RangedWidthsFixedKnownRangeCounts[] = { 0, 0 };
+constexpr TableFixedKnownRange RangedWidthsFixedKnown1Ranges[] = {
+    { 0u, 4u, 0u, 0, 255 },
+    { 4u, 4u, 0u, 0, 65535 },
+    { 24u, 4u, 0u, 0, 4095 },
+    { 32u, 8u, 0u, 0, 281474976710655 },
+};
+constexpr const TableFixedKnownRange * RangedWidthsFixedKnownRanges[] = {
+    RangedWidthsFixedKnown0Ranges,
+    RangedWidthsFixedKnown1Ranges,
+};
+constexpr int32_t RangedWidthsFixedKnownRangeCounts[] = { 4, 4 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —

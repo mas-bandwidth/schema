@@ -259,6 +259,7 @@ final class TableCookGraph {
     out.setInt64(slot, delta, order);
   }
 }
+
 // TableChatEvent as a cooked RECORD: a view and an offset, and every field read where
 // it lies. the offset is settable so a walk reuses one cursor (§7.2). A POINTER
 // field is its slot's offset: resolve it through <Root>Cook.at.

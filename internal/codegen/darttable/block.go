@@ -178,7 +178,7 @@ func (g *blockGen) assemble() []byte {
 // emitRuntime writes the unit's shared block runtime: the magic, this build's
 // byte order, the build version, and the reflection descriptor classes.
 func (g *blockGen) emitRuntime() {
-	g.pf("%s", blockRuntimeSource(ir.BuildVersion(g.unit)))
+	g.pf("%s\n", blockRuntimeSource(ir.BuildVersion(g.unit)))
 }
 
 // emitBlock writes one table's block reader: the constants, Open, the

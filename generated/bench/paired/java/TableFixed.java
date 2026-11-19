@@ -1023,12 +1023,34 @@ public final class TableFixed {
         for (int i = 0; i + 4 < spec.length; i += 5) {
             final int at = (int) spec[i];
             final int width = (int) spec[i + 1];
+            final boolean signed = spec[i + 2] != 0;
+            final long lo = spec[i + 3];
+            final long hi = spec[i + 4];
+            if (width == 16 && at >= 0 && at + 16 <= image.length) {
+                final long vLo = get64(image, at);
+                final long vHi = get64(image, at + 8);
+                final boolean below;
+                final boolean above;
+                if (signed) {
+                    final long loHi = lo < 0 ? -1L : 0L;
+                    final long hiHi = hi < 0 ? -1L : 0L;
+                    below = (vHi != loHi) ? (vHi < loHi) : (Long.compareUnsigned(vLo, lo) < 0);
+                    above = (vHi != hiHi) ? (vHi > hiHi) : (Long.compareUnsigned(vLo, hi) > 0);
+                } else {
+                    below = (vHi == 0L) && (Long.compareUnsigned(vLo, lo) < 0);
+                    above = (vHi != 0L) || (Long.compareUnsigned(vLo, hi) > 0);
+                }
+                if (below || above) {
+                    final long landed = below ? lo : hi;
+                    put64(image, at, landed);
+                    put64(image, at + 8, (signed && landed < 0) ? -1L : 0L);
+                    report.refuse(Reason.outOfRange);
+                }
+                continue;
+            }
             if (width <= 0 || width > 8 || at < 0 || at + width > image.length) {
                 continue;
             }
-            final long lo = spec[i + 3];
-            final long hi = spec[i + 4];
-            final boolean signed = spec[i + 2] != 0;
             final long v = signed ? getInt(image, at, width) : getUint(image, at, width);
             long landed = v;
             if (signed ? v < lo : Long.compareUnsigned(v, lo) < 0) {

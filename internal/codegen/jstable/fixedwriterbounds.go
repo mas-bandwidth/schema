@@ -118,15 +118,25 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 		names[i] = fmt.Sprintf("%sFixedWriterBounds%d", st.Name, i)
 		g.pf("function %s(view, report) {\n", names[i])
 		for _, b := range rows {
-			get, le := fixedGetter(b.field.Type)
-			endian := ""
-			if le {
-				endian = ", true"
-			}
 			asBig := fixedIsBig(b.field.Type)
 			lo, hi := jsIntLit(b.lo, asBig), jsIntLit(b.hi, asBig)
 			g.pf("  {\n")
-			g.pf("    const n = view.%s(%d%s);\n", get, b.at, endian)
+			if fixedStorageBytes(b.field.Type) == 16 {
+				hiGet := "getBigUint64"
+				if fixedSigned(b.field.Type) {
+					hiGet = "getBigInt64"
+				}
+				g.pf("    const n = (view.getUint32(%d, true) | view.getUint32(%d, true)) === 0\n", b.at+8, b.at+12)
+				g.pf("      ? view.getBigUint64(%d, true)\n", b.at)
+				g.pf("      : (view.%s(%d, true) << 64n) | view.getBigUint64(%d, true);\n", hiGet, b.at+8, b.at)
+			} else {
+				get, le := fixedGetter(b.field.Type)
+				endian := ""
+				if le {
+					endian = ", true"
+				}
+				g.pf("    const n = view.%s(%d%s);\n", get, b.at, endian)
+			}
 			cond := ""
 			switch {
 			case b.low && b.high:
