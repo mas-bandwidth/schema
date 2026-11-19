@@ -16,6 +16,7 @@ VERIFY_JOBS          ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/nu
 VERIFY_JFLAG          = $(if $(findstring j,$(MAKEFLAGS)),,-j$(VERIFY_JOBS))
 VERIFY_FUZZ_SEED     ?= 1
 VERIFY_FUZZ_RANDOM_N ?= 2500
+VERIFY_JSON_FUZZ_N   ?= 300
 
 # Per-VM mutant caps tuned so each verify-<lang>-fuzz finishes in ~8-20s cold/warm
 # while running all pinned hostile vectors, all manifest seeds, stateful reuse
@@ -176,6 +177,9 @@ _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-g
 		--driver "$(WFR_DRIVER_js)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_js) \
 		--failed build/verify/fuzz-js-retain.bin
+	NODE="$(NODE)" ./build/conformance-harness-vm json-fuzz --only js \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-js
 
 # ---- 2. python ----
 
@@ -196,6 +200,9 @@ _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/
 		--driver "$(WFR_DRIVER_python)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_python) \
 		--failed build/verify/fuzz-python-retain.bin
+	PYTHON="$(PYTHON)" ./build/conformance-harness-vm json-fuzz --only python \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-python
 
 # ---- 3. ruby ----
 
@@ -216,6 +223,9 @@ _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conf
 		--driver "$(WFR_DRIVER_ruby)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_ruby) \
 		--failed build/verify/fuzz-ruby-retain.bin
+	RUBY="$(RUBY)" ./build/conformance-harness-vm json-fuzz --only ruby \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-ruby
 
 # ---- 4. lua ----
 
@@ -234,6 +244,9 @@ _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/confor
 		--driver "$(WFR_DRIVER_lua)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lua) \
 		--failed build/verify/fuzz-lua-plain.bin
+	LUA="$(LUA)" ./build/conformance-harness-vm json-fuzz --only lua \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-lua
 
 # ---- 5. luau ----
 
@@ -254,6 +267,9 @@ _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conf
 		--driver "$(WFR_DRIVER_luau)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_luau) \
 		--failed build/verify/fuzz-luau-retain.bin
+	LUAU="$(LUAU)" ./build/conformance-harness-vm json-fuzz --only luau \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-luau
 
 # ---- 6. squirrel ----
 
@@ -276,6 +292,9 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
 		--failed build/verify/fuzz-squirrel-builder.bin
+	SQ="$(SQ)" ./build/conformance-harness-vm json-fuzz --only squirrel \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-squirrel
 
 # ---- 7. moo ----
 
@@ -297,6 +316,9 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 		--driver "$(WFR_DRIVER_moo)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_moo) \
 		--failed build/verify/fuzz-moo-retain.bin
+	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm json-fuzz --only moo \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-moo
 
 # ---- 8. goose ----
 
@@ -315,7 +337,7 @@ build/goose-wirefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMA
 	@GOOSE_FUZZ_JOBS=$(VERIFY_JOBS) $(MAKE) --no-print-directory build/conformance-goose-wirefuzz
 	@touch $@
 
-_verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/goose-wirefuzz-legs/.verify-stamp
+_verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz --mixed-builder \
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
@@ -325,6 +347,9 @@ _verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/go
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
 		--failed build/verify/fuzz-goose-retain.bin
+	GOOSE="$(GOOSE)" ./build/conformance-harness-vm json-fuzz --only goose \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-goose
 
 # ---- 9. lobster ----
 
@@ -345,6 +370,9 @@ _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm buil
 		--driver "$(WFR_DRIVER_lobster)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lobster) \
 		--failed build/verify/fuzz-lobster-retain.bin
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm json-fuzz --only lobster \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-lobster
 
 # ---- Sabotage Negative Control ----
 # Proves that a 1-bit / 1-constant corruption in an optimization-pass emitter

@@ -17,19 +17,20 @@ VERIFY_JFLAG          = $(if $(findstring j,$(MAKEFLAGS)),,-j$(VERIFY_JOBS))
 VERIFY_FUZZ_SEED     ?= 1
 VERIFY_FUZZ_RANDOM_N ?= 2500
 VERIFY_FUZZ_MAX      ?= 5000
+VERIFY_JSON_FUZZ_N   ?= 300
 
-# Explicit per-leg wire-fuzz build prerequisites (make/verify-compiled.mk sorts
-# before make/wire-fuzz-release.mk in the Makefile's wildcard include, so target
+# Explicit per-leg wire-fuzz and json-fuzz build prerequisites (make/verify-compiled.mk
+# sorts before make/wire-fuzz-release.mk in the Makefile's wildcard include, so target
 # prerequisites must not rely on WFR_DEPS_* being defined at parse time).
-VERIFY_FUZZ_DEPS_cpp    := build/wire-fuzz-cpp
-VERIFY_FUZZ_DEPS_c      := build/wire-fuzz-c
+VERIFY_FUZZ_DEPS_cpp    := build/wire-fuzz-cpp build/conformance-cpp
+VERIFY_FUZZ_DEPS_c      := build/wire-fuzz-c build/conformance-c
 VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs
 VERIFY_FUZZ_DEPS_unity  := toolchain-unity build/conformance-unity/.stamp
 VERIFY_FUZZ_DEPS_go     := build/conformance-go
-VERIFY_FUZZ_DEPS_rust   := build/conformance-rust-all
+VERIFY_FUZZ_DEPS_rust   := build/conformance-rust-all build/conformance-rust
 VERIFY_FUZZ_DEPS_java   := toolchain-java build-conformance-java
 VERIFY_FUZZ_DEPS_dart   := toolchain-dart build/conformance-dart
-VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp
+VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build-conformance-elixir
 
 define verify_compiled_fuzz_rules
 .PHONY: _verify-$(1)-fuzz verify-$(1)-fuzz
@@ -43,6 +44,9 @@ _verify-$(1)-fuzz: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-retain.bin
+	./build/conformance-harness json-fuzz --only $(1) \
+		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_JSON_FUZZ_N) \
+		--failed build/verify/json-fuzz-$(1)
 
 verify-$(1)-fuzz:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-fuzz

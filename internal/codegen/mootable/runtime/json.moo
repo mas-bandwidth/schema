@@ -1784,6 +1784,18 @@ local function scanName(r: Reader): (string, boolean)
 	return s, true
 end
 
+local function scanVariantName(r: Reader): (string, boolean)
+	local s, over, ok = scanText(r, MAX_KEY, false, false)
+	if not ok then
+		return "", false
+	end
+	if over then
+		r.bad = true
+		return "", false
+	end
+	return s, true
+end
+
 -- walkNumber: the cursor over ONE RFC 8259 number, and whether it was
 -- integral in FORM — no fraction and no exponent
 local function walkNumber(r: Reader): (boolean, boolean)
@@ -2445,10 +2457,38 @@ local function placeInteger(r: Reader, fd: any, holder: any, key: any, token: st
 	return true
 end
 
+local function numberToken(token: string): boolean
+	local k = 1
+	local n = #token
+	if k <= n and token:byte(k) == 45 then k += 1 end
+	if k > n then return false end
+	local b = token:byte(k)
+	if b == 48 then
+		k += 1
+		if k <= n and token:byte(k) >= 48 and token:byte(k) <= 57 then return false end
+	elseif b >= 49 and b <= 57 then
+		while k <= n and token:byte(k) >= 48 and token:byte(k) <= 57 do k += 1 end
+	else
+		return false
+	end
+	if k <= n and token:byte(k) == 46 then
+		k += 1
+		if k > n or token:byte(k) < 48 or token:byte(k) > 57 then return false end
+		while k <= n and token:byte(k) >= 48 and token:byte(k) <= 57 do k += 1 end
+	end
+	if k <= n and (token:byte(k) == 101 or token:byte(k) == 69) then
+		k += 1
+		if k <= n and (token:byte(k) == 45 or token:byte(k) == 43) then k += 1 end
+		if k > n or token:byte(k) < 48 or token:byte(k) > 57 then return false end
+		while k <= n and token:byte(k) >= 48 and token:byte(k) <= 57 do k += 1 end
+	end
+	return k == n + 1
+end
+
 local function placeWide(r: Reader, fd: any, holder: any, key: any, token: string): boolean
 	-- a PURE 128-bit integer holds the integer-token rule inside its string too;
 	-- a fixed-point kind keeps its exact decimal (docs/SPEC-TABLES.md §16.2)
-	if fd.fbits == nil and fd.kw == 16 and not integerToken(token) then
+	if (fd.fbits == nil and fd.kw == 16 and not integerToken(token)) or ((fd.fbits ~= nil or fd.kw ~= 16) and not numberToken(token)) then
 		r.report.kindChanged += 1
 		return true
 	end
@@ -2602,7 +2642,7 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 				return false
 			end
 		else
-			local name, ok = scanName(r)
+			local name, ok = scanVariantName(r)
 			if not ok then
 				return false
 			end
@@ -2678,7 +2718,7 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 		return readTable(r, d, v, depth + 1)
 	end
 	if s == "enum" then
-		local text, ok = scanName(r)
+		local text, ok = scanVariantName(r)
 		if not ok then
 			return false
 		end

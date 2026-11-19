@@ -2370,9 +2370,35 @@ local placeFloat = function(d, tok, report) {
 // a wide kind (read.go placeWide): exactly representable or the wrong shape;
 // a magnitude past the storage saturates and counts; the declared raw range
 // clamps after it
+local numberToken = function(tok) {
+  local k = 0, n = tok.len();
+  if (k < n && tok[k] == '-') k++;
+  if (k >= n) return false;
+  if (tok[k] == '0') {
+    k++;
+    if (k < n && tok[k] >= '0' && tok[k] <= '9') return false;
+  } else if (tok[k] >= '1' && tok[k] <= '9') {
+    while (k < n && tok[k] >= '0' && tok[k] <= '9') k++;
+  } else {
+    return false;
+  }
+  if (k < n && tok[k] == '.') {
+    k++;
+    if (k >= n || tok[k] < '0' || tok[k] > '9') return false;
+    while (k < n && tok[k] >= '0' && tok[k] <= '9') k++;
+  }
+  if (k < n && (tok[k] == 'e' || tok[k] == 'E')) {
+    k++;
+    if (k < n && (tok[k] == '-' || tok[k] == '+')) k++;
+    if (k >= n || tok[k] < '0' || tok[k] > '9') return false;
+    while (k < n && tok[k] >= '0' && tok[k] <= '9') k++;
+  }
+  return k == n;
+};
+
 local placeWide = function(d, tok, report) {
   // a 128-bit integer takes an integer token; a fixed kind keeps an exact decimal
-  if ((d.kind == 18 || d.kind == 19) && !integerToken(tok)) { report.mismatch++; return null; }
+  if (((d.kind == 18 || d.kind == 19) && !integerToken(tok)) || (d.kind != 18 && d.kind != 19 && !numberToken(tok))) { report.mismatch++; return null; }
   local pw = parseWide(tok, d.kind, has(d, "frac") ? d.frac : 0);
   if (!pw[1]) { report.mismatch++; return null; }
   if (pw[2]) report.oor++;

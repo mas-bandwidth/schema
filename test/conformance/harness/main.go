@@ -88,6 +88,10 @@ func usage() {
              a LoadMeasure inside the framing's bound, for every mutant
              (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
              the enumerated passes run whatever N is.
+  json-fuzz  generate deterministic adversarial and mutated JSON inputs across
+             fixed and variable roots, run the compiler engine as oracle, and
+             verify FromJson verdict, canonical ToJson, Save wire, and
+             Load(wire) -> ToJson across matching drivers in two batched calls.
   cook-differential
              cook every cook-write row's wire with the tool's engine and
              with the C++ reference driver (--driver, default its committed
@@ -261,6 +265,10 @@ func main() {
 		}
 	case "pin":
 		if err := pin(m, *drivers, *work, "testdata/conformance/tables/cook"); err != nil {
+			fatalf("%v", err)
+		}
+	case "json-fuzz":
+		if err := jsonFuzz(os.Stdout, m, jsonFuzzOptions{driversPath: *drivers, driverCmd: *driver, only: *only, skip: *skip, work: *work, failed: *failed, seed: *seed, n: *n, jsonDir: *jsonDir}); err != nil {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":

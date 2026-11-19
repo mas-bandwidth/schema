@@ -1018,6 +1018,7 @@ end
 
 local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, first_key: string?, graph: any, report: any): boolean
   local seen: { [string]: boolean } = {}
+  local seen_unknown: { [string]: boolean } = {}
   while true do
     local key
     if first_key ~= nil then
@@ -1037,6 +1038,8 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
     if key ~= "" and key:sub(1, 1) == "&" then inp.bad = true; return false end
     local fd = find_key(desc, key)
     if fd == nil then
+      if seen_unknown[key] then inp.bad = true; return false end
+      seen_unknown[key] = true
       report.unknown = report.unknown + 1
       if not skip_value(inp, depth + 1, graph, true) then return false end
     else
@@ -1136,13 +1139,14 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   if bare then
     inp.p = inp.p + 1
     if entry.open then inp.bad = true; return false end
-    holder[key] = nil
+    local null_slot: any = if type(key) == "number" then false else nil
+    holder[key] = null_slot
     if entry.st == nil then return true end
     if entry.st ~= d.target then
       report.kindMismatch = report.kindMismatch + 1
       return true
     end
-    holder[key] = entry.node
+    holder[key] = if entry.node ~= nil then entry.node else null_slot
     return true
   end
   local node = walk_default(T, T.Tables[d.target])
@@ -1158,21 +1162,25 @@ end
 local function read_base64(inp: Input, bound: number, report: any): (string | false)?
   if peek(inp) ~= '"' then inp.bad = true; return nil end
   inp.p = inp.p + 1
-  local start = inp.p
   local out = {}
   local acc, held = 0, 0
   local clamped, bad = false, false
+  local digits, pads = 0, 0
   while true do
-    if inp.p > #inp.t then inp.bad = true; return nil end
-    local ch = inp.t:sub(inp.p, inp.p)
-    inp.p = inp.p + 1
-    if ch == '"' then break end
-    if ch == '=' or bad then
-    else
+    local unit, done, ok = scan_unit(inp)
+    if not ok then return nil end
+    if done then break end
+    local ch = unit :: string
+    if #ch ~= 1 then
+      bad = true
+    elseif ch == '=' then
+      pads = pads + 1
+    elseif not bad then
       local at = BASE64:find(ch, 1, true)
-      if at == nil then
+      if at == nil or pads > 0 then
         bad = true
       else
+        digits = digits + 1
         acc = band(bor(lshift(acc, 6), at - 1), 0xffffff)
         held = held + 6
         if held >= 8 then
@@ -1186,35 +1194,15 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
       end
     end
   end
+  local want_pads = (4 - digits % 4) % 4
+  if digits % 4 == 1 or (pads ~= 0 and pads ~= want_pads) then bad = true end
   if bad then
     report.kindMismatch = report.kindMismatch + 1
     return false
   end
-  -- §16.8: only the canonical spelling the writer writes is accepted — the
-  -- standard alphabet, padded, pad bits zero. A body that decodes in another
-  -- spelling (a pad bit set, missing padding) is refused.
-  local body = inp.t:sub(start, inp.p - 2)
-  local n = #body
-  local pad = 0
-  if n >= 1 and body:sub(n, n) == "=" then pad = 1 end
-  if n >= 2 and body:sub(n - 1, n - 1) == "=" then pad = 2 end
-  local data = n - pad
-  local canonical = n % 4 == 0
-  if canonical then
-    for i = 1, data do
-      if body:sub(i, i) == "=" then canonical = false; break end
-    end
-  end
-  if canonical and pad == 1 then
-    local at = BASE64:find(body:sub(data, data), 1, true)
-    if at == nil or (at - 1) % 4 ~= 0 then canonical = false end
-  elseif canonical and pad == 2 then
-    local at = BASE64:find(body:sub(data, data), 1, true)
-    if at == nil or (at - 1) % 16 ~= 0 then canonical = false end
-  end
-  if not canonical then
-    report.kindMismatch = report.kindMismatch + 1
-    return false
+  if pads ~= want_pads or band(acc, lshift(1, held) - 1) ~= 0 then
+    inp.bad = true
+    return nil
   end
   if clamped then report.clamped = report.clamped + 1 end
   return table.concat(out)
@@ -1426,7 +1414,7 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     local slot = nil
     for i, v in ipairs(fd.keyed) do if v[1] == name then slot = i; break end end
     if slot == nil then
-      if seen_unknown[name] then dup_unknown = true end
+      if seen_unknown[name] then inp.bad = true; return false end
       seen_unknown[name] = true
       report.unknown = report.unknown + 1
       if not skip_value(inp, depth + 1, graph, true) then return false end
@@ -1756,13 +1744,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
         local mid = "340282356779733661637539395458142568448"
         local neg = token:sub(1, 1) == "-"
         local digits = neg and token:sub(2) or token
-        local below = false
-        if digits:match("^%d+$") then
-          local d0 = digits:gsub("^0+", "")
-          if d0 == "" then below = true
-          elseif #d0 < #mid then below = true
-          elseif #d0 == #mid and d0 < mid then below = true end
-        end
+        local below = math.abs(x) == 3.4028235677973366e38 and decimal_cmp(digits, mid) < 0
         if below then
           x = neg and -3.4028234663852886e38 or 3.4028234663852886e38
         else

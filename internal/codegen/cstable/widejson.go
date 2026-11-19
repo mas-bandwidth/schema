@@ -47,6 +47,28 @@ const tableWideJsonSource = `
     }
     static bool ReadWide(ReadOnlySpan<char> token, ref In input, object owner, TableFieldInfo f, int index)
     {
+        {
+            int k = 0;
+            if (k < token.Length && token[k] == '-') { k++; }
+            if (k >= token.Length) { return RefuseText(ref input, "kind_mismatch"); }
+            if (token[k] == '0') { k++; if (k < token.Length && token[k] >= '0' && token[k] <= '9') { return RefuseText(ref input, "kind_mismatch"); } }
+            else if (token[k] >= '1' && token[k] <= '9') { while (k < token.Length && token[k] >= '0' && token[k] <= '9') { k++; } }
+            else { return RefuseText(ref input, "kind_mismatch"); }
+            if (k < token.Length && token[k] == '.')
+            {
+                k++;
+                if (k >= token.Length || token[k] < '0' || token[k] > '9') { return RefuseText(ref input, "kind_mismatch"); }
+                while (k < token.Length && token[k] >= '0' && token[k] <= '9') { k++; }
+            }
+            if (k < token.Length && (token[k] == 'e' || token[k] == 'E'))
+            {
+                k++;
+                if (k < token.Length && (token[k] == '-' || token[k] == '+')) { k++; }
+                if (k >= token.Length || token[k] < '0' || token[k] > '9') { return RefuseText(ref input, "kind_mismatch"); }
+                while (k < token.Length && token[k] >= '0' && token[k] <= '9') { k++; }
+            }
+            if (k != token.Length) { return RefuseText(ref input, "kind_mismatch"); }
+        }
         byte[] digits = new byte[token.Length];
         int pos = 0, n = 0, integer = 0;
         bool negative = token[0] == '-';

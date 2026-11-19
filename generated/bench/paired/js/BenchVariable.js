@@ -3777,12 +3777,18 @@ class TableVariableTextIn {
       if (c === 32 || c === 9 || c === 10 || c === 13) { this.p++; continue; }
       if (c === 47 && t.charCodeAt(this.p + 1) === 47) {
         this.p += 2;
-        while (this.p < t.length && t.charCodeAt(this.p) !== 10) { this.p++; }
+        while (this.p < t.length && t.charCodeAt(this.p) !== 10) {
+          if (t.charCodeAt(this.p) === 0) { this.bad = true; this.p = t.length; return; }
+          this.p++;
+        }
         continue;
       }
       if (c === 47 && t.charCodeAt(this.p + 1) === 42) {
         const end = t.indexOf("*/", this.p + 2);
         if (end < 0) { this.bad = true; this.p = t.length; return; }
+        for (let k = this.p + 2; k < end; k++) {
+          if (t.charCodeAt(k) === 0) { this.bad = true; this.p = t.length; return; }
+        }
         this.p = end + 2;
         continue;
       }
@@ -4421,6 +4427,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
 // REFUSES out_of_range and nothing is placed (§4, §16.2).
 function TableVariableTextWide(d, tok, holder, key, report) {
   if ((d.k === 18 || d.k === 19) && !TableVariableIntegerToken(tok)) { report.mismatch++; return false; }
+  if (d.k !== 18 && d.k !== 19 && !/^-?(0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/.test(tok)) { report.mismatch++; return false; }
   let i = 0, neg = false;
   if (tok[i] === "-" || tok[i] === "+") { neg = tok[i] === "-"; i++; }
   const digit = () => i < tok.length && tok[i] >= "0" && tok[i] <= "9";

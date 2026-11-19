@@ -5898,7 +5898,10 @@ String _jsonPrepare(String text, TableTextReport r) {
     }
     if (c == 0x2f && i + 1 < source.length && source[i + 1] == 0x2f) {
       i += 2;
-      while (i < source.length && source[i] != 0x0a) i++;
+      while (i < source.length && source[i] != 0x0a) {
+        if (source[i] == 0) throw const FormatException('NUL in JSON comment');
+        i++;
+      }
       stripped.add(0x20);
       if (i < source.length) stripped.add(source[i]);
       continue;
@@ -5907,6 +5910,7 @@ String _jsonPrepare(String text, TableTextReport r) {
       i += 2;
       var closed = false;
       for (; i + 1 < source.length; i++) {
+        if (source[i] == 0) throw const FormatException('NUL in JSON comment');
         if (source[i] == 0x2a && source[i + 1] == 0x2f) {
           i++;
           closed = true;
@@ -6327,6 +6331,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('kind_mismatch');
     return def;
   }
+  if (!integer && !RegExp(r'^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$').hasMatch(token)) {
+    r.refuse('kind_mismatch');
+    return def;
+  }
   final parts = _jsonNumberParts(token);
   final digits = parts.digits;
   final point = parts.point;
@@ -6686,6 +6694,7 @@ MixedEvent _mixedEventFromJson(dynamic val, TableTextReport r, _Share sh, [Mixed
   final v = MixedEvent();
   if (entries.isEmpty) return v;
   if (entries.length != 1) throw const FormatException('union has two keys');
+  _jsonText(entries.first.key);
   if (!_jsonName(entries.first.key, r)) return v;
   final item = entries.first.value;
   switch (entries.first.key) {

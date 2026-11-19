@@ -196,6 +196,9 @@ jobs:
           ./build/conformance-harness run --only cpp \
             --coverage build/nightly/reference-report/coverage-cpp.json
 
+      - name: differential json-fuzz on the C++ reference (N=5000)
+        run: ./build/conformance-harness json-fuzz --only cpp --seed 1 --n 5000 --failed build/nightly/reference-report/json-fuzz-failures
+
       - name: pack the C++ corpus
         if: always()
         env:
@@ -436,6 +439,9 @@ jobs:
             --coverage build/nightly/report/coverage-${{ matrix.lang }}.json
           python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase wire-after
 
+
+      - name: differential json-fuzz on the ${{ matrix.lang }} leg (N=5000)
+        run: env ${{ matrix.env }} ./build/nightly-harness json-fuzz --only ${{ matrix.lang }} --seed 1 --n 5000 --failed build/nightly/report/json-fuzz-failures
       - name: the original-nine leg checks the four BOM entry cases
         if: contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang)
         run: |

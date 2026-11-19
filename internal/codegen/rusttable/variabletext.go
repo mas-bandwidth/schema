@@ -568,6 +568,14 @@ impl<'a> Jr<'a> {
         }
         Some(s)
     }
+    pub fn read_variant_name(&mut self) -> Option<String> {
+        let s = self.read_string()?;
+        if s.len() > 255 {
+            self.damaged = true;
+            return None;
+        }
+        Some(s)
+    }
     pub fn read_null(&mut self) -> bool {
         self.space();
         if self.p + 4 <= self.b.len() && &self.b[self.p..self.p + 4] == b"null" {
@@ -1733,7 +1741,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 	case vEnum:
 		e := f.Type.Ref.(*ir.Enum)
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
-		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_name() {\n", in)
+		fmt.Fprintf(b, "%s    if let Some(s) = jr.read_variant_name() {\n", in)
 		fmt.Fprintf(b, "%s        %s = match %s(&s) {\n", in, dst, fn(e.Name, "from_json_name"))
 		fmt.Fprintf(b, "%s            Some(x) => x,\n", in)
 		fmt.Fprintf(b, "%s            None => { jr.unknown += 1; %s::None },\n", in, e.Name)
@@ -1753,7 +1761,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s    loop {\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b'\"' {\n", in)
-			fmt.Fprintf(b, "%s            match jr.read_name() {\n", in)
+			fmt.Fprintf(b, "%s            match jr.read_variant_name() {\n", in)
 			fmt.Fprintf(b, "%s                Some(s) => match s.as_str() {\n", in)
 			for i, v := range fl.Variants {
 				fmt.Fprintf(b, "%s                    %q => { let bit = 1u64 << %d; if bits & bit != 0 { jr.damaged = true; } bits |= bit; },\n", in, v, i)
