@@ -1944,14 +1944,14 @@ local function mEncodeFieldPayload(c: any, owner: string, fd: any, entrySlot: nu
 		end
 		local cb = mCountBits(shape)
 		if cb > 0 then mPut(c.w, count - shape.min, cb) end
-		if mAligns(entry.kind, shape) then mAlign(c.w) end
+		if mAligns(shape.kind, shape) then mAlign(c.w) end
 		for i = 1, count do
 			local elVal = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
 			if not mEncodeElem(c, owner, fd, shape, elVal) then return false end
 		end
 		return true
 	end
-	return mEncodeScalar(c, owner, fd, entry.kind, shape, val, fd.name)
+	return mEncodeScalar(c, owner, fd, shape.kind, shape, val, fd.name)
 end
 
 mEncodeArm = function(c: any, owner: string, un: any, u: any, fname: string): boolean

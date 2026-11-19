@@ -21,7 +21,11 @@ def run(manifest, outdir):
                 byte_count = max(0, probe.used - 1)
             retain = package.TableRetain(bytearray(byte_count), bytearray(24 * id_count))
             report = package.LoadReport()
-            value = cls.load_retain(data, retain, report)
+            try:
+                value = cls.load_retain(data, retain, report)
+            except ValueError:
+                write_bytes(outdir, case, b"refused\n")
+                continue
             if not hasattr(value, "to_json"):
                 absent(outdir, case, "unit does not provide JSON text")
                 continue

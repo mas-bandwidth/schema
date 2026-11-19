@@ -97,6 +97,7 @@ namespace Blockhome
         public bool Counted;        // a <name>Count/<name>Length companion exists
         public bool Required;
         public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
+        public int ArrayMin;        // counted array minimum length; 0 otherwise
         public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
         // the STORAGE width of one element in bytes, C++'s elem_size where it has
         // a C# meaning: the last bound a numeric read clamps to (§16.2). 0 on
@@ -1447,6 +1448,7 @@ namespace Blockhome
 
             static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
             {
+                if (f.Counted && (f.GetCount(value) < f.ArrayMin || f.GetCount(value) > f.ArrayBound)) { return false; }
                 if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
@@ -5451,7 +5453,7 @@ namespace Blockhome
             {
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
-                if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(count >= f.ArrayMin && count <= f.ArrayBound); }
                 if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFits(value, f)); }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
@@ -5472,7 +5474,7 @@ namespace Blockhome
                 {
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
                     if (f.Optional && !f.GetPresent(value)) { continue; }
-                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
+                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
                     if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
                 }
                 return true;

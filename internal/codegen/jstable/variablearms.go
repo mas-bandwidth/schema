@@ -804,13 +804,14 @@ const jsVariableArmsTextRuntime = `
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
+  if (!(val instanceof Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
-  const vd = fd.c.fields[1];
+  const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ind = "\n" + "  ".repeat(depth + 1);
   out.push("{");
   for (let i = 0; i < ents.length; i++) {
-    if (fd.ks && fd.kb < 0 && !TableVariableUnboundedTextValid(ents[i].key)) { return false; }
+    if (!TableVariableJsonField(kd, ents[i].key, depth + 1, g, [])) { return false; }
     if (i > 0) { out.push(","); }
     out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
     if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }

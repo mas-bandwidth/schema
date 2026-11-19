@@ -1115,6 +1115,11 @@ static partial class Program
                 if(SurfaceRetainVarEvo1(f,outDir,saved)!=0) { return 1; }
                 continue;
             }
+            if(f[2]=="tblvarevo2" && f[3]=="EvoDoc")
+            {
+                if(SurfaceRetainVarEvo2(f,outDir,saved)!=0) { return 1; }
+                continue;
+            }
             if(f[2]!="tblrt1" || f[3]!="Node") { SpillAbsent(outDir,f[1]); continue; }
             byte[] wire=File.ReadAllBytes(f[4]);
             var report=new RT.TableReport();
@@ -1215,6 +1220,68 @@ static partial class Program
                 if (jsize < 0) { return 1; }
                 byte[] jtext = new byte[jsize];
                 if (Tblvarevo1.Schema.EvoDocToJson(known, jtext) != jsize) { return 1; }
+                byte[] head = Encoding.ASCII.GetBytes("read\n");
+                byte[] both = new byte[head.Length + jtext.Length];
+                head.CopyTo(both, 0);
+                jtext.CopyTo(both, head.Length);
+                File.WriteAllBytes(Path.Combine(outDir, f[1]), both);
+                File.WriteAllBytes(Path.Combine(outDir, f[1] + ".wire"), output);
+            }
+            return 0;
+        }
+        finally
+        {
+            NativeMemory.AlignedFree(region);
+            NativeMemory.Free(store.Bytes);
+            NativeMemory.Free(store.Ids);
+        }
+    }
+
+    static unsafe int SurfaceRetainVarEvo2(string[] f, string outDir, bool saved)
+    {
+        byte[] wire = File.ReadAllBytes(f[4]);
+        var report = new Tblvarevo2.TableReport();
+        long need = Tblvarevo2.Schema.EvoDocLoadMeasure(wire);
+        if (need < 0) { if (!saved) { File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n"); } return 0; }
+        nuint allocBytes = (nuint)(need > 0 ? need : 1);
+        byte* region = (byte*)NativeMemory.AlignedAlloc(allocBytes, 64);
+        var store = new Tblvarevo2.TableRetain
+        {
+            Bytes = (byte*)NativeMemory.Alloc(1 << 20),
+            Capacity = 1 << 20,
+            Ids = (Tblvarevo2.TableRetain.Id*)NativeMemory.Alloc(1 << 21),
+            IdCapacity = f[6] == "full" ? 1 << 17 : int.Parse(f[6])
+        };
+        try
+        {
+            if (f[5] == "short")
+            {
+                Tblvarevo2.Schema.EvoDocLoadRetain((IntPtr)region, need, wire, ref store, new Tblvarevo2.TableReport());
+                store.Capacity = store.Used - 1;
+            }
+            IntPtr root = (IntPtr)Tblvarevo2.Schema.EvoDocLoadRetain((IntPtr)region, need, wire, ref store, report);
+            if (root == IntPtr.Zero || report.Damaged || report.Refused)
+            {
+                if (!saved) { File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n"); }
+                return 0;
+            }
+            long size = Tblvarevo2.Schema.EvoDocMeasureRetain(root, ref store);
+            if (size < 0) { return 1; }
+            byte[] output = new byte[size];
+            var save = new Tblvarevo2.TableReport();
+            if (Tblvarevo2.Schema.EvoDocSaveRetain(root, ref store, output, save) != size) { return 1; }
+            if (saved)
+            {
+                File.WriteAllBytes(Path.Combine(outDir, f[1]), output);
+            }
+            else
+            {
+                var known = Tblvarevo2.Schema.EvoDocLoadBuilder((IntPtr)region);
+                if (known == null) { return 1; }
+                long jsize = Tblvarevo2.Schema.EvoDocToJsonMeasure(known);
+                if (jsize < 0) { return 1; }
+                byte[] jtext = new byte[jsize];
+                if (Tblvarevo2.Schema.EvoDocToJson(known, jtext) != jsize) { return 1; }
                 byte[] head = Encoding.ASCII.GetBytes("read\n");
                 byte[] both = new byte[head.Length + jtext.Length];
                 head.CopyTo(both, 0);

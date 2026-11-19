@@ -404,7 +404,7 @@ public final class TableVariable {
     // The ID TABLE (docs/SPEC-TABLES.md §3): one shared over the whole file, so
     // a list element's field ids intern into the same table the root's do.
     public static final class Ids {
-        public final long[] entries;
+        public long[] entries;
         public int count;
         public boolean overflow;
         // nonFinite is the SAVE's refusal of a NaN or an infinity
@@ -414,6 +414,7 @@ public final class TableVariable {
         // offRange is the SAVE's refusal of a ranged float off its range
         // (docs/SPEC.md §5.1 row 10), held in every build beside nonFinite.
         public boolean offRange;
+        public boolean growable;
 
         public Ids(int cap) {
             entries = new long[cap];
@@ -426,8 +427,11 @@ public final class TableVariable {
                 }
             }
             if (count >= entries.length) {
-                overflow = true;
-                return 0;
+                if (!growable || entries.length >= 65536) {
+                    overflow = true;
+                    return 0;
+                }
+                entries = java.util.Arrays.copyOf(entries, Math.min(65536, entries.length * 2));
             }
             entries[count++] = id;
             return count;
@@ -1939,6 +1943,20 @@ public final class TableVariable {
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
     // text is not text at whatever length the reader would have kept.
+    public static String utf8FromFixed(byte[] b, int len) {
+        assert len >= 0 && len <= b.length;
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(b, 0, len))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException bad) {
+            throw new AssertionError("ill-formed UTF-8 in fixed text");
+        }
+    }
+
     public static boolean textValid(byte[] b, int off, int len) {
         int i = off;
         int end = off + len;
@@ -2825,6 +2843,7 @@ public final class TableVariable {
         }
 
         public Saver(int capacity) {
+            ids.growable = true;
             writer = new Writer(new byte[Math.max(capacity, 16)], ids);
             writer.growable = true;
         }

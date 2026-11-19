@@ -646,7 +646,7 @@ public final class MixedHitEventVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -891,6 +891,9 @@ public final class MixedHitEventVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "target_id");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.targetId, 1L << 12) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.targetId));
         if (!first) {
             b.append(',');
@@ -899,6 +902,9 @@ public final class MixedHitEventVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "damage");
         b.append(": ");
+        if ((long) v.damage < 0 || (long) v.damage > 4095) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.damage));
         if (!first) {
             b.append(',');
@@ -907,6 +913,9 @@ public final class MixedHitEventVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "hit_kind");
         b.append(": ");
+        if ((long) v.hitKind < 0 || (long) v.hitKind > 7) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.hitKind));
         if (!first) {
             b.append(',');

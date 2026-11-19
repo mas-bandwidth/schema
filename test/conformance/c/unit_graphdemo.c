@@ -48,6 +48,7 @@ static const CookRoot roots[] = {
     { "Scene", open_scene, graphdemo_scene_table_type },
     { "Depot", open_depot, graphdemo_depot_table_type },
     { "Album", open_album, graphdemo_album_table_type },
+    { "AlbumValued", open_album, graphdemo_album_table_type },
     { "TreeNode", open_tree, graphdemo_tree_node_table_type },
     { "ListNode", open_list, graphdemo_list_node_table_type },
     { "Marker", open_marker, graphdemo_marker_table_type },

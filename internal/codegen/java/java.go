@@ -1428,12 +1428,18 @@ func canonLine(l string) []string {
 	if strings.HasPrefix(t, "*") || strings.HasPrefix(t, "/*") {
 		return []string{l}
 	}
-	l = javaElseIf.ReplaceAllString(l, "} else if (")
+	if strings.Contains(l, "} else") {
+		l = javaElseIf.ReplaceAllString(l, "} else if (")
+	}
 	if !strings.ContainsAny(l, "\"'") {
-		if m := javaTrailing.FindStringSubmatch(l); m != nil && !strings.Contains(m[1], "//") {
-			l = m[1] + " " + m[2]
+		if strings.Contains(l, "//") {
+			if m := javaTrailing.FindStringSubmatch(l); m != nil && !strings.Contains(m[1], "//") {
+				l = m[1] + " " + m[2]
+			}
 		}
-		l = javaArrayInit.ReplaceAllString(l, "$1{$2}")
+		if strings.Contains(l, "{ ") {
+			l = javaArrayInit.ReplaceAllString(l, "$1{$2}")
+		}
 		l = strings.ReplaceAll(l, "[]{", "[] {")
 		if strings.HasPrefix(t, "for (") {
 			l = strings.Replace(l, ";)", "; )", 1)
@@ -1825,8 +1831,12 @@ func wrapDecl(l string) []string {
 	if javaWidth(l) <= javaColumnLimit {
 		return nil
 	}
+	t := strings.TrimSpace(l)
+	if !strings.HasSuffix(t, " {") {
+		return nil
+	}
 	ind := indentOf(l)
-	m := javaDecl.FindStringSubmatch(strings.TrimSpace(l))
+	m := javaDecl.FindStringSubmatch(t)
 	if m == nil {
 		return nil
 	}
@@ -2077,6 +2087,10 @@ var javaCaseLabels = regexp.MustCompile(`^( *)((?:case [^:"']+:|default:)(?: (?:
 // splitCases puts each case label of a switch on its own line and the
 // statement under them four columns deeper, as the formatter does.
 func splitCases(l string) []string {
+	t := strings.TrimLeft(l, " ")
+	if !strings.HasPrefix(t, "case ") && !strings.HasPrefix(t, "default:") {
+		return nil
+	}
 	m := javaCaseLabels.FindStringSubmatch(l)
 	if m == nil || strings.HasPrefix(m[3], "case ") || strings.HasPrefix(m[3], "default:") {
 		return nil
@@ -2199,7 +2213,7 @@ var javaLongArray = regexp.MustCompile(`^( *)(.+) = (new [\w.]+\[\] )\{(.+)\};$`
 // wrapArray breaks an array initializer wider than the limit: after the `=`,
 // the initializer eight columns deeper, one element a line four deeper still.
 func wrapArray(l string) []string {
-	if javaWidth(l) <= javaColumnLimit || strings.Contains(l, "//") {
+	if javaWidth(l) <= javaColumnLimit || !strings.HasSuffix(l, "};") || strings.Contains(l, "//") {
 		return nil
 	}
 	m := javaLongArray.FindStringSubmatch(l)

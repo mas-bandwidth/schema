@@ -625,16 +625,20 @@ func fixedClassHelpers(u *ir.Unit) string {
 			unionFrom = fixedClassUnionFromNoVoid
 		}
 	}
-	atoms, tail := fixedClassAtoms(u), fixedClassHelperTail
+	atoms, head, tail := fixedClassAtoms(u), fixedClassHelperHead, fixedClassHelperTail
 	if atoms == "" {
 		// no declared name at all: every name is refused, and an empty
 		// attribute would be a type warning at its lookup
+		if strings.Count(head, fixedClassEnumToName) != 1 {
+			panic("elixirtable: fixed-class enum to-table clause not found exactly once")
+		}
+		head = strings.Replace(head, fixedClassEnumToName, fixedClassEnumToNoName, 1)
 		if strings.Count(tail, fixedClassEnumFromName) != 1 {
 			panic("elixirtable: fixed-class enum name clause not found exactly once")
 		}
 		tail = strings.Replace(tail, fixedClassEnumFromName, fixedClassEnumFromNoName, 1)
 	}
-	return atoms + fixedClassHelperHead + unionTo + unionFrom + tail
+	return atoms + head + unionTo + unionFrom + tail
 }
 
 const fixedClassEnumFromName = `  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
@@ -648,6 +652,12 @@ const fixedClassEnumFromName = `  defp fixed_class_enum_from_table(f, value) whe
 const fixedClassEnumFromNoName = `  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
     do: raise(ArgumentError, "not a variant name: #{inspect(value)}")
 `
+
+const fixedClassEnumToName = `      snake = Atom.to_string(value)
+      names = Map.keys(Map.get(f, :by_name, %{}))
+      Enum.find(names, snake, fn n -> Map.get(@fixed_class_atoms, n) == value end)`
+
+const fixedClassEnumToNoName = `      Atom.to_string(value)`
 
 // fixedClassAtoms is every enum variant and union arm name the unit declares,
 // mapped at generation time to the atom the fixed form's value carries. A
@@ -726,7 +736,7 @@ const fixedClassUnionTo = `
 
         name =
           Enum.find(Map.keys(union.by_name), snake, fn n ->
-            fixed_class_snake(n) == snake
+            Map.get(@fixed_class_atoms, n) == arm
           end)
 
         case Map.get(union.by_name, name) do
@@ -740,7 +750,7 @@ const fixedClassUnionTo = `
 
         name =
           Enum.find(Map.keys(union.by_name), snake, fn n ->
-            fixed_class_snake(n) == snake
+            Map.get(@fixed_class_atoms, n) == arm
           end)
 
         {name, nil}
@@ -907,7 +917,7 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
     else
       snake = Atom.to_string(value)
       names = Map.keys(Map.get(f, :by_name, %{}))
-      Enum.find(names, snake, fn n -> fixed_class_snake(n) == snake end)
+      Enum.find(names, snake, fn n -> Map.get(@fixed_class_atoms, n) == value end)
     end
   end
 

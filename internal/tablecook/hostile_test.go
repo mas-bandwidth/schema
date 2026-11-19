@@ -218,6 +218,20 @@ func TestCookCheckRefusesEveryForgeryItNames(t *testing.T) {
 			ord.PutUint32(f[at:], 1<<20)
 			return f
 		}},
+		{"a non-zero byte past string(N) used length", func(f []byte) []byte {
+			valAt := h.DataOffset() + slotOffset(t, u, m, "Scene", "name", 0)
+			lenAt := h.DataOffset() + lengthSlot(t, u, m, "Scene", "name")
+			used := int64(int32(ord.Uint32(f[lenAt:])))
+			f[valAt+used+1] = 0x7F
+			return f
+		}},
+		{"a non-zero byte in dead counted-array tail slot", func(f []byte) []byte {
+			valAt := h.DataOffset() + slotOffset(t, u, m, "Scene", "layers", 0)
+			cntAt := h.DataOffset() + countSlot(t, u, m, "Scene", "layers")
+			ord.PutUint32(f[cntAt:], 0)
+			f[valAt] = 0x55
+			return f
+		}},
 	}
 
 	for _, tc := range cases {
@@ -380,4 +394,121 @@ func lengthSlot(t *testing.T, u *ir.Unit, m *tabletext.Model, record, field stri
 
 func countSlot(t *testing.T, u *ir.Unit, m *tabletext.Model, record, field string) int64 {
 	return slotOffset(t, u, m, record, field, 1)
+}
+
+func TestCookCheckRefusesAllDeadByteAndCycleClasses(t *testing.T) {
+	t.Parallel()
+	u, m := unitFromSource(t, `package deadslack
+union Choice {
+    narrow uint8
+    wide   uint64
+    empty
+}
+table Node {
+    next   *Node
+    flag   bool
+    pad_u64 uint64
+    opt_v  ?uint64
+    arr    [..4]uint32
+    label  string(12)
+    pick   Choice
+    items  []uint32
+}
+`)
+	root := m.Lookup("Node")
+	inst := m.New(root)
+	var r tabletext.Report
+	if !m.Read(inst, []byte(`{"flag":true,"pad_u64":"9","arr":[7],"label":"hi","pick":{"narrow":3},"items":[11,22],"next":{"label":"leaf"}}`), &r) || !r.Silent() {
+		t.Fatalf("Read: %+v", r)
+	}
+	valid, err := tablecook.Cook(m, inst, tablecook.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tablecook.Check(m, valid); err != nil {
+		t.Fatalf("valid cook refused: %v", err)
+	}
+	ord := binary.LittleEndian
+	h, err := tablecook.ReadHeader(valid, ir.BuildVersion(u), ir.RecordLayout(u, root).Align)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := h.Directory(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataAt := h.DataOffset()
+
+	cases := []struct {
+		name   string
+		mutate func(f []byte) []byte
+	}{
+		{"dead counted-array tail byte", func(f []byte) []byte {
+			at := dataAt + slotOffset(t, u, m, "Node", "arr", 0)
+			f[at+4] = 0xAA // slot 1 when used==1
+			return f
+		}},
+		{"dead union arm slack on narrow arm", func(f []byte) []byte {
+			at := dataAt + slotOffset(t, u, m, "Node", "pick", 0)
+			_, _, _, armOff := ir.UnionLayout(u, u.TableUnions["Choice"])
+			f[at+armOff+2] = 0xBB
+			return f
+		}},
+		{"dead union slack on unset union", func(f []byte) []byte {
+			at := dataAt + dir[1].Offset + slotOffset(t, u, m, "Node", "pick", 0)
+			f[at+8] = 0xCC
+			return f
+		}},
+		{"optional present byte 0x02", func(f []byte) []byte {
+			pAt := dataAt + slotOffset(t, u, m, "Node", "opt_v", 1)
+			f[pAt] = 0x02
+			return f
+		}},
+		{"optional present byte 0xFF", func(f []byte) []byte {
+			pAt := dataAt + slotOffset(t, u, m, "Node", "opt_v", 1)
+			f[pAt] = 0xFF
+			return f
+		}},
+		{"non-zero absent optional payload", func(f []byte) []byte {
+			vAt := dataAt + slotOffset(t, u, m, "Node", "opt_v", 0)
+			f[vAt] = 0x01
+			return f
+		}},
+		{"record interior alignment padding slack", func(f []byte) []byte {
+			flagAt := dataAt + slotOffset(t, u, m, "Node", "flag", 0)
+			f[flagAt+1] = 0x42 // padding between bool flag and uint64 pad_u64
+			return f
+		}},
+		{"list 16-byte slot trailing padding slack", func(f []byte) []byte {
+			itemsAt := dataAt + slotOffset(t, u, m, "Node", "items", 0)
+			f[itemsAt+13] = 0x11
+			return f
+		}},
+		{"string(N) unused tail past NUL", func(f []byte) []byte {
+			lblAt := dataAt + slotOffset(t, u, m, "Node", "label", 0)
+			f[lblAt+5] = 0x7E // used==2 ("hi"), byte 5 is dead tail
+			return f
+		}},
+		{"string(N) piece alignment padding before companion", func(f []byte) []byte {
+			lblAt := dataAt + slotOffset(t, u, m, "Node", "label", 0)
+			// char[13] ends at +13, companion int32 starts at +16; +14 is piece padding
+			f[lblAt+14] = 0x33
+			return f
+		}},
+		{"same-type pointer cycle Node0 -> Node1 -> Node0", func(f []byte) []byte {
+			nextOff := slotOffset(t, u, m, "Node", "next", 0)
+			slot1 := dir[1].Offset + nextOff
+			// target is dir[0].Offset == 0 -> delta = 0 - slot1
+			ord.PutUint64(f[dataAt+slot1:], uint64(-slot1))
+			return f
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			forged := tc.mutate(append([]byte(nil), valid...))
+			if _, err := tablecook.Check(m, forged); err == nil {
+				t.Errorf("FAILED: cook-check accepted %s", tc.name)
+			}
+		})
+	}
 }

@@ -6,10 +6,16 @@ import (
 	"unsafe"
 )
 
+type mutableRootProvider interface {
+	mutableRoot() any
+}
+
 type regionValue[T any] struct {
 	root    *T
 	storage []byte
 }
+
+func (v *regionValue[T]) mutableRoot() any { return v.root }
 
 func regionRow[T, R, A, C any, O ~uint8](unit, root string,
 	loadMeasure func([]byte) int64,

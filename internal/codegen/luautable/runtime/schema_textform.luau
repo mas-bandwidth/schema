@@ -596,12 +596,14 @@ local function find_field(info: any, key: string): number
 end
 
 local function is_flags(owner: any, fd: any): boolean
+	if fd ~= nil and fd.flags ~= nil and ProvidedFlags == nil then return true end
 	local g = ProvidedFlags
 	if g == nil or owner == nil then return false end
 	return g[owner.name .. "." .. (fd.name or fd.slot or "")] ~= nil
 end
 
 local function flag_names(owner: any, fd: any): { string }?
+	if fd ~= nil and fd.flags ~= nil and ProvidedFlags == nil then return fd.flags end
 	local g = ProvidedFlags
 	if g == nil or owner == nil then return nil end
 	return g[owner.name .. "." .. (fd.name or fd.slot or "")]
@@ -743,7 +745,7 @@ local function flags(r: ResolverT, v: Node, f: any, owner: any): boolean
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local names = flag_names(owner, f)
 	if names == nil then return r:fail(KIND_MISMATCH, v, v.start) end
-	local bits = 0
+	local seen: { [number]: boolean } = {}
 	r:raw("[")
 	for i, item in v.items do
 		r:mark(item, index_path(v.path, i - 1))
@@ -753,8 +755,8 @@ local function flags(r: ResolverT, v: Node, f: any, owner: any): boolean
 			if name == item.text then bit = b - 1; break end
 		end
 		if bit < 0 then return r:fail(UNKNOWN_VARIANT, item, item.start) end
-		if bit32.band(bits, 2 ^ bit) ~= 0 then return r:fail(DUPLICATE_KEY, item, item.start) end
-		bits = bit32.bor(bits, 2 ^ bit)
+		if seen[bit] then return r:fail(DUPLICATE_KEY, item, item.start) end
+		seen[bit] = true
 		item.canon = item.text
 		if i > 1 then r:raw(",") end
 		json_string(r, item.text)

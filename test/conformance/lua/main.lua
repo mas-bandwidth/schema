@@ -985,6 +985,22 @@ local function wrefWalk(u, root, v, path)
     if index ~= nil then index = math.tointeger(tonumber(index)) + 1 end
     if i == #segments then return owner, fd, index end
     local child = owner[name]
+    if fd.shape == "map" and index ~= nil and i == #segments - 1 then
+      return child, { shape = "map_entry", which = segments[#segments], index = index }, nil
+    end
+    if fd.shape == "union" and index == nil and i == #segments - 1 then
+      local un = u.T.Unions[fd.target]
+      if un == nil then fail("no union " .. tostring(fd.target)) end
+      local armName = segments[#segments]
+      for _, arm in ipairs(un.arms) do
+        if arm.name == armName then
+          local af = arm.field or {}
+          local synthetic = { name = arm.slot, shape = af.shape, variants = af.variants, target = af.target, default = af.default }
+          return child, synthetic, nil
+        end
+      end
+      fail("no arm " .. armName .. " in union " .. tostring(fd.target))
+    end
     if index ~= nil then child = child[index] end
     if type(child) ~= "table" then fail(path .. ": " .. s .. " holds no table") end
     owner, tname = child, fd.type_name
@@ -995,6 +1011,34 @@ end
 -- so no row answers `unrepresentable`
 local function wrefSet(u, root, v, path, what, text)
   local owner, fd, index = wrefWalk(u, root, v, path)
+  if fd.shape == "map_entry" then
+    local keys = {}
+    for k in pairs(owner) do keys[#keys + 1] = k end
+    table.sort(keys)
+    local oldK = keys[fd.index]
+    local oldV = owner[oldK]
+    local newVal
+    if what == "float" then newVal = wrefFloat(text)
+    elseif what == "bytes" then newVal = hexBytes(text)
+    elseif what == "length" then newVal = string.rep("a", math.tointeger(tonumber(text)))
+    elseif what == "int" then newVal = math.tointeger(tonumber(text))
+    else fail("unsupported map_entry kind " .. what) end
+    if fd.which == "key" then
+      owner[oldK] = nil
+      owner[newVal] = oldV
+    else
+      owner[oldK] = newVal
+    end
+    return
+  end
+  if index ~= nil and fd.shape == "array" and fd.elem.shape == "table" then
+    local ep = u.T.Tables[fd.elem.target]
+    if ep ~= nil and ep.fields[1] ~= nil and ep.fields[1].name == "value" and (fd.elem_kind == 12 or fd.total ~= nil) then
+      owner = owner[fd.name][index]
+      fd = ep.fields[1]
+      index = nil
+    end
+  end
   local key, holder = fd.name, owner
   if index ~= nil then
     holder, key = owner[fd.name], index

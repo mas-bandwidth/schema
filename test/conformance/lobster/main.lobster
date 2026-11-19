@@ -494,14 +494,37 @@ def wr_set(root:schema_rt.Record, path:string, kind:string, text:string):
         let name, index = wr_segment(segment)
         let sl = schema_rt.slot_named(rec, name)
         if i < length(segments) - 1:
-            let v = if index >= 0: sl.elems[index] else: sl.cell
+            if sl.fd.s == "union" and index < 0 and i == length(segments) - 2 and sl.cell.tab == nil:
+                let arm_sl = sl.cell.arm
+                assert arm_sl
+                let av = arm_sl.cell
+                if kind == "float":
+                    av.f = wr_float(text)
+                elif kind == "bytes":
+                    av.s = wr_hex(text)
+                elif kind == "length":
+                    var s = ""
+                    for(wr_int(text)): s += "a"
+                    av.s = s
+                elif kind == "int":
+                    let n = wr_int(text)
+                    av.i = n
+                    av.w = schema_rt.Int128 { n, if n < 0: -1 else: 0 }
+                else:
+                    assert false
+                return
+            let v = if sl.fd.s == "map": sl.entries[index] elif index >= 0: sl.elems[index] else: sl.cell
             let t = v.tab
             assert t
             rec = t
             continue
         if sl.fd.present != "":
             sl.present = true
-        let v = if index >= 0: sl.elems[index] else: sl.cell
+        var v = if index >= 0: sl.elems[index] else: sl.cell
+        if index >= 0 and sl.fd.s == "arr" and sl.fd.ek == 12:
+            let tr = v.tab
+            assert tr
+            v = tr.fields[0].cell
         if kind == "count":
             // new elements are copies of element 0's value
             let n = wr_int(text)

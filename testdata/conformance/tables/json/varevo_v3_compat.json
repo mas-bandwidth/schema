@@ -44,6 +44,43 @@
     "note": "v3-leaf-1",
     "extra_leaf": 321
   },
+  "keyed_sub": {
+    "Bronze": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    "Sterling": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    "Gold": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    "Platinum": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    }
+  },
+  "fixed_sub": [
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    }
+  ],
+  "counted_sub": [],
+  "slice_sub": [],
+  "choice_sub": {},
   "v2_epoch": "404",
   "v3_stamp": "9876543210123",
   "v3_parcel": {

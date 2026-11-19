@@ -1,8 +1,28 @@
-"""The fixed writer's declaration contract, over every manifest recipe."""
+"""The fixed writer declaration contract, over every manifest recipe."""
 
 import importlib
 
 from _common import absent, entries, read_bytes, root_class, write_bytes
+
+
+def _convert_fixed(field, previous, rule, token, default):
+    if rule in ("int", "ordinal"):
+        return int(token)
+    if rule == "float":
+        return float(token)
+    if rule == "count":
+        count = int(token)
+        out = list(previous[:count])
+        while len(out) < count:
+            out.append(default(field["children"][0]))
+        return out
+    if rule == "length":
+        count = int(token)
+        return "x" * count if field["shape"] == "string" else bytes(count)
+    if rule == "bytes":
+        raw = bytes.fromhex(token)
+        return raw.decode("utf-8", "surrogateescape") if field["shape"] == "string" else raw
+    raise ValueError("unknown fixed-write recipe " + rule)
 
 
 def _assign(value, spec, path, rule, token, default):
@@ -11,7 +31,8 @@ def _assign(value, spec, path, rule, token, default):
     current = spec
     for part in parts[:-1]:
         if part.isdigit():
-            owner = owner[int(part)]
+            idx = int(part)
+            owner = owner._values[idx] if hasattr(owner, "_values") else owner[idx]
             current = current["children"][0]
         else:
             field = next(field for field in current["children"] if field["name"] == part)
@@ -20,31 +41,18 @@ def _assign(value, spec, path, rule, token, default):
             if current["shape"] == "optional":
                 current = current["children"][0]
     name = parts[-1]
+    if name.isdigit():
+        idx = int(name)
+        elem_spec = current["children"][0]
+        slots = owner._values if hasattr(owner, "_values") else owner
+        slots[idx] = _convert_fixed(elem_spec, slots[idx], rule, token, default)
+        return
     field = next(field for field in current["children"] if field["name"] == name)
     previous = getattr(owner, name)
-    if rule in ("int", "ordinal"):
-        value = int(token)
-    elif rule == "float":
-        value = float(token)
-    elif rule == "tag":
+    if rule == "tag":
         previous.type = int(token)
         return
-    elif rule == "count":
-        count = int(token)
-        value = list(previous[:count])
-        while len(value) < count:
-            value.append(default(field["children"][0]))
-    elif rule == "length":
-        count = int(token)
-        value = "x" * count if field["shape"] == "string" else bytes(count)
-    elif rule == "bytes":
-        raw = bytes.fromhex(token)
-        # A Python text value can express invalid UTF-8 only as an invalid
-        # scalar. Surrogate escape keeps that witness for the writer's check.
-        value = raw.decode("utf-8", "surrogateescape") if field["shape"] == "string" else raw
-    else:
-        raise ValueError("unknown fixed-write recipe " + rule)
-    setattr(owner, name, value)
+    setattr(owner, name, _convert_fixed(field, previous, rule, token, default))
 
 
 def run(manifest, outdir):
@@ -60,8 +68,8 @@ def run(manifest, outdir):
         except ValueError as err:
             absent(outdir, case, err)
             continue
+        _assign(value, runtime._ROOTS[root]["spec"], path, rule, token, runtime._default)
         try:
-            _assign(value, runtime._ROOTS[root]["spec"], path, rule, token, runtime._default)
             cls.fixed_save([value])
         except ValueError:
             write_bytes(outdir, case, b"refused\n")

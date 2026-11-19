@@ -761,8 +761,8 @@ internal static class TableJson
             if (text.Optional && !text.GetPresent(child)) { o.Text("null"); return true; }
             return WriteField(ref o, child, text, depth);
         }
-        if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
-        if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
+        if (f.WriteValidRaw != null && !f.WriteValidRaw(f.GetRaw(owner, index))) { return false; }
+        if (f.WriteValidWide != null && !f.WriteValidWide(f.GetWide(owner, index))) { return false; }
         if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
         if (f.Arms != null)
         {
@@ -873,6 +873,7 @@ internal static class TableJson
 
     static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
     {
+        if (f.Counted && (f.GetCount(value) < f.ArrayMin || f.GetCount(value) > f.ArrayBound)) { return false; }
         if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 12 && !f.TextList)

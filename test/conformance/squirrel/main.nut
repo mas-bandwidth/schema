@@ -906,14 +906,36 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
       if (fd == null) throw path + ": no field " + fname + " in " + tname;
       if (si < segments.len() - 1) {
         local child = owner[fd.member];
+        if (fd.shape == "union" && idx == null && si == segments.len() - 2) {
+          local ud = T[fd.table + "Descriptor"];
+          local armName = segments[si + 1];
+          local arm = null;
+          foreach (a in ud.arms) { if (a.name == armName) { arm = a; break; } }
+          if (arm == null) throw path + ": no arm " + armName + " in " + fd.table;
+          local holder = child;
+          local key = arm.member;
+          local d = arm.payload;
+          if (what == "float") holder[key] = wrefFloat(text);
+          else if (what == "bytes") holder[key] = wrefHex(text);
+          else if (what == "length") { local n = text.tointeger(), str = ""; for (local k = 0; k < n; k++) str += "a"; holder[key] = str; }
+          else if (what == "int") holder[key] = text.tointeger();
+          else throw path + ": unsupported union arm kind " + what;
+          return;
+        }
         if (idx != null) child = child[idx];
-        tname = (idx != null && fd.elem != null) ? fd.elem.table : fd.table;
+        tname = fd.shape == "map" ? fd.entry : ((idx != null && fd.elem != null) ? fd.elem.table : fd.table);
         owner = child;
         continue;
       }
       local holder = idx == null ? owner : owner[fd.member];
       local key = idx == null ? fd.member : idx;
       local d = (idx != null && fd.shape == "arr") ? fd.elem : fd;
+      if (idx != null && fd.shape == "arr" && fd.textlist != 0) {
+        holder = owner[fd.member][idx];
+        local ed = T.Descriptors[fd.elem.table].fields[0];
+        key = ed.member;
+        d = ed;
+      }
       if (what == "int") {
         holder[key] = text.tointeger();
       } else if (what == "ordinal") {

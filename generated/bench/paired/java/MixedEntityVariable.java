@@ -1186,7 +1186,7 @@ public final class MixedEntityVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -1431,6 +1431,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "entity_id");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.entityId, 1L << 12) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.entityId));
         if (!first) {
             b.append(',');
@@ -1439,6 +1442,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "pos_x");
         b.append(": ");
+        if ((long) v.posX < -16383 || (long) v.posX > 16383) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.posX));
         if (!first) {
             b.append(',');
@@ -1447,6 +1453,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "pos_y");
         b.append(": ");
+        if ((long) v.posY < -16383 || (long) v.posY > 16383) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.posY));
         if (!first) {
             b.append(',');
@@ -1455,6 +1464,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "pos_z");
         b.append(": ");
+        if ((long) v.posZ < -16383 || (long) v.posZ > 16383) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.posZ));
         if (!first) {
             b.append(',');
@@ -1463,6 +1475,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "yaw");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.yaw, 1L << 9) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.yaw));
         if (!first) {
             b.append(',');
@@ -1471,6 +1486,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "pitch");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.pitch, 1L << 9) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.pitch));
         if (!first) {
             b.append(',');
@@ -1479,6 +1497,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "vel_x");
         b.append(": ");
+        if ((long) v.velX < -2048 || (long) v.velX > 2047) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.velX));
         if (!first) {
             b.append(',');
@@ -1487,6 +1508,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "vel_y");
         b.append(": ");
+        if ((long) v.velY < -2048 || (long) v.velY > 2047) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.velY));
         if (!first) {
             b.append(',');
@@ -1495,6 +1519,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "vel_z");
         b.append(": ");
+        if ((long) v.velZ < -2048 || (long) v.velZ > 2047) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.velZ));
         if (!first) {
             b.append(',');
@@ -1503,6 +1530,9 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "health");
         b.append(": ");
+        if ((long) v.health < 0 || (long) v.health > 1000) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.health));
         if (!first) {
             b.append(',');

@@ -6896,6 +6896,7 @@ inline int64_t PaddedRowMeasureBody( TableIds & ids, const PaddedRow & value )
     if ( value.flag != false ) { bytes += TableLebBytes( ids.ref_at( 73, 0xd5f2d079088c0b17ull ) ) + 1 + 1; } // flag
     if ( value.id != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x08b72e07b55c3ac0ull ) ) + 1 + 4; } // id
     schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         bool all_default_slots = true;
@@ -6969,6 +6970,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, 
         w.put32( uint32_t( value.id ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 16, 0x39f7fcec8fcb623dull ), 12 ); // label

@@ -824,6 +824,9 @@ var codecTable = []codec{
 	}, cooktorture.TortureCookToJSONMeasure, cooktorture.TortureCookToJSON, cooktorture.TortureCookCookMeasure, cooktorture.TortureCookCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	row("cooktorture", "TortureFixedWref", cooktorture.TortureFixedWrefReset, cooktorture.TortureFixedWrefLoad, cooktorture.TortureFixedWrefMeasure, cooktorture.TortureFixedWrefSave, cooktorture.TortureFixedWrefFromJSON, cooktorture.TortureFixedWrefToJSONMeasure, cooktorture.TortureFixedWrefToJSON, cooktorture.TortureFixedWrefCookMeasure, cooktorture.TortureFixedWrefCookFrom, func(r *cooktorture.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
 	regionRow("cooktorturewide", "TortureWideCook", cooktorturewide.TortureWideCookLoadMeasure, cooktorturewide.TortureWideCookLoad, cooktorturewide.TortureWideCookMeasure, cooktorturewide.TortureWideCookSave, func(text []byte, r *cooktorturewide.TableReport) (*cooktorturewide.TortureWideCook, []byte, bool) {
 		var b cooktorturewide.TortureWideCookBuilder
 		if !b.Init() {

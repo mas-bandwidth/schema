@@ -325,9 +325,10 @@ type RetainCase struct {
 	Short bool
 	// Ids is the id list's entry capacity: -1 for `full`, or >= 0 for a
 	// fixed entry cap that isolates the id-list bound from the byte buffer.
-	Ids   int
-	Saves string
-	Value string
+	Ids     int
+	Saves   string
+	Refused bool
+	Value   string
 }
 
 // RetainShortSlack is the byte margin the `short` capacity rule subtracts from
@@ -664,12 +665,13 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				saveField = f[8]
 			}
 			saves := ""
-			if saveField != "-" {
+			refused := saveField == "refused"
+			if saveField != "-" && !refused {
 				saves = saveField
 			}
 			m.Retains = append(m.Retains, RetainCase{
 				Name: f[1], Unit: f[2], Root: f[3], Wire: f[4],
-				Short: short, Ids: ids, Saves: saves,
+				Short: short, Ids: ids, Saves: saves, Refused: refused,
 				Value: RetainValue(jsonDir, f[1]),
 			})
 		case "report":

@@ -36,21 +36,33 @@ fixed table EntryVal
     weight int32 = 0
 }
 
+union SubChoice
+{
+    empty_choice
+    sub_arm SubCfg
+}
+
 // Variable-class root exercising v1 <-> v2 <-> v3 Form-1 reads and Retain rollback.
 table EvoDoc
 {
-    label    string(16) = "init"
-    perms    Perms = { Read }
-    tier     Tier
-    action   Action
-    boost    Boost
-    sub      SubCfg
-    wide_num int16 = 0
-    scores   [2]int16
-    items    [2]SubCfg
-    tally    [Tier]int32
-    by_name  map[string(12)]EntryVal
-    head     *Leaf1
+    label       string(16) = "init"
+    perms       Perms = { Read }
+    tier        Tier
+    action      Action
+    boost       Boost
+    sub         SubCfg
+    wide_num    int16 = 0
+    scores      [2]int16
+    items       [2]SubCfg
+    tally       [Tier]int32
+    by_name     map[string(12)]EntryVal
+    head        *Leaf1
+    keyed_sub   [Tier]SubCfg
+    fixed_sub   [2]SubCfg
+    counted_sub [..3]SubCfg
+    slice_sub   []SubCfg
+    opt_sub     ?SubCfg
+    choice_sub  SubChoice
 }
 
 // Fixed-class message envelope exercising Form-2 connection vocabulary drift.

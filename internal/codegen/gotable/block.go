@@ -452,10 +452,8 @@ func goBlittableType(u *ir.Unit, t ir.FieldType) string {
 		return goFieldType(t)
 	case ir.TNamed:
 		switch t.Ref.(type) {
-		case *ir.Enum:
+		case *ir.Enum, *ir.Flags:
 			return t.Name
-		case *ir.Flags:
-			return "uint64"
 		case *ir.Struct, *ir.Union:
 			return t.Name + "Row"
 		}

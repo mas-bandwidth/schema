@@ -151,12 +151,12 @@ func cppRuntimeNames() []Name {
 			"TableAppendText", "TableUtf8Clamp",
 		}},
 		{what: "the text form's JSON layer: descriptor classification and raw storage access (§16)", names: []string{
-			"TableJsonCount", "TableJsonDecimalPoint", "TableJsonElementShape", "TableJsonFinite", "TableJsonGetRaw",
+			"TableJsonCount", "TableJsonCountInContract", "TableJsonDecimalPoint", "TableJsonElementShape", "TableJsonFinite", "TableJsonGetRaw",
 			"TableJsonGetSigned", "TableJsonGuardHolds", "TableJsonIntegerInDomain", "TableJsonIntegerOf",
 			"TableJsonInterpret", "TableJsonInterpretExact", "TableJsonIsBytes", "TableJsonIsEnum",
 			"TableJsonIsFlags", "TableJsonIsKeyed", "TableJsonIsList", "TableJsonIsMap", "TableJsonKeyedSlotKey",
 			"TableJsonKeyedSlotValid", "TableJsonKindFixed", "TableJsonKindWide", "TableJsonKindWideSigned",
-			"TableJsonNamed", "TableJsonSetCount", "TableJsonSetRaw", "TableJsonShape", "TableJsonValueShape",
+			"TableJsonNamed", "TableJsonSetCount", "TableJsonSetRaw", "TableJsonShape", "TableJsonValueShape", "TableJsonWideInContract",
 		}},
 		{what: "the text form's JSON lexer: scanning, skipping and UTF-8 (§16.1)", names: []string{
 			"TableJsonEncodeUtf8", "TableJsonHex4", "TableJsonLiteral", "TableJsonPeek",

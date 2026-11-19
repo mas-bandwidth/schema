@@ -987,7 +987,7 @@ public final class BenchIntsVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -1232,6 +1232,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f0");
         b.append(": ");
+        if ((long) v.f0 < -100 || (long) v.f0 > 100) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f0));
         if (!first) {
             b.append(',');
@@ -1240,6 +1243,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f1");
         b.append(": ");
+        if ((long) v.f1 < 0 || (long) v.f1 > 65535) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f1));
         if (!first) {
             b.append(',');
@@ -1248,6 +1254,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f2");
         b.append(": ");
+        if ((long) v.f2 < -1000000 || (long) v.f2 > 1000000) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f2));
         if (!first) {
             b.append(',');
@@ -1256,6 +1265,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f3");
         b.append(": ");
+        if ((long) v.f3 < 0 || (long) v.f3 > 3) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f3));
         if (!first) {
             b.append(',');
@@ -1264,6 +1276,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f4");
         b.append(": ");
+        if ((long) v.f4 < -15 || (long) v.f4 > 15) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f4));
         if (!first) {
             b.append(',');
@@ -1272,6 +1287,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f5");
         b.append(": ");
+        if ((long) v.f5 < 0 || (long) v.f5 > 1000) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f5));
         if (!first) {
             b.append(',');
@@ -1280,6 +1298,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f6");
         b.append(": ");
+        if ((long) v.f6 < -2048 || (long) v.f6 > 2047) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f6));
         if (!first) {
             b.append(',');
@@ -1288,6 +1309,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f7");
         b.append(": ");
+        if ((long) v.f7 < 0 || (long) v.f7 > 255) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f7));
         if (!first) {
             b.append(',');
@@ -1296,6 +1320,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f8");
         b.append(": ");
+        if ((long) v.f8 < -600000 || (long) v.f8 > 600000) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f8));
         if (!first) {
             b.append(',');
@@ -1304,6 +1331,9 @@ public final class BenchIntsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "f9");
         b.append(": ");
+        if ((long) v.f9 < 0 || (long) v.f9 > 100) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.f9));
         return first;
     }

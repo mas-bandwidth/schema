@@ -322,7 +322,6 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.pf("\t}\n\treturn \"???\"\n}\n\n")
 
-	g.needsStrconv = true
 	g.docComment("", fmt.Sprintf("FlagNames%s renders the set bits of value as \"A|B\": \"0\" for the empty set, bits past the declared variants as hex.", d.Name), "")
 	g.pf("func FlagNames%s(value %s) string {\n", d.Name, d.Name)
 	g.pf("\tnames := \"\"\n")
@@ -330,6 +329,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 		g.pf("\tif value&(1<<%d) != 0 {\n\t\tnames += \"|%s\"\n\t}\n", i, v)
 	}
 	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
+		g.needsStrconv = true
 		g.pf("\tif rest := value >> %d; rest != 0 {\n", len(d.Variants))
 		g.pf("\t\tnames += \"|0x\" + strconv.FormatUint(uint64(rest<<%d), 16)\n\t}\n", len(d.Variants))
 	}

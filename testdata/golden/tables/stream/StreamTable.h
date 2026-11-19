@@ -9280,6 +9280,7 @@ inline int64_t HeaderMeasureBody( TableIds & ids, const Header & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
@@ -9297,6 +9298,7 @@ inline int64_t HeaderMeasure( const Header & value )
 STREAMDEMO_TABLE_INLINE bool HeaderSaveBody( TableWriter & w, TableIds & ids, const Header & value )
 {
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -13630,6 +13632,7 @@ inline int64_t HeaderMeasureBodyRetain( TableRetainIds & ids, const Header & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -13638,6 +13641,7 @@ inline int64_t HeaderMeasureBodyRetain( TableRetainIds & ids, const Header & val
 STREAMDEMO_TABLE_INLINE bool HeaderSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Header & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 13, 0xc4bcadba8e631b86ull ), 12 ); // name

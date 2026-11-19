@@ -61,10 +61,20 @@ return function(ctx: any): { [string]: Surface }
 				return owner, fd, idx
 			end
 			local child = owner[fd.slot]
+			if fd.s == "union" and idx == nil and i == #segments - 1 then
+				local ud = St.lookup(fd.t)
+				local armName = segments[#segments]
+				for _, arm in ud.arms do
+					if arm.name == armName then
+						return child, arm, nil
+					end
+				end
+				error("driver: no arm " .. armName .. " in union " .. fd.t, 0)
+			end
 			if idx ~= nil then
 				child = child[idx]
 			end
-			local nextType = if idx ~= nil then fd.e.t else fd.t
+			local nextType = if idx ~= nil then (if fd.s == "map" then fd.t else fd.e.t) else fd.t
 			owner, tname = child, nextType
 		end
 		error("driver: empty path", 0)
@@ -80,19 +90,30 @@ return function(ctx: any): { [string]: Surface }
 		end
 		local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
 		if what == "int" or what == "ordinal" then
-			holder[key] = tonumber(text) :: number
+			local num = tonumber(text) :: number
+			holder[key] = if d.cls == "fx" then num / 65536 else num
 		elseif what == "float" then
 			if d.f32 then
 				if text == "nan" then holder[key] = 0x7fc00000
 				elseif text == "inf" then holder[key] = 0x7f800000
 				elseif text == "-inf" then holder[key] = 0xff800000
-				else error("driver: unsupported f32 literal " .. text, 0) end
+				else
+					local n = tonumber(text) :: number
+					local b = buffer.create(4)
+					buffer.writef32(b, 0, n)
+					holder[key] = buffer.readu32(b, 0)
+				end
 			else
 				local ser: any = ctx.module(unitKey, "serialize")
 				if text == "nan" then holder[key] = ser.Uint64.new(0, 0x7ff80000)
 				elseif text == "inf" then holder[key] = ser.Uint64.new(0, 0x7ff00000)
 				elseif text == "-inf" then holder[key] = ser.Uint64.new(0, 0xfff00000)
-				else error("driver: unsupported f64 literal " .. text, 0) end
+				else
+					local n = tonumber(text) :: number
+					local b = buffer.create(8)
+					buffer.writef64(b, 0, n)
+					holder[key] = ser.Uint64.new(buffer.readu32(b, 0), buffer.readu32(b, 4))
+				end
 			end
 		elseif what == "count" then
 			local n = tonumber(text) :: number

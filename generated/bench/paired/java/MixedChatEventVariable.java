@@ -567,7 +567,7 @@ public final class MixedChatEventVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -812,6 +812,9 @@ public final class MixedChatEventVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "channel");
         b.append(": ");
+        if ((long) v.channel < 0 || (long) v.channel > 3) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.channel));
         if (!first) {
             b.append(',');
@@ -820,6 +823,9 @@ public final class MixedChatEventVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "speaker");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.speaker, 1L << 12) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.speaker));
         return first;
     }

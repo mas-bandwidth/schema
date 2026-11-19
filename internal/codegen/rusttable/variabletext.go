@@ -1246,6 +1246,15 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 		return
 	}
 	if f.Array != ir.ArrayNone {
+		if f.Array == ir.ArrayCounted {
+			if f.ArrayMin > 0 {
+				fmt.Fprintf(b, "%sif %s.len() < %d || %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayMin, x, f.ArrayBound)
+			} else if f.ArrayBound > 0 {
+				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
+			}
+		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
+			fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
+		}
 		fmt.Fprintf(b, "%sif %s.is_empty() {\n", ind, x)
 		fmt.Fprintf(b, "%s    w.out.push_str(\"[]\");\n", ind)
 		fmt.Fprintf(b, "%s} else {\n", ind)
@@ -1318,8 +1327,14 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		un := unionOf(f)
 		fmt.Fprintf(b, "%s%s(%s, w, %s);\n", ind, fn(un.Name, "json_write"), borrowOf(x), d)
 	case vString:
+		if !f.Type.TextUnbounded() && f.Type.Size > 0 {
+			fmt.Fprintf(b, "%sif (%s).len() > %d { w.refused = true; }\n", ind, borrowOf(x), f.Type.Size)
+		}
 		fmt.Fprintf(b, "%sjson_escape(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vBytes:
+		if f.Type.Size > 0 {
+			fmt.Fprintf(b, "%sif (%s).len() > %d { w.refused = true; }\n", ind, borrowOf(x), f.Type.Size)
+		}
 		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vEnum:
 		fmt.Fprintf(b, "%sjson_escape(%s(%s), &mut w.out);\n", ind, fn(f.Type.Name, "json_name"), unparen(x))
@@ -1362,10 +1377,17 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		case ir.TBool:
 			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, x)
 		case ir.TFloat32:
+			if f.HasFloatRange {
+				fmt.Fprintf(b, "%sif !((%s as f64) >= %v && (%s as f64) <= %v) { w.refused = true; }\n", ind, x, f.FMin, x, f.FMax)
+			}
 			fmt.Fprintf(b, "%sjson_float(%s as f64, true, w);\n", ind, x)
 		case ir.TFloat64:
+			if f.HasFloatRange {
+				fmt.Fprintf(b, "%sif !(%s >= %v && %s <= %v) { w.refused = true; }\n", ind, x, f.FMin, x, f.FMax)
+			}
 			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, x)
 		case ir.TFixed:
+			fmt.Fprint(b, emitTextScalarRangeRefuse(f, x, ind))
 			// WHOLE UNITS, exact, from the raw integer (§16.2); a storage
 			// wider than 32 bits is a STRING (§16.14 W11)
 			if wideJSONInteger(f) {
@@ -1376,6 +1398,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 				fmt.Fprintf(b, "%sjson_fixed(&mut w.out, %s, %v, %d);\n", ind, wideRaw(f, x), f.Type.Signed, f.Type.FracBits)
 			}
 		default:
+			fmt.Fprint(b, emitTextScalarRangeRefuse(f, x, ind))
 			// an integer wider than 32 bits is a STRING of its digits
 			// (§16.14 W10); a narrow one is a bare number
 			if wideJSONInteger(f) {
@@ -1391,6 +1414,51 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 // 32 bits: the JSON form writes its value as a string of decimal digits
 // (docs/SPEC-TABLES.md §16.2, §16.14 W10 and W11). A timestamp is an int64 but
 // has its own RFC 3339 spelling and is not covered.
+func emitTextScalarRangeRefuse(f *ir.Field, x, ind string) string {
+	if f.Type.Timestamp {
+		return ""
+	}
+	var rlo, rhi *big.Int
+	if f.Type.Kind == ir.TBits {
+		rlo = big.NewInt(0)
+		rhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+	} else if lo, hi, ok := ir.TableRawRange(f); ok {
+		rlo, rhi = lo, hi
+	} else {
+		return ""
+	}
+	t := scalarRust(f)
+	bits := 64
+	switch t {
+	case "i8", "u8":
+		bits = 8
+	case "i16", "u16":
+		bits = 16
+	case "i32", "u32":
+		bits = 32
+	case "i64", "u64":
+		bits = 64
+	case "i128", "u128":
+		bits = 128
+	}
+	signed := strings.HasPrefix(t, "i")
+	localMin, localMax := big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	if signed {
+		localMin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
+		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
+	}
+	canLow, canHigh := rlo.Cmp(localMin) > 0, rhi.Cmp(localMax) < 0
+	switch {
+	case canLow && canHigh:
+		return fmt.Sprintf("%sif (%s) < %s%s || (%s) > %s%s { w.refused = true; }\n", ind, x, rlo.String(), t, x, rhi.String(), t)
+	case canLow:
+		return fmt.Sprintf("%sif (%s) < %s%s { w.refused = true; }\n", ind, x, rlo.String(), t)
+	case canHigh:
+		return fmt.Sprintf("%sif (%s) > %s%s { w.refused = true; }\n", ind, x, rhi.String(), t)
+	}
+	return ""
+}
+
 func wideJSONInteger(f *ir.Field) bool {
 	switch f.Type.Kind {
 	case ir.TInt:

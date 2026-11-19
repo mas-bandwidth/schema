@@ -385,6 +385,7 @@ static const Codec codecs[] = {
     CODEC( "vocab9demo", vocab9demo, Wide19 ),
     CODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     CODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
+    CODEC( "cooktorture", cooktorture, TortureFixedWref ),
 };
 
 // ---------------------------------------------------------------------------
@@ -647,6 +648,7 @@ static const int64_t kRetainRoomy = 1 << 20;
 static const RetainCodec retain_codecs[] = {
     RETAINCODEC( "tblrt1", tblrt1, Node ),
     RETAINCODEC( "tblvarevo1", tblvarevo1, EvoDoc ),
+    RETAINCODEC( "tblvarevo2", tblvarevo2, EvoDoc ),
 };
 
 static const RetainCodec * find_retain_codec( const std::string & unit, const std::string & root )
@@ -1968,6 +1970,49 @@ static bool write_refusal_text( char * storage, int32_t capacity, int32_t & leng
 // Sets the one field the row names. The set is EXACTLY the rows' (root, path,
 // kind) triples: an unknown one is an error that names itself, so a new row
 // cannot pass by being skipped.
+static bool parse_wref_f32( const std::string & text, float & out )
+{
+    const float inf = std::numeric_limits<float>::infinity();
+    if ( text == "nan" ) { out = std::numeric_limits<float>::quiet_NaN(); return true; }
+    if ( text == "inf" ) { out = inf; return true; }
+    if ( text == "-inf" ) { out = -inf; return true; }
+    char * end = NULL;
+    out = strtof( text.c_str(), &end );
+    return end != NULL && *end == 0;
+}
+
+static bool parse_wref_f64( const std::string & text, double & out )
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    if ( text == "nan" ) { out = std::numeric_limits<double>::quiet_NaN(); return true; }
+    if ( text == "inf" ) { out = inf; return true; }
+    if ( text == "-inf" ) { out = -inf; return true; }
+    char * end = NULL;
+    out = strtod( text.c_str(), &end );
+    return end != NULL && *end == 0;
+}
+
+static bool write_refusal_bytes_field( uint8_t * storage, int32_t capacity, int32_t & length,
+                                       const std::string & kind, const std::string & text )
+{
+    if ( kind == "length" )
+    {
+        const long long n = strtoll( text.c_str(), NULL, 10 );
+        for ( int32_t i = 0; i < (int32_t) n && i < capacity; i++ ) storage[i] = 0x61;
+        length = (int32_t) n;
+        return true;
+    }
+    if ( kind == "bytes" )
+    {
+        std::vector<uint32_t> bytes;
+        if ( !write_refusal_hex( text, 2, bytes ) || (int64_t) bytes.size() > capacity ) return false;
+        for ( size_t i = 0; i < bytes.size(); i++ ) storage[i] = (uint8_t) bytes[i];
+        length = (int32_t) bytes.size();
+        return true;
+    }
+    return false;
+}
+
 static bool write_refusal_set( const std::string & root, void * value, const std::string & path,
                                const std::string & kind, const std::string & text )
 {
@@ -1979,18 +2024,27 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         {
             return write_refusal_text( v.version_note, (int32_t) sizeof( v.version_note ) - 1, v.version_note_length, kind, text );
         }
+        if ( path == "profiles[0].precision" && kind == "float" )
+        {
+            return v.profiles_count >= 1 && parse_wref_f64( text, v.profiles[0].precision );
+        }
+        if ( path == "profiles[0].loadout.attachments[0].power" && kind == "float" )
+        {
+            return v.profiles_count >= 1 && v.profiles[0].loadout.attachments_count >= 1 &&
+                   parse_wref_f32( text, v.profiles[0].loadout.attachments[0].power );
+        }
+        if ( path == "profiles[0].icon" )
+        {
+            return v.profiles_count >= 1 &&
+                   write_refusal_bytes_field( v.profiles[0].icon, (int32_t) sizeof( v.profiles[0].icon ), v.profiles[0].icon_length, kind, text );
+        }
         if ( v.weapons_count < 1 ) return false; // every weapons[0] path needs element 0
         tabledemo::WeaponConfig & w0 = v.weapons[0];
         if ( path == "weapons[0].penetration" && kind == "int" ) { w0.penetration = (int32_t) n; return true; }
         if ( path == "weapons[0].channel" && kind == "int" ) { w0.channel = (uint32_t) n; return true; }
         if ( path == "weapons[0].damage" && kind == "float" )
         {
-            const float inf = std::numeric_limits<float>::infinity();
-            if ( text == "nan" ) w0.damage = std::numeric_limits<float>::quiet_NaN();
-            else if ( text == "inf" ) w0.damage = inf;
-            else if ( text == "-inf" ) w0.damage = -inf;
-            else return false;
-            return true;
+            return parse_wref_f32( text, w0.damage );
         }
         if ( path == "weapons[0].effect" && kind == "tag" )
         {
@@ -2006,8 +2060,6 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         }
         if ( path == "weapons" && kind == "count" )
         {
-            // new elements are copies of element 0; past storage only the count
-            // moves, and the writer must refuse before it reads past the array
             const int32_t storage = (int32_t) ( sizeof( v.weapons ) / sizeof( v.weapons[0] ) );
             for ( int32_t i = v.weapons_count; i < (int32_t) n && i < storage; i++ ) v.weapons[i] = v.weapons[0];
             v.weapons_count = (int32_t) n;
@@ -2019,6 +2071,55 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         tabledemo::LoadoutConfig & v = *(tabledemo::LoadoutConfig *) value;
         if ( path == "grade" && kind == "ordinal" ) { v.grade = (tabledemo::Grade) n; return true; }
     }
+    if ( root == "SimState" )
+    {
+        scalardemo::SimState & v = *(scalardemo::SimState *) value;
+        if ( path == "ticks" && kind == "int" ) { v.ticks = (int32_t) n; return true; }
+        if ( path == "angle" && kind == "int" ) { v.angle = (int32_t) n; return true; }
+        if ( path == "speed" && kind == "int" ) { v.speed = (uint32_t) n; return true; }
+    }
+    if ( root == "TortureFixedWref" )
+    {
+        cooktorture::TortureFixedWref & v = *(cooktorture::TortureFixedWref *) value;
+        if ( path == "counted_f64[0]" && kind == "float" ) return v.counted_f64_count >= 1 && parse_wref_f64( text, v.counted_f64[0] );
+        if ( path == "counted_f64" && kind == "count" )
+        {
+            const int32_t storage = (int32_t) ( sizeof( v.counted_f64 ) / sizeof( v.counted_f64[0] ) );
+            for ( int32_t i = v.counted_f64_count; i < (int32_t) n && i < storage; i++ ) v.counted_f64[i] = v.counted_f64[0];
+            v.counted_f64_count = (int32_t) n;
+            return true;
+        }
+        if ( path == "fixed_f32[1]" && kind == "float" ) return parse_wref_f32( text, v.fixed_f32[1] );
+        if ( path == "chan_f32[1]" && kind == "float" ) return parse_wref_f32( text, v.chan_f32.slots[1] );
+        if ( path == "opt_f32" && kind == "float" ) { v.opt_f32_present = true; return parse_wref_f32( text, v.opt_f32 ); }
+        if ( path == "u_val.u_f32" && kind == "float" ) return parse_wref_f32( text, v.u_val.u_f32 );
+        if ( path == "u_val.u_str" ) return write_refusal_text( v.u_val.u_str.value, 16, v.u_val.u_str.value_length, kind, text );
+    }
+    if ( root == "TortureCook" )
+    {
+        cooktorture::TortureCook & v = *(cooktorture::TortureCook *) value;
+        if ( path == "slice_f32[0]" && kind == "float" )
+        {
+            if ( v.slice_f32.count < 1 || v.slice_f32.elements.value == 0 ) return false;
+            float * elems = (float *) ( (uint8_t *) &v.slice_f32.elements + v.slice_f32.elements.value );
+            return parse_wref_f32( text, elems[0] );
+        }
+        if ( path == "map_f64[0].value" && kind == "float" )
+        {
+            cooktorture::TortureCookMapF64Entry * entries = (cooktorture::TortureCookMapF64Entry *) v.map_f64.Entries();
+            return entries != NULL && v.map_f64.count >= 1 && parse_wref_f64( text, entries[0].value );
+        }
+        if ( path == "map_f64[0].key" )
+        {
+            cooktorture::TortureCookMapF64Entry * entries = (cooktorture::TortureCookMapF64Entry *) v.map_f64.Entries();
+            return entries != NULL && v.map_f64.count >= 1 &&
+                   write_refusal_text( entries[0].key, 16, entries[0].key_length, kind, text );
+        }
+        if ( path == "str_arr[0]" )
+        {
+            return v.str_arr_count >= 1 && write_refusal_text( v.str_arr[0].value, 16, v.str_arr[0].value_length, kind, text );
+        }
+    }
     if ( root == "StorePurchase" )
     {
         backenddemo::StorePurchase & v = *(backenddemo::StorePurchase *) value;
@@ -2026,10 +2127,27 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         if ( path == "currency" && kind == "ordinal" ) { v.currency = (backenddemo::Currency) n; return true; }
         if ( path == "sku" ) return write_refusal_text( v.sku, (int32_t) sizeof( v.sku ) - 1, v.sku_length, kind, text );
     }
+    if ( root == "LoginRequest" )
+    {
+        backenddemo::LoginRequest & v = *(backenddemo::LoginRequest *) value;
+        if ( path == "session_token" )
+            return write_refusal_bytes_field( v.session_token, (int32_t) sizeof( v.session_token ), v.session_token_length, kind, text );
+    }
     if ( root == "MatchResult" )
     {
         backenddemo::MatchResult & v = *(backenddemo::MatchResult *) value;
         if ( path == "players[0].score" && kind == "int" ) { v.players[0].score = (int32_t) n; return true; }
+    }
+    if ( root == "EvoMsg" )
+    {
+        tblvarevo3::EvoMsg & v = *(tblvarevo3::EvoMsg *) value;
+        if ( path == "payload.notice" )
+            return write_refusal_text( v.payload.notice.value, 24, v.payload.notice.value_length, kind, text );
+        if ( path == "payload" && kind == "tag" )
+        {
+            v.payload.type = (tblvarevo3::EvoPayloadType) n;
+            return true;
+        }
     }
     return false;
 }
@@ -2039,6 +2157,8 @@ static bool write_refusal_fixed_save( const std::string & root, const void * val
 {
     if ( root == "RootConfig" ) { wrote = tabledemo::RootConfigFixedSave( (const tabledemo::RootConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
+    if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }
+    if ( root == "TortureFixedWref" ) { wrote = cooktorture::TortureFixedWrefFixedSave( (const cooktorture::TortureFixedWref *) value, 1, buffer, capacity ); return true; }
     return false;
 }
 
@@ -2049,13 +2169,26 @@ static bool write_refusal_fixed_save( const std::string & root, const void * val
 static bool write_refusal_message_save( const std::string & unit, const std::string & root, const void * value,
                                         const std::vector<uint8_t> & announcement, uint8_t * buffer, int64_t capacity, int64_t & wrote )
 {
-    if ( unit != "backenddemo" ) return false;
-    std::vector<backenddemo::TableMessageEntry> entries( (size_t) backenddemo::kTableMessageEntriesHere );
-    backenddemo::TableVocabulary vocabulary( entries.data(), backenddemo::kTableMessageEntriesHere );
-    backenddemo::TableReport report;
-    if ( !backenddemo::AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &report ) ) _exit( 2 );
-    if ( root == "StorePurchase" ) { wrote = backenddemo::StorePurchaseSaveMessages( (const backenddemo::StorePurchase *) value, 1, buffer, capacity, &report ); return true; }
-    if ( root == "MatchResult" ) { wrote = backenddemo::MatchResultSaveMessages( (const backenddemo::MatchResult *) value, 1, buffer, capacity, &report ); return true; }
+    if ( unit == "backenddemo" )
+    {
+        std::vector<backenddemo::TableMessageEntry> entries( (size_t) backenddemo::kTableMessageEntriesHere );
+        backenddemo::TableVocabulary vocabulary( entries.data(), backenddemo::kTableMessageEntriesHere );
+        backenddemo::TableReport report;
+        if ( !backenddemo::AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &report ) ) _exit( 2 );
+        if ( root == "StorePurchase" ) { wrote = backenddemo::StorePurchaseSaveMessages( (const backenddemo::StorePurchase *) value, 1, buffer, capacity, &report ); return true; }
+        if ( root == "LoginRequest" ) { wrote = backenddemo::LoginRequestSaveMessages( (const backenddemo::LoginRequest *) value, 1, buffer, capacity, &report ); return true; }
+        if ( root == "MatchResult" ) { wrote = backenddemo::MatchResultSaveMessages( (const backenddemo::MatchResult *) value, 1, buffer, capacity, &report ); return true; }
+        return false;
+    }
+    if ( unit == "tblvarevo3" )
+    {
+        std::vector<tblvarevo3::TableMessageEntry> entries( (size_t) tblvarevo3::kTableMessageEntriesHere );
+        tblvarevo3::TableVocabulary vocabulary( entries.data(), tblvarevo3::kTableMessageEntriesHere );
+        tblvarevo3::TableReport report;
+        if ( !tblvarevo3::AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &report ) ) _exit( 2 );
+        if ( root == "EvoMsg" ) { wrote = tblvarevo3::EvoMsgSaveMessages( (const tblvarevo3::EvoMsg *) value, 1, buffer, capacity, &report ); return true; }
+        return false;
+    }
     return false;
 }
 
@@ -2103,7 +2236,9 @@ static int write_refusal_write( const std::string & surface, const std::string &
         if ( size < 0 ) return kRefusedExit;
         std::vector<char> text( (size_t) size + 1 );
         if ( codec->to_json( value, text.data(), size ) != size ) return kRefusedExit;
-        return write_refusal_json_holds_zero( std::string( text.data(), (size_t) size ), path ) ? kWroteExit : kRefusedExit;
+        if ( path == "version_note" && std::string( text.data(), (size_t) size ).find( "\\u0000" ) != std::string::npos )
+            return write_refusal_json_holds_zero( std::string( text.data(), (size_t) size ), path ) ? kWroteExit : kRefusedExit;
+        return kWroteExit;
     }
     return wrote < 0 ? kRefusedExit : kWroteExit;
 }
@@ -2116,8 +2251,6 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( f[0] != surface ) continue;
         // <surface> <case> <unit> <root> <wire> <path> <kind> <value>
         if ( f.size() < 8 ) { fprintf( stderr, "driver: short %s line\n", surface.c_str() ); return 1; }
-        // the message surface's <unit> is a CONNECTION: its unit and its
-        // announcement come from the connection line, as the `message` surface's do
         std::string unit = f[2];
         std::vector<uint8_t> announcement;
         if ( surface == "write-refusal-message" )
@@ -2133,7 +2266,8 @@ static int surface_write_refusal( const std::string & surface, const std::string
             if ( !slurp( announcement_path.c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", announcement_path.c_str() ); return 1; }
         }
         const Codec * codec = find_codec( unit, f[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
+        const VarCodec * var_codec = codec == NULL ? find_var_codec( unit, f[3] ) : NULL;
+        if ( codec == NULL && var_codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> wire;
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         fflush( stdout );
@@ -2142,6 +2276,31 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( child < 0 ) { fprintf( stderr, "driver: fork failed\n" ); return 1; }
         if ( child == 0 )
         {
+            if ( var_codec != NULL )
+            {
+                std::vector<uint8_t> region;
+                Report report;
+                const void * cval = var_codec->load( region, wire.data(), (int64_t) wire.size(), &report );
+                if ( cval == NULL ) _exit( 2 );
+                void * mval = const_cast<void *>( cval );
+                if ( !write_refusal_set( f[3], mval, f[5], f[6], f[7] ) ) _exit( kNoSetterExit );
+                const int quiet = open( "/dev/null", O_WRONLY );
+                if ( quiet >= 0 ) dup2( quiet, 2 );
+                if ( surface == "write-refusal" )
+                {
+                    scratch.assign( (size_t) 1 << 20, 0 );
+                    const int64_t sz = var_codec->measure( mval );
+                    if ( sz < 0 ) _exit( kRefusedExit );
+                    const int64_t wr = var_codec->save( mval, scratch.data(), (int64_t) scratch.size() );
+                    _exit( wr < 0 ? kRefusedExit : kWroteExit );
+                }
+                if ( surface == "write-refusal-json" )
+                {
+                    std::vector<char> jtxt;
+                    _exit( var_codec->to_json( mval, jtxt ) ? kWroteExit : kRefusedExit );
+                }
+                _exit( kNoSetterExit );
+            }
             void * value = codec->make();
             codec->reset( value );
             Report report;

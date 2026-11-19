@@ -1,0 +1,102 @@
+{
+  "title": "two-hop-v3",
+  "perms": [
+    "Read",
+    "Write"
+  ],
+  "tier": "Argent",
+  "action": {
+    "pong": null
+  },
+  "boost": {
+    "factor": 1,
+    "power": 10
+  },
+  "sub": {
+    "count": 42,
+    "sub_tag": "sub-v2"
+  },
+  "wide_num": "0",
+  "scores": [],
+  "items": [
+    {
+      "count": 11,
+      "sub_tag": "i0-v2"
+    },
+    {
+      "count": 22,
+      "sub_tag": "i1-v2"
+    }
+  ],
+  "tally": {
+    "Bronze": 5,
+    "Argent": 9,
+    "Gold": 0
+  },
+  "by_name": {
+    "k1": {
+      "weight": 10,
+      "rank": 20
+    }
+  },
+  "head": {
+    "val": "0",
+    "next": {
+      "val": "0",
+      "next": null,
+      "note": "n2-v2"
+    },
+    "note": "n1-v2"
+  },
+  "keyed_sub": {
+    "Bronze": {
+      "count": 3,
+      "sub_tag": "kb-v2"
+    },
+    "Argent": {
+      "count": 4,
+      "sub_tag": "ks-v2"
+    },
+    "Gold": {
+      "count": 0,
+      "sub_tag": "s2"
+    }
+  },
+  "fixed_sub": [
+    {
+      "count": 8,
+      "sub_tag": "fx0-v2"
+    },
+    {
+      "count": 9,
+      "sub_tag": "fx1-v2"
+    }
+  ],
+  "counted_sub": [
+    {
+      "count": 12,
+      "sub_tag": "ct0-v2"
+    }
+  ],
+  "slice_sub": [
+    {
+      "count": 13,
+      "sub_tag": "sl0-v2"
+    },
+    {
+      "count": 14,
+      "sub_tag": "sl1-v2"
+    }
+  ],
+  "opt_sub": {
+    "count": 15,
+    "sub_tag": "opt-v2"
+  },
+  "choice_sub": {
+    "sub_arm": {
+      "count": 16,
+      "sub_tag": "ch-v2"
+    }
+  },
+  "v2_epoch": "20261120"
+}

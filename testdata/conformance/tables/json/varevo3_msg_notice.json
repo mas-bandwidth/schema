@@ -1,0 +1,10 @@
+{
+  "caption": "msg-notice",
+  "mid_flag": true,
+  "payload": {
+    "notice": "ok-notice"
+  },
+  "seq": 7,
+  "tier": "Gold",
+  "v3_extra": 12
+}

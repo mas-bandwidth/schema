@@ -812,7 +812,7 @@ public final class BenchBitsVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -1057,6 +1057,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b7");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.b7, 1L << 7) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.b7));
         if (!first) {
             b.append(',');
@@ -1065,6 +1068,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b13");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.b13, 1L << 13) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.b13));
         if (!first) {
             b.append(',');
@@ -1073,6 +1079,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b23");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.b23, 1L << 23) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.b23));
         if (!first) {
             b.append(',');
@@ -1081,6 +1090,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b3");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.b3, 1L << 3) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.b3));
         if (!first) {
             b.append(',');
@@ -1089,6 +1101,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b32");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.b32, 1L << 32) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.b32));
         if (!first) {
             b.append(',');
@@ -1097,6 +1112,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b11");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.b11, 1L << 11) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.b11));
         if (!first) {
             b.append(',');
@@ -1105,6 +1123,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b19");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.b19, 1L << 19) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.b19));
         if (!first) {
             b.append(',');
@@ -1113,6 +1134,9 @@ public final class BenchBitsVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "b48");
         b.append(": ");
+        if (Long.compareUnsigned(v.b48, 1L << 48) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append('"');
         b.append(Long.toUnsignedString(v.b48));
         b.append('"');

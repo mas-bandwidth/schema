@@ -1527,7 +1527,7 @@ defmodule Bench.Table do
     else
       snake = Atom.to_string(value)
       names = Map.keys(Map.get(f, :by_name, %{}))
-      Enum.find(names, snake, fn n -> fixed_class_snake(n) == snake end)
+      Enum.find(names, snake, fn n -> Map.get(@fixed_class_atoms, n) == value end)
     end
   end
 
@@ -1562,7 +1562,7 @@ defmodule Bench.Table do
 
         name =
           Enum.find(Map.keys(union.by_name), snake, fn n ->
-            fixed_class_snake(n) == snake
+            Map.get(@fixed_class_atoms, n) == arm
           end)
 
         case Map.get(union.by_name, name) do
@@ -1576,7 +1576,7 @@ defmodule Bench.Table do
 
         name =
           Enum.find(Map.keys(union.by_name), snake, fn n ->
-            fixed_class_snake(n) == snake
+            Map.get(@fixed_class_atoms, n) == arm
           end)
 
         {name, nil}
@@ -5774,7 +5774,8 @@ defmodule Bench.Table do
   end
 
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+    case Map.get(Map.fetch!(@unions, union).by_name, arm) do
+      nil -> throw(:invalid_value)
       a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
     end
   end
@@ -5905,6 +5906,15 @@ defmodule Bench.Table do
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
+    if Map.get(f, :array) == :counted and
+         (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
+       do: throw(:invalid_value)
+
+    if Map.has_key?(f, :array_bound) and f.array_bound > 0 and length(elements) > f.array_bound,
+      do: throw(:invalid_value)
+
+    required_value(f, elements)
+
     case pad_fixed(f, elements) do
       [] ->
         "[]"
@@ -5922,7 +5932,14 @@ defmodule Bench.Table do
   defp json_field(%{t: :list}, _other, _depth), do: "[]"
 
   defp json_field(%{optional: true}, nil, _depth), do: "null"
-  defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
+
+  defp json_field(%{t: :string} = f, v, _depth) do
+    if not is_binary(v) or not utf8_valid?(v) or
+         (not Map.get(f, :unbounded, false) and Map.has_key?(f, :size) and byte_size(v) > f.size),
+       do: throw(:invalid_value)
+
+    ["\"", json_escape(v), "\""]
+  end
 
   defp json_field(%{t: :map} = f, values, depth) do
     entry_desc = Map.fetch!(@tables, f.elem)
@@ -5966,13 +5983,25 @@ defmodule Bench.Table do
   defp json_field(%{t: :blob}, nil, _depth), do: "null"
   defp json_field(%{t: :blob, blob: :bytes}, v, _depth), do: ["\"", Base.encode64(v), "\""]
   defp json_field(%{t: :blob}, v, _depth), do: ["\"", json_escape(v), "\""]
-  defp json_field(%{t: :bytes}, v, _depth), do: ["\"", Base.encode64(v), "\""]
+
+  defp json_field(%{t: :bytes} = f, v, _depth) do
+    if not is_binary(v) or (Map.has_key?(f, :size) and f.size > 0 and byte_size(v) > f.size),
+      do: throw(:invalid_value)
+
+    ["\"", Base.encode64(v), "\""]
+  end
+
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
-  defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
+
+  defp json_field(%{t: :enum}, name, _depth) when is_binary(name),
+    do: ["\"", json_escape(name), "\""]
+
+  defp json_field(%{t: :enum}, _bad, _depth), do: throw(:invalid_value)
   defp json_field(%{t: :union} = f, sel, depth), do: json_arm(f.elem, sel, depth)
 
   defp json_field(%{t: :keyed} = f, slots, depth) do
     slots = slots || %{}
+    required_value(f, slots)
 
     case f.key_names do
       [] ->
@@ -6025,11 +6054,13 @@ defmodule Bench.Table do
   defp json_field(%{timestamp: _}, v, _depth), do: ["\"", timestamp_text(v), "\""]
 
   defp json_field(%{t: :int, frac: frac} = f, v, _depth) do
+    required_value(f, v)
     text = fixed_text(v, frac)
     if json_wide_int?(f), do: ["\"", text, "\""], else: text
   end
 
   defp json_field(%{t: :int} = f, v, _depth) do
+    required_value(f, v)
     text = Integer.to_string(v)
     if json_wide_int?(f), do: ["\"", text, "\""], else: text
   end
@@ -6056,7 +6087,11 @@ defmodule Bench.Table do
   defp json_list_elem(%{elem_kind: 17} = f, e, depth), do: json_node(f.elem, e, depth)
   defp json_list_elem(%{elem_kind: 12}, e, _depth), do: ["\"", json_escape(e), "\""]
   defp json_list_elem(%{elem_kind: 30}, nil, _depth), do: "\"None\""
-  defp json_list_elem(%{elem_kind: 30}, e, _depth), do: ["\"", json_escape(e), "\""]
+
+  defp json_list_elem(%{elem_kind: 30}, e, _depth) when is_binary(e),
+    do: ["\"", json_escape(e), "\""]
+
+  defp json_list_elem(%{elem_kind: 30}, _bad, _depth), do: throw(:invalid_value)
 
   defp json_list_elem(%{elem_flags: names}, e, depth),
     do: json_field(%{t: :int, flags: names}, e, depth)
@@ -6302,7 +6337,11 @@ defmodule Bench.Table do
   defp json_arm(_union, nil, _depth), do: "{}"
 
   defp json_arm(union, {arm, payload}, depth) do
-    a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
+    a =
+      case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+        {:ok, found} -> found
+        :error -> throw(:invalid_value)
+      end
 
     inner =
       case a do
@@ -8445,10 +8484,12 @@ defmodule Bench.Table do
 
   # Declared ranges constrain live values. Physical storage behind an
   # inactive guard is still copied, just as it is without Required (§2.3).
-  defp cook_collect_field(%{t: :int} = f, v, acc) do
+  defp cook_collect_field(%{t: :int} = f, v, acc) when is_integer(v) do
     if Map.has_key?(f, :min) and (v < f.min or v > f.max), do: throw(:invalid)
     {v, acc}
   end
+
+  defp cook_collect_field(%{t: :int}, v, _acc) when not is_nil(v), do: throw(:invalid)
 
   defp cook_collect_field(_, v, acc), do: {v, acc}
 

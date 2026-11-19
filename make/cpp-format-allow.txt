@@ -7,11 +7,8 @@
 # `make tables-cpp-clean-census` writes the list as it stands.
 build/tables-generated/a1/A1Table.cpp
 build/tables-generated/a1/A1Table.h
-build/tables-generated/a1/Tbla1View.cpp
 build/tables-generated/a2/A2Table.cpp
 build/tables-generated/a2/A2Table.h
-build/tables-generated/a2/Tbla2View.cpp
-build/tables-generated/arms/ArmdemoView.cpp
 build/tables-generated/arms/CarryTable.cpp
 build/tables-generated/arms/CarryTable.h
 build/tables-generated/arms/GateBlock.h
@@ -45,13 +42,11 @@ build/tables-generated/blockhome/FrameTable.h
 build/tables-generated/cooktorture/CookTortureBlock.h
 build/tables-generated/cooktorture/CookTortureTable.cpp
 build/tables-generated/cooktorture/CookTortureTable.h
-build/tables-generated/cooktorture/CooktortureView.cpp
 build/tables-generated/cooktorturewide/CookTortureWideTable.cpp
 build/tables-generated/cooktorturewide/CookTortureWideTable.h
 build/tables-generated/dead/DeadBytesBlock.h
 build/tables-generated/dead/DeadBytesTable.cpp
 build/tables-generated/dead/DeadBytesTable.h
-build/tables-generated/dead/TbldeadView.cpp
 build/tables-generated/examples/GuardedTable.cpp
 build/tables-generated/examples/GuardedTable.h
 build/tables-generated/examples/KeyedBlock.h
@@ -93,7 +88,6 @@ build/tables-generated/fh2/FH2Table.h
 build/tables-generated/fixedevo/FixedEvoBlock.h
 build/tables-generated/fixedevo/FixedEvoTable.cpp
 build/tables-generated/fixedevo/FixedEvoTable.h
-build/tables-generated/fixedevo/TblfixedevoView.cpp
 build/tables-generated/fm1/FM1Table.cpp
 build/tables-generated/fm1/FM1Table.h
 build/tables-generated/fm2/FM2Table.cpp
@@ -136,7 +130,6 @@ build/tables-generated/l1/L1Table.h
 build/tables-generated/lists/HoldersBlock.h
 build/tables-generated/lists/HoldersTable.cpp
 build/tables-generated/lists/HoldersTable.h
-build/tables-generated/lists/ListdemoView.cpp
 build/tables-generated/lists/MigrateBlock.h
 build/tables-generated/lists/MigrateTable.cpp
 build/tables-generated/lists/MigrateTable.h
@@ -167,7 +160,6 @@ build/tables-generated/maps/DocsTable.h
 build/tables-generated/maps/FleetBlock.h
 build/tables-generated/maps/FleetTable.cpp
 build/tables-generated/maps/FleetTable.h
-build/tables-generated/maps/MapdemoView.cpp
 build/tables-generated/maps/PairsTable.cpp
 build/tables-generated/maps/PairsTable.h
 build/tables-generated/maps/RowsTable.cpp
@@ -182,7 +174,6 @@ build/tables-generated/maps/TextTable.cpp
 build/tables-generated/maps/TextTable.h
 build/tables-generated/maps/TrailsTable.cpp
 build/tables-generated/maps/TrailsTable.h
-build/tables-generated/messages/MessagedemoView.cpp
 build/tables-generated/messages/MessagesBlock.h
 build/tables-generated/messages/MessagesTable.cpp
 build/tables-generated/messages/MessagesTable.h
@@ -205,18 +196,14 @@ build/tables-generated/pointers/PartsTable.cpp
 build/tables-generated/pointers/PartsTable.h
 build/tables-generated/r1/R1Table.cpp
 build/tables-generated/r1/R1Table.h
-build/tables-generated/r1/Tblr1View.cpp
 build/tables-generated/r2/R2Table.cpp
 build/tables-generated/r2/R2Table.h
-build/tables-generated/r2/Tblr2View.cpp
 build/tables-generated/rt1/RT1Block.h
 build/tables-generated/rt1/RT1Table.cpp
 build/tables-generated/rt1/RT1Table.h
-build/tables-generated/rt1/Tblrt1View.cpp
 build/tables-generated/rt2/RT2Block.h
 build/tables-generated/rt2/RT2Table.cpp
 build/tables-generated/rt2/RT2Table.h
-build/tables-generated/rt2/Tblrt2View.cpp
 build/tables-generated/rt3/RT3Block.h
 build/tables-generated/rt3/RT3Table.cpp
 build/tables-generated/rt3/RT3Table.h
@@ -229,7 +216,6 @@ build/tables-generated/scalars2/Scalars2Table.h
 build/tables-generated/stream/StreamBlock.h
 build/tables-generated/stream/StreamTable.cpp
 build/tables-generated/stream/StreamTable.h
-build/tables-generated/stream/StreamdemoView.cpp
 build/tables-generated/ut1/UT1Table.cpp
 build/tables-generated/ut1/UT1Table.h
 build/tables-generated/ut2/UT2Table.cpp
@@ -240,15 +226,12 @@ build/tables-generated/v1/V1Table.h
 build/tables-generated/v2/V2Block.h
 build/tables-generated/v2/V2Table.cpp
 build/tables-generated/v2/V2Table.h
-build/tables-generated/varevo1/Tblvarevo1View.cpp
 build/tables-generated/varevo1/VarEvo1Block.h
 build/tables-generated/varevo1/VarEvo1Table.cpp
 build/tables-generated/varevo1/VarEvo1Table.h
-build/tables-generated/varevo2/Tblvarevo2View.cpp
 build/tables-generated/varevo2/VarEvo2Block.h
 build/tables-generated/varevo2/VarEvo2Table.cpp
 build/tables-generated/varevo2/VarEvo2Table.h
-build/tables-generated/varevo3/Tblvarevo3View.cpp
 build/tables-generated/varevo3/VarEvo3Block.h
 build/tables-generated/varevo3/VarEvo3Table.cpp
 build/tables-generated/varevo3/VarEvo3Table.h

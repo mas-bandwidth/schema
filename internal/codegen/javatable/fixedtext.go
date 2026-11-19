@@ -61,6 +61,7 @@ func writeFixedUnionToVariable(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 	fmt.Fprintf(b, "    /** carry a %s value into this value (the text form's reader of a\n", fixedClass(un.Name))
 	b.WriteString("     *  fixed root's value; docs/SPEC-TABLES.md §16, §3.4). */\n")
 	fmt.Fprintf(b, "    public static Value fromFixed(%s.Value fixed) {\n", fixedClass(un.Name))
+	fmt.Fprintf(b, "        assert (fixed.type & 0xFF) <= %d;\n", len(un.Variants))
 	b.WriteString("        Value v = new Value();\n")
 	b.WriteString("        v.tag = fixed.type;\n")
 	mem := unionMembers(un)
@@ -68,7 +69,9 @@ func writeFixedUnionToVariable(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 		if arm.Void() {
 			continue
 		}
+		fmt.Fprintf(b, "        if ((fixed.type & 0xFF) == %d) {\n", i+1)
 		writeFixedField(b, u, arm.F, javaName(mem[i]), javaName(arm.F.Name))
+		b.WriteString("        }\n")
 	}
 	b.WriteString("        return v;\n    }\n\n")
 }
@@ -78,12 +81,15 @@ func writeFixedUnionToVariable(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname string) {
 	if f.Type.Optional {
 		fmt.Fprintf(b, "        v.%sPresent = fixed.%sPresent;\n", vname, fname)
+		fmt.Fprintf(b, "        if (fixed.%sPresent) {\n", fname)
+		defer b.WriteString("        }\n")
 	}
 	// text and bytes: a fixed buffer beside its live length
 	if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		if f.Type.Kind == ir.TString {
-			fmt.Fprintf(b, "        v.%s = new String(fixed.%s, 0, fixed.%sLength, StandardCharsets.UTF_8);\n", vname, fname, fname)
+			fmt.Fprintf(b, "        v.%s = TableVariable.utf8FromFixed(fixed.%s, fixed.%sLength);\n", vname, fname, fname)
 		} else {
+			fmt.Fprintf(b, "        assert fixed.%sLength >= 0 && fixed.%sLength <= fixed.%s.length;\n", fname, fname, fname)
 			fmt.Fprintf(b, "        v.%s = java.util.Arrays.copyOf(fixed.%s, fixed.%sLength);\n", vname, fname, fname)
 		}
 		return
@@ -100,6 +106,7 @@ func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname s
 	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
 		var bound string
 		if f.Array == ir.ArrayCounted {
+			fmt.Fprintf(b, "        assert fixed.%sCount >= %d && fixed.%sCount <= %d;\n", fname, f.ArrayMin, fname, f.ArrayBound)
 			bound = "fixed." + fname + "Count"
 		} else {
 			bound = "fixed." + fname + ".length"

@@ -393,6 +393,7 @@ func (v *viewGen) emitUnionVocabulary(g *tableGen, un *ir.Union) {
 			if va.Body() || va.Void() {
 				continue
 			}
+			g.emitWideStatic(fieldSpelling{owner: un.Name}.wideName(va.F), va.F, "static const", "    ")
 			g.emitTagsStatic(fieldSpelling{owner: un.Name}.tagsName(va.F), va.F.Tags, "static const", "    ")
 		}
 		g.pf("    static const TableFieldInfo %s_view_arm_fields[] = {\n", un.Name)

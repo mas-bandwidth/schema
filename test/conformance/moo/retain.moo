@@ -98,7 +98,7 @@ return function(ctx: any): { [string]: Surface }
 			if not saves then
 				ctx.say(f[2], a.text)
 			elseif #a.saves == 0 then
-				error("retain-save: " .. f[2] .. ": retained load refused", 0)
+				continue
 			else
 				ctx.say(f[2], buffer.tostring(a.saves[1]))
 			end

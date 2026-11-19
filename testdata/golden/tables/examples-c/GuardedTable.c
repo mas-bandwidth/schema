@@ -262,6 +262,32 @@ static SCHEMA_UNUSED void tabledemo_table_json_wide_store( void * storage, uint3
 /* a counted field's companion: a string's length, a bytes' length, a counted
    array's count. Bounded by the declared extent on the way out, so a storage
    invariant a caller broke cannot walk off the end of the array. */
+static SCHEMA_UNUSED int tabledemo_table_json_count_in_contract( const void * base, const tabledemo_table_field_info_t * f )
+{
+    int32_t count = 0;
+    if ( !f->counted || f->sequence != 0 )
+    {
+        return 1;
+    }
+    memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
+    return count >= 0 && count <= f->array_bound;
+}
+
+static SCHEMA_UNUSED int tabledemo_table_json_wide_in_contract( const void * storage, const tabledemo_table_field_info_t * f )
+{
+    int is_signed;
+    tabledemo_table_json_wide_t raw, lo, hi;
+    if ( f->wide == NULL )
+    {
+        return 1;
+    }
+    is_signed = tabledemo_table_json_kind_wide_signed( f->kind ) || f->kind == 5;
+    raw = tabledemo_table_json_wide_load( storage, f->elem_size, is_signed );
+    lo.lo = f->wide->lo[0]; lo.hi = f->wide->lo[1];
+    hi.lo = f->wide->hi[0]; hi.hi = f->wide->hi[1];
+    return tabledemo_table_json_wide_compare( raw, lo, is_signed ) >= 0 && tabledemo_table_json_wide_compare( raw, hi, is_signed ) <= 0;
+}
+
 static SCHEMA_UNUSED int32_t tabledemo_table_json_count( const void * base, const tabledemo_table_field_info_t * f )
 {
     int32_t count = 0;
@@ -818,8 +844,8 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_write_text_element_( tabled
 #ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
     if ( !v->counted ) { return schema_tabledemo_table_json_write_unbounded_text_( out, (const uint8_t *) p + v->offset ); }
 #endif
+    if ( !tabledemo_table_json_count_in_contract( p, v ) ) { return 0; }
     n = tabledemo_table_json_count( p, v );
-    if ( n < 0 || n > v->array_bound ) { return 0; }
     tabledemo_table_json_write_string( out, (const char *) p + v->offset, n );
     return 1;
 }
@@ -926,7 +952,29 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
         tabledemo_table_json_put( out, ']' );
         return 1;
     }
-    if ( tabledemo_table_json_kind_wide( f->kind ) || tabledemo_table_json_kind_wide_integer( f->kind ) ) { tabledemo_table_json_write_wide( out, storage, f ); return 1; }
+    if ( tabledemo_table_json_kind_wide( f->kind ) || tabledemo_table_json_kind_wide_integer( f->kind ) )
+    {
+        if ( !tabledemo_table_json_wide_in_contract( storage, f ) ) { return 0; }
+        tabledemo_table_json_write_wide( out, storage, f );
+        return 1;
+    }
+    if ( f->has_range && f->kind >= 2 && f->kind <= 9 )
+    {
+        if ( f->wide != NULL )
+        {
+            if ( !tabledemo_table_json_wide_in_contract( storage, f ) ) { return 0; }
+        }
+        else if ( f->kind <= 5 )
+        {
+            double val = (double) tabledemo_table_json_get_signed( storage, f->elem_size );
+            if ( val < f->range_min || val > f->range_max ) { return 0; }
+        }
+        else
+        {
+            double val = (double) tabledemo_table_json_get_raw( storage, f->elem_size );
+            if ( val < f->range_min || val > f->range_max ) { return 0; }
+        }
+    }
     switch ( f->kind )
     {
         case 1:
@@ -936,12 +984,14 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
         {
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
+            if ( f->has_range && ( v < (float) f->range_min || v > (float) f->range_max ) ) { return 0; }
             return tabledemo_table_json_write_float( out, (double) v, 1 );
         }
         case 11:
         {
             double v = 0.0;
             memcpy( &v, storage, sizeof( v ) );
+            if ( f->has_range && ( v < f->range_min || v > f->range_max ) ) { return 0; }
             return tabledemo_table_json_write_float( out, v, 0 );
         }
         case 36:
@@ -964,6 +1014,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_field( tabledemo_table_json_
     if(f->sequence==2) { return tabledemo_table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
+    if ( !tabledemo_table_json_count_in_contract( base, f ) ) { return 0; }
     if ( f->kind == 12 && f->text_list == 0 )
     {
 #ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME

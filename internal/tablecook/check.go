@@ -15,8 +15,10 @@
 package tablecook
 
 import (
+	"cmp"
 	"encoding/binary"
 	"fmt"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -48,6 +50,9 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	var res CheckResult
 	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), rootAlignmentOf(m, file))
 	if err != nil {
+		return res, err
+	}
+	if err := zeroRange(file, HeaderBytes, h.DataOffset(), "the header alignment padding"); err != nil {
 		return res, err
 	}
 	dir, err := h.Directory(file)
@@ -202,9 +207,10 @@ type scan struct {
 	// array's slot must point inside its holder's own extent, so the walk
 	// carries where that node begins and ends, and the arrays it has already
 	// placed there, so no two overlap. Both are reset per node.
-	base   int64
-	extent int64
-	arrays []arrayRange
+	base      int64
+	recordEnd int64
+	extent    int64
+	arrays    []arrayRange
 	// THE GRAPH'S EDGES, for the cycle check: cur is the directory position of
 	// the node under the scan, and edges[i] the table nodes node i's slots name.
 	cur   int
@@ -261,6 +267,15 @@ type arrayRange struct {
 // and one COUNT COMPANION — its length — which must fit, with the header and a
 // string's terminator, inside the node's own extent (§7.4): a length past the
 // extent would hand a walker the node after it as this node's bytes.
+func zeroRange(buf []byte, from, to int64, what string) error {
+	for i := from; i < to; i++ {
+		if buf[i] != 0 {
+			return fmt.Errorf("%s holds 0x%02x at offset %d, not 0x00 (docs/SPEC-TABLES.md §7.4)", what, buf[i], i)
+		}
+	}
+	return nil
+}
+
 func (s *scan) node(base, extent int64, typeId uint64, st *ir.Struct) error {
 	if st == nil {
 		length := int64(s.ord.Uint32(s.buf[base:]))
@@ -271,13 +286,35 @@ func (s *scan) node(base, extent int64, typeId uint64, st *ir.Struct) error {
 		if need > extent {
 			return fmt.Errorf("the byte buffer's length is %d and its node's extent is %d: the bytes leave the node", length, extent)
 		}
+		if err := zeroRange(s.buf, base+4, base+BlobHeader, "the byte buffer's header padding"); err != nil {
+			return err
+		}
 		if typeId == ir.StringTypeId && s.buf[base+BlobHeader+length] != 0 {
 			return fmt.Errorf("the byte buffer's terminator byte at %d is 0x%02x, not 0x00: a string's bytes are NUL-terminated", base+BlobHeader+length, s.buf[base+BlobHeader+length])
 		}
-		return nil
+		return zeroRange(s.buf, base+need, base+extent, "the byte buffer's trailing slack")
 	}
-	s.base, s.extent, s.arrays = base, base+extent, s.arrays[:0]
-	return s.record(base, st)
+	ml := ir.RecordLayout(s.m.Unit, st)
+	s.base, s.recordEnd, s.extent, s.arrays = base, base+ml.Size, base+extent, s.arrays[:0]
+	if err := s.record(base, st); err != nil {
+		return err
+	}
+	slices.SortFunc(s.arrays, func(a, b arrayRange) int { return cmp.Compare(a.start, b.start) })
+	cursor := s.recordEnd
+	for _, r := range s.arrays {
+		if err := zeroRange(s.buf, cursor, min(r.start, s.extent), "the node extent's padding"); err != nil {
+			return err
+		}
+		if r.end > cursor {
+			cursor = r.end
+		}
+	}
+	if cursor < s.extent {
+		if err := zeroRange(s.buf, cursor, s.extent, "the node extent's trailing slack"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // record walks one record's declaration. It descends through every BY-VALUE
@@ -288,78 +325,98 @@ func (s *scan) node(base, extent int64, typeId uint64, st *ir.Struct) error {
 // types nested by value, whose counts bound a walker just as a table's do".
 func (s *scan) record(base int64, st *ir.Struct) error {
 	ml := ir.RecordLayout(s.m.Unit, st)
+	cursor := base
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
-		if err := s.field(base+fl.Offset, fl.Field); err != nil {
+		if err := zeroRange(s.buf, cursor, base+fl.Offset, "record interior padding"); err != nil {
 			return fmt.Errorf("%s.%s: %w", st.Name, fl.Field.Name, err)
 		}
+		end, err := s.fieldSpan(base+fl.Offset, fl.Field)
+		if err != nil {
+			return fmt.Errorf("%s.%s: %w", st.Name, fl.Field.Name, err)
+		}
+		cursor = end
+	}
+	if err := zeroRange(s.buf, cursor, base+ml.Size, "record trailing padding"); err != nil {
+		return fmt.Errorf("%s: %w", st.Name, err)
 	}
 	return nil
 }
 
-func (s *scan) field(at int64, f *ir.Field) error {
+func (s *scan) fieldSpan(at int64, f *ir.Field) (int64, error) {
 	pieces := ir.FieldPieces(s.m.Unit, f, at)
 	if len(pieces) == 0 {
-		return nil
+		return at, nil
+	}
+	for k := 1; k < len(pieces); k++ {
+		if err := zeroRange(s.buf, pieces[k-1].Offset+pieces[k-1].Size, pieces[k].Offset, "field piece padding"); err != nil {
+			return 0, err
+		}
 	}
 	value := pieces[0]
+	fieldEnd := pieces[len(pieces)-1].Offset + pieces[len(pieces)-1].Size
 	if f.Type.Optional {
-		if p := s.buf[pieces[len(pieces)-1].Offset]; p > 1 {
-			return fmt.Errorf("the optional's present byte is %d, not 0 or 1", p)
+		pAt := pieces[len(pieces)-1].Offset
+		p := s.buf[pAt]
+		if p > 1 {
+			return 0, fmt.Errorf("the optional's present byte is %d, not 0 or 1", p)
+		}
+		if p == 0 {
+			if err := zeroRange(s.buf, value.Offset, pAt, "the absent optional's payload"); err != nil {
+				return 0, err
+			}
+			return fieldEnd, nil
 		}
 	}
 	switch {
 	case f.IsMap():
-		if f.Type.Optional && s.buf[pieces[len(pieces)-1].Offset] == 0 {
-			delta := int64(s.ord.Uint64(s.buf[value.Offset:]))
-			count := int64(int32(s.ord.Uint32(s.buf[value.Offset+8:])))
-			if delta != RefNull || count != 0 {
-				return fmt.Errorf("the optional map is absent and its slot is (%d, %d), not (0, 0)", delta, count)
-			}
-			return nil
+		if err := zeroRange(s.buf, value.Offset+12, value.Offset+16, "the map slot's trailing padding"); err != nil {
+			return 0, err
 		}
-		return s.mapSlot(value.Offset, f)
+		return fieldEnd, s.mapSlot(value.Offset, f)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		return s.ref(value.Offset, f)
+		return fieldEnd, s.ref(value.Offset, f)
 	case f.Type.TextUnbounded():
-		if f.Type.Optional && s.buf[pieces[len(pieces)-1].Offset] == 0 {
-			if delta := int64(s.ord.Uint64(s.buf[value.Offset:])); delta != RefNull {
-				return fmt.Errorf("the optional text is absent and its reference is %d, not null", delta)
-			}
-			return nil
-		}
-		return s.textSlot(value.Offset, f)
+		return fieldEnd, s.textSlot(value.Offset, f)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		return s.companion(pieces[1].Offset, f.Type.Size, "used length")
+		if err := s.companion(pieces[1].Offset, f.Type.Size, "used length"); err != nil {
+			return 0, err
+		}
+		used := int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:])))
+		if err := zeroRange(s.buf, value.Offset+used, value.Offset+value.Size, "the text or bytes field's unused tail"); err != nil {
+			return 0, err
+		}
+		return fieldEnd, nil
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed:
-		return s.slots(value.Offset, f, f.ArrayBound)
+		return fieldEnd, s.slots(value.Offset, f, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
 		if err := s.companion(pieces[1].Offset, f.ArrayBound, "used count"); err != nil {
-			return err
+			return 0, err
 		}
 		used := int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:])))
 		if used < 0 {
-			// The companion above refuses a negative used count: it is not an
-			// extent, and the dead-slot scan must never index behind the array.
-			return nil
+			return fieldEnd, nil
 		}
 		if err := s.slots(value.Offset, f, used); err != nil {
-			return err
+			return 0, err
 		}
 		step := elementBytes(s.m.Unit, f)
 		for i := used; i < f.ArrayBound; i++ {
 			slot := value.Offset + i*step
-			for at := slot; at < slot+step; at++ {
-				if s.buf[at] != 0 {
-					return fmt.Errorf("the dead slot %d at offset %d holds 0x%02x at offset %d, past the used count %d: a counted array's slots past its count are zero", i, slot, s.buf[at], at, used)
+			for pos := slot; pos < slot+step; pos++ {
+				if s.buf[pos] != 0 {
+					return 0, fmt.Errorf("the dead slot %d at offset %d holds 0x%02x at offset %d, past the used count %d: a counted array's slots past its count are zero", i, slot, s.buf[pos], pos, used)
 				}
 			}
 		}
-		return nil
+		return fieldEnd, nil
 	case f.Array == ir.ArrayList:
-		return s.list(value.Offset, f)
+		if err := zeroRange(s.buf, value.Offset+12, value.Offset+16, "the list slot's trailing padding"); err != nil {
+			return 0, err
+		}
+		return fieldEnd, s.list(value.Offset, f)
 	}
-	return s.element(value.Offset, f)
+	return fieldEnd, s.element(value.Offset, f)
 }
 
 // textSlot is §7.4's UNBOUNDED-TEXT clause (docs/SPEC-TABLES.md §2.13.1, §7.4):
@@ -377,8 +434,14 @@ func (s *scan) textSlot(at int64, f *ir.Field) error {
 	if !fits {
 		return fmt.Errorf("the text blob header leaves the node's extent [%d, %d): slot at %d with delta %d", s.base, s.extent, at, delta)
 	}
+	if start < s.recordEnd {
+		return fmt.Errorf("the text blob starts at %d, inside the node's record [%d, %d)", start, s.base, s.recordEnd)
+	}
 	if start%BlobAlign != 0 {
 		return fmt.Errorf("the text blob starts at %d, which is not aligned to %d", start, BlobAlign)
+	}
+	if err := zeroRange(s.buf, start+4, start+BlobHeader, "the text blob's header padding"); err != nil {
+		return err
 	}
 	length := int64(s.ord.Uint32(s.buf[start:]))
 	if length <= 0 {
@@ -449,6 +512,9 @@ func (s *scan) placedArray(at, size, align int64, what, container string) (start
 	start, end, fits := arrayExtent(at, delta, count, size, s.base, s.extent)
 	if !fits {
 		return 0, 0, fmt.Errorf("the array leaves the node's extent [%d, %d): %s array at %d with delta %d, count %d and size %d", s.base, s.extent, what, at, delta, count, size)
+	}
+	if start < s.recordEnd {
+		return 0, 0, fmt.Errorf("the %s array starts at %d, inside the node's record [%d, %d)", what, start, s.base, s.recordEnd)
 	}
 	if start%align != 0 {
 		return 0, 0, fmt.Errorf("the %s array starts at %d, which is not aligned to %d", what, start, align)
@@ -666,26 +732,33 @@ func (s *scan) element(at int64, f *ir.Field) error {
 		// same reason a count companion is: a tag past the last arm steers a
 		// walker into storage no declaration describes.
 		size, _, tag, armOffset := ir.UnionLayout(s.m.Unit, ref)
-		_ = size
 		var cell tabletext.Cell
 		readWidth(&cell, s.ord, s.buf, at, tag)
 		if cell.U == 0 {
-			return nil
+			return zeroRange(s.buf, at+tag, at+size, "the unset union's payload")
 		}
 		if int(cell.U) > len(ref.Variants) {
 			return fmt.Errorf("union %s: the stored tag %d names no arm", ref.Name, cell.U)
 		}
 		arm := ref.Variants[cell.U-1]
 		if arm.Void() {
-			return nil // a payload-free arm steers nothing: it has no storage (§2.6)
+			return zeroRange(s.buf, at+tag, at+size, "the void union arm's payload")
+		}
+		if err := zeroRange(s.buf, at+tag, at+armOffset, "the union's tag padding"); err != nil {
+			return err
 		}
 		if !arm.Body() {
-			// AN ARM IS A FIELD LINE (§2.6), so what a set arm's storage
-			// steers a walker through is that field's: a POINTER arm's slot
-			// above all, checked where a field's is
-			return s.field(at+armOffset, arm.F)
+			armEnd, err := s.fieldSpan(at+armOffset, arm.F)
+			if err != nil {
+				return err
+			}
+			return zeroRange(s.buf, armEnd, at+size, "the union's inactive arm slack")
 		}
-		return s.record(at+armOffset, arm.Ref)
+		if err := s.record(at+armOffset, arm.Ref); err != nil {
+			return err
+		}
+		armSize := ir.RecordLayout(s.m.Unit, arm.Ref).Size
+		return zeroRange(s.buf, at+armOffset+armSize, at+size, "the union's inactive arm slack")
 	}
 	return nil
 }

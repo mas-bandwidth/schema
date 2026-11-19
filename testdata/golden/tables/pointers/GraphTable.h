@@ -9813,6 +9813,7 @@ inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     return bytes;
 }
@@ -9835,6 +9836,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return false; }
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -10478,6 +10480,7 @@ inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     return bytes;
 }
@@ -10500,6 +10503,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -11146,6 +11150,7 @@ inline int64_t ListNodeMeasureBody( const Ctx & ctx, const TableNumbering & numb
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.value != 0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ) + 1 + 4; } // value
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const ListNode * pointee_next = ListNodeAt( ctx, value.next ); // *ListNode
@@ -11175,6 +11180,7 @@ inline bool ListNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
         w.put32( uint32_t( value.value ) );
     }
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -11385,6 +11391,7 @@ inline int64_t TreeNodeMeasureBody( const Ctx & ctx, const TableNumbering & numb
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const TreeNode * pointee_left = TreeNodeAt( ctx, value.left ); // *TreeNode
@@ -11423,6 +11430,7 @@ inline bool TreeNodeSaveBodyFields( const Ctx & ctx, const TableNumbering & numb
     (void) ctx;
     (void) numbering;
     schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -11844,6 +11852,7 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
@@ -11941,6 +11950,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12515,6 +12525,7 @@ inline int64_t DepotMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_banks = ids.count;
@@ -12572,6 +12583,7 @@ inline bool DepotSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12941,6 +12953,7 @@ inline int64_t AlbumMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_tint = ids.count;
@@ -13003,6 +13016,7 @@ inline bool AlbumSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -21151,6 +21165,7 @@ inline int64_t MetaMeasureBodyRetain( TableRetainIds & ids, const Meta & value, 
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -21164,6 +21179,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return false; }
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -21346,6 +21362,7 @@ inline int64_t SettingsMeasureBodyRetain( TableRetainIds & ids, const Settings &
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -21359,6 +21376,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -21544,6 +21562,7 @@ inline int64_t ListNodeMeasureBodyRetain( const Ctx & ctx, const TableNumbering 
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.value != 0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x7ce4fd9430e80ceaull ) ) + 1 + 4; } // value
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const ListNode * pointee_next = ListNodeAt( ctx, value.next ); // *ListNode
@@ -21574,6 +21593,7 @@ inline bool ListNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
         w.put32( uint32_t( value.value ) );
     }
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -21790,6 +21810,7 @@ inline int64_t TreeNodeMeasureBodyRetain( const Ctx & ctx, const TableNumbering 
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const TreeNode * pointee_left = TreeNodeAt( ctx, value.left ); // *TreeNode
@@ -21829,6 +21850,7 @@ inline bool TreeNodeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering 
     (void) ctx;
     (void) numbering;
     schema_assert( value.label_length >= 0 && value.label_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -22263,6 +22285,7 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
@@ -22361,6 +22384,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -22941,6 +22965,7 @@ inline int64_t DepotMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_banks = ids.count;
@@ -22999,6 +23024,7 @@ inline bool DepotSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 12 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -23375,6 +23401,7 @@ inline int64_t AlbumMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const int32_t mark_tint = ids.count;
@@ -23438,6 +23465,7 @@ inline bool AlbumSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 37, 0xc4bcadba8e631b86ull ), 12 ); // name

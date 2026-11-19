@@ -370,9 +370,11 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
         var rids: u64[>..<] = [];
         var store = schema_rt::RetainStore { capacity: cap, id_capacity: ids_cap, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
         let root = schema_rt::load_table_retain(conformance_unit(), f[3], data, vals, nodes, report, store);
-        if root < 0 {
-            write_stderr(str("driver: ", f[1], " does not load\n"));
-            exit(1);
+        if root < 0 || report.refused || schema_rt::load_error(report, root) != schema_rt::LoadRefuseOk {
+            if !saved {
+                answer(f[1], "refused\n");
+            }
+            continue;
         }
         var out: u8[>..<] = [];
         let refusal = schema_rt::save_table_retain(conformance_unit(), f[3], data, vals, nodes, root, store, report, out);
@@ -493,6 +495,208 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
 }
 
 
+
+fn wref_loaded_hex(s: const u8[:], out: u8[>..]&) -> bool {
+    if (s.len % 2) != 0 { return false; }
+    var i: i64 = 0;
+    while i < s.len {
+        let hi = s[i];
+        let lo = s[i + 1];
+        let hv: u8 = if hi >= 'a' && hi <= 'f' { hi - 'a' + 10 } else if hi >= 'A' && hi <= 'F' { hi - 'A' + 10 } else { hi - '0' };
+        let lv: u8 = if lo >= 'a' && lo <= 'f' { lo - 'a' + 10 } else if lo >= 'A' && lo <= 'F' { lo - 'A' + 10 } else { lo - '0' };
+        out.push((hv << 4) | lv);
+        i += 2;
+    }
+    return true;
+}
+
+fn wref_loaded_f32_bits(s: const u8[:]) -> u64 {
+    if s == "nan" { return 0x7fc00000; }
+    if s == "inf" { return 0x7f800000; }
+    if s == "-inf" { return 0xff800000; }
+    if s == "1.5" { return 0x3fc00000; }
+    if s == "2.5" { return 0x40200000; }
+    if s == "0" || s == "0.0" { return 0; }
+    let n, _ok = parse_int(s);
+    return schema_rt::fixed_f32_bits(n as f32) as u64;
+}
+
+fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
+    if s == "nan" { return 0x7ff8000000000000; }
+    if s == "inf" { return 0x7ff0000000000000; }
+    if s == "-inf" { return 0xfff0000000000000; }
+    if s == "1.5" { return 0x3ff8000000000000; }
+    if s == "2.5" { return 0x4004000000000000; }
+    if s == "0" || s == "0.0" { return 0; }
+    let n, _ok = parse_int(s);
+    return schema_rt::fixed_f64_bits(n as f64);
+}
+
+fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: schema_rt::FieldDesc, kind: const u8[:], text: const u8[:]) -> i64 {
+    vals[s].state = schema_rt::ValPresent;
+    if kind == "float" {
+        vals[s].bits = schema_rt::Int128 { lo: if d.is_f32 { wref_loaded_f32_bits(text) } else { wref_loaded_f64_bits(text) }, hi: 0 };
+        return 1;
+    }
+    if kind == "int" || kind == "ordinal" || kind == "tag" {
+        let n, ok = parse_int(text);
+        if !ok { return 0; }
+        let hi: u64 = if n < 0 { 0xffffffffffffffff } else { 0 };
+        vals[s].bits = schema_rt::Int128 { lo: n as! u64, hi: hi };
+        return 1;
+    }
+    if kind == "length" {
+        let n, ok = parse_int(text);
+        if !ok || n < 0 { return 2; }
+        vals[s].off = data.len;
+        vals[s].len = n;
+        var k: i64 = 0;
+        while k < n { data.push('a'); k += 1; }
+        return 1;
+    }
+    if kind == "bytes" {
+        var raw: u8[>..] = [];
+        if !wref_loaded_hex(text, raw) { return 0; }
+        vals[s].off = data.len;
+        vals[s].len = raw.len;
+        data.append(raw);
+        return 1;
+    }
+    if kind == "count" {
+        let n, ok = parse_int(text);
+        if !ok || n < 0 { return 2; }
+        if n > vals[s].count {
+            let old_first = vals[s].first;
+            let old_count = vals[s].count;
+            let new_first = schema_rt::value_reserve(vals, n);
+            var k: i64 = 0;
+            while k < n {
+                if k < old_count { vals[new_first + k] = vals[old_first + k]; }
+                else if old_count > 0 { vals[new_first + k] = vals[old_first]; }
+                k += 1;
+            }
+            vals[s].first = new_first;
+            vals[s].count = n;
+        }
+        vals[s].len = n;
+        vals[s].made = true;
+        return 1;
+    }
+    return 0;
+}
+
+recursive fn wref_loaded_set(unit: schema_rt::LoadUnit, data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: const schema_rt::LoadNode[:], rec: i64, path: const u8[:], kind: const u8[:], text: const u8[:]) -> i64 {
+    var dot: i64 = 0;
+    while dot < path.len && path[dot] != '.' { dot += 1; }
+    let seg_raw = path[0..dot];
+    let rest = if dot < path.len { path[dot + 1..path.len] } else { "" };
+    var br: i64 = 0;
+    while br < seg_raw.len && seg_raw[br] != '[' { br += 1; }
+    let seg = seg_raw[0..br];
+    var idx: i64 = -1;
+    if br < seg_raw.len && seg_raw[seg_raw.len - 1] == ']' {
+        let parsed, ok = parse_int(seg_raw[br + 1..seg_raw.len - 1]);
+        if ok { idx = parsed; }
+    }
+    let t = unit.tables[vals[rec].tab];
+    var fi: i64 = 0;
+    while fi < t.fields.len {
+        let d = t.fields[fi];
+        if d.name == seg {
+            let s = vals[rec].first + fi;
+            if rest.len == 0 && idx < 0 {
+                return wref_loaded_leaf(data, vals, s, d, kind, text);
+            }
+            if idx >= 0 {
+                if d.shape == schema_rt::ShapeMap {
+                    let erec = vals[s].first + idx;
+                    return wref_loaded_set(unit, data, vals, nodes, erec, rest, kind, text);
+                }
+                let es = vals[s].first + idx;
+                let e = d.elem;
+                guard e else { return 0; }
+                if rest.len == 0 {
+                    if d.ek == 12 && e.shape == schema_rt::ShapeTab {
+                        let et = schema_rt::value_table(unit, e.ref);
+                        return wref_loaded_leaf(data, vals, vals[es].first, unit.tables[et].fields[0], kind, text);
+                    }
+                    return wref_loaded_leaf(data, vals, es, e, kind, text);
+                }
+                if e.shape == schema_rt::ShapeTab {
+                    return wref_loaded_set(unit, data, vals, nodes, es, rest, kind, text);
+                }
+                if e.shape == schema_rt::ShapePtr {
+                    let widx = vals[es].bits.lo as! i64;
+                    return wref_loaded_set(unit, data, vals, nodes, nodes[widx - 2].val, rest, kind, text);
+                }
+                return 0;
+            }
+            if d.shape == schema_rt::ShapePtr {
+                let widx = vals[s].bits.lo as! i64;
+                return wref_loaded_set(unit, data, vals, nodes, nodes[widx - 2].val, rest, kind, text);
+            }
+            if d.shape == schema_rt::ShapeTab {
+                return wref_loaded_set(unit, data, vals, nodes, s, rest, kind, text);
+            }
+            if d.shape == schema_rt::ShapeUnion {
+                let ui = schema_rt::value_union(unit, d.ref);
+                let arms = unit.unions[ui].arms;
+                var ai: i64 = 0;
+                while ai < arms.len {
+                    if arms[ai].name == rest {
+                        return wref_loaded_leaf(data, vals, vals[s].first, arms[ai], kind, text);
+                    }
+                    ai += 1;
+                }
+                return 0;
+            }
+            return 0;
+        }
+        fi += 1;
+    }
+    return 0;
+}
+
+fn wref_loaded_has_str(hay: const u8[:], needle: const u8[:]) -> bool {
+    if needle.len == 0 || hay.len < needle.len { return false; }
+    var i: i64 = 0;
+    while i + needle.len <= hay.len {
+        if hay[i..i + needle.len] == needle { return true; }
+        i += 1;
+    }
+    return false;
+}
+
+fn wref_loaded_run(surf: const u8[:], root_name: const u8[:], wire: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] {
+    let u = conformance_unit();
+    if schema_rt::value_table(u, root_name) < 0 { return "!absent"; }
+    var data: u8[>..] = [];
+    data.append(wire);
+    var vals: schema_rt::LoadVal[>..] = [];
+    var nodes: schema_rt::LoadNode[>..] = [];
+    let root = load_instance(root_name, data, vals, nodes);
+    if root < 0 { return "!load-failed"; }
+    let st = wref_loaded_set(u, data, vals, nodes, root, path, kind, text);
+    if st == 0 { return "!set-failed"; }
+    if st == 2 { return "unrepresentable\n"; }
+    if surf == "write-refusal" {
+        var out: u8[>..<] = [];
+        if schema_rt::save_table(u, root_name, data, vals, nodes, root, out) != 0 { return "refused\n"; }
+        return "wrote\n";
+    }
+    if conformance_json_measure(root_name, data, vals, nodes, root) < 0 { return "refused\n"; }
+    var jout: u8[>..] = [];
+    if conformance_json_write(root_name, data, vals, nodes, root, jout) < 0 { return "refused\n"; }
+    if kind == "bytes" {
+        var raw: u8[>..] = [];
+        let _ok = wref_loaded_hex(text, raw);
+        var has_zero = false;
+        for b in raw { if b == 0 { has_zero = true; } }
+        if has_zero && !wref_loaded_has_str(jout, "\\u0000") { return "wrote without \\u0000\n"; }
+    }
+    return "wrote\n";
+}
+
 fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], surf: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -514,6 +718,17 @@ fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], surf: const u8[:])
         load_file(f[4], data);
         let res = conformance_wref(surf, f[3], ann, data, f[5], f[6], f[7]);
         if res == "!absent" {
+            if surf == "write-refusal" || surf == "write-refusal-json" {
+                let vres = wref_loaded_run(surf, f[3], data, f[5], f[6], f[7]);
+                if vres != "!absent" {
+                    if vres.len > 0 && vres[0] == '!' {
+                        write_stderr(str("driver: ", f[1], " ", vres, "\n"));
+                        exit(1);
+                    }
+                    answer(f[1], vres);
+                    continue;
+                }
+            }
             absent(f[1], "");
             continue;
         }
