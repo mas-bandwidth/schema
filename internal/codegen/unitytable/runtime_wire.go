@@ -632,15 +632,19 @@ internal static partial class TableWire
             if (count > int.MaxValue) { if (Fail == WireWhole) { Fail = WireCountCap; } return false; }
             return true;
         }
+        static bool ArrayElemAllowed(byte k) => (k >= 1 && k <= 13) || k == 15 || k == 17 || (k >= 18 && k <= 30);
+        static bool KeyedElemAllowed(byte k) => (k >= 1 && k <= 11) || k == 13 || (k >= 18 && k <= 30);
         bool ArrayBody(ReadOnlySpan<byte> b)
         {
             if (!Header(b, out byte kind, out ulong count, out int off)) { return false; }
+            if (!ArrayElemAllowed(kind)) { return Damage(); }
             for (ulong i = 0; i < count; i++) { if (!Payload(b, ref off, kind)) { return false; } }
             return off == b.Length || Damage();
         }
         bool KeyedBody(ReadOnlySpan<byte> b)
         {
             if (!Header(b, out byte kind, out ulong count, out int off)) { return false; }
+            if (!KeyedElemAllowed(kind)) { return Damage(); }
             Span<ulong> seen = stackalloc ulong[Words];
             for (ulong i = 0; i < count; i++)
             {

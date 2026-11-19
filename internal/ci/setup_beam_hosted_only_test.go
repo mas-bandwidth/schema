@@ -86,18 +86,15 @@ func checkEverySetupBeamIsHostedOnly(wfs map[string]string) []string {
 // the guard, so this cannot hide a new ungated step. When an owning stream
 // gates one of these steps, delete its line here; the gate fails on a stale
 // exemption so the list cannot outlive the steps it names.
-var setupBeamExemptSteps = map[string][]int{
-	"leg.yml":     {138},
-	"certify.yml": {201, 457, 647, 961},
-}
+var setupBeamExemptSteps = map[string][]int{}
 
 // nonExemptSetupBeamErrorsFrom drops only the errors naming an exempt
-// step above.
-func nonExemptSetupBeamErrorsFrom(all []string) []string {
+// step in exemptMap.
+func nonExemptSetupBeamErrorsFrom(all []string, exemptMap map[string][]int) []string {
 	var errs []string
 	for _, err := range all {
 		exempt := false
-		for name, lines := range setupBeamExemptSteps {
+		for name, lines := range exemptMap {
 			for _, line := range lines {
 				if strings.HasPrefix(err, fmt.Sprintf("%s:%d:", name, line)) {
 					exempt = true
@@ -114,7 +111,7 @@ func nonExemptSetupBeamErrorsFrom(all []string) []string {
 // nonExemptSetupBeamErrors runs the check over every workflow and drops
 // only the errors naming an exempt step above.
 func nonExemptSetupBeamErrors(wfs map[string]string) []string {
-	return nonExemptSetupBeamErrorsFrom(checkEverySetupBeamIsHostedOnly(wfs))
+	return nonExemptSetupBeamErrorsFrom(checkEverySetupBeamIsHostedOnly(wfs), setupBeamExemptSteps)
 }
 
 // TestEverySetupBeamIsHostedOnly holds the fleet rule across every workflow
@@ -175,7 +172,7 @@ func TestSetupBeamExemptionIsStepScoped(t *testing.T) {
 		"leg.yml:999: erlef/setup-beam runs without",
 		"brand-new.yml:12: erlef/setup-beam runs without",
 	}
-	kept := nonExemptSetupBeamErrorsFrom(errs)
+	kept := nonExemptSetupBeamErrorsFrom(errs, map[string][]int{"leg.yml": {138}})
 	if len(kept) != 2 || !strings.HasPrefix(kept[0], "leg.yml:999:") || !strings.HasPrefix(kept[1], "brand-new.yml:12:") {
 		t.Errorf("step-scoped exemption kept %v, want leg.yml:999 and brand-new.yml:12", kept)
 	}

@@ -115,7 +115,7 @@ func soakRow[T any, R any](
 }
 
 func soakCorpus(t *testing.T) []soakCase {
-	g := "../../testdata/wire/tables/"
+	g := "../../testdata/conformance/tables/wire/"
 	return []soakCase{
 		soakRow(t, "root_full", g+"root_full.bin", tabledemo.RootConfigReset, tabledemo.RootConfigLoad,
 			tabledemo.RootConfigMeasure, tabledemo.RootConfigSave, tabledemo.RootConfigFromJSON,
@@ -129,9 +129,9 @@ func soakCorpus(t *testing.T) []soakCase {
 		soakRow(t, "loadout_full", g+"loadout_full.bin", tabledemo.LoadoutConfigReset, tabledemo.LoadoutConfigLoad,
 			tabledemo.LoadoutConfigMeasure, tabledemo.LoadoutConfigSave, tabledemo.LoadoutConfigFromJSON,
 			tabledemo.LoadoutConfigToJSONMeasure, tabledemo.LoadoutConfigToJSON),
-		soakRow(t, "wide_blob", g+"wide_blob.bin", tabledemo.WideBlobReset, tabledemo.WideBlobLoad,
-			tabledemo.WideBlobMeasure, tabledemo.WideBlobSave, tabledemo.WideBlobFromJSON,
-			tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
+		// WideBlob's 280012-byte body sits past the 65536-byte fixed-form ceiling
+		// (docs/SPEC-TABLES.md §3.4): it carries no file form and its form-1 bytes
+		// stay a refusal vector.
 		soakRow(t, "archive", g+"archive.bin", tabledemo.ArchiveConfigReset, tabledemo.ArchiveConfigLoad,
 			tabledemo.ArchiveConfigMeasure, tabledemo.ArchiveConfigSave, tabledemo.ArchiveConfigFromJSON,
 			tabledemo.ArchiveConfigToJSONMeasure, tabledemo.ArchiveConfigToJSON),
@@ -399,7 +399,7 @@ func TestSoakIdentifierCanGoRed(t *testing.T) {
 	runtime.MemProfileRate = 1
 	defer func() { runtime.MemProfileRate = oldRate }()
 
-	badRow := soakRow(t, "root_default", "../../testdata/wire/tables/root_default.bin",
+	badRow := soakRow(t, "root_default", "../../testdata/conformance/tables/wire/root_default.bin",
 		tabledemo.RootConfigReset,
 		func(c *tabledemo.RootConfig, b []byte, r *tabledemo.TableReport) bool {
 			soakSink = make([]byte, 48)

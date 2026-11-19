@@ -135,8 +135,14 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
 
-      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+      - name: isolate Mix and Hex in the job temp directory
         if: matrix.otp != ''
+        run: |
+          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
+          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}

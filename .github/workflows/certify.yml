@@ -127,6 +127,11 @@ jobs:
       - name: where this job records its go test package results
         run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
+      - name: isolate Mix and Hex in the job temp directory
+        run: |
+          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
+          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+
       # Siblings cloned exactly where README.md tells a newcomer to put them —
       # CI exercises the documented path rather than a special one. The
       # Makefile's SERIALIZE* defaults already point here, and the generated
@@ -199,6 +204,7 @@ jobs:
       # (generated Elixir is self-contained — Erlang/OTP + Elixir are the
       # only dependencies, so there is no serialize.elixir clone above).
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -395,6 +401,11 @@ jobs:
       - name: where this job records its go test package results
         run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
+      - name: isolate Mix and Hex in the job temp directory
+        run: |
+          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
+          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
@@ -455,6 +466,7 @@ jobs:
       - uses: ./.github/actions/python
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -587,6 +599,11 @@ jobs:
       - name: where this job records its go test package results
         run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
+      - name: isolate Mix and Hex in the job temp directory
+        run: |
+          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
+          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
@@ -645,6 +662,7 @@ jobs:
       # cached under the pins.
       - uses: ./.github/actions/python
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -812,6 +830,11 @@ jobs:
       - name: where this job records its go test package results
         run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
+      - name: isolate Mix and Hex in the job temp directory
+        run: |
+          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
+          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
@@ -886,6 +909,11 @@ jobs:
       - name: where this job records its go test package results
         run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
+      - name: isolate Mix and Hex in the job temp directory
+        run: |
+          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
+          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+
       # All six siblings in every group, exactly as ci.yml's leg clones them: a
       # control reaches for a runtime through the generated code it sabotages,
       # and which one that is belongs to the control rather than to the group.
@@ -959,7 +987,7 @@ jobs:
         if: matrix.python != ''
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}

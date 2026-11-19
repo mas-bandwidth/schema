@@ -1600,25 +1600,30 @@ struct TableJsonIn
     int64_t key_count;
     int64_t key_capacity;
     int64_t key_mark; // the first key of the object being walked
+    static constexpr int64_t kInlineKeys = 128;
+    static constexpr int64_t kInlineKeyBytes = 4096;
+    int64_t key_inline_offset[kInlineKeys];
+    int32_t key_inline_length[kInlineKeys];
+    char key_inline_bytes[kInlineKeyBytes];
 };
 
 inline void TableJsonKeysInit( TableJsonIn & in )
 {
-    in.key_bytes = NULL;
-    in.key_bytes_size = 0;
+    in.key_bytes = in.key_inline_bytes;
+    in.key_bytes_size = TableJsonIn::kInlineKeyBytes;
     in.key_bytes_used = 0;
-    in.key_offset = NULL;
-    in.key_length = NULL;
+    in.key_offset = in.key_inline_offset;
+    in.key_length = in.key_inline_length;
     in.key_count = 0;
-    in.key_capacity = 0;
+    in.key_capacity = TableJsonIn::kInlineKeys;
     in.key_mark = 0;
 }
 
 inline void TableJsonKeysShutdown( TableJsonIn & in )
 {
-    free( in.key_bytes );
-    free( in.key_offset );
-    free( in.key_length );
+    if ( in.key_bytes != NULL && in.key_bytes != in.key_inline_bytes ) { free( in.key_bytes ); }
+    if ( in.key_offset != NULL && in.key_offset != in.key_inline_offset ) { free( in.key_offset ); }
+    if ( in.key_length != NULL && in.key_length != in.key_inline_length ) { free( in.key_length ); }
     TableJsonKeysInit( in );
 }
 
@@ -1648,22 +1653,52 @@ inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
 {
     if ( count > in.key_capacity )
     {
-        int64_t capacity = in.key_capacity != 0 ? in.key_capacity : 16;
+        int64_t capacity = in.key_capacity != 0 ? in.key_capacity : TableJsonIn::kInlineKeys;
         while ( capacity < count ) { capacity *= 2; }
-        int64_t * offset = (int64_t *) realloc( in.key_offset, (size_t) capacity * sizeof( int64_t ) );
-        if ( offset == NULL ) { return false; }
+        int64_t * offset = NULL;
+        if ( in.key_offset == in.key_inline_offset )
+        {
+            offset = (int64_t *) malloc( (size_t) capacity * sizeof( int64_t ) );
+            if ( offset == NULL ) { return false; }
+            if ( in.key_count > 0 ) { memcpy( offset, in.key_inline_offset, (size_t) in.key_count * sizeof( int64_t ) ); }
+        }
+        else
+        {
+            offset = (int64_t *) realloc( in.key_offset, (size_t) capacity * sizeof( int64_t ) );
+            if ( offset == NULL ) { return false; }
+        }
         in.key_offset = offset;
-        int32_t * length = (int32_t *) realloc( in.key_length, (size_t) capacity * sizeof( int32_t ) );
-        if ( length == NULL ) { return false; }
+        int32_t * length = NULL;
+        if ( in.key_length == in.key_inline_length )
+        {
+            length = (int32_t *) malloc( (size_t) capacity * sizeof( int32_t ) );
+            if ( length == NULL ) { return false; }
+            if ( in.key_count > 0 ) { memcpy( length, in.key_inline_length, (size_t) in.key_count * sizeof( int32_t ) ); }
+        }
+        else
+        {
+            length = (int32_t *) realloc( in.key_length, (size_t) capacity * sizeof( int32_t ) );
+            if ( length == NULL ) { return false; }
+        }
         in.key_length = length;
         in.key_capacity = capacity;
     }
     if ( bytes > in.key_bytes_size )
     {
-        int64_t size = in.key_bytes_size != 0 ? in.key_bytes_size : 64;
+        int64_t size = in.key_bytes_size != 0 ? in.key_bytes_size : TableJsonIn::kInlineKeyBytes;
         while ( size < bytes ) { size *= 2; }
-        char * grown = (char *) realloc( in.key_bytes, (size_t) size );
-        if ( grown == NULL ) { return false; }
+        char * grown = NULL;
+        if ( in.key_bytes == in.key_inline_bytes )
+        {
+            grown = (char *) malloc( (size_t) size );
+            if ( grown == NULL ) { return false; }
+            if ( in.key_bytes_used > 0 ) { memcpy( grown, in.key_inline_bytes, (size_t) in.key_bytes_used ); }
+        }
+        else
+        {
+            grown = (char *) realloc( in.key_bytes, (size_t) size );
+            if ( grown == NULL ) { return false; }
+        }
         in.key_bytes = grown;
         in.key_bytes_size = size;
     }
@@ -5112,7 +5147,10 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
 {
     fits = false;
     TableReport scratch;
-    TableJsonIn probe = { token, (int64_t) length, 0, &scratch, false, NULL, NULL, 0, 0, NULL, NULL, 0, 0, 0 };
+    TableJsonIn probe{};
+    probe.text = token;
+    probe.size = (int64_t) length;
+    probe.report = &scratch;
     bool integral = false;
     TableJsonSpace( probe );
     if ( probe.pos != 0 ) { return false; } // whitespace is never part of a key

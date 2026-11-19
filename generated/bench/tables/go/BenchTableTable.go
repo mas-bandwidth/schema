@@ -1705,6 +1705,13 @@ func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
 		return 0, c.fail(TableRefuseWireDamaged)
 	}
 	kind := sub.Get8()
+	if keyed {
+		if !((kind >= 1 && kind <= 11) || kind == 13 || (kind >= 18 && kind <= 30)) {
+			return 0, c.fail(TableRefuseWireDamaged)
+		}
+	} else if !((kind >= 1 && kind <= 13) || kind == 15 || kind == 17 || (kind >= 18 && kind <= 30)) {
+		return 0, c.fail(TableRefuseWireDamaged)
+	}
 	count, ok := sub.Leb()
 	if !ok {
 		return 0, c.fail(TableRefuseWireDamaged)
@@ -2456,7 +2463,11 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// bytes land as they are (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5) —
 			// a bool byte as itself, a tag as one native scalar.
 			if p.Op == tableFixedTag {
-				tableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, p.Size)
+				if uint32(p.DstSize) > p.Size {
+					tableFixedPutNative(dst[p.Dst:], tableFixedTagAt(src, p.Src, uint8(p.Size)), uint32(p.DstSize))
+				} else {
+					tableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, p.Size)
+				}
 			} else {
 				tableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
 			}
@@ -2524,7 +2535,11 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			binary.NativeEndian.PutUint64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(tableFixedGet32(src[p.Src:])))))
 			report.Widened++
 		case tableFixedConst:
-			tableFixedPutNative(dst[p.Dst:], uint64(p.Aux), p.Size)
+			n := p.Size
+			if p.Meta != 0 {
+				n = uint32(p.Meta)
+			}
+			tableFixedPutNative(dst[p.Dst:], uint64(p.Aux), n)
 			// The unguarded None const lands None; the check loop refused a raw
 			// tag past the writer's arm count (this entry's DstSize) before this
 			// run (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.6). tableFixedSrcEnd gives
@@ -3370,11 +3385,15 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
+		dstTag := uint8(myTag)
+		if d.Stride != 0 {
+			dstTag = uint8(d.Stride)
+		}
 		// None goes down first, guarded only by the outer arm. Each matched
 		// writer arm then overwrites it with the reader's ordinal. A missing
 		// writer arm makes the lineage unlawful above; a tag outside the
 		// writer's set refuses in the check pass, before any record lands.
-		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Guard: guard, Op: tableFixedConst, Arg: arg}
+		none := TableFixedEntry{Src: theirAt, Dst: auxAt, Size: theirTag, Meta: dstTag, Guard: guard, Op: tableFixedConst, Arg: arg}
 		if te.Children > 0 && te.Children <= 255 {
 			none.DstSize = uint8(te.Children)
 		}
@@ -3402,7 +3421,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 					savedAt, savedLaid := c.chainAt, c.chainLaid
 					c.chain = append(c.chain, TableFixedGuardLink{Guard: theirAt, Arg: uint64(j + 1), ArgW: c.argW})
 					c.chainLaid = false
-					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
+					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: uint32(dstTag), Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint64(j + 1)})
 					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint64(j+1), census)
 					if ta.Size < span {
 						// THE BYTES PAST A NARROWER TAKEN ARM ARE DEAD.
@@ -3525,20 +3544,34 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if c.overflow {
 		return -1
 	}
+	laneOf := func(e TableFixedEntry) uint32 {
+		if e.Op == tableFixedBool || e.Size <= 1 {
+			return 1
+		}
+		return e.Size
+	}
+	lanes := make([]uint32, c.count)
+	plain := make([]bool, c.count)
 	out := int32(0)
 	for i := range c.count {
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
+			plain[out-1] && plan[i].DstSize == 0 &&
+			lanes[out-1] == laneOf(plan[i]) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
 			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
+			plan[out-1].Aux == 0 && plan[i].Aux == 0 &&
 			plan[out-1].Guard2 == plan[i].Guard2 && plan[out-1].Arg2 == plan[i].Arg2 &&
 			plan[out-1].ArgW2 == plan[i].ArgW2 &&
 			plan[out-1].GuardIndex == plan[i].GuardIndex && plan[out-1].GuardCount == plan[i].GuardCount &&
 			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
 			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {
+			plan[out-1].DstSize = uint8(lanes[out-1])
 			plan[out-1].Size += plan[i].Size
 			continue
 		}
 		plan[out] = plan[i]
+		lanes[out] = laneOf(plan[i])
+		plain[out] = plan[i].DstSize == 0
 		out++
 	}
 	// THE PARTITION, same as the identity builder above: the walk pushes
@@ -3588,8 +3621,14 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 			continue
 		}
 		switch p.Op {
-		case tableFixedCopy, tableFixedBool, tableFixedTag, tableFixedConst:
+		case tableFixedCopy, tableFixedBool, tableFixedTag:
 			tableFixedLand(cover, p.Dst, p.Size)
+		case tableFixedConst:
+			n := p.Size
+			if p.Meta != 0 {
+				n = uint32(p.Meta)
+			}
+			tableFixedLand(cover, p.Dst, n)
 		case tableFixedCount:
 			tableFixedLand(cover, p.Dst, 4)
 		case tableFixedText:
@@ -9309,7 +9348,7 @@ var TableMixedFixedDst = []TableFixedDst{
 	{0, 0, 0, 0, 0, 0, 0}, // element
 	{uint32(unsafe.Offsetof(TableStat{}.StatID)), 0, 0, 0, 0, 0, 0}, // stat_id
 	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0, 0},  // delta
-	{uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(TableMixed{}.GameEvent)) + uint32(unsafe.Offsetof(TableEvent{}.Type)), 0, 0, 0, 0}, // game_event
+	{uint32(unsafe.Offsetof(TableMixed{}.GameEvent)), uint32(unsafe.Sizeof(TableEvent{}.Type)), uint32(unsafe.Offsetof(TableMixed{}.GameEvent)) + uint32(unsafe.Offsetof(TableEvent{}.Type)), 0, 0, 0, 0}, // game_event
 	{uint32(unsafe.Offsetof(TableEvent{}.Hit)), 0, 0, 0, 0, 0, 0},                                   // hit
 	{uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), 0, 0, 0, 0, 0, 0},                           // target_id
 	{uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), 0, 0, 0, 0, 0, 0},                             // damage

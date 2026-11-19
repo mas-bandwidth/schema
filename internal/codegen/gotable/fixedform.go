@@ -255,7 +255,7 @@ func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, 
 			return
 		case *ir.Union:
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
-				dstGo(dst, "", dst+" + "+g.offGo(f.Type.Name, "Type"), 0, 0))
+				dstGo(dst, fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.Type))", g.fixedStorage(f.Type.Name)), dst+" + "+g.offGo(f.Type.Name, "Type"), 0, 0))
 			for _, v := range r.Variants {
 				armID := ir.TableWireId(v.WireName())
 				if v.F == nil {

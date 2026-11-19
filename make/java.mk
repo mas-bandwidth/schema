@@ -1707,10 +1707,10 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 
 # THE PER-CASE ABSENT GATE (docs/PORTING.md I4; test/conformance/README.md).
-# The Java leg alone through the harness: it must be green, and at least one
-# surface it otherwise answers must carry a per-case absence (`pass N/M +Ka`
-# with N > 0), which is the case grain the method names, as opposed to a whole
-# surface left out of `list`.
+# The Java leg alone through the harness: every surface is green with zero
+# pending per-case absences (`+Ka` with K > 0); the negative control below
+# sabotages Driver.java's `.absent` writer (used for writer refusals) so the
+# harness fails on "the driver wrote nothing".
 JAVA_ABSENT := build/conformance-java-absent
 .PHONY: conformance-java-absent conformance-java-absent-negative-control
 conformance-java-absent: build/conformance-harness build-conformance-java
@@ -1719,10 +1719,9 @@ conformance-java-absent: build/conformance-harness build-conformance-java
 	JAVA=$(JAVA) ./build/conformance-harness run --drivers $(JAVA_ABSENT)/drivers.txt \
 		--work $(JAVA_ABSENT)/work > $(JAVA_ABSENT)/log 2>&1 || \
 		{ cat $(JAVA_ABSENT)/log; echo "conformance-java-absent: the Java leg is not green"; exit 1; }
-	@grep -qE ' pass [1-9][0-9]*/[0-9]+ \+[1-9][0-9]*a' $(JAVA_ABSENT)/log || \
-		{ cat $(JAVA_ABSENT)/log; echo "conformance-java-absent: no surface carries a per-case absence"; exit 1; }
-	@grep -E ' pass [1-9][0-9]*/[0-9]+ \+[1-9][0-9]*a' $(JAVA_ABSENT)/log | head -3
-	@echo "conformance-java-absent: the Java leg is green and answers absent per case"
+	@! grep -Eq ' pass [0-9]+/[0-9]+ \+[1-9][0-9]*a' $(JAVA_ABSENT)/log || \
+		{ cat $(JAVA_ABSENT)/log; echo "conformance-java-absent: unexpected per-case absence"; exit 1; }
+	@echo "conformance-java-absent: the Java leg is green with no pending per-case absences"
 
 # ITS NEGATIVE CONTROL: the driver's two absence writers (spillAbsent and
 # spillAbsentReason) write no marker. Every case the leg cannot answer then has
@@ -1743,10 +1742,10 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 		echo "NEGATIVE CONTROL FAILED: a driver that writes no absence marker left the harness green"; \
 		cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -q "the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
+	@grep -q "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a missing answer"; \
 		  cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; }
-	@grep -m1 "the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
+	@grep -m1 "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
 	@echo "negative control: a driver that writes no absence marker turns the harness RED on the cases it cannot answer"
 
 # THE JAVA LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (docs/PORTING.md

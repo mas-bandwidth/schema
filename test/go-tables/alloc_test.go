@@ -23,7 +23,7 @@ import (
 // the corpus's richest FIXED root: nested tables, counted arrays of tables,
 // strings, bytes, a union, a flags mask, a guarded branch and every scalar
 // width. If anything on the read path allocates, this instance finds it.
-const representative = "../../testdata/wire/tables/root_full.bin"
+const representative = "../../testdata/conformance/tables/wire/root_full.bin"
 
 func wire(t testing.TB, path string) []byte {
 	t.Helper()
