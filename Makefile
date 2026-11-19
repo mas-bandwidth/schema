@@ -7565,11 +7565,11 @@ SLOWGATE_SHARDS ?= 26
 .PHONY: slow-gate-coverage-codegen slow-gate-coverage-rest
 slow-gate-coverage-codegen: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1 || true
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log
 slow-gate-coverage-rest: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1 || true
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log
 # THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
 # run are targets here: `vuln` runs the scanner pinned and direct, and the

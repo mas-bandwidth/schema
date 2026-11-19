@@ -284,5 +284,7 @@ var catalog = []Entry{
 	e("test/tables", "C++ table tests", "make test", "./build/schema_test_tables"),
 	e("test/unity-hostile", "Unity C# hostile-corpus runner", "make schema-unity-runs-hostile-corpus", "make schema-unity-runs-hostile-corpus"),
 	e("test/unity", "Unity C# packet wire tests", "make test-unity", "make unity-wire"),
+	e("test/verify-bitphase", "18-language packet 0..63 bit-phase sweep", "make verify-bitphase-js", "./build/verify-bitphase-bin --lang all"),
+	e("test/verify-canonical", "18-language canonical-write permutation gate", "make verify-canonical-js", "./build/verify-canonical-bin --lang all"),
 	e("test/vocabgen", "wide-vocabulary generator", "make check", "go run ./test/vocabgen"),
 }

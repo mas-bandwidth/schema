@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -29,15 +28,7 @@ func TestMooJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "moo (it runs the generated text form)")
 
-	schemaDir := t.TempDir()
-	schemaPath := filepath.Join(schemaDir, "Probe.schema")
-	if err := os.WriteFile(schemaPath, []byte(zeroByteWriterSchema), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load([]string{schemaPath})
-	if err != nil {
-		t.Fatalf("load schema: %v", err)
-	}
+	u := mooBase64UnitFromSource(t, zeroByteWriterSchema)
 	m := tabletext.NewModel(u)
 	clean := func(t *testing.T) *tabletext.Instance {
 		t.Helper()

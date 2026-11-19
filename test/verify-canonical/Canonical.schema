@@ -1,0 +1,34 @@
+// Canonical.schema — Pillar #5: canonical-write input permutations across all 18 ports.
+// Exercises unsorted map construction (string, string(16), int64, uint64, nested maps),
+// enum-keyed [Tier]uint32 JSON object key permutations, and distinct equal-blob
+// allocations (*string and *bytes) across both JSON-read and native in-memory builders.
+
+package canonical
+
+enum Tier
+{
+    Bronze
+    Silver
+    Gold
+    Platinum
+}
+
+fixed table Child
+{
+    label string(16)
+    score int32
+}
+
+table Bundle
+{
+    by_name map[string]int32
+    by_code map[string(16)]int32
+    by_id   map[int64]Child
+    by_uid  map[uint64]uint32
+    by_tier [Tier]uint32
+    nested  map[string(16)]map[int32]int32
+    text_a  *string
+    text_b  *string
+    blob_a  *bytes
+    blob_b  *bytes
+}

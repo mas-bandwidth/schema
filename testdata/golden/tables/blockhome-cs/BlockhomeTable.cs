@@ -4198,8 +4198,23 @@ namespace Blockhome
             }
             internal static bool MapOrdered(object value, TableFieldInfo f)
             {
-                for (int i = 1; i < Count(value, f); i++)
-                { if (CompareKey(f.GetChild(value, i - 1), f.GetChild(value, i), f.Table.Fields[0]) >= 0) { return false; } }
+                int n = Count(value, f);
+                if (n <= 1) { return true; }
+                TableFieldInfo key = f.Table.Fields[0];
+                bool sorted = true;
+                for (int i = 1; i < n; i++)
+                {
+                    int c = CompareKey(f.GetChild(value, i - 1), f.GetChild(value, i), key);
+                    if (c == 0) { return false; }
+                    if (c > 0) { sorted = false; break; }
+                }
+                if (sorted) { return true; }
+                object[] entries = new object[n];
+                for (int i = 0; i < n; i++) { entries[i] = f.GetChild(value, i); }
+                Array.Sort(entries, (a, b) => CompareKey(a, b, key));
+                for (int i = 1; i < n; i++)
+                { if (CompareKey(entries[i - 1], entries[i], key) >= 0) { return false; } }
+                for (int i = 0; i < n; i++) { f.SetChild(value, i, entries[i]); }
                 return true;
             }
 

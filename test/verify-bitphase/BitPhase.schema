@@ -1,0 +1,119 @@
+// BitPhase.schema — Pillar #1: 0..63 packet bit-phase sweep across all 18 ports.
+// Packs an identical rich Payload preceded by 8 bit-offset prefix shims
+// (0, 1, 7, 31, 32, 33, 56, 63 bits) plus a 0-bit degenerate struct.
+
+package bitphase
+
+const MagicByte = 0xA5
+
+type EmptyZero
+{
+}
+
+type TinyArm
+{
+    v bits(7)
+}
+
+type WideArm
+{
+    lo uint64
+    hi bits(17)
+}
+
+union PhaseUnion
+{
+    void_arm
+    tiny TinyArm
+    wide WideArm
+}
+
+type Payload
+{
+    flag       bool
+    b1         bits(1)
+    b13        bits(13)
+    b32        bits(32)
+    b64        bits(64)
+    r_i32      int32   | min = -500, max = 500
+    raw_u128   uint128
+    rng_i128_a int128  | min = -5000000000, max = 5000000000
+    rng_i128_b int128  | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
+    f32        float32
+    f64        float64
+    cf         float32 | min = -10.0, max = 10.0, resolution = 0.01
+    fx         fixed(16, 16)  | min = -180, max = 180
+    ufx        ufixed(32, 32) | min = 0, max = 1000
+    items      [..4]int16
+    outer_gate bool
+    if outer_gate
+    {
+        inner_gate bool
+        if inner_gate
+        {
+            branch_a int32 | min = -100, max = 100
+        }
+        else
+        {
+            branch_b bits(9)
+        }
+    }
+    else
+    {
+        branch_c uint16
+    }
+    choice PhaseUnion
+    const(MagicByte, 8)
+    reserved(5)
+    align
+    label string(19)
+    raw   bytes(17)
+    tail  bits(3)
+}
+
+type Phase0
+{
+    body Payload
+}
+
+type Phase1
+{
+    shim bits(1)
+    body Payload
+}
+
+type Phase7
+{
+    shim bits(7)
+    body Payload
+}
+
+type Phase31
+{
+    shim bits(31)
+    body Payload
+}
+
+type Phase32
+{
+    shim bits(32)
+    body Payload
+}
+
+type Phase33
+{
+    shim bits(33)
+    body Payload
+}
+
+type Phase56
+{
+    shim bits(56)
+    body Payload
+}
+
+type Phase63
+{
+    shim bits(63)
+    body Payload
+}

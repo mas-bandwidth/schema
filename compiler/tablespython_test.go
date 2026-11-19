@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -140,41 +141,129 @@ func TestPythonTablesHonorCarriedConstructs(t *testing.T) {
 // TestPythonTableRuntimeNamesAreClaimed holds the registry to the runtime the
 // emitter embeds: every public module-level name is registered, and every
 // registered name is one the runtime spells.
-func TestPythonTableRuntimeNamesAreClaimed(t *testing.T) {
-	t.Parallel()
+func collectPythonEmittedFiles(t *testing.T) map[string][]byte {
+	t.Helper()
 	runtime, err := pythontable.Runtime()
 	if err != nil {
 		t.Fatal(err)
 	}
+	u := unitFromSource(t, "package probe\nfixed table Box { x int32 }\n")
+	gen, err := pythontable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string][]byte{}
+	for k, v := range runtime {
+		out["runtime/"+k] = v
+	}
+	for k, v := range gen {
+		if strings.HasSuffix(k, "/unit_view.py") || strings.Contains(string(v), "ANNOUNCEMENT =") {
+			out["gen/"+k] = v
+		}
+	}
+	return out
+}
+
+// TestPythonTableRuntimeNamesAreClaimed holds the registry to the runtime and
+// generated package surface: every public runtime name is registered, and every
+// registered name is emitted.
+func TestPythonTableRuntimeNamesAreClaimed(t *testing.T) {
+	t.Parallel()
+	files := collectPythonEmittedFiles(t)
 	registered := map[string]bool{}
 	for _, name := range tablenames.DefinedBy(tablenames.Python) {
 		registered[name] = true
 	}
+	for _, f := range scanPythonRuntimeNames(files, registered) {
+		t.Error(f)
+	}
+}
+
+func scanPythonRuntimeNames(files map[string][]byte, registered map[string]bool) []string {
 	decl := regexp.MustCompile(`^(?:class|def)\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	assign := regexp.MustCompile(`^([A-Z][A-Z0-9_]*)\s*[:=]`)
+	assign := regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\s*[:=]`)
+	attr := regexp.MustCompile(`^\s{4,8}self\.([a-z][a-z0-9_]*)\s*=`)
 	found := map[string]bool{}
-	for rel, data := range runtime {
+	for rel, data := range files {
 		if !strings.HasSuffix(rel, ".py") {
 			continue
 		}
+		if strings.HasSuffix(rel, "/kinds.py") {
+			found["kinds"] = true
+		}
+		isRuntime := strings.HasPrefix(rel, "runtime/")
+		isGenSchema := strings.Contains(rel, "/_schema/") || strings.HasSuffix(rel, "/__init__.py")
+		if !isRuntime && !isGenSchema {
+			continue
+		}
 		for line := range strings.SplitSeq(string(data), "\n") {
-			if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '#' {
+			if line == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
 				continue
 			}
-			if m := decl.FindStringSubmatch(line); m != nil {
-				found[m[1]] = true
-			}
-			if m := assign.FindStringSubmatch(line); m != nil {
-				found[m[1]] = true
+			if line[0] != ' ' && line[0] != '\t' {
+				if m := decl.FindStringSubmatch(line); m != nil {
+					if m[1] != "Box" {
+						found[m[1]] = true
+					}
+				} else if m := assign.FindStringSubmatch(line); m != nil {
+					if m[1] != "BUILD_VERSION" && m[1] != "PACKAGE" && m[1] != "PROTOCOL_ID" {
+						found[m[1]] = true
+					}
+				}
+			} else if strings.HasSuffix(rel, "descriptor.py") || strings.HasSuffix(rel, "view.py") {
+				if m := attr.FindStringSubmatch(line); m != nil && registered[m[1]] {
+					found[m[1]] = true
+				}
+				if m := regexp.MustCompile(`^\s{4}def\s+([a-z][a-z0-9_]*)\(`).FindStringSubmatch(line); m != nil && registered[m[1]] {
+					found[m[1]] = true
+				}
 			}
 		}
 	}
+	var findings []string
 	for name := range found {
 		if strings.HasPrefix(name, "_") {
 			continue
 		}
 		if !registered[name] {
-			t.Errorf("the runtime defines %s and tablenames.Python does not register it", name)
+			findings = append(findings, "unregistered runtime export: "+name)
 		}
+	}
+	for name := range registered {
+		if strings.HasPrefix(name, "_") {
+			// private helpers registered in tablenames (_widens, _read_widened, _widened_scalar)
+			if !found[name] {
+				findings = append(findings, "registered name not emitted by runtime: "+name)
+			}
+			continue
+		}
+		if !found[name] {
+			findings = append(findings, "registered name not emitted by runtime: "+name)
+		}
+	}
+	return findings
+}
+
+// TestPythonTableRuntimeNameScanGoesRed plants an unregistered public runtime
+// symbol and a registered name nothing emits, requiring both directions red.
+func TestPythonTableRuntimeNameScanGoesRed(t *testing.T) {
+	t.Parallel()
+	files := collectPythonEmittedFiles(t)
+	registered := map[string]bool{}
+	for _, name := range tablenames.DefinedBy(tablenames.Python) {
+		registered[name] = true
+	}
+	copyFiles := map[string][]byte{}
+	for k, v := range files {
+		copyFiles[k] = append([]byte(nil), v...)
+	}
+	copyFiles["runtime/_schema/planted.py"] = []byte("def UnclaimedHelper() -> None:\n    pass\n")
+	if got := scanPythonRuntimeNames(copyFiles, registered); len(got) != 1 || !strings.Contains(got[0], "UnclaimedHelper") {
+		t.Fatalf("planted export findings = %v, want UnclaimedHelper", got)
+	}
+	extraReg := map[string]bool{"GhostExport": true}
+	maps.Copy(extraReg, registered)
+	if got := scanPythonRuntimeNames(files, extraReg); len(got) != 1 || !strings.Contains(got[0], "GhostExport") {
+		t.Fatalf("planted registry findings = %v, want GhostExport", got)
 	}
 }

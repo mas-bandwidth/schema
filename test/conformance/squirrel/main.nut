@@ -254,7 +254,8 @@ if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
-                     "cook-write", "message", "retain", "retain-save"]) print(name + "\n");
+                     "cook-write", "message", "retain", "retain-save",
+                     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]) print(name + "\n");
   return;
 }
 
@@ -659,6 +660,7 @@ if (mode == "forgery" || mode == "cook-forgery" || mode == "block-reason" || mod
     else lead = f[6].tointeger();
     local got = accelOpen(kind, unit, root, data, lead);
     local answer;
+    if (got[0] != null && kind == "block") blockDump(openUnit(unit)[1], got[0]);
     if (reasons) answer = got[0] != null ? "ok\n" : got[1] + "\n";
     else answer = got[0] != null ? "open\n" : "refuse\n";
     writeText(outdir + "/" + name, answer);
@@ -825,4 +827,189 @@ if (mode == "retain" || mode == "retain-save") {
 
 // Every surface main.nut answers is named in `list` and returned above; the
 // driver script asks `list` before a surface and answers exit 2 for the rest.
+
+// THE WRITE CONTRACT (docs/SPEC.md §5.1): the four write-refusal surfaces.
+if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-refusal-message" || mode == "write-refusal-json") {
+  local wrefHex = function(text) {
+    if ((text.len() % 2) != 0) throw "hex " + text + " is not whole bytes";
+    local out = "";
+    for (local i = 0; i < text.len(); i += 2) {
+      local hi = text[i] & 0xff, lo = text[i + 1] & 0xff;
+      local hv = hi >= 97 ? (hi - 87) : (hi >= 65 ? (hi - 55) : (hi - 48));
+      local lv = lo >= 97 ? (lo - 87) : (lo >= 65 ? (lo - 55) : (lo - 48));
+      out += ((hv << 4) | lv).tochar();
+    }
+    return out;
+  };
+  local wrefFloat = function(text) {
+    local b = blob(4);
+    if (text == "nan") { b.writen(0x7fc00000, 'i'); b.seek(0); return b.readn('f'); }
+    if (text == "inf") { b.writen(0x7f800000, 'i'); b.seek(0); return b.readn('f'); }
+    if (text == "-inf") { b.writen(0xff800000, 'i'); b.seek(0); return b.readn('f'); }
+    return text.tofloat();
+  };
+  local wrefClone;
+  wrefClone = function(T, tname, src) {
+    local d = T.Descriptors[tname];
+    local dst = d.make();
+    foreach (fd in d.fields) {
+      local m = fd.member;
+      local val = src[m];
+      if (val == null) { dst[m] = null; continue; }
+      if (fd.shape == "arr") {
+        local cp = [];
+        foreach (el in val) {
+          if (fd.elem != null && fd.elem.shape == "tab") cp.append(wrefClone(T, fd.elem.table, el));
+          else cp.append(el);
+        }
+        dst[m] = cp;
+      } else if (fd.shape == "tab") {
+        dst[m] = wrefClone(T, fd.table, val);
+      } else if (fd.shape == "union") {
+        local ud = T[fd.table + "Descriptor"];
+        local ucp = ud.make();
+        ucp.Type = val.Type;
+        foreach (arm in ud.arms) {
+          if (arm.payload.shape == "tab") ucp[arm.member] = wrefClone(T, arm.payload.table, val[arm.member]);
+          else ucp[arm.member] = val[arm.member];
+        }
+        dst[m] = ucp;
+      } else {
+        dst[m] = val;
+      }
+    }
+    return dst;
+  };
+  local wrefSet = function(T, root, v, path, what, text) {
+    local segments = [];
+    local start = 0;
+    for (local i = 0; i <= path.len(); i++) {
+      if (i == path.len() || path[i] == 46) {
+        segments.append(path.slice(start, i));
+        start = i + 1;
+      }
+    }
+    local tname = root, owner = v;
+    for (local si = 0; si < segments.len(); si++) {
+      local seg = segments[si];
+      local br = seg.find("[");
+      local fname = br == null ? seg : seg.slice(0, br);
+      local idx = br == null ? null : seg.slice(br + 1, seg.len() - 1).tointeger();
+      local td = T.Descriptors[tname];
+      local fd = null;
+      foreach (cand in td.fields) { if (cand.name == fname) { fd = cand; break; } }
+      if (fd == null) throw path + ": no field " + fname + " in " + tname;
+      if (si < segments.len() - 1) {
+        local child = owner[fd.member];
+        if (idx != null) child = child[idx];
+        tname = (idx != null && fd.elem != null) ? fd.elem.table : fd.table;
+        owner = child;
+        continue;
+      }
+      local holder = idx == null ? owner : owner[fd.member];
+      local key = idx == null ? fd.member : idx;
+      local d = (idx != null && fd.shape == "arr") ? fd.elem : fd;
+      if (what == "int") {
+        holder[key] = text.tointeger();
+      } else if (what == "ordinal") {
+        local n = text.tointeger();
+        if (d.variants != null && n >= 1 && n <= d.variants.len()) holder[key] = d.variants[n - 1][0];
+        else holder[key] = n;
+      } else if (what == "float") {
+        holder[key] = wrefFloat(text);
+      } else if (what == "count") {
+        local n = text.tointeger();
+        local arr = holder[key];
+        while (arr.len() < n) {
+          if (arr.len() > 0 && d.elem != null && d.elem.shape == "tab") arr.append(wrefClone(T, d.elem.table, arr[0]));
+          else if (arr.len() > 0) arr.append(arr[0]);
+          else if (d.elem != null && d.elem.shape == "tab") arr.append(T.Descriptors[d.elem.table].make());
+          else arr.append(0);
+        }
+        if (arr.len() > n) arr.resize(n);
+      } else if (what == "length") {
+        local n = text.tointeger();
+        local str = "";
+        for (local k = 0; k < n; k++) str += "a";
+        holder[key] = str;
+      } else if (what == "bytes") {
+        holder[key] = wrefHex(text);
+      } else if (what == "tag") {
+        local n = text.tointeger();
+        local ud = T[d.table + "Descriptor"];
+        local x = ud.make();
+        x.Type = n;
+        holder[key] = x;
+      } else {
+        throw path + ": unsupported kind " + what;
+      }
+    }
+  };
+  local conns = {};
+  foreach (ln in lines) {
+    local cf = splitFields(ln);
+    if (cf.len() >= 5 && cf[0] == "connection") conns[cf[1]] <- cf;
+  }
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 8 || f[0] != mode) continue;
+    local cname = f[1], unit = f[2], root = f[3], wirepath = f[4], path = f[5], what = f[6], text = f[7];
+    local conn = null;
+    if (mode == "write-refusal-message") {
+      conn = conns[unit];
+      unit = conn[2];
+    }
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local got = strictLoad(opened, root, readBytes(wirepath));
+    local v = got[0];
+    if (v == null) throw cname + ": strictLoad refused " + wirepath;
+    wrefSet(T, root, v, path, what, text);
+    local answer = "refused\n";
+    try {
+      if (mode == "write-refusal" || mode == "write-refusal-fixed") {
+        local isFixed = T.Descriptors[root].fixed;
+        if (mode == "write-refusal-fixed" && !isFixed) throw cname + ": not fixed";
+        if (isFixed) {
+          local sz = T[root + "FixedMeasure"](1);
+          if (sz >= 0) {
+            local out = blob(sz);
+            if (T[root + "FixedSave"](out, [v]) == sz) answer = "wrote\n";
+          }
+        } else {
+          local out = T[root + "Save"](v);
+          if (out != null && T[root + "Measure"](v) == out.len()) answer = "wrote\n";
+        }
+      } else if (mode == "write-refusal-message") {
+        local voc = {};
+        local ar = {};
+        if (!T.AnnounceRead(voc, readBytes(conn[4]), ar)) throw cname + ": AnnounceRead refused";
+        local mr = {};
+        local sz = T[root + "MeasureMessages"]([v], mr);
+        if (sz >= 0) {
+          local out = blob(sz);
+          local sr = {};
+          if (T[root + "SaveMessages"]([v], out, sr) == sz) answer = "wrote\n";
+        }
+      } else {
+        local msz = T[root + "ToJsonMeasure"](v);
+        if (msz >= 0) {
+          local j = T[root + "ToJson"](v);
+          if (j != null) {
+            answer = "wrote\n";
+            if (what == "bytes" && wrefHex(text).find("\x00") != null && j.find("\\u0000") == null) {
+              answer = "wrote without \\u0000\n";
+            }
+          }
+        }
+      }
+    } catch (e) {
+      answer = "refused\n";
+    }
+    writeText(outdir + "/" + cname, answer);
+  }
+  return;
+}
+
 throw "main.nut: no surface " + mode;
