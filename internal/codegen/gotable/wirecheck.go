@@ -150,6 +150,11 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 func (c *tableWireCheck) array(sub TableReader, keyed bool) (int64, bool) {
  if len(sub.Buffer)<2 { return 0,c.fail(TableRefuseWireDamaged) }
  kind:=sub.Get8()
+ if keyed {
+  if !((kind>=1 && kind<=11) || kind==13 || (kind>=18 && kind<=30)) { return 0,c.fail(TableRefuseWireDamaged) }
+ } else if !((kind>=1 && kind<=13) || kind==15 || kind==17 || (kind>=18 && kind<=30)) {
+  return 0,c.fail(TableRefuseWireDamaged)
+ }
  count,ok:=sub.Leb()
  if !ok { return 0,c.fail(TableRefuseWireDamaged) }
  // a count past the int32 storage cap refuses by its own name (§2.9), and one

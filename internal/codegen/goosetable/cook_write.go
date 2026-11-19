@@ -286,7 +286,7 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 				lb := strings.LastIndexByte(src, '[')
 				arr, idx := src[:lb], strings.TrimSuffix(src[lb+1:], "]")
 				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
-				w.pl(ind, "if %s < %sCount as! i64 { if !%sCookPutMode(%s, b, at + %s, big, write_absent) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPutMode(%s, b, at + %s, big, false) { return false; } }", idx, arr, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
+				w.pl(ind, "if %s < %sCount { if !%sCookPutMode(%s, b, at + %s, big, write_absent) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPutMode(%s, b, at + %s, big, false) { return false; } }", idx, arr, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
 			default:
 				w.pl(ind, "if !%sCookPutMode(%s, b, at + %s, big, write_absent) { return false; }", r.Name, src, at)
 			}

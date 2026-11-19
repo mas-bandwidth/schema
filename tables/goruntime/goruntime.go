@@ -1207,7 +1207,11 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// bytes land as they are (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5) —
 			// a bool byte as itself, a tag as one native scalar.
 			if p.Op == TableFixedTag {
-				TableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, p.Size)
+				if uint32(p.DstSize) > p.Size {
+					TableFixedPutNative(dst[p.Dst:], TableFixedTagAt(src, p.Src, uint8(p.Size)), uint32(p.DstSize))
+				} else {
+					TableFixedCopyNative(dst[p.Dst:], src[p.Src:], p.Size, p.Size)
+				}
 			} else {
 				TableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
 			}
@@ -1275,7 +1279,11 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			binary.NativeEndian.PutUint64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(TableFixedGet32(src[p.Src:])))))
 			report.Widened++
 		case TableFixedConst:
-			TableFixedPutNative(dst[p.Dst:], uint64(p.Aux), p.Size)
+			n := p.Size
+			if p.Meta != 0 {
+				n = uint32(p.Meta)
+			}
+			TableFixedPutNative(dst[p.Dst:], uint64(p.Aux), n)
 			// The unguarded None const lands None; the check loop refused a raw
 			// tag past the writer's arm count (this entry's DstSize) before this
 			// run (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.6). tableFixedSrcEnd gives
@@ -1679,8 +1687,14 @@ func TableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []Tabl
 			continue
 		}
 		switch p.Op {
-		case TableFixedCopy, TableFixedBool, TableFixedTag, TableFixedConst:
+		case TableFixedCopy, TableFixedBool, TableFixedTag:
 			TableFixedLand(cover, p.Dst, p.Size)
+		case TableFixedConst:
+			n := p.Size
+			if p.Meta != 0 {
+				n = uint32(p.Meta)
+			}
+			TableFixedLand(cover, p.Dst, n)
 		case TableFixedCount:
 			TableFixedLand(cover, p.Dst, 4)
 		case TableFixedText:
@@ -2315,4 +2329,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x451b2a6ebea850ac
+const Version uint64 = 0x678b00cf6a914d9d

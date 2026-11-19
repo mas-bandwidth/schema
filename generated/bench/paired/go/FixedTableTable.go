@@ -410,7 +410,7 @@ var FixedTableFixedDst = []TableFixedDst{
 	{0, 0, 0, 0, 0, 0, 0}, // element
 	{uint32(unsafe.Offsetof(MixedStat{}.StatID)), 0, 0, 0, 0, 0, 0}, // stat_id
 	{uint32(unsafe.Offsetof(MixedStat{}.Delta)), 0, 0, 0, 0, 0, 0},  // delta
-	{uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), 0, 0, 0, 0}, // game_event
+	{uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), uint32(unsafe.Sizeof(MixedEvent{}.Type)), uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), 0, 0, 0, 0}, // game_event
 	{uint32(unsafe.Offsetof(MixedEvent{}.Hit)), 0, 0, 0, 0, 0, 0},                                   // hit
 	{uint32(unsafe.Offsetof(MixedHitEvent{}.TargetID)), 0, 0, 0, 0, 0, 0},                           // target_id
 	{uint32(unsafe.Offsetof(MixedHitEvent{}.Damage)), 0, 0, 0, 0, 0, 0},                             // damage
