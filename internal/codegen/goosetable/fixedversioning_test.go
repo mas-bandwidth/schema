@@ -407,9 +407,10 @@ func TestGooseFixedVersioningWriterBoundCount(t *testing.T) {
 			t.Parallel()
 			data := append([]byte(nil), base...)
 			data[count] = c.count
-			if c.count == 0xFF {
+			switch c.count {
+			case 0xFF:
 				data[count+1], data[count+2], data[count+3] = 0xFF, 0xFF, 0xFF
-			} else if c.count == 0 {
+			case 0:
 				clear(data[count+4 : count+20])
 			}
 			got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "ArrayBoundedGrow",
