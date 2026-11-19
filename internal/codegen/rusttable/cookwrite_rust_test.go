@@ -41,6 +41,11 @@ var cookWriteUnits = map[string]string{
 	"widelist":    "tables/widelist",
 	// the feature witness, as testdata/conformance/tables/MANIFEST.txt maps it
 	"featurewitnesses": "testdata/conformance/feature-witnesses/full/Features.schema",
+	"tblfixedevo":      "test/tables/fixedevo",
+	"tblvarevo1":       "test/tables/varevo/VarEvo1.schema",
+	"tblvarevo3":       "test/tables/varevo/VarEvo3.schema",
+	"cooktorture":      "test/tables/cooktorture/CookTorture.schema",
+	"cooktorturewide":  "test/tables/cooktorturewide/CookTortureWide.schema",
 }
 
 // cookWriteOwed is every root a cook-write row names that has NO FORM-1 READER

@@ -1610,6 +1610,8 @@ func wrapCall(l string) []string {
 	switch {
 	case strings.HasPrefix(head, "return "):
 		lhs, callee = "return ", strings.TrimPrefix(head, "return ")
+	case strings.HasPrefix(head, "assert "):
+		lhs, callee = "assert ", strings.TrimPrefix(head, "assert ")
 	case strings.Contains(head, " = "):
 		k := strings.LastIndex(head, " = ")
 		lhs, callee = head[:k+3], head[k+3:]
@@ -1653,7 +1655,7 @@ func wrapCall(l string) []string {
 		if i == len(args)-1 {
 			end = ");"
 		}
-		if javaWidth(argInd+a+end) > javaColumnLimit && (!strings.HasPrefix(a, "\"") || !strings.HasSuffix(a, "\"")) {
+		if javaWidth(argInd+a+end) > javaColumnLimit && !isSingleStringLit(a) {
 			w := breakArg(argInd, a, end)
 			if w == nil {
 				return nil
@@ -1682,7 +1684,7 @@ func breakPrefixed(ind, prefix, e, tail string) []string {
 // when they fit and one a line otherwise, recursively; a string literal is
 // left whole. nil when the argument is neither.
 func breakArg(ind, a, end string) []string {
-	if javaWidth(ind+a+end) <= javaColumnLimit || (strings.HasPrefix(a, "\"") && strings.HasSuffix(a, "\"")) {
+	if javaWidth(ind+a+end) <= javaColumnLimit || isSingleStringLit(a) {
 		return []string{ind + a + end}
 	}
 	if c, x, y, ok := splitTernary(a); ok {
@@ -1720,17 +1722,21 @@ func breakArg(ind, a, end string) []string {
 		return out
 	}
 	if m := javaArrayArg.FindStringSubmatch(a); m != nil {
-		// `new T[] {a, b}`: one element a line, four columns in
+		// `new T[] {a, b}`: filled when allShort, else one element a line, four columns in
 		elems, ok := splitArgs(m[2])
 		if !ok {
 			return nil
 		}
 		out := []string{ind + m[1] + " {"}
-		for i, e := range elems {
-			if i < len(elems)-1 {
-				e += ","
+		if allShort(elems) {
+			out = append(out, fillElements(ind+"    ", elems, false)...)
+		} else {
+			for i, e := range elems {
+				if i < len(elems)-1 {
+					e += ","
+				}
+				out = append(out, ind+"    "+e)
 			}
-			out = append(out, ind+"    "+e)
 		}
 		return fitAll(append(out, ind+"}"+end))
 	}
@@ -2352,6 +2358,20 @@ func wrapBinary(l string) []string {
 		if e := t[len("return ") : len(t)-1]; parenDepth(e) == 0 {
 			return breakCond(ind, "return ", e, ";")
 		}
+	case strings.HasPrefix(t, "assert ") && strings.HasSuffix(t, ";"):
+		e := t[len("assert ") : len(t)-1]
+		if parenDepth(e) == 0 {
+			if cond, msg, ok := splitAssertMsg(e); ok {
+				head := []string{ind + "assert " + cond}
+				if javaWidth(head[0]) > javaColumnLimit {
+					if w := wrapAssertCond(ind, cond); w != nil {
+						head = w
+					}
+				}
+				return fitAll(append(head, ind+"        : "+msg+";"))
+			}
+			return breakCond(ind, "assert ", e, ";")
+		}
 	case strings.HasPrefix(t, "if (") && strings.HasSuffix(t, ") {") && matchParen(t, 3) == len(t)-3:
 		return breakCond(ind, "if (", t[len("if ("):len(t)-3], ") {")
 	case strings.HasPrefix(t, "} else if (") && strings.HasSuffix(t, ") {") && matchParen(t, 10) == len(t)-3:
@@ -2735,6 +2755,9 @@ func wrapLong(l string) []string {
 					}
 				}
 				out := []string{ind + typ[:lt+1]}
+				if one := inner + "        " + strings.Join(targs, ", ") + ">"; javaWidth(one) <= javaColumnLimit {
+					return fitAll(append(out, one, rest))
+				}
 				for i, a := range targs {
 					e := ","
 					if i == len(targs)-1 {
@@ -2757,6 +2780,11 @@ func wrapLong(l string) []string {
 	}
 	if parts, ok := splitBinary(strings.TrimSuffix(rhs, ";")); ok && len(parts) > 1 {
 		if w := breakArg(inner, strings.TrimSuffix(rhs, ";"), ";"); w != nil {
+			return append([]string{ind + lhs + " ="}, w...)
+		}
+	}
+	if rns := strings.TrimSuffix(rhs, ";"); strings.HasPrefix(rns, "(") && matchParen(rns, 0) == len(rns)-1 {
+		if w := breakCond(inner, "(", rns[1:len(rns)-1], ");"); w != nil {
 			return append([]string{ind + lhs + " ="}, w...)
 		}
 	}
@@ -2839,6 +2867,10 @@ func splitTernary(e string) (c, a, b string, ok bool) {
 func fitAll(lines []string) []string {
 	for _, l := range lines {
 		if javaWidth(l) > javaColumnLimit {
+			t := strings.TrimLeft(l, " ")
+			if len(t) > 0 && t[0] == '"' && isSingleStringLit(strings.TrimRight(t, "),;")) {
+				continue
+			}
 			return nil
 		}
 	}
@@ -2853,10 +2885,16 @@ func wrapBracelessFor(l string) []string {
 	}
 	ind := indentOf(l)
 	t := strings.TrimSpace(l)
-	if !strings.HasPrefix(t, "for (") || !strings.HasSuffix(t, ";") {
+	openAt := 4
+	if strings.HasPrefix(t, "while (") {
+		openAt = 6
+	} else if !strings.HasPrefix(t, "for (") {
 		return nil
 	}
-	end := matchParen(t, 4)
+	if !strings.HasSuffix(t, ";") {
+		return nil
+	}
+	end := matchParen(t, openAt)
 	if end < 0 || end+2 >= len(t) || t[end+1] != ' ' || strings.HasPrefix(t[end+2:], "{") {
 		return nil
 	}
@@ -2894,6 +2932,38 @@ func breakCond(ind, head, expr, tail string) []string {
 	}
 	parts, ok := splitBinary(expr)
 	if !ok {
+		if _, _, _, isTern := splitTernary(expr); isTern {
+			return breakPrefixed(ind, head, expr, tail)
+		}
+		if strings.HasPrefix(expr, "!(") && matchParen(expr, 1) == len(expr)-1 {
+			if w := breakCond(ind, head+"!(", expr[2:len(expr)-1], ")"+tail); w != nil {
+				return w
+			}
+		}
+		if strings.HasPrefix(expr, "(") && matchParen(expr, 0) == len(expr)-1 {
+			if w := breakCond(ind, head+"(", expr[1:len(expr)-1], ")"+tail); w != nil {
+				return w
+			}
+		}
+		if strings.HasPrefix(expr, "!") {
+			if w := layoutChain(ind, expr[1:], tail); w != nil {
+				w[0] = ind + head + "!" + strings.TrimLeft(w[0], " ")
+				return fitAll(w)
+			}
+			if w := breakCallAt(ind, expr, ind+"        ", tail); w != nil {
+				w[0] = ind + head + strings.TrimLeft(w[0], " ")
+				return fitAll(w)
+			}
+			return nil
+		}
+		if w := layoutChain(ind, expr, tail); w != nil {
+			w[0] = ind + head + strings.TrimLeft(w[0], " ")
+			return fitAll(w)
+		}
+		if w := breakCallAt(ind, expr, ind+"        ", tail); w != nil {
+			w[0] = ind + head + strings.TrimLeft(w[0], " ")
+			return fitAll(w)
+		}
 		return nil
 	}
 	var out []string
@@ -2920,15 +2990,36 @@ func breakCond(ind, head, expr, tail string) []string {
 			pre += op + " "
 		}
 		var sub []string
-		if strings.HasPrefix(rest, "(") && matchParen(rest, 0) == len(rest)-1 {
+		if strings.HasPrefix(rest, "!(") && matchParen(rest, 1) == len(rest)-1 {
+			sub = breakCond(lineInd, pre+"!(", rest[2:len(rest)-1], ")"+end)
+		} else if strings.HasPrefix(rest, "(") && matchParen(rest, 0) == len(rest)-1 {
 			sub = breakCond(lineInd, pre+"(", rest[1:len(rest)-1], ")"+end)
+		} else if _, _, _, isTern := splitTernary(rest); isTern {
+			sub = breakPrefixed(lineInd, pre, rest, end)
 		} else if _, nested := splitBinary(rest); !nested && k == 0 && len(parts) > 1 {
 			// a call leading a broken binary: its arguments sixteen columns
 			// in, the binary's continuation and the call's own
 			sub = breakCallAt(lineInd, pre+rest, lineInd+"                ", end)
+		} else if _, nested2 := splitBinary(rest); !nested2 && k > 0 {
+			sub = breakCallAt(lineInd, pre+rest, lineInd+"        ", end)
+			if sub == nil {
+				sub = breakCond(lineInd, pre, rest, end)
+			}
 		} else {
 			// an operand of a tighter kind: broken at its own operators
-			sub = breakCond(lineInd, pre, rest, end)
+			if k == 0 && len(parts) > 1 {
+				pad := ""
+				if len(pre) > 8 {
+					pad = strings.Repeat("x", len(pre)-8)
+				}
+				if w := breakCond(lineInd+"        ", pad, rest, end); len(w) > 0 {
+					w[0] = lineInd + pre + strings.TrimPrefix(strings.TrimLeft(w[0], " "), pad)
+					sub = w
+				}
+			}
+			if sub == nil {
+				sub = breakCond(lineInd, pre, rest, end)
+			}
 		}
 		if sub == nil {
 			return nil
@@ -3079,7 +3170,7 @@ func chainReceiver(segs []string) (string, int, bool) {
 	if strings.HasPrefix(segs[0], "new ") && !strings.Contains(segs[0], "(") {
 		for j := 1; j < len(segs); j++ {
 			if strings.Contains(segs[j], "(") {
-				return strings.Join(segs[:j+1], "."), j + 1, false
+				return strings.Join(segs[:j+1], "."), j + 1, true
 			}
 		}
 		return "", len(segs), false
@@ -3096,6 +3187,9 @@ func chainReceiver(segs []string) (string, int, bool) {
 	if javaSimpleName.MatchString(segs[0]) && j > 1 {
 		for _, sg := range segs[1:j] {
 			if sg != "" && sg[0] >= 'A' && sg[0] <= 'Z' {
+				if javaTypeName.MatchString(segs[j-1]) && j < len(segs) {
+					return strings.Join(segs[:j+1], "."), j + 1, true
+				}
 				return strings.Join(segs[:j], "."), j, false
 			}
 		}
@@ -3335,7 +3429,7 @@ var javaBinary = map[string]bool{
 
 var javaPrimitive = map[string]bool{"byte": true, "short": true, "int": true, "long": true, "float": true, "double": true, "boolean": true, "char": true}
 
-var javaSpaceParen = map[string]bool{"if": true, "for": true, "while": true, "switch": true, "catch": true, "synchronized": true, "return": true, "throw": true, "case": true, "else": true, "try": true}
+var javaSpaceParen = map[string]bool{"if": true, "for": true, "while": true, "switch": true, "catch": true, "synchronized": true, "return": true, "throw": true, "case": true, "else": true, "try": true, "assert": true}
 
 func isTypeName(s string) bool {
 	return javaPrimitive[s] || (s != "" && unicode.IsUpper(rune(s[0])))
@@ -3397,7 +3491,7 @@ func joinTokens(t []jtok) string {
 		}
 		if j+2 < len(t) && t[j+1].s == ")" {
 			n := t[j+2]
-			if n.kind == 'i' || n.kind == 'n' || n.kind == 's' || n.s == "(" || n.s == "!" || n.s == "~" {
+			if n.kind == 'i' || n.kind == 'n' || n.kind == 's' || n.s == "(" || n.s == "!" || n.s == "~" || n.s == "-" {
 				if n.kind != 'i' || !javaBinaryWord(n.s) {
 					casts[j+1] = true
 				}
@@ -3423,7 +3517,7 @@ func joinTokens(t []jtok) string {
 				return true
 			}
 			q := t[j-1]
-			if q.kind == 'o' && q.s != ")" && q.s != "]" && q.s != "++" && q.s != "--" && (q.s != ">" || !gen[j-1]) {
+			if q.kind == 'o' && (q.s != ")" || casts[j-1]) && q.s != "]" && q.s != "++" && q.s != "--" && (q.s != ">" || !gen[j-1]) {
 				return true
 			}
 			return q.kind == 'i' && (q.s == "return" || q.s == "case" || q.s == "throw")
@@ -3873,4 +3967,116 @@ func hasTok(t []jtok, s string) bool {
 func isInitializer(cur []jtok) bool {
 	last := cur[len(cur)-1].s
 	return last == "]" || last == "=" || last == "," || last == "{" || last == "return"
+}
+
+func isSingleStringLit(s string) bool {
+	if len(s) < 2 || s[0] != '"' {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		if s[i] == '\\' {
+			i++
+			continue
+		}
+		if s[i] == '"' {
+			return i == len(s)-1
+		}
+	}
+	return false
+}
+
+func wrapAssertOperand(prefixLine, contInd, expr string) []string {
+	if javaWidth(prefixLine+expr) <= javaColumnLimit {
+		return []string{prefixLine + expr}
+	}
+	sub, ok := splitBinary(expr)
+	if ok && len(sub) > 1 {
+		var out []string
+		if javaWidth(prefixLine+sub[0]) <= javaColumnLimit {
+			out = append(out, prefixLine+sub[0])
+		} else if w := layoutChain(contInd+"        ", sub[0], ""); w != nil {
+			w[0] = prefixLine + strings.TrimLeft(w[0], " ")
+			out = append(out, w...)
+		} else if w := breakArg(contInd, sub[0], ""); w != nil {
+			w[0] = prefixLine + strings.TrimLeft(w[0], " ")
+			out = append(out, w...)
+		} else {
+			return nil
+		}
+		for _, sp := range sub[1:] {
+			op, rest, _ := strings.Cut(sp, " ")
+			wp := breakPrefixed(contInd+"        ", op+" ", rest, "")
+			if wp == nil {
+				return nil
+			}
+			out = append(out, wp...)
+		}
+		return fitAll(out)
+	}
+	w := breakArg(contInd, expr, "")
+	if w == nil {
+		return nil
+	}
+	w[0] = prefixLine + strings.TrimLeft(w[0], " ")
+	return fitAll(w)
+}
+
+func wrapAssertCond(ind, cond string) []string {
+	parts, ok := splitBinary(cond)
+	if !ok || len(parts) < 2 {
+		return breakCond(ind, "assert ", cond, "")
+	}
+	contInd := ind + "                "
+	w0 := wrapAssertOperand(ind+"assert ", contInd, parts[0])
+	if w0 == nil {
+		return breakCond(ind, "assert ", cond, "")
+	}
+	out := append([]string(nil), w0...)
+	for _, p := range parts[1:] {
+		op, rest, _ := strings.Cut(p, " ")
+		wp := wrapAssertOperand(contInd+op+" ", contInd, rest)
+		if wp == nil {
+			return breakCond(ind, "assert ", cond, "")
+		}
+		out = append(out, wp...)
+	}
+	return fitAll(out)
+}
+
+func splitAssertMsg(e string) (cond, msg string, ok bool) {
+	depth, q := 0, 0
+	var quote byte
+	for i := 0; i < len(e); i++ {
+		ch := e[i]
+		if quote != 0 {
+			switch ch {
+			case '\\':
+				i++
+			case quote:
+				quote = 0
+			}
+			continue
+		}
+		switch ch {
+		case '"', '\'':
+			quote = ch
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case '?':
+			if depth == 0 {
+				q++
+			}
+		case ':':
+			if depth == 0 {
+				if q > 0 {
+					q--
+				} else {
+					return strings.TrimSpace(e[:i]), strings.TrimSpace(e[i+1:]), true
+				}
+			}
+		}
+	}
+	return "", "", false
 }

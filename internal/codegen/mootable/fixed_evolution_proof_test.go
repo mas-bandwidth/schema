@@ -961,7 +961,7 @@ func TestMooFixedEvolutionArrayBounds(t *testing.T) {
 		}
 	}
 	gc := fixedUnit(t, newer, lineage)
-	plant(t, gc, "if count < 0 or count > writerBound or count > f.bound then", "if count < 0 or count > f.bound then")
+	plant(t, gc, "if count < minCount or count > writerBound or count > f.bound then", "if count < minCount or count > f.bound then")
 	if got := evoLoad(t, gc, "VNEW_array_bounded_growTable", "ArrayBoundedGrow", with(7), -1).head; got == refusedTotal("count_over_bound", false, "-") {
 		t.Errorf("the negative control: the reader's bound still refuses the writer's overrun")
 	}

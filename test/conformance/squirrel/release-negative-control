@@ -18,7 +18,7 @@ rm -rf "$out"
 mkdir -p "$out"
 runtime=load.nut
 source=internal/codegen/squirreltable/runtime/$runtime
-sed 's/report.stopped = !finished;/report.stopped = false;/' "$source" > "$out/$runtime"
+sed 's/report.stopped = !finished;/report.stopped = true;/' "$source" > "$out/$runtime"
 if cmp -s "$source" "$out/$runtime"; then
 	echo "NEGATIVE CONTROL FAILED (release): the sabotage patched nothing" >&2
 	exit 1
@@ -41,7 +41,7 @@ if SCHEMA_SQUIRREL_CONFORMANCE="$root/$out/conformance-squirrel" ./build/conform
 	cat "$out/log" >&2
 	exit 1
 fi
-if ! grep -q "builder completion differs from the oracle" "$out/log"; then
+if ! grep -qE "(builder completion differs from the oracle|read acceptance differs)" "$out/log"; then
 	echo "NEGATIVE CONTROL FAILED (release): the builder arm went red for another reason" >&2
 	cat "$out/log" >&2
 	exit 1

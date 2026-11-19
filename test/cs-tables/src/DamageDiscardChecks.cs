@@ -67,6 +67,7 @@ static unsafe partial class Program
                 case "listdemo Ints": DiscardInts(name, wire); break;
                 case "listdemo Bounded": DiscardBounded(name, wire); break;
                 case "graphdemo ListNode": DiscardListNode(name, wire); break;
+                case "tblvarevo1 EvoDoc": DiscardEvoDoc(name, wire); break;
                 default: Check(false, Discard + name + ": no entry point for root " + key); continue;
             }
             run++;
@@ -178,6 +179,37 @@ static unsafe partial class Program
             var b = new G.TableReport();
             Check(!G.Schema.ListNodeLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
             Check(builder.GetRoot()->Value == 0 && builder.GetRoot()->Next == 0, Discard + name + ": builder root is back at its declared defaults");
+        }
+    }
+
+    static void DiscardEvoDoc(string name, byte[] wire)
+    {
+        var v = new Tblvarevo1.EvoDoc();
+        byte[] t0 = new byte[Tblvarevo1.Schema.EvoDocToJsonMeasure(v)]; Tblvarevo1.Schema.EvoDocToJson(v, t0);
+        var report = new Tblvarevo1.TableReport();
+        Check(!Tblvarevo1.Schema.EvoDocLoad(v, wire, report) && (report.Damaged || report.Refused), Discard + name + ": managed load answers false, refused");
+        long m1 = Tblvarevo1.Schema.EvoDocToJsonMeasure(v);
+        byte[] t1 = m1 >= 0 ? new byte[m1] : Array.Empty<byte>();
+        if (m1 >= 0) { Tblvarevo1.Schema.EvoDocToJson(v, t1); }
+        Check(m1 >= 0 && t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
+        byte* region = (byte*)NativeMemory.AlignedAlloc(DiscardRegion, 64);
+        byte* bytes = (byte*)NativeMemory.Alloc(4096);
+        Tblvarevo1.TableRetain.Id* ids = (Tblvarevo1.TableRetain.Id*)NativeMemory.Alloc((nuint)(64 * sizeof(Tblvarevo1.TableRetain.Id)));
+        try
+        {
+            var rrep = new Tblvarevo1.TableReport();
+            Check((IntPtr)Tblvarevo1.Schema.EvoDocLoad((IntPtr)region, DiscardRegion, wire, rrep) == IntPtr.Zero && (rrep.Damaged || rrep.Refused), Discard + name + ": region load hands back no root, refused");
+            var store = new Tblvarevo1.TableRetain { Bytes = bytes, Capacity = 4096, Ids = ids, IdCapacity = 64 };
+            store.Used = 7; store.Count = 1;
+            var srep = new Tblvarevo1.TableReport();
+            Check((IntPtr)Tblvarevo1.Schema.EvoDocLoadRetain((IntPtr)region, DiscardRegion, wire, ref store, srep) == IntPtr.Zero && (srep.Damaged || srep.Refused), Discard + name + ": retaining load hands back no root, refused");
+            Check(store.Used == 0 && store.Count == 0 && store.IdUsed == 0, Discard + name + ": retaining load leaves the store empty (used " + store.Used + ", count " + store.Count + ")");
+        }
+        finally { NativeMemory.AlignedFree(region); NativeMemory.Free(bytes); NativeMemory.Free(ids); }
+        using (var builder = new Tblvarevo1.EvoDocBuilder())
+        {
+            var b = new Tblvarevo1.TableReport();
+            Check(!Tblvarevo1.Schema.EvoDocLoadBuilder(builder, wire, b) && (b.Damaged || b.Refused), Discard + name + ": builder load answers false, refused");
         }
     }
 

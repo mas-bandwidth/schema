@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -649,9 +650,22 @@ func (g *rowGen) emitRowHolder(f *ir.Field, name string, off int64) {
 	} else {
 		stride, _ = ir.ListElementLayout(g.unit, f)
 	}
-	g.f("    /** %s: the holder's slot; <Root>Cook.at(%sSlot(at), %sCount(data, at) * %sStride)\n",
-		ir.FieldTypeSpelling(f), name, name, name)
-	g.f("     *  resolves the element array (§2.8, §2.9, §6.3). */\n")
+	docWords := strings.Fields(fmt.Sprintf("%s: the holder's slot; <Root>Cook.at(%sSlot(at), %sCount(data, at) * %sStride) resolves the element array (§2.8, §2.9, §6.3).",
+		ir.FieldTypeSpelling(f), name, name, name))
+	g.f("    /**\n")
+	curDoc := "     *"
+	for _, dw := range docWords {
+		if len(curDoc) > 6 && utf8.RuneCountInString(curDoc)+1+utf8.RuneCountInString(dw) > 100 {
+			g.f("%s\n", curDoc)
+			curDoc = "     * " + dw
+		} else {
+			curDoc += " " + dw
+		}
+	}
+	if len(curDoc) > 6 {
+		g.f("%s\n", curDoc)
+	}
+	g.f("     */\n")
 	g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, off)
 	g.f("    /** the raw SIGNED SELF-RELATIVE delta to the element array; zero is empty. */\n")
 	g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n", name, off)
@@ -686,7 +700,8 @@ func (g *rowGen) emitRowFind(f *ir.Field, name string, stride int64) {
 		g.f("        while (low < high) {\n")
 		g.f("            int mid = (low + high) >>> 1;\n")
 		g.f("            int at = entries + mid * %d;\n", stride)
-		g.f("            int k = %s, n = %s.%sLength(data, at);\n", atCall, entry, kname)
+		g.f("            int k = %s;\n", atCall)
+		g.f("            int n = %s.%sLength(data, at);\n", entry, kname)
 		g.f("            int order = java.util.Arrays.compareUnsigned(data, k, k + n, key, 0, key.length);\n")
 		g.f("            if (order == 0) { return at; }\n")
 		g.f("            if (order < 0) { low = mid + 1; } else { high = mid; }\n")

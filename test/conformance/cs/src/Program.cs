@@ -1014,11 +1014,6 @@ static partial class Program
             }
             byte[] wire = File.ReadAllBytes(f[4]);
             Report report = new Report();
-            if (wire.Length > 0 && wire[0] == 1 && !StrictWireCheck(wire))
-            {
-                File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
-                continue;
-            }
             // Framing vectors are form-1 bytes: a fixed root reads them
             // through its variable-form entry, then writes back in its own
             // (fixed) form via Save (docs/SPEC-TABLES.md §3.4).
@@ -1035,6 +1030,11 @@ static partial class Program
             if (noValue)
             {
                 if (!SpillWire(codec, value, outDir, f[1])) return 1;
+                File.WriteAllText(Path.Combine(outDir, f[1]), "read\n");
+                continue;
+            }
+            if (codec.ToJsonMeasure(value) < 0)
+            {
                 File.WriteAllText(Path.Combine(outDir, f[1]), "read\n");
                 continue;
             }

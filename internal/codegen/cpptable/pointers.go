@@ -1107,7 +1107,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // THE STRICT FORM-1 WALK (docs/SPEC-TABLES.md §6.5): every condition\n")
 	g.pf("    // decidable from the wire alone, before any value is decoded. A false\n")
 	g.pf("    // answer is the strict read's refusal and nothing is decoded.\n")
-	g.pf("    if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out ) ) { return false; }\n")
+	g.pf("    if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out, builder.arena.allocator ) ) { return false; }\n")
 	g.pf("    const uint8_t * const wire = wire_file + 1;\n")
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	g.pf("    %s * root = builder.GetRoot();\n", n)

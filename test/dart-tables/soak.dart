@@ -61,6 +61,14 @@ int _childRss(int pid) {
     }
     return -1;
   } catch (_) {
+    if (Platform.isMacOS) {
+      try {
+        final res = Process.runSync('ps', <String>['-o', 'rss=', '-p', '$pid']);
+        if (res.exitCode == 0) {
+          return int.tryParse((res.stdout as String).trim()) ?? -1;
+        }
+      } catch (_) {}
+    }
     return -1;
   }
 }

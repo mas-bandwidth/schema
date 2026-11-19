@@ -15,7 +15,7 @@
 #include "TrailsTable.h"
 
 COLLECTION_CASE(mapdemo_depth_t,mapdemo_depth,map_depth,192)
-COLLECTION_CASE(mapdemo_text_t,mapdemo_text,map_text,216)
+COLLECTION_CASE(mapdemo_text_t,mapdemo_text,map_text,176)
 COLLECTION_CASE(mapdemo_cells_t,mapdemo_cells,map_cells,96)
 COLLECTION_CASE(mapdemo_runs_t,mapdemo_runs,map_runs,88)
 COLLECTION_CASE(mapdemo_slots_t,mapdemo_slots,map_slots,64)

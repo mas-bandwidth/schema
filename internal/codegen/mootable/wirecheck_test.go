@@ -90,7 +90,7 @@ func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 	got, want := framingVerdicts(t, func(t *testing.T, g *generatedUnit) {
 		removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff)
 	})
-	walkOnly := []string{"frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry", "node_record_bytes_after_terminator", "node_unknown_to_fixed_reader"}
+	walkOnly := []string{"frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry", "node_record_bytes_after_terminator", "node_unknown_to_fixed_reader", "varevo_cycle_unknown_self", "varevo_cycle_two_unknowns", "varevo_cycle_root_via_unknown", "varevo_cycle_known_via_unknown"}
 	for _, name := range walkOnly {
 		if want[name] != "refused" || got[name] != "read" {
 			t.Errorf("%s: without the walk moo answers %q (the row pins %q); the control wants it read", name, got[name], want[name])

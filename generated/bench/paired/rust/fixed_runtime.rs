@@ -676,8 +676,9 @@ pub fn table_fixed_run(
                 // below is behind the compile-time refusal — and src.get is
                 // the bounds-safe read, so a short record is a malformed
                 // verdict and never a panic.
-                if p.aux == 0 && p.dstsize != 0 && p.guard_count == 0 {
-                    match src.get(s..s + n) {
+                if p.aux == 0 && p.dstsize != 0 {
+                    let tag_w = if p.sign != 0 { p.sign as usize } else { n };
+                    match src.get(s..s + tag_w) {
                         None => {
                             report.damaged = true;
                             return;
@@ -1444,7 +1445,8 @@ impl Compiler<'_> {
             // to count a clamp past the writer's arm set. It has a source
             // reach, so one past the writer's record refuses the plan whole
             // like every other entry.
-            end = e.src as u64 + e.size as u64;
+            let tw = if e.sign != 0 { u64::from(e.sign) } else { e.size as u64 };
+            end = e.src as u64 + tw;
         }
         if e.guard_count != 0 {
             // A GUARDED ENTRY LOADS EVERY TAG BEFORE ANYTHING ELSE, so each
@@ -1889,6 +1891,11 @@ fn compile_entry(
                     te.children as u8
                 } else {
                     0
+                },
+                sign: if their_tag >= 1 && their_tag <= 8 {
+                    their_tag as u8
+                } else {
+                    1
                 },
                 ..TableFixedEntry::default()
             });

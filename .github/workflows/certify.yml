@@ -504,7 +504,7 @@ jobs:
       # The Goose leg's pinned compiler (make/goose.mk), linux-x64, which this
       # ubuntu job runs: tables-goose-release runs test-goose under it.
       - name: install the Goose pin
-        if: matrix.target == 'tables-goose-release'
+        if: matrix.target == 'tables-goose-release' || matrix.target == 'tables-wire-fuzz-release-goose'
         run: make dist-goose
 
       # The Luau leg's pinned interpreter (make/luau.mk dist-luau), for its

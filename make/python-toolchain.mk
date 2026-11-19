@@ -124,7 +124,11 @@ endif
 
 # THE TOOLCHAIN GATE, this leg's half (issue #599): one probe per pin.
 .PHONY: toolchain-python
+ifneq ($(PYTHON_SDK_STAGED),)
+toolchain-python: dist-python
+else
 toolchain-python:
+endif
 	@$(call toolchain_probe,python,PYTHON,$(PYTHON))
 	@$(call toolchain_probe,python,PYTHON_FLOOR,$(PYTHON_FLOOR))
 	@$(call toolchain_probe,python,MYPY,$(MYPY))

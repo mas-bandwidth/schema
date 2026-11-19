@@ -573,10 +573,12 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // here rather than at the push: TableFixedPush on this leg takes no
         // record bound at all, so the entry that reads a record byte carries
         // its own.
-        const arms = e[b + TableFixedLaneMeta] & 0xff;
-        if (v === 0 && arms !== 0 && s + size <= src.length) {
+        const meta = e[b + TableFixedLaneMeta];
+        const arms = meta & 0xff;
+        const tagW = (meta >>> 8) !== 0 ? (meta >>> 8) : size;
+        if (v === 0 && arms !== 0 && s + tagW <= src.length) {
           let raw = 0;
-          for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
+          for (let k = 0; k < tagW; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
           // A TAG PAST THE WRITER'S OWN ARM SET IS OUT OF RANGE (§4.6): it
           // refuses BY NAME, never a silent oor count.
           if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
@@ -1289,7 +1291,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       {
         const theirArmCount = TableFixedChildren(theirs, ti);
         TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, myTag, 0, guard, arg,
-          (theirArmCount >= 1 && theirArmCount <= 255) ? theirArmCount : 0);
+          ((theirArmCount >= 1 && theirArmCount <= 255) ? theirArmCount : 0) |
+            (((theirTag >= 1 && theirTag <= 8) ? theirTag : 1) << 8));
       }
       const savedArgw = plan.argw;
       plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;

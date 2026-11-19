@@ -143,7 +143,7 @@ schema-dart-nightly-fuzz-negative-control: toolchain-dart schema-dart-nightly-fu
 	@printf '\001\177\376\377\377\377\377\377\377\377' > $(DART_NIGHTLY_FUZZ_BUILD)-nc/seeds/negative-count.bin
 	@f=$$(grep -rl 'if (count < 0 || count > (data.length - 9) ~/ 8) return 2;' $(DART_NIGHTLY_FUZZ_BUILD)-nc/gen | head -1); \
 	if [ -z "$$f" ]; then echo "NEGATIVE CONTROL FAILED: the negative-count bound matched nothing — the emitter moved"; exit 1; fi; \
-	sed -i 's@if (count < 0 || count > (data.length - 9) ~/ 8) return 2;@if (count > (data.length - 9) ~/ 8) return 2; // SABOTAGED@' "$$f"; \
+	sed -i.bak 's@if (count < 0 || count > (data.length - 9) ~/ 8) return 2;@if (count > (data.length - 9) ~/ 8) return 2; // SABOTAGED@' "$$f" && rm -f "$$f.bak"; \
 	grep -q SABOTAGED "$$f" || { echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing"; exit 1; }
 	@sh test/dart-tables/nightly_fuzz_registry.sh \
 		$(DART_NIGHTLY_FUZZ_BUILD)-nc/gen $(DART_NIGHTLY_FUZZ_BUILD)-nc/registry.dart $(CURDIR)

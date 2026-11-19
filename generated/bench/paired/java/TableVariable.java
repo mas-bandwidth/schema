@@ -1547,8 +1547,7 @@ public final class TableVariable {
     // THE ID TABLE'S DISTINCTNESS PROBE reuses one per-thread 8192-slot table,
     // twice the 4096-entry bound so it is never more than half full (§3): the
     // walk allocates nothing per call and every slot compares the stored id.
-    private static final ThreadLocal<IdProbe> ID_PROBE =
-            ThreadLocal.withInitial(IdProbe::new);
+    private static final ThreadLocal<IdProbe> ID_PROBE = ThreadLocal.withInitial(IdProbe::new);
 
     static final class IdProbe {
         final long[] seen = new long[8192];

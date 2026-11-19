@@ -1159,7 +1159,7 @@ struct Scalars : ScalarsCodec
         if ( v.weights_count < 0 || v.weights_count > 4 ) { i.unsafe = true; }
         if ( v.seeds_count < 0 || v.seeds_count > 2 ) { i.unsafe = true; }
         if ( v.ticks < 0 || v.ticks > 1000000 ) { i.range_oob = true; }
-        if ( byte_of( &v.spawn_present ) == 0 && ( v.spawn.x != 0 || v.spawn.heading != 0 ) )
+        if ( byte_of( &v.spawn_present ) == 0 && ( v.spawn.x != 32768 || v.spawn.y != 0 || v.spawn.heading != 0 ) )
         {
             i.absent_residue = true;
         }
@@ -1365,9 +1365,26 @@ static void probe_absent_optional()
     std::strcpy( v.name, "absent" );
     v.name_length = 6;
     v.link_present = false;
+    v.link.value = 777;
+    v.link.tag_length = 3;
+    std::strcpy( v.link.tag, "abc" );
     std::vector<uint8_t> file( (size_t) tblp3::ChainFixedMeasure( 1 ) );
     check( tblp3::ChainFixedSave( &v, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
            "probe absent-optional: save" );
+    {
+        tblp3::Chain back;
+        std::memset( (void *) &back, 0, sizeof( back ) );
+        back.link_present = true;
+        back.link.value = 555;
+        back.link.tag_length = 2;
+        tblp3::TableReport r;
+        std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
+        const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
+                                                 plan.data(), kPlanCap, NULL, &r );
+        check( n == 1 && !back.link_present, "probe absent-optional: clean absent record reads" );
+        check( back.link.value == 0 && back.link.tag_length == 0,
+               "probe absent-optional: clean absent payload lands declared defaults" );
+    }
     uint8_t * rec = file.data() + tblp3::kTableFixedHeaderBytes + 4 + tblp3::ChainFixedLayoutBytes;
     // name is string(16): 4+16=20, then the present byte, then Link.value
     rec[8 + 21] = 0x5A;
@@ -1376,14 +1393,13 @@ static void probe_absent_optional()
     rec[8 + 24] = 0x00;
     tblp3::Chain back;
     std::memset( (void *) &back, 0, sizeof( back ) );
+    tblp3::ChainReset( back );
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
                                              plan.data(), kPlanCap, NULL, &r );
-    check( n == 1 && !back.link_present, "probe absent-optional: the flag" );
-    const bool ignored = back.link.value == 0 && back.link.tag_length == 0;
-    check_red( ignored, "optional/absent-payload-residue-is-copied",
-               "probe absent-optional: an absent payload over non-zero residue is ignored" );
+    check( n == -1 && r.refused && !r.damaged && r.refuse_reason == tblp3::wire_damaged,
+           "probe absent-optional: non-zero dead bytes under an absent flag refuse wire_damaged" );
 }
 
 static void probe_bool_domain()

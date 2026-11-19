@@ -157,6 +157,24 @@ static partial class Program
                 sharedReport.Refused && sharedReport.Reason=="blob_shared","blob_shared native region load refuses by name");
             Check(sharedRegion[0]==0xa5,"blob_shared native region load refuses before it writes");
         }
+        {
+            byte[] smallBlob=ReadGolden("blob_small");
+            long smallNeed=Blobdemo.Schema.CatalogLoadMeasure(smallBlob);
+            byte* smallReg=(byte*)NativeMemory.AlignedAlloc((nuint)(smallNeed+64),64);
+            try
+            {
+                var smallRep=new Blobdemo.TableReport();
+                Blobdemo.CatalogRow* cat=Blobdemo.Schema.CatalogLoad((IntPtr)smallReg,smallNeed,smallBlob,smallRep);
+                Check(cat!=null && !smallRep.Damaged && !smallRep.Refused && cat->Thumb!=0,"blob_small loads into native region for shared-blob writer check");
+                if(cat!=null)
+                {
+                    cat->Alias=cat->Thumb+((byte*)&cat->Thumb-(byte*)&cat->Alias);
+                    Check(Blobdemo.Schema.CatalogMeasure((IntPtr)smallReg)<0 && Blobdemo.Schema.CatalogSave((IntPtr)smallReg,new byte[smallBlob.Length])<0,
+                        "blob_shared native region writer refuses the shared blob");
+                }
+            }
+            finally { NativeMemory.AlignedFree(smallReg); }
+        }
         RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_str8",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,
             Blobdemo.Schema.CatalogLoadMeasure,(p,n,b,r)=>(IntPtr)Blobdemo.Schema.CatalogLoad(p,n,b,r),Blobdemo.Schema.CatalogLoadBuilder,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave,Blobdemo.Schema.CatalogMeasure,Blobdemo.Schema.CatalogSave);
         RegionCase<Blobdemo.Catalog,Blobdemo.TableReport>("blob_str16",()=>new Blobdemo.TableReport(),r=>!r.Damaged && !r.Refused && r.Unknown==0 && r.Widened==0,

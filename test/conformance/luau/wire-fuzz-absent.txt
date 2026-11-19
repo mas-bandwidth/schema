@@ -8,6 +8,8 @@
 backenddemo.LoginRequest form=2 message
 backenddemo.MatchResult form=2 message
 backenddemo.StorePurchase form=2 message
+tblvarevo1.EvoMsg form=2 message
+tblvarevo3.EvoMsg form=2 message
 vocab9demo.Wide00 form=2 message
 vocab9demo.Wide19 form=2 message
 vocabdemo.Wide00 form=2 message

@@ -137,7 +137,7 @@ var cookWriteCarried = []cookWriteUnit{
 		{"Root", []string{"feature_full"}},
 	}},
 	{"../../../tables/blobs", "blobdemo", "blobdemo", []cookWriteRoot{
-		{"Catalog", []string{"blob_small", "blob_empty", "blob_large", "blob_str8", "blob_str16"}},
+		{"Catalog", []string{"blob_small", "blob_empty", "blob_large", "blob_str8", "blob_str16", "blob_zero_and_equal_strings"}},
 	}},
 	{"../../../tables/pointers", "graphdemo", "graphdemo", []cookWriteRoot{
 		{"Scene", []string{"graph_tree", "graph_shared", "graph_empty", "graph_deep"}},
@@ -151,7 +151,7 @@ var cookWriteCarried = []cookWriteUnit{
 	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"KeyedConfig", []string{"keyed_config", "keyed_default"}},
 		{"RootConfig", []string{"root_full", "root_default"}},
-		{"ProfileConfig", []string{"profile_elide"}},
+		{"ProfileConfig", []string{"profile_elide", "profile_boundaries"}},
 		{"LoadoutConfig", []string{"loadout_full"}},
 		{"ArchiveConfig", []string{"archive"}},
 	}},
@@ -200,7 +200,10 @@ var cookWriteCarried = []cookWriteUnit{
 		{"Msg", []string{"m2_open"}},
 	}},
 	{"../../../tables/scalars", "scalars", "scalardemo", []cookWriteRoot{
-		{"SimState", []string{"scalars_full", "scalars_default", "scalars_edges"}},
+		{"SimState", []string{"scalars_full", "scalars_default", "scalars_edges", "scalars_uint128_max"}},
+	}},
+	{"../../../test/tables/fixedevo", "tblfixedevo", "tblfixedevo", []cookWriteRoot{
+		{"EvoRoot", []string{"fixedevo_v3_full", "fixedevo_v3_min"}},
 	}},
 	{"../../../test/tables/varevo/VarEvo1.schema", "tblvarevo1", "tblvarevo1", []cookWriteRoot{
 		{"EvoDoc", []string{"varevo_v1_full"}},
@@ -209,10 +212,10 @@ var cookWriteCarried = []cookWriteUnit{
 		{"EvoDoc", []string{"varevo_v3_full"}},
 	}},
 	{"../../../test/tables/cooktorture/CookTorture.schema", "cooktorture", "cooktorture", []cookWriteRoot{
-		{"TortureCook", []string{"torture_cook_full", "torture_cook_empty"}},
+		{"TortureCook", []string{"torture_cook_full", "torture_cook_empty", "torture_cook_extremes"}},
 	}},
 	{"../../../test/tables/cooktorturewide/CookTortureWide.schema", "cooktorturewide", "cooktorturewide", []cookWriteRoot{
-		{"TortureWideCook", []string{"torture_wide_cook"}},
+		{"TortureWideCook", []string{"torture_wide_cook", "torture_wide_cook_extremes"}},
 	}},
 }
 
@@ -451,7 +454,7 @@ func cookRefusal(t *testing.T, m cookManifest, planted bool) {
 		// both from the copied artifact so the remaining check cannot mask
 		// the plant; ordinary generated writers retain both assertions.
 		for _, anchor := range []string{
-			"assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(source) >= used);",
+			"assert used >= 0\n                    && used <= f.arrayBound\n                    && (f.countOffset < 0 || length(source) >= used);",
 			"assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(v) >= used);",
 		} {
 			if strings.Count(source, anchor) != 1 {

@@ -396,7 +396,7 @@ func tableStrictPointerEntry() string {
 	return `// The POINTERED reader's strict walk: the root body, every record's body, and
 // the pointer graph over a mark array sized by the node count the file actually
 // holds (the allocator hook's, released before the read returns).
-inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const TableIdTable & table, TableReport * report )
+inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const TableIdTable & table, TableReport * report, TableAllocator const & allocator )
 {
     TableStrict s;
     s.ids = &table;
@@ -438,11 +438,16 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     TableNodeDirEntry inline_scratch[64] = {};
     TableNodeDirEntry * scratch = records + 1 <= 64
         ? inline_scratch
-        : (TableNodeDirEntry *) schema_allocate( ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
+        : (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
     if ( scratch == NULL ) { report->damaged = true; return false; }
     const bool ok = TableGraphCheck( body, body_bytes, &table, scratch, records + 1, report );
-    if ( scratch != inline_scratch ) { schema_release( scratch ); }
+    if ( scratch != inline_scratch ) { table_release( allocator, scratch ); }
     return ok;
+}
+
+inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const TableIdTable & table, TableReport * report )
+{
+    return TableStrictWalk( body, body_bytes, table, report, TableDefaultAllocator() );
 }
 
 `

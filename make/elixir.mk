@@ -324,9 +324,9 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #          red; framing green.
 ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
 ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    case Map.get(seen, n) do|    case if(map_size(seen) > 16, do: Map.get(seen, n)) do|'
-ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if m < 2 do$$|    if true or m < 2 do|'
+ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if m < 2 do$$|    if map_size(Process.get(:elixir_json_refs, %{})) <= 16 or m < 2 do|'
 ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
-ELIXIR_CONFORMANCE_ARM_SED    := -e 's|arm_framing_damaged?(a, inner) ->|false and arm_framing_damaged?(a, inner) ->|'
+ELIXIR_CONFORMANCE_ARM_SED    := -e 's|a.arm_kind == 32 -> inner != <<>>|a.arm_kind == 32 -> false|' -e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "defp unknown_content?(b, 32, _ids, _depth), do: b == <<>>", "defp unknown_content?(_b, 32, _ids, _depth), do: true")|'
 ELIXIR_CONFORMANCE_MAPSORT_SED := -e 's~^    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)$$~    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end, :desc)~'
 ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|magic == B.foreign_magic() -> {:ok, bytes}|'
 
@@ -384,7 +384,7 @@ conformance-negative-control-elixir-mapsort: build/conformance-harness
 #     (mref_element, mref_range_high, mref_range_low).
 ELIXIR_WREF_BITS_SED := -e 's|domain = int64(f.Type.Width)|domain = width|'
 ELIXIR_WREF_TEXT_SED := -e 's|if not String.valid?(text) or :binary.match(text, <<0>>) != :nomatch do|if not is_binary(text) do|'
-ELIXIR_WREF_MESSAGE_SED := -e 's|check(is_integer(value) and value >= lo and value <= hi)|check(is_integer(value) and lo <= hi)|'
+ELIXIR_WREF_MESSAGE_SED := -e 's|check(is_integer(value) and value >= lo and value <= hi)|check(is_integer(value) and lo <= hi)|' -e 's|if raw >= 0 and raw <= bit_mask(bits) do|if true do|'
 
 # $(call ELIXIR_WREF_CONTROL,dir,file,sedvar,surface,rows,green,what)
 define ELIXIR_WREF_CONTROL

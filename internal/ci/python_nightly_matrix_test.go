@@ -84,7 +84,11 @@ func TestPythonNightlyFuzzMatrix(t *testing.T) {
 	}
 	// Ask the real make fragment for its unsharded target names, then compare
 	// the entire Cartesian product, including multiplicity and both seeds.
-	cmd := exec.Command("make", "-s", "--eval=python-nightly-target-list:; @printf '%s\\n' $(PYTHON_WIRE_FUZZ_ROWS)", "python-nightly-target-list")
+	probe := filepath.Join(t.TempDir(), "probe.mk")
+	if err := os.WriteFile(probe, []byte("python-nightly-target-list:;\n\t@printf '%s\\n' $(PYTHON_WIRE_FUZZ_ROWS)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("make", "-s", "-f", "Makefile", "-f", probe, "python-nightly-target-list")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {

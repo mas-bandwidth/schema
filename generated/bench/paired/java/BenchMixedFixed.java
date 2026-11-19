@@ -224,7 +224,8 @@ public final class BenchMixedFixed {
     private static boolean checkWrite(Value v) {
         assert (v.sequence & 0xffffffffffff0000L) == 0;
         assert v.ackSequence >= 0L && v.ackSequence <= 65535L;
-        assert Long.compareUnsigned(v.nonce, 0x0L) >= 0 && Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0;
+        assert Long.compareUnsigned(v.nonce, 0x0L) >= 0
+                && Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0;
         assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L;
         assert (v.frameTick & 0xffff000000000000L) == 0;
         assert v.serverTime >= 0L && v.serverTime <= 16776960L;

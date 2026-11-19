@@ -46,7 +46,7 @@ func init() {
 // where the engine judges the element kind and counts one kind_mismatch.
 func init() {
 	sabotages["table-dart-map-header-bounded"] = []edit{{
-		old: "\tg.pf(\"%s\\t\\tfinal elemKind = r.readByte();\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal count = r.readLeb();\\n\", ind)\n\tg.pf(\"%s\\t\\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\\n\", ind)",
-		new: "\tg.pf(\"%s\\t\\tfinal arr = TableWireReader.sub(r, r.pos, end);\\n\", ind)\n\tg.pf(\"%s\\t\\t// SABOTAGED: the map header is bounded by L\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal elemKind = arr.readByte();\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal count = arr.readLeb();\\n\", ind)\n\tg.pf(\"%s\\t\\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\\n\", ind)",
+		old: "\tg.pf(\"%s\\t\\tfinal elemKind = r.readByte();\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal count = r.readLeb();\\n\", ind)\n\tg.pf(\"%s\\t\\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\\n\", ind)",
+		new: "\tg.pf(\"%s\\t\\tfinal arr = TableWireReader.sub(r, r.pos, end);\\n\", ind)\n\tg.pf(\"%s\\t\\t// SABOTAGED: the map header is bounded by L\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal elemKind = arr.readByte();\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal count = arr.readLeb();\\n\", ind)\n\tg.pf(\"%s\\t\\tif (count == null) { r.report.refuse('wire_damaged'); r.pos = end; break; }\\n\", ind)",
 	}}
 }

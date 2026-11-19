@@ -4666,6 +4666,16 @@ namespace Benchtable
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
                 if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), ids);
+                for (Reader vr = r; vr.Ref(out ulong vref, out ulong vid) && vref != 0 && vr.Has(1);)
+                {
+                    byte vkind = vr.Byte();
+                    if (vid == ulong.MaxValue - 1)
+                    {
+                        if (vkind == 9 && vr.Has(8)) { v.BuildVersion = vr.Fixed(8); }
+                        break;
+                    }
+                    if (!vr.Skip(vkind)) { break; }
+                }
                 int whole = WireCheck(r.Buffer, ids, true, out bool wireNonFinite);
                 if (whole == WireDamaged) { Damage(report); return Finish(report, Verdict.Damaged); }
                 if (whole != WireWhole) { Fail(report, whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"); return Finish(report, Verdict.Refused); }

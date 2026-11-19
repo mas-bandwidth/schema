@@ -431,7 +431,7 @@ func TestGooseTableWireNegativeControl(t *testing.T) {
 		{"save-elided-id", "wire_save.goose",
 			"            cut(c, at, mark);\n            return;\n        }\n        frame(c, start);",
 			"            c.out.resize(at);\n            return;\n        }\n        frame(c, start);",
-			map[string]func(string) bool{"wire": func(string) bool { return true }}, "wire"},
+			map[string]func(string) bool{"wire": func(string) bool { return true }, "report": func(string) bool { return true }}, "wire"},
 		{"retain-tail", "wire_retain.goose",
 			"    if rec < 0 { return; }\n    for i in c.retain.recs.len {", "    if rec < 0 || rec >= 0 { return; }\n    for i in c.retain.recs.len {",
 			map[string]func(string) bool{"retain": func(string) bool { return true }, "retain-save": func(string) bool { return true }}, "retain-save"},

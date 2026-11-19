@@ -988,12 +988,13 @@ public final class TableFixed {
                         // cannot cover this one. The entry that reads a record byte
                         // carries its own check, in the same shape the neighbouring
                         // cases use.
-                        if (p.aux == 0 && p.dstsize != 0 && p.guard == noGuard) {
-                            if (p.src < 0 || p.src + p.size > srcLength) {
+                        if (p.aux == 0 && p.dstsize != 0) {
+                            final int tagW = p.sign > 0 ? (p.sign & 0xFF) : p.size;
+                            if (p.src < 0 || p.src + tagW > srcLength) {
                                 report.damaged = true;
                                 return;
                             }
-                            final long raw = tagAt(src, srcAt + p.src, p.size);
+                            final long raw = tagAt(src, srcAt + p.src, tagW);
                             if (raw > (p.dstsize & 0xFFL)) {
                                 report.refuse(Reason.outOfRange);
                             }
@@ -1013,8 +1014,8 @@ public final class TableFixed {
      * nothing — the reader's range is the wider one, so clamping to it would land a value the old
      * writer could not have written (bill §12.5). Every clamp COUNTS, once per leaf per record,
      * exactly as the scatter's own pass counts the reader's. The comparison is in the field's own
-     * type: signed for a signed kind, UNSIGNED for an unsigned one, so a uint64 at or above 2^63
-     * is past the max and never below the min (an unsigned kind's bounds are never negative).
+     * type: signed for a signed kind, UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is
+     * past the max and never below the min (an unsigned kind's bounds are never negative).
      */
     public static void clampWriterBounds(long[] spec, byte[] image, Report report) {
         if (spec == null || spec.length == 0 || image == null) {
@@ -1683,8 +1684,12 @@ public final class TableFixed {
 
         void pushDeadTail(int src, int units, int stride, int countAt, int guard, long arg) {
             final long bytes = (long) units * stride;
-            if (src < 0 || units < 0 || stride < 0 || bytes > Integer.MAX_VALUE
-                    || countAt < 0 || countAt + 4 > theirBytes) {
+            if (src < 0
+                    || units < 0
+                    || stride < 0
+                    || bytes > Integer.MAX_VALUE
+                    || countAt < 0
+                    || countAt + 4 > theirBytes) {
                 recordTooLarge = true;
                 return;
             }
@@ -2039,7 +2044,7 @@ public final class TableFixed {
                             opConst,
                             arg,
                             (byte) ((theirArms >= 1 && theirArms <= 255) ? theirArms : 0),
-                            (byte) 0);
+                            (byte) ((theirTag >= 1 && theirTag <= 8) ? theirTag : 1));
                     // THE GUARD'S WIDTH IS THIS UNION'S TAG WIDTH, for the tag
                     // entry itself and for every entry under an arm, restored on the
                     // way out so a nested union does not leak its width upward.

@@ -32,7 +32,7 @@ rm -rf "$out"
 mkdir -p "$out"
 cp -R build/conformance-moo "$out/conformance-moo"
 
-anchor='\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n\t\t\t_report\.bodyDamaged = true\n\t\t\treturn false'
+anchor='\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or n > r\.e - r\.at then\n\t\t\tdamage\(_report\)\n\t\t\treturn false'
 planted=0
 for f in "$out"/conformance-moo/*/table_load.moo; do
 	n=$(perl -0ne "my \$c = () = /$anchor/g; print \$c" "$f")
@@ -40,7 +40,7 @@ for f in "$out"/conformance-moo/*/table_load.moo; do
 		echo "NEGATIVE CONTROL FAILED: the sabotage anchor appears $n times in $f, want 1" >&2
 		exit 1
 	fi
-	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then\n)\t\t\t_report\.bodyDamaged = true\n/$1/' "$f"
+	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or n > r\.e - r\.at then\n)\t\t\tdamage\(_report\)\n/$1/; s/\tlocal wireFail, wireNonFinite = wireCheck\(b, 1, fr\.e, fr\.ids\)/\tlocal wireFail, wireNonFinite = nil, false/' "$f"
 	planted=$((planted + 1))
 done
 if [ "$planted" -lt 1 ]; then

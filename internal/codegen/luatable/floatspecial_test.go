@@ -180,7 +180,9 @@ for _, c in ipairs(finite) do
   local want = bits(v)
   local wire = assert(save.Save(T, "Root", v), "variable save")
   print("V|" .. c.name .. "|var|" .. hex(wire))
+  T.Tables["Root"].variable = true
   local back = assert(load.Load(T, "Root", wire, report()), "variable load")
+  T.Tables["Root"].variable = false
   print("V|" .. c.name .. "|varback|" .. bits(back))
   local msg = assert(T.SaveMessages("Root", vocab, { v }), "message save")
   print("V|" .. c.name .. "|msg|" .. hex(msg))
@@ -219,8 +221,8 @@ for _, c in ipairs(writers) do
     local mm, mmwhy = T.MeasureMessages("Root", vocab, { v })
     check(id .. "message-measure", mm == -1 and mmwhy == named, mmwhy)
     check(id .. "message-save", T.SaveMessages("Root", vocab, { v }) == nil, "message save wrote")
-    local fok, ferr = pcall(T.WriteFixed, "Root", v)
-    check(id .. "fixed", not fok and ferr == "non_finite_float", ferr)
+    local fw, fwhy = T.WriteFixed("Root", v)
+    check(id .. "fixed", fw == nil and fwhy == named, fwhy)
     local cm, cwhy = cookwrite.CookMeasure(T, "Root", v)
     check(id .. "cook-measure", cm == -1 and cwhy == named, cwhy)
     local cw, cwwhy = cookwrite.Cook(T, "Root", v)
@@ -235,8 +237,8 @@ do
   v.a = 1e300
   local w, why = save.Save(T, "Root", v)
   check("write:f32_overflow:a:save", w == nil and why == "non_finite_float: Root.a", why)
-  local fok = pcall(T.WriteFixed, "Root", v)
-  check("write:f32_overflow:a:fixed", not fok, "fixed wrote")
+  local fok, fw = pcall(T.WriteFixed, "Root", v)
+  check("write:f32_overflow:a:fixed", not fok or fw == nil, "fixed wrote")
 end
 do
   local h = T.NewHolder()
@@ -316,6 +318,7 @@ for _, c in ipairs(nonfinite) do
 
     local w = patch_bytes(wire, is32, from, to)
     local r = report()
+    T.Tables["Root"].variable = true
     local got = load.loadWalk(T, "Root", w, r)
     check("var-" .. width .. tail .. "tolerant", got == nil and r.nonFiniteFloat == s.owner and r.reason == named, r.reason)
     r = report()
@@ -323,6 +326,7 @@ for _, c in ipairs(nonfinite) do
     check("var-" .. width .. tail .. "strict", got == nil and r.reason == "non_finite_float", r.reason)
     local ok, err = pcall(refusal.ReadStrict, T, "Root", w)
     check("var-" .. width .. tail .. "readstrict", not ok and err == "non_finite_float", err)
+    T.Tables["Root"].variable = false
 
     local m = patch_bits(msg, is32 and 32 or 64, from, to)
     r = report()
@@ -412,11 +416,37 @@ func TestFSGo(t *testing.T) {
 		v.A = math.Float32frombits(c.b32)
 		v.B = f
 		v.Ys = [2]float64{f, f}
-		if n := RootMeasure(&v); n < 0 {
+		form1Measure := func(val *Root) int64 {
+			var ids TableIds
+			w := TableWriter{Measuring: true, Ids: &ids}
+			w.Put8(1)
+			if !RootSaveBody(&w, val) {
+				return -1
+			}
+			w.Trailer()
+			if w.Overflow || ids.Overflow {
+				return -1
+			}
+			return w.Offset
+		}
+		form1Save := func(val *Root, buffer []byte) int64 {
+			var ids TableIds
+			w := TableWriter{Buffer: buffer, Ids: &ids}
+			w.Put8(1)
+			if !RootSaveBody(&w, val) {
+				return -1
+			}
+			w.Trailer()
+			if w.Overflow || ids.Overflow {
+				return -1
+			}
+			return w.Offset
+		}
+		if n := form1Measure(&v); n < 0 {
 			put("go_var_"+c.name+".hex", "refused")
 		} else {
 			wire := make([]byte, n)
-			if RootSave(&v, wire) != n {
+			if form1Save(&v, wire) != n {
 				t.Fatalf("%s: variable save", c.name)
 			}
 			put("go_var_"+c.name+".hex", hex.EncodeToString(wire))

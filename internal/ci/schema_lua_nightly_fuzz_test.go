@@ -224,7 +224,7 @@ func TestLuaNightlyFuzzOracleCarriesEveryRuntimeRefusal(t *testing.T) {
 	// THE PLANT LANDS. The negative control seds one exact guard line out of
 	// the generated load.lua; when the runtime's line changes the control dies
 	// at make time with "the plant did not land", so the line is held here.
-	plant := regexp.MustCompile(`sed -i 's/\^(  if blen < 9 then)\$\$/`).FindStringSubmatch(readCI(t, root, "make/schema-lua-nightly-fuzz.mk"))
+	plant := regexp.MustCompile(`sed -i(?:\.bak)? 's/\^(  if blen < 9 then)\$\$/`).FindStringSubmatch(readCI(t, root, "make/schema-lua-nightly-fuzz.mk"))
 	if plant == nil {
 		t.Fatal("the negative control's plant is not the `if blen < 9` guard")
 	}

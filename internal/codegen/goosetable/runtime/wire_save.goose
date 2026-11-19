@@ -270,6 +270,7 @@ fn edge_of(c: SaveCtx&, s: i64) -> i64 {
     if s < 0 || c.vals[s].state != ValPresent { return 0; }
     let wire = c.vals[s].bits.lo;
     if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { refuse(c, SaveRefuseInvalidValue); return 0; }
+    if wire >= 2 && c.nodes[(wire - 2) as! i64].blob == 0 && c.nodes[(wire - 2) as! i64].tab < 0 { refuse(c, SaveRefuseInvalidValue); return 0; }
     return wire as! i64;
 }
 

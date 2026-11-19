@@ -16,7 +16,8 @@ public final class TableJson {
     private TableJson() {}
 
     static void writeFlags(StringBuilder b, long bits, String[] names, int depth) {
-        assert names.length >= 64 || (bits >>> names.length) == 0 : "flags value sets a bit no variant names";
+        assert names.length >= 64 || (bits >>> names.length) == 0
+                : "flags value sets a bit no variant names";
         b.append('[');
         boolean first = true;
         for (int i = 0; i < names.length; i++)
@@ -197,21 +198,24 @@ public final class TableJson {
     static Long parseRfc3339(String s) {
         int n = s.length();
         if (n < 20) return null;
-        int y0 = timestampDigit(s, 0), y1 = timestampDigit(s, 1), y2 = timestampDigit(s, 2), y3 = timestampDigit(s, 3);
+        int y0 = timestampDigit(s, 0),
+                y1 = timestampDigit(s, 1),
+                y2 = timestampDigit(s, 2),
+                y3 = timestampDigit(s, 3);
         int m0 = timestampDigit(s, 5), m1 = timestampDigit(s, 6);
         int d0 = timestampDigit(s, 8), d1 = timestampDigit(s, 9);
         int h0 = timestampDigit(s, 11), h1 = timestampDigit(s, 12);
         int min0 = timestampDigit(s, 14), min1 = timestampDigit(s, 15);
         int s0 = timestampDigit(s, 17), s1 = timestampDigit(s, 18);
-        if (y0 < 0 || y1 < 0 || y2 < 0 || y3 < 0
-                || m0 < 0 || m1 < 0 || d0 < 0 || d1 < 0
-                || h0 < 0 || h1 < 0 || min0 < 0 || min1 < 0
-                || s0 < 0 || s1 < 0) {
+        if (y0 < 0 || y1 < 0 || y2 < 0 || y3 < 0 || m0 < 0 || m1 < 0 || d0 < 0 || d1 < 0 || h0 < 0
+                || h1 < 0 || min0 < 0 || min1 < 0 || s0 < 0 || s1 < 0) {
             return null;
         }
-        if (s.charAt(4) != '-' || s.charAt(7) != '-'
+        if (s.charAt(4) != '-'
+                || s.charAt(7) != '-'
                 || (s.charAt(10) != 'T' && s.charAt(10) != 't')
-                || s.charAt(13) != ':' || s.charAt(16) != ':') {
+                || s.charAt(13) != ':'
+                || s.charAt(16) != ':') {
             return null;
         }
         int year = y0 * 1000 + y1 * 100 + y2 * 10 + y3;
@@ -260,8 +264,12 @@ public final class TableJson {
         } else {
             return null;
         }
-        long sec = timestampDays(year, month, day) * 86400L
-                + hour * 3600L + minute * 60L + second + offsetSec;
+        long sec =
+                timestampDays(year, month, day) * 86400L
+                        + hour * 3600L
+                        + minute * 60L
+                        + second
+                        + offsetSec;
         if (sec < -9223372037L || sec > 9223372036L) return null;
         if (sec == -9223372037L && sub < 145_224_192L) return null;
         if (sec == 9223372036L && sub > 854_775_807L) return null;
@@ -367,9 +375,10 @@ public final class TableJson {
                 b.append(text);
                 return;
             }
-            boolean same = single
-                    ? (double) Float.parseFloat(text) == value
-                    : Double.parseDouble(text) == value;
+            boolean same =
+                    single
+                            ? (double) Float.parseFloat(text) == value
+                            : Double.parseDouble(text) == value;
             if (same) {
                 b.append(text);
                 return;
@@ -1308,7 +1317,7 @@ public final class TableJson {
                     raw = raw.multiply(java.math.BigInteger.TEN.pow((int) scale));
                 } else {
                     java.math.BigInteger[] qr =
-                            raw.divideAndRemainder(java.math.BigInteger.TEN.pow((int) - scale));
+                            raw.divideAndRemainder(java.math.BigInteger.TEN.pow((int) -scale));
                     if (qr[1].signum() != 0) {
                         in.rep.refuse("kind_mismatch");
                         return null;

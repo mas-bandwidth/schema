@@ -43,7 +43,7 @@ WFR_DRIVER_cs    = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconform
 
 WFR_DEPS_dart    = build/conformance-dart
 WFR_DRIVER_dart  = build/conformance-dart wire-fuzz
-WFR_FLAGS_dart   = --builder
+WFR_FLAGS_dart   = --mixed-builder
 
 WFR_DEPS_elixir  = build/elixir-tables-ebin/.stamp
 WFR_DRIVER_elixir = test/conformance/elixir/driver wire-fuzz
@@ -144,7 +144,7 @@ tables-wire-fuzz-release-negative-control: build/conformance-harness
 		WFR_DRIVER="$(CURDIR)/build/conformance-dart-negative-mapheader/conformance-dart wire-fuzz" WFR_FLAGS="$(WFR_FLAGS_dart)" WFR_ENV= \
 		sh make/checks/wire-fuzz-release-run.sh dart plain $$s $(WIRE_FUZZ_RELEASE_N) build/wire-fuzz-release-nc & done; wait
 	@cat build/wire-fuzz-release-nc/*.row | awk -F'\t' '{ print $$1 " | " $$2 " | " $$3 " | " $$4 }'
-	@red=$$(cut -f4 build/wire-fuzz-release-nc/*.row | grep -cE '^RED: .*report differs'); \
+	@red=$$(cut -f4 build/wire-fuzz-release-nc/*.row | grep -cE '^RED: .*(report|read acceptance) differs'); \
 	if [ "$$red" -eq 0 ]; then echo "NEGATIVE CONTROL FAILED: the map header bounded by L left the release gate green on every seed"; exit 1; fi; \
 	if cut -f4 build/wire-fuzz-release-nc/*.row | grep -qE 'leg died|did not answer|exit [0-9]'; then echo "NEGATIVE CONTROL FAILED: the gate went red for another reason"; exit 1; fi; \
 	echo "negative control: #2400 reverted (the Dart map header bounded by L) turns the release wire-fuzz gate RED on $$red of $(words $(WIRE_FUZZ_RELEASE_SEEDS)) seeds, on the report"

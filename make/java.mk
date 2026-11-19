@@ -2002,8 +2002,8 @@ test-java: tables-java-node-index-negative-control
 CONFORMANCE_NEGATIVE_JAVA_BLOCK := build/conformance-negative-java-block
 CONFORMANCE_NEGATIVE_JAVA_BLOCK_SED := s|if (stride != %sStride) { return -8; }|if (stride != %sStride) { } // SABOTAGED|
 .PHONY: conformance-negative-control-java-block
-conformance-negative-control-java-block: build/conformance-harness
-	@rm -rf $(CONFORMANCE_NEGATIVE_JAVA_BLOCK) && mkdir -p $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)
+conformance-negative-control-java-block: build/conformance-harness build/tables-generated-java/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_JAVA_BLOCK) && mkdir -p $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated
 	@sed '$(CONFORMANCE_NEGATIVE_JAVA_BLOCK_SED)' internal/codegen/javatable/block.go > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/javatable-block.go.txt
 	@cmp -s internal/codegen/javatable/block.go $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/javatable-block.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Java block sabotage did not apply"; exit 1; } || true
@@ -2019,8 +2019,13 @@ conformance-negative-control-java-block: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/v2 test/tables/V2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/p1 test/tables/P1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/p3 test/tables/P3.schema
-	# the driver names tblrt1 directly (the retain surfaces), so RT1 is on every classpath
+	# the driver names tblrt1 and the widened units directly, so link any non-sabotaged corpus units from build/tables-generated-java
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/rt1 test/tables/RT1.schema
+	@for d in build/tables-generated-java/*; do \
+		[ -d "$$d" ] || continue; \
+		u=$$(basename "$$d"); \
+		[ -e "$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/$$u" ] || ln -s "$(CURDIR)/$$d" "$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/$$u"; \
+	done
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/classes \
@@ -2380,7 +2385,7 @@ tables-java-view: bin/schema test/java-view/View.java
 	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/java-view/negative
-	@sed '0,/ doc=[^ ]/s/ doc=\([^ ]\)/ doc=X\1/' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing
+	@awk '!done && / doc=[^ ]/ { sub(/ doc=/, " doc=X"); done = 1 } { print }' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing
 	@if cmp -s build/java-view/tabledemo.listing build/java-view/negative/tabledemo.listing; then echo "tables-java-view negative control damaged nothing"; exit 1; fi
 	@if SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view/negative" SCHEMA_VIEW_LISTING_UNITS=tabledemo go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/java-view/negative.log 2>&1; then echo "Java UnitView negative control escaped"; exit 1; fi
 	@grep -q "listing is not the compiler's" build/java-view/negative.log

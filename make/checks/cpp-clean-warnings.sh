@@ -58,7 +58,11 @@ if [ ! -s "$OUT/files.txt" ]; then echo "tables-cpp-clean: no generated C++ unde
 #                     defect in it. Older clang does not know either kind, so
 #                     leaving them in would make the ratchet depend on the
 #                     version of the host's clang.
-export WFLAGS="-std=c++17 -fsyntax-only -fno-caret-diagnostics -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-unsafe-buffer-usage -Wno-unsafe-buffer-usage-in-libc-call"
+WFLAGS="-std=c++17 -fsyntax-only -fno-caret-diagnostics -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-unsafe-buffer-usage -Wno-unsafe-buffer-usage-in-libc-call"
+if ! printf '' | $CLANGXX -std=c++17 -fsyntax-only -Wallocator-wrappers -x c++ - 2>&1 | grep -q 'unknown warning option'; then
+	WFLAGS="$WFLAGS -Wno-allocator-wrappers"
+fi
+export WFLAGS
 export CPATH=
 
 xargs -P "$JOBS" -n 1 sh "$here/cpp-clean-one.sh" < "$OUT/files.txt"

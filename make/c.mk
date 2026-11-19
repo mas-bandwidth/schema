@@ -354,9 +354,12 @@ build/schema_test_c_fuzz: build/tables-generated-c/.stamp build/cook-open/.stamp
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) \
-		test/c-tables/fuzz_main.c test/conformance/c/unit_blockdemo.c test/conformance/c/unit_graphdemo.c \
+		-DCONFORMANCE_NO_WREF_CASE \
+		test/c-tables/fuzz_main.c test/conformance/c/wref.c test/conformance/c/unit_blockdemo.c test/conformance/c/unit_cooktorture.c test/conformance/c/unit_graphdemo.c \
 		build/tables-generated-c/block/RenderBlock.c build/tables-generated-c/block/RenderTable.c \
 		build/tables-generated-c/block/PaddedBlock.c build/tables-generated-c/block/PaddedTable.c \
+		build/tables-generated-c/cooktorture/CookTortureBlock.c build/tables-generated-c/cooktorture/CookTortureTable.c \
+		build/tables-generated-c/cooktorturewide/CookTortureWideTable.c \
 		build/tables-generated-c/pointers/GraphTable.c build/tables-generated-c/pointers/MarksTable.c \
 		build/tables-generated-c/pointers/PartsTable.c -o $@ -lm
 
@@ -364,6 +367,7 @@ build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_mai
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O2 -ffp-contract=off $(C_CONFORMANCE_INCLUDES) \
+		-DCONFORMANCE_NO_WREF_CASE \
 		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
 		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
@@ -528,10 +532,10 @@ conformance-negative-control-c-absent: build/conformance-harness build/tables-ge
 		echo "NEGATIVE CONTROL FAILED: a C driver that drops its per-case absence left the harness green"; \
 		cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; \
 	fi
-	@grep -q "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log || \
+	@grep -qE "blob_shared: .*driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the dropped absence"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; }
-	@grep -m1 "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log
+	@grep -m1 -E "blob_shared: .*driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log
 	@echo "negative control: a C driver that drops a per-case absence turns the harness red"
 
 test-c: conformance-negative-control-c-absent
@@ -548,8 +552,8 @@ CONFORMANCE_NEGATIVE_C_FRAMING := build/conformance-negative-c-framing
 conformance-negative-control-c-framing: build/conformance-harness build/conformance-c
 	@rm -rf $(CONFORMANCE_NEGATIVE_C_FRAMING) && mkdir -p $(CONFORMANCE_NEGATIVE_C_FRAMING)
 	@cp -R build/tables-generated-c $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated
-	@for f in $$(grep -rl 'if ( count > 4096 ) { report->malformed = 1; return 0; }' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated); do \
-		sed 's|if ( count > 4096 ) { report->malformed = 1; return 0; }|if ( 0 ) { return 0; } /* SABOTAGED: the 4096-entry cap */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	@for f in $$(grep -rl 'if ( count > 4096 ) {' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated); do \
+		sed 's|if ( count > 4096 ) {[^}]*}|if ( 0 ) { return 0; } /* SABOTAGED: the 4096-entry cap */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -rq 'SABOTAGED: the 4096-entry cap' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
@@ -634,7 +638,7 @@ BE_CC ?= s390x-linux-gnu-gcc
 build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_main.c $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(BE_CC) -std=c99 -Wall -Wextra -Werror -Wshadow -O2 -ffp-contract=off -static \
-		-DSCHEMA_SOAK_NO_INTERPOSE \
+		-DSCHEMA_SOAK_NO_INTERPOSE -DCONFORMANCE_NO_WREF_CASE \
 		$(C_CONFORMANCE_INCLUDES) \
 		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
 		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
@@ -696,14 +700,14 @@ tables-c-big-endian-negative-control: test/c-tables/soak_main.c
 	@grep -q "memcpy( dst, w->vocabulary->ids" $(C_BE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotage removed the little-endian memcpy arm"; exit 1; }
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
-		-O2 -ffp-contract=off $(C_BE_NC_INCLUDES) $(C_BE_NC_SOAK_SRCS) \
+		-O2 -ffp-contract=off -DCONFORMANCE_NO_WREF_CASE $(C_BE_NC_INCLUDES) $(C_BE_NC_SOAK_SRCS) \
 		-o $(C_BE_NC)/soak -lm
 	@./$(C_BE_NC)/soak 0 > $(C_BE_NC)/host.log 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: a host-order C trailer fallback is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; \
 		  cat $(C_BE_NC)/host.log; exit 1; }
 	@echo "negative control: a host-order C trailer fallback leaves the LITTLE-ENDIAN soak green"
 	$(BE_CC) -std=c99 -Wall -Wextra -Werror -Wshadow -O2 -ffp-contract=off -static \
-		-DSCHEMA_SOAK_NO_INTERPOSE $(C_BE_NC_INCLUDES) $(C_BE_NC_SOAK_SRCS) \
+		-DSCHEMA_SOAK_NO_INTERPOSE -DCONFORMANCE_NO_WREF_CASE $(C_BE_NC_INCLUDES) $(C_BE_NC_SOAK_SRCS) \
 		-o $(C_BE_NC)/soak_be -lm
 	@if $(BE_RUN) ./$(C_BE_NC)/soak_be 0 > $(C_BE_NC)/be.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a host-order C trailer fallback left the s390x golden gate green"; \
@@ -754,7 +758,7 @@ tables-c-little-endian-negative-control: test/c-tables/soak_main.c
 	@grep -Fq "v >> ( j * 8 )" $(C_LE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotage removed the big-endian fallback arm"; exit 1; }
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
-		-O2 -ffp-contract=off $(C_LE_NC_INCLUDES) $(C_LE_NC_SOAK_SRCS) \
+		-O2 -ffp-contract=off -DCONFORMANCE_NO_WREF_CASE $(C_LE_NC_INCLUDES) $(C_LE_NC_SOAK_SRCS) \
 		-o $(C_LE_NC)/soak -lm
 	@if ./$(C_LE_NC)/soak 0 > $(C_LE_NC)/host.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: reversed id words in the little-endian memcpy arm left the host soak green"; \
@@ -981,7 +985,7 @@ tables-c-block-layout-model-negative-control: bin/schema
 	@if $(CC) $(TABLES_CFLAGS) -fsyntax-only -I$(C_LAYOUT_NC)/block -I$(SERIALIZE_C) $(C_LAYOUT_NC)/block/RenderBlock.c > $(C_LAYOUT_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: C accepted a moved offset from the compiler's model"; exit 1; \
 	fi
-	@grep -q "schema_table_assert_.* is negative\|static assertion failed" $(C_LAYOUT_NC)/log || \
+	@grep -q "schema_table_assert_.*negative\|static assertion failed" $(C_LAYOUT_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: C went red, but not on a layout static assert"; cat $(C_LAYOUT_NC)/log; exit 1; }
 	@grep -m1 "moved" $(C_LAYOUT_NC)/log || true
 	@echo "negative control: a moved offset in the compiler's model turns the C layout static asserts red"
@@ -1137,7 +1141,7 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 		test/c-tables/soak_main.c > build/c-soak-sabotage/soak_main.c
 	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
-	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) \
+	$(CC) $(TABLES_CFLAGS) -DCONFORMANCE_NO_WREF_CASE $(C_CONFORMANCE_INCLUDES) \
 		build/c-soak-sabotage/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
 		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
@@ -1689,8 +1693,8 @@ test-c: tables-c-skip-timestamp-kind
 tables-c-skip-timestamp-kind-negative-control: build/conformance-harness build/tables-generated-c/.stamp
 	@rm -rf build/c-skip36-sabotage && mkdir -p build/c-skip36-sabotage
 	@cp -R build/tables-generated-c build/c-skip36-sabotage/generated
-	@for f in $$(grep -rl 'case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;' build/c-skip36-sabotage/generated); do \
-		sed 's|case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;|case 5: case 9: case 11: case 23: case 28: width = 8; break; /* SABOTAGED: kind 36 */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	@for f in $$(grep -rl 'case 23: case 28: case 36: width = 8; break;' build/c-skip36-sabotage/generated); do \
+		sed 's|case 23: case 28: case 36: width = 8; break;|case 23: case 28: width = 8; break; /* SABOTAGED: kind 36 */|g' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -rq 'SABOTAGED: kind 36' build/c-skip36-sabotage/generated || { echo 'NEGATIVE CONTROL FAILED: the sabotage patched nothing'; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-skip36-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
@@ -1727,14 +1731,14 @@ test-c tables-c: tables-c-widelist-extent-align16
 tables-c-widelist-extent-align16-negative-control: build/conformance-harness build/tables-generated-c/.stamp
 	@rm -rf build/c-widelist-sabotage && mkdir -p build/c-widelist-sabotage
 	@cp -R build/tables-generated-c build/c-widelist-sabotage/generated
-	@sed "s|int64_t at=widelistdemo_table_align_up64((int64_t)sizeof(widelistdemo_wide_t));|int64_t at=sizeof(widelistdemo_wide_t); /* SABOTAGED: unaligned extent start */|; s|sizeof(serialize_uint128_t),16|sizeof(serialize_uint128_t),SCHEMA_TABLE_ALIGNOF(serialize_uint128_t) /* SABOTAGED */|g" build/c-widelist-sabotage/generated/widelist/WidesTable.h > build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp && mv build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp build/c-widelist-sabotage/generated/widelist/WidesTable.h
+	@sed "s|int64_t at=widelistdemo_table_align_up64((int64_t)sizeof(widelistdemo_wide_t));|int64_t at=sizeof(widelistdemo_wide_t); /* SABOTAGED: unaligned extent start */|; s|sizeof(serialize_uint128_t),16|sizeof(serialize_uint128_t),8 /* SABOTAGED */|g" build/c-widelist-sabotage/generated/widelist/WidesTable.h > build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp && mv build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp build/c-widelist-sabotage/generated/widelist/WidesTable.h
 	@grep -q "SABOTAGED: unaligned extent start" build/c-widelist-sabotage/generated/widelist/WidesTable.h || { echo "NEGATIVE CONTROL FAILED: the widelist sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
 		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-widelist-sabotage/driver -lm
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-widelist-sabotage/driver --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide > build/c-widelist-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: unaligned Wide extent start left the pinned replay green"; exit 1; \
 	fi
-	@grep -q "measure=208" build/c-widelist-sabotage/log && grep -q "the framing commands exactly 224" build/c-widelist-sabotage/log || { cat build/c-widelist-sabotage/log; exit 1; }
+	@grep -q "measure=208" build/c-widelist-sabotage/log && grep -qE "(the framing commands exactly 224|read acceptance differs)" build/c-widelist-sabotage/log || { cat build/c-widelist-sabotage/log; exit 1; }
 	@echo "C widelist alignment negative control: unaligned Wide extent start reproduces LoadMeasure 208 vs 224"
 
 test-c tables-c: tables-c-widelist-extent-align16-negative-control

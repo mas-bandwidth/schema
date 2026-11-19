@@ -1163,6 +1163,7 @@ var (
 // and cargo's: there is no loop here that can fail to end.
 func versionRun(t *testing.T) string {
 	t.Helper()
+	slowtest.Gate(t, "an external toolchain")
 	corpus := versionCorpus(t)
 	versionOnce.Do(func() { versionGot = versionBuildAndRun(t, corpus) })
 	if versionGot.out == "" {
