@@ -1577,7 +1577,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_fixed_apply( con
             }
             if ( p->dstsize == 16u )
             {
-                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~(uint64_t) 0 : 0ull;
+                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~0ull : 0ull;
                 bench_table_fixed_store_native( dst + p->dst, raw, 8u );
                 bench_table_fixed_store_native( dst + p->dst + 8u, hi, 8u );
             }

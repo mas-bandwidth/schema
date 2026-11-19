@@ -89,10 +89,10 @@ func buildClausesSlices() []sliceSpec {
 	for _, c := range []int{0, 1, 3, 4, 5, 20} {
 		out = append(out, sliceSpec{"W1", ceilBytes(5 + c)})
 	}
-	for c := 0; c < 4; c++ {
+	for c := range 4 {
 		out = append(out, sliceSpec{"W52", ceilBytes(2 + 52*c)})
 	}
-	for c := 0; c < 4; c++ {
+	for c := range 4 {
 		out = append(out, sliceSpec{"W50", ceilBytes(2 + 50*c)})
 	}
 	out = append(out, sliceSpec{"F13", ceilBytes(91)})
@@ -106,7 +106,7 @@ func buildClausesSlices() []sliceSpec {
 	for _, bits := range []int{27, 155, 75} {
 		out = append(out, sliceSpec{"Strs", ceilBytes(bits)})
 	}
-	for c := 0; c < 5; c++ {
+	for c := range 5 {
 		out = append(out, sliceSpec{"ArrNested", ceilBytes(11 + 11*c)})
 	}
 	out = append(out, sliceSpec{"Sole", ceilBytes(13)})
@@ -142,7 +142,7 @@ func buildJoinsSlices() []sliceSpec {
 		}
 	}
 	for _, f := range []bool{false, true} {
-		for c := 0; c < 4; c++ {
+		for c := range 4 {
 			bits := 22
 			if f {
 				bits = 15 + 13*c
@@ -154,10 +154,10 @@ func buildJoinsSlices() []sliceSpec {
 		out = append(out, sliceSpec{"HoldsUneven", ceilBytes(bits)})
 	}
 	unevenItemBits := []int{0, 5, 44, 49}
-	for c := 0; c < 4; c++ {
+	for c := range 4 {
 		out = append(out, sliceSpec{"ArrUneven", ceilBytes(10 + unevenItemBits[c])})
 	}
-	for c := 0; c < 4; c++ {
+	for c := range 4 {
 		for _, sl := range []int{0, 4} {
 			afterAlign := ceilBytes(5+2+13*c+3) * 8
 			out = append(out, sliceSpec{"RegainAfterAlign", ceilBytes(afterAlign + 8*sl + 84)})
@@ -172,7 +172,7 @@ type bitPacker struct {
 }
 
 func (p *bitPacker) writeBits(v uint64, n int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		byteIdx := p.bits >> 3
 		bitIdx := uint(p.bits & 7)
 		if byteIdx >= len(p.buf) {

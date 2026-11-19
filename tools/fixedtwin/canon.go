@@ -976,6 +976,7 @@ func stripPairedDeadAndFill(s string) string {
 		s = rewriteFuncDef(s, "inline void TableFixedPush", func(body string) string {
 			body = strings.ReplaceAll(body, "e.present = c->present;", "")
 			body = strings.ReplaceAll(body, "e.present = c.present;", "")
+			body = strings.ReplaceAll(body, "(uint64_t) e.dead", "(uint64_t) TableFixedOptionalWireBytes( e )")
 			return body
 		})
 		s = rewriteFuncDef(s, "inline void TableFixedCompileEntry", func(body string) string {

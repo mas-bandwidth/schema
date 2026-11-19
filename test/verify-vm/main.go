@@ -250,7 +250,6 @@ func verifyLang(repoRoot, schemaBin, lang, workDir, mode string) error {
 				{"lud", buildLuauLudProbe()},
 				{"vh", buildLuauVHProbe()},
 			} {
-				u := u
 				tasks = append(tasks, func() error {
 					dir := filepath.Join(workDir, u.sub)
 					if err := os.WriteFile(filepath.Join(dir, "inputs.luau"), []byte(modText), 0o644); err != nil {
@@ -301,7 +300,6 @@ func verifyLang(repoRoot, schemaBin, lang, workDir, mode string) error {
 				{"lud", buildMooLudProbe()},
 				{"vh", buildMooVHProbe()},
 			} {
-				u := u
 				tasks = append(tasks, func() error {
 					dir := filepath.Join(workDir, u.sub)
 					if err := os.WriteFile(filepath.Join(dir, "inputs.moo"), []byte(modText), 0o644); err != nil {

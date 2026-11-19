@@ -731,7 +731,7 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
             }
             if ( p->dstsize == 16u )
             {
-                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~(uint64_t) 0 : 0ull;
+                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~0ull : 0ull;
                 table_fixed_store_native( dst + p->dst, raw, 8u );
                 table_fixed_store_native( dst + p->dst + 8u, hi, 8u );
             }
