@@ -926,7 +926,7 @@ fn json_keyset_find(entries: const JsonKeyEntry[>..]&, slots: const i64[>..]&, k
 fn json_keyset_seen(entries: JsonKeyEntry[>..]&, slots: i64[>..]&, ks: JsonKeySet&, key: const u8[:]) -> bool {
     if (ks.used + 1) * 3 > ks.cap * 2 { json_keyset_grow(entries, slots, ks); }
     var h: u64 = 0xcbf29ce484222325;
-    for b in key { h = (h ^ (b as u64)) * 0x100000001b3; }
+    for b in key { h = (h ^ b) * 0x100000001b3; }
     let found, at = json_keyset_find(entries, slots, ks, key, h);
     if found { return true; }
     var e = JsonKeyEntry { hash: h, len: key.len, next: ks.head, key: [0; 256] };

@@ -757,8 +757,9 @@ public sealed class TableFieldInfo
     public bool HasRange;       // a declared [min, max] (int or float)
     public double RangeMin;     // NOTE: int64 ranges beyond 2^53 lose precision here
     public double RangeMax;
-    public long EnumMax;        // enums: highest valid value (None = 0 always valid);
-                                // unions: the arm count (tag range [0, EnumMax]); else -1
+    // enums: highest valid value (None = 0 always valid);
+    // unions: the arm count (tag range [0, EnumMax]); else -1
+    public long EnumMax;
     public Func<ulong, string> EnumName;  // enums: value -> name; unions: tag -> arm name; else null
     // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.

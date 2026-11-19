@@ -8341,12 +8341,18 @@ defmodule Benchtable.Table do
         end
 
       desc = Map.fetch!(@tables, table)
+      tab = :ets.new(:elixir_cook_plan, [:private, :set])
       Process.put(:elixir_cook_directory, directory)
-      Process.put(:elixir_cook_seen, %{})
+      Process.put(:elixir_cook_plan, tab)
 
       try do
-        {body, {count, collected, _blobs}} = cook_collect(desc, value, {0, %{}, %{}})
-        children = for i <- 0..(count - 1)//1, do: Map.fetch!(collected, i)
+        {body, count} = cook_collect(desc, value, 0)
+
+        children =
+          for i <- 0..(count - 1)//1 do
+            [{_, node}] = :ets.lookup(tab, {:node, i})
+            node
+          end
 
         root = %{
           id: desc.type_id,
@@ -8362,8 +8368,9 @@ defmodule Benchtable.Table do
         total = 64 + data + length(laid) * 16
         {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
       after
+        :ets.delete(tab)
         Process.delete(:elixir_cook_directory)
-        Process.delete(:elixir_cook_seen)
+        Process.delete(:elixir_cook_plan)
       end
     catch
       :invalid -> {:error, :invalid_value}
@@ -8410,20 +8417,29 @@ defmodule Benchtable.Table do
   defp cook_collect_field(
          %{t: :blob, cook_type_id: id} = f,
          {:blob_shared, v},
-         {_count, nodes, blobs} = acc
+         count
        ) do
-    case Map.fetch(blobs, {id, v}) do
-      :error -> cook_collect_field(f, v, acc)
-      {:ok, at} -> {elem(Map.fetch!(nodes, at).key, 1), acc}
+    tab = Process.get(:elixir_cook_plan)
+
+    case :ets.lookup(tab, {:blob, id, v}) do
+      [] ->
+        cook_collect_field(f, v, count)
+
+      [{_, at}] ->
+        [{_, node}] = :ets.lookup(tab, {:node, at})
+        {elem(node.key, 1), count}
     end
   end
 
-  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, {count, nodes, blobs})
+  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, count)
        when not is_nil(v) do
     if not is_binary(v), do: throw(:invalid)
+    tab = Process.get(:elixir_cook_plan)
     slot = {:cook_blob, count}
     node = %{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v}
-    {slot, {count + 1, Map.put(nodes, count, node), Map.put_new(blobs, {id, v}, count)}}
+    :ets.insert(tab, {{:node, count}, node})
+    :ets.insert_new(tab, {{:blob, id, v}, count})
+    {slot, count + 1}
   end
 
   defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, n, acc)
@@ -8510,25 +8526,25 @@ defmodule Benchtable.Table do
   # was first reached as and whether its body is still being walked: a
   # pointer to a node still OPEN is a data cycle, refused by name (§3.1), and a
   # number reached as a second table type is not one node, an invalid value.
-  defp cook_push({count, nodes, blobs} = acc, id, elem, n) do
-    seen = Process.get(:elixir_cook_seen)
+  defp cook_push(count, id, elem, n) do
+    tab = Process.get(:elixir_cook_plan)
 
-    case Map.get(seen, n) do
-      {^elem, :closed} ->
-        acc
+    case :ets.lookup(tab, {:seen, n}) do
+      [{_, ^elem, :closed}] ->
+        count
 
-      {^elem, :open} ->
+      [{_, ^elem, :open}] ->
         throw(:data_cycle)
 
-      nil ->
-        Process.put(:elixir_cook_seen, Map.put(seen, n, {elem, :open}))
+      [] ->
+        :ets.insert(tab, {{:seen, n}, elem, :open})
         value = cook_node_lookup(n)
         node = %{id: id, key: {id, n}, kind: :table, string: false, value: value, elem: elem}
-        acc = {count + 1, Map.put(nodes, count, node), blobs}
-        {body, {after_count, nodes, blobs}} = cook_collect(Map.fetch!(@tables, elem), value, acc)
-        closed = Map.put(Process.get(:elixir_cook_seen), n, {elem, :closed})
-        Process.put(:elixir_cook_seen, closed)
-        {after_count, Map.put(nodes, count, %{node | value: body}), blobs}
+        :ets.insert(tab, {{:node, count}, node})
+        {body, after_count} = cook_collect(Map.fetch!(@tables, elem), value, count + 1)
+        :ets.insert(tab, {{:seen, n}, elem, :closed})
+        :ets.insert(tab, {{:node, count}, %{node | value: body}})
+        after_count
 
       _ ->
         throw(:invalid)
@@ -8595,8 +8611,10 @@ defmodule Benchtable.Table do
   # same way, with the alignment gaps between them zero: no write copies a
   # node or the region, so the writer's work is linear in the cooked size.
   defp cook_render(plan, order) do
+    index = :ets.new(:elixir_cook_index, [:private, :set])
+
     try do
-      index = Map.new(plan.nodes, fn n -> {n.key, n.offset} end)
+      Enum.each(plan.nodes, fn n -> :ets.insert(index, {n.key, n.offset}) end)
 
       {parts, at} =
         Enum.reduce(plan.nodes, {[], 0}, fn n, {parts, at} ->
@@ -8628,6 +8646,8 @@ defmodule Benchtable.Table do
       {:ok, IO.iodata_to_binary([header, data, dir])}
     catch
       :invalid -> :error
+    after
+      :ets.delete(index)
     end
   end
 
@@ -8885,8 +8905,8 @@ defmodule Benchtable.Table do
   defp cook_ref(buf, _at, _id, nil, _index, _order), do: buf
 
   defp cook_ref(buf, at, id, v, index, order) do
-    case Map.fetch(index, {id, v}) do
-      {:ok, to} when to != at -> put_i64(buf, at, to - at, order)
+    case :ets.lookup(index, {id, v}) do
+      [{_, to}] when to != at -> put_i64(buf, at, to - at, order)
       _ -> throw(:invalid)
     end
   end

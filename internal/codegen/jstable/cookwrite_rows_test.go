@@ -62,10 +62,15 @@ func readCookWriteManifest(t *testing.T, repo string) (map[string][]string, []co
 			if len(fields) < 5 {
 				t.Fatalf("malformed instance line: %q", line)
 			}
+			wireRel := strings.Replace(fields[4], "testdata/conformance/tables/wire/", "testdata/wire/tables/", 1)
+			wireFull := filepath.Join(repo, wireRel)
+			if _, err := os.Stat(wireFull); err != nil {
+				wireFull = filepath.Join(repo, fields[4])
+			}
 			instances[fields[1]] = instInfo{
 				unitKey:  fields[2],
 				root:     fields[3],
-				wireFile: filepath.Join(repo, strings.Replace(fields[4], "testdata/conformance/tables/wire/", "testdata/wire/tables/", 1)),
+				wireFile: wireFull,
 			}
 		case "cook-write":
 			// cook-write <instance> <little> <big> [input=<json>] [share=<source>:<alias>]
@@ -96,6 +101,14 @@ func readCookWriteManifest(t *testing.T, repo string) (map[string][]string, []co
 			}
 			if row.share != "" && row.input == "" {
 				t.Fatalf("cook-write %q shares a blob with no input=: %q", fields[1], line)
+			}
+			if row.input == "" {
+				if raw, err := os.ReadFile(row.wireFile); err == nil && len(raw) > 0 && raw[0] == 3 {
+					cand := filepath.Join(repo, "testdata", "conformance", "tables", "json", fields[1]+".json")
+					if _, err := os.Stat(cand); err == nil {
+						row.input = cand
+					}
+				}
 			}
 			rows = append(rows, row)
 		}

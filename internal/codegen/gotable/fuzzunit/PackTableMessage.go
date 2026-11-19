@@ -169,7 +169,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
-				exact := ownBuild && entry.ownSlot == 11
+				exact := ownBuild && entry.OwnSlot == 11
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -224,7 +224,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 			}
 		case 0xa6bf719a4602b0bc:
 			{
-				exact := ownBuild && entry.ownSlot == 12
+				exact := ownBuild && entry.OwnSlot == 12
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -276,7 +276,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 			}
 		case 0x5bc44627b9848818:
 			{
-				exact := ownBuild && entry.ownSlot == 13
+				exact := ownBuild && entry.OwnSlot == 13
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -561,7 +561,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 		switch entry.ID {
 		case 0x2d21d7cd66bd5a5d:
 			{
-				exact := ownBuild && entry.ownSlot == 89
+				exact := ownBuild && entry.OwnSlot == 89
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -612,7 +612,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 			}
 		case 0x7f69d4b5288ba9cf:
 			{
-				exact := ownBuild && entry.ownSlot == 14
+				exact := ownBuild && entry.OwnSlot == 14
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -667,7 +667,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 			}
 		case 0x1f3757a2ce7b0ab1:
 			{
-				exact := ownBuild && entry.ownSlot == 15
+				exact := ownBuild && entry.OwnSlot == 15
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -722,7 +722,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 			}
 		case 0x95d0cce09ca82b73:
 			{
-				exact := ownBuild && entry.ownSlot == 90
+				exact := ownBuild && entry.OwnSlot == 90
 				if exact {
 					if order >= 3 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -803,7 +803,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 			}
 		case 0x40dbb648c0cd44aa:
 			{
-				exact := ownBuild && entry.ownSlot == 91
+				exact := ownBuild && entry.OwnSlot == 91
 				if exact {
 					if order >= 4 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1061,7 +1061,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 		switch entry.ID {
 		case 0xa65f859b617deaf3:
 			{
-				exact := ownBuild && entry.ownSlot == 7
+				exact := ownBuild && entry.OwnSlot == 7
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1120,7 +1120,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 			}
 		case 0x467f35a74c6e4a70:
 			{
-				exact := ownBuild && entry.ownSlot == 8
+				exact := ownBuild && entry.OwnSlot == 8
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1165,7 +1165,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 			}
 		case 0x14ec921cc2549d60:
 			{
-				exact := ownBuild && entry.ownSlot == 9
+				exact := ownBuild && entry.OwnSlot == 9
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1216,7 +1216,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 			}
 		case 0x09ae5613b0051271:
 			{
-				exact := ownBuild && entry.ownSlot == 10
+				exact := ownBuild && entry.OwnSlot == 10
 				if exact {
 					if order >= 3 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1561,7 +1561,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 		switch entry.ID {
 		case 0xbb62c62c9808ea37:
 			{
-				exact := ownBuild && entry.ownSlot == 27
+				exact := ownBuild && entry.OwnSlot == 27
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1615,7 +1615,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 			}
 		case 0x7fb43557b54149ce:
 			{
-				exact := ownBuild && entry.ownSlot == 28
+				exact := ownBuild && entry.OwnSlot == 28
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1648,7 +1648,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 			}
 		case 0x294a5c4913e1ad44:
 			{
-				exact := ownBuild && entry.ownSlot == 29
+				exact := ownBuild && entry.OwnSlot == 29
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1733,7 +1733,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 			}
 		case 0x9cda940a344e1571:
 			{
-				exact := ownBuild && entry.ownSlot == 30
+				exact := ownBuild && entry.OwnSlot == 30
 				if exact {
 					if order >= 3 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1844,7 +1844,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 			}
 		case 0x77707fccd201c228:
 			{
-				exact := ownBuild && entry.ownSlot == 31
+				exact := ownBuild && entry.OwnSlot == 31
 				if exact {
 					if order >= 4 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

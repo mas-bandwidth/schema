@@ -33,7 +33,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	for ordinal, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
-		g.pf("exact:=ownBuild&&entry.ownSlot==%d;if exact {if order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d}\n", g.messageSlot(mine), ordinal, ordinal)
+		g.pf("exact:=ownBuild&&entry.OwnSlot==%d;if exact {if order>=%d {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};order=%d}\n", g.messageSlot(mine), ordinal, ordinal)
 		g.emitMessageCompatibility(f, mine, "entry", "", "\t")
 		elides := !f.Type.Optional && !f.Required
 		g.elides = elides

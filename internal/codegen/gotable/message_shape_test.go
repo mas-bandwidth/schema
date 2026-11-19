@@ -79,7 +79,7 @@ func TestGoMessageShapeNegativeControls(t *testing.T) {
 				for name, data := range files {
 					src := string(data)
 					if control == "shape" {
-						re := regexp.MustCompile(`exact := ownBuild && entry\.ownSlot == [0-9]+`)
+						re := regexp.MustCompile(`exact := ownBuild && entry\.OwnSlot == [0-9]+`)
 						if re.MatchString(src) {
 							changed += len(re.FindAllStringIndex(src, -1))
 							files[name] = []byte(re.ReplaceAllString(src, "exact := ownBuild"))

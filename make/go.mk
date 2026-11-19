@@ -1338,6 +1338,7 @@ tables-go-discard-negative-control:
 	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
 	@SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadGo$$' ./internal/codegen/gotable
 	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {/if false {/' \
+	     -e 's/if n == 0 {/if false {/' \
 		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
 	@if cmp -s internal/codegen/gotable/fixedform.go $(GO_DISCARD_NC)/fixedform.go.txt; then \
 		echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; fi

@@ -84,7 +84,7 @@ walk)
     sed 's/if clamped {/if false \&\& clamped {/g' "$source" > "$out/source.gotext"
     ;;
 leb|leb-driver)
-    source=$(grep -l 'if i > 0 && b == 0' build/tables-generated-go/examples/*Table.go)
+    source=$(grep -l 'if i > 0 && b == 0' build/tables-generated-go/pointers/*Table.go)
     sed 's/if i > 0 \&\& b == 0/if false/' "$source" > "$out/source.gotext"
     ;;
 frame-cap)

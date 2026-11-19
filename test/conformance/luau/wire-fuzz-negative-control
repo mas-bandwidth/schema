@@ -40,12 +40,12 @@ cp -R build/conformance-luau "$out/build/conformance-luau"
 
 planted=0
 for f in "$out"/build/conformance-luau/*/schema_load.luau; do
-	n=$(perl -0ne 'my $c = () = /\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then _report\.malformed = true; return false end/g; print $c' "$f")
+	n=$(perl -0ne 'my $c = () = /\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then _report\.malformed = true; noteField\("malformed", fieldName\); return false end/g; print $c' "$f")
 	if [ "$n" -ne 1 ]; then
 		echo "NEGATIVE CONTROL FAILED: the sabotage anchor appears $n times in $f, want 1" >&2
 		exit 1
 	fi
-	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then )_report\.malformed = true; (return false end)/$1$2/' "$f"
+	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then )_report\.malformed = true; noteField\("malformed", fieldName\); (return false end)/$1$2/; s/\tlocal top = fr ~= nil and walkBody\(b, 1, fr\.e, fr\.ids\) or nil/\tlocal top = nil/' "$f"
 	planted=$((planted + 1))
 done
 if [ "$planted" -lt 1 ]; then

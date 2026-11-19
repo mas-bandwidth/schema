@@ -65,7 +65,7 @@ type TableBitReader struct { Buffer []byte; Offset int64 }
 type TableMessageShape struct { Kind, Packing uint8; Bits int64; Base [2]uint64; Min,Max int64; QMin,QDelta float32; QCount uint32 }
 // An entry keeps its matching own encoded-entry slot, if any, and in the
 // caller's storage the first slot for its id and the body-read duplicate marks.
-type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape; ownSlot,bodyFirst,bodySeenAt uint64; bodySeenBelow [2]uint64 }
+type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape; OwnSlot,bodyFirst,bodySeenAt uint64; bodySeenBelow [2]uint64 }
 // Storage belongs to the caller and is resolved once for one connection direction.
 type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool; bodyClock uint64 }
 type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
@@ -80,7 +80,7 @@ func tableMessageRuntime(u *ir.Unit) string {
 	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(tablewire.Announce(u)))
 	b.WriteString("var tableMessageEntries = [...]TableMessageEntry{\n")
 	for i, e := range tablewire.MessageVocabulary(u) {
-		fmt.Fprintf(&b, "%s,ownSlot:%d},\n", strings.TrimSuffix(messageEntryLiteral(e), "}"), i+1)
+		fmt.Fprintf(&b, "%s,OwnSlot:%d},\n", strings.TrimSuffix(messageEntryLiteral(e), "}"), i+1)
 	}
 	b.WriteString("}\nvar tableMessageEntryKeys = [...]string{")
 	for _, e := range tablewire.MessageVocabulary(u) {
@@ -223,7 +223,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionRemote=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
  for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Refuse(TableRefuseWireDamaged,"");return false};if e.ID==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Refuse(TableRefuseWireDamaged,"");return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
- src.Offset=0;for i := range count {began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};e.ownSlot=tableMessageOwnSlot(words[began:src.Offset]);v.Entries[i]=e}
+ src.Offset=0;for i := range count {began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};e.OwnSlot=tableMessageOwnSlot(words[began:src.Offset]);v.Entries[i]=e}
  v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};tableMessageSeenFirst(v);v.Announced=true;return true
 }
 // THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never

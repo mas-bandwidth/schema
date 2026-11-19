@@ -182,7 +182,9 @@ const tableMessageReadSource = `
             if (field == null)
             {
                 if (same) { return false; }
-                d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue;
+                d.Report.Unknown++;
+                if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; }
+                continue;
             }
             if (same && field.Ordinal <= last) { return false; }
             last = field.Ordinal;

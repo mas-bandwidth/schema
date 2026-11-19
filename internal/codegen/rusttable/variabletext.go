@@ -263,10 +263,7 @@ pub fn json_integer_literal(t: &[u8], signed: bool) -> Option<u128> {
             return None;
         }
         let d = u128::from(b - b'0');
-        mag = match mag.checked_mul(10).and_then(|m| m.checked_add(d)) {
-            Some(m) => m,
-            None => return None,
-        };
+        mag = mag.checked_mul(10).and_then(|m| m.checked_add(d))?;
         i += 1;
     }
     if signed {
@@ -646,27 +643,27 @@ impl<'a> Jr<'a> {
     /// is kind_mismatch, skipped.
     pub fn read_int(&mut self, string_only: bool) -> Option<i128> {
         let c = self.peek();
-        let token: String;
-        if c == b'"' {
+        let token: String = if c == b'"' {
             if !string_only {
                 self.damaged = true;
                 self.skip_value();
                 return None;
             }
             let Some(s) = self.read_string() else { self.damaged = true; return None; };
-            token = s;
+            s
         } else {
             if string_only || matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
                 self.damaged = true;
                 self.skip_value();
                 return None;
             }
-            token = self.number_token()?;
-            if token.contains(['.', 'e', 'E']) {
+            let tok = self.number_token()?;
+            if tok.contains(['.', 'e', 'E']) {
                 self.damaged = true;
                 return None;
             }
-        }
+            tok
+        };
         match json_integer_literal(token.as_bytes(), true) {
             Some(raw) => Some(raw as i128),
             None => {
@@ -687,23 +684,22 @@ impl<'a> Jr<'a> {
     /// kind_mismatch, skipped. The caller clamps to the field's raw range.
     pub fn read_wide(&mut self, signed: bool, frac: u32, integer: bool, string_only: bool) -> Option<u128> {
         let c = self.peek();
-        let token: String;
-        if c == b'"' {
+        let token: String = if c == b'"' {
             if !string_only {
                 self.damaged = true;
                 self.skip_value();
                 return None;
             }
             let Some(s) = self.read_string() else { self.damaged = true; return None; };
-            token = s;
+            s
         } else {
             if string_only || matches!(c, b'{' | b'[' | b't' | b'f' | b'n') {
                 self.damaged = true;
                 self.skip_value();
                 return None;
             }
-            token = self.number_token()?;
-        }
+            self.number_token()?
+        };
         let t = token.as_bytes();
         if integer {
             if c != b'"' && (t.contains(&b'.') || t.contains(&b'e') || t.contains(&b'E')) {

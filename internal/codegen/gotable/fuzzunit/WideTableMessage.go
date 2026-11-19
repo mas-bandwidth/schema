@@ -177,7 +177,7 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
-				exact := ownBuild && entry.ownSlot == 101
+				exact := ownBuild && entry.OwnSlot == 101
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -228,7 +228,7 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 			}
 		case 0xcfb8a9d063b5e9e5:
 			{
-				exact := ownBuild && entry.ownSlot == 102
+				exact := ownBuild && entry.OwnSlot == 102
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -274,7 +274,7 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 			}
 		case 0xe3b1ca6a3b48dddc:
 			{
-				exact := ownBuild && entry.ownSlot == 103
+				exact := ownBuild && entry.OwnSlot == 103
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

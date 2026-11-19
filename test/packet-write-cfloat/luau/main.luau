@@ -7,8 +7,9 @@ for _, case in cases do
     value.X = case.value
     local stream = serialize.WriteStream.new(buffer.create(8))
     local called, ok = pcall(c.WriteCFloat, stream, value)
-    if not called or ok ~= case.written then error("FAILED: packet-write-cfloat verdict on " .. case.name) end
-    if ok then
+    local written = called and ok == true
+    if written ~= case.written then error("FAILED: packet-write-cfloat verdict on " .. case.name) end
+    if written then
         stream:flush()
         local read = serialize.ReadStream.new(stream:data())
         local output = c.NewCFloat()

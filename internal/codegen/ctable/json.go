@@ -1786,7 +1786,7 @@ static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const c
    the object's own keys and never limited by the table's width. Two keys are
    the same key when their DECODED bytes are, so an escape spells the same key
    as the character it names. */
-#define kTableJsonKeysLocal 16
+#define kTableJsonKeysLocal 64
 
 #ifndef schema_allocate
 #define schema_allocate(bytes) calloc(1,(size_t)(bytes))

@@ -152,7 +152,8 @@ local write = function(mod, name, value) {
 local checkRead = function(name, wire, bits, initial, want) {
   local stream = serialize.ReadStream(wire);
   check(d["Read" + name](stream, initial), "runtime read " + name);
-  check(stream.bitsProcessed() == bits, "read consumed bits " + name);
+  local wantBits = ((bits + 7) / 8) * 8;
+  check(stream.bitsProcessed() == wantBits, "read consumed bits " + name);
   if (name == "Choice") {
     check(initial.Type == want.Type, "Choice Type");
     if (want.Type == d.ChoiceType.Sample) {
