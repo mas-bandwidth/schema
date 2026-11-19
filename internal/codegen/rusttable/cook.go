@@ -678,7 +678,7 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 		arm := unionArmRowType(un, v)
 		g.pf("    /// `%s` when the tag names it, and None otherwise. THE CHECK IS WHAT\n", v.Name)
 		g.pf("    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.\n")
-		g.pf("    pub fn %s(&self) -> Option<%s> {\n", v.Name, arm)
+		g.pf("    pub fn %s(&self) -> Option<%s> {\n", unionRowGetter(un, v.Name), arm)
 		g.pf("        if self.tag == %d {\n", i+1)
 		g.pf("            // SAFETY: the tag was just matched against `%s`.\n", v.Name)
 		g.pf("            Some(unsafe { self.arms.%s })\n", v.Name)
@@ -832,6 +832,25 @@ func cookNamedTextReachable(st *ir.Struct) bool {
 	return cookNamedTextWalk(st, make(map[*ir.Struct]bool))
 }
 
+func unionRowGetter(un *ir.Union, name string) string {
+	if name != "tag" {
+		return name
+	}
+	used := map[string]bool{"tag": true}
+	for _, v := range un.Variants {
+		used[v.Name] = true
+	}
+	for n := 0; ; n++ {
+		cand := "arm_tag"
+		if n > 0 {
+			cand = fmt.Sprintf("arm_tag_%d", n)
+		}
+		if !used[cand] {
+			return cand
+		}
+	}
+}
+
 func cookNamedTextWalk(st *ir.Struct, seen map[*ir.Struct]bool) bool {
 	if st == nil || seen[st] {
 		return false
@@ -841,7 +860,7 @@ func cookNamedTextWalk(st *ir.Struct, seen map[*ir.Struct]bool) bool {
 		if cookFieldNamedText(f) {
 			return true
 		}
-		if f.Type.Kind != ir.TNamed {
+		if f.Type.Kind != ir.TNamed || f.Type.Pointer || f.IsList() || f.IsMap() {
 			continue
 		}
 		nested, ok := f.Type.Ref.(*ir.Struct)
@@ -891,6 +910,8 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 			g.pf("%sfor i in 0..%d {\n", ind, f.KeyEnumRef.Max)
 			g.pf("%s    value.%s[i] = %sRow::default();\n", ind, f.Name, nested.Name)
 			g.pf("%s}\n", ind)
+		case f.IsList() || f.IsMap():
+			// out-of-line TableCookSpan: zeroed span has 0 inline elements
 		case f.Array != ir.ArrayNone:
 			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
 			g.pf("%s    value.%s[i] = %sRow::default();\n", ind, f.Name, nested.Name)

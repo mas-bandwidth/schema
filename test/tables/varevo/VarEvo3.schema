@@ -1,0 +1,113 @@
+// VarEvo3.schema — Pillar #2 generation v3 (newest build):
+// Completes v1 -> v2 -> v3 ([2]T -> [..8]T -> []T, int16 -> int64 -> int128,
+// float32 -> float64, flags growth, chained `was` renames) and writes unknown
+// root/nested/map-entry/node fields, unknown enum variants, unknown union arms,
+// unknown keyed-array slots, resolving-walk parcel, and drifted Form-2 messages.
+package tblvarevo3
+
+enum Tier
+{
+    Bronze
+    Sterling | was = "Silver"
+    Gold
+    Platinum
+}
+
+flags Perms { Read, Write, Exec, Admin }
+
+type Boost
+{
+    scale float64 = 1.0 | was = "mult"
+    power int64 = 10
+}
+
+union Action
+{
+    ack                  | was = "ping"
+    overdrive Boost      | was = "boost"
+    score     int64
+    tag       string(32)
+    audit
+}
+
+table Leaf3 | was = "Leaf1"
+{
+    val        int64 = 0
+    next       *Leaf3
+    note       string(24) = "leaf2"
+    extra_leaf int32 = 0
+}
+
+fixed table SubCfg
+{
+    count      int32 = 0
+    sub_tag    string(16) = "s2"
+    sub_future int64 = 0
+}
+
+fixed table EntryVal
+{
+    weight int32 = 0
+    rank   int32 = 0
+    secret string(16)
+}
+
+enum ParcelGrade { Low, Mid, High }
+
+union ParcelChoice
+{
+    sub_arm SubCfg
+    code    int32
+}
+
+fixed table EvoParcel
+{
+    grade ParcelGrade
+    pick  ParcelChoice
+    bins  [ParcelGrade]SubCfg
+    core  SubCfg
+    stack [..2]SubCfg
+}
+
+table EvoDoc
+{
+    caption   string(32) = "init"     | was = "label"
+    perms     Perms = { Read }
+    tier      Tier
+    action    Action
+    boost     Boost
+    sub       SubCfg
+    wide_num  int128 = 0              | min = -1000000000000000000000, max = 1000000000000000000000
+    scores    []int128                | min = -1000000000000000000000, max = 1000000000000000000000
+    items     []SubCfg
+    tally     [Tier]int32
+    by_name   map[string(12)]EntryVal
+    head      *Leaf3
+    v2_epoch  int64 = 0
+    v3_stamp  int64 = 0
+    v3_parcel EvoParcel
+}
+
+fixed table EvoAlert
+{
+    alert_id int32 = 0
+    detail   string(16)
+}
+
+union EvoPayload
+{
+    beat                 | was = "heartbeat"
+    telemetry SubCfg     | was = "status"
+    notice    string(24)
+    alert     EvoAlert
+}
+
+fixed table EvoMsg
+{
+    caption  string(16)   | was = "label"
+    mid_flag bool = false
+    payload  EvoPayload
+    seq      int32 = 0
+    tier     Tier
+    v3_extra int32 = 0
+}

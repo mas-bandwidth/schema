@@ -31,19 +31,56 @@ func pyBlockRunBoth(t *testing.T, dir, main string, inputs map[string][]byte) st
 	return current
 }
 
-func TestPythonBlockRead(t *testing.T) {
-	t.Parallel()
-	repo := filepath.Join("..", "..", "..")
-	u := loadUnitFiles(t, filepath.Join(repo, "tables", "block"))
-	files, err := Generate(u)
+func pyBlockManifestUnits(t *testing.T, manifest string) map[string][]string {
+	t.Helper()
+	data, err := os.ReadFile(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := pyBlockManifestRows(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	out := map[string][]string{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 3 && f[0] == "unit" {
+			out[f[1]] = f[2:]
+		}
+	}
+	return out
+}
+
+func TestPythonBlockRead(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	manifestPath := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
+	units := pyBlockManifestUnits(t, manifestPath)
+	rows := pyBlockManifestRows(t, manifestPath)
 	if len(rows) == 0 {
 		t.Fatal("the manifest names no block image")
 	}
+	unitFiles := map[string]map[string][]byte{}
+	unitPkg := map[string]string{}
 	for _, row := range rows {
+		if _, ok := unitFiles[row.unit]; ok {
+			continue
+		}
+		relPaths, ok := units[row.unit]
+		if !ok {
+			t.Fatalf("manifest unit %q missing", row.unit)
+		}
+		absPaths := make([]string, len(relPaths))
+		for i, rp := range relPaths {
+			absPaths[i] = filepath.Join(repo, rp)
+		}
+		u := loadUnitFiles(t, absPaths...)
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		unitFiles[row.unit] = files
+		unitPkg[row.unit] = u.Package
+	}
+	for _, row := range rows {
+		files := unitFiles[row.unit]
+		pkg := unitPkg[row.unit]
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
@@ -58,24 +95,27 @@ func TestPythonBlockRead(t *testing.T) {
 			}
 			root := pyBlockRoot(t, want)
 			probe := pyrun.ImportPrelude + fmt.Sprintf(`from pathlib import Path
-import blockdemo
-from blockdemo._schema import block as B
+import %[1]s as M
+from %[1]s._schema import block as B
 
-root = %q
-version = blockdemo.BUILD_VERSION
+root = %[2]q
+version = M.BUILD_VERSION
 data = Path("block").read_bytes()
-handle = B.BlockOpen(blockdemo, root, data, version)
+handle = B.BlockOpen(M, root, data, version)
 import sys
 sys.stdout.write(B.Dump(handle))
-`, root)
+`, pkg, root)
 			current := pyBlockRunBoth(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe), "block": image})
 			if current != string(want) {
 				t.Errorf("%s: the reflective read differs from Go's dump:\n--- python ---\n%s\n--- go ---\n%s", row.name, current, want)
 			}
 		})
 	}
-	if out, err := pyrun.Analyze(t, func() string { dir := t.TempDir(); writeTree(t, dir, files); return dir }(), "blockdemo"); err != nil {
-		t.Fatalf("mypy --strict over the generated package:\n%s", out)
+	for unitKey, files := range unitFiles {
+		pkg := unitPkg[unitKey]
+		if out, err := pyrun.Analyze(t, func() string { dir := t.TempDir(); writeTree(t, dir, files); return dir }(), pkg); err != nil {
+			t.Fatalf("mypy --strict over %s:\n%s", pkg, out)
+		}
 	}
 }
 

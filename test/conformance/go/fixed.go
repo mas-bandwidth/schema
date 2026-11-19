@@ -41,6 +41,9 @@ import (
 	tblscalars2 "tblscalars2"
 	"tblv1"
 	"tblv2"
+	"tblvarevo1"
+	"tblvarevo2"
+	"tblvarevo3"
 	"vocab9demo"
 	"vocabdemo"
 )
@@ -219,6 +222,15 @@ func init() {
 	})
 	bind("tblfixedevo", "EvoRoot", func(c codec) codec {
 		return fixedForm(c, tblfixedevo.EvoRootFixedLoad, tblfixedevo.EvoRootFixedMeasure, tblfixedevo.EvoRootFixedSave)
+	})
+	bind("tblvarevo1", "EvoMsg", func(c codec) codec {
+		return fixedForm(c, tblvarevo1.EvoMsgFixedLoad, tblvarevo1.EvoMsgFixedMeasure, tblvarevo1.EvoMsgFixedSave)
+	})
+	bind("tblvarevo2", "EvoMsg", func(c codec) codec {
+		return fixedForm(c, tblvarevo2.EvoMsgFixedLoad, tblvarevo2.EvoMsgFixedMeasure, tblvarevo2.EvoMsgFixedSave)
+	})
+	bind("tblvarevo3", "EvoMsg", func(c codec) codec {
+		return fixedForm(c, tblvarevo3.EvoMsgFixedLoad, tblvarevo3.EvoMsgFixedMeasure, tblvarevo3.EvoMsgFixedSave)
 	})
 	bind("messagedemo", "ToolMessage", func(c codec) codec {
 		return fixedForm(c, messagedemo.ToolMessageFixedLoad, messagedemo.ToolMessageFixedMeasure, messagedemo.ToolMessageFixedSave)

@@ -100,7 +100,7 @@ int main( int argc, char ** argv ) {
 	cc := envOr("CC", "cc")
 	if out, err := runChecked(workDir, nil, cc, "-std=c99", "-O2", "-ffp-contract=off",
 		"-I"+genDir, "-I"+serC, mainC, filepath.Join(serC, "serialize.c"), "-o", binPath, "-lm"); err != nil {
-		return fmt.Errorf("compile c runner: %v\n%s", err, out)
+		return fmt.Errorf("compile c runner: %w\n%s", err, out)
 	}
 	out, err := runChecked(workDir, nil, binPath, corpusDir)
 	return requireToken(out, err, "c")
@@ -475,7 +475,7 @@ fn main() {
 		extraEnv = append(extraEnv, "PATH="+rb+":"+os.Getenv("PATH"))
 	}
 	if out, err := runChecked(appDir, extraEnv, "cargo", "run", "--quiet", "--", corpusDir); err != nil {
-		return fmt.Errorf("rust debug: %v\n%s", err, out)
+		return fmt.Errorf("rust debug: %w\n%s", err, out)
 	}
 	out, err := runChecked(appDir, extraEnv, "cargo", "run", "--quiet", "--release", "--", corpusDir)
 	return requireToken(out, err, "rust")
@@ -560,7 +560,7 @@ public final class Main {
 	genEntries, _ := filepath.Glob(filepath.Join(genDir, "*.java"))
 	args := append([]string{"--release", "17", "-d", classesDir, mainJava}, genEntries...)
 	if out, err := runChecked(workDir, nil, javac, args...); err != nil {
-		return fmt.Errorf("javac: %v\n%s", err, out)
+		return fmt.Errorf("javac: %w\n%s", err, out)
 	}
 	out, err := runChecked(workDir, nil, javaBin, "-ea", "-cp", classesDir, "Main", corpusDir)
 	return requireToken(out, err, "java")

@@ -7,11 +7,16 @@ import (
 	"tblw2"
 
 	"blobdemo"
+	"cooktorture"
+	"cooktorturewide"
 	"graphdemo"
 	"listdemo"
 	"mapdemo"
 	"messagedemo"
 	"streamdemo"
+	"tblvarevo1"
+	"tblvarevo2"
+	"tblvarevo3"
 )
 
 // The builder arm deliberately skips LoadMeasure. A count refusal can stop
@@ -69,6 +74,21 @@ var builderCodecs = []builderCodec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	builderRow("tblg1", "Guarded", (*tblg1.GuardedBuilder).Init, (*tblg1.GuardedBuilder).Shutdown, (*tblg1.GuardedBuilder).GetRoot, func(b *tblg1.GuardedBuilder) tblg1.TableWriteContext { return &b.Arena }, tblg1.GuardedLoadBuilder, tblg1.GuardedMeasure, tblg1.GuardedSave, func(r *tblg1.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	builderRow("tblvarevo1", "EvoDoc", (*tblvarevo1.EvoDocBuilder).Init, (*tblvarevo1.EvoDocBuilder).Shutdown, (*tblvarevo1.EvoDocBuilder).GetRoot, func(b *tblvarevo1.EvoDocBuilder) tblvarevo1.TableWriteContext { return &b.Arena }, tblvarevo1.EvoDocLoadBuilder, tblvarevo1.EvoDocMeasure, tblvarevo1.EvoDocSave, func(r *tblvarevo1.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	builderRow("tblvarevo2", "EvoDoc", (*tblvarevo2.EvoDocBuilder).Init, (*tblvarevo2.EvoDocBuilder).Shutdown, (*tblvarevo2.EvoDocBuilder).GetRoot, func(b *tblvarevo2.EvoDocBuilder) tblvarevo2.TableWriteContext { return &b.Arena }, tblvarevo2.EvoDocLoadBuilder, tblvarevo2.EvoDocMeasure, tblvarevo2.EvoDocSave, func(r *tblvarevo2.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	builderRow("tblvarevo3", "EvoDoc", (*tblvarevo3.EvoDocBuilder).Init, (*tblvarevo3.EvoDocBuilder).Shutdown, (*tblvarevo3.EvoDocBuilder).GetRoot, func(b *tblvarevo3.EvoDocBuilder) tblvarevo3.TableWriteContext { return &b.Arena }, tblvarevo3.EvoDocLoadBuilder, tblvarevo3.EvoDocMeasure, tblvarevo3.EvoDocSave, func(r *tblvarevo3.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	builderRow("cooktorture", "TortureCook", (*cooktorture.TortureCookBuilder).Init, (*cooktorture.TortureCookBuilder).Shutdown, (*cooktorture.TortureCookBuilder).GetRoot, func(b *cooktorture.TortureCookBuilder) cooktorture.TableWriteContext { return &b.Arena }, cooktorture.TortureCookLoadBuilder, cooktorture.TortureCookMeasure, cooktorture.TortureCookSave, func(r *cooktorture.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	builderRow("cooktorturewide", "TortureWideCook", (*cooktorturewide.TortureWideCookBuilder).Init, (*cooktorturewide.TortureWideCookBuilder).Shutdown, (*cooktorturewide.TortureWideCookBuilder).GetRoot, func(b *cooktorturewide.TortureWideCookBuilder) cooktorturewide.TableWriteContext { return &b.Arena }, cooktorturewide.TortureWideCookLoadBuilder, cooktorturewide.TortureWideCookMeasure, cooktorturewide.TortureWideCookSave, func(r *cooktorturewide.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

@@ -1,0 +1,155 @@
+{
+  "lead_bool": true,
+  "align_i64": "-9000000000000000000",
+  "mid_u8": 251,
+  "align_f64": -0,
+  "tri_bytes": [
+    17,
+    34,
+    51
+  ],
+  "child_ptr": {
+    "&node": 1,
+    "odd_b": true,
+    "odd_u8": 9,
+    "val64": "7000000000000000000",
+    "next": {
+      "odd_b": false,
+      "odd_u8": 200,
+      "val64": "-42",
+      "next": null
+    }
+  },
+  "opt_present": "123456789012345",
+  "opt_entry": {
+    "flag_a": true,
+    "pad3": [
+      1,
+      2,
+      3
+    ],
+    "stamp": "-555555555555",
+    "metric": 3.125
+  },
+  "by_key": {
+    "alpha": {
+      "flag_a": true,
+      "pad3": [
+        9,
+        8,
+        7
+      ],
+      "stamp": "1001",
+      "metric": 1.5
+    },
+    "mu": {
+      "flag_a": false,
+      "pad3": [
+        4,
+        5,
+        6
+      ],
+      "stamp": "-2002",
+      "metric": -2.5
+    },
+    "zeta-🚀": {
+      "flag_a": true,
+      "pad3": [
+        0,
+        255,
+        128
+      ],
+      "stamp": "3003",
+      "metric": 0.25
+    }
+  },
+  "by_coord": {
+    "-100": {
+      "x": -1.5,
+      "y": 2.5,
+      "z": -3.5
+    },
+    "0": {
+      "x": 0,
+      "y": -0,
+      "z": 1
+    },
+    "42": {
+      "x": 10,
+      "y": 20,
+      "z": 30
+    }
+  },
+  "bounded_steps": [
+    {
+      "idle": null
+    },
+    {
+      "shift": {
+        "x": 1.25,
+        "y": -2.5,
+        "z": 3.75
+      }
+    },
+    {
+      "weight": "-99999999999"
+    },
+    {
+      "label": "step-🚀"
+    }
+  ],
+  "list_steps": [
+    {
+      "label": "first"
+    },
+    {
+      "idle": null
+    },
+    {
+      "weight": "88888888888"
+    },
+    {
+      "shift": {
+        "x": -0.5,
+        "y": 0.5,
+        "z": 100
+      }
+    }
+  ],
+  "empty_ints": [],
+  "live_ints": [
+    "-9223372036854775808",
+    "0",
+    "9223372036854775807"
+  ],
+  "empty_entries": [],
+  "entries_list": [
+    {
+      "flag_a": false,
+      "pad3": [
+        10,
+        20,
+        30
+      ],
+      "stamp": "777",
+      "metric": 6.25
+    },
+    {
+      "flag_a": true,
+      "pad3": [
+        40,
+        50,
+        60
+      ],
+      "stamp": "-888",
+      "metric": -6.25
+    }
+  ],
+  "banner": "eight888",
+  "banner_two": "sixteen16_bytes!",
+  "payload": "AAECAwQFBgc=",
+  "payload_empty": "",
+  "alias_ptr": {
+    "&node": 1
+  }
+}

@@ -18,6 +18,7 @@ import (
 	"unsafe"
 
 	"blockdemo"
+	"cooktorture"
 )
 
 // keepAlive holds a backing allocation live across a call that points into it.
@@ -109,6 +110,9 @@ func openBlockForgedReason(name string, data []byte, extent int64, lead int, nil
 		refusal = block.Open(base, bytes)
 	case strings.HasPrefix(name, "block_padded"):
 		var block blockdemo.PaddedFrameBlock
+		refusal = block.Open(base, bytes)
+	case strings.HasPrefix(name, "block_torture"):
+		var block cooktorture.TortureFrameBlock
 		refusal = block.Open(base, bytes)
 	default:
 		return nil, fmt.Errorf("no block named %s", name)

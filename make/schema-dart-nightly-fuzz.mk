@@ -42,6 +42,11 @@ DART_NIGHTLY_FUZZ_UNITS := \
 	lists:tables/lists \
 	maps:tables/maps \
 	widelist:tables/widelist \
+	varevo1:test/tables/varevo/VarEvo1.schema \
+	varevo2:test/tables/varevo/VarEvo2.schema \
+	varevo3:test/tables/varevo/VarEvo3.schema \
+	cooktorture:test/tables/cooktorture/CookTorture.schema \
+	cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema \
 	messages:tables/messages \
 	pointers:tables/pointers \
 	scalars:tables/scalars \

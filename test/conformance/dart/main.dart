@@ -17,6 +17,7 @@ import 'dart:typed_data';
 import '../../../build/tables-generated-dart/block/BlockdemoBlock.dart';
 import '../../../build/tables-generated-dart/block/PaddedBlock.dart' as blk;
 import '../../../build/tables-generated-dart/block/RenderBlock.dart' as blk;
+import '../../../build/tables-generated-dart/cooktorture/CookTortureBlock.dart' as ct_blk;
 import '../../../build/tables-generated-dart/cards/CardsWire.dart';
 import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
@@ -131,6 +132,22 @@ import '../../../build/tables-generated-dart/widelist/WidesCook.dart' as widelis
 import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 import '../../../build/tables-generated-dart/features/FeaturewitnessesWire.dart' as feature;
 import '../../../build/tables-generated-dart/features/FeaturesCook.dart' as featurecook;
+import '../../../build/tables-generated-dart/varevo1/Tblvarevo1Wire.dart' as tblvarevo1;
+import '../../../build/tables-generated-dart/varevo1/Tblvarevo1Fixed.dart' as tblvarevo1_fixed;
+import '../../../build/tables-generated-dart/varevo1/VarEvo1Fixed.dart' as varevo1_fixed;
+import '../../../build/tables-generated-dart/varevo1/VarEvo1Cook.dart' as varevo1cook;
+import '../../../build/tables-generated-dart/varevo2/Tblvarevo2Wire.dart' as tblvarevo2;
+import '../../../build/tables-generated-dart/varevo2/Tblvarevo2Fixed.dart' as tblvarevo2_fixed;
+import '../../../build/tables-generated-dart/varevo2/VarEvo2Fixed.dart' as varevo2_fixed;
+import '../../../build/tables-generated-dart/varevo2/VarEvo2Cook.dart' as varevo2cook;
+import '../../../build/tables-generated-dart-scalars/varevo3/Tblvarevo3Wire.dart' as tblvarevo3;
+import '../../../build/tables-generated-dart-scalars/varevo3/Tblvarevo3Fixed.dart' as tblvarevo3_fixed;
+import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Fixed.dart' as varevo3_fixed;
+import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Cook.dart' as varevo3cook;
+import '../../../build/tables-generated-dart/cooktorture/CookTortureWire.dart' as cooktorture;
+import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
+import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
+import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideCook.dart' as cooktorturewidecook;
 
 // Decode JSON bytes before entering a generated String reader. The generated
 // reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
@@ -189,6 +206,8 @@ String openBlock(
       ? blk.RenderFrameBlock.openWithReason(buffer, base, claim)
       : name.startsWith('block_padded')
       ? blk.PaddedFrameBlock.openWithReason(buffer, base, claim)
+      : name.startsWith('block_torture')
+      ? ct_blk.TortureFrameBlock.openWithReason(buffer, base, claim)
       : throw StateError('driver: no block named $name');
   if (reasons) {
     // THE REASON BESIDE THE FALSE (docs/SPEC-TABLES.md §19.2): the enum's own
@@ -331,7 +350,7 @@ bool dumpRecord(
   Uint8List bytes,
   ByteData view,
   int storage,
-  TableBlockInfo? info,
+  dynamic info,
   String path,
 ) {
   if (info == null) {
@@ -344,7 +363,7 @@ bool dumpRecord(
     }
     final name = dumpJoin(path, f.name);
     if (f.counted) {
-      final used = view.getInt32(storage + f.countOffset, Endian.little);
+      final used = view.getInt32(storage + (f.countOffset as int), Endian.little);
       if (used < 0 || used > f.arrayBound) {
         stderr.writeln(
           'driver: ${info.name}.${f.name} carries a used length of $used, '
@@ -353,26 +372,26 @@ bool dumpRecord(
         return false;
       }
       into.write('  $name = ');
-      dumpText(into, bytes, storage + f.offset, used);
+      dumpText(into, bytes, storage + (f.offset as int), used);
       into.write('\n');
     } else {
-      final slots = f.isArray ? f.arrayBound : 1;
+      final slots = f.isArray ? (f.arrayBound as int) : 1;
       for (var s = 0; s < slots; s++) {
         final at = f.isArray ? '$name[$s]' : name;
-        final value = storage + f.offset + s * f.elemSize;
+        final value = storage + (f.offset as int) + s * (f.elemSize as int);
         if (f.element != null) {
           if (!dumpRecord(into, bytes, view, value, f.element, at)) {
             return false;
           }
         } else {
           into.write('  $at = ');
-          dumpScalar(into, view, value, f.kind, f.elemSize);
+          dumpScalar(into, view, value, f.kind as int, f.elemSize as int);
           into.write('\n');
         }
       }
     }
     if (f.optional) {
-      final present = view.getUint8(storage + f.presentOffset) != 0;
+      final present = view.getUint8(storage + (f.presentOffset as int)) != 0;
       into.write('  $name#present = ${present ? 'true' : 'false'}\n');
     }
   }
@@ -384,7 +403,7 @@ bool dumpBlock(
   Uint8List bytes,
   ByteData view,
   int base,
-  TableBlockInfo info,
+  dynamic info,
 ) {
   into.write('projection ${info.name} @0\n');
   if (!dumpRecord(into, bytes, view, base, info, '')) {
@@ -394,9 +413,9 @@ bool dumpBlock(
     if (!f.outOfLine) {
       continue;
     }
-    final offsetOf = view.getUint64(base + f.offsetOfOffset, Endian.little);
-    final count = view.getUint32(base + f.countOffset, Endian.little);
-    final stride = view.getUint32(base + f.strideOffset, Endian.little);
+    final offsetOf = view.getUint64(base + (f.offsetOfOffset as int), Endian.little);
+    final count = view.getUint32(base + (f.countOffset as int), Endian.little);
+    final stride = view.getUint32(base + (f.strideOffset as int), Endian.little);
     final row = f.element;
     if (row == null) {
       stderr.writeln('driver: ${f.name} names no element');
@@ -433,6 +452,11 @@ int surfaceBlockDump(String outDir) {
       ok =
           block != null &&
           dumpBlock(into, buffer, view, 0, blk.PaddedFrameBlock.type);
+    } else if (f[1].startsWith('block_torture')) {
+      final block = ct_blk.TortureFrameBlock.open(buffer, 0, image.length);
+      ok =
+          block != null &&
+          dumpBlock(into, buffer, view, 0, ct_blk.TortureFrameBlock.type);
     } else {
       stderr.writeln('driver: no block named ${f[1]}');
       return 1;
@@ -993,6 +1017,66 @@ void _f2w_fixedevo_EvoRoot(tblfixedevo_fixed.EvoRoot f, tblfixedevo.EvoRoot w) {
   w.defFlags = f.defFlags;
   w.hasExtraOpt = f.extraOptPresent;
   if (f.extraOptPresent) _f2w_fixedevo_EvoSub(f.extraOpt, w.extraOpt);
+}
+
+void _w2f_varevo1_EvoMsg(tblvarevo1.EvoMsg w, tblvarevo1_fixed.EvoMsg f) {
+  f.seq = w.seq;
+  f.tier = w.tier;
+  _w2fUtf8(w.label, f.label, (n) => f.labelLength = n);
+  f.payload.type = w.payload.armTag;
+  if (w.payload.armTag == 2) {
+    f.payload.status.count = w.payload.status.count;
+  }
+  f.legacyCode = w.legacyCode;
+}
+
+void _f2w_varevo1_EvoMsg(tblvarevo1_fixed.EvoMsg f, tblvarevo1.EvoMsg w) {
+  w.seq = f.seq;
+  w.tier = f.tier;
+  w.label = _f2wUtf8(f.label, f.labelLength);
+  w.payload.armTag = f.payload.type;
+  if (f.payload.type == 2) {
+    w.payload.status.count = f.payload.status.count;
+  }
+  w.legacyCode = f.legacyCode;
+}
+
+void _w2f_varevo3_EvoMsg(tblvarevo3.EvoMsg w, tblvarevo3_fixed.EvoMsg f) {
+  _w2fUtf8(w.caption, f.caption, (n) => f.captionLength = n);
+  f.midFlag = w.midFlag;
+  f.payload.type = w.payload.armTag;
+  if (w.payload.armTag == 2) {
+    f.payload.telemetry.count = w.payload.telemetry.count;
+    _w2fUtf8(w.payload.telemetry.subTag, f.payload.telemetry.subTag, (n) => f.payload.telemetry.subTagLength = n);
+    f.payload.telemetry.subFuture = w.payload.telemetry.subFuture;
+  } else if (w.payload.armTag == 3) {
+    _w2fUtf8(w.payload.notice, f.payload.notice, (n) => f.payload.noticeLength = n);
+  } else if (w.payload.armTag == 4) {
+    f.payload.alert.alertId = w.payload.alert.alertId;
+    _w2fUtf8(w.payload.alert.detail, f.payload.alert.detail, (n) => f.payload.alert.detailLength = n);
+  }
+  f.seq = w.seq;
+  f.tier = w.tier;
+  f.v3Extra = w.v3Extra;
+}
+
+void _f2w_varevo3_EvoMsg(tblvarevo3_fixed.EvoMsg f, tblvarevo3.EvoMsg w) {
+  w.caption = _f2wUtf8(f.caption, f.captionLength);
+  w.midFlag = f.midFlag;
+  w.payload.armTag = f.payload.type;
+  if (f.payload.type == 2) {
+    w.payload.telemetry.count = f.payload.telemetry.count;
+    w.payload.telemetry.subTag = _f2wUtf8(f.payload.telemetry.subTag, f.payload.telemetry.subTagLength);
+    w.payload.telemetry.subFuture = f.payload.telemetry.subFuture;
+  } else if (f.payload.type == 3) {
+    w.payload.notice = _f2wUtf8(f.payload.notice, f.payload.noticeLength);
+  } else if (f.payload.type == 4) {
+    w.payload.alert.alertId = f.payload.alert.alertId;
+    w.payload.alert.detail = _f2wUtf8(f.payload.alert.detail, f.payload.alert.detailLength);
+  }
+  w.seq = f.seq;
+  w.tier = f.tier;
+  w.v3Extra = f.v3Extra;
 }
 
 void _w2f_scalars_Pose(scalardemo.Pose w, dynamic f) {
@@ -2142,6 +2226,16 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.trailsWireLoad, mapdemo.trailsWireSave);
     case 'widelist Wide':
       return _wireResaveOne(wire, widelist.TableWireReport.new, (rep) => (rep.refused, rep.refusal), widelist.wideWireLoad, widelist.wideWireSave);
+    case 'tblvarevo1 EvoDoc':
+      return _wireResaveOne(wire, tblvarevo1.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblvarevo1.evoDocWireLoad, tblvarevo1.evoDocWireSave);
+    case 'tblvarevo2 EvoDoc':
+      return _wireResaveOne(wire, tblvarevo2.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblvarevo2.evoDocWireLoad, tblvarevo2.evoDocWireSave);
+    case 'tblvarevo3 EvoDoc':
+      return _wireResaveOne(wire, tblvarevo3.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblvarevo3.evoDocWireLoad, tblvarevo3.evoDocWireSave);
+    case 'cooktorture TortureCook':
+      return _wireResaveOne(wire, cooktorture.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorture.tortureCookWireLoad, cooktorture.tortureCookWireSave);
+    case 'cooktorturewide TortureWideCook':
+      return _wireResaveOne(wire, cooktorturewide.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave);
     case 'listdemo Army':
       return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.armyWireLoad, listdemo.armyWireSave);
     case 'listdemo Mixed':
@@ -2222,6 +2316,26 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave);
       }
       return _fixedResave(wire, tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, fixedevo_fixed.evoRootFixedLoad, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave);
+    case 'tblvarevo1 EvoMsg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblvarevo1.TableWireReport();
+        final w = tblvarevo1.evoMsgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblvarevo1_fixed.EvoMsg();
+        _w2f_varevo1_EvoMsg(w, f);
+        return _fixedSaveOne(f, varevo1_fixed.evoMsgFixedMeasure, varevo1_fixed.evoMsgFixedSave);
+      }
+      return _fixedResave(wire, tblvarevo1_fixed.EvoMsg.new, varevo1_fixed.evoMsgFixedNewPlan, tblvarevo1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, varevo1_fixed.evoMsgFixedLoad, varevo1_fixed.evoMsgFixedMeasure, varevo1_fixed.evoMsgFixedSave);
+    case 'tblvarevo3 EvoMsg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblvarevo3.TableWireReport();
+        final w = tblvarevo3.evoMsgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblvarevo3_fixed.EvoMsg();
+        _w2f_varevo3_EvoMsg(w, f);
+        return _fixedSaveOne(f, varevo3_fixed.evoMsgFixedMeasure, varevo3_fixed.evoMsgFixedSave);
+      }
+      return _fixedResave(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => rep.refused != 0, varevo3_fixed.evoMsgFixedLoad, varevo3_fixed.evoMsgFixedMeasure, varevo3_fixed.evoMsgFixedSave);
     case 'tabledemo ArchiveConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -2528,6 +2642,31 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = widelist.wideFromJson(text, rep);
       if (rep.refused) return null;
       return widelist.wideWireSave(v);
+    case 'tblvarevo1 EvoDoc':
+      final rep = tblvarevo1.TableTextReport();
+      final v = tblvarevo1.evoDocFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblvarevo1.evoDocWireSave(v);
+    case 'tblvarevo2 EvoDoc':
+      final rep = tblvarevo2.TableTextReport();
+      final v = tblvarevo2.evoDocFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblvarevo2.evoDocWireSave(v);
+    case 'tblvarevo3 EvoDoc':
+      final rep = tblvarevo3.TableTextReport();
+      final v = tblvarevo3.evoDocFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblvarevo3.evoDocWireSave(v);
+    case 'cooktorture TortureCook':
+      final rep = cooktorture.TableTextReport();
+      final v = cooktorture.tortureCookFromJson(text, rep);
+      if (rep.refused) return null;
+      return cooktorture.tortureCookWireSave(v);
+    case 'cooktorturewide TortureWideCook':
+      final rep = cooktorturewide.TableTextReport();
+      final v = cooktorturewide.tortureWideCookFromJson(text, rep);
+      if (rep.refused) return null;
+      return cooktorturewide.tortureWideCookWireSave(v);
     case 'listdemo Army':
       final rep = listdemo.TableTextReport();
       final v = listdemo.armyFromJson(text, rep);
@@ -2620,6 +2759,20 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = tblfixedevo_fixed.EvoRoot();
       _w2f_fixedevo_EvoRoot(w, f);
       return _fixedSaveOne(f, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave);
+    case 'tblvarevo1 EvoMsg':
+      final rep = tblvarevo1.TableTextReport();
+      final w = tblvarevo1.evoMsgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblvarevo1_fixed.EvoMsg();
+      _w2f_varevo1_EvoMsg(w, f);
+      return _fixedSaveOne(f, varevo1_fixed.evoMsgFixedMeasure, varevo1_fixed.evoMsgFixedSave);
+    case 'tblvarevo3 EvoMsg':
+      final rep = tblvarevo3.TableTextReport();
+      final w = tblvarevo3.evoMsgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblvarevo3_fixed.EvoMsg();
+      _w2f_varevo3_EvoMsg(w, f);
+      return _fixedSaveOne(f, varevo3_fixed.evoMsgFixedMeasure, varevo3_fixed.evoMsgFixedSave);
     case 'tabledemo ArchiveConfig':
       final rep = tabledemo.TableTextReport();
       final w = tabledemo.archiveConfigFromJson(text, rep);
@@ -2872,6 +3025,31 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = widelist.wideWireLoad(wire, rep);
       if (rep.refused) return null;
       return widelist.wideToJson(v);
+    case 'tblvarevo1 EvoDoc':
+      final rep = tblvarevo1.TableWireReport();
+      final v = tblvarevo1.evoDocWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblvarevo1.evoDocToJson(v);
+    case 'tblvarevo2 EvoDoc':
+      final rep = tblvarevo2.TableWireReport();
+      final v = tblvarevo2.evoDocWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblvarevo2.evoDocToJson(v);
+    case 'tblvarevo3 EvoDoc':
+      final rep = tblvarevo3.TableWireReport();
+      final v = tblvarevo3.evoDocWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblvarevo3.evoDocToJson(v);
+    case 'cooktorture TortureCook':
+      final rep = cooktorture.TableWireReport();
+      final v = cooktorture.tortureCookWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return cooktorture.tortureCookToJson(v);
+    case 'cooktorturewide TortureWideCook':
+      final rep = cooktorturewide.TableWireReport();
+      final v = cooktorturewide.tortureWideCookWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return cooktorturewide.tortureWideCookToJson(v);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
       final v = listdemo.armyWireLoad(wire, rep);
@@ -2994,6 +3172,30 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = tblfixedevo.EvoRoot();
       _f2w_fixedevo_EvoRoot(f, w);
       return tblfixedevo.evoRootToJson(w);
+    case 'tblvarevo1 EvoMsg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblvarevo1.TableWireReport();
+        final w = tblvarevo1.evoMsgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblvarevo1.evoMsgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblvarevo1_fixed.EvoMsg.new, varevo1_fixed.evoMsgFixedNewPlan, tblvarevo1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, varevo1_fixed.evoMsgFixedLoad);
+      if (f == null) return null;
+      final w = tblvarevo1.EvoMsg();
+      _f2w_varevo1_EvoMsg(f, w);
+      return tblvarevo1.evoMsgToJson(w);
+    case 'tblvarevo3 EvoMsg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblvarevo3.TableWireReport();
+        final w = tblvarevo3.evoMsgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblvarevo3.evoMsgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => rep.refused != 0, varevo3_fixed.evoMsgFixedLoad);
+      if (f == null) return null;
+      final w = tblvarevo3.EvoMsg();
+      _f2w_varevo3_EvoMsg(f, w);
+      return tblvarevo3.evoMsgToJson(w);
     case 'tabledemo ArchiveConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -3312,6 +3514,26 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       final rep = widelist.TableWireReport();
       widelist.wideWireLoad(wire, rep);
       return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'tblvarevo1 EvoDoc':
+      final rep = tblvarevo1.TableWireReport();
+      tblvarevo1.evoDocWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'tblvarevo2 EvoDoc':
+      final rep = tblvarevo2.TableWireReport();
+      tblvarevo2.evoDocWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'tblvarevo3 EvoDoc':
+      final rep = tblvarevo3.TableWireReport();
+      tblvarevo3.evoDocWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'cooktorture TortureCook':
+      final rep = cooktorture.TableWireReport();
+      cooktorture.tortureCookWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'cooktorturewide TortureWideCook':
+      final rep = cooktorturewide.TableWireReport();
+      cooktorturewide.tortureWideCookWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
       listdemo.armyWireLoad(wire, rep);
@@ -3416,6 +3638,10 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, scalardemo2_fixed.SimState.new, scalars2_fixed.simStateFixedNewPlan, scalardemo2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), scalars2_fixed.simStateFixedLoad);
     case 'tblfixedevo EvoRoot':
       return _fixedReportLine(wire, tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), fixedevo_fixed.evoRootFixedLoad);
+    case 'tblvarevo1 EvoMsg':
+      return _fixedReportLine(wire, tblvarevo1_fixed.EvoMsg.new, varevo1_fixed.evoMsgFixedNewPlan, tblvarevo1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), varevo1_fixed.evoMsgFixedLoad);
+    case 'tblvarevo3 EvoMsg':
+      return _fixedReportLine(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), varevo3_fixed.evoMsgFixedLoad);
   }
   return null;
 }
@@ -3801,6 +4027,91 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
         widelistcook.WideCook.cookMeasure(value),
         (out, order) => widelistcook.WideCook.cook(value, out, order),
       );
+    case 'tblvarevo1 EvoDoc':
+      final r = tblvarevo1.TableWireReport();
+      final tr = tblvarevo1.TableTextReport();
+      final value = jsonText != null ? tblvarevo1.evoDocFromJson(jsonText, tr) : tblvarevo1.evoDocWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
+      return (
+        varevo1cook.EvoDocCook.cookMeasure(value),
+        (out, order) => varevo1cook.EvoDocCook.cook(value, out, order),
+      );
+    case 'tblvarevo1 EvoMsg':
+      final r = tblvarevo1.TableWireReport();
+      final tr = tblvarevo1.TableTextReport();
+      tblvarevo1.EvoMsg? value;
+      if (jsonText != null) {
+        value = tblvarevo1.evoMsgFromJson(jsonText, tr);
+        if (tr.refused) return (-1, (_, _) => false);
+      } else if (wire.isNotEmpty && wire[0] == 1) {
+        value = tblvarevo1.evoMsgWireLoad(wire, r);
+        if (r.refused) return (-1, (_, _) => false);
+      } else {
+        final f = _fixedLoadOne(wire, tblvarevo1_fixed.EvoMsg.new, varevo1_fixed.evoMsgFixedNewPlan, tblvarevo1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, varevo1_fixed.evoMsgFixedLoad);
+        if (f == null) return (-1, (_, _) => false);
+        value = tblvarevo1.EvoMsg();
+        _f2w_varevo1_EvoMsg(f, value);
+      }
+      return (
+        varevo1cook.EvoMsgCookWire.cookMeasure(value),
+        (out, order) => varevo1cook.EvoMsgCookWire.cook(value!, out, order),
+      );
+    case 'tblvarevo2 EvoDoc':
+      final r = tblvarevo2.TableWireReport();
+      final tr = tblvarevo2.TableTextReport();
+      final value = jsonText != null ? tblvarevo2.evoDocFromJson(jsonText, tr) : tblvarevo2.evoDocWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
+      return (
+        varevo2cook.EvoDocCook.cookMeasure(value),
+        (out, order) => varevo2cook.EvoDocCook.cook(value, out, order),
+      );
+    case 'tblvarevo3 EvoDoc':
+      final r = tblvarevo3.TableWireReport();
+      final tr = tblvarevo3.TableTextReport();
+      final value = jsonText != null ? tblvarevo3.evoDocFromJson(jsonText, tr) : tblvarevo3.evoDocWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
+      return (
+        varevo3cook.EvoDocCook.cookMeasure(value),
+        (out, order) => varevo3cook.EvoDocCook.cook(value, out, order),
+      );
+    case 'tblvarevo3 EvoMsg':
+      final r = tblvarevo3.TableWireReport();
+      final tr = tblvarevo3.TableTextReport();
+      tblvarevo3.EvoMsg? value;
+      if (jsonText != null) {
+        value = tblvarevo3.evoMsgFromJson(jsonText, tr);
+        if (tr.refused) return (-1, (_, _) => false);
+      } else if (wire.isNotEmpty && wire[0] == 1) {
+        value = tblvarevo3.evoMsgWireLoad(wire, r);
+        if (r.refused) return (-1, (_, _) => false);
+      } else {
+        final f = _fixedLoadOne(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => rep.refused != 0, varevo3_fixed.evoMsgFixedLoad);
+        if (f == null) return (-1, (_, _) => false);
+        value = tblvarevo3.EvoMsg();
+        _f2w_varevo3_EvoMsg(f, value);
+      }
+      return (
+        varevo3cook.EvoMsgCookWire.cookMeasure(value),
+        (out, order) => varevo3cook.EvoMsgCookWire.cook(value!, out, order),
+      );
+    case 'cooktorture TortureCook':
+      final r = cooktorture.TableWireReport();
+      final tr = cooktorture.TableTextReport();
+      final value = jsonText != null ? cooktorture.tortureCookFromJson(jsonText, tr) : cooktorture.tortureCookWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
+      return (
+        cooktorturecook.TortureCookCook.cookMeasure(value),
+        (out, order) => cooktorturecook.TortureCookCook.cook(value, out, order),
+      );
+    case 'cooktorturewide TortureWideCook':
+      final r = cooktorturewide.TableWireReport();
+      final tr = cooktorturewide.TableTextReport();
+      final value = jsonText != null ? cooktorturewide.tortureWideCookFromJson(jsonText, tr) : cooktorturewide.tortureWideCookWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
+      return (
+        cooktorturewidecook.TortureWideCookCook.cookMeasure(value),
+        (out, order) => cooktorturewidecook.TortureWideCookCook.cook(value, out, order),
+      );
   }
   return null;
 }
@@ -4024,6 +4335,41 @@ String? jsonHostileReport(String unit, String root, String text) {
         final v = tblfixedevo.evoRootFromJson(text, r);
         encode = () => tblfixedevo.evoRootToJson(v);
         break;
+      case 'tblvarevo1 EvoDoc':
+        r = tblvarevo1.TableTextReport();
+        final v = tblvarevo1.evoDocFromJson(text, r);
+        encode = () => tblvarevo1.evoDocToJson(v);
+        break;
+      case 'tblvarevo1 EvoMsg':
+        r = tblvarevo1.TableTextReport();
+        final v = tblvarevo1.evoMsgFromJson(text, r);
+        encode = () => tblvarevo1.evoMsgToJson(v);
+        break;
+      case 'tblvarevo2 EvoDoc':
+        r = tblvarevo2.TableTextReport();
+        final v = tblvarevo2.evoDocFromJson(text, r);
+        encode = () => tblvarevo2.evoDocToJson(v);
+        break;
+      case 'tblvarevo3 EvoDoc':
+        r = tblvarevo3.TableTextReport();
+        final v = tblvarevo3.evoDocFromJson(text, r);
+        encode = () => tblvarevo3.evoDocToJson(v);
+        break;
+      case 'tblvarevo3 EvoMsg':
+        r = tblvarevo3.TableTextReport();
+        final v = tblvarevo3.evoMsgFromJson(text, r);
+        encode = () => tblvarevo3.evoMsgToJson(v);
+        break;
+      case 'cooktorture TortureCook':
+        r = cooktorture.TableTextReport();
+        final v = cooktorture.tortureCookFromJson(text, r);
+        encode = () => cooktorture.tortureCookToJson(v);
+        break;
+      case 'cooktorturewide TortureWideCook':
+        r = cooktorturewide.TableTextReport();
+        final v = cooktorturewide.tortureWideCookFromJson(text, r);
+        encode = () => cooktorturewide.tortureWideCookToJson(v);
+        break;
       case 'streamdemo Feed':
         r = streamdemo.TableTextReport();
         final v = streamdemo.feedFromJson(text, r);
@@ -4079,6 +4425,10 @@ int surfaceRetain(String outDir, bool saves) {
   for (final f in lines) {
     if (f[0] != 'retain') continue;
     if (saves && f[f.length - 1] == '-') continue;
+    if (f[2] == 'tblvarevo1' && f[3] == 'EvoDoc') {
+      if (_retainVarEvo1(f, outDir, saves) != 0) return 1;
+      continue;
+    }
     if (f[2] != 'tblrt1' || f[3] != 'Node') {
       stderr.writeln('driver: retain ${f[1]} names ${f[2]} ${f[3]}');
       return 1;
@@ -4130,6 +4480,48 @@ int surfaceRetain(String outDir, bool saves) {
         'read\n${tblrt1.nodeToJson(root)}',
       );
     }
+  }
+  return 0;
+}
+
+int _retainVarEvo1(List<String> f, String outDir, bool saves) {
+  final wire = File(f[4]).readAsBytesSync();
+  final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
+  var store = tblvarevo1.TableRetain(_retainRoomy, ids);
+  var report = tblvarevo1.TableWireReport();
+  if (f[5] == 'short') {
+    tblvarevo1.evoDocWireLoadRetain(wire, store, report);
+    if (report.refused) {
+      stderr.writeln('driver: ${f[1]}: capacity probe refused');
+      return 1;
+    }
+    store = tblvarevo1.TableRetain(store.used - 1 < 0 ? 0 : store.used - 1, ids);
+    report = tblvarevo1.TableWireReport();
+  }
+  final root = tblvarevo1.evoDocWireLoadRetain(wire, store, report);
+  if (report.refused) {
+    if (!saves) {
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+    }
+    return 0;
+  }
+  final size = tblvarevo1.evoDocWireMeasureRetain(root, store);
+  final save = tblvarevo1.TableWireReport();
+  final out = tblvarevo1.evoDocWireSaveRetain(root, store, save);
+  if (size < 0 || out.length != size) {
+    stderr.writeln('driver: ${f[1]}: retaining measure and save disagree');
+    return 1;
+  }
+  final second = tblvarevo1.TableWireReport();
+  final again = tblvarevo1.evoDocWireSaveRetain(root, store, second);
+  if (!_sameBytes(again, out) || second.retainLost != save.retainLost) {
+    stderr.writeln('driver: ${f[1]}: retaining save is not repeatable');
+    return 1;
+  }
+  if (saves) {
+    File('$outDir/${f[1]}').writeAsBytesSync(out);
+  } else {
+    File('$outDir/${f[1]}').writeAsStringSync('read\n${tblvarevo1.evoDocToJson(root)}');
   }
   return 0;
 }
@@ -4444,6 +4836,30 @@ final Map<String, MessageCodec> messageRuns = {
     measure: vocab9.wide19MeasureMessages,
     save: vocab9.wide19SaveMessages,
     damaged: (r) => r.refused || r.refused,
+  ),
+  'tblvarevo1 EvoMsg': _messageRow<tblvarevo1_fixed.EvoMsg, tblvarevo1_fixed.TableVocabulary, tblvarevo1_fixed.TableReport>(
+    fresh: tblvarevo1_fixed.EvoMsg.new,
+    init: tblvarevo1_fixed.initEvoMsg,
+    vocabulary: () => tblvarevo1_fixed.TableVocabulary(entries: _entries(() => tblvarevo1_fixed.TableMessageEntry(0, 0))),
+    report: tblvarevo1_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblvarevo1_fixed.announceMeasure, tblvarevo1_fixed.announce),
+    announceRead: tblvarevo1_fixed.announceRead,
+    load: varevo1_fixed.evoMsgLoadMessages,
+    measure: varevo1_fixed.evoMsgMeasureMessages,
+    save: varevo1_fixed.evoMsgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblvarevo3 EvoMsg': _messageRow<tblvarevo3_fixed.EvoMsg, tblvarevo3_fixed.TableVocabulary, tblvarevo3_fixed.TableReport>(
+    fresh: tblvarevo3_fixed.EvoMsg.new,
+    init: tblvarevo3_fixed.initEvoMsg,
+    vocabulary: () => tblvarevo3_fixed.TableVocabulary(entries: _entries(() => tblvarevo3_fixed.TableMessageEntry(0, 0))),
+    report: tblvarevo3_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblvarevo3_fixed.announceMeasure, tblvarevo3_fixed.announce),
+    announceRead: tblvarevo3_fixed.announceRead,
+    load: varevo3_fixed.evoMsgLoadMessages,
+    measure: varevo3_fixed.evoMsgMeasureMessages,
+    save: varevo3_fixed.evoMsgSaveMessages,
+    damaged: (r) => r.refused,
   ),
 };
 
@@ -4947,6 +5363,35 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoad, widelist.wideWireSave),
           retain: _retainCodec(widelist.TableRetain.new, widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoadRetain, widelist.wideWireSaveRetain));
+    case 'tblvarevo1 EvoDoc':
+      return _FuzzRoot(
+          _plainCodec(tblvarevo1.TableWireReport.new, tblvarevo1.evoDocWireMeasure, tblvarevo1.evoDocWireLoad, tblvarevo1.evoDocWireSave),
+          retain: _retainCodec(tblvarevo1.TableRetain.new, tblvarevo1.TableWireReport.new, tblvarevo1.evoDocWireMeasure, tblvarevo1.evoDocWireLoadRetain, tblvarevo1.evoDocWireSaveRetain));
+    case 'tblvarevo1 EvoMsg':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblvarevo1_fixed.EvoMsg.new, varevo1_fixed.evoMsgFixedNewPlan, tblvarevo1_fixed.TableFixedReport.new, varevo1_fixed.evoMsgFixedLoad, varevo1_fixed.evoMsgFixedMeasure, varevo1_fixed.evoMsgFixedSave));
+    case 'tblvarevo2 EvoDoc':
+      return _FuzzRoot(
+          _plainCodec(tblvarevo2.TableWireReport.new, tblvarevo2.evoDocWireMeasure, tblvarevo2.evoDocWireLoad, tblvarevo2.evoDocWireSave),
+          retain: _retainCodec(tblvarevo2.TableRetain.new, tblvarevo2.TableWireReport.new, tblvarevo2.evoDocWireMeasure, tblvarevo2.evoDocWireLoadRetain, tblvarevo2.evoDocWireSaveRetain));
+    case 'tblvarevo2 EvoMsg':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblvarevo2_fixed.EvoMsg.new, varevo2_fixed.evoMsgFixedNewPlan, tblvarevo2_fixed.TableFixedReport.new, varevo2_fixed.evoMsgFixedLoad, varevo2_fixed.evoMsgFixedMeasure, varevo2_fixed.evoMsgFixedSave));
+    case 'tblvarevo3 EvoDoc':
+      return _FuzzRoot(
+          _plainCodec(tblvarevo3.TableWireReport.new, tblvarevo3.evoDocWireMeasure, tblvarevo3.evoDocWireLoad, tblvarevo3.evoDocWireSave),
+          retain: _retainCodec(tblvarevo3.TableRetain.new, tblvarevo3.TableWireReport.new, tblvarevo3.evoDocWireMeasure, tblvarevo3.evoDocWireLoadRetain, tblvarevo3.evoDocWireSaveRetain));
+    case 'tblvarevo3 EvoMsg':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, varevo3_fixed.evoMsgFixedLoad, varevo3_fixed.evoMsgFixedMeasure, varevo3_fixed.evoMsgFixedSave));
+    case 'cooktorture TortureCook':
+      return _FuzzRoot(
+          _plainCodec(cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoad, cooktorture.tortureCookWireSave),
+          retain: _retainCodec(cooktorture.TableRetain.new, cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoadRetain, cooktorture.tortureCookWireSaveRetain));
+    case 'cooktorturewide TortureWideCook':
+      return _FuzzRoot(
+          _plainCodec(cooktorturewide.TableWireReport.new, cooktorturewide.tortureWideCookWireMeasure, cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave),
+          retain: _retainCodec(cooktorturewide.TableRetain.new, cooktorturewide.TableWireReport.new, cooktorturewide.tortureWideCookWireMeasure, cooktorturewide.tortureWideCookWireLoadRetain, cooktorturewide.tortureWideCookWireSaveRetain));
   }
   return null;
 }

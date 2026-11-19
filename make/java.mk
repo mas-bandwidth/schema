@@ -122,7 +122,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
 	@mkdir -p build/tables-generated-java
 	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),rm -rf build/tables-generated-java/featurewitnesses && ./bin/schema generate --lang java --out build/tables-generated-java/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	rm -rf build/tables-generated-java/examples && ./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
@@ -197,6 +197,11 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/
 	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
 	rm -rf build/tables-generated-java/scalars2 && ./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
 	rm -rf build/tables-generated-java/tblfixedevo && ./bin/schema generate --lang java --out build/tables-generated-java/tblfixedevo test/tables/fixedevo
+	rm -rf build/tables-generated-java/tblvarevo1 && ./bin/schema generate --lang java --out build/tables-generated-java/tblvarevo1 test/tables/varevo/VarEvo1.schema
+	rm -rf build/tables-generated-java/tblvarevo2 && ./bin/schema generate --lang java --out build/tables-generated-java/tblvarevo2 test/tables/varevo/VarEvo2.schema
+	rm -rf build/tables-generated-java/tblvarevo3 && ./bin/schema generate --lang java --out build/tables-generated-java/tblvarevo3 test/tables/varevo/VarEvo3.schema
+	rm -rf build/tables-generated-java/cooktorture && ./bin/schema generate --lang java --out build/tables-generated-java/cooktorture test/tables/cooktorture/CookTorture.schema
+	rm -rf build/tables-generated-java/cooktorturewide && ./bin/schema generate --lang java --out build/tables-generated-java/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
 	rm -rf build/tables-generated-java/backend && ./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
 	rm -rf build/tables-generated-java/vocab && ./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
 	rm -rf build/tables-generated-java/vocab9 && ./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
@@ -1683,7 +1688,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
-		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java build/tables-generated-java/tblfixedevo/*.java \
+		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java build/tables-generated-java/tblfixedevo/*.java build/tables-generated-java/tblvarevo1/*.java build/tables-generated-java/tblvarevo2/*.java build/tables-generated-java/tblvarevo3/*.java build/tables-generated-java/cooktorture/*.java build/tables-generated-java/cooktorturewide/*.java \
 		build/tables-generated-java/messages/*.java \
 		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java build/tables-generated-java/widelist/*.java \
 		build/tables-generated-java/rt1/*.java \
@@ -1792,7 +1797,7 @@ test-java: tables-java-wire-fuzz
 # with the same leg. The ENUMERATED canonical pass plants exactly those
 # spellings, so the differential must go red on the read report, and the
 # unplanted gate above must be green.
-JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 tblfixedevo messages widelist stream lists rt1 \
+JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 tblfixedevo tblvarevo1 tblvarevo2 tblvarevo3 cooktorture cooktorturewide messages widelist stream lists rt1 \
 	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9 \
 	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),featurewitnesses)
 JAVA_WIRE_FUZZ_SABOTAGE := build/java-wire-sabotage
@@ -2067,6 +2072,11 @@ conformance-negative-control-java-walk: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/scalars tables/scalars
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/scalars2 test/tables/Scalars2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/tblfixedevo test/tables/fixedevo
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/tblvarevo1 test/tables/varevo/VarEvo1.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/tblvarevo2 test/tables/varevo/VarEvo2.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/tblvarevo3 test/tables/varevo/VarEvo3.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/cooktorture test/tables/cooktorture/CookTorture.schema
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/block tables/block
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/v1 test/tables/V1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/v2 test/tables/V2.schema

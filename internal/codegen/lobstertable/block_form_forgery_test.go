@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -175,29 +176,52 @@ func blockForgeryRun(t *testing.T, sabotage func(string) string) ([]forgeryRow, 
 			t.Fatal(err)
 		}
 	}
+	tPaths, err := compiler.GatherPaths(prefix(units["cooktorture"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gTorture, err := generateLoadUnit(t, tPaths)
+	if err != nil {
+		t.Fatalf("cooktorture is refused: %v", err)
+	}
 	bases := map[string]string{
-		"block_render": "testdata/wire/tables/block_render.bin",
-		"block_padded": "testdata/wire/tables/block_padded.bin",
+		"block_render":  "testdata/wire/tables/block_render.bin",
+		"block_padded":  "testdata/wire/tables/block_padded.bin",
+		"block_torture": "testdata/wire/tables/block_torture.bin",
 	}
 	rows := forgeryRows(t, "block")
 	if len(rows) == 0 {
 		t.Fatal("the manifest names no block forgery: the comparison is vacuous")
 	}
-	datas := make([][]byte, len(rows))
-	for i, r := range rows {
+	var demoRows, tortureRows []forgeryRow
+	var demoDatas, tortureDatas [][]byte
+	for _, r := range rows {
 		base, err := os.ReadFile(filepath.Join(root, bases[r.base]))
 		if err != nil {
 			t.Fatalf("%s: base %s: %v", r.name, r.base, err)
 		}
-		datas[i] = forge(t, r, base)
+		d := forge(t, r, base)
+		if r.base == "block_torture" {
+			tortureRows = append(tortureRows, r)
+			tortureDatas = append(tortureDatas, d)
+		} else {
+			demoRows = append(demoRows, r)
+			demoDatas = append(demoDatas, d)
+		}
 	}
-	got := openReasons(t, g.dir, append(g.mods, "block_form"), rows, func(r forgeryRow) string {
+	got := openReasons(t, g.dir, append(g.mods, "block_form"), demoRows, func(r forgeryRow) string {
 		root := "RenderFrame"
 		if strings.HasPrefix(r.subject, "block_padded") {
 			root = "PaddedFrame"
 		}
 		return fmt.Sprintf("schema_rt.block_open_reason(%q, DATA, LEAD, NOBUF)", root)
-	}, datas)
+	}, demoDatas)
+	if len(tortureRows) > 0 {
+		gotT := openReasons(t, gTorture.dir, append(gTorture.mods, "block_form"), tortureRows, func(r forgeryRow) string {
+			return fmt.Sprintf("schema_rt.block_open_reason(%q, DATA, LEAD, NOBUF)", "TortureFrame")
+		}, tortureDatas)
+		maps.Copy(got, gotT)
+	}
 	return rows, got
 }
 

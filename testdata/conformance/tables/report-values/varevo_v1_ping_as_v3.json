@@ -1,0 +1,73 @@
+{
+  "caption": "v1-ping",
+  "perms": [
+    "Read"
+  ],
+  "tier": "Sterling",
+  "action": {
+    "ack": null
+  },
+  "boost": {
+    "scale": 1,
+    "power": "10"
+  },
+  "sub": {
+    "count": 7,
+    "sub_tag": "s2",
+    "sub_future": "0"
+  },
+  "wide_num": "0",
+  "scores": [
+    "0",
+    "-1"
+  ],
+  "items": [
+    {
+      "count": 1,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    {
+      "count": 2,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    }
+  ],
+  "tally": {
+    "Bronze": 0,
+    "Sterling": 0,
+    "Gold": 0,
+    "Platinum": 0
+  },
+  "by_name": {},
+  "head": null,
+  "v2_epoch": "0",
+  "v3_stamp": "0",
+  "v3_parcel": {
+    "grade": "None",
+    "pick": {},
+    "bins": {
+      "Low": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      },
+      "Mid": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      },
+      "High": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      }
+    },
+    "core": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    "stack": []
+  }
+}

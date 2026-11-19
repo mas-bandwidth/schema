@@ -50,6 +50,12 @@
 #include "WidesTable.h"
 #include "Scalars2Table.h"
 #include "FixedEvoTable.h"
+#include "VarEvo1Table.h"
+#include "VarEvo2Table.h"
+#include "VarEvo3Table.h"
+#include "CookTortureTable.h"
+#include "CookTortureBlock.h"
+#include "CookTortureWideTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -377,6 +383,8 @@ static const Codec codecs[] = {
     CODEC( "vocabdemo", vocabdemo, Wide09 ),
     CODEC( "vocab9demo", vocab9demo, Wide00 ),
     CODEC( "vocab9demo", vocab9demo, Wide19 ),
+    CODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
+    CODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
 };
 
 // ---------------------------------------------------------------------------
@@ -479,6 +487,11 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "listdemo", listdemo, Ints ),
     VARCODEC( "listdemo", listdemo, Squad ),
     VARCODEC( "widelist", widelistdemo, Wide ),
+    VARCODEC( "tblvarevo1", tblvarevo1, EvoDoc ),
+    VARCODEC( "tblvarevo2", tblvarevo2, EvoDoc ),
+    VARCODEC( "tblvarevo3", tblvarevo3, EvoDoc ),
+    VARCODEC( "cooktorture", cooktorture, TortureCook ),
+    VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
@@ -516,19 +529,20 @@ struct MsgCodec
         unit_key, #type,                                                                        \
         []( const uint8_t * a, int64_t an, const uint8_t * b, int64_t n,                        \
             std::vector<uint8_t> & out, Report * r ) {                                          \
-            std::vector<ns::TableMessageEntry> entries( (size_t) ns::kTableMessageEntriesHere ); \
-            ns::TableVocabulary vocabulary( entries.data(), ns::kTableMessageEntriesHere );     \
+            const int64_t vocab_cap = ns::kTableMessageEntriesHere > 4096 ? ns::kTableMessageEntriesHere : 4096; \
+            std::vector<ns::TableMessageEntry> entries( (size_t) vocab_cap );                   \
+            ns::TableVocabulary vocabulary( entries.data(), vocab_cap );     \
             ns::TableReport inner;                                                              \
             if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
-            ns::type value;                                                                     \
-            ns::type##Reset( value );                                                           \
-            int64_t count = 1;                                                                  \
-            if ( !ns::type##LoadMessages( &value, &count, vocabulary, b, n, &inner ) ) { copy_report( inner, r ); return false; } \
+            std::vector<ns::type> values( 256 );                                                \
+            for ( size_t i = 0; i < values.size(); i++ ) { ns::type##Reset( values[i] ); }      \
+            int64_t count = (int64_t) values.size();                                            \
+            if ( !ns::type##LoadMessages( values.data(), &count, vocabulary, b, n, &inner ) ) { copy_report( inner, r ); return false; } \
             copy_report( inner, r );                                                            \
-            int64_t size = ns::type##MeasureMessages( &value, count, &inner );                  \
+            int64_t size = ns::type##MeasureMessages( values.data(), count, &inner );           \
             if ( size < 0 ) return false;                                                       \
             out.assign( (size_t) size, 0 );                                                     \
-            return ns::type##SaveMessages( &value, count, out.data(), size, &inner ) == size;   \
+            return ns::type##SaveMessages( values.data(), count, out.data(), size, &inner ) == size;   \
         }                                                                                       \
     }
 
@@ -541,6 +555,8 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "vocabdemo", vocabdemo, Wide09 ),
     MSGCODEC( "vocab9demo", vocab9demo, Wide00 ),
     MSGCODEC( "vocab9demo", vocab9demo, Wide19 ),
+    MSGCODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
+    MSGCODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
 };
 
 // ---------------------------------------------------------------------------
@@ -630,6 +646,7 @@ static const int64_t kRetainRoomy = 1 << 20;
 
 static const RetainCodec retain_codecs[] = {
     RETAINCODEC( "tblrt1", tblrt1, Node ),
+    RETAINCODEC( "tblvarevo1", tblvarevo1, EvoDoc ),
 };
 
 static const RetainCodec * find_retain_codec( const std::string & unit, const std::string & root )
@@ -730,6 +747,13 @@ static bool open_block( const std::string & name, const std::vector<uint8_t> & d
     {
         blockdemo::PaddedFrameBlock block;
         opened = blockdemo::PaddedFrameBlockOpen( block, storage.base, storage.bytes, reason );
+    }
+    else if ( name.rfind( "block_torture", 0 ) == 0 )
+    {
+        cooktorture::TortureFrameBlock block;
+        cooktorture::TableRefuseReason r = {};
+        opened = cooktorture::TortureFrameBlockOpen( block, storage.base, storage.bytes, reason ? &r : NULL );
+        if ( reason ) *reason = (blockdemo::TableRefuseReason) r;
     }
     else
     {
@@ -850,13 +874,14 @@ static std::string dump_slot( const std::string & path, int64_t slot )
 // One record's leaves, at two spaces, in descriptor order. `storage` is the
 // record's own base. Out-of-line arrays are the caller's business: they are a
 // section of their own, not a leaf.
-static bool dump_record( std::string & out, const uint8_t * storage, const BlockInfo * info,
+template <typename InfoT>
+static bool dump_record( std::string & out, const uint8_t * storage, const InfoT * info,
                          const std::string & path )
 {
     if ( info == NULL ) { fprintf( stderr, "driver: a descriptor names no record\n" ); return false; }
     for ( int i = 0; i < info->num_fields; i++ )
     {
-        const BlockField & f = info->fields[i];
+        const auto & f = info->fields[i];
         if ( f.out_of_line ) continue;
         const std::string name = dump_join( path, f.name );
 
@@ -907,7 +932,8 @@ static bool dump_record( std::string & out, const uint8_t * storage, const Block
 
 // the whole dump of one opened block: the projection's own fields, then every
 // out-of-line array in declaration order, row by row
-static bool dump_block( std::string & out, const uint8_t * base, const BlockInfo * info )
+template <typename InfoT>
+static bool dump_block( std::string & out, const uint8_t * base, const InfoT * info )
 {
     char header[256];
     snprintf( header, sizeof( header ), "projection %s @0\n", info->name );
@@ -916,14 +942,14 @@ static bool dump_block( std::string & out, const uint8_t * base, const BlockInfo
 
     for ( int i = 0; i < info->num_fields; i++ )
     {
-        const BlockField & f = info->fields[i];
+        const auto & f = info->fields[i];
         if ( !f.out_of_line ) continue;
         uint64_t offset_of = 0;
         uint32_t count = 0, stride = 0;
         memcpy( &offset_of, base + f.offset_of_offset, 8 );
         memcpy( &count, base + f.count_offset, 4 );
         memcpy( &stride, base + f.stride_offset, 4 );
-        const BlockInfo * row = f.element();
+        const auto * row = f.element();
         if ( row == NULL ) { fprintf( stderr, "driver: %s names no element\n", f.name ); return false; }
         snprintf( header, sizeof( header ), "array %s %s @%llu count=%u stride=%u\n",
                   f.name, row->name, (unsigned long long) offset_of, count, stride );
@@ -955,6 +981,12 @@ static bool block_dump( const std::string & name, const std::vector<uint8_t> & d
         blockdemo::PaddedFrameBlock block;
         ok = blockdemo::PaddedFrameBlockOpen( block, storage.base, storage.bytes ) &&
              dump_block( out, block.base, blockdemo::PaddedFrameBlock::Type() );
+    }
+    else if ( name.rfind( "block_torture", 0 ) == 0 )
+    {
+        cooktorture::TortureFrameBlock block;
+        ok = cooktorture::TortureFrameBlockOpen( block, storage.base, storage.bytes ) &&
+             dump_block( out, block.base, cooktorture::TortureFrameBlock::Type() );
     }
     else
     {

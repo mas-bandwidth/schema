@@ -412,7 +412,7 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 			m.pf("%s    %d => {\n%s        w.put(%d, TABLE_MESSAGE_REF_BITS);\n", ind, i+1, ind, m.slot(arm))
 			if !v.Void() {
 				local := m.tmp("arm")
-				m.pf("%s        let Some(%s) = %s.%s() else { return false; };\n", ind, local, expr, v.Name)
+				m.pf("%s        let Some(%s) = %s.%s() else { return false; };\n", ind, local, expr, unionRowGetter(un, v.Name))
 				armExpr := local
 				if _, ok := unionArmCompanionType(un, v); ok {
 					armExpr = local + ".value"

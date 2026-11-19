@@ -1238,6 +1238,22 @@ save_emit_body = function(cx: any, body: any): string
 				parts[#parts + 1] = save_leb(fref)
 				parts[#parts + 1] = string.char(13)
 				parts[#parts + 1] = save_leb(#subBody) .. subBody
+			elseif f.materialized and f.node.t == "keyed" then
+				local subMark, subUnk = #cx.out_ids, cx.unknownUsed
+				local fref = save_ref(cx, cx.ids[f.ref])
+				local subKeyed = save_emit_keyed(cx, f.node)
+				if cx.bad then return "" end
+				if #subKeyed <= 2 then
+					for k = #cx.out_ids, subMark + 1, -1 do
+						cx.refmap[cx.out_ids[k]] = nil
+						cx.out_ids[k] = nil
+					end
+					cx.unknownUsed = subUnk
+					continue
+				end
+				parts[#parts + 1] = save_leb(fref)
+				parts[#parts + 1] = string.char(16)
+				parts[#parts + 1] = save_leb(#subKeyed) .. subKeyed
 			else
 				parts[#parts + 1] = save_leb(save_ref(cx, cx.ids[f.ref]))
 				parts[#parts + 1] = string.char(f.kind)
@@ -1307,23 +1323,40 @@ save_emit_array = function(cx: any, node: any): string
 end
 
 save_emit_keyed = function(cx: any, node: any): string
-	local parts = { string.char(node.ek), save_leb(#node.slots) }
+	local slotParts = {}
+	local emitted = 0
 	for _, s in node.slots do
-		local key = save_ref(cx, cx.ids[s.key])
-		local content: string
-		if s.kind == "body" then
-			content = save_emit_body(cx, s.body)
-		elseif s.kind == "union" then
-			content = save_emit_union(cx, s.node)
+		if s.materialized and s.kind == "body" then
+			local subMark, subUnk = #cx.out_ids, cx.unknownUsed
+			local key = save_ref(cx, cx.ids[s.key])
+			local content = save_emit_body(cx, s.body)
+			if cx.bad then return "" end
+			if #content <= 1 then
+				for k = #cx.out_ids, subMark + 1, -1 do
+					cx.refmap[cx.out_ids[k]] = nil
+					cx.out_ids[k] = nil
+				end
+				cx.unknownUsed = subUnk
+				continue
+			end
+			emitted = emitted + 1
+			slotParts[#slotParts + 1] = save_leb(key) .. save_leb(#content) .. content
 		else
-			content = save_emit_payload(cx, s.node, node.ek)
+			local key = save_ref(cx, cx.ids[s.key])
+			local content: string
+			if s.kind == "body" then
+				content = save_emit_body(cx, s.body)
+			elseif s.kind == "union" then
+				content = save_emit_union(cx, s.node)
+			else
+				content = save_emit_payload(cx, s.node, node.ek)
+			end
+			if cx.bad then return "" end
+			emitted = emitted + 1
+			slotParts[#slotParts + 1] = save_leb(key) .. save_leb(#content) .. content
 		end
-		if cx.bad then return "" end
-		parts[#parts + 1] = save_leb(key)
-		parts[#parts + 1] = save_leb(#content)
-		parts[#parts + 1] = content
 	end
-	return save_concat(parts)
+	return string.char(node.ek) .. save_leb(emitted) .. save_concat(slotParts)
 end
 
 save_emit_union = function(cx: any, node: any): string
@@ -1371,9 +1404,13 @@ save_locate_body = function(body: any, desc: any, steps: { any }, pos: number): 
 	end
 	if fd == nil then return nil end
 	local f = save_field_of(body, _ids, desc, st.o)
-	if f == nil and fd.s == "tab" and fd.present == nil then
+	if f == nil and ((fd.s == "tab" and fd.present == nil) or (fd.s == "arr" and fd.array == "keyed" and fd.e ~= nil and fd.e.s == "tab")) then
 		_ids[#_ids + 1] = fd.id
-		f = { ref = #_ids, kind = 13, materialized = not fd.required, node = { t = "tab", body = { fields = {} } } }
+		if fd.s == "tab" then
+			f = { ref = #_ids, kind = 13, materialized = not fd.required, node = { t = "tab", body = { fields = {} } } }
+		else
+			f = { ref = #_ids, kind = 16, materialized = true, node = { t = "keyed", ek = 13, slots = {} } }
+		end
 		local ins = #body.fields + 1
 		local fmap = fields_by_id(desc)
 		for idx, existing in body.fields do
@@ -1412,6 +1449,23 @@ save_locate_body = function(body: any, desc: any, steps: { any }, pos: number): 
 				if _ids[slot.key] == kv[2] then
 					return save_locate_element(fd, slot, steps, pos + 1)
 				end
+			end
+			if fd.e ~= nil and fd.e.s == "tab" then
+				_ids[#_ids + 1] = kv[2]
+				local slot = { kind = "body", key = #_ids, materialized = true, body = { fields = {} } }
+				local slotRank = {}
+				for idx, kpair in fd.keyvs do slotRank[kpair[2]] = idx end
+				local wantRank = st.i + 1
+				local ins = #f.node.slots + 1
+				for idx, existing in f.node.slots do
+					local erank = slotRank[_ids[existing.key]]
+					if erank ~= nil and erank > wantRank then
+						ins = idx
+						break
+					end
+				end
+				table.insert(f.node.slots, ins, slot)
+				return save_locate_element(fd, slot, steps, pos + 1)
 			end
 			return nil
 		end

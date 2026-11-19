@@ -368,6 +368,7 @@ local function dump_scalar(bytes, at, kind, width)
     v = string.unpack("=I4", bytes, p)
   else
     v = string.unpack("=I8", bytes, p)
+    return string.format("%u", v)
   end
   return string.format("%d", v)
 end

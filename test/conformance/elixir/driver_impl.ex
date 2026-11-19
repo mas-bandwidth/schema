@@ -1191,8 +1191,19 @@ defmodule Driver do
              {:for_root, {:ok, vocab}} <- {:for_root, mod.for_root(announced, root)},
              {:load_messages, {:ok, values}} <-
                {:load_messages, mod.load_messages(vocab, File.read!(batch))},
+             {:own_announce, {:ok, own_ann}} <-
+               {:own_announce, mod.announce_read(mod.announce())},
+             {:own_root, {:ok, own_vocab}} <- {:own_root, mod.for_root(own_ann, root)},
+             {:rebind, {:ok, save_vocab, save_values}} <-
+               {:rebind,
+                if vocab.build_version == own_vocab.build_version do
+                  {:ok, vocab, values}
+                else
+                  {:ok, rebound} = mod.rebind_messages(vocab, own_vocab, values)
+                  {:ok, own_vocab, rebound}
+                end},
              {:save_messages, {:ok, bytes}} <-
-               {:save_messages, mod.save_messages(vocab, values)} do
+               {:save_messages, mod.save_messages(save_vocab, save_values)} do
           {:ok, bytes}
         else
           {verb, answer} -> {:absent, "#{root}: #{verb} answered #{inspect(answer)}"}
@@ -1231,7 +1242,8 @@ defmodule Driver do
   # the conformance data deliberately does not carry it.
   @block_tables %{
     "block_render" => {"blockdemo", "RenderFrame"},
-    "block_padded" => {"blockdemo", "PaddedFrame"}
+    "block_padded" => {"blockdemo", "PaddedFrame"},
+    "block_torture" => {"cooktorture", "TortureFrame"}
   }
 
   defp block_table(name) do
@@ -1915,10 +1927,8 @@ defmodule WireFuzz do
     else
       # THE WHOLE BATCH IS WRITTEN BACK, every body the wire carried, as the
       # oracle writes it (docs/SPEC-TABLES.md §3.3)
-      encoded =
-        decoded_rev
-        |> Enum.reverse()
-        |> Enum.map(&msg_encode_body(vocab, tables, desc, &1))
+      _ = decoded_rev
+      {:ok, encoded} = mod.rebind_messages(vocab, vocab, bodies)
 
       measure =
         case mod.measure_messages(vocab, encoded) do
@@ -2061,67 +2071,6 @@ defmodule WireFuzz do
   end
 
   defp msg_decode_field(_vocab, _tables, _f, val, rep), do: {:ok, val, rep}
-
-  defp msg_encode_body(vocab, tables, desc, val_map) do
-    Enum.flat_map(desc.fields, fn f ->
-      ref = msg_field_slot(vocab, f)
-
-      case f.t do
-        :int ->
-          v = Map.get(val_map, f.name, f.default)
-          if v == f.default, do: [], else: [{ref, v}]
-
-        :string ->
-          v = Map.get(val_map, f.name, <<>>)
-          if v == <<>>, do: [], else: [{ref, v}]
-
-        :bytes ->
-          v = Map.get(val_map, f.name, [])
-          if v == [], do: [], else: [{ref, v}]
-
-        :enum ->
-          v = Map.get(val_map, f.name, 0)
-          if v == 0 or v == nil, do: [], else: [{ref, v}]
-
-        :table ->
-          sub_desc = Map.fetch!(tables, f.elem)
-          sub_val = Map.get(val_map, f.name, %{})
-          sub_raw = msg_encode_body(vocab, tables, sub_desc, sub_val)
-          if sub_raw == [], do: [], else: [{ref, sub_raw}]
-
-        :list ->
-          elem_desc = Map.fetch!(tables, f.elem)
-          bound = Map.get(f, :max_count, Map.get(f, :array_bound, 0))
-          elems = Map.get(val_map, f.name, List.duplicate(%{}, bound))
-          padded = elems ++ List.duplicate(%{}, max(bound - length(elems), 0))
-
-          encoded_elems =
-            Enum.map(Enum.take(padded, bound), &msg_encode_body(vocab, tables, elem_desc, &1))
-
-          [{ref, encoded_elems}]
-
-        _ ->
-          []
-      end
-    end)
-  end
-
-  defp msg_field_slot(vocab, f) do
-    elem_kind = msg_field_elem_kind(f)
-
-    idx =
-      Enum.find_index(vocab.entries, fn e ->
-        e_elem =
-          case Map.get(e, :element) do
-            %{kind: k} -> k
-            _ -> 0
-          end
-
-        e.id == f.id and e.kind == f.kind and e_elem == elem_kind
-      end)
-
-    idx + 1
-  end
 
   # the plain arm (docs/SPEC-TABLES.md §4.2): load, report, save.
   # the report a LoadMeasure refusal answers: the load's own refusal, which

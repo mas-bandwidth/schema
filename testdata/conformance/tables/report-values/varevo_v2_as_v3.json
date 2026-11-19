@@ -1,0 +1,100 @@
+{
+  "caption": "v2-middle-🚀",
+  "perms": [
+    "Read",
+    "Exec"
+  ],
+  "tier": "Gold",
+  "action": {
+    "overdrive": {
+      "scale": 3.5,
+      "power": "100000"
+    }
+  },
+  "boost": {
+    "scale": 0.5,
+    "power": "-100000"
+  },
+  "sub": {
+    "count": 77,
+    "sub_tag": "mid-tag",
+    "sub_future": "0"
+  },
+  "wide_num": "5000000000",
+  "scores": [
+    "-5000000000",
+    "0",
+    "5000000000",
+    "42"
+  ],
+  "items": [
+    {
+      "count": 1,
+      "sub_tag": "a",
+      "sub_future": "0"
+    },
+    {
+      "count": 2,
+      "sub_tag": "b",
+      "sub_future": "0"
+    },
+    {
+      "count": 3,
+      "sub_tag": "c",
+      "sub_future": "0"
+    }
+  ],
+  "tally": {
+    "Bronze": 1,
+    "Sterling": 2,
+    "Gold": 3,
+    "Platinum": 0
+  },
+  "by_name": {
+    "k1": {
+      "weight": 5,
+      "rank": 9,
+      "secret": ""
+    }
+  },
+  "head": {
+    "val": "9000000000",
+    "next": {
+      "val": "-9",
+      "next": null,
+      "note": "tail",
+      "extra_leaf": 0
+    },
+    "note": "v2-leaf",
+    "extra_leaf": 0
+  },
+  "v2_epoch": "1700000000",
+  "v3_stamp": "0",
+  "v3_parcel": {
+    "grade": "None",
+    "pick": {},
+    "bins": {
+      "Low": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      },
+      "Mid": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      },
+      "High": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      }
+    },
+    "core": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    "stack": []
+  }
+}

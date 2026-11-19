@@ -1,0 +1,36 @@
+{
+  "label": "v1-ping",
+  "perms": [
+    "Read"
+  ],
+  "tier": "Silver",
+  "action": {
+    "ping": null
+  },
+  "boost": {
+    "mult": 1,
+    "power": 10
+  },
+  "sub": {
+    "count": 7
+  },
+  "wide_num": 0,
+  "scores": [
+    0,
+    -1
+  ],
+  "items": [
+    {
+      "count": 1
+    },
+    {
+      "count": 2
+    }
+  ],
+  "tally": {
+    "Bronze": 0,
+    "Silver": 0
+  },
+  "by_name": {},
+  "head": null
+}

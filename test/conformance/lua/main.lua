@@ -579,7 +579,7 @@ end
 
 -- a block line's name says which projection it is (the C++ and JavaScript
 -- legs bind the same two by the same prefixes)
-local BLOCK_ROOTS = { block_render = "RenderFrame", block_padded = "PaddedFrame" }
+local BLOCK_ROOTS = { block_render = "RenderFrame", block_padded = "PaddedFrame", block_torture = "TortureFrame" }
 
 local function blockNamed(all, name)
   for _, b in ipairs(kind(all, "block")) do

@@ -248,6 +248,21 @@ type AnnounceGrown struct {
 	File    string // filled in by the harness once materialised
 }
 
+// MessageDrift is a cross-peer Form-2 message batch (docs/SPEC-TABLES.md §3.3):
+// PeerAnnounce is the peer build's announcement wire, PeerWire is the Form-2
+// message batch written by that peer, FileWire is a placeholder file-form path
+// for drivers that inspect column 5, and SaveWire is the canonical Form-2
+// message batch re-saved in Unit's own vocabulary after loading PeerWire.
+type MessageDrift struct {
+	Name     string
+	Unit     string
+	PeerConn string
+	Root     string
+	FileWire string
+	PeerWire string
+	SaveWire string
+}
+
 // AnnouncementMalformed is the diagnostic reason for a message row whose
 // connection's announcement was refused as damage (docs/SPEC-TABLES.md §3.3).
 const AnnouncementMalformed = "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)"
@@ -321,20 +336,21 @@ type RetainCase struct {
 const RetainShortSlack = 16
 
 type Manifest struct {
-	Units       []Unit
-	Instances   []Instance
-	Connections []Connection
-	Messages    []Message
-	Grown       []AnnounceGrown
-	Reports     []ReportCase
-	Framings    []FramingCase
-	Rewrites    []RewriteCase
-	Hostiles    []Hostile
-	Retains     []RetainCase
-	Cooks       []Cook
-	CookWrites  []CookWrite
-	Blocks      []Block
-	Forgeries   []Forgery
+	Units         []Unit
+	Instances     []Instance
+	Connections   []Connection
+	Messages      []Message
+	Grown         []AnnounceGrown
+	MessageDrifts []MessageDrift
+	Reports       []ReportCase
+	Framings      []FramingCase
+	Rewrites      []RewriteCase
+	Hostiles      []Hostile
+	Retains       []RetainCase
+	Cooks         []Cook
+	CookWrites    []CookWrite
+	Blocks        []Block
+	Forgeries     []Forgery
 	// JSONWriteRefusals are the json-write rows whose answer is the writer's
 	// refusal (docs/SPEC-TABLES.md §16.14, W0).
 	JSONWriteRefusals []JSONWriteRefusal
@@ -606,6 +622,15 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: %q is not an answer; it is message or malformed", where, f[5])
 			}
 			m.Grown = append(m.Grown, g)
+		case "message-drift":
+			// message-drift <name> <unit> <peer-conn> <root> <file-wire> <peer-message-wire> <resaved-message-wire>
+			if len(f) != 8 {
+				return nil, fmt.Errorf("%s: message-drift takes name, unit, peer connection, root, file wire, peer message wire, resaved message wire", where)
+			}
+			m.MessageDrifts = append(m.MessageDrifts, MessageDrift{
+				Name: f[1], Unit: f[2], PeerConn: f[3], Root: f[4],
+				FileWire: f[5], PeerWire: f[6], SaveWire: f[7],
+			})
 		case "retain":
 			// retain <case> <unit> <root> <wire> <capacity> <ids> <save|->
 			if len(f) != 8 && len(f) != 10 {

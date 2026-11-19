@@ -451,7 +451,8 @@ namespace SchemaUnityConformance
 
         private static Type FindBlockType(string blockCaseName)
         {
-            Assembly asm = LoadUnit(UnitsRoot(), "blockdemo");
+            string unitName = blockCaseName.StartsWith("block_torture", StringComparison.Ordinal) ? "cooktorture" : "blockdemo";
+            Assembly asm = LoadUnit(UnitsRoot(), unitName);
             if (asm == null) { return null; }
             Type schema = FindSchemaType(asm);
             if (schema == null) { return null; }
@@ -463,6 +464,10 @@ namespace SchemaUnityConformance
             if (blockCaseName.StartsWith("block_padded", StringComparison.Ordinal))
             {
                 return asm.GetType(ns + ".PaddedFrameBlock");
+            }
+            if (blockCaseName.StartsWith("block_torture", StringComparison.Ordinal))
+            {
+                return asm.GetType(ns + ".TortureFrameBlock");
             }
             return null;
         }

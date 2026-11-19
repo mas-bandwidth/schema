@@ -12,6 +12,8 @@ import (
 
 	"backenddemo"
 	"blobdemo"
+	"cooktorture"
+	"cooktorturewide"
 	"graphdemo"
 	"listdemo"
 	"mapdemo"
@@ -20,6 +22,9 @@ import (
 	"streamdemo"
 	"tblfixedevo"
 	tblscalars2 "tblscalars2"
+	"tblvarevo1"
+	"tblvarevo2"
+	"tblvarevo3"
 	"vocab9demo"
 	"vocabdemo"
 	"widelistdemo"
@@ -752,6 +757,85 @@ var codecTable = []codec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	row("tblfixedevo", "EvoRoot", tblfixedevo.EvoRootReset, tblfixedevo.EvoRootLoad, tblfixedevo.EvoRootMeasure, tblfixedevo.EvoRootSave, tblfixedevo.EvoRootFromJSON, tblfixedevo.EvoRootToJSONMeasure, tblfixedevo.EvoRootToJSON, tblfixedevo.EvoRootCookMeasure, tblfixedevo.EvoRootCookFrom, func(r *tblfixedevo.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	regionRow("tblvarevo1", "EvoDoc", tblvarevo1.EvoDocLoadMeasure, tblvarevo1.EvoDocLoad, tblvarevo1.EvoDocMeasure, tblvarevo1.EvoDocSave, func(text []byte, r *tblvarevo1.TableReport) (*tblvarevo1.EvoDoc, []byte, bool) {
+		var b tblvarevo1.EvoDocBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblvarevo1.EvoDocFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblvarevo1.EvoDocToJSONMeasure, tblvarevo1.EvoDocToJSON, tblvarevo1.EvoDocCookMeasure, tblvarevo1.EvoDocCookFrom, func(r *tblvarevo1.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("tblvarevo1", "EvoMsg", tblvarevo1.EvoMsgReset, tblvarevo1.EvoMsgLoad, tblvarevo1.EvoMsgMeasure, tblvarevo1.EvoMsgSave, tblvarevo1.EvoMsgFromJSON, tblvarevo1.EvoMsgToJSONMeasure, tblvarevo1.EvoMsgToJSON, tblvarevo1.EvoMsgCookMeasure, tblvarevo1.EvoMsgCookFrom, func(r *tblvarevo1.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	regionRow("tblvarevo2", "EvoDoc", tblvarevo2.EvoDocLoadMeasure, tblvarevo2.EvoDocLoad, tblvarevo2.EvoDocMeasure, tblvarevo2.EvoDocSave, func(text []byte, r *tblvarevo2.TableReport) (*tblvarevo2.EvoDoc, []byte, bool) {
+		var b tblvarevo2.EvoDocBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblvarevo2.EvoDocFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblvarevo2.EvoDocToJSONMeasure, tblvarevo2.EvoDocToJSON, tblvarevo2.EvoDocCookMeasure, tblvarevo2.EvoDocCookFrom, func(r *tblvarevo2.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("tblvarevo2", "EvoMsg", tblvarevo2.EvoMsgReset, tblvarevo2.EvoMsgLoad, tblvarevo2.EvoMsgMeasure, tblvarevo2.EvoMsgSave, tblvarevo2.EvoMsgFromJSON, tblvarevo2.EvoMsgToJSONMeasure, tblvarevo2.EvoMsgToJSON, tblvarevo2.EvoMsgCookMeasure, tblvarevo2.EvoMsgCookFrom, func(r *tblvarevo2.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	regionRow("tblvarevo3", "EvoDoc", tblvarevo3.EvoDocLoadMeasure, tblvarevo3.EvoDocLoad, tblvarevo3.EvoDocMeasure, tblvarevo3.EvoDocSave, func(text []byte, r *tblvarevo3.TableReport) (*tblvarevo3.EvoDoc, []byte, bool) {
+		var b tblvarevo3.EvoDocBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblvarevo3.EvoDocFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblvarevo3.EvoDocToJSONMeasure, tblvarevo3.EvoDocToJSON, tblvarevo3.EvoDocCookMeasure, tblvarevo3.EvoDocCookFrom, func(r *tblvarevo3.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("tblvarevo3", "EvoMsg", tblvarevo3.EvoMsgReset, tblvarevo3.EvoMsgLoad, tblvarevo3.EvoMsgMeasure, tblvarevo3.EvoMsgSave, tblvarevo3.EvoMsgFromJSON, tblvarevo3.EvoMsgToJSONMeasure, tblvarevo3.EvoMsgToJSON, tblvarevo3.EvoMsgCookMeasure, tblvarevo3.EvoMsgCookFrom, func(r *tblvarevo3.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	regionRow("cooktorture", "TortureCook", cooktorture.TortureCookLoadMeasure, cooktorture.TortureCookLoad, cooktorture.TortureCookMeasure, cooktorture.TortureCookSave, func(text []byte, r *cooktorture.TableReport) (*cooktorture.TortureCook, []byte, bool) {
+		var b cooktorture.TortureCookBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := cooktorture.TortureCookFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, cooktorture.TortureCookToJSONMeasure, cooktorture.TortureCookToJSON, cooktorture.TortureCookCookMeasure, cooktorture.TortureCookCookFrom, func(r *cooktorture.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	regionRow("cooktorturewide", "TortureWideCook", cooktorturewide.TortureWideCookLoadMeasure, cooktorturewide.TortureWideCookLoad, cooktorturewide.TortureWideCookMeasure, cooktorturewide.TortureWideCookSave, func(text []byte, r *cooktorturewide.TableReport) (*cooktorturewide.TortureWideCook, []byte, bool) {
+		var b cooktorturewide.TortureWideCookBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := cooktorturewide.TortureWideCookFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, cooktorturewide.TortureWideCookToJSONMeasure, cooktorturewide.TortureWideCookToJSON, cooktorturewide.TortureWideCookCookMeasure, cooktorturewide.TortureWideCookCookFrom, func(r *cooktorturewide.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

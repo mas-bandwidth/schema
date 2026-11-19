@@ -159,6 +159,26 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Tblvarevo1.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
+    static Report Copy(Tblvarevo2.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
+    static Report Copy(Tblvarevo3.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
+    static Report Copy(Cooktorture.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
+    static Report Copy(Cooktorturewide.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Graphdemo.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -397,6 +417,30 @@ static partial class Program
         Row<Tblfixedevo.EvoRoot, Tblfixedevo.TableReport>("tblfixedevo", "EvoRoot", () => new Tblfixedevo.TableReport(), Copy,
             Tblfixedevo.Schema.EvoRootLoad, Tblfixedevo.Schema.EvoRootMeasure, Tblfixedevo.Schema.EvoRootSave,
             Tblfixedevo.Schema.EvoRootFromJson, Tblfixedevo.Schema.EvoRootToJsonMeasure, Tblfixedevo.Schema.EvoRootToJson),
+        Row<Tblvarevo1.EvoDoc, Tblvarevo1.TableReport>("tblvarevo1", "EvoDoc", () => new Tblvarevo1.TableReport(), Copy,
+            Tblvarevo1.Schema.EvoDocLoad, Tblvarevo1.Schema.EvoDocMeasure, Tblvarevo1.Schema.EvoDocSave,
+            Tblvarevo1.Schema.EvoDocFromJson, Tblvarevo1.Schema.EvoDocToJsonMeasure, Tblvarevo1.Schema.EvoDocToJson, Tblvarevo1.Schema.EvoDocLoadMeasure),
+        Row<Tblvarevo1.EvoMsg, Tblvarevo1.TableReport>("tblvarevo1", "EvoMsg", () => new Tblvarevo1.TableReport(), Copy,
+            Tblvarevo1.Schema.EvoMsgLoad, Tblvarevo1.Schema.EvoMsgMeasure, Tblvarevo1.Schema.EvoMsgSave,
+            Tblvarevo1.Schema.EvoMsgFromJson, Tblvarevo1.Schema.EvoMsgToJsonMeasure, Tblvarevo1.Schema.EvoMsgToJson),
+        Row<Tblvarevo2.EvoDoc, Tblvarevo2.TableReport>("tblvarevo2", "EvoDoc", () => new Tblvarevo2.TableReport(), Copy,
+            Tblvarevo2.Schema.EvoDocLoad, Tblvarevo2.Schema.EvoDocMeasure, Tblvarevo2.Schema.EvoDocSave,
+            Tblvarevo2.Schema.EvoDocFromJson, Tblvarevo2.Schema.EvoDocToJsonMeasure, Tblvarevo2.Schema.EvoDocToJson, Tblvarevo2.Schema.EvoDocLoadMeasure),
+        Row<Tblvarevo2.EvoMsg, Tblvarevo2.TableReport>("tblvarevo2", "EvoMsg", () => new Tblvarevo2.TableReport(), Copy,
+            Tblvarevo2.Schema.EvoMsgLoad, Tblvarevo2.Schema.EvoMsgMeasure, Tblvarevo2.Schema.EvoMsgSave,
+            Tblvarevo2.Schema.EvoMsgFromJson, Tblvarevo2.Schema.EvoMsgToJsonMeasure, Tblvarevo2.Schema.EvoMsgToJson),
+        Row<Tblvarevo3.EvoDoc, Tblvarevo3.TableReport>("tblvarevo3", "EvoDoc", () => new Tblvarevo3.TableReport(), Copy,
+            Tblvarevo3.Schema.EvoDocLoad, Tblvarevo3.Schema.EvoDocMeasure, Tblvarevo3.Schema.EvoDocSave,
+            Tblvarevo3.Schema.EvoDocFromJson, Tblvarevo3.Schema.EvoDocToJsonMeasure, Tblvarevo3.Schema.EvoDocToJson, Tblvarevo3.Schema.EvoDocLoadMeasure),
+        Row<Tblvarevo3.EvoMsg, Tblvarevo3.TableReport>("tblvarevo3", "EvoMsg", () => new Tblvarevo3.TableReport(), Copy,
+            Tblvarevo3.Schema.EvoMsgLoad, Tblvarevo3.Schema.EvoMsgMeasure, Tblvarevo3.Schema.EvoMsgSave,
+            Tblvarevo3.Schema.EvoMsgFromJson, Tblvarevo3.Schema.EvoMsgToJsonMeasure, Tblvarevo3.Schema.EvoMsgToJson),
+        Row<Cooktorture.TortureCook, Cooktorture.TableReport>("cooktorture", "TortureCook", () => new Cooktorture.TableReport(), Copy,
+            Cooktorture.Schema.TortureCookLoad, Cooktorture.Schema.TortureCookMeasure, Cooktorture.Schema.TortureCookSave,
+            Cooktorture.Schema.TortureCookFromJson, Cooktorture.Schema.TortureCookToJsonMeasure, Cooktorture.Schema.TortureCookToJson, Cooktorture.Schema.TortureCookLoadMeasure),
+        Row<Cooktorturewide.TortureWideCook, Cooktorturewide.TableReport>("cooktorturewide", "TortureWideCook", () => new Cooktorturewide.TableReport(), Copy,
+            Cooktorturewide.Schema.TortureWideCookLoad, Cooktorturewide.Schema.TortureWideCookMeasure, Cooktorturewide.Schema.TortureWideCookSave,
+            Cooktorturewide.Schema.TortureWideCookFromJson, Cooktorturewide.Schema.TortureWideCookToJsonMeasure, Cooktorturewide.Schema.TortureWideCookToJson, Cooktorturewide.Schema.TortureWideCookLoadMeasure),
         Row<Scalardemo.Pose, Scalardemo.TableReport>("scalars", "Pose", () => new Scalardemo.TableReport(), Copy,
             Scalardemo.Schema.PoseLoad, Scalardemo.Schema.PoseMeasure, Scalardemo.Schema.PoseSave,
             Scalardemo.Schema.PoseFromJson, Scalardemo.Schema.PoseToJsonMeasure, Scalardemo.Schema.PoseToJson),
@@ -1061,6 +1105,13 @@ static partial class Program
                 Blockdemo.PaddedFrameBlock block;
                 opened = Blockdemo.PaddedFrameBlock.Open(out block, pointer, claim, out reason);
             }
+            else if (name.StartsWith("block_torture", StringComparison.Ordinal))
+            {
+                Cooktorture.TortureFrameBlock block;
+                Cooktorture.TableRefuseReason ctReason;
+                opened = Cooktorture.TortureFrameBlock.Open(out block, pointer, claim, out ctReason);
+                reason = (Blockdemo.TableRefuseReason)(int)ctReason;
+            }
             else
             {
                 Console.Error.WriteLine("driver: no block named " + name);
@@ -1278,6 +1329,76 @@ static partial class Program
         return true;
     }
 
+    static unsafe bool DumpRecordTorture(StringBuilder into, byte* storage, Cooktorture.TableBlockInfo info, string path)
+    {
+        if (info == null) { Console.Error.WriteLine("driver: a descriptor names no record"); return false; }
+        foreach (Cooktorture.TableBlockFieldInfo f in info.Fields)
+        {
+            if (f.OutOfLine) { continue; }
+            string name = DumpJoin(path, f.Name);
+            if (f.Counted)
+            {
+                int used = *(int*)(storage + f.CountOffset);
+                if (used < 0 || used > f.ArrayBound) { return false; }
+                into.Append("  ").Append(name).Append(" = ");
+                DumpText(into, storage + f.Offset, used);
+                into.Append('\n');
+            }
+            else
+            {
+                int slots = f.IsArray ? f.ArrayBound : 1;
+                for (int s = 0; s < slots; s++)
+                {
+                    string at = f.IsArray ? name + "[" + s.ToString(CultureInfo.InvariantCulture) + "]" : name;
+                    byte* value = storage + f.Offset + (long)s * f.ElemSize;
+                    if (f.Element != null)
+                    {
+                        if (!DumpRecordTorture(into, value, f.Element, at)) { return false; }
+                    }
+                    else
+                    {
+                        into.Append("  ").Append(at).Append(" = ");
+                        DumpScalar(into, value, f.Kind, f.ElemSize);
+                        into.Append('\n');
+                    }
+                }
+            }
+            if (f.Optional)
+            {
+                into.Append("  ").Append(name).Append("#present = ")
+                    .Append(storage[f.PresentOffset] != 0 ? "true" : "false").Append('\n');
+            }
+        }
+        return true;
+    }
+
+    static unsafe bool DumpBlockTorture(StringBuilder into, byte* baseAt, Cooktorture.TableBlockInfo info)
+    {
+        into.Append("projection ").Append(info.Name).Append(" @0\n");
+        if (!DumpRecordTorture(into, baseAt, info, "")) { return false; }
+        foreach (Cooktorture.TableBlockFieldInfo f in info.Fields)
+        {
+            if (!f.OutOfLine) { continue; }
+            ulong offsetOf = *(ulong*)(baseAt + f.OffsetOfOffset);
+            uint count = *(uint*)(baseAt + f.CountOffset);
+            uint stride = *(uint*)(baseAt + f.StrideOffset);
+            Cooktorture.TableBlockInfo row = f.Element;
+            if (row == null) { return false; }
+            into.Append("array ").Append(f.Name).Append(' ').Append(row.Name)
+                .Append(" @").Append(offsetOf.ToString(CultureInfo.InvariantCulture))
+                .Append(" count=").Append(count.ToString(CultureInfo.InvariantCulture))
+                .Append(" stride=").Append(stride.ToString(CultureInfo.InvariantCulture)).Append('\n');
+            for (uint r = 0; r < count; r++)
+            {
+                ulong at = offsetOf + (ulong)r * stride;
+                into.Append("row ").Append(r.ToString(CultureInfo.InvariantCulture))
+                    .Append(" @").Append(at.ToString(CultureInfo.InvariantCulture)).Append('\n');
+                if (!DumpRecordTorture(into, baseAt + (long)at, row, "")) { return false; }
+            }
+        }
+        return true;
+    }
+
     static unsafe bool BlockDump(string name, byte[] bytes, StringBuilder into)
     {
         IntPtr raw = Marshal.AllocHGlobal(new IntPtr(bytes.Length + 64));
@@ -1298,6 +1419,12 @@ static partial class Program
                 Blockdemo.PaddedFrameBlock block;
                 return Blockdemo.PaddedFrameBlock.Open(out block, pointer, bytes.Length) &&
                        DumpBlock(into, block.Base, Blockdemo.PaddedFrameBlock.Type);
+            }
+            if (name.StartsWith("block_torture", StringComparison.Ordinal))
+            {
+                Cooktorture.TortureFrameBlock block;
+                return Cooktorture.TortureFrameBlock.Open(out block, pointer, bytes.Length) &&
+                       DumpBlockTorture(into, block.Base, Cooktorture.TortureFrameBlock.Type);
             }
             Console.Error.WriteLine("driver: no block named " + name);
             return false;
@@ -1653,6 +1780,67 @@ static partial class Program
             Codec c = Find("widelist", "Wide");
             c.CookMeasure = value => Widelistdemo.Schema.WideCookMeasure((Widelistdemo.Wide)value);
             c.Cook = (value, bytes, big) => Widelistdemo.Schema.WideCook((Widelistdemo.Wide)value, bytes, big ? Widelistdemo.TableByteOrder.Big : Widelistdemo.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvarevo1", "EvoDoc");
+            c.CookMeasure = value => Tblvarevo1.Schema.EvoDocCookMeasure((Tblvarevo1.EvoDoc)value);
+            c.Cook = (value, bytes, big) => Tblvarevo1.Schema.EvoDocCook((Tblvarevo1.EvoDoc)value, bytes, big ? Tblvarevo1.TableByteOrder.Big : Tblvarevo1.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvarevo1", "EvoMsg");
+            c.Announcement = Tblvarevo1.Schema.Announce().ToArray();
+            c.CookMeasure = value => Tblvarevo1.Schema.EvoMsgCookMeasure((Tblvarevo1.EvoMsg)value);
+            c.Cook = (value, bytes, big) => Tblvarevo1.Schema.EvoMsgCook((Tblvarevo1.EvoMsg)value, bytes, big ? Tblvarevo1.TableByteOrder.Big : Tblvarevo1.TableByteOrder.Little);
+            var ownVocabulary = new Tblvarevo1.TableVocabulary(); Tblvarevo1.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblvarevo1.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblvarevo1.TableVocabulary(); var inner = new Tblvarevo1.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblvarevo1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tblvarevo1.EvoMsg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblvarevo1.EvoMsg(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblvarevo1.Schema.EvoMsgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tblvarevo1.EvoMsg[] batch ? Tblvarevo1.Schema.EvoMsgMeasureMessages(batch) : Tblvarevo1.Schema.EvoMsgMeasureMessages(new Tblvarevo1.EvoMsg[] { (Tblvarevo1.EvoMsg)value });
+            c.MessageSave = (value, bytes) => value is Tblvarevo1.EvoMsg[] batch ? Tblvarevo1.Schema.EvoMsgSaveMessages(batch, bytes) : Tblvarevo1.Schema.EvoMsgSaveMessages(new Tblvarevo1.EvoMsg[] { (Tblvarevo1.EvoMsg)value }, bytes);
+        }
+        {
+            Codec c = Find("tblvarevo2", "EvoDoc");
+            c.CookMeasure = value => Tblvarevo2.Schema.EvoDocCookMeasure((Tblvarevo2.EvoDoc)value);
+            c.Cook = (value, bytes, big) => Tblvarevo2.Schema.EvoDocCook((Tblvarevo2.EvoDoc)value, bytes, big ? Tblvarevo2.TableByteOrder.Big : Tblvarevo2.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvarevo3", "EvoDoc");
+            c.CookMeasure = value => Tblvarevo3.Schema.EvoDocCookMeasure((Tblvarevo3.EvoDoc)value);
+            c.Cook = (value, bytes, big) => Tblvarevo3.Schema.EvoDocCook((Tblvarevo3.EvoDoc)value, bytes, big ? Tblvarevo3.TableByteOrder.Big : Tblvarevo3.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvarevo3", "EvoMsg");
+            c.Announcement = Tblvarevo3.Schema.Announce().ToArray();
+            c.CookMeasure = value => Tblvarevo3.Schema.EvoMsgCookMeasure((Tblvarevo3.EvoMsg)value);
+            c.Cook = (value, bytes, big) => Tblvarevo3.Schema.EvoMsgCook((Tblvarevo3.EvoMsg)value, bytes, big ? Tblvarevo3.TableByteOrder.Big : Tblvarevo3.TableByteOrder.Little);
+            var ownVocabulary = new Tblvarevo3.TableVocabulary(); Tblvarevo3.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblvarevo3.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblvarevo3.TableVocabulary(); var inner = new Tblvarevo3.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblvarevo3.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tblvarevo3.EvoMsg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblvarevo3.EvoMsg(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblvarevo3.Schema.EvoMsgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tblvarevo3.EvoMsg[] batch ? Tblvarevo3.Schema.EvoMsgMeasureMessages(batch) : Tblvarevo3.Schema.EvoMsgMeasureMessages(new Tblvarevo3.EvoMsg[] { (Tblvarevo3.EvoMsg)value });
+            c.MessageSave = (value, bytes) => value is Tblvarevo3.EvoMsg[] batch ? Tblvarevo3.Schema.EvoMsgSaveMessages(batch, bytes) : Tblvarevo3.Schema.EvoMsgSaveMessages(new Tblvarevo3.EvoMsg[] { (Tblvarevo3.EvoMsg)value }, bytes);
+        }
+        {
+            Codec c = Find("cooktorture", "TortureCook");
+            c.CookMeasure = value => Cooktorture.Schema.TortureCookCookMeasure((Cooktorture.TortureCook)value);
+            c.Cook = (value, bytes, big) => Cooktorture.Schema.TortureCookCook((Cooktorture.TortureCook)value, bytes, big ? Cooktorture.TableByteOrder.Big : Cooktorture.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("cooktorturewide", "TortureWideCook");
+            c.CookMeasure = value => Cooktorturewide.Schema.TortureWideCookCookMeasure((Cooktorturewide.TortureWideCook)value);
+            c.Cook = (value, bytes, big) => Cooktorturewide.Schema.TortureWideCookCook((Cooktorturewide.TortureWideCook)value, bytes, big ? Cooktorturewide.TableByteOrder.Big : Cooktorturewide.TableByteOrder.Little);
         }
         {
             Codec c = Find("listdemo", "Unbounded");

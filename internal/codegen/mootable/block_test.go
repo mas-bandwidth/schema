@@ -160,18 +160,24 @@ func blockTableOf(name string) string {
 		return "RenderFrame"
 	case strings.HasPrefix(name, "block_padded"):
 		return "PaddedFrame"
+	case strings.HasPrefix(name, "block_torture"), name == "TortureFrame":
+		return "TortureFrame"
 	}
 	return ""
 }
 
-func blockUnit(t *testing.T) *generatedUnit {
+func blockUnitNamed(t *testing.T, unitKey string) *generatedUnit {
 	t.Helper()
 	units, _ := readManifest(t)
-	g := generateUnit(t, units, "blockdemo")
+	g := generateUnit(t, units, unitKey)
 	if g.err != nil {
 		t.Fatal(g.err)
 	}
 	return g
+}
+
+func blockUnit(t *testing.T) *generatedUnit {
+	return blockUnitNamed(t, "blockdemo")
 }
 
 // TestMooBlockDumpsMatchTheCorpus is the block form's value gate
@@ -181,9 +187,14 @@ func blockUnit(t *testing.T) *generatedUnit {
 func TestMooBlockDumpsMatchTheCorpus(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
-	g := blockUnit(t)
 	rows := manifestLines(t, "block")
+	byUnit := map[string]*generatedUnit{}
 	for _, row := range rows {
+		g, ok := byUnit[row[2]]
+		if !ok {
+			g = blockUnitNamed(t, row[2])
+			byUnit[row[2]] = g
+		}
 		data, err := os.ReadFile(filepath.Join(root, row[3]))
 		if err != nil {
 			t.Fatal(err)
@@ -200,8 +211,10 @@ func TestMooBlockDumpsMatchTheCorpus(t *testing.T) {
 	if len(rows) == 0 {
 		t.Fatal("the manifest names no block")
 	}
-	if out := g.analyze(t); out != "" {
-		t.Fatalf("moo-analyze is not silent:\n%s", out)
+	for _, g := range byUnit {
+		if out := g.analyze(t); out != "" {
+			t.Fatalf("moo-analyze is not silent:\n%s", out)
+		}
 	}
 }
 
@@ -304,12 +317,21 @@ func (fg forgery) materialize(t *testing.T, base []byte) (data []byte, lead, ext
 func TestMooBlockForgeriesAnswerTheirReasons(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
-	g := blockUnit(t)
+	byUnit := map[string]*generatedUnit{}
 	fgs := forgeries(t, "block")
 	if len(fgs) == 0 {
 		t.Fatal("the manifest names no block forgery")
 	}
 	for _, fg := range fgs {
+		unitKey := "blockdemo"
+		if fg.base == "block_torture" {
+			unitKey = "cooktorture"
+		}
+		g, ok := byUnit[unitKey]
+		if !ok {
+			g = blockUnitNamed(t, unitKey)
+			byUnit[unitKey] = g
+		}
 		base, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", fg.base+".bin"))
 		if err != nil {
 			t.Fatal(err)

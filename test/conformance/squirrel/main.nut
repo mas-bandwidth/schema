@@ -418,7 +418,7 @@ if (mode == "json-hostile") {
 
 // the block rows name an image, not a root: the image's ROOT is the one fixed
 // fact every leg carries beside the manifest (test/conformance/go/blocks.go)
-local blockRoots = { block_render = "RenderFrame", block_padded = "PaddedFrame" };
+local blockRoots = { block_render = "RenderFrame", block_padded = "PaddedFrame", block_torture = "TortureFrame" };
 local blockRootOf = function(name) {
   foreach (prefix, root in blockRoots) {
     if (name.len() >= prefix.len() && name.slice(0, prefix.len()) == prefix) return root;
@@ -496,7 +496,12 @@ local dumpScalar = function(b, at, storage, size) {
     return format("0x%08x%08x", du(b, at + 4, 4), du(b, at, 4));
   }
   if (storage == "Signed") return format("%d", ds(b, at, size));
-  return format("%d", du(b, at, size));
+  local uv = du(b, at, size);
+  if (size == 8 && uv < 0) {
+    local half = (uv >>> 1);
+    return format("%d%d", half / 5, (half % 5) * 2 + (uv & 1));
+  }
+  return format("%d", uv);
 };
 
 // THE BLOCK ROW DUMP (test/conformance/go/blockdump.go): the projection, then

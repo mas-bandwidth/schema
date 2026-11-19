@@ -704,6 +704,8 @@ var framingVectors = []framingVector{
 	// carries the pointer that reaches the unknown node type.
 	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: []string{"mystery", "key", "mystery2", "node-table", "graphUnknown"}, held: true,
 		body: cat(b(1, 16, 8, 13, 1, 2, 4, 3, 17, 2, 0), nodeTable(1, graphNodeRecord(5, b(0))), b(0))},
+	{name: "varevo_kind31_escape", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01010c0776312d70696e67021e03040f052000060d0707040700000000080e0603020000ffff090e120d02070704010000000007070402000000000a1f0b6675747572652d6d616a21003d62cb8fecfcf7398959b62eef846f1e8025f1eade1ae5c3df565a030b646865a90733c50de030bff5c20f5d199d718274a279448ee2e5b1b20f40270b6b98016f2c414fbf84783e78563412bebafeca0a00000000000000")},
+	{name: "varevo_kind31_truncated", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01010c0776312d70696e67021e03040f052000060d0707040700000000080e0603020000ffff090e120d02070704010000000007070402000000000a1f326675747572652d6d616a21003d62cb8fecfcf7398959b62eef846f1e8025f1eade1ae5c3df565a030b646865a90733c50de030bff5c20f5d199d718274a279448ee2e5b1b20f40270b6b98016f2c414fbf84783e78563412bebafeca0a00000000000000")},
 }
 
 // counting is n distinct raw entries, 1..n: ids no Cfg declares, so each is an

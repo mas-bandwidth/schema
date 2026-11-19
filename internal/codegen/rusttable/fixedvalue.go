@@ -153,7 +153,7 @@ func (g *gen) emitFixedValues(b *strings.Builder, names []string) {
 				fmt.Fprintf(b, "            %d => Self::%s,\n", i+1, rustVariant(v.Name))
 				continue
 			}
-			fmt.Fprintf(b, "            %d => {\n                let arm = row.%s().ok_or(())?;\n", i+1, v.Name)
+			fmt.Fprintf(b, "            %d => {\n                let arm = row.%s().ok_or(())?;\n", i+1, unionRowGetter(un, v.Name))
 			x := "arm"
 			if _, companion := unionArmCompanionType(un, v); companion {
 				x = "arm.value"

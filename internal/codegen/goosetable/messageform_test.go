@@ -88,7 +88,13 @@ func gooseMsgRows(t *testing.T) []gooseMsgRow {
 
 func gooseMsgUnitDir(t *testing.T, dir string) *ir.Unit {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(fixedRoot, dir, "*.schema"))
+	var paths []string
+	var err error
+	if strings.HasSuffix(dir, ".schema") {
+		paths = []string{filepath.Join(fixedRoot, dir)}
+	} else {
+		paths, err = filepath.Glob(filepath.Join(fixedRoot, dir, "*.schema"))
+	}
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("unit %s has no schema files: %v", dir, err)
 	}

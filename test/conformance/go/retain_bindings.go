@@ -2,6 +2,8 @@ package main
 
 import (
 	"blobdemo"
+	"cooktorture"
+	"cooktorturewide"
 	"featurewitnesses"
 	"graphdemo"
 	"listdemo"
@@ -10,6 +12,9 @@ import (
 	"streamdemo"
 	"tblg1"
 	"tblp2"
+	"tblvarevo1"
+	"tblvarevo2"
+	"tblvarevo3"
 	"tblw1"
 	"tblw2"
 	"widelistdemo"
@@ -21,6 +26,31 @@ var retentionCodecs = []retentionCodec{
 	}, widelistdemo.WideLoadMeasure, widelistdemo.WideLoadRetain, widelistdemo.WideMeasureRetain, widelistdemo.WideSaveRetain, func(r *widelistdemo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}, func(r *widelistdemo.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("tblvarevo1", "EvoDoc", func() *tblvarevo1.TableRetain {
+		return &tblvarevo1.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblvarevo1.TableRetainID, (1<<20)/8)}
+	}, tblvarevo1.EvoDocLoadMeasure, tblvarevo1.EvoDocLoadRetain, tblvarevo1.EvoDocMeasureRetain, tblvarevo1.EvoDocSaveRetain, func(r *tblvarevo1.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *tblvarevo1.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("tblvarevo2", "EvoDoc", func() *tblvarevo2.TableRetain {
+		return &tblvarevo2.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblvarevo2.TableRetainID, (1<<20)/8)}
+	}, tblvarevo2.EvoDocLoadMeasure, tblvarevo2.EvoDocLoadRetain, tblvarevo2.EvoDocMeasureRetain, tblvarevo2.EvoDocSaveRetain, func(r *tblvarevo2.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *tblvarevo2.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("tblvarevo3", "EvoDoc", func() *tblvarevo3.TableRetain {
+		return &tblvarevo3.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblvarevo3.TableRetainID, (1<<20)/8)}
+	}, tblvarevo3.EvoDocLoadMeasure, tblvarevo3.EvoDocLoadRetain, tblvarevo3.EvoDocMeasureRetain, tblvarevo3.EvoDocSaveRetain, func(r *tblvarevo3.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *tblvarevo3.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("cooktorture", "TortureCook", func() *cooktorture.TableRetain {
+		return &cooktorture.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]cooktorture.TableRetainID, (1<<20)/8)}
+	}, cooktorture.TortureCookLoadMeasure, cooktorture.TortureCookLoadRetain, cooktorture.TortureCookMeasureRetain, cooktorture.TortureCookSaveRetain, func(r *cooktorture.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *cooktorture.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("cooktorturewide", "TortureWideCook", func() *cooktorturewide.TableRetain {
+		return &cooktorturewide.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]cooktorturewide.TableRetainID, (1<<20)/8)}
+	}, cooktorturewide.TortureWideCookLoadMeasure, cooktorturewide.TortureWideCookLoadRetain, cooktorturewide.TortureWideCookMeasureRetain, cooktorturewide.TortureWideCookSaveRetain, func(r *cooktorturewide.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *cooktorturewide.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
 	retainRow("featurewitnesses", "Root", func() *featurewitnesses.TableRetain {
 		return &featurewitnesses.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]featurewitnesses.TableRetainID, (1<<20)/8)}
 	}, featurewitnesses.RootLoadMeasure, featurewitnesses.RootLoadRetain, featurewitnesses.RootMeasureRetain, featurewitnesses.RootSaveRetain, func(r *featurewitnesses.TableReport) report {

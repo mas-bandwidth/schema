@@ -519,17 +519,22 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 			// variable codec writes it; the others only when they hold one.
 			if f.Array == ir.ArrayFixed {
 				b.WriteString("        {\n")
+				fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
+				b.WriteString("            int list = w.off;\n")
+				fmt.Fprintf(b, "            w.put8(13); w.putLeb(%d);\n", f.ArrayBound)
+				fmt.Fprintf(b, "            for (int i = 0; i < %d; i++) {\n", f.ArrayBound)
+				fmt.Fprintf(b, "                %sVariable.Value e = i < v.%s.size() ? v.%s.get(i) : new %sVariable.Value();\n", elem.Name, m, m, elem.Name)
 			} else {
 				fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+				fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
+				// written IN PLACE and framed after, as the variable codec writes it
+				// (no scratch per array, none per element: a 1 MiB scratch per element
+				// made the retaining save of eighty-eight bodies 60 times slower)
+				b.WriteString("            int list = w.off;\n")
+				fmt.Fprintf(b, "            w.put8(13); w.putLeb(v.%s.size());\n", m)
+				fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
+				fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", elem.Name, m)
 			}
-			fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
-			// written IN PLACE and framed after, as the variable codec writes it
-			// (no scratch per array, none per element: a 1 MiB scratch per element
-			// made the retaining save of eighty-eight bodies 60 times slower)
-			b.WriteString("            int list = w.off;\n")
-			fmt.Fprintf(b, "            w.put8(13); w.putLeb(v.%s.size());\n", m)
-			fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
-			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", elem.Name, m)
 			b.WriteString("                int body = w.off;\n")
 			fmt.Fprintf(b, "                path[2 * depth] = %d; path[2 * depth + 1] = i;\n", ordinal)
 			fmt.Fprintf(b, "                %sRetain.writeBodyRetain(w, nodes, e, retain, report, path, depth + 1);\n", elem.Name)

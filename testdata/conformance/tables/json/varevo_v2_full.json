@@ -1,0 +1,64 @@
+{
+  "title": "v2-middle-🚀",
+  "perms": [
+    "Read",
+    "Exec"
+  ],
+  "tier": "Gold",
+  "action": {
+    "surge": {
+      "factor": 3.5,
+      "power": 100000
+    }
+  },
+  "boost": {
+    "factor": 0.5,
+    "power": -100000
+  },
+  "sub": {
+    "count": 77,
+    "sub_tag": "mid-tag"
+  },
+  "wide_num": "5000000000",
+  "scores": [
+    "-5000000000",
+    "0",
+    "5000000000",
+    "42"
+  ],
+  "items": [
+    {
+      "count": 1,
+      "sub_tag": "a"
+    },
+    {
+      "count": 2,
+      "sub_tag": "b"
+    },
+    {
+      "count": 3,
+      "sub_tag": "c"
+    }
+  ],
+  "tally": {
+    "Bronze": 1,
+    "Argent": 2,
+    "Gold": 3
+  },
+  "by_name": {
+    "k1": {
+      "weight": 5,
+      "rank": 9
+    }
+  },
+  "head": {
+    "val": "9000000000",
+    "next": {
+      "val": "-9",
+      "next": null,
+      "note": "tail"
+    },
+    "note": "v2-leaf"
+  },
+  "v2_epoch": "1700000000"
+}

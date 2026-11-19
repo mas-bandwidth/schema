@@ -212,6 +212,10 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		fmt.Printf("conformance: %-22s cooked both orders\n", cw.Instance)
 	}
 
+	if err := retainValues(u, m.Retains, jsonDir); err != nil {
+		return err
+	}
+
 	// the evolution reports, and the value each read that reads leaves
 	var lines []string
 	values := map[string]bool{}
@@ -274,13 +278,13 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 			return err
 		}
 	}
-	if err := retainValues(u, m.Retains, jsonDir); err != nil {
-		return err
-	}
 	if err := framingValues(u, m.Framings, jsonDir); err != nil {
 		return err
 	}
 	if err := generateRewrites(u, m, jsonDir); err != nil {
+		return err
+	}
+	if err := generateMessageDrifts(u, m, m.MessageDrifts); err != nil {
 		return err
 	}
 
@@ -433,6 +437,58 @@ func pruneHostileValues(dir string, keep map[string]bool) error {
 			return err
 		}
 		fmt.Printf("conformance: removed %s, which no read row names\n", name)
+	}
+	return nil
+}
+
+func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
+	for _, md := range drifts {
+		unit, err := u.get(md.Unit)
+		if err != nil {
+			return err
+		}
+		pc, err := m.LookupConnection(md.PeerConn)
+		if err != nil {
+			return fmt.Errorf("message-drift %s: %w", md.Name, err)
+		}
+		ann, err := os.ReadFile(pc.Wire)
+		if err != nil {
+			return fmt.Errorf("message-drift %s: %w", md.Name, err)
+		}
+		batch, err := os.ReadFile(md.PeerWire)
+		if err != nil {
+			return fmt.Errorf("message-drift %s: %w", md.Name, err)
+		}
+		var vocab tablewire.Vocabulary
+		var rep tabletext.Report
+		if err := vocab.AnnounceRead(ann, &rep); err != nil || !vocab.Announced() || rep.Refused {
+			return fmt.Errorf("message-drift %s: peer announcement refused: %w %+v", md.Name, err, rep)
+		}
+		cnt, err := tablewire.MessageCount(batch, &vocab)
+		if err != nil || cnt < 1 {
+			return fmt.Errorf("message-drift %s: MessageCount=%d err=%w", md.Name, cnt, err)
+		}
+		model := tabletext.NewModel(unit)
+		root := model.Lookup(md.Root)
+		if root == nil {
+			return fmt.Errorf("message-drift %s: root %q names no table", md.Name, md.Root)
+		}
+		vals := make([]*tabletext.Instance, cnt)
+		for i := range vals {
+			vals[i] = model.New(root)
+		}
+		var drep tabletext.Report
+		gotCnt, ok, err := tablewire.DecodeMessages(model, vals, batch, &vocab, &drep)
+		if !ok || err != nil || drep.Refused || gotCnt != cnt {
+			return fmt.Errorf("message-drift %s: DecodeMessages ok=%v cnt=%d err=%w rep=%+v", md.Name, ok, gotCnt, err, drep)
+		}
+		saved, err := tablewire.EncodeMessages(model, vals)
+		if err != nil {
+			return fmt.Errorf("message-drift %s: EncodeMessages: %w", md.Name, err)
+		}
+		if err := writeFileAtomic(md.SaveWire, saved); err != nil {
+			return err
+		}
 	}
 	return nil
 }

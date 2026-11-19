@@ -101,6 +101,8 @@ public final class Driver {
             opened = blockdemo.RenderFrameBlock.open(p.data, p.base, p.length) != null;
         } else if (name.startsWith("block_padded")) {
             opened = blockdemo.PaddedFrameBlock.open(p.data, p.base, p.length) != null;
+        } else if (name.startsWith("block_torture")) {
+            opened = cooktorture.TortureFrameBlock.open(p.data, p.base, p.length) != null;
         } else {
             System.err.println("driver: no block named " + name);
             System.exit(1);
@@ -300,6 +302,61 @@ public final class Driver {
         return true;
     }
 
+    private static boolean dumpRecordTorture(StringBuilder into, byte[] data, int storage,
+                                             cooktorture.TableBlockInfo info, String path) {
+        if (info == null) { return false; }
+        for (cooktorture.TableBlockFieldInfo f : info.fields) {
+            if (f.outOfLine) { continue; }
+            String name = join(path, f.name);
+            if (f.counted) {
+                int used = blockdemo.TableBytes.i32(data, storage + f.countOffset);
+                if (used < 0 || used > f.arrayBound) { return false; }
+                into.append("  ").append(name).append(" = ");
+                dumpText(into, data, storage + f.offset, used);
+                into.append('\n');
+            } else {
+                int slots = f.isArray ? f.arrayBound : 1;
+                for (int s = 0; s < slots; s++) {
+                    String at = f.isArray ? name + "[" + s + "]" : name;
+                    int value = storage + f.offset + s * f.elemSize;
+                    if (f.element() != null) {
+                        if (!dumpRecordTorture(into, data, value, f.element(), at)) { return false; }
+                    } else {
+                        into.append("  ").append(at).append(" = ");
+                        dumpScalar(into, data, value, f.kind, f.elemSize);
+                        into.append('\n');
+                    }
+                }
+            }
+            if (f.optional) {
+                into.append("  ").append(name).append("#present = ")
+                        .append(data[storage + f.presentOffset] != 0 ? "true" : "false").append('\n');
+            }
+        }
+        return true;
+    }
+
+    private static boolean dumpBlockTorture(StringBuilder into, byte[] data, int base, cooktorture.TableBlockInfo info) {
+        into.append("projection ").append(info.name).append(" @0\n");
+        if (!dumpRecordTorture(into, data, base, info, "")) { return false; }
+        for (cooktorture.TableBlockFieldInfo f : info.fields) {
+            if (!f.outOfLine) { continue; }
+            long offsetOf = blockdemo.TableBytes.i64(data, base + f.offsetOfOffset);
+            long count = blockdemo.TableBytes.u32(data, base + f.countOffset);
+            long stride = blockdemo.TableBytes.u32(data, base + f.strideOffset);
+            cooktorture.TableBlockInfo rowInfo = f.element();
+            if (rowInfo == null) { return false; }
+            into.append("array ").append(f.name).append(' ').append(rowInfo.name)
+                    .append(" @").append(offsetOf).append(" count=").append(count).append(" stride=").append(stride).append('\n');
+            for (long r = 0; r < count; r++) {
+                long at = offsetOf + r * stride;
+                into.append("row ").append(r).append(" @").append(at).append('\n');
+                if (!dumpRecordTorture(into, data, base + (int) at, rowInfo, "")) { return false; }
+            }
+        }
+        return true;
+    }
+
     private static boolean blockDump(String name, byte[] bytes, StringBuilder into) {
         Placed p = place(bytes, bytes.length, 0);
         if (name.startsWith("block_render")) {
@@ -309,6 +366,10 @@ public final class Driver {
         if (name.startsWith("block_padded")) {
             blockdemo.PaddedFrameBlock block = blockdemo.PaddedFrameBlock.open(p.data, p.base, p.length);
             return block != null && dumpBlock(into, block.data(), block.base(), blockdemo.PaddedFrameBlock.type());
+        }
+        if (name.startsWith("block_torture")) {
+            cooktorture.TortureFrameBlock block = cooktorture.TortureFrameBlock.open(p.data, p.base, p.length);
+            return block != null && dumpBlockTorture(into, block.data(), block.base(), cooktorture.TortureFrameBlock.type());
         }
         System.err.println("driver: no block named " + name);
         return false;
@@ -1133,6 +1194,9 @@ public final class Driver {
         }
         if (name.startsWith("block_padded")) {
             return blockdemo.PaddedFrameBlock.openReason(data, base, length);
+        }
+        if (name.startsWith("block_torture")) {
+            return cooktorture.TortureFrameBlock.openReason(data, base, length);
         }
         System.err.println("driver: no block named " + name);
         System.exit(1);
@@ -2135,9 +2199,48 @@ public final class Driver {
         return new tblrt1.TableRetain(RETAIN_BYTES, ids.equals("full") ? RETAIN_IDS : Integer.parseInt(ids));
     }
 
+    private static int surfaceRetainVarEvo1(String[] f, String out, boolean saved) throws IOException {
+        if (saved && f[f.length - 1].equals("-")) { return 0; }
+        byte[] wire = Files.readAllBytes(Paths.get(f[4]));
+        tblvarevo1.TableVariable.Report report = new tblvarevo1.TableVariable.Report();
+        tblvarevo1.TableRetain store = new tblvarevo1.TableRetain(RETAIN_BYTES, f[6].equals("full") ? RETAIN_IDS : Integer.parseInt(f[6]));
+        if (f[5].equals("short")) {
+            tblvarevo1.EvoDocRetain.loadRetain(wire, store, new tblvarevo1.TableVariable.Report());
+            store.capacity = store.used - 1;
+        }
+        tblvarevo1.EvoDocVariable.Value root = tblvarevo1.EvoDocRetain.loadRetain(wire, store, report);
+        if (report.damaged || report.refused || root == null) {
+            if (!saved) { spill(out, f[1], "refused\n"); }
+            return 0;
+        }
+        tblvarevo1.TableVariable.Report save = new tblvarevo1.TableVariable.Report();
+        long size = tblvarevo1.EvoDocRetain.measureRetain(root, store);
+        byte[] file = tblvarevo1.EvoDocRetain.saveRetain(root, store, save);
+        if (size < 0 || file == null || file.length != size) {
+            return failInt(f[1] + ": the retaining save refused or disagreed with its measure");
+        }
+        if (saved) {
+            spill(out, f[1], file);
+        } else {
+            byte[] text = tblvarevo1.EvoDocVariable.toJson(root);
+            if (text == null) { return failInt(f[1] + ": toJson refused the retained value"); }
+            byte[] head = "read\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] both = new byte[head.length + text.length];
+            System.arraycopy(head, 0, both, 0, head.length);
+            System.arraycopy(text, 0, both, head.length, text.length);
+            spill(out, f[1] + ".wire", file);
+            spill(out, f[1], both);
+        }
+        return 0;
+    }
+
     private static int surfaceRetain(String out, boolean saved) throws IOException {
         for (String[] f : lines) {
             if (!f[0].equals("retain")) {
+                continue;
+            }
+            if (f[2].equals("tblvarevo1") && f[3].equals("EvoDoc")) {
+                if (surfaceRetainVarEvo1(f, out, saved) != 0) { return 1; }
                 continue;
             }
             if (!f[2].equals("tblrt1") || !f[3].equals("Node")) {

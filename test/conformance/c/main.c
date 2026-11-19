@@ -173,7 +173,7 @@ static const UnitFn units[] = {
     conformance_codecs_tblp1,
     conformance_codecs_tblp3,
     conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -763,9 +763,10 @@ static int surface_retain(const char * out,int saved)
  for(i=0;i<num_lines;i++){
   const Line * f=lines+i;uint8_t * wire,*answer=NULL;char * text=NULL;size_t n;int counters[4]={0},ok;int64_t size=0,text_size=0,ids;
   if(strcmp(f->field[0],"retain"))continue;
-  if(strcmp(f->field[2],"tblrt1")||strcmp(f->field[3],"Node"))return 1;
   wire=slurp(f->field[4],&n);if(!wire)return 1;ids=!strcmp(f->field[6],"full")?-1:strtoll(f->field[6],NULL,10);
-  ok=conformance_retain(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
+  if(!strcmp(f->field[2],"tblrt1")&&!strcmp(f->field[3],"Node"))ok=conformance_retain(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
+  else if(!strcmp(f->field[2],"tblvarevo1")&&!strcmp(f->field[3],"EvoDoc"))ok=conformance_retain_varevo1(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
+  else{free(wire);return 1;}
   /* retain-save answers the write-back bytes; retain answers the read: `read`
      and the §16 text of the known value (the counters are local diagnostics) */
   if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{char * read=(char *)malloc((size_t)text_size+5);ok=read!=NULL;if(ok){memcpy(read,"read\n",5);memcpy(read+5,text,(size_t)text_size);ok=spill(out,f->field[1],read,(size_t)text_size+5);free(read);}}}

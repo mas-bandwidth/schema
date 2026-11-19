@@ -15,6 +15,7 @@ import (
 	"unsafe"
 
 	"blockdemo"
+	"cooktorture"
 )
 
 func dumpJoin(prefix, name string) string {
@@ -162,6 +163,42 @@ func dumpBlock(out *strings.Builder, base unsafe.Pointer, info *blockdemo.TableB
 	return nil
 }
 
+func toBlockDemoInfo(src *cooktorture.TableBlockInfo) *blockdemo.TableBlockInfo {
+	if src == nil {
+		return nil
+	}
+	fields := make([]blockdemo.TableBlockFieldInfo, len(src.Fields))
+	for i := range src.Fields {
+		f := src.Fields[i]
+		var elemFn func() *blockdemo.TableBlockInfo
+		if f.Element != nil {
+			elem := f.Element
+			elemFn = func() *blockdemo.TableBlockInfo { return toBlockDemoInfo(elem()) }
+		}
+		fields[i] = blockdemo.TableBlockFieldInfo{
+			Name:           f.Name,
+			Kind:           f.Kind,
+			IsArray:        f.IsArray,
+			OutOfLine:      f.OutOfLine,
+			Counted:        f.Counted,
+			Optional:       f.Optional,
+			Offset:         f.Offset,
+			ElemSize:       f.ElemSize,
+			ArrayBound:     f.ArrayBound,
+			CountOffset:    f.CountOffset,
+			PresentOffset:  f.PresentOffset,
+			OffsetOfOffset: f.OffsetOfOffset,
+			StrideOffset:   f.StrideOffset,
+			Element:        elemFn,
+		}
+	}
+	return &blockdemo.TableBlockInfo{
+		Name:   src.Name,
+		Size:   src.Size,
+		Fields: fields,
+	}
+}
+
 func blockDump(name string, data []byte) (string, error) {
 	base, bytes, keep := aligned(data, -1)
 	var out strings.Builder
@@ -179,6 +216,12 @@ func blockDump(name string, data []byte) (string, error) {
 			return "", fmt.Errorf("%s does not open", name)
 		}
 		err = dumpBlock(&out, block.Base, block.Type())
+	case strings.HasPrefix(name, "block_torture"):
+		var block cooktorture.TortureFrameBlock
+		if !cooktorture.TortureFrameBlockOpen(&block, base, bytes) {
+			return "", fmt.Errorf("%s does not open", name)
+		}
+		err = dumpBlock(&out, block.Base, toBlockDemoInfo(block.Type()))
 	default:
 		return "", fmt.Errorf("no block named %s", name)
 	}

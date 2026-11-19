@@ -480,6 +480,7 @@ _T.TableMessageRefBits = 7
 _T.TableMessageEntriesHere = 70
 _T.TableMessageBuildVersion = 4484788518692264406i
 
+_schema_tables.messageAnnouncement(_T.TableMessageBuildVersion, _T.TableMessageAnnouncement)
 _schema_tables.buildVersion(_T.TableMessageBuildVersion, { "TableEntity", "TableMixed", "TableStat" })
 
 -- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)

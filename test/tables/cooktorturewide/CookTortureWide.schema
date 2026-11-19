@@ -1,0 +1,23 @@
+// CookTortureWide.schema — Pillar #3 16-byte aligned variable-class root for
+// `cook-write` (LE & BE), `wire`, `json-read`, and `json-write`:
+// Odd-width scalars (`bool`, `uint8`, `[3]uint8`) immediately before 16-byte
+// (`int128`, `uint128`) aligned fields and `[]uint128` extents (§6.2, §15).
+package cooktorturewide
+
+table TortureWideChild
+{
+    odd_flag bool
+    wide_u   uint128
+}
+
+table TortureWideCook
+{
+    lead_bool     bool
+    wide_signed   int128            | min = -1000000000000000000000, max = 1000000000000000000000
+    mid_tri       [3]uint8
+    wide_unsigned uint128
+    post_u8       uint8
+    child         *TortureWideChild
+    empty_wides   []uint128
+    live_wides    []uint128
+}

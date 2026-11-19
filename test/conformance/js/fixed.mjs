@@ -51,6 +51,8 @@ export const fixedRoots = [
   ["scalars", "SimState", "scalars/ScalarsTable.js"],
   ["tblscalars2", "SimState", "scalars2/Scalars2Table.js"],
   ["tblfixedevo", "EvoRoot", "fixedevo/FixedEvoTable.js"],
+  ["tblvarevo1", "EvoMsg", "varevo1/VarEvo1Table.js"],
+  ["tblvarevo3", "EvoMsg", "varevo3/VarEvo3Table.js"],
   ["messagedemo", "ToolMessage", "messages/MessagesTable.js"],
   ["backenddemo", "LoginRequest", "backend/BackendTable.js"],
   ["backenddemo", "MatchResult", "backend/BackendTable.js"],

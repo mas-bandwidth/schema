@@ -1,0 +1,80 @@
+// VarEvo2.schema — Pillar #2 generation v2 (middle build):
+// Simultaneous `was` renames (table, field, enum variant, union arms, nested
+// type field), container/scalar widenings ([2]T -> [..8]T, int16 -> int64,
+// float32 -> float64, flags growth), and reordered/added/removed message fields.
+package tblvarevo2
+
+enum Tier
+{
+    Bronze
+    Argent | was = "Silver"
+    Gold
+}
+
+flags Perms { Read, Write, Exec }
+
+type Boost
+{
+    factor float64 = 1.0 | was = "mult"
+    power  int32 = 10
+}
+
+union Action
+{
+    pong             | was = "ping"
+    surge Boost      | was = "boost"
+    score int32
+    tag   string(16)
+}
+
+table Leaf2 | was = "Leaf1"
+{
+    val  int64 = 0
+    next *Leaf2
+    note string(16) = "leaf2"
+}
+
+fixed table SubCfg
+{
+    count   int32 = 0
+    sub_tag string(12) = "s2"
+}
+
+fixed table EntryVal
+{
+    weight int32 = 0
+    rank   int32 = 0
+}
+
+table EvoDoc
+{
+    title    string(24) = "init"     | was = "label"
+    perms    Perms = { Read }
+    tier     Tier
+    action   Action
+    boost    Boost
+    sub      SubCfg
+    wide_num int64 = 0
+    scores   [..8]int64
+    items    [..8]SubCfg
+    tally    [Tier]int32
+    by_name  map[string(12)]EntryVal
+    head     *Leaf2
+    v2_epoch int64 = 0
+}
+
+union EvoPayload
+{
+    pulse                 | was = "heartbeat"
+    report_msg SubCfg     | was = "status"
+    notice     string(16)
+}
+
+fixed table EvoMsg
+{
+    tier     Tier
+    payload  EvoPayload
+    seq      int32 = 0
+    title    string(16)   | was = "label"
+    mid_flag bool = false
+}

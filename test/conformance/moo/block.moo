@@ -31,6 +31,8 @@ local function tableOf(name: string): (string?, string?)
 		return "RenderFrame", "RenderTable"
 	elseif string.sub(name, 1, 12) == "block_padded" then
 		return "PaddedFrame", "PaddedTable"
+	elseif string.sub(name, 1, 13) == "block_torture" then
+		return "TortureFrame", "CookTortureTable"
 	end
 	return nil, nil
 end

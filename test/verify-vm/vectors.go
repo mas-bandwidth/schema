@@ -185,18 +185,6 @@ func (p *bitPacker) writeBits(v uint64, n int) {
 	}
 }
 
-func (p *bitPacker) align() {
-	for (p.bits & 7) != 0 {
-		p.writeBits(0, 1)
-	}
-}
-
-func (p *bitPacker) writeBytes(b []byte) {
-	p.align()
-	p.buf = append(p.buf, b...)
-	p.bits += 8 * len(b)
-}
-
 func (p *bitPacker) bytes() []byte {
 	if len(p.buf) == 0 && p.bits == 0 {
 		return []byte{}
