@@ -93,6 +93,250 @@ glue() {
 		done
 		echo "    return -1;"
 		echo "}"
+		NS="$ns" perl - "$1"/*.goose <<'EOF_WREF_PERL'
+use strict;
+use warnings;
+my $ns = $ENV{NS};
+my (%structs, %field_order, %enums, %unions, %fixed_load, %fixed_evolve, %msg_save, %json_to);
+my $cur = "";
+my $in_ns = 0;
+while (my $line = <>) {
+	next if $ARGV =~ /(?:conformance_|main\.goose|unit\.goose|accel\.goose)/;
+	if ($line =~ /^namespace\s+([A-Za-z0-9_]+)\s*;/) { $in_ns = ($1 eq $ns) ? 1 : 0; $cur = ""; next; }
+	next unless $in_ns;
+	if ($line =~ /^type\s+([A-Za-z0-9_]+)\s*=\s*(u8|u16|u32|u64|i8|i16|i32|i64)\s*;/) {
+		$enums{$1} = $2;
+	}
+	if ($line =~ /^fn\s+EnumName([A-Za-z0-9_]+)Type\(/) {
+		$unions{$1} = 1;
+	}
+	if ($line =~ /^fn\s+([A-Za-z0-9_]+)FixedLoad\(/) { $fixed_load{$1} = 1; }
+	if ($line =~ /^fn\s+([A-Za-z0-9_]+)FixedEvolveLoad\(/) { $fixed_evolve{$1} = 1; }
+	if ($line =~ /^fn\s+([A-Za-z0-9_]+)SaveMessages\(/) { $msg_save{$1} = 1; }
+	if ($line =~ /^fn\s+([A-Za-z0-9_]+)ToJson\(/) { $json_to{$1} = 1; }
+	if ($line =~ /^struct\s+([A-Za-z0-9_]+)\s*\{/) {
+		$cur = $1;
+		$structs{$cur} = {};
+		$field_order{$cur} = [];
+		next;
+	}
+	if ($cur ne "") {
+		if ($line =~ /^\}/) { $cur = ""; next; }
+		if ($line =~ /^\s*([A-Za-z0-9_]+)\s*:\s*([^,=\/]+?)(?:\s*=.*)?\s*,/) {
+			my ($fname, $ftype) = ($1, $2);
+			$ftype =~ s/\s+$//;
+			$structs{$cur}{$fname} = $ftype;
+			push @{$field_order{$cur}}, $fname;
+		}
+	}
+}
+sub snake {
+	my ($s) = @_;
+	$s =~ s/([a-z0-9])([A-Z])/${1}_${2}/g;
+	return lc($s);
+}
+print <<'GOOSE_WREF_HELPERS';
+fn wref_parse_i64(s: const u8[:]) -> i64 {
+    if s.len == 0 { return 0; }
+    var neg = false;
+    var i: i64 = 0;
+    if s[0] == '-' { neg = true; i = 1; }
+    var v: i64 = 0;
+    while i < s.len {
+        let c = s[i];
+        if c < '0' || c > '9' { return 0; }
+        v = v * 10 + ((c - '0') as i64);
+        i += 1;
+    }
+    if neg { return -v; }
+    return v;
+}
+fn wref_hex(s: const u8[:], out: u8[>..]&) -> bool {
+    if (s.len % 2) != 0 { return false; }
+    var i: i64 = 0;
+    while i < s.len {
+        let hi = s[i];
+        let lo = s[i + 1];
+        let hv: u8 = if hi >= 'a' && hi <= 'f' { hi - 'a' + 10 } else if hi >= 'A' && hi <= 'F' { hi - 'A' + 10 } else { hi - '0' };
+        let lv: u8 = if lo >= 'a' && lo <= 'f' { lo - 'a' + 10 } else if lo >= 'A' && lo <= 'F' { lo - 'A' + 10 } else { lo - '0' };
+        out.push((hv << 4) | lv);
+        i += 2;
+    }
+    return true;
+}
+fn wref_f32_bits(bits: u32) -> f32 {
+    return schema_rt::fixed_bits_f32(bits);
+}
+fn wref_f64_bits(bits: u64) -> f64 {
+    return schema_rt::fixed_bits_f64(bits);
+}
+fn wref_f32(s: const u8[:]) -> f32 {
+    if s == "nan" { return wref_f32_bits(0x7fc00000); }
+    if s == "inf" { return wref_f32_bits(0x7f800000); }
+    if s == "-inf" { return wref_f32_bits(0xff800000); }
+    let n = wref_parse_i64(s);
+    return n as f32;
+}
+fn wref_f64(s: const u8[:]) -> f64 {
+    if s == "nan" { return wref_f64_bits(0x7ff8000000000000); }
+    if s == "inf" { return wref_f64_bits(0x7ff0000000000000); }
+    if s == "-inf" { return wref_f64_bits(0xfff0000000000000); }
+    let n = wref_parse_i64(s);
+    return n as f64;
+}
+struct WrefSeg { seg: const u8[:], idx: i64, rest: const u8[:] }
+fn wref_split_seg(path: const u8[:]) -> WrefSeg {
+    var dot: i64 = 0;
+    while dot < path.len && path[dot] != '.' { dot += 1; }
+    let seg = path[0..dot];
+    let rest = if dot < path.len { path[dot + 1..path.len] } else { "" };
+    var br: i64 = 0;
+    while br < seg.len && seg[br] != '[' { br += 1; }
+    if br < seg.len && seg[seg.len - 1] == ']' {
+        return WrefSeg { seg: seg[0..br], idx: wref_parse_i64(seg[br + 1..seg.len - 1]), rest: rest };
+    }
+    return WrefSeg { seg: seg, idx: -1, rest: rest };
+}
+fn wref_has_str(hay: const u8[:], needle: const u8[:]) -> bool {
+    if needle.len == 0 || hay.len < needle.len { return false; }
+    var i: i64 = 0;
+    while i + needle.len <= hay.len {
+        if hay[i..i + needle.len] == needle { return true; }
+        i += 1;
+    }
+    return false;
+}
+GOOSE_WREF_HELPERS
+
+my %int_bounds = (
+	"u8" => [0, 255], "i8" => [-128, 127],
+	"u16" => [0, 65535], "i16" => [-32768, 32767],
+	"u32" => [0, 4294967295], "i32" => [-2147483648, 2147483647],
+);
+
+for my $st (sort keys %structs) {
+	next if $unions{$st};
+	print "recursive fn wref_set_$st(v: ${ns}::$st&, path: const u8[:], kind: const u8[:], text: const u8[:]) -> i64 {\n";
+	print "    let ps = wref_split_seg(path); let seg = ps.seg; let idx = ps.idx; let rest = ps.rest;\n";
+	for my $f (@{$field_order{$st}}) {
+		next if $f =~ /(Count|Length)$/ && exists $structs{$st}{substr($f, 0, length($f) - length($1))};
+		my $ft = $structs{$st}{$f};
+		my $sn = snake($f);
+		print "    if seg == \"$sn\" {\n";
+		if ($ft =~ /^([A-Za-z0-9_]+)\[(\d+)\]$/) {
+			my ($et, $cap) = ($1, $2);
+			if ($et eq "u8" && exists $structs{$st}{"${f}Length"}) {
+				print "        if rest.len == 0 && idx < 0 {\n";
+				print "            if kind == \"length\" {\n";
+				print "                let n = wref_parse_i64(text);\n";
+				print "                var k: i64 = 0; while k < n && k < $cap { v.$f\[k] = 'a'; k += 1; }\n";
+				print "                v.${f}Length = n as! i32; return 1;\n";
+				print "            }\n";
+				print "            if kind == \"bytes\" {\n";
+				print "                var raw: u8[>..] = []; if !wref_hex(text, raw) { return 0; }\n";
+				print "                var k: i64 = 0; while k < raw.len && k < $cap { v.$f\[k] = raw[k]; k += 1; }\n";
+				print "                v.${f}Length = raw.len as! i32; return 1;\n";
+				print "            }\n";
+				print "        }\n";
+			} else {
+				if (exists $structs{$st}{"${f}Count"}) {
+					print "        if rest.len == 0 && idx < 0 && kind == \"count\" {\n";
+					print "            let n = wref_parse_i64(text);\n";
+					print "            var k: i64 = v.${f}Count as i64;\n";
+					print "            while k >= 0 && k < n && k < $cap { if v.${f}Count > 0 { v.$f\[k] = v.$f\[0]; } k += 1; }\n";
+					print "            v.${f}Count = n as! i32; return 1;\n";
+					print "        }\n";
+				}
+				if (exists $structs{$et} && !$unions{$et}) {
+					print "        if rest.len > 0 && idx >= 0 && idx < $cap {\n";
+					print "            return wref_set_$et(v.$f\[idx], rest, kind, text);\n";
+					print "        }\n";
+				}
+			}
+		} elsif (exists $structs{$ft} && !$unions{$ft}) {
+			print "        if rest.len > 0 && idx < 0 { return wref_set_$ft(v.$f, rest, kind, text); }\n";
+		} elsif ($unions{$ft}) {
+			print "        if rest.len == 0 && idx < 0 && kind == \"tag\" {\n";
+			print "            let n = wref_parse_i64(text);\n";
+			print "            if n < 0 || n > 255 { return 2; }\n";
+			print "            v.$f = ${ns}::New$ft();\n";
+			print "            v.$f.Type = n as! ${ns}::${ft}Type;\n";
+			print "            return 1;\n";
+			print "        }\n";
+		} elsif ($ft eq "f32") {
+			print "        if rest.len == 0 && idx < 0 && kind == \"float\" { v.$f = wref_f32(text); return 1; }\n";
+		} elsif ($ft eq "f64") {
+			print "        if rest.len == 0 && idx < 0 && kind == \"float\" { v.$f = wref_f64(text); return 1; }\n";
+		} else {
+			my $raw_t = $enums{$ft} || $ft;
+			my $cast_t = exists($enums{$ft}) ? "${ns}::$ft" : $ft;
+			if ($raw_t =~ /^(u8|u16|u32|u64|i8|i16|i32|i64)$/) {
+				print "        if rest.len == 0 && idx < 0 && (kind == \"int\" || kind == \"ordinal\") {\n";
+				print "            let n = wref_parse_i64(text);\n";
+				if (my $b = $int_bounds{$raw_t}) {
+					print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
+				} elsif ($raw_t eq "u64") {
+					print "            if n < 0 { return 2; }\n";
+				}
+				print "            v.$f = n as! $cast_t; return 1;\n";
+				print "        }\n";
+			}
+		}
+		print "    }\n";
+	}
+	print "    return 0;\n}\n";
+}
+
+print "fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] {\n";
+for my $r (sort keys %fixed_load) {
+	next unless exists $structs{$r} && !$unions{$r};
+	print "    if root == \"$r\" {\n";
+	print "        var values: ${ns}::$r\[1] = [${ns}::$r { .. }];\n";
+	if ($fixed_evolve{$r}) {
+		print "        var rep = schema_rt::FixedEvolveReport { .. };\n";
+		print "        if ${ns}::${r}FixedEvolveLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return \"!load-failed\"; }\n";
+	} else {
+		print "        var rep = schema_rt::FixedReport { .. };\n";
+		print "        if ${ns}::${r}FixedLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return \"!load-failed\"; }\n";
+	}
+	print "        let st = wref_set_$r(values[0], path, kind, text);\n";
+	print "        if st == 0 { return \"!set-failed\"; }\n";
+	print "        if st == 2 { return \"unrepresentable\\n\"; }\n";
+	print "        if surface == \"write-refusal\" || surface == \"write-refusal-fixed\" {\n";
+	print "            var saved: u8[>..] = [];\n";
+	print "            if ${ns}::${r}FixedSave(values[0..1], saved) < 0 { return \"refused\\n\"; }\n";
+	print "            return \"wrote\\n\";\n";
+	print "        }\n";
+	if ($msg_save{$r}) {
+		print "        if surface == \"write-refusal-message\" {\n";
+		print "            var voc = schema_rt::MsgVocabulary { .. };\n";
+		print "            var mrep = schema_rt::MsgReport { .. };\n";
+		print "            if !schema_rt::announce_read(voc, announce, mrep) { return \"!announce-failed\"; }\n";
+		print "            var srep = schema_rt::MsgReport { .. };\n";
+		print "            let msz = ${ns}::${r}MeasureMessages(values[0..1], srep);\n";
+		print "            if msz < 0 { return \"refused\\n\"; }\n";
+		print "            var saved: u8[>..] = [];\n";
+		print "            if ${ns}::${r}SaveMessages(values[0..1], saved, srep) != msz { return \"refused\\n\"; }\n";
+		print "            return \"wrote\\n\";\n";
+		print "        }\n";
+	}
+	if ($json_to{$r}) {
+		print "        if surface == \"write-refusal-json\" {\n";
+		print "            if ${ns}::${r}ToJsonMeasure(values[0]) < 0 { return \"refused\\n\"; }\n";
+		print "            var jout: u8[>..] = [];\n";
+		print "            if ${ns}::${r}ToJson(values[0], jout) < 0 { return \"refused\\n\"; }\n";
+		print "            if kind == \"bytes\" {\n";
+		print "                var raw: u8[>..] = []; let _ok = wref_hex(text, raw);\n";
+		print "                var has_zero = false; for b in raw { if b == 0 { has_zero = true; } }\n";
+		print "                if has_zero && !wref_has_str(jout, \"\\\\u0000\") { return \"wrote without \\\\u0000\\n\"; }\n";
+		print "            }\n";
+		print "            return \"wrote\\n\";\n";
+		print "        }\n";
+	}
+	print "    }\n";
+}
+print "    return \"!absent\";\n}\n";
+EOF_WREF_PERL
 		need_fixed_helpers=0
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedLoad(.*/\1/p' "$1"/*Table.goose); do
 			grep -q "fn ${r}ToLoaded(" "$1"/*Table.goose || need_fixed_helpers=1
@@ -644,6 +888,8 @@ main_units() {
 	framing) awk '$1 == "framing" { print $3 }' "$1" ;;
 	retain | retain-save) awk '$1 == "retain" { print $3 }' "$1" ;;
 	json-hostile) awk '$1 == "json-hostile" { print $3 }' "$1" ;;
+	write-refusal | write-refusal-fixed | write-refusal-json) awk -v s="$2" '$1 == s { print $3 }' "$1" ;;
+	write-refusal-message) awk '$1 == "connection" { u[$2] = $3 } $1 == "write-refusal-message" && ($3 in u) { print u[$3] }' "$1" ;;
 	*) awk '$1 == "unit" { print $2 }' "$1" ;;
 	esac | sort -u
 }
@@ -744,7 +990,9 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 				(s == "report" && $1 == "report" && $3 == k) ||
 				(s == "framing" && $1 == "framing" && $3 == k) ||
 				((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
-				(s == "json-hostile" && $1 == "json-hostile" && $3 == k) { print $2 " absent" }' "$1" >"$dir/$2.$key.out"
+				(s == "json-hostile" && $1 == "json-hostile" && $3 == k) ||
+				((s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json") && $1 == s && $3 == k) ||
+				(s == "write-refusal-message" && $1 == "write-refusal-message" && unit_of[$3] == k) { print $2 " absent" }' "$1" >"$dir/$2.$key.out"
 			echo 0 >"$dir/$2.$key.rc"
 			continue
 		fi

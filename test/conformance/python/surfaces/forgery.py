@@ -1,5 +1,6 @@
 """The block forgery battery (testdata/conformance/tables/FORMAT.md)."""
 
+from importlib import import_module
 from _common import absent, entries, read_bytes, unit_package, write_bytes
 
 from _blocks import block_root, open_block, place
@@ -30,4 +31,7 @@ def run(manifest, outdir):
             handle = open_block(package, root, b"")
         else:
             handle = open_block(package, root, place(data, extent), int(pointer))
+        if handle is not None:
+            block = import_module(package.__name__ + "._schema.block")
+            _ = block.Dump(handle)
         write_bytes(outdir, name, b"open\n" if handle is not None else b"refuse\n")

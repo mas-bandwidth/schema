@@ -272,9 +272,11 @@ local function shapeRead(r: any, k: number): any
 			s.bits = n
 			if k >= 18 then
 				if r.at + 16 > r.e then r.bad = true; return s end
+				s.baseLo = buffer.readinteger(r.b, r.at)
+				s.baseHi = buffer.readinteger(r.b, r.at + 8)
 				r.at = r.at + 16
 			else
-				rLeb(r)
+				s.base = rLeb(r)
 			end
 			return s
 		elseif packing == 2 and k == 10 then
@@ -1000,7 +1002,534 @@ local function refuseDeprecated(report: any, field: string): boolean
 	return false
 end
 
+local msgScratch = buffer.create(16)
+
+local function mNewWriter(measuring: boolean): any
+	return { b = if measuring then nil else buffer.create(64), bits = 0, count = measuring }
+end
+
+local function mReserve(w: any, addBits: number)
+	if w.count then return end
+	local need = math.ceil((w.bits + addBits) / 8)
+	local cap = buffer.len(w.b)
+	if need <= cap then return end
+	while cap < need do cap = cap * 2 end
+	local nb = buffer.create(cap)
+	buffer.fill(nb, 0, 0, cap)
+	buffer.copy(nb, 0, w.b, 0, math.ceil(w.bits / 8))
+	w.b = nb
+end
+
+local function mPut(w: any, value: number, width: number)
+	if width <= 0 then return end
+	if not w.count then
+		mReserve(w, width)
+		local at = w.bits
+		local sh = at % 8
+		local byteAt = math.floor(at / 8)
+		local got = 0
+		while got < width do
+			local take = math.min(8 - sh, width - got)
+			local byte = buffer.readu8(w.b, byteAt)
+			local chunk = math.floor(value / 2 ^ got) % 2 ^ take
+			buffer.writeu8(w.b, byteAt, byte + chunk * 2 ^ sh)
+			got = got + take
+			sh = sh + take
+			if sh == 8 then sh = 0; byteAt = byteAt + 1 end
+		end
+	end
+	w.bits = w.bits + width
+end
+
+local function mAlign(w: any)
+	local rem = w.bits % 8
+	if rem ~= 0 then mPut(w, 0, 8 - rem) end
+end
+
+local function mPutBytes(w: any, src: buffer, len: number)
+	mAlign(w)
+	if len <= 0 then return end
+	if not w.count then
+		mReserve(w, len * 8)
+		buffer.copy(w.b, math.floor(w.bits / 8), src, 0, len)
+	end
+	w.bits = w.bits + len * 8
+end
+
+local function mPutIntBits(w: any, val: any, signed: boolean, shape: any, width: number)
+	if width <= 0 then return end
+	buffer.fill(msgScratch, 0, 0, 16)
+	if typeof(val) == "table" then
+		buffer.writeinteger(msgScratch, 0, val.lo)
+		buffer.writeinteger(msgScratch, 8, val.hi)
+	elseif typeof(val) == "integer" then
+		buffer.writeinteger(msgScratch, 0, val)
+		if signed and integer.lt(val, 0i) then buffer.fill(msgScratch, 8, 0xFF, 8) end
+	else
+		buffer.writeu32(msgScratch, 0, val % 2 ^ 32)
+		buffer.writeu32(msgScratch, 4, math.floor(val / 2 ^ 32) % 2 ^ 32)
+		if signed and val < 0 then buffer.fill(msgScratch, 8, 0xFF, 8) end
+	end
+	if shape.packing == 1 then
+		local baseWords = { 0, 0, 0, 0 }
+		if shape.baseLo ~= nil then
+			local bs = buffer.create(16)
+			buffer.writeinteger(bs, 0, shape.baseLo)
+			buffer.writeinteger(bs, 8, shape.baseHi)
+			for i = 1, 4 do baseWords[i] = buffer.readu32(bs, (i - 1) * 4) end
+		elseif shape.base ~= nil then
+			baseWords[1] = shape.base % 2 ^ 32
+			baseWords[2] = math.floor(shape.base / 2 ^ 32) % 2 ^ 32
+		end
+		local borrow = 0
+		for i = 0, 3 do
+			local cur = buffer.readu32(msgScratch, i * 4)
+			local sub = cur - baseWords[i + 1] - borrow
+			if sub < 0 then
+				sub = sub + 2 ^ 32
+				borrow = 1
+			else
+				borrow = 0
+			end
+			buffer.writeu32(msgScratch, i * 4, sub)
+		end
+	end
+	local rem = width
+	local wordIdx = 0
+	while rem > 0 do
+		local take = math.min(32, rem)
+		local word = buffer.readu32(msgScratch, wordIdx * 4)
+		if take < 32 then word = word % (2 ^ take) end
+		mPut(w, word, take)
+		rem = rem - take
+		wordIdx = wordIdx + 1
+	end
+end
+
+local function mIs128(x: any): boolean
+	return typeof(x) == "table" and x.lo ~= nil and x.hi ~= nil
+end
+
+local function mCmpLt(a: any, b: any, signed: boolean): boolean
+	if mIs128(a) and mIs128(b) then
+		if a.hi ~= b.hi then
+			return if signed then integer.lt(a.hi, b.hi) else integer.ult(a.hi, b.hi)
+		end
+		return integer.ult(a.lo, b.lo)
+	end
+	if typeof(a) == "integer" or typeof(b) == "integer" then
+		local ia = if typeof(a) == "integer" then a else integer.create(a)
+		local ib = if typeof(b) == "integer" then b else integer.create(b)
+		return if signed then integer.lt(ia, ib) else integer.ult(ia, ib)
+	end
+	return a < b
+end
+
+local function mValidScalar(e: any, val: any): (boolean, string?)
+	if e.s == "bool" then
+		return typeof(val) == "boolean", nil
+	elseif e.s == "float" then
+		if typeof(val) ~= "number" then return false, "non_finite_float" end
+		if e.f32 then
+			buffer.writef32(msgScratch, 0, val)
+			local bits = buffer.readu32(msgScratch, 0)
+			if bit32.band(bits, 0x7F800000) == 0x7F800000 then return false, "non_finite_float" end
+		else
+			if val ~= val or val == math.huge or val == -math.huge then return false, "non_finite_float" end
+		end
+		if e.lo ~= nil and (val < e.lo or val > e.hi) then return false, "invalid_value" end
+		return true, nil
+	elseif e.s == "int" then
+		local ty = typeof(val)
+		if e.kw == 16 then
+			if not mIs128(val) then return false, "invalid_value" end
+		elseif e.kw == 8 then
+			if ty == "number" and val == math.floor(val) and math.abs(val) <= 9007199254740991 then
+				val = integer.create(val)
+				ty = "integer"
+			end
+			if ty ~= "integer" then return false, "invalid_value" end
+		else
+			if ty ~= "number" or val ~= math.floor(val) then return false, "invalid_value" end
+			local n = e.kw * 8
+			local lo = if e.signed then -(2 ^ (n - 1)) else 0
+			local hi = if e.signed then 2 ^ (n - 1) - 1 else 2 ^ n - 1
+			if val < lo or val > hi then return false, "invalid_value" end
+		end
+		if e.flags ~= nil then
+			local iv = if typeof(val) == "integer" then val else integer.create(val)
+			if #e.flags < 64 then
+				local fmax = integer.sub(integer.lshift(1i, integer.create(#e.flags)), 1i)
+				if integer.ult(fmax, iv) then return false, "invalid_value" end
+			end
+		end
+		if e.lo ~= nil then
+			local lo, hi = e.lo, e.hi
+			if e.fbits ~= nil and e.fbits > 0 then
+				if typeof(lo) == "integer" then
+					lo = integer.lshift(lo, integer.create(e.fbits))
+					hi = integer.lshift(hi, integer.create(e.fbits))
+				elseif not mIs128(lo) then
+					lo = lo * (2 ^ e.fbits)
+					hi = hi * (2 ^ e.fbits)
+				end
+			end
+			local isSigned = e.signed == true
+			if mCmpLt(val, lo, isSigned) or mCmpLt(hi, val, isSigned) then return false, "invalid_value" end
+		end
+		if e.bits ~= nil and e.bits > 0 and e.bits < 64 then
+			local top: any = if typeof(val) == "integer" then integer.sub(integer.lshift(1i, integer.create(e.bits)), 1i) else (2 ^ e.bits - 1)
+			if mCmpLt(top, val, false) then return false, "invalid_value" end
+		end
+		return true, nil
+	end
+	return true, nil
+end
+
+local function mAtDefault(fd: any, val: any): boolean
+	if fd.s == "bool" then return (val == true) == (fd.def == true) end
+	if fd.s == "enum" then return val == (fd.def or 0) end
+	if fd.s == "float" then
+		local def = fd.def or 0.0
+		if fd.f32 then
+			buffer.writef32(msgScratch, 0, val)
+			local a = buffer.readu32(msgScratch, 0)
+			buffer.writef32(msgScratch, 0, def)
+			local b = buffer.readu32(msgScratch, 0)
+			if fd.lo ~= nil then
+				if a == 0x80000000 then a = 0 end
+				if b == 0x80000000 then b = 0 end
+			end
+			return a == b
+		end
+		buffer.writef64(msgScratch, 0, val)
+		local alo, ahi = buffer.readu32(msgScratch, 0), buffer.readu32(msgScratch, 4)
+		buffer.writef64(msgScratch, 0, def)
+		local blo, bhi = buffer.readu32(msgScratch, 0), buffer.readu32(msgScratch, 4)
+		return alo == blo and ahi == bhi
+	end
+	if fd.s == "int" then
+		local def = fd.def or (if fd.kw == 8 then 0i else 0)
+		if mIs128(val) or mIs128(def) then
+			local alo = if mIs128(val) then val.lo else 0i
+			local ahi = if mIs128(val) then val.hi else 0i
+			local blo = if mIs128(def) then def.lo else 0i
+			local bhi = if mIs128(def) then def.hi else 0i
+			return alo == blo and ahi == bhi
+		end
+		if typeof(val) == typeof(def) then return val == def end
+		local na = if typeof(val) == "integer" then integer.tonumber(val) else val
+		local nb = if typeof(def) == "integer" then integer.tonumber(def) else def
+		return na == nb
+	end
+	return false
+end
+
+local mEncodeBody: any
+local mEncodeArm: any
+
+local function mFail(c: any, reason: string, owner: string?, fname: string?): boolean
+	if c.reason == nil then
+		c.reason = reason
+		c.field = (owner or "?") .. "." .. (fname or "?")
+	end
+	return false
+end
+
+local function mEncodeScalar(c: any, owner: string, e: any, kind: number, shape: any, val: any, fname: string): boolean
+	local ok, why = mValidScalar(e, val)
+	if not ok then return mFail(c, why or "invalid_value", owner, fname) end
+	if kind == 1 then
+		mPut(c.w, if val then 1 else 0, 1)
+		return true
+	elseif kind == 10 then
+		if shape.packing == 2 then
+			local norm = asF32(asF32(val - shape.qmin) / asF32(shape.qmax - shape.qmin))
+			if norm < 0 then norm = 0 elseif norm > 1 then norm = 1 end
+			local idx = math.floor(asF32(norm * shape.count) + 0.5)
+			if idx > shape.count then idx = shape.count end
+			mPut(c.w, idx, shape.bits)
+			return true
+		end
+		buffer.writef32(msgScratch, 0, val)
+		mPut(c.w, buffer.readu32(msgScratch, 0), 32)
+		return true
+	elseif kind == 11 then
+		buffer.writef64(msgScratch, 0, val)
+		mPut(c.w, buffer.readu32(msgScratch, 0), 32)
+		mPut(c.w, buffer.readu32(msgScratch, 4), 32)
+		return true
+	end
+	mPutIntBits(c.w, val, e.signed == true, shape, shape.bits)
+	return true
+end
+
+local function mEncodeEnum(c: any, owner: string, e: any, val: any, fname: string): boolean
+	if typeof(val) ~= "number" or val ~= math.floor(val) or val < 0 or val > #(e.vs or {}) then
+		return mFail(c, "invalid_value", owner, fname)
+	end
+	if val == 0 then
+		mPut(c.w, 0, c.refBits)
+		return true
+	end
+	local pair = e.vs[val]
+	if pair == nil or pair[3] == true then
+		return mFail(c, "invalid_value", owner, fname)
+	end
+	local slot = c.byId[pair[2]]
+	if slot == nil then return mFail(c, "invalid_value", owner, fname) end
+	mPut(c.w, slot, c.refBits)
+	return true
+end
+
+local function mCountBits(shape: any): number
+	if shape.max <= shape.min then return 0 end
+	return bitsReq(0, shape.max - shape.min)
+end
+
+local function mAligns(kind: number, shape: any): boolean
+	if kind == 12 then return true end
+	if kind == 14 and shape.elem == 6 and shape.element ~= nil and shape.element.packing == 0 and shape.element.bits == 8 then
+		return true
+	end
+	return false
+end
+
+local function mEncodeElem(c: any, owner: string, fd: any, shape: any, x: any): boolean
+	local e = fd.e
+	local ek = shape.elem
+	local inner = shape.element or newShape()
+	if ek == 13 then
+		return mEncodeBody(c, S.lookup(e.t), x)
+	elseif ek == 30 then
+		return mEncodeEnum(c, owner, e, x, fd.name)
+	elseif ek == 15 then
+		if typeof(x) ~= "table" then return mFail(c, "invalid_value", owner, fd.name) end
+		local un = S.lookup(e.t)
+		local tag = x.Type or 0
+		if typeof(tag) ~= "number" or tag ~= math.floor(tag) or tag < 0 or tag > #un.arms then
+			return mFail(c, "invalid_value", owner, fd.name)
+		end
+		if tag == 0 then
+			mPut(c.w, 0, c.refBits)
+			return true
+		end
+		return mEncodeArm(c, owner, un, x, fd.name)
+	end
+	return mEncodeScalar(c, owner, e, ek, inner, x, fd.name)
+end
+
+local function mEncodeFieldPayload(c: any, owner: string, fd: any, entrySlot: number, entry: any, holder: any): boolean
+	local shape = entry.shape
+	local s = fd.s
+	local val = holder[fd.slot]
+	if s == "str" or s == "bytes" then
+		local n = holder[fd.slot .. "Length"]
+		if n == nil and typeof(val) == "buffer" then n = buffer.len(val) end
+		if typeof(val) ~= "buffer" or typeof(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > (fd.bound or 0) or n > buffer.len(val) then
+			return mFail(c, "invalid_value", owner, fd.name)
+		end
+		if s == "str" and not textOk(val, 0, n) then
+			return mFail(c, "invalid_value", owner, fd.name)
+		end
+		local cb = if s == "bytes" then mCountBits(shape) else bitsReq(0, shape.max)
+		mPut(c.w, n, cb)
+		mAlign(c.w)
+		mPutBytes(c.w, val, n)
+		return true
+	elseif s == "tab" then
+		return mEncodeBody(c, S.lookup(fd.t), val)
+	elseif s == "union" then
+		if typeof(val) ~= "table" then return mFail(c, "invalid_value", owner, fd.name) end
+		local un = S.lookup(fd.t)
+		local tag = val.Type or 0
+		if typeof(tag) ~= "number" or tag ~= math.floor(tag) or tag < 0 or tag > #un.arms then
+			return mFail(c, "invalid_value", owner, fd.name)
+		end
+		if tag == 0 then
+			mPut(c.w, 0, c.refBits)
+			return true
+		end
+		return mEncodeArm(c, owner, un, val, fd.name)
+	elseif s == "enum" then
+		return mEncodeEnum(c, owner, fd, val, fd.name)
+	elseif s == "arr" then
+		if fd.array == "keyed" then
+			local present = {}
+			for slotIdx = 1, fd.bound do
+				local x = val[slotIdx]
+				local pair = fd.keyvs[slotIdx]
+				if pair == nil then continue end
+				local probe = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+				if not mEncodeElem(probe, owner, fd, shape, x) then
+					c.reason, c.field = probe.reason, probe.field
+					return false
+				end
+				local rides = false
+				if shape.elem == 13 then rides = probe.w.bits > c.refBits
+				elseif shape.elem == 15 then rides = (typeof(x) == "table" and (x.Type or 0) ~= 0)
+				else rides = not mAtDefault(fd.e, x) end
+				if rides then
+					if pair[3] == true then return mFail(c, "invalid_value", owner, fd.name) end
+					present[#present + 1] = slotIdx
+				end
+			end
+			mPut(c.w, #present, bitsReq(0, shape.max))
+			for _, slotIdx in present do
+				local kslot = c.byId[fd.keyvs[slotIdx][2]]
+				mPut(c.w, kslot, c.refBits)
+				if not mEncodeElem(c, owner, fd, shape, val[slotIdx]) then return false end
+			end
+			return true
+		end
+		local count = fd.bound or 0
+		if fd.array == "counted" then
+			count = holder[fd.slot .. "Count"] or 0
+			if typeof(count) ~= "number" or count ~= math.floor(count) or count < (fd.min or 0) or count > (fd.bound or 0) then
+				return mFail(c, "invalid_value", owner, fd.name)
+			end
+		end
+		local cb = mCountBits(shape)
+		if cb > 0 then mPut(c.w, count - shape.min, cb) end
+		if mAligns(entry.kind, shape) then mAlign(c.w) end
+		for i = 1, count do
+			local elVal = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
+			if not mEncodeElem(c, owner, fd, shape, elVal) then return false end
+		end
+		return true
+	end
+	return mEncodeScalar(c, owner, fd, entry.kind, shape, val, fd.name)
+end
+
+mEncodeArm = function(c: any, owner: string, un: any, u: any, fname: string): boolean
+	local tag = u.Type or 0
+	local arm = un.arms[tag]
+	if arm == nil then return mFail(c, "invalid_value", owner, fname) end
+	local slot = c.byId[arm.id]
+	if slot == nil then return mFail(c, "invalid_value", owner, fname) end
+	mPut(c.w, slot, c.refBits)
+	if arm.s == "void" then return true end
+	local entry = c.entries[slot]
+	return mEncodeFieldPayload(c, un.name, arm, slot, entry, u)
+end
+
+mEncodeBody = function(c: any, desc: any, rec: any): boolean
+	if typeof(rec) ~= "table" then return mFail(c, "invalid_value", desc.name, "") end
+	for _, fd in desc.fields do
+		if fd.guard ~= nil then
+			local active = true
+			for _, g in fd.guard do
+				if rec[g[1]] ~= g[2] then active = false; break end
+			end
+			if not active then continue end
+		end
+		local slot = c.byId[fd.id]
+		if slot == nil then return mFail(c, "invalid_value", desc.name, fd.name) end
+		local entry = c.entries[slot]
+		if fd.present ~= nil then
+			if not rec[fd.present] then continue end
+			mPut(c.w, slot, c.refBits)
+			if not mEncodeFieldPayload(c, desc.name, fd, slot, entry, rec) then return false end
+			continue
+		end
+		local probe = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+		if not mEncodeFieldPayload(probe, desc.name, fd, slot, entry, rec) then
+			c.reason, c.field = probe.reason, probe.field
+			return false
+		end
+		if not fd.required then
+			local val = rec[fd.slot]
+			local elide = false
+			if fd.s == "bool" or fd.s == "int" or fd.s == "float" or fd.s == "enum" then
+				elide = mAtDefault(fd, val)
+			elseif fd.s == "str" or fd.s == "bytes" then
+				local n = rec[fd.slot .. "Length"] or 0
+				local def = fd.def or ""
+				elide = (n == #def and (n == 0 or buffer.readstring(val, 0, n) == def))
+			elseif fd.s == "tab" then
+				elide = (probe.w.bits <= c.refBits)
+			elseif fd.s == "union" then
+				elide = ((val.Type or 0) == 0)
+			elseif fd.s == "arr" then
+				if fd.array == "counted" then
+					elide = ((rec[fd.slot .. "Count"] or 0) == 0)
+				elseif fd.array == "keyed" then
+					elide = (probe.w.bits <= bitsReq(0, entry.shape.max))
+				elseif fd.array == "fixed" and fd.e.s ~= "tab" then
+					local allDef = true
+					for i = 1, fd.bound or 0 do
+						local el = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
+						if fd.e.s == "union" then
+							if (el.Type or 0) ~= 0 then allDef = false; break end
+						elseif not mAtDefault(fd.e, el) then
+							allDef = false; break
+						end
+					end
+					elide = allDef
+				end
+			end
+			if elide then continue end
+		end
+		mPut(c.w, slot, c.refBits)
+		if not mEncodeFieldPayload(c, desc.name, fd, slot, entry, rec) then return false end
+	end
+	mPut(c.w, 0, c.refBits)
+	return true
+end
+
+local function mWriteRecordBatch(v: any, desc: any, bodies: any, measuring: boolean, report: any): (buffer?, number)
+	reset(report)
+	if not v.announced then
+		refuse(report, "no_vocabulary")
+		return nil, -1
+	end
+	local byId: { [integer]: number } = {}
+	for idx, e in v.entries do
+		if byId[e.id] == nil then byId[e.id] = idx end
+	end
+	local c: any = { w = mNewWriter(measuring), refBits = v.refBits, byId = byId, entries = v.entries, reason = nil, field = nil }
+	for _, rec in bodies do
+		if not mEncodeBody(c, desc, rec) then
+			if c.reason == "non_finite_float" then
+				refuseNonFinite(report, c.field or "?", false)
+			else
+				report.verdict = 1
+				report.reason = c.reason or "invalid_value"
+				report.field = c.field
+			end
+			return nil, -1
+		end
+	end
+	mAlign(c.w)
+	local sealed = desc.integrity ~= nil and desc.integrity ~= ""
+	local batchBytes = 2 + math.floor(c.w.bits / 8)
+	local size = batchBytes + (if sealed then 4 else 0)
+	if measuring then return nil, size end
+	local out = buffer.create(size)
+	buffer.fill(out, 0, 0, size)
+	buffer.writeu8(out, 0, 2)
+	buffer.writeu8(out, 1, #bodies - 1)
+	if c.w.bits > 0 then
+		buffer.copy(out, 2, c.w.b, 0, math.floor(c.w.bits / 8))
+	end
+	if sealed then
+		buffer.writeu32(out, batchBytes, crc32c(out, batchBytes))
+	end
+	return out, size
+end
+
+local function mIsBitSliceBatch(bodies: any): boolean
+	return #bodies >= 1 and typeof(bodies[1]) == "table" and typeof(bodies[1].buffer) == "buffer"
+end
+
 function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): number
+	local desc = messageRoot(root)
+	if report == nil then report = {} end
+	local n = #bodies
+	if n >= 1 and n <= BATCH_MAX and not mIsBitSliceBatch(bodies) then
+		local _, sz = mWriteRecordBatch(v, desc, bodies, true, report)
+		return sz
+	end
 	local desc = messageRoot(root)
 	if report == nil then report = {} end
 	reset(report)
@@ -1045,8 +1574,11 @@ end
 function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffer?, number)
 	local desc = messageRoot(root)
 	if report == nil then report = {} end
-	reset(report)
 	local n = #bodies
+	if n >= 1 and n <= BATCH_MAX and not mIsBitSliceBatch(bodies) then
+		return mWriteRecordBatch(v, desc, bodies, false, report)
+	end
+	reset(report)
 	if n < 1 or n > BATCH_MAX then
 		refuse(report, "batch_too_large")
 		return nil, -1

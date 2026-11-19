@@ -806,7 +806,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 
 // matchChildren pairs the old entry's children with the current entry's by
 // wire id. An old child the current layout does not name is the unknown
-// census, counted ONCE per field per peer (§5.4) — never once per array
+// census, counted ONCE per field per sender (§5.4) — never once per array
 // element, which is why the recursion carries one census flag.
 func (c *evolveCompiler) matchChildren(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
 	te, me := c.oldAll[oi], c.curAll[ci]

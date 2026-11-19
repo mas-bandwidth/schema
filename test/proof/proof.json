@@ -208,9 +208,10 @@
     {
       "row": "surface wire",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 121 case(s) pass, e.g. wire/archive",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface wire",
@@ -351,9 +352,10 @@
     {
       "row": "surface message",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface message",
@@ -494,9 +496,10 @@
     {
       "row": "surface report",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 132 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface report",
@@ -637,9 +640,10 @@
     {
       "row": "surface framing",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 102 case(s) pass, e.g. framing/array_L0_inert",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface framing",
@@ -780,9 +784,10 @@
     {
       "row": "surface retain",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface retain",
@@ -923,9 +928,10 @@
     {
       "row": "surface retain-save",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 7 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface retain-save",
@@ -1066,9 +1072,10 @@
     {
       "row": "surface json-read",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 113 case(s) pass, e.g. json-read/archive",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface json-read",
@@ -1209,9 +1216,10 @@
     {
       "row": "surface json-write",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 115 case(s) pass, e.g. json-write/archive.json",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface json-write",
@@ -1352,9 +1360,10 @@
     {
       "row": "surface json-hostile",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 155 case(s) pass, e.g. json-hostile/arm-pointer-null",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface json-hostile",
@@ -1495,9 +1504,10 @@
     {
       "row": "surface cook",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface cook",
@@ -1638,9 +1648,10 @@
     {
       "row": "surface cook-write",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 152 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface cook-write",
@@ -1781,9 +1792,10 @@
     {
       "row": "surface cook-foreign",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface cook-foreign",
@@ -1924,9 +1936,10 @@
     {
       "row": "surface block",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 2 case(s) pass, e.g. block/block_padded",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface block",
@@ -2067,9 +2080,10 @@
     {
       "row": "surface block-foreign",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 2 case(s) pass, e.g. block-foreign/block_padded",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface block-foreign",
@@ -2210,9 +2224,10 @@
     {
       "row": "surface block-dump",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 2 case(s) pass, e.g. block-dump/block_padded",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface block-dump",
@@ -2353,9 +2368,10 @@
     {
       "row": "surface forgery",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. forgery/block_array_escapes",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface forgery",
@@ -2496,9 +2512,10 @@
     {
       "row": "surface cook-forgery",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface cook-forgery",
@@ -2583,9 +2600,10 @@
     {
       "row": "surface write-refusal",
       "lang": "goose",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-goose (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (goose)",
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "surface write-refusal",
@@ -2622,23 +2640,26 @@
     {
       "row": "surface write-refusal",
       "lang": "luau",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-luau (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (luau)",
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
     {
       "row": "surface write-refusal",
       "lang": "moo",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-moo (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (moo)",
+      "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
     {
       "row": "surface write-refusal",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface write-refusal",
@@ -2659,9 +2680,10 @@
     {
       "row": "surface write-refusal",
       "lang": "squirrel",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-squirrel (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "job": "CI full / conformance (squirrel)",
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
     {
       "row": "surface write-refusal",
@@ -2722,9 +2744,10 @@
     {
       "row": "surface write-refusal-fixed",
       "lang": "goose",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-goose (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (goose)",
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "surface write-refusal-fixed",
@@ -2761,23 +2784,26 @@
     {
       "row": "surface write-refusal-fixed",
       "lang": "luau",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-luau (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (luau)",
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
     {
       "row": "surface write-refusal-fixed",
       "lang": "moo",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-moo (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (moo)",
+      "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
     {
       "row": "surface write-refusal-fixed",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface write-refusal-fixed",
@@ -2798,9 +2824,10 @@
     {
       "row": "surface write-refusal-fixed",
       "lang": "squirrel",
-      "status": "relaxed",
-      "why": "19 case(s) answered absent with no ruling: write-refusal-fixed/fref_bits_wide, write-refusal-fixed/fref_bits_wide_ok, write-refusal-fixed/fref_count and 16 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-squirrel (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "job": "CI full / conformance (squirrel)",
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
     {
       "row": "surface write-refusal-fixed",
@@ -2861,9 +2888,10 @@
     {
       "row": "surface write-refusal-message",
       "lang": "goose",
-      "status": "relaxed",
-      "why": "13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/mref_enum and 10 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-goose (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (goose)",
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "surface write-refusal-message",
@@ -2900,23 +2928,26 @@
     {
       "row": "surface write-refusal-message",
       "lang": "luau",
-      "status": "relaxed",
-      "why": "13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/mref_enum and 10 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-luau (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (luau)",
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
     {
       "row": "surface write-refusal-message",
       "lang": "moo",
-      "status": "relaxed",
-      "why": "13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/mref_enum and 10 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-moo (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (moo)",
+      "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
     {
       "row": "surface write-refusal-message",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface write-refusal-message",
@@ -2937,9 +2968,10 @@
     {
       "row": "surface write-refusal-message",
       "lang": "squirrel",
-      "status": "relaxed",
-      "why": "13 case(s) answered absent with no ruling: write-refusal-message/mref_element, write-refusal-message/mref_element_ok, write-refusal-message/mref_enum and 10 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-squirrel (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "job": "CI full / conformance (squirrel)",
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
     {
       "row": "surface write-refusal-message",
@@ -3000,9 +3032,10 @@
     {
       "row": "surface write-refusal-json",
       "lang": "goose",
-      "status": "relaxed",
-      "why": "1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-goose (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (goose)",
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "surface write-refusal-json",
@@ -3039,23 +3072,26 @@
     {
       "row": "surface write-refusal-json",
       "lang": "luau",
-      "status": "relaxed",
-      "why": "1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-luau (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (luau)",
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
     {
       "row": "surface write-refusal-json",
       "lang": "moo",
-      "status": "relaxed",
-      "why": "1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-moo (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (moo)",
+      "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
     {
       "row": "surface write-refusal-json",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "surface write-refusal-json",
@@ -3076,9 +3112,10 @@
     {
       "row": "surface write-refusal-json",
       "lang": "squirrel",
-      "status": "relaxed",
-      "why": "1 case(s) answered absent with no ruling: write-refusal-json/jref_zero_byte",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-squirrel (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "job": "CI full / conformance (squirrel)",
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
     {
       "row": "surface write-refusal-json",
@@ -3195,9 +3232,10 @@
     {
       "row": "cases featurewitnesses",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 18 case(s) pass, e.g. cook-write/feature_full",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases featurewitnesses",
@@ -3282,9 +3320,10 @@
     {
       "row": "cases tabledemo",
       "lang": "goose",
-      "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-goose (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (goose)",
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "cases tabledemo",
@@ -3321,23 +3360,26 @@
     {
       "row": "cases tabledemo",
       "lang": "luau",
-      "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-luau (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (luau)",
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
     {
       "row": "cases tabledemo",
       "lang": "moo",
-      "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-moo (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (moo)",
+      "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
     {
       "row": "cases tabledemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tabledemo",
@@ -3358,9 +3400,10 @@
     {
       "row": "cases tabledemo",
       "lang": "squirrel",
-      "status": "relaxed",
-      "why": "39 case(s) answered absent with no ruling: write-refusal/wref_bits_wide, write-refusal/wref_bits_wide_ok, write-refusal/wref_count and 36 more",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-write-refusal-squirrel (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "job": "CI full / conformance (squirrel)",
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
     {
       "row": "cases tabledemo",
@@ -3477,9 +3520,10 @@
     {
       "row": "cases tblv1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 16 case(s) pass, e.g. cook-write/v1_cfg",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblv1",
@@ -3620,9 +3664,10 @@
     {
       "row": "cases tblv2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 12 case(s) pass, e.g. cook-write/v2_cfg",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblv2",
@@ -3763,9 +3808,10 @@
     {
       "row": "cases tblp1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 14 case(s) pass, e.g. cook-write/chain_value",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblp1",
@@ -3906,9 +3952,10 @@
     {
       "row": "cases tblp3",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 14 case(s) pass, e.g. cook-write/chain_optional",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblp3",
@@ -4049,9 +4096,10 @@
     {
       "row": "cases tblp2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 3 case(s) pass, e.g. report/p1_as_p2",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblp2",
@@ -4192,9 +4240,10 @@
     {
       "row": "cases graphdemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases graphdemo",
@@ -4335,9 +4384,10 @@
     {
       "row": "cases blockdemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 6 case(s) pass, e.g. block/block_padded",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases blockdemo",
@@ -4478,9 +4528,10 @@
     {
       "row": "cases messagedemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 74 case(s) pass, e.g. cook-write/message_ack",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases messagedemo",
@@ -4621,9 +4672,10 @@
     {
       "row": "cases streamdemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 30 case(s) pass, e.g. cook-write/stream_arm_first",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases streamdemo",
@@ -4764,9 +4816,10 @@
     {
       "row": "cases blobdemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/blob_empty",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases blobdemo",
@@ -4907,9 +4960,10 @@
     {
       "row": "cases tblm1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 11 case(s) pass, e.g. cook-write/m1_open",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblm1",
@@ -5050,9 +5104,10 @@
     {
       "row": "cases tblm2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 11 case(s) pass, e.g. cook-write/m2_open",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblm2",
@@ -5193,9 +5248,10 @@
     {
       "row": "cases tbla2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 10 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tbla2",
@@ -5336,9 +5392,10 @@
     {
       "row": "cases tblg1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 4 case(s) pass, e.g. wire/guard_false_no_edge",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblg1",
@@ -5479,9 +5536,10 @@
     {
       "row": "cases tblk1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. report/k2_as_k1",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblk1",
@@ -5622,9 +5680,10 @@
     {
       "row": "cases tblk2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 1 case(s) pass, e.g. report/k1_as_k2",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblk2",
@@ -5765,9 +5824,10 @@
     {
       "row": "cases tblw1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/w1_fleet",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblw1",
@@ -5908,9 +5968,10 @@
     {
       "row": "cases tblw2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 5 case(s) pass, e.g. json-read/w2_fleet",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblw2",
@@ -6051,9 +6112,10 @@
     {
       "row": "cases tblr1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 82 case(s) pass, e.g. framing/array_L0_inert",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblr1",
@@ -6194,9 +6256,10 @@
     {
       "row": "cases tblr2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 6 case(s) pass, e.g. json-read/r2_cfg",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblr2",
@@ -6337,9 +6400,10 @@
     {
       "row": "cases scalars",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases scalars",
@@ -6480,9 +6544,10 @@
     {
       "row": "cases tblscalars2",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 3 case(s) pass, e.g. report/field_scalar_widen",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblscalars2",
@@ -6623,9 +6688,10 @@
     {
       "row": "cases backenddemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 35 case(s) pass, e.g. json-read/login_default",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases backenddemo",
@@ -6766,9 +6832,10 @@
     {
       "row": "cases vocabdemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 15 case(s) pass, e.g. json-read/peer_b",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases vocabdemo",
@@ -6909,9 +6976,10 @@
     {
       "row": "cases vocab9demo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 10 case(s) pass, e.g. json-read/vocab9_low",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases vocab9demo",
@@ -7052,9 +7120,10 @@
     {
       "row": "cases tblrt1",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 15 case(s) pass, e.g. retain/retain_enum_variant",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblrt1",
@@ -7195,9 +7264,10 @@
     {
       "row": "cases listdemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 54 case(s) pass, e.g. cook-write/list_before_pointer",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases listdemo",
@@ -7338,9 +7408,10 @@
     {
       "row": "cases mapdemo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 62 case(s) pass, e.g. cook-write/map_cells",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases mapdemo",
@@ -7481,9 +7552,10 @@
     {
       "row": "cases tblfixedevo",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 15 case(s) pass, e.g. cook-write/fixedevo_v3_full",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases tblfixedevo",
@@ -7624,9 +7696,10 @@
     {
       "row": "cases widelist",
       "lang": "python",
-      "status": "in progress",
-      "why": "the python conformance leg has no negative control (no conformance-negative-control-python in make/negative-controls.json)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/widelist_wide",
+      "job": "CI full / conformance (python)",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "cases widelist",
@@ -7767,9 +7840,10 @@
     {
       "row": "porting M5",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — the generated `[E]T` class refuses None, a key below 1 and a key past `E.Max` with `KeyError` on get and set (`TestPythonVtKeyed`), b…",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonKeyedAccessorCoversBothEnds",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonKeyedBoundsNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting M5",
@@ -8186,9 +8260,10 @@
     {
       "row": "porting M11",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p5-fixed (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonFixedCoreValues",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonFixedCoreValuesNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting M11",
@@ -8327,9 +8402,10 @@
     {
       "row": "porting M12",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p4-packet (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonWireByteOrderIsExplicit",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonWireByteOrderNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting M12",
@@ -8470,10 +8546,10 @@
     {
       "row": "porting M14",
       "lang": "python",
-      "status": "in progress",
+      "status": "proven",
       "gate": "TestPythonJsonSharedNodes",
-      "why": "✅ but its gate TestPythonJsonSharedNodes has no negative control",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonJsonSharedNodesNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting M14",
@@ -9310,9 +9386,10 @@
     {
       "row": "porting I2",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p14-lint-controls (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "conformance-negative-control-python",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "porting I2",
@@ -9437,23 +9514,26 @@
     {
       "row": "porting I3",
       "lang": "luau",
-      "status": "relaxed",
-      "why": "❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP)",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-i3-luau (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "TestLuauForgeryFuzz",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestLuauForgeryFuzzNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting I3",
       "lang": "moo",
-      "status": "relaxed",
-      "why": "❌ #381 — partial: `tables-moo-block-forgery-fuzz` and its negative control validate production BlockOpen over 8,000 mutants of two blocks agai…",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-i3-moo (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "TestMooBlockForgeryFuzz",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestMooBlockForgeryFuzzNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting I3",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p9-accel (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonForgeryFuzz",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonForgeryFuzzNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting I3",
@@ -9474,9 +9554,10 @@
     {
       "row": "porting I3",
       "lang": "squirrel",
-      "status": "relaxed",
-      "why": "❌ #413 (the block and cook forgery batteries ride the conformance surfaces; no forgery fuzzer walks what it opened)",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-i3-squirrel (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "TestSquirrelForgeryFuzz",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestSquirrelForgeryFuzzNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting I3",
@@ -9737,9 +9818,10 @@
     {
       "row": "porting I6",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p5-fixed (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonTableRuntimeNamesAreClaimed",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonTableRuntimeNameScanGoesRed (Certify / test (make test))"
     },
     {
       "row": "porting I6",
@@ -9880,10 +9962,10 @@
     {
       "row": "porting I7",
       "lang": "python",
-      "status": "in progress",
+      "status": "proven",
       "gate": "TestPythonBlockReadOppositeOrder",
-      "why": "✅ but its gate TestPythonBlockReadOppositeOrder has no negative control",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonForeignOrderNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting I7",
@@ -10024,9 +10106,10 @@
     {
       "row": "porting I11",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p10-conformance (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "json-read",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
     {
       "row": "porting I11",
@@ -10311,9 +10394,10 @@
     {
       "row": "porting I13",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p8-text (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonTextDifferential",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonTextDifferentialNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting I13",
@@ -10382,9 +10466,10 @@
     {
       "row": "porting I15",
       "lang": "elixir",
-      "status": "relaxed",
-      "why": "❌ #492 — `tables-elixir-wire-fuzz-all` drives the harness over the default roster (plain arm) and is red: a fixed-class root it cannot open is…",
-      "relaxed": "RELAXED 2026-11-14 (maintainer: get main green), re-enable: relax/proof-i15-elixir (docs/relaxed.md)"
+      "status": "proven",
+      "gate": "tables-elixir-wire-fuzz-all",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "tables-elixir-wire-fuzz-refusal-negative-control (Certify / negative controls, nightly (elixir-nightly-accessors))"
     },
     {
       "row": "porting I15",
@@ -10597,9 +10682,10 @@
     {
       "row": "porting J1",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p9-accel (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonReflectionLayout",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonReflectionLayoutNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting J1",
@@ -10740,9 +10826,10 @@
     {
       "row": "porting J2",
       "lang": "python",
-      "status": "in progress",
-      "why": "❌ #381 — port/python/p4-packet (docs/PORT-PYTHON.md, THE CARD MAP)",
-      "port": "port in progress, #381 (docs/PORT-PYTHON.md)"
+      "status": "proven",
+      "gate": "TestPythonRuntimeHome",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "TestPythonRuntimeHomeNegativeControl (Certify / test (make test))"
     },
     {
       "row": "porting J2",

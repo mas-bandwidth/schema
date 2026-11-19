@@ -1,0 +1,78 @@
+#!/bin/sh
+# Emitter sabotage negative controls for the Python conformance leg (docs/PORTING.md I2, I11).
+set -eu
+
+mode=${1:-}
+case "$mode" in
+wire|walk) ;;
+*) echo "usage: $0 wire|walk" >&2; exit 2 ;;
+esac
+
+root=$(pwd)
+python_bin=${PYTHON:-$root/dist/python-3.15.2/bin/python3.15}
+work=build/conformance-python-nc-$mode
+rm -rf "$work"
+mkdir -p "$work/gen"
+
+if [ "$mode" = wire ]; then
+	src=internal/codegen/pythontable/runtime/_schema/load.py
+	patched="$work/load.py"
+	sed 's/ctx.unknown += 1/raise Refused("wire_damaged", "unknown field")/' "$src" > "$patched"
+else
+	src=internal/codegen/pythontable/runtime/_schema/json_table.py
+	patched="$work/json_table.py"
+	sed 's/fields = {field.json_key: field for field in value.descriptor.fields}/fields = {field.json_key: field for field in value.descriptor.fields[1:]}/' "$src" > "$patched"
+fi
+
+if cmp -s "$src" "$patched"; then
+	echo "NEGATIVE CONTROL FAILED: $mode anchor matched nothing in $src" >&2
+	exit 1
+fi
+
+printf '{"Replace":{"%s/%s":"%s/%s"}}\n' "$root" "$src" "$root" "$patched" > "$work/overlay.json"
+go build -tags schema_leg_python -overlay "$root/$work/overlay.json" -o "$work/schema" ./cmd/schema
+
+awk '$1 == "unit" { key = $2; $1 = ""; $2 = ""; print key $0 }' testdata/conformance/tables/MANIFEST.txt | \
+while read -r key paths; do
+	first=""
+	for p in $paths; do
+		if [ -d "$p" ]; then f=$(ls "$p"/*.schema 2>/dev/null | head -1); else f=$p; fi
+		first=$f
+		break
+	done
+	pkg=$(sed -n 's/^[[:space:]]*package[[:space:]]\+\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p' "$first" | head -1)
+	if [ -n "$pkg" ]; then mkdir -p "$work/gen/$key/$pkg/_schema"; fi
+	if "$work/schema" generate --lang python --out "$work/gen/$key" $paths > "$work/gen/$key.log" 2>&1; then
+		rm -f "$work/gen/$key.log"
+	else
+		rm -rf "$work/gen/$key"
+		mv "$work/gen/$key.log" "$work/gen/$key.refused"
+	fi
+done
+mkdir -p "$work/gen/tblr1/_framing/source" "$work/gen/tblr1/_framing/tblr1"
+sed -e 's/^fixed table Cfg$/table Cfg/' -e 's/^package tblr1$/package tblr1_framing/' test/tables/R1.schema > "$work/gen/tblr1/_framing/source/R1.schema"
+"$work/schema" generate --lang python --out "$work/gen/tblr1/_framing/tblr1" "$work/gen/tblr1/_framing/source/R1.schema"
+
+printf '#!/bin/sh\nexec env PYTHON_CONFORMANCE_GENERATED=%s/%s/gen PYTHON=%s %s/test/conformance/python/driver "$@"\n' "$root" "$work" "$python_bin" "$root" > "$work/driver"
+chmod +x "$work/driver"
+printf 'python %s/%s/driver\n' "$root" "$work" > "$work/drivers.txt"
+
+if ./build/conformance-harness run --drivers "$work/drivers.txt" --work "$work/run" > "$work/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: sabotaged Python emitter ($mode) left conformance green" >&2
+	cat "$work/log" >&2
+	exit 1
+fi
+
+if [ "$mode" = wire ]; then
+	grep -q 'python / framing:' "$work/log" || { echo "NEGATIVE CONTROL FAILED: framing did not go red"; cat "$work/log"; exit 1; }
+	grep -q 'python / retain:' "$work/log" || { echo "NEGATIVE CONTROL FAILED: retain did not go red"; cat "$work/log"; exit 1; }
+	grep -qE '^wire[[:space:]]+pass ' "$work/log" || { echo "NEGATIVE CONTROL FAILED: wire did not stay green"; cat "$work/log"; exit 1; }
+	grep -qE '^json-read[[:space:]]+pass ' "$work/log" || { echo "NEGATIVE CONTROL FAILED: json-read did not stay green"; cat "$work/log"; exit 1; }
+	echo "conformance-negative-control-python: overlay emitter sabotage caught on framing/retain while wire/json-read stayed green"
+else
+	grep -q 'python / json-read:' "$work/log" || { echo "NEGATIVE CONTROL FAILED: json-read did not go red"; cat "$work/log"; exit 1; }
+	grep -q 'python / json-hostile:' "$work/log" || { echo "NEGATIVE CONTROL FAILED: json-hostile did not go red"; cat "$work/log"; exit 1; }
+	grep -qE '^wire[[:space:]]+pass ' "$work/log" || { echo "NEGATIVE CONTROL FAILED: wire did not stay green"; cat "$work/log"; exit 1; }
+	grep -qE '^json-write[[:space:]]+pass ' "$work/log" || { echo "NEGATIVE CONTROL FAILED: json-write did not stay green"; cat "$work/log"; exit 1; }
+	echo "conformance-negative-control-python-walk: overlay emitter sabotage caught on json-read/json-hostile while wire/json-write stayed green"
+fi
