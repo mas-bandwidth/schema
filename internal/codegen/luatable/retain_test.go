@@ -278,8 +278,8 @@ func TestLuaRetainConformanceSurface(t *testing.T) {
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
 	rows := loadRetainConformanceRows(t, manifest)
-	if len(rows) != 8 {
-		t.Fatalf("got %d retain rows, want 8", len(rows))
+	if len(rows) != 10 {
+		t.Fatalf("got %d retain rows, want 10", len(rows))
 	}
 	// Also verify parsing the 7-field derived manifest lines (where the save
 	// column is withheld by the conformance harness).
@@ -296,19 +296,32 @@ func TestLuaRetainConformanceSurface(t *testing.T) {
 		t.Fatalf("derived manifest parsed %d rows, want %d", len(derivedRows), len(rows))
 	}
 
-	var paths []string
-	for _, p := range units["tblrt1"] {
-		paths = append(paths, filepath.Join(repo, p))
+	type builtUnit struct {
+		u     *ir.Unit
+		files map[string][]byte
 	}
-	u := luarun.LoadUnit(t, paths...)
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
+	built := map[string]builtUnit{}
+	for _, r := range rows {
+		if _, ok := built[r.unit]; ok {
+			continue
+		}
+		var paths []string
+		for _, up := range units[r.unit] {
+			paths = append(paths, filepath.Join(repo, up))
+		}
+		u := luarun.LoadUnit(t, paths...)
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		built[r.unit] = builtUnit{u: u, files: files}
 	}
 
 	for _, r := range rows {
 		t.Run(r.name, func(t *testing.T) {
 			t.Parallel()
+			bu := built[r.unit]
+			u, files := bu.u, bu.files
 			verdict, jsonText, saved, reloadJSON := runLuaRetainConformanceRow(t, repo, u, files, r)
 			if verdict != "read" {
 				t.Fatalf("%s: verdict = %q, want read", r.name, verdict)

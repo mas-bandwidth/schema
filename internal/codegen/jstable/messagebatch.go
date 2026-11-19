@@ -1064,6 +1064,9 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 	big := fixedIsBig(f.Type)
 	signed := fixedSigned(f.Type)
 	width := f.Type.Width
+	if _, ok := f.Type.Ref.(*ir.Flags); ok {
+		width = 64
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		g.pf("%s{ const [v, ok] = r.Bits.Get(1); if (!ok) { r.Report.Damaged = true; return false; } %s = v !== 0n; }\n", ind, mem)

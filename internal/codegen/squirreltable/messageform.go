@@ -2,6 +2,8 @@
 package squirreltable
 
 import (
+	"sort"
+
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -23,6 +25,39 @@ func messageModule(m *Module) {
 		m.Printf("%s,", squirrel.HexLit(e.Id))
 	}
 	m.Printf("];\n")
+	slots := tablewire.MessageVocabularySlots(m.Unit)
+	tnames := make([]string, 0, len(m.Unit.Tables))
+	for name, st := range m.Unit.Tables {
+		if st != nil && st.IsTable && !st.IsMapEntry() {
+			tnames = append(tnames, name)
+		}
+	}
+	sort.Strings(tnames)
+	m.Printf("_M.TableMessageFieldSlots <- {")
+	for _, name := range tnames {
+		st := m.Unit.Tables[name]
+		m.Printf(" [%s] = [", squirrel.StringLit([]byte(st.Name)))
+		for _, fld := range st.Fields {
+			m.Printf("%d,", slots[ir.TableFieldEntry(fld).Key()])
+		}
+		m.Printf("],")
+	}
+	m.Printf(" };\n")
+	unames := make([]string, 0, len(m.Unit.TableUnions))
+	for name := range m.Unit.TableUnions {
+		unames = append(unames, name)
+	}
+	sort.Strings(unames)
+	m.Printf("_M.TableMessageArmSlots <- {")
+	for _, name := range unames {
+		un := m.Unit.TableUnions[name]
+		m.Printf(" [%s] = [", squirrel.StringLit([]byte(un.Name)))
+		for _, v := range un.Variants {
+			m.Printf("%d,", slots[ir.TableArmEntry(v).Key()])
+		}
+		m.Printf("],")
+	}
+	m.Printf(" };\n")
 	m.Printf("_M.TableMessageAnnouncement <- blob(%d);\n", len(ann))
 	for i, b := range ann {
 		m.Printf("_M.TableMessageAnnouncement[%d] = 0x%02x;\n", i, b)

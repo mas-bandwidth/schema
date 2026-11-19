@@ -2233,6 +2233,8 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
+    vals.clear();
+    nodes.clear();
     var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: retaining };
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a
     // file's own, and any form but 1 is refused with no damage reported

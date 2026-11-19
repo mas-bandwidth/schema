@@ -4022,7 +4022,7 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
         lastOrdinal = 11;
         if (entry.Shape.Kind !== 9 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
-          x = BigInt.asUintN(0, x);
+          x = BigInt.asUintN(64, x);
           value.damage = x;
         }
         if (r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && (value.damage === 0n)) { r.Report.Damaged = true; return false; }

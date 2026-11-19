@@ -1,0 +1,131 @@
+package reuse
+
+flags PktFlags
+{
+    Fast
+    Safe
+    Loud
+}
+
+enum PktMode
+{
+    Alpha
+    Beta
+}
+
+type PktSmall
+{
+    v bits(5)
+}
+
+type PktHeavy
+{
+    x uint64
+    y int32
+}
+
+union PktChoice
+{
+    void_arm
+    small    PktSmall
+    heavy    PktHeavy
+}
+
+type PacketBox
+{
+    active bool
+    if active
+    {
+        inner_count uint32
+        inner_items [..4]uint16
+    }
+    else
+    {
+        fallback uint8
+    }
+    tags  [..4]uint32
+    label string(16)
+    raw   bytes(8)
+    pick  PktChoice
+    perks PktFlags
+    mode  PktMode
+}
+
+flags TabFlags
+{
+    Read
+    Write
+    Exec
+}
+
+enum TabMode
+{
+    Idle
+    Busy
+}
+
+table SubItem
+{
+    code       int32 = 0
+    title      string(16)
+    future_sub string(16)
+}
+
+union TabChoice
+{
+    empty_arm
+    small     int32
+    rich      SubItem
+}
+
+table VarDoc
+{
+    opt_num    ?int32
+    opt_sub    ?SubItem
+    label      string(24)
+    raw        bytes(12)
+    counted    [..4]int32
+    dyn_nums   []int32
+    dyn_subs   []SubItem
+    scores     map[string(12)]int32
+    choice     TabChoice
+    perks      TabFlags
+    note       *string
+    payload    *bytes
+    child      *SubItem
+    future_tag string(24)
+    future_num int64 = 0
+}
+
+fixed table FixedPair
+{
+    a int32 = 0
+    b int32 = 0
+}
+
+union FixedChoice
+{
+    none_arm
+    code     uint32
+    pair     FixedPair
+}
+
+fixed table FixedDoc
+{
+    opt_val ?int32
+    nums    [..4]uint16
+    tag     string(16)
+    raw     bytes(8)
+    pick    FixedChoice
+    perks   TabFlags
+    mode    TabMode
+}
+
+fixed table BlockDoc
+{
+    a     int32 = 0
+    b     uint64 = 0
+    label string(16)
+    nums  [..4]uint16
+    perks TabFlags
+}

@@ -288,6 +288,9 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 		if held {
 			g.emitMessageElidedCheck(f, expr, "        ")
 		}
+		if f.Type.Optional {
+			g.pf("        %sPresent = true;\n", expr)
+		}
 		g.pf("        break;\n      }\n")
 	}
 	g.pf("      default:\n")
@@ -312,7 +315,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 // optional one, whose presence is its payload, and a compressed float, whose
 // writer rides on the value before its step rounds.
 func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyEntry) bool {
-	if f.Type.Optional || f.Array == ir.ArrayFixed || f.KeyEnum != "" {
+	if f.Type.Optional || f.Required || f.Array == ir.ArrayFixed || f.KeyEnum != "" {
 		return false
 	}
 	return f.Type.Kind != ir.TFloat32 || entry.Shape.Packing != ir.TableMessageQuantized
@@ -395,6 +398,12 @@ func (g *fixedModule) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabul
 // (§3): a field at its declared default, an absent optional, an empty
 // string/bytes and an empty counted array all elide.
 func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
+	if f.Type.Optional {
+		return expr + "Present"
+	}
+	if f.Required {
+		return ""
+	}
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
 	}
@@ -521,6 +530,8 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 			g.emitMessageWriteUnion(r, expr, ind)
 		case *ir.Enum:
 			g.emitMessageWriteEnum(r, expr, ind)
+		case *ir.Flags:
+			g.emitMessageWriteScalar(f, entry, expr, ind)
 		}
 	default:
 		g.emitMessageWriteScalar(f, entry, expr, ind)
@@ -737,6 +748,8 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 			g.emitMessageReadUnion(r, expr, ind)
 		case *ir.Enum:
 			g.emitMessageReadEnum(r, expr, ind)
+		case *ir.Flags:
+			g.emitMessageReadScalar(f, entry, expr, ind, shapeExpr, kindExpr)
 		}
 	default:
 		g.emitMessageReadScalar(f, entry, expr, ind, shapeExpr, kindExpr)

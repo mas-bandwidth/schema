@@ -344,14 +344,16 @@ _verify-lua-conformance: verify-toolchain-lua build/conformance-harness-vm build
 
 _verify-lua-bench: verify-toolchain-lua bench-lua-gate tables-lua-bench-gate verify-deep-lua verify-cards-lua
 
-# lua's retain wire-fuzz arm is owed in test/conformance/wire-fuzz-owed.txt;
-# plain exercises all fixed + variable + message roots.
 _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_lua)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lua) \
 		--failed build/verify/fuzz-lua-plain.bin
+	./build/conformance-harness-vm wire-fuzz --retain \
+		--driver "$(WFR_DRIVER_lua)" \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lua) \
+		--failed build/verify/fuzz-lua-retain.bin
 	LUA="$(LUA)" ./build/conformance-harness-vm json-fuzz --only lua \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lua
@@ -388,8 +390,7 @@ _verify-squirrel-conformance: verify-toolchain-squirrel build/conformance-harnes
 
 _verify-squirrel-bench: verify-toolchain-squirrel bench-squirrel-gate tables-squirrel-bench-gate verify-deep-squirrel verify-cards-squirrel
 
-# Squirrel splits fixed-class roots (plain arm) and variable-class roots (`builder` / --builder);
-# retain is owed in test/conformance/wire-fuzz-owed.txt.
+# Squirrel splits fixed-class roots (plain arm) and variable-class roots (`builder` / --builder).
 _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz \
@@ -400,6 +401,10 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
 		--failed build/verify/fuzz-squirrel-builder.bin
+	./build/conformance-harness-vm wire-fuzz --builder --retain \
+		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
+		--failed build/verify/fuzz-squirrel-retain.bin
 	SQ="$(SQ)" ./build/conformance-harness-vm json-fuzz --only squirrel \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-squirrel

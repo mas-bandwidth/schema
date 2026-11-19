@@ -194,6 +194,8 @@ local function at_default(fd, v)
         if e1 == nil then e1 = def end
         if es == "float" then
           if not same_float(e.f32, e1, def) then return false end
+        elseif es == "wide" then
+          if type(e1) == "table" and (e1.lo ~= 0 or e1.hi ~= 0) then return false end
         elseif e1 ~= def then
           return false
         end
@@ -251,6 +253,10 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
   elseif s == "int" or s == "flags" then
     if (val or 0) == 0 then return true, false end
     w_int(w, e.width, e.signed, val or 0)
+  elseif s == "wide" then
+    if type(val) ~= "table" or (val.lo == 0 and val.hi == 0) then return true, false end
+    w_raw(w, string.pack("<i8", val.lo))
+    w_raw(w, string.pack("<i8", val.hi))
   elseif s == "float" then
     if val == nil then val = 0.0 end
     -- A KEYED SLOT ELIDES BY THE SAME BIT COMPARE (§3.3): a -0 slot rides.

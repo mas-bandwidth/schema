@@ -382,10 +382,11 @@ end
 -- rides is the elision condition (§3.3, §3): a field at its declared default
 -- is not written, an empty string/array/union is not written, and presence
 -- decides ?T.
-rides = function(T, f, v)
-  if f.optional then
-    if v == nil or v[f.name .. "_present"] ~= true then return false end
-  end
+rides = function(T, f, holder)
+  if holder == nil then return false end
+  if f.optional then return holder[f.name .. "_present"] == true end
+  if f.required then return true end
+  local v = holder[f.name]
   local s = f.shape
   if s == "table" then return rides_table(T, f.target, v) end
   if s == "array" then return elem_rides(T, f, v) end
@@ -403,7 +404,7 @@ rides_table = function(T, name, v)
   local desc = T.Tables[name]
   if desc == nil then return false end
   for _, f in ipairs(desc.fields) do
-    if rides(T, f, v[f.name]) then return true end
+    if rides(T, f, v) then return true end
   end
   return false
 end
@@ -1038,9 +1039,9 @@ load_fields = function(R, T, name, value, ctx)
       local atDefault = false
       if f.shape == "enum" then
         atDefault = not f.optional and ctx.enumAtDefault == true
-      elseif not f.optional and f.shape ~= "union" then
+      elseif not f.optional and not f.required and f.shape ~= "union" then
         if not retired and not (f.shape == "float" and e ~= nil and e.packing == 2) then
-          atDefault = not rides(T, f, value[f.name])
+          atDefault = not rides(T, f, value)
         end
       end
       if ctx.vocab.buildVersion == T.BuildVersion and entry_matches_field(e, f) and atDefault then return false end
@@ -1165,7 +1166,7 @@ write_body = function(W, T, name, value, ctx)
   local desc = T.Tables[name]
   if desc == nil then return false end
   for _, f in ipairs(desc.fields) do
-    if rides(T, f, value[f.name]) then
+    if rides(T, f, value) then
       W:put(slot_field(T, f), ctx.refBits)
       if not write_value(W, T, f, value, f.name, ctx) then return false end
     end
