@@ -9173,6 +9173,7 @@ inline int64_t AssetMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 12, 0xef9c96d721673243ull ) ) + 1 + 4; } // kind
     {
@@ -9224,6 +9225,7 @@ inline bool AssetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -9517,6 +9519,7 @@ inline int64_t CatalogMeasureBody( const Ctx & ctx, const TableNumbering & numbe
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const Asset * pointee_head = AssetAt( ctx, value.head ); // *Asset
@@ -9580,6 +9583,7 @@ inline bool CatalogSaveBodyFields( const Ctx & ctx, const TableNumbering & numbe
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12221,6 +12225,7 @@ inline int64_t AssetMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.kind != 0 ) { bytes += TableLebBytes( ids.ref_at( 12, 0xef9c96d721673243ull ) ) + 1 + 4; } // kind
     {
@@ -12273,6 +12278,7 @@ inline bool AssetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -12572,6 +12578,7 @@ inline int64_t CatalogMeasureBodyRetain( const Ctx & ctx, const TableNumbering &
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     {
         const Asset * pointee_head = AssetAt( ctx, value.head ); // *Asset
@@ -12636,6 +12643,7 @@ inline bool CatalogSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering &
     (void) ctx;
     (void) numbering;
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 10, 0xc4bcadba8e631b86ull ), 12 ); // name

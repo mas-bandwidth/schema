@@ -10307,6 +10307,7 @@ inline int64_t UserMeasureBody( TableIds & ids, const User & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 44, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
@@ -10324,6 +10325,7 @@ inline int64_t UserMeasure( const User & value )
 MESSAGEDEMO_TABLE_INLINE bool UserSaveBody( TableWriter & w, TableIds & ids, const User & value )
 {
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 44, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -10797,6 +10799,7 @@ inline int64_t ScriptMeasureBody( TableIds & ids, const Script & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
     return bytes;
@@ -10815,6 +10818,7 @@ inline int64_t ScriptMeasure( const Script & value )
 MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBody( TableWriter & w, TableIds & ids, const Script & value )
 {
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return false; }
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -12003,6 +12007,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
         else { ids.truncate( mark_at ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 57, 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.text_length ) ) + ( value.text_length ); } // text
     if ( value.origin.type != OriginType::None ) // None elides — the absence of the field is the None
     {
@@ -12047,6 +12052,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                 schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                if ( !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -12105,6 +12111,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -12158,6 +12165,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
         else { ids.truncate( mark_at ); }
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return false; }
     if ( value.text_length > 0 )
     {
         w.header( ids.ref_at( 57, 0xfa04f4ef1995407eull ), 12 ); // text
@@ -12212,10 +12220,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 const uint64_t arm_ref = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                 int64_t arm_payload = 0;
                 schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                if ( !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 w.header( arm_ref, 12 );
                 w.putleb( (uint64_t) arm_payload ); // note
                 schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                if ( !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ) { return false; }
                 w.raw( value.origin.note.value, value.origin.note.value_length );
                 break;
             }
@@ -12273,6 +12283,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -12335,10 +12346,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         const uint64_t arm_refu = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                         int64_t arm_payloadu = 0;
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         w.header( arm_refu, 12 );
                         w.putleb( (uint64_t) arm_payloadu ); // note
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return false; }
                         w.raw( value.origins[elem_i].note.value, value.origins[elem_i].note.value_length );
                         break;
                     }
@@ -16074,6 +16087,7 @@ inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.mode != Mode::Read )
     {
@@ -16107,6 +16121,7 @@ inline int64_t OpenDocumentMeasure( const OpenDocument & value )
 MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & ids, const OpenDocument & value )
 {
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return false; }
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -16788,6 +16803,7 @@ inline int64_t SaveDocumentMeasureBody( TableIds & ids, const SaveDocument & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.force != false ) { bytes += TableLebBytes( ids.ref_at( 51, 0xe75ad8afb3eeebe4ull ) ) + 1 + 1; } // force
     return bytes;
@@ -16806,6 +16822,7 @@ inline int64_t SaveDocumentMeasure( const SaveDocument & value )
 MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBody( TableWriter & w, TableIds & ids, const SaveDocument & value )
 {
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return false; }
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -17352,6 +17369,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x65e8d7f3474f2639ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.edits_count > 0 )
@@ -17490,6 +17508,7 @@ inline int64_t TransactionMeasure( const Transaction & value )
 MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & ids, const Transaction & value )
 {
     schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ) { return false; }
     if ( value.reason_length > 0 )
     {
         w.header( ids.ref_at( 19, 0x65e8d7f3474f2639ull ), 12 ); // reason
@@ -19819,6 +19838,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -19966,6 +19986,7 @@ inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -20171,6 +20192,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -20228,10 +20250,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             int64_t arm_payloada = 0;
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             w.header( arm_refa, 12 );
                             w.putleb( (uint64_t) arm_payloada ); // note
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; }
                             w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
                             break;
                         }
@@ -20379,6 +20403,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -20541,6 +20566,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -20598,10 +20624,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     int64_t arm_payloadua = 0;
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     w.header( arm_refua, 12 );
                                     w.putleb( (uint64_t) arm_payloadua ); // note
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; }
                                     w.raw( value.history[elem_i].origin.note.value, value.history[elem_i].origin.note.value_length );
                                     break;
                                 }
@@ -23970,6 +23998,7 @@ inline int64_t ToolEnvelopeMeasureBody( const Ctx & ctx, const TableNumbering & 
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -24138,6 +24167,7 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -24195,10 +24225,12 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             int64_t arm_payloada = 0;
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             w.header( arm_refa, 12 );
                             w.putleb( (uint64_t) arm_payloada ); // note
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; }
                             w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
                             break;
                         }
@@ -26549,6 +26581,7 @@ TABLE_FIXED_INLINE bool InsertTextFixedInRange( const InsertText & value )
         }
         case OriginType::Note:
         {
+            bad |= (int) !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length );
             break;
         }
         default: break;
@@ -26575,6 +26608,7 @@ TABLE_FIXED_INLINE bool InsertTextFixedInRange( const InsertText & value )
             }
             case OriginType::Note:
             {
+                bad |= (int) !TableUtf8Valid( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length );
                 break;
             }
             default: break;
@@ -26617,6 +26651,7 @@ inline bool InsertTextFixedWriteAdmits( const InsertText & value )
         }
         case OriginType::Note:
         {
+            bad |= (int) ( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 && !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) );
             break;
         }
         default: break;
@@ -26643,6 +26678,7 @@ inline bool InsertTextFixedWriteAdmits( const InsertText & value )
             }
             case OriginType::Note:
             {
+                bad |= (int) ( value.origins[i].note.value_length >= 0 && value.origins[i].note.value_length <= 24 && !TableUtf8Valid( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length ) );
                 break;
             }
             default: break;
@@ -26689,6 +26725,10 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_CLAMP_
         }
         case OriginType::Note:
         {
+            if ( !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) )
+            {
+                damaged++;
+            }
             break;
         }
         default: break;
@@ -26716,6 +26756,10 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_CLAMP_
             }
             case OriginType::Note:
             {
+                if ( !TableUtf8Valid( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length ) )
+                {
+                    damaged++;
+                }
                 break;
             }
             default: break;
@@ -27044,6 +27088,7 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
                 }
                 case OriginType::Note:
                 {
+                    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length );
                     break;
                 }
                 default: break;
@@ -27094,6 +27139,7 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
                     }
                     case OriginType::Note:
                     {
+                        bad |= (int) !TableUtf8Valid( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length );
                         break;
                     }
                     default: break;
@@ -27166,6 +27212,7 @@ inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
                 }
                 case OriginType::Note:
                 {
+                    bad |= (int) ( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 && !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) );
                     break;
                 }
                 default: break;
@@ -27216,6 +27263,7 @@ inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
                     }
                     case OriginType::Note:
                     {
+                        bad |= (int) ( value.history[i].origin.note.value_length >= 0 && value.history[i].origin.note.value_length <= 24 && !TableUtf8Valid( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length ) );
                         break;
                     }
                     default: break;
@@ -27289,6 +27337,10 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
                 }
                 case OriginType::Note:
                 {
+                    if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) )
+                    {
+                        damaged++;
+                    }
                     break;
                 }
                 default: break;
@@ -27340,6 +27392,10 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
                     }
                     case OriginType::Note:
                     {
+                        if ( !TableUtf8Valid( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length ) )
+                        {
+                            damaged++;
+                        }
                         break;
                     }
                     default: break;
@@ -37778,6 +37834,7 @@ inline int64_t UserMeasureBodyRetain( TableRetainIds & ids, const User & value, 
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 44, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -37786,6 +37843,7 @@ inline int64_t UserMeasureBodyRetain( TableRetainIds & ids, const User & value, 
 MESSAGEDEMO_TABLE_INLINE bool UserSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const User & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 44, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -37904,6 +37962,7 @@ inline int64_t ScriptMeasureBodyRetain( TableRetainIds & ids, const Script & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -37913,6 +37972,7 @@ inline int64_t ScriptMeasureBodyRetain( TableRetainIds & ids, const Script & val
 MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Script & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return false; }
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -38266,6 +38326,7 @@ inline int64_t InsertTextMeasureBodyRetain( TableRetainIds & ids, const InsertTe
         else { ids.truncate( mark_at ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 57, 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.text_length ) ) + ( value.text_length ); } // text
     if ( value.origin.type != OriginType::None ) // None elides — the absence of the field is the None
     {
@@ -38310,6 +38371,7 @@ inline int64_t InsertTextMeasureBodyRetain( TableRetainIds & ids, const InsertTe
                 int64_t arm_payload = 0;
                 const uint64_t arm_ref = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                 schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                if ( !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -38368,6 +38430,7 @@ inline int64_t InsertTextMeasureBodyRetain( TableRetainIds & ids, const InsertTe
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -38412,6 +38475,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
         else { ids.truncate( mark_at ); }
     }
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ) { return false; }
     if ( value.text_length > 0 )
     {
         w.header( ids.ref_at( 57, 0xfa04f4ef1995407eull ), 12 ); // text
@@ -38466,10 +38530,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                 const uint64_t arm_ref = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                 int64_t arm_payload = 0;
                 schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                if ( !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 w.header( arm_ref, 12 );
                 w.putleb( (uint64_t) arm_payload ); // note
                 schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                if ( !TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ) { return false; }
                 w.raw( value.origin.note.value, value.origin.note.value_length );
                 break;
             }
@@ -38527,6 +38593,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                         int64_t arm_payloadu = 0;
                         const uint64_t arm_refu = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         body_origins += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -38589,10 +38656,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBodyRetain( TableWriter & w, TableRe
                         const uint64_t arm_refu = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                         int64_t arm_payloadu = 0;
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         w.header( arm_refu, 12 );
                         w.putleb( (uint64_t) arm_payloadu ); // note
                         schema_assert( value.origins[elem_i].note.value_length >= 0 && value.origins[elem_i].note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                        if ( !TableUtf8Valid( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ) { return false; }
                         w.raw( value.origins[elem_i].note.value, value.origins[elem_i].note.value_length );
                         break;
                     }
@@ -40040,6 +40109,7 @@ inline int64_t OpenDocumentMeasureBodyRetain( TableRetainIds & ids, const OpenDo
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.mode != Mode::Read )
     {
@@ -40064,6 +40134,7 @@ inline int64_t OpenDocumentMeasureBodyRetain( TableRetainIds & ids, const OpenDo
 MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const OpenDocument & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return false; }
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -40265,6 +40336,7 @@ inline int64_t SaveDocumentMeasureBodyRetain( TableRetainIds & ids, const SaveDo
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.force != false ) { bytes += TableLebBytes( ids.ref_at( 51, 0xe75ad8afb3eeebe4ull ) ) + 1 + 1; } // force
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -40274,6 +40346,7 @@ inline int64_t SaveDocumentMeasureBodyRetain( TableRetainIds & ids, const SaveDo
 MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const SaveDocument & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ) { return false; }
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -40424,6 +40497,7 @@ inline int64_t TransactionMeasureBodyRetain( TableRetainIds & ids, const Transac
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x65e8d7f3474f2639ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
     if ( value.edits_count > 0 )
@@ -40553,6 +40627,7 @@ inline int64_t TransactionMeasureBodyRetain( TableRetainIds & ids, const Transac
 MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Transaction & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ) { return false; }
     if ( value.reason_length > 0 )
     {
         w.header( ids.ref_at( 19, 0x65e8d7f3474f2639ull ), 12 ); // reason
@@ -41697,6 +41772,7 @@ inline int64_t ToolMessageMeasureBodyRetain( TableRetainIds & ids, const ToolMes
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -41844,6 +41920,7 @@ inline int64_t ToolMessageMeasureBodyRetain( TableRetainIds & ids, const ToolMes
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -42040,6 +42117,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -42097,10 +42175,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             int64_t arm_payloada = 0;
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             w.header( arm_refa, 12 );
                             w.putleb( (uint64_t) arm_payloada ); // note
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; }
                             w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
                             break;
                         }
@@ -42248,6 +42328,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -42410,6 +42491,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                                     int64_t arm_payloadua = 0;
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     arm_payloadu += TableLebBytes( arm_refua ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadua ) ) + ( arm_payloadua );
                                     break;
@@ -42467,10 +42549,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                                     const uint64_t arm_refua = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                                     int64_t arm_payloadua = 0;
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     w.header( arm_refua, 12 );
                                     w.putleb( (uint64_t) arm_payloadua ); // note
                                     schema_assert( value.history[elem_i].origin.note.value_length >= 0 && value.history[elem_i].origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                                    if ( !TableUtf8Valid( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ) { return false; }
                                     w.raw( value.history[elem_i].origin.note.value, value.history[elem_i].origin.note.value_length );
                                     break;
                                 }
@@ -43872,6 +43956,7 @@ inline int64_t ToolEnvelopeMeasureBodyRetain( const Ctx & ctx, const TableNumber
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return -1; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -44041,6 +44126,7 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                             int64_t arm_payloada = 0;
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -44098,10 +44184,12 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                             const uint64_t arm_refa = ids.ref_at( 12, 0x3bf8fbbad1587cddull );
                             int64_t arm_payloada = 0;
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; } // well-formed, no zero byte (§2.6, §2.13)
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             w.header( arm_refa, 12 );
                             w.putleb( (uint64_t) arm_payloada ); // note
                             schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // storage invariant, debug only (§5.1)
+                            if ( !TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ) { return false; }
                             w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
                             break;
                         }

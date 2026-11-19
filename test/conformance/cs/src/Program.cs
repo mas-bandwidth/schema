@@ -438,6 +438,9 @@ static partial class Program
         Row<Cooktorture.TortureCook, Cooktorture.TableReport>("cooktorture", "TortureCook", () => new Cooktorture.TableReport(), Copy,
             Cooktorture.Schema.TortureCookLoad, Cooktorture.Schema.TortureCookMeasure, Cooktorture.Schema.TortureCookSave,
             Cooktorture.Schema.TortureCookFromJson, Cooktorture.Schema.TortureCookToJsonMeasure, Cooktorture.Schema.TortureCookToJson, Cooktorture.Schema.TortureCookLoadMeasure),
+        Row<Cooktorture.TortureFixedWref, Cooktorture.TableReport>("cooktorture", "TortureFixedWref", () => new Cooktorture.TableReport(), Copy,
+            Cooktorture.Schema.TortureFixedWrefLoad, Cooktorture.Schema.TortureFixedWrefMeasure, Cooktorture.Schema.TortureFixedWrefSave,
+            Cooktorture.Schema.TortureFixedWrefFromJson, Cooktorture.Schema.TortureFixedWrefToJsonMeasure, Cooktorture.Schema.TortureFixedWrefToJson),
         Row<Cooktorturewide.TortureWideCook, Cooktorturewide.TableReport>("cooktorturewide", "TortureWideCook", () => new Cooktorturewide.TableReport(), Copy,
             Cooktorturewide.Schema.TortureWideCookLoad, Cooktorturewide.Schema.TortureWideCookMeasure, Cooktorturewide.Schema.TortureWideCookSave,
             Cooktorturewide.Schema.TortureWideCookFromJson, Cooktorturewide.Schema.TortureWideCookToJsonMeasure, Cooktorturewide.Schema.TortureWideCookToJson, Cooktorturewide.Schema.TortureWideCookLoadMeasure),
@@ -1836,6 +1839,24 @@ static partial class Program
             Codec c = Find("cooktorture", "TortureCook");
             c.CookMeasure = value => Cooktorture.Schema.TortureCookCookMeasure((Cooktorture.TortureCook)value);
             c.Cook = (value, bytes, big) => Cooktorture.Schema.TortureCookCook((Cooktorture.TortureCook)value, bytes, big ? Cooktorture.TableByteOrder.Big : Cooktorture.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("cooktorture", "TortureFixedWref");
+            c.Announcement = Cooktorture.Schema.Announce().ToArray();
+            c.CookMeasure = value => Cooktorture.Schema.TortureFixedWrefCookMeasure((Cooktorture.TortureFixedWref)value);
+            c.Cook = (value, bytes, big) => Cooktorture.Schema.TortureFixedWrefCook((Cooktorture.TortureFixedWref)value, bytes, big ? Cooktorture.TableByteOrder.Big : Cooktorture.TableByteOrder.Little);
+            var ownVocabulary = new Cooktorture.TableVocabulary(); Cooktorture.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Cooktorture.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Cooktorture.TableVocabulary(); var inner = new Cooktorture.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Cooktorture.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Cooktorture.TortureFixedWref[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Cooktorture.TortureFixedWref(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Cooktorture.Schema.TortureFixedWrefLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Cooktorture.TortureFixedWref[] batch ? Cooktorture.Schema.TortureFixedWrefMeasureMessages(batch) : Cooktorture.Schema.TortureFixedWrefMeasureMessages(new Cooktorture.TortureFixedWref[] { (Cooktorture.TortureFixedWref)value });
+            c.MessageSave = (value, bytes) => value is Cooktorture.TortureFixedWref[] batch ? Cooktorture.Schema.TortureFixedWrefSaveMessages(batch, bytes) : Cooktorture.Schema.TortureFixedWrefSaveMessages(new Cooktorture.TortureFixedWref[] { (Cooktorture.TortureFixedWref)value }, bytes);
         }
         {
             Codec c = Find("cooktorturewide", "TortureWideCook");

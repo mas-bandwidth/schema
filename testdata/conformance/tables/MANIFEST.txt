@@ -400,6 +400,7 @@ cook ListNode    graphdemo ListNode testdata/conformance/tables/cook/ListNode.du
 # every visit order and almost no VALUES. This one carries a value in every
 # non-pointer leaf, so the same walk locks what a reader READS as well.
 cook SceneValued graphdemo Scene    testdata/conformance/tables/cook/SceneValued.dump
+cook AlbumValued graphdemo Album    testdata/conformance/tables/cook/AlbumValued.dump
 
 # THE COOK WRITE SIDE (docs/SPEC-TABLES.md §7.6): a runtime WRITES the cooked
 # file and the bytes are `schema cook`'s, byte for byte, in BOTH byte orders.
@@ -632,6 +633,11 @@ forgery cook_alignment_and_short       cook Scene Scene 0    0x28         8     
 forgery cook_open_forward_delta        cook Scene Scene 0    0xe8         8     0x7fffffffffffffff             -1 open   a reference slot with an enormous forward delta — cook-check's refusal, not Open's
 forgery cook_open_negative_delta       cook Scene Scene 0    0xe8         8     0xffffffffffffefc0             -1 open   a negative delta past the base — cook-check's refusal, not Open's
 forgery cook_open_directory_entry      cook Scene Scene 0    0x1030       8     0xffffffffffffffff             -1 open   a directory entry naming an offset outside the region — the attribution is not read at open
+forgery cook_open_self_cycle_delta     cook Scene Scene 0    0x0108       8     0xffffffffffffffe8             -1 open   a cyclic self-delta on ListNode.next — cook-check's cycle refusal, not O(1) Open's
+forgery cook_open_unaligned_delta      cook Scene Scene 0    0x0068       8     0x000000000000009b             -1 open   an unaligned table pointer delta — cook-check's directory refusal, not O(1) Open's
+forgery cook_open_dead_counted_tail    cook Scene Scene 0    0x0098       1     0x55                           -1 open   a non-zero byte in dead Scene.layers slot past layers_count=0 — cook-check's dead-byte refusal, not O(1) Open's
+forgery cook_open_string_unused_tail   cook Scene Scene 0    0x0044       1     0x7f                           -1 open   a non-zero byte past Scene.name used length — cook-check's dead-byte refusal, not O(1) Open's
+forgery cook_open_record_padding_slack cook Scene Scene 0    0x0064       1     0x42                           -1 open   a non-zero byte in Scene alignment padding slack — cook-check's dead-byte refusal, not O(1) Open's
 
 # THE HOSTILE-VALUE BATTERY (docs/SPEC-TABLES.md §16.2, §16.3, §17.5): one tree
 # per rule the text form states, so a divergence between the compiler's engine
@@ -1535,19 +1541,22 @@ write-refusal-message mref_text_zero       backend_conn StorePurchase testdata/c
 # writer writes nothing. The driver answers `wrote` when the text holds
 # `\u0000` at that field, and `refused` when the writer refused.
 write-refusal-json jref_zero_byte tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin  version_note bytes 610062       refused
-# ---- ROUND 2: PILLAR #2 BIDIRECTIONAL v1 <-> v2 <-> v3 VARIABLE/MESSAGE/RETAIN/KIND-31 EVOLUTION ----
+# ---- ROUND 2 & 3: PILLAR #2 BIDIRECTIONAL v1 <-> v2 <-> v3 VARIABLE/MESSAGE/RETAIN/KIND-31 EVOLUTION ----
 unit tblvarevo1 test/tables/varevo/VarEvo1.schema
 unit tblvarevo2 test/tables/varevo/VarEvo2.schema
 unit tblvarevo3 test/tables/varevo/VarEvo3.schema
 
-instance varevo_v1_full     tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
-instance varevo_v1_ping     tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin
-instance varevo_v2_full     tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
-instance varevo_v3_full     tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_full.bin
-instance varevo_v3_compat   tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
-instance varevo_v3_rollback tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin
-instance varevo1_msg        tblvarevo1 EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin
-instance varevo3_msg        tblvarevo3 EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin
+instance varevo_v1_full               tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+instance varevo_v1_ping               tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin
+instance varevo_v2_full               tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
+instance varevo_v3_full               tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_full.bin
+instance varevo_v3_compat             tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
+instance varevo_v3_rollback           tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin
+instance varevo_2hop_v3_origin        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_2hop_v3_origin.bin
+instance varevo_v3_default_containers tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_default_containers.bin
+instance varevo1_msg                  tblvarevo1 EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin
+instance varevo3_msg                  tblvarevo3 EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin
+instance varevo3_msg_notice           tblvarevo3 EvoMsg testdata/conformance/tables/wire/varevo3_msg_notice.bin
 
 cook-write varevo_v1_full testdata/conformance/tables/cook-write/varevo_v1_full.cook testdata/conformance/tables/cook-write/varevo_v1_full-be.cook
 cook-write varevo_v3_full testdata/conformance/tables/cook-write/varevo_v3_full.cook testdata/conformance/tables/cook-write/varevo_v3_full-be.cook
@@ -1563,6 +1572,26 @@ report varevo_v3_full_as_v1   tblvarevo1 EvoDoc testdata/conformance/tables/wire
 retain varevo_retain_v3_via_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin full full testdata/wire/tables/varevo_retain_v1_save.bin
 report varevo_rollback_as_v3   tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
 
+# Track C Part 1.1 — 2-Hop Multi-Generation Retention (v3 + Kind 31 -> v1 LoadRetain/SaveRetain -> v2 LoadRetain/SaveRetain -> v3):
+retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full testdata/wire/tables/varevo_2hop_after_v1.bin
+report  varevo_2hop_step2_v2_report  tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
+retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full testdata/wire/tables/varevo_2hop_after_v2.bin
+report  varevo_2hop_step3_v3_report  tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
+
+# Track C Part 1.2 — Pointer Cycles Hiding Through Unknown-Type Nodes (refused by BOTH Load and LoadRetain):
+framing varevo_cycle_root_via_unknown         tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_root_via_unknown.bin  refused -
+framing varevo_cycle_known_via_unknown        tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_known_via_unknown.bin refused -
+framing varevo_cycle_unknown_self             tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_unknown_self.bin      refused -
+framing varevo_cycle_two_unknowns             tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_two_unknowns.bin      refused -
+report  varevo_cycle_root_via_unknown_report  tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_root_via_unknown.bin
+report  varevo_cycle_known_via_unknown_report tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_known_via_unknown.bin
+report  varevo_cycle_unknown_self_report      tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_unknown_self.bin
+report  varevo_cycle_two_unknowns_report      tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_two_unknowns.bin
+
+# Track C Part 1.3 — Retained Unknown Fields Nested Inside 100%-Default Containers ([Enum]T, [N]T, [..N]T, []T, map[K]T, ?T, *T, union arm):
+retain varevo_retain_default_containers tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_default_containers.bin full full testdata/wire/tables/varevo_retain_default_containers_v1.bin
+report varevo_default_containers_as_v3  tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
+
 # Kind 31 future-major escape payloads (VERSIONING.md Rule #6): skip on framing/report, byte-exact preserve on retain, refuse truncated:
 framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    read    testdata/conformance/tables/framing/varevo_kind31_escape.json
 framing varevo_kind31_truncated tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_truncated.bin refused -
@@ -1570,39 +1599,222 @@ report  varevo_kind31_report    tblvarevo1 EvoDoc testdata/wire/tables/framing/v
 retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full testdata/wire/tables/varevo_kind31_retain_save.bin
 
 # Form-2 Message Connection Vocabulary Drift (v1 -> v3 and v3 -> v1 multi-message batch skipping unknown alert mid-batch):
-connection varevo1_conn tblvarevo1 0x0309bc5535a97f7d testdata/wire/tables/varevo1_conn.bin
-connection varevo3_conn tblvarevo3 0x3864e98d7c46eb26 testdata/wire/tables/varevo3_conn.bin
+connection varevo1_conn tblvarevo1 0x2a3013e4855f8026 testdata/wire/tables/varevo1_conn.bin
+connection varevo3_conn tblvarevo3 0x25fed5501e5d7aa5 testdata/wire/tables/varevo3_conn.bin
 message varevo1_msg varevo1_conn EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin testdata/wire/tables/varevo1_msg_message.bin
 message varevo3_msg varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin testdata/wire/tables/varevo3_msg_message.bin
+message varevo3_msg_notice varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg_notice.bin testdata/wire/tables/varevo3_msg_notice_message.bin
 message-drift varevo_msg_v1_to_v3       tblvarevo3 varevo1_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin testdata/wire/tables/varevo_msg_batch_v1.bin            testdata/wire/tables/varevo_msg_batch_v1_as_v3.bin
 message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin testdata/wire/tables/fuzz-vectors/varevo_msg_batch_v3.bin testdata/wire/tables/varevo_msg_batch_v3_as_v1.bin
 
-rewrite varevo_v1_as_v2        tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
-rewrite varevo_v1_as_v3        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
-rewrite varevo_v1_ping_as_v3   tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin
-rewrite varevo_v2_as_v3        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
-rewrite varevo_v3_compat_as_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
-rewrite varevo_rollback_as_v3  tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
-rewrite varevo_kind31_escape   tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
-rewrite varevo_kind31_report   tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
+rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+rewrite varevo_v1_ping_as_v3            tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin
+rewrite varevo_v2_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
+rewrite varevo_v3_compat_as_v1          tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
+rewrite varevo_rollback_as_v3           tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
+rewrite varevo_2hop_step2_v2_report     tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
+rewrite varevo_2hop_step3_v3_report     tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
+rewrite varevo_default_containers_as_v3 tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
+rewrite varevo_kind31_escape            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
+rewrite varevo_kind31_report            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
 
-# ---- ROUND 2: PILLAR #3 COOK & BLOCK STRUCTURAL, ALIGNMENT, PADDING & ENDIANNESS TORTURE ----
+# ---- ROUND 2 & 3: PILLAR #3 COOK & BLOCK SIGNED/UNSIGNED EXTREMES, ALIGNMENT & FORGERY TORTURE ----
 unit cooktorture     test/tables/cooktorture/CookTorture.schema
 unit cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
 
-instance torture_cook_full  cooktorture     TortureCook     testdata/conformance/tables/wire/torture_cook_full.bin
-instance torture_cook_empty cooktorture     TortureCook     testdata/conformance/tables/wire/torture_cook_empty.bin
-instance torture_wide_cook  cooktorturewide TortureWideCook testdata/conformance/tables/wire/torture_wide_cook.bin
+instance torture_cook_full          cooktorture     TortureCook      testdata/conformance/tables/wire/torture_cook_full.bin
+instance torture_cook_empty         cooktorture     TortureCook      testdata/conformance/tables/wire/torture_cook_empty.bin
+instance torture_cook_extremes      cooktorture     TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin
+instance torture_fixed_wref         cooktorture     TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin
+instance torture_fixed_wref_str     cooktorture     TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin
+instance torture_wide_cook          cooktorturewide TortureWideCook  testdata/conformance/tables/wire/torture_wide_cook.bin
+instance torture_wide_cook_extremes cooktorturewide TortureWideCook  testdata/conformance/tables/wire/torture_wide_cook_extremes.bin
 
-cook-write torture_cook_full  testdata/conformance/tables/cook-write/torture_cook_full.cook  testdata/conformance/tables/cook-write/torture_cook_full-be.cook
-cook-write torture_cook_empty testdata/conformance/tables/cook-write/torture_cook_empty.cook testdata/conformance/tables/cook-write/torture_cook_empty-be.cook
-cook-write torture_wide_cook  testdata/conformance/tables/cook-write/torture_wide_cook.cook  testdata/conformance/tables/cook-write/torture_wide_cook-be.cook
+cook-write torture_cook_full          testdata/conformance/tables/cook-write/torture_cook_full.cook          testdata/conformance/tables/cook-write/torture_cook_full-be.cook
+cook-write torture_cook_empty         testdata/conformance/tables/cook-write/torture_cook_empty.cook         testdata/conformance/tables/cook-write/torture_cook_empty-be.cook
+cook-write torture_cook_extremes      testdata/conformance/tables/cook-write/torture_cook_extremes.cook      testdata/conformance/tables/cook-write/torture_cook_extremes-be.cook
+cook-write torture_wide_cook          testdata/conformance/tables/cook-write/torture_wide_cook.cook          testdata/conformance/tables/cook-write/torture_wide_cook-be.cook
+cook-write torture_wide_cook_extremes testdata/conformance/tables/cook-write/torture_wide_cook_extremes.cook testdata/conformance/tables/cook-write/torture_wide_cook_extremes-be.cook
 
 block block_torture cooktorture testdata/wire/tables/block_torture.bin testdata/conformance/tables/block/block_torture.dump
-forgery block_torture_magic_swapped      block block_torture block_torture 0 0x0000 8 0x5343484d41424c4b -1   refuse a padded torture block of the other byte order
-forgery block_torture_byte_order         block block_torture block_torture 0 0x0010 8 0x2                -1   refuse the other byte order in the torture prologue
-forgery block_torture_array_unaligned    block block_torture block_torture 0 0x0038 8 0x81               -1   refuse an unaligned TortureRow array start
-forgery block_torture_pitch              block block_torture block_torture 0 0x0044 4 0x60               -1   refuse a wrong TortureRow pitch
-forgery block_torture_count_past_maximum block block_torture block_torture 0 0x0040 4 0x11               4096 refuse a TortureRow count past MaxTortureRows
-forgery block_torture_extent_padding     block block_torture block_torture 0 -1     0 0                  703  refuse bytes stopping inside block_torture's 64-byte rounding padding
-forgery block_torture_base_unaligned     block block_torture block_torture 1 -1     0 0                  -1   refuse an unaligned base pointer on block_torture
+forgery block_torture_magic_swapped          block block_torture block_torture 0 0x0000 8 0x5343484d41424c4b -1   refuse a padded torture block of the other byte order
+forgery block_torture_byte_order             block block_torture block_torture 0 0x0010 8 0x2                -1   refuse the other byte order in the torture prologue
+forgery block_torture_array_unaligned        block block_torture block_torture 0 0x0038 8 0xc1               -1   refuse an unaligned TortureRow array start
+forgery block_torture_array_in_projection    block block_torture block_torture 0 0x0038 8 0x40               -1   refuse a TortureRow array offset inside the TortureFrame projection
+forgery block_torture_array_past_extent      block block_torture block_torture 0 0x0038 8 0x1000             -1   refuse a TortureRow array offset past the block buffer
+forgery block_torture_pitch                  block block_torture block_torture 0 0x0044 4 0x60               -1   refuse a wrong TortureRow pitch
+forgery block_torture_count_past_maximum     block block_torture block_torture 0 0x0040 4 0x11               8192 refuse a TortureRow count past MaxTortureRows
+forgery block_torture_count_past_extent      block block_torture block_torture 0 0x0040 4 0x08               832  refuse a TortureRow count within MaxTortureRows whose rows run past the buffer
+forgery block_torture_empty_bad_stride       block block_torture block_torture 0 0x0054 4 0x20               -1   refuse a 0-row TortureEmptyRow slice carrying the wrong stride
+forgery block_torture_empty_unaligned        block block_torture block_torture 0 0x0048 8 0x341              -1   refuse a 0-row TortureEmptyRow slice carrying an unaligned offset_of
+forgery block_torture_extent_padding         block block_torture block_torture 0 -1     0 0                  831  refuse bytes stopping inside block_torture's 64-byte rounding padding
+forgery block_torture_base_unaligned         block block_torture block_torture 1 -1     0 0                  -1   refuse an unaligned base pointer on block_torture
+forgery block_torture_open_present_02        block block_torture block_torture 0 0x00f8 1 0x02               -1   open   an interior row optional present=0x02 is row-read territory, not O(1) BlockOpen's
+forgery block_torture_open_present_ff        block block_torture block_torture 0 0x00f8 1 0xff               -1   open   an interior row optional present=0xFF is row-read territory, not O(1) BlockOpen's
+forgery block_torture_open_absent_opt_slack  block block_torture block_torture 0 0x01b8 1 0x77               -1   open   an interior absent optional payload byte is row-read territory, not O(1) BlockOpen's
+forgery block_torture_open_string_tail       block block_torture block_torture 0 0x011d 1 0x5a               -1   open   an interior string(13) unused tail byte is row-read territory, not O(1) BlockOpen's
+forgery block_torture_open_bytes_tail        block block_torture block_torture 0 0x0181 1 0xa5               -1   open   an interior bytes(8) unused tail byte is row-read territory, not O(1) BlockOpen's
+forgery block_torture_open_row_padding_slack block block_torture block_torture 0 0x00c1 1 0x3c               -1   open   an interior row alignment padding byte is row-read territory, not O(1) BlockOpen's
+
+# ---- TRACK C PART 3: WRITE-REFUSAL COMPLETENESS ACROSS FORMS 1, 2, 3 & JSON ----
+
+# 3.1 Nested Non-Finite Floats (NaN, +Inf, -Inf) across []f32, [..4]f64, [2]f32, [Enum]f32, map[K]f64, ?f32, nested structs, and union float arms:
+write-refusal wref_slice_f32_nan     cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin slice_f32[0]                          float nan  refused
+write-refusal wref_slice_f32_inf     cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin slice_f32[0]                          float inf  refused
+write-refusal wref_slice_f32_neginf  cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin slice_f32[0]                          float -inf refused
+write-refusal wref_slice_f32_ok      cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin slice_f32[0]                          float 1.5  wrote
+write-refusal wref_map_f64_nan       cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin map_f64[0].value                      float nan  refused
+write-refusal wref_map_f64_neginf    cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin map_f64[0].value                      float -inf refused
+write-refusal wref_map_f64_ok        cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin map_f64[0].value                      float 5.5  wrote
+write-refusal wref_counted_f64_nan   cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    counted_f64[0]                        float nan  refused
+write-refusal wref_counted_f64_inf   cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    counted_f64[0]                        float inf  refused
+write-refusal wref_counted_f64_ok    cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    counted_f64[0]                        float 2.5  wrote
+write-refusal wref_fixed_f32_nan     cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    fixed_f32[1]                          float nan  refused
+write-refusal wref_fixed_f32_neginf  cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    fixed_f32[1]                          float -inf refused
+write-refusal wref_fixed_f32_ok      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    fixed_f32[1]                          float 3.5  wrote
+write-refusal wref_keyed_f32_nan     cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    chan_f32[1]                           float nan  refused
+write-refusal wref_keyed_f32_inf     cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    chan_f32[1]                           float inf  refused
+write-refusal wref_keyed_f32_ok      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    chan_f32[1]                           float 4.5  wrote
+write-refusal wref_opt_f32_nan       cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    opt_f32                               float nan  refused
+write-refusal wref_opt_f32_neginf    cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    opt_f32                               float -inf refused
+write-refusal wref_opt_f32_ok        cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    opt_f32                               float 6.5  wrote
+write-refusal wref_nested_f64_nan    tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin             profiles[0].precision                 float nan  refused
+write-refusal wref_nested_f64_neginf tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin             profiles[0].precision                 float -inf refused
+write-refusal wref_nested_f64_ok     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin             profiles[0].precision                 float 1.25 wrote
+write-refusal wref_nested_att_nan    tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin             profiles[0].loadout.attachments[0].power float nan  refused
+write-refusal wref_nested_att_ok     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin             profiles[0].loadout.attachments[0].power float 2.0  wrote
+write-refusal wref_union_f32_nan     cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    u_val.u_f32                           float nan  refused
+write-refusal wref_union_f32_neginf  cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    u_val.u_f32                           float -inf refused
+write-refusal wref_union_f32_ok      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin    u_val.u_f32                           float 7.5  wrote
+
+# 3.2 UTF-8 & NUL Corner Cases on Write (surrogate EDA080, overlong C0AF, >U+10FFFF F4908080, truncated E282, embedded NUL 610062):
+write-refusal wref_utf8_surrogate      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note     bytes 61EDA08062   refused
+write-refusal wref_utf8_overlong       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note     bytes 61C0AF62     refused
+write-refusal wref_utf8_outofrange     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note     bytes 61F490808062 refused
+write-refusal wref_utf8_truncated      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note     bytes 61E282       refused
+write-refusal wref_mapkey_surrogate    cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key   bytes EDA080       refused
+write-refusal wref_mapkey_overlong     cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key   bytes C0AF         refused
+write-refusal wref_mapkey_outofrange   cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key   bytes F4908080     refused
+write-refusal wref_mapkey_truncated    cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key   bytes E282         refused
+write-refusal wref_mapkey_nul          cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key   bytes 610062       refused
+write-refusal wref_mapkey_ok           cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key   bytes 6162         wrote
+write-refusal wref_strarr_surrogate    cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]       bytes EDA080       refused
+write-refusal wref_strarr_overlong     cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]       bytes C0AF         refused
+write-refusal wref_strarr_outofrange   cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]       bytes F4908080     refused
+write-refusal wref_strarr_truncated    cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]       bytes E282         refused
+write-refusal wref_strarr_nul          cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]       bytes 610062       refused
+write-refusal wref_strarr_ok           cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]       bytes 61C3A962     wrote
+write-refusal wref_unionstr_surrogate  cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str      bytes EDA080       refused
+write-refusal wref_unionstr_overlong   cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str      bytes C0AF         refused
+write-refusal wref_unionstr_outofrange cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str      bytes F4908080     refused
+write-refusal wref_unionstr_truncated  cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str      bytes E282         refused
+write-refusal wref_unionstr_nul        cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str      bytes 610062       refused
+write-refusal wref_unionstr_ok         cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str      bytes 61C3A962     wrote
+
+# 3.3 Scalar & Container Bound Overflows on Write (bits < 0 / >= 1<<k, fixed/ufixed min..max, enum ordinal, union tag, [..N]T N+1, string(N) N+1, bytes(N) N+1):
+write-refusal wref_bits_neg          tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin          weapons[0].channel int     -1       refused
+write-refusal wref_bits_zero_ok      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin          weapons[0].channel int     0        wrote
+write-refusal wref_fx32_high         scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       ticks              int     1000001  refused
+write-refusal wref_fx32_low          scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       ticks              int     -1       refused
+write-refusal wref_fx32_ok           scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       ticks              int     1000000  wrote
+write-refusal wref_fx16_high         scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       angle              int     11796481 refused
+write-refusal wref_fx16_low          scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       angle              int     -11796481 refused
+write-refusal wref_fx16_ok           scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       angle              int     11796480 wrote
+write-refusal wref_ufx16_high        scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       speed              int     65536001 refused
+write-refusal wref_ufx16_ok          scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin       speed              int     65536000 wrote
+write-refusal wref_bytes_length      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin          profiles[0].icon   length  17       refused
+write-refusal wref_bytes_length_ok   tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin          profiles[0].icon   length  16       wrote
+write-refusal wref_strarr_length     cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin str_arr[0]      length  17       refused
+write-refusal wref_strarr_length_ok  cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin str_arr[0]      length  16       wrote
+
+# Form 3 FixedSave mirrors (write-refusal-fixed):
+write-refusal-fixed fref_counted_f64_nan    cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     counted_f64[0]                           float   nan          refused
+write-refusal-fixed fref_counted_f64_neginf cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     counted_f64[0]                           float   -inf         refused
+write-refusal-fixed fref_counted_f64_ok     cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     counted_f64[0]                           float   2.5          wrote
+write-refusal-fixed fref_fixed_f32_nan      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     fixed_f32[1]                             float   nan          refused
+write-refusal-fixed fref_fixed_f32_ok       cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     fixed_f32[1]                             float   3.5          wrote
+write-refusal-fixed fref_keyed_f32_nan      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     chan_f32[1]                              float   nan          refused
+write-refusal-fixed fref_keyed_f32_ok       cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     chan_f32[1]                              float   4.5          wrote
+write-refusal-fixed fref_opt_f32_nan        cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     opt_f32                                  float   nan          refused
+write-refusal-fixed fref_opt_f32_ok         cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     opt_f32                                  float   6.5          wrote
+write-refusal-fixed fref_nested_f64_nan     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].precision                    float   nan          refused
+write-refusal-fixed fref_nested_f64_neginf  tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].precision                    float   -inf         refused
+write-refusal-fixed fref_nested_f64_ok      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].precision                    float   1.25         wrote
+write-refusal-fixed fref_nested_att_nan     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].loadout.attachments[0].power float   nan          refused
+write-refusal-fixed fref_nested_att_ok      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].loadout.attachments[0].power float   2.0          wrote
+write-refusal-fixed fref_union_f32_nan      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     u_val.u_f32                              float   nan          refused
+write-refusal-fixed fref_union_f32_neginf   cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     u_val.u_f32                              float   -inf         refused
+write-refusal-fixed fref_union_f32_ok       cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     u_val.u_f32                              float   7.5          wrote
+write-refusal-fixed fref_utf8_surrogate     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61EDA08062   refused
+write-refusal-fixed fref_utf8_overlong      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61C0AF62     refused
+write-refusal-fixed fref_utf8_outofrange    tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61F490808062 refused
+write-refusal-fixed fref_utf8_truncated     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61E282       refused
+write-refusal-fixed fref_unionstr_surrogate cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   EDA080       refused
+write-refusal-fixed fref_unionstr_overlong  cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   C0AF         refused
+write-refusal-fixed fref_unionstr_oor       cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   F4908080     refused
+write-refusal-fixed fref_unionstr_trunc     cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   E282         refused
+write-refusal-fixed fref_unionstr_nul       cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   610062       refused
+write-refusal-fixed fref_unionstr_ok        cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   61C3A962     wrote
+write-refusal-fixed fref_bits_neg           tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].channel                       int     -1           refused
+write-refusal-fixed fref_bits_zero_ok       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].channel                       int     0            wrote
+write-refusal-fixed fref_fx32_high          scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           ticks                                    int     1000001      refused
+write-refusal-fixed fref_fx32_low           scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           ticks                                    int     -1           refused
+write-refusal-fixed fref_fx32_ok            scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           ticks                                    int     1000000      wrote
+write-refusal-fixed fref_fx16_high          scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           angle                                    int     11796481     refused
+write-refusal-fixed fref_fx16_low           scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           angle                                    int     -11796481    refused
+write-refusal-fixed fref_fx16_ok            scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           angle                                    int     11796480     wrote
+write-refusal-fixed fref_ufx16_high         scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           speed                                    int     65536001     refused
+write-refusal-fixed fref_ufx16_ok           scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           speed                                    int     65536000     wrote
+write-refusal-fixed fref_bytes_length       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  17           refused
+write-refusal-fixed fref_bytes_length_ok    tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  16           wrote
+write-refusal-fixed fref_counted_f64_cnt    cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     counted_f64                              count   5            refused
+write-refusal-fixed fref_counted_f64_cnt_ok cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     counted_f64                              count   4            wrote
+
+# Form 2 SaveMessages mirrors (write-refusal-message):
+write-refusal-message mref_utf8_surrogate     backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin         sku            bytes   61EDA08062   refused
+write-refusal-message mref_utf8_overlong      backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin         sku            bytes   61C0AF62     refused
+write-refusal-message mref_utf8_outofrange    backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin         sku            bytes   61F490808062 refused
+write-refusal-message mref_utf8_truncated     backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin         sku            bytes   61E282       refused
+write-refusal-message mref_unionstr_surrogate varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   EDA080       refused
+write-refusal-message mref_unionstr_overlong  varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   C0AF         refused
+write-refusal-message mref_unionstr_oor       varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   F4908080     refused
+write-refusal-message mref_unionstr_trunc     varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   E282         refused
+write-refusal-message mref_unionstr_nul       varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   610062       refused
+write-refusal-message mref_unionstr_ok        varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   61C3A962     wrote
+write-refusal-message mref_union_tag          varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     5            refused
+write-refusal-message mref_union_tag_ok       varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     1            wrote
+write-refusal-message mref_bytes_length       backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin         session_token  length  33           refused
+write-refusal-message mref_bytes_length_ok    backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin         session_token  length  32           wrote
+
+# JSON ToJson write-refusal mirrors (write-refusal-json):
+write-refusal-json jref_slice_f32_nan      cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  slice_f32[0]                             float   nan          refused
+write-refusal-json jref_slice_f32_neginf   cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  slice_f32[0]                             float   -inf         refused
+write-refusal-json jref_map_f64_nan        cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].value                         float   nan          refused
+write-refusal-json jref_counted_f64_nan    cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     counted_f64[0]                           float   nan          refused
+write-refusal-json jref_fixed_f32_nan      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     fixed_f32[1]                             float   nan          refused
+write-refusal-json jref_keyed_f32_inf      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     chan_f32[1]                              float   inf          refused
+write-refusal-json jref_opt_f32_nan        cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     opt_f32                                  float   nan          refused
+write-refusal-json jref_nested_f64_nan     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].precision                    float   nan          refused
+write-refusal-json jref_nested_att_neginf  tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].loadout.attachments[0].power float   -inf         refused
+write-refusal-json jref_union_f32_nan      cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref.bin     u_val.u_f32                              float   nan          refused
+write-refusal-json jref_utf8_surrogate     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61EDA08062   refused
+write-refusal-json jref_utf8_overlong      tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61C0AF62     refused
+write-refusal-json jref_utf8_outofrange    tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61F490808062 refused
+write-refusal-json jref_utf8_truncated     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             bytes   61E282       refused
+write-refusal-json jref_mapkey_surrogate   cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key                           bytes   EDA080       refused
+write-refusal-json jref_mapkey_nul         cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  map_f64[0].key                           bytes   610062       refused
+write-refusal-json jref_strarr_surrogate   cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]                               bytes   EDA080       refused
+write-refusal-json jref_strarr_nul         cooktorture TortureCook      testdata/conformance/tables/wire/torture_cook_extremes.bin  str_arr[0]                               bytes   610062       refused
+write-refusal-json jref_unionstr_surrogate cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   EDA080       refused
+write-refusal-json jref_unionstr_nul       cooktorture TortureFixedWref testdata/conformance/tables/wire/torture_fixed_wref_str.bin u_val.u_str                              bytes   610062       refused
+write-refusal-json jref_bits_wide          tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].channel                       int     64           refused
+write-refusal-json jref_bits_neg           tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].channel                       int     -1           refused
+write-refusal-json jref_fx32_high          scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           ticks                                    int     1000001      refused
+write-refusal-json jref_fx16_low           scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           angle                                    int     -11796481    refused
+write-refusal-json jref_ufx16_high         scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           speed                                    int     65536001     refused
+write-refusal-json jref_enum               tabledemo   LoadoutConfig    testdata/conformance/tables/wire/loadout_full.bin           grade                                    ordinal 4            refused
+write-refusal-json jref_union_tag          tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].effect                        tag     3            refused
+write-refusal-json jref_count              tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons                                  count   9            refused
+write-refusal-json jref_length             tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             length  17           refused
+write-refusal-json jref_bytes_length       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  17           refused

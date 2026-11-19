@@ -200,6 +200,7 @@ func materialise(m *Manifest, work string) error {
 var cookShape = map[string][]string{
 	"Scene":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
 	"SceneValued": {"--ref", "head", "--chain", "ListNode", "--next", "next", "--values"},
+	"AlbumValued": {"--ref", "head", "--chain", "ListNode", "--next", "next", "--values", "--extremes"},
 	"Depot":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
 	"Album":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
 	"TreeNode":    {"--ref", "left", "--chain", "TreeNode", "--next", "left"},
@@ -465,7 +466,11 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 		// much unknown data fits the caller's local store. Retain-save checks
 		// the canonical bytes that preserve unknown data.
 		for _, rc := range m.Retains {
-			out = append(out, expectation{name: rc.Name, want: []byte("read\n"), value: rc.Value})
+			if rc.Refused {
+				out = append(out, expectation{name: rc.Name, want: []byte("refused\n"), damaged: true})
+			} else {
+				out = append(out, expectation{name: rc.Name, want: []byte("read\n"), value: rc.Value})
+			}
 		}
 	case "retain-save":
 		// AND THE BYTES THE PAIR WRITES BACK, which a counter cannot see: a

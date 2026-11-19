@@ -9272,6 +9272,7 @@ inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
@@ -9290,6 +9291,7 @@ inline int64_t StampMeasure( const Stamp & value )
 GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value )
 {
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return false; }
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -10760,6 +10762,7 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -10769,6 +10772,7 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Stamp & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return false; }
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag

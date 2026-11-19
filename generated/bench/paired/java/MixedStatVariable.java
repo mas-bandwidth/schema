@@ -559,7 +559,7 @@ public final class MixedStatVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -804,6 +804,9 @@ public final class MixedStatVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "stat_id");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.statId, 1L << 8) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.statId));
         if (!first) {
             b.append(',');
@@ -812,6 +815,9 @@ public final class MixedStatVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "delta");
         b.append(": ");
+        if ((long) v.delta < -512 || (long) v.delta > 511) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.delta));
         return first;
     }

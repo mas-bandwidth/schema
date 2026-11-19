@@ -11210,6 +11210,7 @@ inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     return bytes;
 }
@@ -11232,6 +11233,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
         w.put32( uint32_t( value.spawn_count ) );
     }
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return false; }
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner
@@ -18852,6 +18854,7 @@ inline int64_t TeamConfigMeasureBodyRetain( TableRetainIds & ids, const TeamConf
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.banner_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ) ) + 1 + TableLebBytes( (uint64_t) ( value.banner_length ) ) + ( value.banner_length ); } // banner
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -18865,6 +18868,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBodyRetain( TableWriter & w, TableReta
         w.put32( uint32_t( value.spawn_count ) );
     }
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return false; }
     if ( value.banner_length > 0 )
     {
         w.header( ids.ref_at( 108, 0xbca0dab1c7a00ccfull ), 12 ); // banner

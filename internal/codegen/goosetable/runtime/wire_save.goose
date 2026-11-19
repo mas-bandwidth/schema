@@ -475,6 +475,10 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
     }
     if d.shape == ShapeArr && d.array == ArrayKeyed { field_keyed(c, s, d, owner, ordinal); return; }
     if d.shape == ShapeStr || d.shape == ShapeText {
+        if state_of(c, s) != ValAbsent {
+            if d.shape == ShapeStr && d.bound > 0 && c.vals[s].len > d.bound { refuse(c, SaveRefuseInvalidValue); return; }
+            if !text_valid(c.data, c.vals[s].off, c.vals[s].len) { refuse(c, SaveRefuseInvalidValue); return; }
+        }
         if is_default(c, s, d) { return; }
         header(c, d.id, KindString);
         put_leb(c, c.vals[s].len as! u64);
@@ -482,6 +486,7 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
         return;
     }
     if d.shape == ShapeBytes {
+        if state_of(c, s) != ValAbsent && d.bound > 0 && c.vals[s].len > d.bound { refuse(c, SaveRefuseInvalidValue); return; }
         if is_default(c, s, d) { return; }
         header(c, d.id, KindArray);
         let n = c.vals[s].len as! u64;
@@ -563,6 +568,10 @@ fn field_simple(c: SaveCtx&, s: i64, d: FieldDesc) {
         return;
     }
     if d.shape == ShapeBytes {
+        if s >= 0 && d.bound > 0 && c.vals[s].len > d.bound {
+            refuse(c, SaveRefuseInvalidValue);
+            return;
+        }
         header(c, d.id, KindArray);
         let n = (if s < 0 { 0 } else { c.vals[s].len }) as! u64;
         put_leb(c, 1 + (leb_size(n) as! u64) + n);
@@ -582,6 +591,14 @@ fn put_text(c: SaveCtx&, s: i64, d: const FieldDesc&) {
         let def = if d.has_def { d.def_s } else { "" };
         put_leb(c, def.len as! u64);
         for b in def { put(c, b); }
+        return;
+    }
+    if d.shape == ShapeStr && d.bound > 0 && c.vals[s].len > d.bound {
+        refuse(c, SaveRefuseInvalidValue);
+        return;
+    }
+    if !text_valid(c.data, c.vals[s].off, c.vals[s].len) {
+        refuse(c, SaveRefuseInvalidValue);
         return;
     }
     put_leb(c, c.vals[s].len as! u64);
@@ -794,12 +811,15 @@ fn arm_payload(c: SaveCtx&, p: i64, a: FieldDesc) {
             for b in def { put(c, b); }
             return;
         }
+        if a.shape == ShapeStr && a.bound > 0 && c.vals[p].len > a.bound { refuse(c, SaveRefuseInvalidValue); return; }
+        if !text_valid(c.data, c.vals[p].off, c.vals[p].len) { refuse(c, SaveRefuseInvalidValue); return; }
         put_view(c, c.vals[p].off, c.vals[p].len);
         return;
     }
     if a.shape == ShapeBytes {
-        put(c, KindU8);
         let n = if state_of(c, p) == ValAbsent { 0 } else { c.vals[p].len };
+        if a.bound > 0 && n > a.bound { refuse(c, SaveRefuseInvalidValue); return; }
+        put(c, KindU8);
         put_leb(c, n as! u64);
         if n > 0 { put_view(c, c.vals[p].off, n); }
         return;
@@ -828,6 +848,7 @@ fn node_table(c: SaveCtx&) {
         let wire = c.order[k];
         let n = c.nodes[wire - 2];
         if n.blob != 0 {
+            if n.blob == KindString && !text_valid(c.data, n.off, n.len) { refuse(c, SaveRefuseInvalidValue); return; }
             // a BYTE BUFFER's record is the bytes under a reserved type id
             put_leb(c, id_ref(c, if n.blob == KindString { StringTypeId } else { BytesTypeId }));
             put_leb(c, n.len as! u64);

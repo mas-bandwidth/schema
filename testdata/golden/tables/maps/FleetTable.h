@@ -12196,6 +12196,7 @@ inline int64_t ShipConfigMeasureBody( TableIds & ids, const ShipConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     return bytes;
@@ -12214,6 +12215,7 @@ inline int64_t ShipConfigMeasure( const ShipConfig & value )
 MAPDEMO_TABLE_INLINE bool ShipConfigSaveBody( TableWriter & w, TableIds & ids, const ShipConfig & value )
 {
     schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 56, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -13351,6 +13353,7 @@ inline int64_t FleetShipsEntryMeasureBody( TableIds & ids, const FleetShipsEntry
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -13366,6 +13369,7 @@ inline int64_t FleetShipsEntryMeasureBody( TableIds & ids, const FleetShipsEntry
 MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & ids, const FleetShipsEntry & value )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -13864,6 +13868,7 @@ inline int64_t FleetLoadoutsEntryMeasureBody( const Ctx & ctx, const TableNumber
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         // value: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
@@ -13896,6 +13901,7 @@ inline bool FleetLoadoutsEntrySaveBodyFields( const Ctx & ctx, const TableNumber
     (void) ctx;
     (void) numbering;
     schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -18982,6 +18988,7 @@ inline int64_t ShipConfigMeasureBodyRetain( TableRetainIds & ids, const ShipConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -18991,6 +18998,7 @@ inline int64_t ShipConfigMeasureBodyRetain( TableRetainIds & ids, const ShipConf
 MAPDEMO_TABLE_INLINE bool ShipConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ShipConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return false; }
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 56, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -19271,6 +19279,7 @@ inline int64_t FleetShipsEntryMeasureBodyRetain( TableRetainIds & ids, const Fle
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -19287,6 +19296,7 @@ inline int64_t FleetShipsEntryMeasureBodyRetain( TableRetainIds & ids, const Fle
 MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const FleetShipsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 32 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -19807,6 +19817,7 @@ inline int64_t FleetLoadoutsEntryMeasureBodyRetain( const Ctx & ctx, const Table
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         // value: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
@@ -19840,6 +19851,7 @@ inline bool FleetLoadoutsEntrySaveBodyFieldsRetain( const Ctx & ctx, const Table
     (void) ctx;
     (void) numbering;
     schema_assert( value.key_length >= 0 && value.key_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key

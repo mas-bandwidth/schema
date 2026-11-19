@@ -589,11 +589,18 @@ public final class MixedEventVariable {
      * value; docs/SPEC-TABLES.md §16, §3.4).
      */
     public static Value fromFixed(MixedEventFixed.Value fixed) {
+        assert(fixed.type & 0xFF) <= 3;
         Value v = new Value();
         v.tag = fixed.type;
-        v.hit = MixedHitEventVariable.fromFixed(fixed.hit);
-        v.chat = MixedChatEventVariable.fromFixed(fixed.chat);
-        v.pickup = MixedPickupEventVariable.fromFixed(fixed.pickup);
+        if ((fixed.type & 0xFF) == 1) {
+            v.hit = MixedHitEventVariable.fromFixed(fixed.hit);
+        }
+        if ((fixed.type & 0xFF) == 2) {
+            v.chat = MixedChatEventVariable.fromFixed(fixed.chat);
+        }
+        if ((fixed.type & 0xFF) == 3) {
+            v.pickup = MixedPickupEventVariable.fromFixed(fixed.pickup);
+        }
         return v;
     }
 }

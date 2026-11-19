@@ -441,14 +441,18 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		high := (uint64(1) << f.Type.Width) - 1
 		fmt.Fprintf(&b, ", RangeJsonInteger = delegate (ulong raw, TableReport r) { if (raw > %dul) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } return raw; }", high)
 	}
-	if f.Required && f.HasIntRange && tableKindWidth(kind) <= 8 {
+	if f.HasIntRange && tableKindWidth(kind) <= 8 {
 		typ := csFieldType(f.Type)
 		value := strings.TrimSuffix(strings.TrimPrefix(csRawSet("v", "raw", f.Type), "v = "), ";")
-		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 		width := tableKindWidth(kind)
-		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { %s v = %s; return v >= %s && v <= %s; }", typ, value, csIntLit(f.IntMin, signed, width), csIntLit(f.IntMax, signed, width))
+		rlo, rhi, _ := ir.TableRawRange(f)
+		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { %s v = %s; return v >= %s && v <= %s; }", typ, value, csIntLit(rlo, signed, width), csIntLit(rhi, signed, width))
+	} else if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type) {
+		high := (uint64(1) << f.Type.Width) - 1
+		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { return raw <= %dul; }", high)
 	}
-	if f.Required && f.HasFloatRange {
+	if f.HasFloatRange {
 		typ := csFieldType(f.Type)
 		value := strings.TrimSuffix(strings.TrimPrefix(csRawSet("v", "raw", f.Type), "v = "), ";")
 		lit := formatFloat64
@@ -884,7 +888,7 @@ public static partial class TableWire
     {
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
-        if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
+        if (f.Counted) { System.Diagnostics.Debug.Assert(count >= f.ArrayMin && count <= f.ArrayBound); }
         if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFits(value, f)); }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
@@ -905,7 +909,7 @@ public static partial class TableWire
         {
             if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
             if (f.Optional && !f.GetPresent(value)) { continue; }
-            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
+            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
             if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
         }
         return true;

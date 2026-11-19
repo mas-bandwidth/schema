@@ -531,6 +531,7 @@ func (e *jsonEmit) writeField(ind int, base string, f *ir.Field, desc, elem stri
 	count := fmt.Sprint(slotCount(f))
 	if f.Array == ir.ArrayCounted {
 		count = pl.val + "Count"
+		e.p(ind, "if %s < %d || %s > %d { return false; }", count, f.ArrayMin, count, slotCount(f))
 	}
 	e.p(ind, "return schema_rt::json_write_array(out, %s, depth) { o, k, d => %s };", count, body)
 }

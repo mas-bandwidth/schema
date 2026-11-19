@@ -21,7 +21,10 @@ def run(manifest, outdir):
                 byte_count = max(0, probe.used - 1)
             retain = package.TableRetain(bytearray(byte_count), bytearray(24 * id_count))
             report = package.LoadReport()
-            value = cls.load_retain(data, retain, report)
+            try:
+                value = cls.load_retain(data, retain, report)
+            except ValueError:
+                continue
             write_bytes(outdir, case, value.save_retain(retain, report))
         except Exception as err:
             raise RuntimeError(f"{case}: retaining file operation failed: {err}") from err

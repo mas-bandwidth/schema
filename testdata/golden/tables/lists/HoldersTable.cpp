@@ -369,6 +369,30 @@ inline void TableJsonWideStore( void * storage, uint32_t width, TableJsonWide v 
 // a counted field's companion: a string's length, a bytes' length, a counted
 // array's count. Bounded by the declared extent on the way out, so a storage
 // invariant a caller broke cannot walk off the end of the array.
+inline bool TableJsonCountInContract( const void * base, const TableFieldInfo * f )
+{
+    if ( !f->counted || f->unbounded || f->unbounded_container )
+    {
+        return true;
+    }
+    int32_t count = 0;
+    memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
+    return count >= 0 && count <= f->array_bound;
+}
+
+inline bool TableJsonWideInContract( const void * storage, const TableFieldInfo * f )
+{
+    if ( f->wide == NULL )
+    {
+        return true;
+    }
+    const bool is_signed = TableJsonKindWideSigned( f->kind );
+    const TableJsonWide raw = TableJsonWideLoad( storage, f->elem_size, is_signed );
+    const TableJsonWide lo = { f->wide->lo[0], f->wide->lo[1] };
+    const TableJsonWide hi = { f->wide->hi[0], f->wide->hi[1] };
+    return TableJsonWideCompare( raw, lo, is_signed ) >= 0 && TableJsonWideCompare( raw, hi, is_signed ) <= 0;
+}
+
 inline int32_t TableJsonCount( const void * base, const TableFieldInfo * f )
 {
     if ( !f->counted )
@@ -1240,6 +1264,10 @@ inline bool schema_table_json_write_text_element_( TableJsonOut & out, const uin
         TableJsonWriteString( out, s, len );
         return true;
     }
+    if ( !TableJsonCountInContract( element, value ) )
+    {
+        return false;
+    }
     TableJsonWriteString( out, (const char *) val_storage, TableJsonCount( element, value ) );
     return true;
 }
@@ -1342,6 +1370,19 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         out.put( ']' );
         return true;
     }
+    if ( f->has_range && f->kind >= 2 && f->kind <= 9 )
+    {
+        if ( f->kind <= 5 )
+        {
+            const int64_t val = TableJsonGetSigned( storage, f->elem_size );
+            if ( val < f->range_int_min || val > f->range_int_max ) { return false; }
+        }
+        else
+        {
+            const uint64_t val = TableJsonGetRaw( storage, f->elem_size );
+            if ( val < f->range_uint_min || val > f->range_uint_max ) { return false; }
+        }
+    }
     switch ( f->kind )
     {
         case 36: // a timestamp: RFC 3339 §5.6's date-time, in UTC (§2.11, §16.2)
@@ -1353,12 +1394,14 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         {
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
+            if ( f->has_range && ( v < (float) f->range_min || v > (float) f->range_max ) ) { return false; }
             return TableJsonWriteFloat( out, (double) v, true );
         }
         case 11:
         {
             double v = 0.0;
             memcpy( &v, storage, sizeof( v ) );
+            if ( f->has_range && ( v < f->range_min || v > f->range_max ) ) { return false; }
             return TableJsonWriteFloat( out, v, false );
         }
         case 2:
@@ -1376,6 +1419,7 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         default:
             if ( TableJsonKindWide( f->kind ) )
             {
+                if ( !TableJsonWideInContract( storage, f ) ) { return false; }
                 const bool string = TableJsonKindWideText( f );
                 if ( string ) { out.put( '"' ); }
                 TableJsonWriteWide( out, storage, f );
@@ -1405,6 +1449,10 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( TableJsonIsList( f ) )
     {
         return TableJsonWriteList( out, (const void *) storage, f, depth );
+    }
+    if ( !TableJsonCountInContract( base, f ) )
+    {
+        return false;
     }
     if ( f->text_list != 0 )
     {

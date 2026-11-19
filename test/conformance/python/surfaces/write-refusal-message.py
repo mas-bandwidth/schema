@@ -6,7 +6,11 @@ from _common import absent, entries, read_bytes, root_class, unit_package, write
 def _target(value, path):
     node = value
     for part in path.replace("[", ".").replace("]", "").split("."):
-        node = node[int(part)] if part.isdigit() else getattr(node, part)
+        if part.isdigit():
+            idx = int(part)
+            node = node._values[idx] if hasattr(node, "_values") else node[idx]
+        else:
+            node = getattr(node, part)
     return node
 
 
@@ -24,28 +28,34 @@ def run(manifest, outdir):
         value = cls.load(read_bytes(wire))
         parts = path.replace("[", ".").replace("]", "").split(".")
         owner = _target(value, ".".join(parts[:-1])) if len(parts) > 1 else value
-        current = owner[int(parts[-1])] if parts[-1].isdigit() else getattr(owner, parts[-1])
+        last = parts[-1]
+        if last.isdigit():
+            slots = owner._values if hasattr(owner, "_values") else owner
+            current = slots[int(last)]
+        else:
+            current = getattr(owner, last)
         if kind in ("int", "ordinal"):
             converted = int(token)
+        elif kind == "tag":
+            u = type(current)()
+            u.type = int(token)
+            converted = u
         elif kind == "length":
             converted = "x" * int(token) if isinstance(current, str) else bytes(int(token))
         elif kind == "float":
             converted = float(token)
         elif kind == "bytes":
-            converted = bytes.fromhex(token)
-            if isinstance(current, str):
-                try:
-                    converted = converted.decode("utf-8")
-                except UnicodeDecodeError:
-                    pass
+            raw = bytes.fromhex(token)
+            converted = raw.decode("utf-8", "surrogateescape") if isinstance(current, str) else raw
         elif kind == "bool":
             converted = token.lower() in ("true", "1")
         else:
             converted = token
-        if parts[-1].isdigit():
-            owner[int(parts[-1])] = converted
+        if last.isdigit():
+            slots = owner._values if hasattr(owner, "_values") else owner
+            slots[int(last)] = converted
         else:
-            setattr(owner, parts[-1], converted)
+            setattr(owner, last, converted)
         refused = []
         for verb in (message.measure_messages, message.save_messages):
             try:

@@ -793,6 +793,7 @@ public static class TableJson
 
     static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
     {
+        if (f.Counted && (f.GetCount(value) < f.ArrayMin || f.GetCount(value) > f.ArrayBound)) { return false; }
         if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 12 && !f.TextList)

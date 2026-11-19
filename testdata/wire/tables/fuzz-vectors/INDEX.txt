@@ -362,3 +362,8 @@ region_empty_wire_refused featurewitnesses Root testdata/wire/tables/fuzz-vector
 store_batch3_message backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/store_batch3_message.bin message
 # 3-body Form-2 message batch on tblvarevo3 EvoMsg ([beat, alert, telemetry])
 varevo_msg_batch_v3 tblvarevo3 EvoMsg testdata/wire/tables/fuzz-vectors/varevo_msg_batch_v3.bin message
+# Pointer cycles hiding through unknown-type nodes (Track C Part 1.2):
+varevo_cycle_root_via_unknown  tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_root_via_unknown.bin
+varevo_cycle_known_via_unknown tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_known_via_unknown.bin
+varevo_cycle_unknown_self      tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_unknown_self.bin
+varevo_cycle_two_unknowns      tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_cycle_two_unknowns.bin

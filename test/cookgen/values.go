@@ -24,10 +24,11 @@ import (
 
 // filler writes one record's leaves.
 type filler struct {
-	unit *ir.Unit
-	ord  binary.ByteOrder
-	seed uint64
-	leaf uint64 // bumped per leaf, so two fields of one record differ
+	unit     *ir.Unit
+	ord      binary.ByteOrder
+	seed     uint64
+	leaf     uint64 // bumped per leaf, so two fields of one record differ
+	extremes bool
 }
 
 // next is the raw number a leaf starts from: a pure function of the seed and
@@ -64,14 +65,29 @@ func (f *filler) fillRecord(at []byte, st *ir.Struct) error {
 			}
 			f.putInt(at, pieces[1].Offset, 4, uint64(used))
 		case facts.IsArray:
-			for s := int64(0); s < facts.ArrayBound; s++ {
+			limit := facts.ArrayBound
+			var countVal uint64
+			if facts.Counted {
+				if !f.extremes {
+					buf := make([]byte, len(at))
+					for s := int64(0); s < facts.ArrayBound; s++ {
+						if err := f.fillSlot(buf, fl.Offset+s*facts.ElemSize, field); err != nil {
+							return err
+						}
+					}
+					countVal = f.next() % uint64(facts.ArrayBound+1)
+					copy(at[fl.Offset:fl.Offset+int64(countVal)*facts.ElemSize], buf[fl.Offset:fl.Offset+int64(countVal)*facts.ElemSize])
+					f.putInt(at, facts.CountOffset, 4, countVal)
+					continue
+				}
+				countVal = f.next() % uint64(facts.ArrayBound+1)
+				limit = int64(countVal)
+				f.putInt(at, facts.CountOffset, 4, countVal)
+			}
+			for s := int64(0); s < limit; s++ {
 				if err := f.fillSlot(at, fl.Offset+s*facts.ElemSize, field); err != nil {
 					return err
 				}
-			}
-			if facts.Counted {
-				// a counted array's live count, inside its bound
-				f.putInt(at, facts.CountOffset, 4, f.next()%uint64(facts.ArrayBound+1))
 			}
 		default:
 			if err := f.fillSlot(at, fl.Offset, field); err != nil {
@@ -135,6 +151,16 @@ func (f *filler) bounded(field *ir.Field, width int64, signed bool) uint64 {
 		if hi >= lo {
 			span := uint64(hi-lo) + 1
 			return uint64(lo + int64(raw%span))
+		}
+	}
+	if f.extremes {
+		if width == 1 && !signed {
+			choices := []uint64{0x00, 0x7F, 0x80, 0xFE, 0xFF}
+			return choices[raw%uint64(len(choices))]
+		}
+		if width == 4 && signed {
+			choices := []int32{-2147483648, -32768, -128, -1, 0, 127, 32767, 2147483647}
+			return uint64(uint32(choices[raw%uint64(len(choices))]))
 		}
 	}
 	if width >= 8 {

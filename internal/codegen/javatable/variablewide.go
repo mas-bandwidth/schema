@@ -126,7 +126,8 @@ func writeVariableWideJsonRead(b *strings.Builder, f *ir.Field, expr string, arr
 	b.WriteString("}\n")
 }
 func variableWideJson(f *ir.Field, expr string) string {
-	text := fmt.Sprintf("TableJson.wideText(%s,%d,%t)", variableRawExpr(f, expr), f.Type.FracBits, f.Type.Kind == ir.TFixed)
+	lo, hi := variableRawBounds(f)
+	text := fmt.Sprintf("TableJson.wideText(%s,%s,%s,%d,%t)", variableRawExpr(f, expr), lo, hi, f.Type.FracBits, f.Type.Kind == ir.TFixed)
 	if f.Type.Width > 32 {
 		return `"\"" + ` + text + ` + "\""`
 	}
@@ -162,6 +163,10 @@ const variableWideJsonRuntime = `
         if(token.charAt(i)<'1'||token.charAt(i)>'9')return false;
         for(;i<token.length();i++){char d=token.charAt(i);if(d<'0'||d>'9')return false;}
         return true;
+    }
+    static String wideText(java.math.BigInteger raw,java.math.BigInteger lo,java.math.BigInteger hi,int fraction,boolean fixed){
+        if(raw.compareTo(lo)<0||raw.compareTo(hi)>0)throw new Refused("out_of_range");
+        return wideText(raw,fraction,fixed);
     }
     static String wideText(java.math.BigInteger raw,int fraction,boolean fixed){
         if(!fixed)return raw.toString();String text=new java.math.BigDecimal(raw).divide(new java.math.BigDecimal(java.math.BigInteger.ONE.shiftLeft(fraction))).stripTrailingZeros().toPlainString();

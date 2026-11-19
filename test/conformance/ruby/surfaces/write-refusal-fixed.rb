@@ -31,6 +31,23 @@ def self.assign_fixed(pkg, root_val, spec, path, rule, token)
     end
   end
   name = parts[-1]
+  if name.match?(/\A\d+\z/)
+    idx = name.to_i
+    idx += 1 if owner.class.name.end_with?('KeyedArray')
+    field = current['children'][0]
+    previous = owner[idx]
+    assigned = case rule
+               when 'int', 'ordinal' then Integer(token, 10)
+               when 'float' then RubyConformance.parse_float_token(token)
+               when 'length' then field['shape'] == 'string' ? ('x' * Integer(token, 10)) : ("\x00".b * Integer(token, 10))
+               when 'bytes'
+                 raw = [token].pack('H*')
+                 field['shape'] == 'string' ? raw.dup.force_encoding(::Encoding::UTF_8) : raw
+               else raise ArgumentError, "unknown indexed fixed-write recipe #{rule}"
+               end
+    owner[idx] = assigned
+    return
+  end
   field = current['children'].find { |f| f['name'] == name }
   previous = owner.public_send(name.to_sym)
   case rule

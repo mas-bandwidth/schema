@@ -1691,7 +1691,7 @@ public final class BenchMixedVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -2131,6 +2131,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "sequence");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.sequence, 1L << 16) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.sequence));
         if (!first) {
             b.append(',');
@@ -2139,6 +2142,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "ack_sequence");
         b.append(": ");
+        if ((long) v.ackSequence < 0 || (long) v.ackSequence > 65535) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.ackSequence));
         if (!first) {
             b.append(',');
@@ -2147,6 +2153,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "ack_bits");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.ackBits, 1L << 32) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.ackBits));
         if (!first) {
             b.append(',');
@@ -2173,6 +2182,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "nonce");
         b.append(": ");
+        if (Long.compareUnsigned(v.nonce, 0L) < 0
+                || Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) > 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append('"');
         b.append(Long.toUnsignedString(v.nonce));
         b.append('"');
@@ -2183,6 +2196,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "world_time");
         b.append(": ");
+        if (v.worldTime < -1000000000000L || v.worldTime > 1000000000000L) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append('"');
         b.append(Long.toString(v.worldTime));
         b.append('"');
@@ -2193,6 +2209,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "frame_tick");
         b.append(": ");
+        if (Long.compareUnsigned(v.frameTick, 1L << 48) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append('"');
         b.append(Long.toUnsignedString(v.frameTick));
         b.append('"');
@@ -2203,7 +2222,13 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "server_time");
         b.append(": ");
-        b.append(TableJson.wideText(java.math.BigInteger.valueOf(v.serverTime), 8, true));
+        b.append(
+                TableJson.wideText(
+                        java.math.BigInteger.valueOf(v.serverTime),
+                        new java.math.BigInteger("0"),
+                        new java.math.BigInteger("16776960"),
+                        8,
+                        true));
         if (!first) {
             b.append(',');
         }
@@ -2211,6 +2236,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "entities");
         b.append(": ");
+        if (v.entities.size() < 1 || v.entities.size() > 8) {
+            throw new TableJson.Refused("count_over_bound");
+        }
         if (v.entities.isEmpty()) {
             b.append("[]");
         } else {
@@ -2232,6 +2260,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "stats");
         b.append(": ");
+        if (v.stats.size() < 0 || v.stats.size() > 80) {
+            throw new TableJson.Refused("count_over_bound");
+        }
         if (v.stats.isEmpty()) {
             b.append("[]");
         } else {
@@ -2264,6 +2295,9 @@ public final class BenchMixedVariable {
         {
             List<Integer> padded = new ArrayList<>();
             for (int j = 0; j < 4; j++) padded.add(j < v.loadout.size() ? v.loadout.get(j) : 0);
+            if (padded.size() > 4) {
+                throw new TableJson.Refused("count_over_bound");
+            }
             if (padded.isEmpty()) {
                 b.append("[]");
             } else {
@@ -2286,6 +2320,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "player_name");
         b.append(": ");
+        if (TableVariable.utf8Len(v.playerName) > 15L) {
+            throw new TableJson.Refused("length_over_bound");
+        }
         TableJson.esc(b, v.playerName);
         if (!first) {
             b.append(',');
@@ -2294,6 +2331,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "payload");
         b.append(": ");
+        if (v.payload.length > 16) {
+            throw new TableJson.Refused("length_over_bound");
+        }
         TableJson.esc(b, java.util.Base64.getEncoder().encodeToString(v.payload));
         if (!first) {
             b.append(',');
@@ -2343,7 +2383,7 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "wide_key");
         b.append(": ");
         b.append(
-                "\"" + TableJson.wideText(TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false), 0, false) + "\"");
+                "\"" + TableJson.wideText(TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false), new java.math.BigInteger("0"), new java.math.BigInteger("340282366920938463463374607431768211455"), 0, false) + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2352,7 +2392,7 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "flux");
         b.append(": ");
         b.append(
-                "\"" + TableJson.wideText(TableVariable.wide(v.flux.hi, v.flux.lo, true), 0, false) + "\"");
+                "\"" + TableJson.wideText(TableVariable.wide(v.flux.hi, v.flux.lo, true), new java.math.BigInteger("-1267650600228229401496703205376"), new java.math.BigInteger("1267650600228229401496703205376"), 0, false) + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2362,7 +2402,11 @@ public final class BenchMixedVariable {
         b.append(": ");
         b.append(
                 TableJson.wideText(
-                        java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)), 8, true));
+                        java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)),
+                        new java.math.BigInteger("0"),
+                        new java.math.BigInteger("64000"),
+                        8,
+                        true));
         if (!first) {
             b.append(',');
         }
@@ -2370,6 +2414,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "crc_hint");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.crcHint, 1L << 24) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.crcHint));
         if (!first) {
             b.append(',');
@@ -2386,6 +2433,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "extra");
         b.append(": ");
+        if ((long) v.extra < 0 || (long) v.extra > 255) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.extra));
         if (!first) {
             b.append(',');
@@ -2394,6 +2444,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "idle_ticks");
         b.append(": ");
+        if ((long) v.idleTicks < 0 || (long) v.idleTicks > 15) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.idleTicks));
         return first;
     }
@@ -3284,9 +3337,11 @@ public final class BenchMixedVariable {
         v.worldTime = fixed.worldTime;
         v.frameTick = fixed.frameTick;
         v.serverTime = fixed.serverTime;
+        assert fixed.entitiesCount >= 1 && fixed.entitiesCount <= 8;
         for (int i = 0; i < fixed.entitiesCount; i++) {
             v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
         }
+        assert fixed.statsCount >= 0 && fixed.statsCount <= 80;
         for (int i = 0; i < fixed.statsCount; i++) {
             v.stats.add(MixedStatVariable.fromFixed(fixed.stats[i]));
         }
@@ -3294,8 +3349,8 @@ public final class BenchMixedVariable {
         for (int i = 0; i < fixed.loadout.length; i++) {
             v.loadout.add((fixed.loadout[i] & 0xFF));
         }
-        v.playerName =
-                new String(fixed.playerName, 0, fixed.playerNameLength, StandardCharsets.UTF_8);
+        v.playerName = TableVariable.utf8FromFixed(fixed.playerName, fixed.playerNameLength);
+        assert fixed.payloadLength >= 0 && fixed.payloadLength <= fixed.payload.length;
         v.payload = java.util.Arrays.copyOf(fixed.payload, fixed.payloadLength);
         v.aimX = fixed.aimX;
         v.aimY = fixed.aimY;

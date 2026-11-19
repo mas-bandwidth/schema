@@ -143,12 +143,29 @@ end
 -- element-array and map-slot clauses; arrays gathers every array and blob
 -- placed in that node, which node tests for overlap once at its end. All reset
 -- per node.
+local function zero_range(data, from, stop)
+  if from >= stop then return true end
+  if stop - from <= 8 then
+    for pos = from + 1, stop do
+      if data:byte(pos) ~= 0 then return false end
+    end
+    return true
+  end
+  return string.find(string.sub(data, from + 1, stop), "[^\0]") == nil
+end
+
 local function new_scan(h, dir)
+  local edges = {}
+  for i = 1, #dir do
+    edges[i] = {}
+  end
   return {
     h = h,
     data = string.sub(h.bytes, h.data_offset + 1, h.data_offset + h.data_length),
     dir = dir,
     by_offset = nil,
+    cur_slot = 0,
+    edges = edges,
   }
 end
 
@@ -171,6 +188,7 @@ local function array_extent(at, delta, count, size, base, extent)
 end
 
 local function placed_array(s, at, size, align)
+  if not zero_range(s.data, at + 12, at + 16) then return nil end
   local delta = u64(s.data, at)
   local count = i32(s.data, at + 8)
   if count < 0 then return nil end
@@ -180,7 +198,7 @@ local function placed_array(s, at, size, align)
   end
   if count == 0 then return nil end
   local start, finish = array_extent(at, delta, count, size, s.base, s.extent)
-  if start == nil then return nil end
+  if start == nil or start < s.record_end then return nil end
   if start % align ~= 0 then return nil end
   s.arrays[#s.arrays + 1] = { start = start, finish = finish }
   return start, count
@@ -195,7 +213,7 @@ local function text_blob(s, at)
   local delta = u64(s.data, at)
   if delta == 0 then return 0, 0 end
   local start = array_extent(at, delta, 1, BLOB_HEADER, s.base, s.extent)
-  if start == nil or start % BLOB_ALIGN ~= 0 then return nil end
+  if start == nil or start < s.record_end or start % BLOB_ALIGN ~= 0 then return nil end
   local length = u32(s.data, start)
   if length <= 0 then return nil end
   local finish
@@ -208,6 +226,7 @@ local function text_slot(s, at)
   local start, length, finish = text_blob(s, at)
   if start == nil then return false end
   if length == 0 then return true end
+  if not zero_range(s.data, start + 4, start + BLOB_HEADER) then return false end
   if s.data:byte(start + BLOB_HEADER + length + 1) ~= 0 then return false end
   s.arrays[#s.arrays + 1] = { start = start, finish = finish }
   return true
@@ -219,7 +238,51 @@ local function companion(s, at, bound)
   return true
 end
 
-local record, field, element, ref, key_order
+local record, field, field_span, element, ref, key_order
+
+local function enum_width(f)
+  local n = #(f.variants or {})
+  if n <= 0xff then return 1 end
+  if n <= 0xffff then return 2 end
+  if n <= 0xffffffff then return 4 end
+  return 8
+end
+
+local function field_value_end(T, at, f)
+  local sh = f.shape
+  if sh == "string" and f.unbounded then
+    return at + 8
+  elseif sh == "string" or sh == "bytes" then
+    return at + f.companion + 4
+  elseif sh == "array" then
+    if f.list then return at + 16 end
+    if f.fixed or f.keyed ~= nil then return at + (f.elem_step or 0) * (f.bound or 0) end
+    return at + f.companion + 4
+  elseif sh == "map" then
+    return at + 16
+  elseif sh == "pointer" or sh == "string_blob" or sh == "bytes_blob" then
+    return at + 8
+  elseif sh == "table" then
+    local d = T.Tables[f.target]
+    return at + (d and d.size or 0)
+  elseif sh == "union" then
+    local u = T.Unions[f.target]
+    return at + (u and u.size or 0)
+  elseif sh == "bool" then
+    return at + 1
+  elseif sh == "float" then
+    return at + (f.f32 and 4 or 8)
+  elseif sh == "flags" then
+    return at + 8
+  elseif sh == "enum" then
+    return at + enum_width(f)
+  elseif sh == "int" then
+    return at + f.width
+  elseif sh == "wide" then
+    return at + 16
+  end
+  return at
+end
 
 -- A REFERENCE (§7.4 clause 1): zero is null; any other delta resolves to
 -- slot + delta, which the directory must NAME, and the entry's type id must be
@@ -240,7 +303,12 @@ ref = function(s, at, f)
   else
     want = f.target_id
   end
-  return s.dir[slot].type_id == want
+  if s.dir[slot].type_id ~= want then return false end
+  if f.shape == "pointer" then
+    local list = s.edges[s.cur_slot]
+    list[#list + 1] = slot
+  end
+  return true
 end
 
 -- A UNION TAG (§7.4 clause 3): the one field VALUE the scan reads, because it
@@ -260,13 +328,20 @@ local function union(s, at, f)
   else
     tag = string.unpack("<I8", s.data, at + 1)
   end
-  if tag == 0 then return true end
+  if tag == 0 then return zero_range(s.data, at + un.tag, at + un.size) end
   if tag > #un.arms then return false end
   local arm = un.arms[tag]
-  if arm.field == nil then return true end
+  if arm.field == nil then return zero_range(s.data, at + un.tag, at + un.size) end
+  if not zero_range(s.data, at + un.tag, at + un.arm_offset) then return false end
   local armAt = at + un.arm_offset
-  if arm.field.shape == "table" then return record(s, armAt, s.h.T.Tables[arm.field.target]) end
-  return field(s, armAt, arm.field)
+  if arm.field.shape == "table" then
+    local st = s.h.T.Tables[arm.field.target]
+    if st == nil or not record(s, armAt, st) then return false end
+    return zero_range(s.data, armAt + st.size, at + un.size)
+  end
+  local ok, armEnd = field_span(s, armAt, arm.field)
+  if not ok then return false end
+  return zero_range(s.data, armEnd, at + un.size)
 end
 
 -- one ELEMENT of an array (§7.4): a pointer's slot, a record, or a union's
@@ -274,6 +349,7 @@ end
 -- nothing.
 element = function(s, at, elem)
   if elem == nil then return true end
+  if elem.shape == "bool" then return s.data:byte(at + 1) <= 1 end
   if elem.shape == "float" then
     -- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the check is the cook's
     -- strict validator (§7), and it refuses a NaN or an infinity on its raw
@@ -295,7 +371,11 @@ element = function(s, at, elem)
   elseif elem.shape == "string" and elem.unbounded then
     return text_slot(s, at)
   elseif elem.shape == "string" or elem.shape == "bytes" then
-    return companion(s, at + elem.companion, elem.bound)
+    local buf_end = at + elem.bound + (elem.shape == "string" and 1 or 0)
+    local comp_at = at + elem.companion
+    if not zero_range(s.data, buf_end, comp_at) or not companion(s, comp_at, elem.bound) then return false end
+    local used = i32(s.data, comp_at)
+    return zero_range(s.data, at + used, buf_end)
   elseif elem.shape == "table" then
     return record(s, at, s.h.T.Tables[elem.target])
   elseif elem.shape == "union" then
@@ -400,28 +480,47 @@ end
 
 -- one FIELD (§7.4): map slot, pointer slot, count companion, bounded or
 -- keyed array, element array, or a scalar that steers nothing.
-field = function(s, at, f)
-  if f == nil then return true end
+field_span = function(s, at, f)
+  if f == nil then return true, at end
+  local val_end = field_value_end(s.h.T, at, f)
+  local finish = val_end
+  if f.optional then
+    finish = val_end + 1
+    local p = s.data:byte(val_end + 1)
+    if p > 1 then return false, 0 end
+    if p == 0 then return zero_range(s.data, at, val_end), finish end
+  end
   local shape = f.shape
   if shape == "map" then
-    return map_slot(s, at, f)
+    return map_slot(s, at, f), finish
   elseif shape == "pointer" or shape == "string_blob" or shape == "bytes_blob" then
-    return ref(s, at, f)
+    return ref(s, at, f), finish
   end
   if shape == "array" then
-    if f.list then return list(s, at, f) end
+    if f.list then return list(s, at, f), finish end
     local n = f.bound
-    if f.fixed or f.keyed ~= nil then
-      if not slots(s, at, f, n) then return false end
-    else
-      if not slots(s, at, f, n) then return false end
-      if not companion(s, at + f.companion, f.bound) then return false end
-    end
-    return true
+    if f.fixed or f.keyed ~= nil then return slots(s, at, f, n), finish end
+    local arr_end = at + f.elem_step * n
+    local comp_at = at + f.companion
+    if not zero_range(s.data, arr_end, comp_at) or not companion(s, comp_at, n) then return false, 0 end
+    local used = i32(s.data, comp_at)
+    if not slots(s, at, f, used) then return false, 0 end
+    return zero_range(s.data, at + used * f.elem_step, arr_end), finish
   end
-  if shape == "string" and f.unbounded then return text_slot(s, at) end
-  if shape == "string" or shape == "bytes" then return companion(s, at + f.companion, f.bound) end
-  return element(s, at, f)
+  if shape == "string" and f.unbounded then return text_slot(s, at), finish end
+  if shape == "string" or shape == "bytes" then
+    local buf_end = at + f.bound + (shape == "string" and 1 or 0)
+    local comp_at = at + f.companion
+    if not zero_range(s.data, buf_end, comp_at) or not companion(s, comp_at, f.bound) then return false, 0 end
+    local used = i32(s.data, comp_at)
+    return zero_range(s.data, at + used, buf_end), finish
+  end
+  return element(s, at, f), finish
+end
+
+field = function(s, at, f)
+  local ok = field_span(s, at, f)
+  return ok
 end
 
 -- one RECORD's declaration: every field, including those nested by value, at
@@ -429,10 +528,15 @@ end
 -- nested by value").
 record = function(s, base, st)
   if st == nil then return false end
+  local cursor = base
   for _, f in ipairs(st.fields) do
-    if not field(s, base + f.at, f) then return false end
+    local f_at = base + f.at
+    if not zero_range(s.data, cursor, f_at) then return false end
+    local ok, f_end = field_span(s, f_at, f)
+    if not ok then return false end
+    cursor = f_end
   end
-  return true
+  return zero_range(s.data, cursor, base + st.size)
 end
 
 -- NO TWO ARRAYS IN A NODE OVERLAP (§7.4 clauses 4 and 5, §2.13.1): the lists,
@@ -459,12 +563,15 @@ end
 -- clause 2).
 local function node(s, base, extent, type_id, st)
   if st == nil then
+    if not zero_range(s.data, base + 4, base + BLOB_HEADER) then return false end
     local length = u32(s.data, base)
     local need = BLOB_HEADER + length
     if type_id == s.h.T.StringBlobTypeId then need = need + 1 end
-    return need <= extent
+    if need > extent then return false end
+    if type_id == s.h.T.StringBlobTypeId and s.data:byte(base + BLOB_HEADER + length + 1) ~= 0 then return false end
+    return zero_range(s.data, base + need, base + extent)
   end
-  s.base, s.extent, s.arrays = base, base + extent, {}
+  s.base, s.record_end, s.extent, s.arrays = base, base + st.size, base + extent, {}
   local ok = record(s, base, st)
   -- An overlap among the arrays placed before a failing clause is the refusal
   -- a walk that tested each placement would have met first: bad_layout.
@@ -472,7 +579,14 @@ local function node(s, base, extent, type_id, st)
     s.nonFinite = false
     return false
   end
-  return ok
+  if not ok then return false end
+  local cursor = s.record_end
+  for _, a in ipairs(s.arrays) do
+    if not zero_range(s.data, cursor, math.min(a.start, s.extent)) then return false end
+    if a.finish > cursor then cursor = a.finish end
+  end
+  if cursor < s.extent and not zero_range(s.data, cursor, s.extent) then return false end
+  return true
 end
 
 -- PASS TWO (§7.4): every node, in directory order, and no reference is
@@ -484,12 +598,27 @@ local function scan(h, dir)
     by_id[d.type_id] = d
   end
   for i, e in ipairs(dir) do
+    s.cur_slot = i
     local extent = h.data_length - e.offset
     if i < #dir then extent = dir[i + 1].offset - e.offset end
     if not node(s, e.offset, extent, e.type_id, by_id[e.type_id]) then
       if s.nonFinite then return "non_finite_float" end
       return "bad_layout"
     end
+  end
+  local color = {}
+  local function has_cycle(u)
+    color[u] = 1
+    for _, v in ipairs(s.edges[u]) do
+      local c = color[v]
+      if c == 1 then return true end
+      if c == nil and has_cycle(v) then return true end
+    end
+    color[u] = 2
+    return false
+  end
+  for i = 1, #dir do
+    if color[i] == nil and has_cycle(i) then return "bad_layout" end
   end
   return nil
 end
@@ -533,6 +662,7 @@ function C.Check(T, name, bytes, base_offset)
   -- oracle's first run found Check opening a cook whose alignment word had
   -- been forged to a larger power of two.
   if h.data_length % h.alignment ~= 0 then return nil, "bad_layout" end
+  if not zero_range(h.bytes, HEADER_BYTES, h.data_offset) then return nil, "bad_layout" end
   local dir, dw = directory(h)
   if dir == nil then return nil, dw end
   local cw = check_directory(h, dir)

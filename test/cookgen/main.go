@@ -41,6 +41,7 @@ func main() {
 	nextField := flag.String("next", "next", "the chain table's own forward reference")
 	byteOrder := flag.String("byte-order", "little", "little or big")
 	values := flag.Bool("values", false, "fill every non-pointer leaf with deterministic values (docs/SPEC-TABLES.md §7.5)")
+	extremes := flag.Bool("extremes", false, "include signed/unsigned boundary extremes in leaf values")
 	flag.Parse()
 	if *out == "" {
 		fatal("cookgen needs --out <file>")
@@ -111,7 +112,7 @@ func main() {
 	// writes is one `schema cook-check` passes rather than merely one that
 	// opens.
 	rootRec := make([]byte, rootLayout.Size)
-	fill := &filler{unit: u, ord: ord}
+	fill := &filler{unit: u, ord: ord, extremes: *extremes}
 	if *values {
 		if err := fill.fillRecord(rootRec, root); err != nil {
 			fatal("%s: %v", root.Name, err)

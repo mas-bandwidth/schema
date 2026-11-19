@@ -171,7 +171,7 @@ class _Keyed:
                 if elem.is_default(current):
                     _rollback(ctx, slot_mark)  # a default slot elides
                     continue
-                if elem.codec == "enum":
+                if elem.codec in ("enum", "float32", "float64"):
                     codec = cast(kinds._ElementKind, kinds._REGISTRY[elem.codec])
                     codec.write_element(Writer(element), elem, current, ctx)
                 else:
@@ -227,7 +227,7 @@ def _write_retain(w: Any, fd: FieldDesc, elem: FieldDesc, values: list[Any], ctx
                 _rollback(ctx, ids_slot)
                 w.truncate(start_slot)
                 continue
-        elif elem.codec == "enum":
+        elif elem.codec in ("enum", "float32", "float64"):
             codec = cast(kinds._ElementKind, kinds._REGISTRY[elem.codec])
             codec.write_element(w, elem, current, ctx)
         else:

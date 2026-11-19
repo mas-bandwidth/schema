@@ -519,7 +519,7 @@ public final class FixedTableVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);

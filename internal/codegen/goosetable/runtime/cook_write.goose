@@ -373,7 +373,11 @@ recursive fn cook_record(c: CookCtx&, tab: i64, rec: i64, at: i64) -> bool {
 // cook_field writes one field of the record at `at`: its presence where it is
 // optional, then its storage.
 recursive fn cook_field(c: CookCtx&, s: i64, d: const FieldDesc&, col: const CookCol&, at: i64) -> bool {
-    if d.optional { cook_put_at(c, at + col.present_off, if cook_rode(c, s) { 1 } else { 0 }, 1); }
+    if d.optional {
+        let pres = cook_rode(c, s);
+        cook_put_at(c, at + col.present_off, if pres { 1 } else { 0 }, 1);
+        if !pres { return true; }
+    }
     if d.shape == ShapeMap || d.shape == ShapeText { return true; }
     if d.shape == ShapeStr || d.shape == ShapeBytes { return cook_text(c, s, d, col, at); }
     if d.shape != ShapeArr { return cook_value(c, s, d, col, at + col.off); }
@@ -490,6 +494,7 @@ recursive fn cook_unreached_elem(c: CookCtx&, s: i64, d: const FieldDesc&, col: 
 }
 
 recursive fn cook_carve_field(c: CookCtx&, s: i64, d: const FieldDesc&, col: const CookCol&, at: i64) -> bool {
+    if d.optional && !cook_rode(c, s) { return true; }
     if d.shape == ShapeMap { return cook_carve_map(c, s, col, at + col.off); }
     if d.shape == ShapeText { return cook_carve_text(c, s, d, at + col.off); }
     if d.shape == ShapeArr && d.array == ArrayList { return cook_carve_list(c, s, d, col, at + col.off); }

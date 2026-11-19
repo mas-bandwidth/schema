@@ -3052,9 +3052,14 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 	end
 	r.pos += 1
 	local e = fd.e
+	local bytesElem = e.buf == true
 	local arr = rec[fd.slot]
-	for i = 1, fd.bound do
-		arr[i] = zeroOf(e, false)
+	if bytesElem then
+		buffer.fill(arr, 0, 0)
+	else
+		for i = 1, fd.bound do
+			arr[i] = zeroOf(e, false)
+		end
 	end
 	local want = elementShape(e)
 	local seen: { [number]: boolean } = {}
@@ -3126,6 +3131,12 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 			if not skipValue(r, depth + 1) then
 				return false
 			end
+		elseif bytesElem then
+			local tmp = { 0 }
+			if not readScalar(r, e, tmp, 1, depth + 1, true, fd.name) then
+				return false
+			end
+			buffer.writeu8(arr, at - 1, tmp[1])
 		elseif not readScalar(r, e, arr, at, depth + 1, true, fd.name) then
 			return false
 		end
@@ -3899,7 +3910,9 @@ local function writeKeyed(w: W, fd: any, rec: any, depth: number): boolean
 		end
 		writeString(w :: any, variant[1])
 		emit(w, ": ")
-		if not writeScalar(w, fd.e, v[i], depth + 1) then
+		if fd.e.buf then
+			emit(w, string.format("%d", buffer.readu8(v, i - 1)))
+		elseif not writeScalar(w, fd.e, v[i], depth + 1) then
 			return false
 		end
 	end

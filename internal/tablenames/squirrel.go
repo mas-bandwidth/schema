@@ -84,7 +84,7 @@ var squirrelUnitModuleKeys = []string{
 	"Announce", "AnnounceMeasure", "AnnounceRead", "BuildVersionBytes", "Cook", "CookMeasure", "CookReason",
 	"Descriptors", "Keyed", "Package", "Roots", "TableBlockAlign", "TableBlockByteOrderBytes",
 	"TableBlockMagicBytes", "TableCookByteOrderBytes", "TableCookHeaderBytes", "TableCookMagicBytes",
-	"TableCookMaxAlign", "TableDocNone", "TableMessageAnnouncement", "TableMessageBatchMax",
+	"TableCookMaxAlign", "TableDocNone", "TableMessageAnnouncement", "TableMessageArmSlots", "TableMessageBatchMax", "TableMessageFieldSlots",
 	"TableMessageEntriesHere", "TableMessageIds", "TableMessageRefBitsHere", "TableRegionAlign", "TableRetainKnown",
 	"TableTagsNone", "TableUnitView", "UnitView", "blockBegin", "blockBytes", "blockCreate",
 	"blockDestroy", "blockForms", "blockKeyed", "blockOpen", "blockRecords", "blockRows", "blockSet",

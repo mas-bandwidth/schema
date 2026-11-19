@@ -97,8 +97,9 @@ glue() {
 use strict;
 use warnings;
 my $ns = $ENV{NS};
-my (%structs, %field_order, %enums, %unions, %fixed_load, %fixed_evolve, %msg_save, %json_to);
+my (%structs, %field_order, %slot_names, %enums, %unions, %fixed_load, %fixed_evolve, %msg_save, %json_to);
 my $cur = "";
+my $cur_desc = "";
 my $in_ns = 0;
 while (my $line = <>) {
 	next if $ARGV =~ /(?:conformance_|main\.goose|unit\.goose|accel\.goose)/;
@@ -127,6 +128,16 @@ while (my $line = <>) {
 			$ftype =~ s/\s+$//;
 			$structs{$cur}{$fname} = $ftype;
 			push @{$field_order{$cur}}, $fname;
+		}
+	}
+	if ($line =~ /^let _([A-Za-z0-9_]+)(?:Fields|Arms):/) {
+		$cur_desc = $1;
+		next;
+	}
+	if (defined($cur_desc) && $cur_desc ne "") {
+		if ($line =~ /^\];/) { $cur_desc = ""; next; }
+		if ($line =~ /name:\s*"([^"]+)".*?slot:\s*"([^"]+)"/) {
+			$slot_names{$cur_desc}{$2} = $1;
 		}
 	}
 }
@@ -170,19 +181,36 @@ fn wref_f32_bits(bits: u32) -> f32 {
 fn wref_f64_bits(bits: u64) -> f64 {
     return schema_rt::fixed_bits_f64(bits);
 }
+fn wref_parse_f64(s: const u8[:]) -> f64 {
+    var dot: i64 = 0;
+    while dot < s.len && s[dot] != '.' { dot += 1; }
+    if dot == s.len { return wref_parse_i64(s) as f64; }
+    var neg = false;
+    var start: i64 = 0;
+    if s.len > 0 && s[0] == '-' { neg = true; start = 1; }
+    let whole = wref_parse_i64(s[start..dot]) as f64;
+    var frac: f64 = 0.0;
+    var scale: f64 = 0.1;
+    var i: i64 = dot + 1;
+    while i < s.len {
+        frac += ((s[i] - '0') as f64) * scale;
+        scale *= 0.1;
+        i += 1;
+    }
+    let res = whole + frac;
+    return if neg { -res } else { res };
+}
 fn wref_f32(s: const u8[:]) -> f32 {
     if s == "nan" { return wref_f32_bits(0x7fc00000); }
     if s == "inf" { return wref_f32_bits(0x7f800000); }
     if s == "-inf" { return wref_f32_bits(0xff800000); }
-    let n = wref_parse_i64(s);
-    return n as f32;
+    return wref_parse_f64(s) as f32;
 }
 fn wref_f64(s: const u8[:]) -> f64 {
     if s == "nan" { return wref_f64_bits(0x7ff8000000000000); }
     if s == "inf" { return wref_f64_bits(0x7ff0000000000000); }
     if s == "-inf" { return wref_f64_bits(0xfff0000000000000); }
-    let n = wref_parse_i64(s);
-    return n as f64;
+    return wref_parse_f64(s);
 }
 struct WrefSeg { seg: const u8[:], idx: i64, rest: const u8[:] }
 fn wref_split_seg(path: const u8[:]) -> WrefSeg {
@@ -215,13 +243,13 @@ my %int_bounds = (
 );
 
 for my $st (sort keys %structs) {
-	next if $unions{$st};
 	print "recursive fn wref_set_$st(v: ${ns}::$st&, path: const u8[:], kind: const u8[:], text: const u8[:]) -> i64 {\n";
 	print "    let ps = wref_split_seg(path); let seg = ps.seg; let idx = ps.idx; let rest = ps.rest;\n";
 	for my $f (@{$field_order{$st}}) {
+		next if $unions{$st} && $f eq "Type";
 		next if $f =~ /(Count|Length)$/ && exists $structs{$st}{substr($f, 0, length($f) - length($1))};
 		my $ft = $structs{$st}{$f};
-		my $sn = snake($f);
+		my $sn = $slot_names{$st}{$f} // snake($f);
 		print "    if seg == \"$sn\" {\n";
 		if ($ft =~ /^([A-Za-z0-9_]+)\[(\d+)\]$/) {
 			my ($et, $cap) = ($1, $2);
@@ -247,15 +275,20 @@ for my $st (sort keys %structs) {
 					print "            v.${f}Count = n as! i32; return 1;\n";
 					print "        }\n";
 				}
-				if (exists $structs{$et} && !$unions{$et}) {
+				if (exists $structs{$et}) {
 					print "        if rest.len > 0 && idx >= 0 && idx < $cap {\n";
 					print "            return wref_set_$et(v.$f\[idx], rest, kind, text);\n";
 					print "        }\n";
+				} elsif ($et eq "f32") {
+					print "        if rest.len == 0 && idx >= 0 && idx < $cap && kind == \"float\" { v.$f\[idx] = wref_f32(text); return 1; }\n";
+				} elsif ($et eq "f64") {
+					print "        if rest.len == 0 && idx >= 0 && idx < $cap && kind == \"float\" { v.$f\[idx] = wref_f64(text); return 1; }\n";
 				}
 			}
 		} elsif (exists $structs{$ft} && !$unions{$ft}) {
 			print "        if rest.len > 0 && idx < 0 { return wref_set_$ft(v.$f, rest, kind, text); }\n";
 		} elsif ($unions{$ft}) {
+			print "        if rest.len > 0 && idx < 0 { return wref_set_$ft(v.$f, rest, kind, text); }\n";
 			print "        if rest.len == 0 && idx < 0 && kind == \"tag\" {\n";
 			print "            let n = wref_parse_i64(text);\n";
 			print "            if n < 0 || n > 255 { return 2; }\n";

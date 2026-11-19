@@ -40,8 +40,10 @@ func intsCook(u *ir.Unit, delta int64, count int32) []byte {
 	le.PutUint64(record[0:], uint64(delta))
 	le.PutUint32(record[8:], uint32(count))
 	le.PutUint32(record[16:], 5) // after
-	for i := range 3 {
-		le.PutUint32(record[24+i*4:], uint32(10*(i+1)))
+	if delta == 24 && count > 0 {
+		for i := range min(int(count), 3) {
+			le.PutUint32(record[24+i*4:], uint32(10*(i+1)))
+		}
 	}
 	dir := out[header+data:]
 	le.PutUint64(dir[0:], 0)
@@ -114,9 +116,14 @@ func squadCook(u *ir.Unit, delta int64, count int32, keys []uint8) []byte {
 	le.PutUint64(record[0:], uint64(delta))
 	le.PutUint32(record[8:], uint32(count))
 	le.PutUint32(record[16:], 7) // name
-	for i, k := range keys {
-		record[24+i*8] = k
-		le.PutUint32(record[24+i*8+4:], uint32(10*(i+1))) // the value's count
+	if delta == 24 && count > 0 {
+		for i, k := range keys {
+			if int32(i) >= count {
+				break
+			}
+			record[24+i*8] = k
+			le.PutUint32(record[24+i*8+4:], uint32(10*(i+1))) // the value's count
+		}
 	}
 	dir := out[header+data:]
 	le.PutUint64(dir[0:], 0)

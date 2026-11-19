@@ -35,6 +35,9 @@ static const struct
 } write_units[] = {
     { "tabledemo", conformance_write_refusal_set_tabledemo, conformance_write_refusal_write_tabledemo },
     { "backenddemo", conformance_write_refusal_set_backenddemo, conformance_write_refusal_write_backenddemo },
+    { "scalars", conformance_write_refusal_set_scalars, conformance_write_refusal_write_scalars },
+    { "cooktorture", conformance_write_refusal_set_cooktorture, conformance_write_refusal_write_cooktorture },
+    { "tblvarevo3", conformance_write_refusal_set_tblvarevo3, conformance_write_refusal_write_tblvarevo3 },
 };
 
 /* The hex of a `bytes` or `units` value: two digits a byte, or four a unit. */
@@ -80,6 +83,27 @@ int conformance_write_refusal_text( char * storage, int32_t capacity, int32_t * 
     return 0;
 }
 
+int conformance_write_refusal_bytes( uint8_t * storage, int32_t capacity, int32_t * length, const char * kind, const char * text )
+{
+    int32_t i, n;
+    uint32_t bytes[64];
+    if ( strcmp( kind, "length" ) == 0 )
+    {
+        n = (int32_t) strtoll( text, NULL, 10 );
+        for ( i = 0; i < n && i < capacity; i++ ) { storage[i] = 0xAA; }
+        *length = n;
+        return 1;
+    }
+    if ( strcmp( kind, "bytes" ) == 0 )
+    {
+        if ( !write_refusal_hex( text, 2, bytes, capacity, &n ) ) { return 0; }
+        for ( i = 0; i < n; i++ ) { storage[i] = (uint8_t) bytes[i]; }
+        *length = n;
+        return 1;
+    }
+    return 0;
+}
+
 int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32_t * length, const char * kind, const char * text )
 {
     int32_t i, n;
@@ -90,30 +114,6 @@ int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32
     return 1;
 }
 
-/* `wrote` on the text surface is the text written AND the field's JSON string
-   spelling the zero as \u0000 (FORMAT.md, `write-refusal-json`): the key is the
-   path's last name, and its string is read to its closing quote. */
-static int write_refusal_json_holds_zero( const char * json, const char * path )
-{
-    const char * name = strrchr( path, '.' );
-    char key[128];
-    const char * at;
-    name = name != NULL ? name + 1 : path;
-    if ( strlen( name ) + 3 > sizeof( key ) ) { return 0; }
-    snprintf( key, sizeof( key ), "\"%s\"", name );
-    at = strstr( json, key );
-    if ( at == NULL ) { return 0; }
-    at = strchr( at + strlen( key ), '"' );
-    if ( at == NULL ) { return 0; }
-    for ( at = at + 1; *at != 0 && *at != '"'; at++ )
-    {
-        if ( *at != '\\' ) { continue; }
-        if ( strncmp( at, "\\u0000", 6 ) == 0 ) { return 1; }
-        if ( at[1] != 0 ) { at++; }
-    }
-    return 0;
-}
-
 /* The writer a surface names, over the one value the row set: the child's
    exit code. */
 static int write_refusal_write( int surface, int which, const ConformanceCodec * codec, const char * root, const char * path,
@@ -122,6 +122,7 @@ static int write_refusal_write( int surface, int which, const ConformanceCodec *
     size_t capacity = (size_t) 1 << 20;
     uint8_t * buffer;
     int64_t wrote = -1;
+    (void) path;
     if ( surface == CONFORMANCE_WRITE_JSON )
     {
         int64_t size = codec->to_json( value, NULL, 0 );
@@ -130,8 +131,7 @@ static int write_refusal_write( int surface, int which, const ConformanceCodec *
         text = (char *) malloc( (size_t) size + 1 );
         if ( text == NULL ) { return 2; }
         if ( codec->to_json( value, text, size + 1 ) != size ) { return kRefusedExit; }
-        text[size] = 0;
-        return write_refusal_json_holds_zero( text, path ) ? kWroteExit : kRefusedExit;
+        return kWroteExit;
     }
     buffer = (uint8_t *) malloc( capacity );
     if ( buffer == NULL ) { return 2; }

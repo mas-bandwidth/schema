@@ -22,6 +22,11 @@ int conformance_write_refusal_set_backenddemo( const char * root, void * value, 
         if ( strcmp( path, "currency" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->currency = (backenddemo_currency_t) n; return 1; }
         if ( strcmp( path, "sku" ) == 0 ) { return conformance_write_refusal_text( v->sku, (int32_t) sizeof( v->sku ) - 1, &v->sku_length, kind, text ); }
     }
+    if ( strcmp( root, "LoginRequest" ) == 0 )
+    {
+        backenddemo_login_request_t * v = (backenddemo_login_request_t *) value;
+        if ( strcmp( path, "session_token" ) == 0 ) { return conformance_write_refusal_bytes( v->session_token, (int32_t) sizeof( v->session_token ), &v->session_token_length, kind, text ); }
+    }
     if ( strcmp( root, "MatchResult" ) == 0 )
     {
         backenddemo_match_result_t * v = (backenddemo_match_result_t *) value;
@@ -43,6 +48,7 @@ int conformance_write_refusal_write_backenddemo( int surface, const char * root,
     if ( surface != CONFORMANCE_WRITE_MESSAGE ) { return 0; }
     if ( !backenddemo_announce_read( &vocabulary, announcement, announcement_bytes, &report ) ) { return 0; }
     if ( strcmp( root, "StorePurchase" ) == 0 ) { *wrote = backenddemo_store_purchase_save_messages( (const backenddemo_store_purchase_t *) value, 1, buffer, capacity, &report ); return 1; }
+    if ( strcmp( root, "LoginRequest" ) == 0 ) { *wrote = backenddemo_login_request_save_messages( (const backenddemo_login_request_t *) value, 1, buffer, capacity, &report ); return 1; }
     if ( strcmp( root, "MatchResult" ) == 0 ) { *wrote = backenddemo_match_result_save_messages( (const backenddemo_match_result_t *) value, 1, buffer, capacity, &report ); return 1; }
     return 0;
 }

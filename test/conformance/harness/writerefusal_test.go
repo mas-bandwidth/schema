@@ -346,19 +346,46 @@ func writeRefusalTarget(inst *tabletext.Instance, path string) (*tabletext.Field
 			return nil, nil, nil, fmt.Errorf("%s: no field %q in %s", path, name, cur.Def.Name)
 		}
 		if !indexed {
+			if fv.Cell.Arm != nil && len(segments) == 2 {
+				lastName, lastIdx, lastIndexed, err := writeRefusalSegmentOf(segments[1])
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				if un := tabletext.UnionOf(fv.Def); un == nil || fv.Cell.U == 0 || int(fv.Cell.U) > len(un.Variants) || un.Variants[fv.Cell.U-1].Name != lastName {
+					return nil, nil, nil, fmt.Errorf("%s: union %q active arm is not %q", path, name, lastName)
+				}
+				armFv := fv.Cell.Arm
+				if !lastIndexed {
+					return armFv, &armFv.Cell, armFv.Def, nil
+				}
+				if lastIdx >= len(armFv.Elems) {
+					return nil, nil, nil, fmt.Errorf("%s: %s has no element %d", path, lastName, lastIdx)
+				}
+				elem := *armFv.Def
+				elem.Array = ir.ArrayNone
+				elem.KeyEnum = ""
+				elem.KeyEnumRef = nil
+				elem.Type.Optional = false
+				elem.Required = false
+				return armFv, &armFv.Elems[lastIdx], &elem, nil
+			}
 			if fv.Cell.Tab == nil {
 				return nil, nil, nil, fmt.Errorf("%s: %q is not a nested value", path, name)
 			}
 			cur = fv.Cell.Tab
 			continue
 		}
-		if index >= len(fv.Elems) {
+		slots := fv.Elems
+		if fv.Def.IsMap() {
+			slots = fv.Entries
+		}
+		if index >= len(slots) {
 			return nil, nil, nil, fmt.Errorf("%s: %s has no element %d", path, name, index)
 		}
-		if fv.Elems[index].Tab == nil {
+		if slots[index].Tab == nil {
 			return nil, nil, nil, fmt.Errorf("%s: %s[%d] is not a nested value", path, name, index)
 		}
-		cur = fv.Elems[index].Tab
+		cur = slots[index].Tab
 	}
 	last := segments[len(segments)-1]
 	name, index, indexed, err := writeRefusalSegmentOf(last)
@@ -371,6 +398,10 @@ func writeRefusalTarget(inst *tabletext.Instance, path string) (*tabletext.Field
 	}
 	if !indexed {
 		return fv, &fv.Cell, fv.Def, nil
+	}
+	if fv.Def.IsTextList() && index < len(fv.Elems) && fv.Elems[index].Tab != nil && len(fv.Elems[index].Tab.Fields) == 1 {
+		inner := &fv.Elems[index].Tab.Fields[0]
+		return inner, &inner.Cell, inner.Def, nil
 	}
 	if index >= len(fv.Elems) {
 		return nil, nil, nil, fmt.Errorf("%s: %s has no element %d", path, name, index)

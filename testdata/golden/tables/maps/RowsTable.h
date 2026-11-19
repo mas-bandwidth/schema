@@ -11968,6 +11968,7 @@ inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -11983,6 +11984,7 @@ inline int64_t RowEntriesEntryMeasureBody( TableIds & ids, const RowEntriesEntry
 MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBody( TableWriter & w, TableIds & ids, const RowEntriesEntry & value )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -12999,6 +13001,7 @@ inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesE
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -13014,6 +13017,7 @@ inline int64_t EdgeRowNamesEntryMeasureBody( TableIds & ids, const EdgeRowNamesE
 MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBody( TableWriter & w, TableIds & ids, const EdgeRowNamesEntry & value )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -18130,6 +18134,7 @@ inline int64_t RowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const Row
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -18146,6 +18151,7 @@ inline int64_t RowEntriesEntryMeasureBodyRetain( TableRetainIds & ids, const Row
 MAPDEMO_TABLE_INLINE bool RowEntriesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const RowEntriesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -19197,6 +19203,7 @@ inline int64_t EdgeRowNamesEntryMeasureBodyRetain( TableRetainIds & ids, const E
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -19213,6 +19220,7 @@ inline int64_t EdgeRowNamesEntryMeasureBodyRetain( TableRetainIds & ids, const E
 MAPDEMO_TABLE_INLINE bool EdgeRowNamesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const EdgeRowNamesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 300 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key

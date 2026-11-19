@@ -457,7 +457,7 @@ func main() {
 	blk.Projection.LabelLength = 14
 	blk.Projection.Nums = [4]uint16{11, 22, 33, 0}
 	blk.Projection.NumsCount = 3
-	blk.Projection.Perks = uint64(r.TabFlagsRead | r.TabFlagsWrite)
+	blk.Projection.Perks = r.TabFlagsRead | r.TabFlagsWrite
 	blkBytes := unsafe.Slice((*byte)(blk.Base), blk.Bytes)
 	mustWrite(dir, "block_a.bin", blkBytes)
 

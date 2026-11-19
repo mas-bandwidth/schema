@@ -29,7 +29,7 @@ local FLOAT32_DIGITS = 9
 
 -- Luau has no bitwise operators; bit32 is enough for every value below it (a
 -- UTF-8 sequence, a base64 triplet, a flags mask) (docs/PORT-LUAU.md).
-local band, bor, bnot = bit32.band, bit32.bor, bit32.bnot
+local band, bor = bit32.band, bit32.bor
 local function lshift(a: number, n: number): number return a * 2 ^ n end
 local function rshift(a: number, n: number): number return math.floor(a / 2 ^ n) end
 local function ult(a: number, b: number): boolean
@@ -436,7 +436,7 @@ local function walk_elem(T: any, e: any): any
     if e.dom == "integer" then return 0i end
     return 0
   end
-  if s == "flags" then return 0 end
+  if s == "flags" then return 0i end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "enum" then return false end
@@ -483,7 +483,8 @@ walk_default = function(T: any, desc: any): any
       elseif s == "enum" then
         out[name] = walk_enum_name(fd, def or 0)
       elseif s == "flags" then
-        out[name] = def ~= nil and def or 0
+        local dv = def ~= nil and def or 0
+        out[name] = if typeof(dv) == "integer" then dv else integer.create(dv)
       elseif s == "table" then
         out[name] = walk_default(T, T.Tables[fd.target])
       elseif s == "union" then
@@ -1683,7 +1684,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
   elseif s == "flags" then
     if peek(inp) ~= '[' then inp.bad = true; return false end
     inp.p = inp.p + 1
-    local bits = 0
+    local bits: integer = 0i
     while true do
       local c = peek(inp)
       if c == ']' then inp.p = inp.p + 1; break end
@@ -1702,8 +1703,9 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
             -- §16.2 flags row: a KNOWN variant named twice in one array is
             -- malformed, as a repeated key is; a conforming writer writes
             -- each set bit's name once.
-            if band(bits, lshift(1, i - 1)) ~= 0 then inp.bad = true; return false end
-            bits = bor(bits, lshift(1, i - 1))
+            local mask: integer = integer.lshift(1i, integer.create(i - 1))
+            if integer.band(bits, mask) ~= 0i then inp.bad = true; return false end
+            bits = integer.bor(bits, mask)
             found = true
             break
           end
@@ -2631,22 +2633,23 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     end
     return false
   elseif s == "flags" then
-    local bits = val or 0
-    if bits == 0 then raw(w, "[]"); return true end
-    local seen = 0
+    local bits: integer = if typeof(val) == "integer" then val else integer.create(val or 0)
+    if bits == 0i then raw(w, "[]"); return true end
+    local seen: integer = 0i
     put(w, '[')
     local first = true
     local names: { string } = d.variants or {}
     for i, name in ipairs(names) do
-      if (band(bits, lshift(1, i - 1))) ~= 0 then
+      local mask: integer = integer.lshift(1i, integer.create(i - 1))
+      if integer.band(bits, mask) ~= 0i then
         if not first then put(w, ',') end
         first = false
         line(w, depth + 1)
         write_string(w, name)
-        seen = bor(seen, lshift(1, i - 1))
+        seen = integer.bor(seen, mask)
       end
     end
-    if (band(bits, bnot(seen))) ~= 0 then return false end
+    if integer.band(bits, integer.bnot(seen)) ~= 0i then return false end
     line(w, depth)
     put(w, ']')
     return true
@@ -2778,6 +2781,7 @@ adapt_field = function(fd: any, owner: any): any
     if names ~= nil then
       o.shape = "flags"
       o.variants = names
+      o.dom = fd.dom
     else
     o.shape = "int"
     o.width = fd.kw
@@ -2816,7 +2820,7 @@ adapt_field = function(fd: any, owner: any): any
     o.opt_text = fd.optText == true
     if o.elem.shape == "int" then
       local names = flag_names(owner, fd)
-      if names ~= nil then o.elem.shape = "flags"; o.elem.variants = names end
+      if names ~= nil then o.elem.shape = "flags"; o.elem.variants = names; o.elem.dom = fd.e and fd.e.dom end
     end
     if fd.e ~= nil and fd.e.s == "ptr" then o.elem.target = fd.e.t end
     if fd.e ~= nil and fd.e.s == "tab" then o.elem.target = fd.e.t end
@@ -2834,6 +2838,7 @@ adapt_field = function(fd: any, owner: any): any
   elseif s == "flags" then
     o.shape = "flags"
     o.variants = flag_names(owner, fd)
+    o.dom = fd.dom
   else
     error("schema: schema_json.luau cannot read shape " .. tostring(s))
   end
@@ -2906,8 +2911,9 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
     return from_string(body or "")
   elseif s == "enum" then return enum_number(fd, x)
   elseif s == "flags" then
-    if typeof(x) == "integer" then return x end
-    return integer.create(x or 0)
+    local iv: integer = if typeof(x) == "integer" then x else integer.create(x or 0)
+    if fd.dom == "integer" then return iv end
+    return integer.tonumber(iv)
   elseif s == "pointer" or s == "table" then
     if x == nil then return nil end
     if x == false then return false end
@@ -3029,8 +3035,8 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     if x == nil or x == 0 then return false end
     return enum_name(fd, x)
   elseif s == "flags" then
-    if typeof(x) == "integer" then return integer.tonumber(x) end
-    return x or 0
+    if typeof(x) == "integer" then return x end
+    return integer.create(x or 0)
   elseif s == "pointer" or s == "table" then
     if x == nil or x == false then return nil end
     return to_lua(A.Tables[fd.target], x, A, memo)

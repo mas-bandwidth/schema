@@ -22,6 +22,7 @@ import (
 	"unsafe"
 
 	"backenddemo"
+	"cooktorture"
 	"listdemo"
 	"messagedemo"
 	"scalardemo"
@@ -231,6 +232,9 @@ func init() {
 	})
 	bind("tblvarevo3", "EvoMsg", func(c codec) codec {
 		return fixedForm(c, tblvarevo3.EvoMsgFixedLoad, tblvarevo3.EvoMsgFixedMeasure, tblvarevo3.EvoMsgFixedSave)
+	})
+	bind("cooktorture", "TortureFixedWref", func(c codec) codec {
+		return fixedForm(c, cooktorture.TortureFixedWrefFixedLoad, cooktorture.TortureFixedWrefFixedMeasure, cooktorture.TortureFixedWrefFixedSave)
 	})
 	bind("messagedemo", "ToolMessage", func(c codec) codec {
 		return fixedForm(c, messagedemo.ToolMessageFixedLoad, messagedemo.ToolMessageFixedMeasure, messagedemo.ToolMessageFixedSave)

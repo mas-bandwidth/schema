@@ -781,7 +781,11 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, loopExpr)
 	if keyed {
 		cond := g.messageRides(e, mem+"[i]", ind+"  ")
-		g.pf("%s  if (!(%s)) { continue; }\n", ind, cond)
+		if strings.HasPrefix(cond, "!Object.is(") && strings.HasSuffix(cond, ")") {
+			g.pf("%s  if (%s) { continue; }\n", ind, cond[1:])
+		} else {
+			g.pf("%s  if (!(%s)) { continue; }\n", ind, cond)
+		}
 		g.pf("%s  switch (i) {\n", ind)
 		for i := range f.KeyEnumRef.Variants {
 			slot := messageNameSlot(g.unit, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))

@@ -6132,6 +6132,7 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_loadout_( benchtable
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_player_name_( benchtable_table_writer_t * w, const benchtable_table_mixed_t * value )
 {
     schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
+    if ( !benchtable_table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) ) { return 0; }
     benchtable_table_writer_raw( w, value->player_name, value->player_name_length );
     return !w->overflow;
 }

@@ -16,10 +16,13 @@ def run(manifest, outdir):
         value = read_wire(cls, wire)
         setter(value, path, rule, token)
         try:
-            value.to_json()
+            out = value.to_json()
         except ValueError as error:
             raise_if_unsupported(error)
             result = b"refused\n"
         else:
-            result = b"wrote\n"
+            if rule == "bytes" and b"\x00" in bytes.fromhex(token) and "\\u0000" not in out:
+                result = b"wrote without \\u0000\n"
+            else:
+                result = b"wrote\n"
         write_bytes(outdir, case, result)
