@@ -357,7 +357,7 @@ func (d *lineageDecoder) element(w *fixedNode, b []byte, f *ir.Field, cell *tabl
 		return ""
 	}
 	declared := ir.TableFixedLeafKind(f)
-	if w.kind != declared && !ir.TableKindWidens(w.kind, declared) {
+	if w.kind != declared && !ir.TableFixedWidens(w.kind, declared) {
 		return FixedReasonKindMismatch
 	}
 	// the writer's value at the writer's KIND width, then the variable read's

@@ -58,9 +58,15 @@ glue() {
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedLoad(.*/\1/p' "$1"/*Table.goose); do
 			echo "    if root == \"$r\" {"
 			echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
-			echo "        var rep = schema_rt::FixedReport { .. };"
-			echo "        let n = $ns::${r}FixedLoad(values[0..256], data, rep);"
-			echo "        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }"
+			if grep -q "^fn ${r}FixedEvolveLoad(" "$1"/*Table.goose; then
+				echo "        var rep = schema_rt::FixedEvolveReport { .. };"
+				echo "        let n = $ns::${r}FixedEvolveLoad(values[0..256], data, rep);"
+				echo "        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }"
+			else
+				echo "        var rep = schema_rt::FixedReport { .. };"
+				echo "        let n = $ns::${r}FixedLoad(values[0..256], data, rep);"
+				echo "        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }"
+			fi
 			echo "        var saved: u8[>..] = [];"
 			echo "        if $ns::${r}FixedSave(values[0..n], saved) < 0 { return -4; }"
 			echo "        out.append(saved);"
@@ -114,7 +120,8 @@ recursive fn fixed_union_arm_bytes(unit: schema_rt::LoadUnit, ui: i64) -> i64 {
 }
 recursive fn fixed_field_inner_size(unit: schema_rt::LoadUnit, f: schema_rt::FieldDesc) -> i64 {
     if f.shape == schema_rt::ShapeBool { return 1; }
-    if f.shape == schema_rt::ShapeInt || f.shape == schema_rt::ShapeFloat { return f.kw as i64; }
+    if f.shape == schema_rt::ShapeInt { return f.kw; }
+    if f.shape == schema_rt::ShapeFloat { return if f.is_f32 { 4 } else { 8 }; }
     if f.shape == schema_rt::ShapeEnum {
         if f.variants.len >= 65536 { return 4; }
         if f.variants.len >= 256 { return 2; }
@@ -166,7 +173,7 @@ recursive fn fixed_field_to_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fiel
         return true;
     }
     if f.shape == schema_rt::ShapeInt || f.shape == schema_rt::ShapeFloat {
-        let kw = f.kw as i64;
+        let kw: i64 = if f.shape == schema_rt::ShapeFloat { if f.is_f32 { 4 } else { 8 } } else { f.kw };
         var lo: u64 = 0;
         var hi: u64 = 0;
         if kw == 16 {
@@ -196,7 +203,7 @@ recursive fn fixed_field_to_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fiel
         return true;
     }
     if f.shape == schema_rt::ShapeStr || f.shape == schema_rt::ShapeBytes {
-        let used = schema_rt::fixed_u32(b, pos) as i64;
+        let used: i64 = schema_rt::fixed_u32(b, pos);
         let off = data.len;
         data.append(b[pos + 4 .. pos + 4 + used]);
         pos += 4 + f.bound;
@@ -230,7 +237,7 @@ recursive fn fixed_field_to_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fiel
         guard elem else { return false; }
         var live = f.bound;
         if f.array == schema_rt::ArrayCounted {
-            live = schema_rt::fixed_u32(b, pos) as i64;
+            live = schema_rt::fixed_u32(b, pos);
             pos += 4;
         }
         let first = schema_rt::value_reserve(vals, live);
@@ -288,7 +295,7 @@ recursive fn fixed_field_from_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fi
         return true;
     }
     if f.shape == schema_rt::ShapeFloat {
-        let kw = f.kw as i64;
+        let kw: i64 = if f.is_f32 { 4 } else { 8 };
         let fb = if rode { vals[s].bits.lo } else if f.has_def { if f.is_f32 { schema_rt::fixed_f32_bits(f.def_f as f32) } else { schema_rt::fixed_f64_bits(f.def_f) } } else { 0 };
         schema_rt::fixed_put(out, fb, kw);
         return true;
@@ -384,9 +391,15 @@ EOF_FIXED_HELPERS
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedLoad(.*/\1/p' "$1"/*Table.goose); do
 			echo "    if root == \"$r\" {"
 			echo "        var values: $ns::$r[1] = [$ns::$r { .. }];"
-			echo "        var rep = schema_rt::FixedReport { .. };"
-			echo "        let n = $ns::${r}FixedLoad(values[0..1], data[0..data.len], rep);"
-			echo "        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -1; }"
+			if grep -q "^fn ${r}FixedEvolveLoad(" "$1"/*Table.goose; then
+				echo "        var rep = schema_rt::FixedEvolveReport { .. };"
+				echo "        let n = $ns::${r}FixedEvolveLoad(values[0..1], data[0..data.len], rep);"
+				echo "        if n != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -1; }"
+			else
+				echo "        var rep = schema_rt::FixedReport { .. };"
+				echo "        let n = $ns::${r}FixedLoad(values[0..1], data[0..data.len], rep);"
+				echo "        if n != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -1; }"
+			fi
 			if grep -q "fn ${r}ToLoaded(" "$1"/*Table.goose; then
 				echo "        return $ns::${r}ToLoaded(values[0], conformance_unit(), data, vals);"
 			else

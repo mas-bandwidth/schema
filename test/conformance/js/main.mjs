@@ -703,6 +703,7 @@ const wireRows = [
   // declared width (§3, §15), and the evolved type reading them (§4)
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
   ["tblscalars2", "SimState", "scalars2/Scalardemo2Variable.js"],
+  ["tblfixedevo", "EvoRoot", "fixedevo/TblfixedevoVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
@@ -899,6 +900,7 @@ const textUnits = {
   messagedemo: "messages/MessagedemoVariable.js",
   streamdemo: "stream/StreamdemoVariable.js",
   scalars: "scalars/ScalardemoVariable.js",
+  tblfixedevo: "fixedevo/TblfixedevoVariable.js",
   backenddemo: "backend/BackenddemoVariable.js",
   vocabdemo: "vocab/VocabdemoVariable.js",
   vocab9demo: "vocab9/Vocab9demoVariable.js",
@@ -1084,6 +1086,7 @@ const cookWriteRows = [
   ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
+  ["tblfixedevo", "EvoRoot", "fixedevo/TblfixedevoVariable.js"],
   // maps and lists (docs/PORTING.md M19): the holder's sixteen bytes, the
   // entries and elements in its node extent, pre-order
   ["mapdemo", "Cells", "maps/MapdemoVariable.js"],

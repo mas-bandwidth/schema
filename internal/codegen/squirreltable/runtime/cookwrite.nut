@@ -116,7 +116,7 @@ number = function(T, rootName, root) {
       local nf = T.cookForms[e.d.name];
       nodes.append({ id = e.d.typeId, kind = "t", form = nf, v = e.v, size = nf.size, align = nf.nodeAlign });
     } else {
-      nodes.append({ id = e.kind == "s" ? STRING_BLOB_ID : BYTES_BLOB_ID, kind = e.kind, form = null, v = e.v, size = 8 + e.v.len() + (e.kind == "s" ? 1 : 0), align = 8 });
+      nodes.append({ id = e.kind == "s" ? STRING_BLOB_ID : BYTES_BLOB_ID, kind = e.kind, form = null, v = e.v, bid = e.id, size = 8 + e.v.len() + (e.kind == "s" ? 1 : 0), align = 8 });
     }
   }
   return nodes;
@@ -196,7 +196,7 @@ carveField = function(T, f, value, at, extentBase, c, buf, regionBase, order, no
       if (buf != null) {
         local ok = isMap
           ? recordWrite(T, recordFields(T, f.entry), ev, buf, regionBase, ea, order, nodes, offsets)
-          : elementWrite(T, f.elem, ev, buf, regionBase, ea, order, nodes, offsets, size);
+          : elementWrite(T, f.elem, ev, buf, regionBase, ea, order, nodes, offsets, size, value, i);
         if (!ok) return false;
       }
       if (isMap) {
@@ -258,9 +258,9 @@ indexOfTable = function(nodes, root, val) {
   }
   return -1;
 };
-indexOfBlob = function(nodes, kind, val) {
+indexOfBlob = function(nodes, kind, bid) {
   for (local i = 0; i < nodes.len(); i++) {
-    if (nodes[i].kind == kind && nodes[i].v == val) return i;
+    if (nodes[i].kind == kind && nodes[i].bid == bid) return i;
   }
   return -1;
 };
@@ -356,7 +356,7 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
     if (target == null) { put(buf, at, 0, 8, order); return true; }
     local idx;
     if (f.shape == "ptr") idx = indexOfTable(nodes, null, target);
-    else idx = indexOfBlob(nodes, f.shape == "sblob" ? "s" : "b", target);
+    else { local k = f.shape == "sblob" ? "s" : "b"; idx = indexOfBlob(nodes, k, SAVE.blobIdentity(k, target, inst, f.member)); }
     if (idx < 0) return false;
     put(buf, at, offsets[idx] - (at - regionBase), 8, order);
     return true;
@@ -387,7 +387,7 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
     }
     for (local i = 0; i < n; i++) {
       local ev = (val != null && i < val.len()) ? val[i] : elemDefault(T, f.elem);
-      if (!elementWrite(T, f.elem, ev, buf, regionBase, at + i * f.elemSize, order, nodes, offsets, f.elemSize)) return false;
+      if (!elementWrite(T, f.elem, ev, buf, regionBase, at + i * f.elemSize, order, nodes, offsets, f.elemSize, val, i)) return false;
     }
     if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, val == null ? 0 : val.len(), 4, order);
     return true;
@@ -409,14 +409,14 @@ recordWrite = function(T, flds, inst, buf, regionBase, recBase, order, nodes, of
   return true;
 };
 
-elementWrite = function(T, e, val, buf, regionBase, at, order, nodes, offsets, esz) {
+elementWrite = function(T, e, val, buf, regionBase, at, order, nodes, offsets, esz, holder = null, key = null) {
   if (e == null) return true;
   if (!("elemSize" in e)) e.elemSize <- esz;
   if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
     if (val == null) { put(buf, at, 0, 8, order); return true; }
     local idx;
     if (e.shape == "ptr") idx = indexOfTable(nodes, null, val);
-    else idx = indexOfBlob(nodes, e.shape == "sblob" ? "s" : "b", val);
+    else { local k = e.shape == "sblob" ? "s" : "b"; idx = indexOfBlob(nodes, k, SAVE.blobIdentity(k, val, holder, key)); }
     if (idx < 0) return false;
     put(buf, at, offsets[idx] - (at - regionBase), 8, order);
     return true;

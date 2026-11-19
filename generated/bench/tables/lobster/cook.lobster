@@ -280,9 +280,11 @@ class CookGraph:
     nodes:[CookNode] = []
     recs:[Record] = []
     rec_index:[int] = []
-    blobs:[string] = []
-    blob_kinds:[int] = []
-    blob_index:[int] = []
+    blob_nodes:[Node] = []
+    blob_node_kinds:[int] = []
+    blob_node_index:[int] = []
+    blob_cells:[Value] = []
+    blob_cell_index:[int] = []
     open:[bool] = []
     cycle:bool = false
 
@@ -292,14 +294,19 @@ def cg_rec_index(g:CookGraph, rec:Record) -> int:
             return g.rec_index[i]
     return 0
 
-// cg_blob_index merges the slots that name ONE blob node. The record model
-// keeps a blob as its bytes, so two slots naming one node are two equal
-// strings; the KIND is part of the identity, because an empty *string and an
-// empty *bytes are two nodes with one payload (§2.5).
-def cg_blob_index(g:CookGraph, b:string, kind:int) -> int:
-    for(g.blobs) x, i:
-        if x == b and g.blob_kinds[i] == kind:
-            return g.blob_index[i]
+// cg_blob_index merges only slots that name ONE blob node in memory (via
+// v.blob_node identity); distinct slots with equal string/byte contents
+// stay distinct nodes, matching Go NumberPacking (§2.5, §7.6).
+def cg_blob_index(g:CookGraph, v:Value, kind:int) -> int:
+    let bn = v.blob_node
+    if bn:
+        for(g.blob_nodes) x, i:
+            if x == bn and g.blob_node_kinds[i] == kind:
+                return g.blob_node_index[i]
+        return 0
+    for(g.blob_cells) c, i:
+        if c == v:
+            return g.blob_cell_index[i]
     return 0
 
 def cg_add_rec(g:CookGraph, rec:Record) -> int:
@@ -317,15 +324,23 @@ def cg_add_rec(g:CookGraph, rec:Record) -> int:
     g.open[idx - 1] = false
     return idx
 
-def cg_add_blob(g:CookGraph, b:string, kind:int) -> int:
-    let at = cg_blob_index(g, b, kind)
+def cg_add_blob(g:CookGraph, v:Value, kind:int) -> int:
+    let b = v.blob
+    if not b:
+        return 0
+    let at = cg_blob_index(g, v, kind)
     if at != 0:
         return at
     let idx = length(g.nodes) + 1
     push(g.nodes, CookNode { kind: kind, blob: b })
-    push(g.blobs, b)
-    push(g.blob_kinds, kind)
-    push(g.blob_index, idx)
+    let bn = v.blob_node
+    if bn:
+        push(g.blob_nodes, bn)
+        push(g.blob_node_kinds, kind)
+        push(g.blob_node_index, idx)
+    else:
+        push(g.blob_cells, v)
+        push(g.blob_cell_index, idx)
     // open is indexed by NODE index, and a blob is a node: keep the two
     // vectors the same length so a record after a blob does not run past it.
     push(g.open, false)
@@ -342,13 +357,11 @@ def cg_visit_value(g:CookGraph, v:Value, d:FieldDescriptor) -> void:
         if n:
             cg_add_rec(g, n)
     elif s == "sblob":
-        let b = v.blob
-        if b:
-            cg_add_blob(g, b, 2)
+        if v.blob:
+            cg_add_blob(g, v, 2)
     elif s == "bblob":
-        let b = v.blob
-        if b:
-            cg_add_blob(g, b, 3)
+        if v.blob:
+            cg_add_blob(g, v, 3)
     elif s == "union":
         cg_visit_union(g, v, d)
 
@@ -418,8 +431,8 @@ def cw_ref(c:CookWrite, at:int, rec:Record?) -> void:
             return
     co_u64(c.o, at, 0, c.big)
 
-def cw_ref_blob(c:CookWrite, at:int, b:string, kind:int) -> void:
-    let to = cg_blob_index(c.g, b, kind)
+def cw_ref_blob(c:CookWrite, at:int, v:Value, kind:int) -> void:
+    let to = cg_blob_index(c.g, v, kind)
     if to != 0:
         co_u64(c.o, at, cook_header_bytes + c.g.nodes[to - 1].off - at, c.big)
         return
@@ -478,9 +491,8 @@ def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
     elif s == "ptr":
         cw_ref(c, at, sl.cell.node)
     elif s == "sblob" or s == "bblob":
-        let b = sl.cell.blob
-        if b:
-            cw_ref_blob(c, at, b, if s == "sblob": 2 else: 3)
+        if sl.cell.blob:
+            cw_ref_blob(c, at, sl.cell, if s == "sblob": 2 else: 3)
     elif s == "union":
         cw_union(c, at, sl.cell, fd, cf)
     elif s == "str":
@@ -513,9 +525,8 @@ def cw_elem(c:CookWrite, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff
     if s == "ptr":
         cw_ref(c, at, v.node)
     elif s == "sblob" or s == "bblob":
-        let b = v.blob
-        if b:
-            cw_ref_blob(c, at, b, if s == "sblob": 2 else: 3)
+        if v.blob:
+            cw_ref_blob(c, at, v, if s == "sblob": 2 else: 3)
     elif s == "tab":
         let t = v.tab
         if t:

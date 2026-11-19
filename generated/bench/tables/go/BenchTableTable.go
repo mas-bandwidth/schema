@@ -5020,7 +5020,13 @@ func TableMixedReset(value *TableMixed) {
 		TableStatReset(&value.Stats[i])
 	}
 	value.StatsCount = 0
-	value.GameEvent.Type = TableEventTypeNone
+	{
+		value := &(value.GameEvent)
+		TableHitEventReset(&value.Hit)
+		TableChatEventReset(&value.Chat)
+		TablePickupEventReset(&value.Pickup)
+		value.Type = TableEventTypeNone
+	}
 	clear(value.Loadout[:])
 	clear(value.PlayerName[:])
 	value.PlayerNameLength = 0

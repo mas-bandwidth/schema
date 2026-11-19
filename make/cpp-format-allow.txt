@@ -48,6 +48,8 @@ build/tables-generated/fe2/FE2Table.h
 build/tables-generated/fg1/FG1Table.h
 build/tables-generated/fh1/FH1Table.h
 build/tables-generated/fh2/FH2Table.h
+build/tables-generated/fixedevo/FixedEvoBlock.h
+build/tables-generated/fixedevo/FixedEvoTable.h
 build/tables-generated/fm1/FM1Table.h
 build/tables-generated/fm2/FM2Table.h
 build/tables-generated/fn1/FN1Table.h

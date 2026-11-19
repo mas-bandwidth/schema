@@ -337,8 +337,8 @@ type Cx = { widened: number }
 -- wider integer of the same signedness, a wider fixed-point rung at equal F,
 -- f32 into f64.
 local function ladder(from: number, to: number): boolean
-	if from >= 6 and from <= 9 and to >= 6 and to <= 9 then return to > from end
-	if from >= 2 and from <= 5 and to >= 2 and to <= 5 then return to > from end
+	if (from >= 6 and from <= 9) and ((to >= 6 and to <= 9 and to > from) or to == 19) then return true end
+	if (from >= 2 and from <= 5) and ((to >= 2 and to <= 5 and to > from) or to == 18) then return true end
 	if from >= 20 and from <= 24 and to >= 20 and to <= 24 then return to > from end
 	if from >= 25 and from <= 29 and to >= 25 and to <= 29 then return to > from end
 	return from == 10 and to == 11
@@ -402,10 +402,19 @@ local function readScalar(f: any, w: Node, buf: buffer, at: number): any
 		v = signed(k) and buffer.readi32(buf, at) or buffer.readu32(buf, at)
 	elseif width == 8 then
 		local raw = buffer.readinteger(buf, at)
+		if f.dom == "int128" then
+			local hi = if signed(k) and integer.lt(raw, 0i) then -1i else 0i
+			return { lo = raw, hi = hi }
+		end
 		if f.dom == "integer" then return raw end
 		return integer.tonumber(raw)
 	else
 		v = 0
+	end
+	if f.dom == "int128" then
+		local lo = integer.create(v)
+		local hi = if signed(k) and v < 0 then -1i else 0i
+		return { lo = lo, hi = hi }
 	end
 	if f.dom == "integer" then return integer.create(v) end
 	return v
@@ -454,12 +463,24 @@ local function bounds(f: any, v: any, cx: Cx, wr: any): any
 	-- is raw; the reader's bound below is in value units.
 	if wr ~= nil then
 		local wlo, whi = wr.lo, wr.hi
-		if typeof(v) == "integer" and typeof(wlo) == "number" then
-			wlo, whi = integer.create(wlo), integer.create(whi)
-		end
 		local isSigned = f.signed ~= false
-		if lessThan(v, wlo, isSigned) or lessThan(whi, v, isSigned) then
-			error(outOfRange(f), 0)
+		if typeof(v) == "table" then
+			if typeof(wlo) ~= "table" then
+				local ilo = if typeof(wlo) == "integer" then wlo else integer.create(wlo)
+				local ihi = if typeof(whi) == "integer" then whi else integer.create(whi)
+				wlo = { lo = ilo, hi = if isSigned and integer.lt(ilo, 0i) then -1i else 0i }
+				whi = { lo = ihi, hi = if isSigned and integer.lt(ihi, 0i) then -1i else 0i }
+			end
+			if cmp128(v, wlo, not isSigned) < 0 or cmp128(v, whi, not isSigned) > 0 then
+				error(outOfRange(f), 0)
+			end
+		else
+			if typeof(v) == "integer" and typeof(wlo) == "number" then
+				wlo, whi = integer.create(wlo), integer.create(whi)
+			end
+			if lessThan(v, wlo, isSigned) or lessThan(whi, v, isSigned) then
+				error(outOfRange(f), 0)
+			end
 		end
 	end
 	local lo, hi = f.lo, f.hi

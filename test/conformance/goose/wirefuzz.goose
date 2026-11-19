@@ -177,15 +177,15 @@ fn main() {
             // <Root>FixedSave; the glue answers -2 for a refused load (or
             // one that returned no record), -1 for a refused save, else the
             // saved length
-            var frep = schema_rt::FixedReport { .. };
+            var frep = schema_rt::FixedEvolveReport { .. };
             var fsaved: u8[>..] = [];
             let fcode = conformance_fixed_fuzz(name, data, fsaved, frep);
             var fout: u8[>..] = [];
             // a fixed read has no region and no builder completion
             fout.push(if fcode != -2 { 1 } else { 0 });
-            put_i32(fout, 0);
-            put_i32(fout, 0);
-            put_i32(fout, 0);
+            put_i32(fout, frep.unknown);
+            put_i32(fout, frep.mismatch);
+            put_i32(fout, frep.widened);
             put_i32(fout, frep.oor);
             put_i32(fout, 0);
             fout.push(flag(frep.damaged) as! u8);

@@ -902,11 +902,12 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 	mem := "value." + js.MemberName(f.Name)
 	g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
 	atField := !f.Type.Optional
-	if enumRefOf(f) != nil && atField {
+	cond := messageStoredDefaultCond(f, mem)
+	if enumRefOf(f) != nil && atField && cond != "" {
 		g.pf("%sconst unknownBefore = r.Report.Unknown;\n", ind)
 	}
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape", atField)
-	if cond := messageStoredDefaultCond(f, mem); cond != "" {
+	if cond != "" {
 		extra := ""
 		if enumRefOf(f) != nil {
 			extra = " && r.Report.Unknown === unknownBefore"

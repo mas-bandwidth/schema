@@ -41,6 +41,7 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	tblr1:test/tables/R1.schema \
 	tblr2:test/tables/R2.schema \
 	tblscalars2:test/tables/Scalars2.schema \
+	tblfixedevo:test/tables/fixedevo \
 	tblv1:test/tables/V1.schema \
 	tblv2:test/tables/V2.schema \
 	tblw1:test/tables/W1.schema \

@@ -17,9 +17,12 @@ manifest=$1
 surface=$2
 out=$3
 
+CONF_DLL="test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll"
+COOK_DLL="test/cs-cook/bin/Debug/net10.0/schemacooktest.dll"
+
 case "$surface" in
 list)
-    dotnet run --project test/conformance/cs --no-build -- "$manifest" list
+    dotnet "$CONF_DLL" "$manifest" list
     echo cook
     echo cook-foreign
     echo cook-reason
@@ -28,23 +31,23 @@ list)
 cook)
     # cook <case> <unit> <root> <file>
     grep '^cook ' "$manifest" | while read -r _ cookcase _ cookroot file; do
-        dotnet run --project test/cs-cook --no-build -- dump "$cookroot" "$file" > "$out/$cookcase"
+        dotnet "$COOK_DLL" dump "$cookroot" "$file" > "$out/$cookcase"
     done
     ;;
 cook-foreign)
     # the cross-endian refusal, in ONE runtime start-up over the derived manifest
-    dotnet run --project test/cs-cook --no-build -- foreign "$manifest" "$out"
+    dotnet "$COOK_DLL" foreign "$manifest" "$out"
     ;;
 cook-reason)
-    dotnet run --project test/cs-cook --no-build -- reason "$manifest" "$out"
+    dotnet "$COOK_DLL" reason "$manifest" "$out"
     ;;
 cook-forgery)
     # the whole 111-row battery in ONE runtime start-up, over the derived
     # manifest — the cook dump above is the one surface that cannot be
     # (its walk takes one root per invocation)
-    dotnet run --project test/cs-cook --no-build -- conformance "$manifest" "$out"
+    dotnet "$COOK_DLL" conformance "$manifest" "$out"
     ;;
 *)
-    exec dotnet run --project test/conformance/cs --no-build -- "$manifest" "$surface" "$out"
+    exec dotnet "$CONF_DLL" "$manifest" "$surface" "$out"
     ;;
 esac

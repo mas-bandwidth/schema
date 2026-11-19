@@ -274,21 +274,25 @@ public final class TablesWireFuzz {
             Reply r = new Reply();
             Object report = reportType.getConstructor().newInstance();
             Object values = Array.newInstance(valueType, BATCH_CAP);
-            Array.set(values, 0, valueType.getConstructor().newInstance());
-            loadMessages.invoke(null, values, BATCH_CAP, vocabulary, wire, report);
-            fill(r, report, reportType);
-            // no message LoadMeasure: the root came back, and measure is -1
-            r.loaded = true;
-            if (Array.get(values, 0) == null) {
-                Array.set(values, 0, valueType.getConstructor().newInstance());
+            int initCount = Math.min(BATCH_CAP, wire != null && wire.length >= 2 ? (wire[1] & 0xff) + 1 : 1);
+            for (int i = 0; i < initCount; i++) {
+                Array.set(values, i, valueType.getConstructor().newInstance());
             }
-            Object one = Array.newInstance(valueType, 1);
-            Array.set(one, 0, Array.get(values, 0));
+            int read = (int) loadMessages.invoke(null, values, BATCH_CAP, vocabulary, wire, report);
+            fill(r, report, reportType);
+            boolean ok = read >= 1 && !r.damaged && !r.refused;
+            r.loaded = ok;
+            if (!ok) {
+                if (!r.damaged && !r.refused) {
+                    r.refused = true;
+                }
+                return r;
+            }
             Object scratch = reportType.getConstructor().newInstance();
-            int size = (int) measureMessages.invoke(null, one, 1, scratch);
+            int size = (int) measureMessages.invoke(null, values, read, scratch);
             if (size >= 0) {
                 byte[] buf = new byte[size];
-                int wrote = (int) saveMessages.invoke(null, one, 1, buf, scratch);
+                int wrote = (int) saveMessages.invoke(null, values, read, buf, scratch);
                 r.saved = wrote == size ? buf : null;
             }
             return r;

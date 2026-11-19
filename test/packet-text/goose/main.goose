@@ -20,13 +20,20 @@ fn main() {
         var v = packettext::Narrow { .. };
         for &c in v.Text { c = 0x7f; }
         var out: u8[>..] = [];
-        if !packettext::_ReadNarrow(r, v) {
+        if !packettext::ReadNarrow(r, v) {
             print("REFUSE");
             continue;
         }
         var wbuf: u8[256] = [0; 256];
         var w = serialize_write_stream_init(wbuf);
-        if packettext::WriteNarrow(w, v) != SERIALIZE_ERROR_NONE { abort("driver: rewrite refused"); }
+        if packettext::WriteNarrow(w, v) != SERIALIZE_ERROR_NONE {
+            out.append("ACCEPTED-UNWRITABLE ");
+            out.append(str(serialize_bits_processed(r)));
+            out.push(' ');
+            hex_append(out, v.Text[0..v.TextLength]);
+            print(out);
+            continue;
+        }
         serialize_flush(w);
         out.append("OK ");
         out.append(str(serialize_bits_processed(r)));

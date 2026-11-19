@@ -946,7 +946,13 @@ public final class TableFixed {
                                 (p.sign != 0)
                                         ? getInt(src, srcAt + p.src, p.size)
                                         : getUint(src, srcAt + p.src, p.size);
-                        putUint(image, p.dst, raw, p.dstsize);
+                        final int dstWidth = p.dstsize & 0xff;
+                        if (dstWidth == 16) {
+                            put64(image, p.dst, raw);
+                            put64(image, p.dst + 8, (p.sign != 0 && raw < 0) ? -1L : 0L);
+                        } else {
+                            putUint(image, p.dst, raw, dstWidth);
+                        }
                         report.widened++;
                         break;
                     }

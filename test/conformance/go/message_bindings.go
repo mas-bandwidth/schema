@@ -6,6 +6,7 @@ import (
 	"tabledemo"
 	"tbla1"
 	"tbla2"
+	"tblfixedevo"
 	"tblk1"
 	"tblk2"
 	"tblm1"
@@ -40,6 +41,13 @@ func init() {
 			v.Init(make([]tblscalars2.TableMessageEntry, tblscalars2.TableMessageEntriesHere))
 			return v
 		}, tblscalars2.AnnounceMeasure, tblscalars2.Announce, tblscalars2.AnnounceRead, tblscalars2.SimStateLoadMessages, tblscalars2.SimStateMeasureMessages, tblscalars2.SimStateSaveMessages, func(r *tblscalars2.TableReport) report {
+			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+		}),
+		messageRow("tblfixedevo", "EvoRoot", tblfixedevo.EvoRootReset, func() *tblfixedevo.TableVocabulary {
+			v := new(tblfixedevo.TableVocabulary)
+			v.Init(make([]tblfixedevo.TableMessageEntry, tblfixedevo.TableMessageEntriesHere))
+			return v
+		}, tblfixedevo.AnnounceMeasure, tblfixedevo.Announce, tblfixedevo.AnnounceRead, tblfixedevo.EvoRootLoadMessages, tblfixedevo.EvoRootMeasureMessages, tblfixedevo.EvoRootSaveMessages, func(r *tblfixedevo.TableReport) report {
 			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 		}),
 		messageRow("tblm1", "Msg", tblm1.MsgReset, func() *tblm1.TableVocabulary {

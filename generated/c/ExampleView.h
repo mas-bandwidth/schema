@@ -691,6 +691,9 @@ static SCHEMA_UNUSED void example_arr_uneven_reset( example_arr_uneven_t * value
 {
     value->lead = 0;
     memset( &value->items[0], 0, sizeof( value->items[0] ) );
+    example_narrow_reset( &value->items[0].as.narrow );
+    example_wide_reset( &value->items[0].as.wide );
+    value->items[0].type = 0;
     { int32_t i; for ( i = 1; i < (int32_t) ( 3 ); i++ ) { value->items[i] = value->items[0]; } }
     value->items_count = 0;
     value->tail = 0;
@@ -756,6 +759,9 @@ static SCHEMA_UNUSED const example_table_type_info_t * example_default_bulk_arm_
 static SCHEMA_UNUSED void example_default_choice_packet_reset( example_default_choice_packet_t * value )
 {
     memset( &value->choice, 0, sizeof( value->choice ) );
+    example_default_arm_reset( &value->choice.as.first );
+    example_default_arm_reset( &value->choice.as.second );
+    value->choice.type = 0;
 }
 
 static SCHEMA_UNUSED void schema_example_default_choice_packet_reset_raw_( void * storage ) { example_default_choice_packet_reset( (example_default_choice_packet_t *) storage ); }
@@ -857,6 +863,9 @@ static SCHEMA_UNUSED void example_holds_empty_union_reset( example_holds_empty_u
 {
     value->lead = 0;
     memset( &value->u, 0, sizeof( value->u ) );
+    example_empty_a_reset( &value->u.as.a );
+    example_empty_b_reset( &value->u.as.b );
+    value->u.type = 0;
     value->tail = 0;
 }
 
@@ -868,6 +877,9 @@ static SCHEMA_UNUSED void example_holds_uneven_reset( example_holds_uneven_t * v
 {
     value->lead = 0;
     memset( &value->u, 0, sizeof( value->u ) );
+    example_narrow_reset( &value->u.as.narrow );
+    example_wide_reset( &value->u.as.wide );
+    value->u.type = 0;
     value->tail = 0;
 }
 
@@ -947,8 +959,17 @@ static SCHEMA_UNUSED void example_probe_collider_reset( example_probe_collider_t
 {
     value->armor = 0;
     memset( &value->shape, 0, sizeof( value->shape ) );
+    example_probe_ring_reset( &value->shape.as.ring );
+    example_probe_slab_reset( &value->shape.as.slab );
+    value->shape.type = 0;
     memset( &value->backup, 0, sizeof( value->backup ) );
+    example_probe_ring_reset( &value->backup.as.ring );
+    example_probe_slab_reset( &value->backup.as.slab );
+    value->backup.type = 0;
     memset( &value->extras[0], 0, sizeof( value->extras[0] ) );
+    example_probe_ring_reset( &value->extras[0].as.ring );
+    example_probe_slab_reset( &value->extras[0].as.slab );
+    value->extras[0].type = 0;
     { int32_t i; for ( i = 1; i < (int32_t) ( 2 ); i++ ) { value->extras[i] = value->extras[0]; } }
     value->extras_count = 0;
 }

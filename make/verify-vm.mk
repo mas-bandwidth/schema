@@ -4,10 +4,12 @@
 #   js, python, ruby, lua, luau, squirrel, moo, goose, lobster
 #
 # Each language exposes three independent sub-targets sized for ci-fast.yml's
-# strict 2-minute job ceiling (<= 70s cold per sub-target), plus one umbrella:
+# strict 2-minute job ceiling (<= 75s cold per sub-target), plus one umbrella:
 #
 #   make verify-<lang>-conformance   all 21 table surfaces (--claims) + packet wire byte-exact check
-#   make verify-<lang>-bench         packet wire 64-variant gate + Form-1 table 64-variant gate
+#   make verify-<lang>-bench         64-variant packet & Form-1 gates + all-27-feature packet wire +
+#                                    25 hostile bit-mutations + stateful reuse + cards (9/9) +
+#                                    &node DAG/S-expr + Descriptors + UnitView (verify-deep-<lang>)
 #   make verify-<lang>-fuzz          deterministic wire-fuzz smoke (plain + --retain / --builder, 8-20s)
 #   make verify-<lang>               runs all three sub-targets in a parallel Make DAG
 
@@ -17,10 +19,12 @@ VERIFY_JFLAG          = $(if $(findstring j,$(MAKEFLAGS)),,-j$(VERIFY_JOBS))
 VERIFY_FUZZ_SEED     ?= 1
 VERIFY_FUZZ_RANDOM_N ?= 2500
 VERIFY_JSON_FUZZ_N   ?= 300
+VERIFY_RESULTS_DIR   ?= build/verify/legs
 
-# Per-VM mutant caps tuned so each verify-<lang>-fuzz finishes in ~8-20s cold/warm
+# Per-VM mutant caps tuned so each verify-<lang>-fuzz finishes in ~8-25s cold/warm
 # while running all pinned hostile vectors, all manifest seeds, stateful reuse
-# (empty -> badform -> truncated -> valid) on every live root, and rational-stride mutants.
+# (valid_big -> valid_small -> empty -> badform -> truncated -> valid) on every
+# live root, and rational-stride mutants.
 VERIFY_FUZZ_MAX_js       ?= 14000
 VERIFY_FUZZ_MAX_python   ?= 4000
 VERIFY_FUZZ_MAX_ruby     ?= 3500
@@ -31,12 +35,38 @@ VERIFY_FUZZ_MAX_moo      ?= 14000
 VERIFY_FUZZ_MAX_goose    ?= 60000
 VERIFY_FUZZ_MAX_lobster  ?= 40000
 
+VERIFY_CARDS_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+# Ensure any schema.lock inside a conformance MANIFEST.txt unit directory triggers
+# unit regeneration across every VM conformance stamp.
+CONFORMANCE_UNIT_LOCKS := $(foreach p,$(CONFORMANCE_UNIT_PATHS),$(if $(filter %.schema,$(p)),,$(wildcard $(p)/schema.lock)))
+
+build/tables-generated-js/.stamp \
+build/conformance-python \
+build/conformance-ruby \
+build/conformance-lua \
+build/conformance-luau \
+build/conformance-squirrel \
+build/conformance-moo \
+build/conformance-goose \
+build/conformance-lobster \
+build/goose-wirefuzz-legs/.verify-stamp: $(CONFORMANCE_UNIT_LOCKS)
+
 # Harness built with all VM build tags so `--claims` resolves compiler.Carried(<lang>)
 # across every VM backend (including schema_leg_moo and schema_leg_python).
 build/conformance-harness-vm: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
 	go build -tags schema_leg_moo,schema_leg_python,schema_leg_ruby,schema_leg_squirrel,schema_leg_goose \
 		-o $@ ./test/conformance/harness
+
+# Deep per-VM verification driver: all-27-feature packet goldens (ludicrous,
+# clauses [50], joins [33], rigidbody, shipcreate, probe, chat, compressed_probe),
+# 25 hostile packet bit-mutations + write-contract refusals, stateful packet &
+# stream reuse, §16.7/&16.9 &node DAG + cycle/forward/duplicate refusals,
+# reflection descriptors, and UnitView.
+build/vmverify: $(wildcard test/verify-vm/*.go) test/verify-vm/VerifyHostile.schema $(GO_SOURCES)
+	@mkdir -p build
+	go build -o $@ ./test/verify-vm
 
 # ---- Fast toolchain staging ($NOVA_SDK / dist/ fast path) ----
 
@@ -61,7 +91,7 @@ verify-toolchain-lua:
 	@test -x "$(LUA)" || command -v "$(LUA)" >/dev/null 2>&1 || $(MAKE) --no-print-directory dist-lua
 
 verify-toolchain-luau:
-	@test -x "$(LUAU)" || command -v "$(LUAU)" >/dev/null 2>&1 || $(MAKE) --no-print-directory dist-luau
+	@if [ ! -x "$(LUAU)" ] || [ ! -x "$(LUAU_ANALYZE)" ]; then $(MAKE) --no-print-directory dist-luau; fi
 
 verify-toolchain-squirrel:
 	@test -x "$(SQ)" || command -v "$(SQ)" >/dev/null 2>&1 || $(MAKE) --no-print-directory dist-squirrel
@@ -135,6 +165,84 @@ tables-lobster-bench-gate: verify-toolchain-lobster generated/bench/tables/lobst
 	LOBSTER="$(LOBSTER)" bench/tables/lobster/leg build
 	LOBSTER="$(LOBSTER)" bench/tables/lobster/leg run --gate
 
+# ---- Deep packet + &node + Descriptors + UnitView + Cards (9/9) gates ----
+
+.PHONY: verify-deep-js verify-deep-python verify-deep-ruby \
+	verify-deep-lua verify-deep-luau verify-deep-squirrel \
+	verify-deep-moo verify-deep-goose verify-deep-lobster \
+	verify-cards-js verify-cards-python verify-cards-ruby \
+	verify-cards-lua verify-cards-luau verify-cards-squirrel \
+	verify-cards-moo verify-cards-goose verify-cards-lobster
+
+verify-deep-js: verify-toolchain-js bin/schema build/vmverify
+	NODE="$(NODE)" ./build/vmverify --lang js --schema ./bin/schema --work build/verify/vmverify-js
+
+verify-cards-js: verify-toolchain-js build/conformance-harness-vm cards-js-generate
+	NODE="$(NODE)" ./build/conformance-harness-vm cards --work build/verify/cards-js \
+		--corpus tables/cards/conformance --driver 'tables/cards/js/driver' --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-python: verify-toolchain-python bin/schema build/vmverify
+	PYTHON="$(PYTHON)" PYTHON_FLOOR="$(PYTHON_FLOOR)" ./build/vmverify --lang python --schema ./bin/schema --work build/verify/vmverify-python
+
+verify-cards-python: verify-toolchain-python build/conformance-harness-vm cards-python-generate
+	PYTHON="$(PYTHON)" ./build/conformance-harness-vm cards --work build/verify/cards-python-current \
+		--corpus tables/cards/conformance --driver 'tables/cards/python/driver' --require $(VERIFY_CARDS_SURFACES)
+	PYTHON="$(PYTHON_FLOOR)" ./build/conformance-harness-vm cards --work build/verify/cards-python-floor \
+		--corpus tables/cards/conformance --driver 'tables/cards/python/driver' --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-ruby: verify-toolchain-ruby build/schema-ruby build/vmverify
+	RUBY="$(RUBY)" RUBY_FLOOR="$(RUBY_FLOOR)" ./build/vmverify --lang ruby --schema ./build/schema-ruby --work build/verify/vmverify-ruby
+
+verify-cards-ruby: verify-toolchain-ruby build/conformance-harness-vm cards-ruby-generate
+	RUBY="$(RUBY)" ./build/conformance-harness-vm cards --work build/verify/cards-ruby-current \
+		--corpus tables/cards/conformance --driver 'tables/cards/ruby/driver' --require $(VERIFY_CARDS_SURFACES)
+	RUBY="$(RUBY_FLOOR)" ./build/conformance-harness-vm cards --work build/verify/cards-ruby-floor \
+		--corpus tables/cards/conformance --driver 'tables/cards/ruby/driver' --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-lua: verify-toolchain-lua bin/schema build/vmverify
+	LUA="$(LUA)" ./build/vmverify --lang lua --schema ./bin/schema --work build/verify/vmverify-lua
+
+verify-cards-lua: verify-toolchain-lua build/conformance-harness-vm cards-lua-generate
+	LUA="$(LUA)" ./build/conformance-harness-vm cards --work build/verify/cards-lua \
+		--corpus tables/cards/conformance --driver 'tables/cards/lua/driver' --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-luau: verify-toolchain-luau bin/schema build/vmverify
+	LUAU="$(LUAU)" LUAU_ANALYZE="$(LUAU_ANALYZE)" ./build/vmverify --lang luau --schema ./bin/schema --work build/verify/vmverify-luau
+
+verify-cards-luau: verify-toolchain-luau build/conformance-harness-vm cards-luau-generate build/cards-driver-luau
+	LUAU="$(LUAU)" SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
+		./build/conformance-harness-vm cards --work build/verify/cards-luau \
+		--corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-squirrel: verify-toolchain-squirrel bin/schema build/vmverify
+	SQ="$(SQ)" ./build/vmverify --lang squirrel --schema ./bin/schema --work build/verify/vmverify-squirrel
+
+verify-cards-squirrel: verify-toolchain-squirrel build/conformance-harness-vm cards-squirrel-generate
+	SQ="$(SQ)" CARDS_SQUIRREL_GENERATED=$(CARDS_SQUIRREL_GENERATED) ./build/conformance-harness-vm cards --work build/verify/cards-squirrel \
+		--corpus tables/cards/conformance --driver 'tables/cards/squirrel/driver' --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-moo: verify-toolchain-moo build/schema-moo build/vmverify
+	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/vmverify --lang moo --schema ./build/schema-moo --work build/verify/vmverify-moo
+
+verify-cards-moo: verify-toolchain-moo build/conformance-harness-vm cards-moo-generate build/cards-driver-moo
+	MOO="$(MOO)" SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
+		./build/conformance-harness-vm cards --work build/verify/cards-moo \
+		--corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-goose: verify-toolchain-goose bin/schema build/vmverify
+	GOOSE="$(GOOSE)" ./build/vmverify --lang goose --schema ./bin/schema --work build/verify/vmverify-goose
+
+verify-cards-goose: verify-toolchain-goose build/conformance-harness-vm cards-goose-generate
+	GOOSE="$(GOOSE)" ./build/conformance-harness-vm cards --work build/verify/cards-goose \
+		--corpus tables/cards/conformance --driver 'tables/cards/goose/driver' --require $(VERIFY_CARDS_SURFACES)
+
+verify-deep-lobster: verify-toolchain-lobster bin/schema build/vmverify
+	LOBSTER="$(LOBSTER)" ./build/vmverify --lang lobster --schema ./bin/schema --work build/verify/vmverify-lobster
+
+verify-cards-lobster: verify-toolchain-lobster build/conformance-harness-vm cards-lobster-generate
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm cards --work build/verify/cards-lobster \
+		--corpus tables/cards/conformance --driver 'tables/cards/lobster/driver' --require $(VERIFY_CARDS_SURFACES)
+
 # ---- Umbrella wrapper macro (matches make/verify-compiled.mk) ----
 
 define verify_vm_entrypoints
@@ -162,10 +270,10 @@ $(foreach leg,$(VERIFY_VM_LEGS),$(eval $(call verify_vm_entrypoints,$(leg))))
 _verify-js-conformance: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp build/packet-defaults/js/.stamp packet-end-js packet-write-cfloat-js
 	$(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
 	NODE_ENV=production $(NODE) test/packet-defaults/js/main.mjs testdata/wire/packet-defaults
-	@rm -rf build/verify/conformance-js && mkdir -p build/verify/conformance-js
-	NODE="$(NODE)" ./build/conformance-harness-vm run --only js --claims --work build/verify/conformance-js
+	@rm -rf build/verify/conformance-js && mkdir -p build/verify/conformance-js $(VERIFY_RESULTS_DIR)
+	NODE="$(NODE)" ./build/conformance-harness-vm run --only js --claims --work build/verify/conformance-js --results $(VERIFY_RESULTS_DIR)/js.json
 
-_verify-js-bench: bench-js-gate tables-js-bench-gate
+_verify-js-bench: bench-js-gate tables-js-bench-gate verify-deep-js verify-cards-js
 
 _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp cards-js-generate
 	@mkdir -p build/verify
@@ -185,10 +293,10 @@ _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-g
 
 .PHONY: _verify-python-conformance _verify-python-bench _verify-python-fuzz
 _verify-python-conformance: verify-toolchain-python build/conformance-harness-vm build/conformance-python packet-defaults-python packet-finite-python packet-void-python
-	@rm -rf build/verify/conformance-python && mkdir -p build/verify/conformance-python
-	PYTHON="$(PYTHON)" ./build/conformance-harness-vm run --only python --claims --work build/verify/conformance-python
+	@rm -rf build/verify/conformance-python && mkdir -p build/verify/conformance-python $(VERIFY_RESULTS_DIR)
+	PYTHON="$(PYTHON)" ./build/conformance-harness-vm run --only python --claims --work build/verify/conformance-python --results $(VERIFY_RESULTS_DIR)/python.json
 
-_verify-python-bench: verify-toolchain-python bench-python-gate tables-python-bench-gate
+_verify-python-bench: verify-toolchain-python bench-python-gate tables-python-bench-gate verify-deep-python verify-cards-python
 
 _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/conformance-python
 	@mkdir -p build/verify
@@ -208,10 +316,10 @@ _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/
 
 .PHONY: _verify-ruby-conformance _verify-ruby-bench _verify-ruby-fuzz
 _verify-ruby-conformance: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby packet-defaults-ruby packet-finite-ruby packet-void-ruby
-	@rm -rf build/verify/conformance-ruby && mkdir -p build/verify/conformance-ruby
-	RUBY="$(RUBY)" ./build/conformance-harness-vm run --only ruby --claims --work build/verify/conformance-ruby
+	@rm -rf build/verify/conformance-ruby && mkdir -p build/verify/conformance-ruby $(VERIFY_RESULTS_DIR)
+	RUBY="$(RUBY)" ./build/conformance-harness-vm run --only ruby --claims --work build/verify/conformance-ruby --results $(VERIFY_RESULTS_DIR)/ruby.json
 
-_verify-ruby-bench: verify-toolchain-ruby bench-ruby-gate tables-ruby-bench-gate
+_verify-ruby-bench: verify-toolchain-ruby bench-ruby-gate tables-ruby-bench-gate verify-deep-ruby verify-cards-ruby
 
 _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby
 	@mkdir -p build/verify
@@ -231,10 +339,10 @@ _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conf
 
 .PHONY: _verify-lua-conformance _verify-lua-bench _verify-lua-fuzz
 _verify-lua-conformance: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua packet-defaults-lua packet-end-lua packet-finite-lua
-	@rm -rf build/verify/conformance-lua && mkdir -p build/verify/conformance-lua
-	LUA="$(LUA)" ./build/conformance-harness-vm run --only lua --claims --work build/verify/conformance-lua
+	@rm -rf build/verify/conformance-lua && mkdir -p build/verify/conformance-lua $(VERIFY_RESULTS_DIR)
+	LUA="$(LUA)" ./build/conformance-harness-vm run --only lua --claims --work build/verify/conformance-lua --results $(VERIFY_RESULTS_DIR)/lua.json
 
-_verify-lua-bench: verify-toolchain-lua bench-lua-gate tables-lua-bench-gate
+_verify-lua-bench: verify-toolchain-lua bench-lua-gate tables-lua-bench-gate verify-deep-lua verify-cards-lua
 
 # lua's retain wire-fuzz arm is owed in test/conformance/wire-fuzz-owed.txt;
 # plain exercises all fixed + variable + message roots.
@@ -252,10 +360,10 @@ _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/confor
 
 .PHONY: _verify-luau-conformance _verify-luau-bench _verify-luau-fuzz
 _verify-luau-conformance: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau packet-defaults-luau packet-end-luau packet-write-text-luau
-	@rm -rf build/verify/conformance-luau && mkdir -p build/verify/conformance-luau
-	LUAU="$(LUAU)" ./build/conformance-harness-vm run --only luau --claims --work build/verify/conformance-luau
+	@rm -rf build/verify/conformance-luau && mkdir -p build/verify/conformance-luau $(VERIFY_RESULTS_DIR)
+	LUAU="$(LUAU)" ./build/conformance-harness-vm run --only luau --claims --work build/verify/conformance-luau --results $(VERIFY_RESULTS_DIR)/luau.json
 
-_verify-luau-bench: verify-toolchain-luau bench-luau-gate tables-luau-bench-gate
+_verify-luau-bench: verify-toolchain-luau bench-luau-gate tables-luau-bench-gate verify-deep-luau verify-cards-luau
 
 _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
 	@mkdir -p build/verify
@@ -275,10 +383,10 @@ _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conf
 
 .PHONY: _verify-squirrel-conformance _verify-squirrel-bench _verify-squirrel-fuzz
 _verify-squirrel-conformance: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel packet-end-squirrel packet-write-bareint-squirrel packet-write-cfloat-squirrel packet-write-text-squirrel
-	@rm -rf build/verify/conformance-squirrel && mkdir -p build/verify/conformance-squirrel
-	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-squirrel
+	@rm -rf build/verify/conformance-squirrel && mkdir -p build/verify/conformance-squirrel $(VERIFY_RESULTS_DIR)
+	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json
 
-_verify-squirrel-bench: verify-toolchain-squirrel bench-squirrel-gate tables-squirrel-bench-gate
+_verify-squirrel-bench: verify-toolchain-squirrel bench-squirrel-gate tables-squirrel-bench-gate verify-deep-squirrel verify-cards-squirrel
 
 # Squirrel splits fixed-class roots (plain arm) and variable-class roots (`builder` / --builder);
 # retain is owed in test/conformance/wire-fuzz-owed.txt.
@@ -300,10 +408,10 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 
 .PHONY: _verify-moo-conformance _verify-moo-bench _verify-moo-fuzz
 _verify-moo-conformance: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo packet-end-moo packet-finite-moo packet-write-bareint-moo
-	@rm -rf build/verify/conformance-moo && mkdir -p build/verify/conformance-moo
-	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm run --only moo --claims --work build/verify/conformance-moo
+	@rm -rf build/verify/conformance-moo && mkdir -p build/verify/conformance-moo $(VERIFY_RESULTS_DIR)
+	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm run --only moo --claims --work build/verify/conformance-moo --results $(VERIFY_RESULTS_DIR)/moo.json
 
-_verify-moo-bench: verify-toolchain-moo bench-moo-gate tables-moo-bench-gate
+_verify-moo-bench: verify-toolchain-moo bench-moo-gate tables-moo-bench-gate verify-deep-moo verify-cards-moo
 
 _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
 	@$(MAKE) --no-print-directory $(MOOFUZZHOST) MOO_BUILD_JOBS=$(VERIFY_JOBS)
@@ -326,10 +434,10 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 _verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-packet/.stamp
 	cd build/goose-packet/normal && "$(GOOSE)" run main.goose
 	cd build/goose-packet/ludicrous && "$(GOOSE)" run main.goose
-	@rm -rf build/verify/conformance-goose && mkdir -p build/verify/conformance-goose
-	GOOSE="$(GOOSE)" ./build/conformance-harness-vm run --only goose --claims --work build/verify/conformance-goose
+	@rm -rf build/verify/conformance-goose && mkdir -p build/verify/conformance-goose $(VERIFY_RESULTS_DIR)
+	GOOSE="$(GOOSE)" ./build/conformance-harness-vm run --only goose --claims --work build/verify/conformance-goose --results $(VERIFY_RESULTS_DIR)/goose.json
 
-_verify-goose-bench: verify-toolchain-goose bench-goose-gate tables-goose-bench-gate
+_verify-goose-bench: verify-toolchain-goose bench-goose-gate tables-goose-bench-gate verify-deep-goose verify-cards-goose
 
 build/goose-wirefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMAS) \
 	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
@@ -355,10 +463,10 @@ _verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/co
 
 .PHONY: _verify-lobster-conformance _verify-lobster-bench _verify-lobster-fuzz
 _verify-lobster-conformance: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster packet-end-lobster packet-write-bareint-lobster packet-write-cfloat-lobster
-	@rm -rf build/verify/conformance-lobster && mkdir -p build/verify/conformance-lobster
-	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm run --only lobster --claims --work build/verify/conformance-lobster
+	@rm -rf build/verify/conformance-lobster && mkdir -p build/verify/conformance-lobster $(VERIFY_RESULTS_DIR)
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm run --only lobster --claims --work build/verify/conformance-lobster --results $(VERIFY_RESULTS_DIR)/lobster.json
 
-_verify-lobster-bench: verify-toolchain-lobster bench-lobster-gate tables-lobster-bench-gate
+_verify-lobster-bench: verify-toolchain-lobster bench-lobster-gate tables-lobster-bench-gate verify-deep-lobster verify-cards-lobster
 
 _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster build/lobster-wirefuzzhost
 	@mkdir -p build/verify
@@ -374,25 +482,105 @@ _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm buil
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lobster
 
-# ---- Sabotage Negative Control ----
-# Proves that a 1-bit / 1-constant corruption in an optimization-pass emitter
-# causes the fast per-language verification gates (bench + conformance) to fail
-# immediately on a byte mismatch.
+# ---- 4-Class Optimization Sabotage Negative Controls ----
+# Proves that subtle 1-line emitter corruptions across all four major runtime
+# classes fail the widened fast per-language verification gates immediately:
+#   (a) verify-sabotage-packet-negative-control   packet reserved/align bit guard
+#   (b) verify-sabotage-fixed-negative-control    fixed-table evolution default prefill
+#   (c) verify-sabotage-variable-negative-control variable-table Form-1 wire framing
+#   (d) verify-sabotage-retain-negative-control   variable-table retain-unknown loss
 
-.PHONY: verify-sabotage-negative-control
-verify-sabotage-negative-control: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp
-	@rm -rf build/verify-sabotage-nc && mkdir -p build/verify-sabotage-nc/bench
-	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/variableform.go").read_text(); target = "export const TableVariableForm = 1;"; assert target in src, "missing TableVariableForm anchor"; pathlib.Path("build/verify-sabotage-nc/variableform.go").write_text(src.replace(target, "export const TableVariableForm = 9;", 1))'
-	@printf '{"Replace":{"%s/internal/codegen/jstable/variableform.go":"%s/build/verify-sabotage-nc/variableform.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-sabotage-nc/overlay.json
-	go build -overlay=build/verify-sabotage-nc/overlay.json -o build/verify-sabotage-nc/schema ./cmd/schema
-	@sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > build/verify-sabotage-nc/BenchTable.schema
-	./build/verify-sabotage-nc/schema generate --lang js --out build/verify-sabotage-nc/bench build/verify-sabotage-nc/BenchTable.schema
-	@if NODE="$(NODE)" $(NODE) bench/tables/js/form1_main.mjs build/verify-sabotage-nc/bench --gate > build/verify-sabotage-nc/bench.log 2>&1; then \
+.PHONY: verify-sabotage-negative-control \
+	verify-sabotage-packet-negative-control \
+	verify-sabotage-fixed-negative-control \
+	verify-sabotage-variable-negative-control \
+	verify-sabotage-retain-negative-control
+
+verify-sabotage-packet-negative-control: verify-toolchain-js build/vmverify
+	@rm -rf build/verify-sabotage-nc/packet && mkdir -p build/verify-sabotage-nc/packet
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/js/functions.go").read_text(); target = "if (%s.value !== %s) { // reserved(%d): a read rejects nonzero (SPEC §4.3)"; assert target in src, "missing reserved anchor"; pathlib.Path("build/verify-sabotage-nc/packet/functions.gotext").write_text(src.replace(target, "if (false && %s.value !== %s) { // sabotaged reserved(%d)", 1))'
+	@printf '{"Replace":{"%s/internal/codegen/js/functions.go":"%s/build/verify-sabotage-nc/packet/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-sabotage-nc/packet/overlay.json
+	go build -overlay=build/verify-sabotage-nc/packet/overlay.json -o build/verify-sabotage-nc/packet/schema ./cmd/schema
+	@if NODE="$(NODE)" ./build/vmverify --lang js --mode packet --schema build/verify-sabotage-nc/packet/schema --work build/verify-sabotage-nc/packet/work > build/verify-sabotage-nc/packet/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: sabotaged packet reserved bit check passed vmverify" >&2; exit 1; fi
+	@grep -q 'must refuse read bad_reserved_lo' build/verify-sabotage-nc/packet/log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected packet sabotage failure:" >&2; cat build/verify-sabotage-nc/packet/log >&2; exit 1; }
+	@echo "verify-sabotage-packet-negative-control: sabotaged packet reserved bit guard caught immediately by vmverify"
+
+verify-sabotage-fixed-negative-control: verify-toolchain-js bin/schema build/conformance-harness-vm
+	@rm -rf build/verify-sabotage-nc/fixed && mkdir -p build/verify-sabotage-nc/fixed/unit
+	@cp test/tables/V2.schema build/verify-sabotage-nc/fixed/unit/V2.schema
+	./bin/schema lock build/verify-sabotage-nc/fixed/unit
+	./bin/schema generate --lang js --out build/verify-sabotage-nc/fixed/v1 build/verify-sabotage-nc/fixed/unit
+	@python3 -c 'import pathlib; p = pathlib.Path("build/verify-sabotage-nc/fixed/unit/V2.schema"); s = p.read_text(); assert "    mark   ?Grade\n}" in s; p.write_text(s.replace("    mark   ?Grade\n}", "    mark   ?Grade\n    nc_active bool = true\n    nc_gain float32 = 2.5\n}", 1))'
+	./bin/schema lock build/verify-sabotage-nc/fixed/unit
+	@printf '{"type":"module"}\n' > build/verify-sabotage-nc/fixed/package.json
+	./bin/schema generate --lang js --out build/verify-sabotage-nc/fixed/good build/verify-sabotage-nc/fixed/unit
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/fixedprefill.go").read_text(); target = "\tfixedPrefillInto(out, 0, st)"; assert target in src, "missing fixedPrefillInto anchor"; pathlib.Path("build/verify-sabotage-nc/fixed/fixedprefill.gotext").write_text(src.replace(target, "\t_ = st // sabotaged fixedPrefillInto", 1))'
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedprefill.go":"%s/build/verify-sabotage-nc/fixed/fixedprefill.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-sabotage-nc/fixed/overlay.json
+	go build -overlay=build/verify-sabotage-nc/fixed/overlay.json -o build/verify-sabotage-nc/fixed/schema ./cmd/schema
+	./build/verify-sabotage-nc/fixed/schema generate --lang js --out build/verify-sabotage-nc/fixed/bad build/verify-sabotage-nc/fixed/unit
+	@printf '%s\n' \
+		'const dir = process.argv[2];' \
+		'const V1F = await import("./v1/V2Table.js"), V1T = await import("./v1/Tblv2Table.js");' \
+		'const MF = await import("./" + dir + "/V2Table.js"), MT = await import("./" + dir + "/Tblv2Table.js");' \
+		'const src = new V1T.Cfg(); V1T.InitCfg(src); src.a = 7.5;' \
+		'const wire = new Uint8Array(V1F.CfgFixedMeasure(1));' \
+		'if (V1F.CfgFixedSave([src], 1, wire) !== wire.length) process.exit(2);' \
+		'const x = new MT.Cfg(); MT.InitCfg(x);' \
+		'const r = new MT.TableFixedReport();' \
+		'const n = MF.CfgFixedLoad([x], 1, wire, wire.length, MF.CfgFixedNewPlan(), r);' \
+		'if (n !== 1 || r.refused !== 0 || r.damaged || x.a !== 7.5 || x.ncActive !== true || x.ncGain !== 2.5) {' \
+		'  console.error("FIXED_PREFILL_MISMATCH", { n, a: x.a, ncActive: x.ncActive, ncGain: x.ncGain });' \
+		'  process.exit(1);' \
+		'}' > build/verify-sabotage-nc/fixed/check.mjs
+	$(NODE) build/verify-sabotage-nc/fixed/check.mjs good
+	@if $(NODE) build/verify-sabotage-nc/fixed/check.mjs bad > build/verify-sabotage-nc/fixed/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: sabotaged fixed-table non-zero default prefill passed schema.lock evolution check" >&2; exit 1; fi
+	@grep -q 'FIXED_PREFILL_MISMATCH' build/verify-sabotage-nc/fixed/log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected fixed prefill failure:" >&2; cat build/verify-sabotage-nc/fixed/log >&2; exit 1; }
+	@echo "verify-sabotage-fixed-negative-control: sabotaged fixed-table schema.lock default prefill caught immediately"
+
+verify-sabotage-variable-negative-control: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp
+	@rm -rf build/verify-sabotage-nc/variable && mkdir -p build/verify-sabotage-nc/variable/bench
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/variableform.go").read_text(); target = "export const TableVariableForm = 1;"; assert target in src, "missing TableVariableForm anchor"; pathlib.Path("build/verify-sabotage-nc/variable/variableform.gotext").write_text(src.replace(target, "export const TableVariableForm = 9;", 1))'
+	@printf '{"Replace":{"%s/internal/codegen/jstable/variableform.go":"%s/build/verify-sabotage-nc/variable/variableform.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-sabotage-nc/variable/overlay.json
+	go build -overlay=build/verify-sabotage-nc/variable/overlay.json -o build/verify-sabotage-nc/variable/schema ./cmd/schema
+	@sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > build/verify-sabotage-nc/variable/BenchTable.schema
+	./build/verify-sabotage-nc/variable/schema generate --lang js --out build/verify-sabotage-nc/variable/bench build/verify-sabotage-nc/variable/BenchTable.schema
+	@if NODE="$(NODE)" $(NODE) bench/tables/js/form1_main.mjs build/verify-sabotage-nc/variable/bench --gate > build/verify-sabotage-nc/variable/bench.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: sabotaged JS Form-1 emitter passed tables-js-bench-gate" >&2; exit 1; fi
-	@grep -q 'FAILED: bench_table' build/verify-sabotage-nc/bench.log || \
-		{ echo "NEGATIVE CONTROL FAILED: unexpected bench failure log:" >&2; cat build/verify-sabotage-nc/bench.log >&2; exit 1; }
-	@cp -a build/tables-generated-js build/verify-sabotage-nc/conformance-js
-	./build/verify-sabotage-nc/schema generate --lang js --out build/verify-sabotage-nc/conformance-js/scalars tables/scalars
-	@if SCHEMA_JS_GENERATED=build/verify-sabotage-nc/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm run --only js --surface wire --work build/verify-sabotage-nc/work > build/verify-sabotage-nc/conf.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: sabotaged JS emitter passed conformance wire surface" >&2; exit 1; fi
-	@echo "verify-sabotage-negative-control: 1-constant emitter corruption caught immediately by both bench gate and conformance"
+	@grep -q 'FAILED: bench_table' build/verify-sabotage-nc/variable/bench.log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected bench failure log:" >&2; cat build/verify-sabotage-nc/variable/bench.log >&2; exit 1; }
+	@cp -a build/tables-generated-js build/verify-sabotage-nc/variable/conformance-js
+	./build/verify-sabotage-nc/variable/schema generate --lang js --out build/verify-sabotage-nc/variable/conformance-js/pointers tables/pointers
+	@if SCHEMA_JS_GENERATED=build/verify-sabotage-nc/variable/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm run --only js --work build/verify-sabotage-nc/variable/work > build/verify-sabotage-nc/variable/conf.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: sabotaged JS variable emitter passed conformance" >&2; exit 1; fi
+	@grep -q 'FAILURES' build/verify-sabotage-nc/variable/conf.log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected conformance failure log:" >&2; cat build/verify-sabotage-nc/variable/conf.log >&2; exit 1; }
+	@echo "verify-sabotage-variable-negative-control: sabotaged Form-1 variable emitter caught immediately by bench and conformance"
+
+verify-sabotage-retain-negative-control: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp cards-js-generate
+	@rm -rf build/verify-sabotage-nc/retain && mkdir -p build/verify-sabotage-nc/retain
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/retain.go").read_text(); target = "return TableVariableLoad(%s, bytes, report, retain);"; assert target in src, "missing LoadRetain anchor"; pathlib.Path("build/verify-sabotage-nc/retain/retain.gotext").write_text(src.replace(target, "return TableVariableLoad(%s, bytes, report, null);", 1))'
+	@printf '{"Replace":{"%s/internal/codegen/jstable/retain.go":"%s/build/verify-sabotage-nc/retain/retain.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-sabotage-nc/retain/overlay.json
+	go build -overlay=build/verify-sabotage-nc/retain/overlay.json -o build/verify-sabotage-nc/retain/schema ./cmd/schema
+	@cp -a build/tables-generated-js build/verify-sabotage-nc/retain/conformance-js
+	./build/verify-sabotage-nc/retain/schema generate --lang js --out build/verify-sabotage-nc/retain/conformance-js/rt1 test/tables/RT1.schema
+	./build/verify-sabotage-nc/retain/schema generate --lang js --out build/verify-sabotage-nc/retain/conformance-js/rt2 test/tables/RT2.schema
+	./build/verify-sabotage-nc/retain/schema generate --lang js --out build/verify-sabotage-nc/retain/conformance-js/rt3 test/tables/RT3.schema
+	./build/verify-sabotage-nc/retain/schema generate --lang js --out build/verify-sabotage-nc/retain/conformance-js/pointers tables/pointers
+	@if SCHEMA_JS_GENERATED=build/verify-sabotage-nc/retain/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm run --only js --work build/verify-sabotage-nc/retain/retain-work > build/verify-sabotage-nc/retain/retain.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: sabotaged JS retain-unknown loader passed conformance" >&2; exit 1; fi
+	@grep -q 'wire .*pass' build/verify-sabotage-nc/retain/retain.log && grep -q 'js / retain-save: retain_round_trip' build/verify-sabotage-nc/retain/retain.log || \
+		{ echo "NEGATIVE CONTROL FAILED: expected wire pass + retain-save FAIL:" >&2; cat build/verify-sabotage-nc/retain/retain.log >&2; exit 1; }
+	@if SCHEMA_JS_GENERATED=build/verify-sabotage-nc/retain/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --retain $(WFR_FLAGS_js) --driver "$(WFR_DRIVER_js)" --seed 1 --n 20 --max-mutants 250 --failed build/verify-sabotage-nc/retain/fuzz.bin > build/verify-sabotage-nc/retain/fuzz.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: sabotaged JS retain-unknown loader passed wire-fuzz --retain" >&2; exit 1; fi
+	@echo "verify-sabotage-retain-negative-control: silent retain-unknown drop left wire green and failed both retain-save and wire-fuzz --retain"
+
+verify-sabotage-negative-control: \
+	verify-sabotage-packet-negative-control \
+	verify-sabotage-fixed-negative-control \
+	verify-sabotage-variable-negative-control \
+	verify-sabotage-retain-negative-control
+	@echo "verify-sabotage-negative-control: all 4 sabotage classes (packet, fixed, variable, retain) caught immediately"

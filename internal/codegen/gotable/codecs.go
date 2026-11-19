@@ -478,7 +478,10 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		}
 	case f.Array != ir.ArrayNone && isUnionRef(f.Type):
 		base := arrayBase("value.", f)
-		g.pf("\tfor i := range %s {\n\t\t%s[i].Type = %sTypeNone\n\t}\n", base, base, f.Type.Name)
+		un := f.Type.Ref.(*ir.Union)
+		g.pf("\tfor i := range %s {\n", base)
+		g.emitUnionValueReset(base+"[i]", un)
+		g.pf("\t}\n")
 		if f.Array == ir.ArrayCounted {
 			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
@@ -490,10 +493,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 			g.pf("\tvalue.%sCount = %d\n", name, f.BornCount())
 		}
 	default:
-		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {
-			// the tag is the whole reset: an arm zero-establishes when the
-			// reader selects it, exactly as the packet reader does
-			g.pf("\tvalue.%s.Type = %sTypeNone\n", name, f.Type.Name)
+		if un, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {
+			g.emitUnionValueReset("value."+name, un)
 			return
 		}
 		if isStructRef(f.Type) {
@@ -502,6 +503,37 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		}
 		g.pf("\tvalue.%s = %s\n", name, fieldDefaultExpr(f))
 	}
+}
+
+func (g *tableGen) emitUnionValueReset(expr string, un *ir.Union) {
+	if g.regional && g.viewPacket == nil {
+		size, _, _, offset := ir.UnionLayout(g.unit, un)
+		if size > offset {
+			g.pf("\tclear((%s).Payload[:])\n", expr)
+		}
+		for _, v := range un.Variants {
+			if v.Void() {
+				continue
+			}
+			f := *v.F
+			f.Name = "value"
+			g.pf("\t{\n\t\tvalue := (%s).%s()\n", expr, member(&ir.Field{Name: v.Name}))
+			g.emitTableResetField(&f)
+			g.pf("\t}\n")
+		}
+		g.pf("\t(%s).Type = 0\n", expr)
+		return
+	}
+	g.pf("\t{\n\t\tvalue := &(%s)\n", expr)
+	for _, v := range un.Variants {
+		if v.Void() {
+			continue
+		}
+		f := *v.F
+		f.Name = v.Name
+		g.emitTableResetField(&f)
+	}
+	g.pf("\t\tvalue.Type = %sTypeNone\n\t}\n", un.Name)
 }
 
 // ---- reflection descriptors ----

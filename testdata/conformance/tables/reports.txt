@@ -18,11 +18,19 @@ a2_arm_length_off_width refused
 a2_arm_pointer_as_int refused
 batch_elem_kind    refused
 batch_unknown_arm  refused
+blob_utf8_mid_trunc refused
 escape_arm         refused
 escape_element     refused
 escape_named_field refused
 escape_unnamed_field refused
 field_scalar_widen refused
+fixedevo_v0_retired refused
+fixedevo_v1_as_v3  read
+fixedevo_v1_dead_tail refused
+fixedevo_v1_dep_corrupt refused
+fixedevo_v2_as_v3  read
+fixedevo_v3_batch2 refused
+fixedevo_v3_utf8_trunc refused
 form_ff            refused
 form_six           refused
 form_zero          refused
@@ -114,6 +122,7 @@ previous_form_vocab9_wide refused
 previous_form_vocab_low refused
 previous_form_vocab_wide refused
 previous_form_wide_blob refused
+profile_utf8_mid_trunc refused
 r1_cfg_as_r2       refused
 r1_ping_as_r2      refused
 r2_cfg_as_r1       refused

@@ -486,6 +486,10 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
     { int32_t i; for ( i = 1; i < (int32_t) ( 80 ); i++ ) { value->stats[i] = value->stats[0]; } }
     value->stats_count = 0;
     memset( &value->game_event, 0, sizeof( value->game_event ) );
+    bench_mixed_hit_event_reset( &value->game_event.as.hit );
+    bench_mixed_chat_event_reset( &value->game_event.as.chat );
+    bench_mixed_pickup_event_reset( &value->game_event.as.pickup );
+    value->game_event.type = 0;
     memset( value->loadout, 0, sizeof( value->loadout ) );
     memset( value->player_name, 0, sizeof( value->player_name ) );
     value->player_name_length = 0;

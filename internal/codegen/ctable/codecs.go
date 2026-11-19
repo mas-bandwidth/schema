@@ -371,7 +371,35 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		g.pf("    %s( &%s );\n", g.api(typ, "reset"), expr)
 		return
 	}
+	if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
+		g.pf("    memset( &%s, 0, sizeof( %s ) );\n", expr, expr)
+		for _, v := range un.Variants {
+			g.emitTableResetArm(expr, v)
+		}
+		g.pf("    %s.type = 0;\n", expr)
+		return
+	}
 	g.pf("    memset( &%s, 0, sizeof( %s ) );\n", expr, expr)
+}
+
+func (g *tableGen) emitTableResetArm(base string, v ir.UnionVariant) {
+	if v.Void() || v.F == nil || v.F.Type.Pointer || v.F.IsList() || v.F.IsMap() {
+		return
+	}
+	f := v.F
+	if !cSelfInit(f.Type) {
+		return
+	}
+	typ := g.cFieldType(f.Type)
+	expr := armValue(base, v)
+	switch {
+	case f.KeyEnum != "":
+		g.emitTableResetArray(expr, enumMaxConst(f.KeyEnum), typ, true, f)
+	case f.Array == ir.ArrayFixed, f.Array == ir.ArrayCounted:
+		g.emitTableResetArray(expr, strconv.FormatInt(f.ArrayBound, 10), typ, true, f)
+	default:
+		g.emitTableResetOne(expr, typ, f)
+	}
 }
 
 // enumRef returns the enum a field's values come from, or nil.

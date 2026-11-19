@@ -97,54 +97,13 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 # the zero-cost gate's block-less arm regenerates the whole corpus from a
 # sabotaged emitter, and a second copy of these lines would be a second corpus.
 define tables_generate_cs
-	$(1) generate --lang cs --out $(2)/examples tables/examples
-	$(1) generate --lang cs --out $(2)/pointers tables/pointers
-	$(1) generate --lang cs --out $(2)/block tables/block
-	$(1) generate --lang cs --out $(2)/blockhome tables/blockhome
-	$(1) generate --lang cs --out $(2)/v1 test/tables/V1.schema
-	$(1) generate --lang cs --out $(2)/v2 test/tables/V2.schema
-	$(1) generate --lang cs --out $(2)/p1 test/tables/P1.schema
-	$(1) generate --lang cs --out $(2)/p3 test/tables/P3.schema
-	$(1) generate --lang cs --out $(2)/fx1 test/tables/FX1.schema
-	$(1) generate --lang cs --out $(2)/fx2 test/tables/FX2.schema
-	$(1) generate --lang cs --out $(2)/k1 test/tables/K1.schema
-	$(1) generate --lang cs --out $(2)/k2 test/tables/K2.schema
-	$(1) generate --lang cs --out $(2)/csids test/tables/CsIds.schema
-	$(1) generate --lang cs --out $(2)/csunions test/tables/CsUnions.schema
-	$(1) generate --lang cs --out $(2)/csview test/tables/CsView.schema
-	$(1) generate --lang cs --out $(2)/messages tables/messages
-	$(1) generate --lang cs --out $(2)/m1 test/tables/M1.schema
-	$(1) generate --lang cs --out $(2)/m2 test/tables/M2.schema
-	$(1) generate --lang cs --out $(2)/a1 test/tables/A1.schema
-	$(1) generate --lang cs --out $(2)/a2 test/tables/A2.schema
-	$(1) generate --lang cs --out $(2)/scalars tables/scalars
-	$(1) generate --lang cs --out $(2)/scalars2 test/tables/Scalars2.schema
-	$(1) generate --lang cs --out $(2)/blobs tables/blobs
-	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
-	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
-	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema
-	$(1) generate --lang cs --out $(2)/lists tables/lists
-	$(1) generate --lang cs --out $(2)/widelist tables/widelist
-	$(1) generate --lang cs --out $(2)/maps tables/maps
-	$(1) generate --lang cs --out $(2)/stream tables/stream
-	$(1) generate --lang cs --out $(2)/g1 test/tables/G1.schema
-	$(1) generate --lang cs --out $(2)/backend tables/backend
-	$(1) generate --lang cs --out $(2)/vocab tables/vocab
-	$(1) generate --lang cs --out $(2)/vocab9 tables/vocab9
-	$(1) generate --lang cs --out $(2)/r1 test/tables/R1.schema
-	$(1) generate --lang cs --out $(2)/r2 test/tables/R2.schema
-	$(1) generate --lang cs --out $(2)/rt1 test/tables/RT1.schema
-	$(1) generate --lang cs --out $(2)/rt2 test/tables/RT2.schema
-	$(1) generate --lang cs --out $(2)/rt3 test/tables/RT3.schema
-	$(1) generate --lang cs --out $(2)/csretain1 test/tables/CsRetain1.schema
-	$(1) generate --lang cs --out $(2)/csretain2 test/tables/CsRetain2.schema
-	$(1) generate --lang cs --out $(2)/cscollections1 test/tables/CsCollections1.schema
-	$(1) generate --lang cs --out $(2)/cscollections2 test/tables/CsCollections2.schema
-	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema
-	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+	@set -e; pids=""; for pair in examples:tables/examples pointers:tables/pointers block:tables/block blockhome:tables/blockhome v1:test/tables/V1.schema v2:test/tables/V2.schema p1:test/tables/P1.schema p3:test/tables/P3.schema fx1:test/tables/FX1.schema fx2:test/tables/FX2.schema k1:test/tables/K1.schema k2:test/tables/K2.schema csids:test/tables/CsIds.schema csunions:test/tables/CsUnions.schema csview:test/tables/CsView.schema messages:tables/messages m1:test/tables/M1.schema m2:test/tables/M2.schema a1:test/tables/A1.schema a2:test/tables/A2.schema scalars:tables/scalars scalars2:test/tables/Scalars2.schema fixedevo:test/tables/fixedevo blobs:tables/blobs p2:test/tables/P2.schema w1:test/tables/W1.schema w2:test/tables/W2.schema lists:tables/lists widelist:tables/widelist maps:tables/maps stream:tables/stream g1:test/tables/G1.schema backend:tables/backend vocab:tables/vocab vocab9:tables/vocab9 r1:test/tables/R1.schema r2:test/tables/R2.schema rt1:test/tables/RT1.schema rt2:test/tables/RT2.schema rt3:test/tables/RT3.schema csretain1:test/tables/CsRetain1.schema csretain2:test/tables/CsRetain2.schema cscollections1:test/tables/CsCollections1.schema cscollections2:test/tables/CsCollections2.schema ut:test/tables/UT.schema featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema; do \
+		out=$${pair%%:*}; src=$${pair#*:}; \
+		$(1) generate --lang cs --out $(2)/$$out $$src & pids="$$pids $$!"; \
+	done; for pid in $$pids; do wait $$pid; done
 endef
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -548,19 +507,20 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # written beside it. It is the C# twin of tables-js-leg.
 #
 .PHONY: tables-cs-view tables-cs-leg tables-cs-leg-debug tables-cs-leg-release tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
-tables-cs-view: build/tables-generated-cs/.stamp
-	@mkdir -p build/view-cs
-	@set -e; for entry in $(VIEW_CORPUS); do \
-		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+tables-cs-view: bin/schema
+	@rm -rf build/view-cs && mkdir -p build/view-cs
+	@set -e; pids=""; for entry in $(VIEW_CORPUS); do ( \
+		set -e; dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
 		source=tables/$$dir; \
 		./bin/schema generate --lang cs --out build/view-cs/generated/$$dir "$$source"; \
-		printf 'global using U = %s;\n' "$$cap" > build/view-cs/Unit.cs; \
-		$(DOTNET) build test/cs-view -v q --nologo \
-			-p:ViewAliasFile="$$PWD/build/view-cs/Unit.cs" -p:ViewGeneratedDir="$$PWD/build/view-cs/generated/$$dir" > build/view-cs/$$pkg.log 2>&1 || { cat build/view-cs/$$pkg.log; exit 1; }; \
-		$(DOTNET) test/cs-view/bin/Debug/net10.0/schema-view.dll > build/view-cs/$$pkg.listing; \
-		if [ "$$pkg" = tabledemo ]; then $(DOTNET) test/cs-view/bin/Debug/net10.0/schema-view.dll unflattened > build/view-cs/unflattened.listing; fi; \
-	done
+		printf 'global using U = %s;\n' "$$cap" > build/view-cs/Unit-$$pkg.cs; \
+		$(DOTNET) build test/cs-view -v q --nologo -p:RunAnalyzers=false \
+			-p:BaseIntermediateOutputPath="$$PWD/build/view-cs/obj-$$pkg/" -o "$$PWD/build/view-cs/bin-$$pkg" \
+			-p:ViewAliasFile="$$PWD/build/view-cs/Unit-$$pkg.cs" -p:ViewGeneratedDir="$$PWD/build/view-cs/generated/$$dir" > build/view-cs/$$pkg.log 2>&1 || { cat build/view-cs/$$pkg.log; exit 1; }; \
+		$(DOTNET) build/view-cs/bin-$$pkg/schema-view.dll > build/view-cs/$$pkg.listing; \
+		if [ "$$pkg" = tabledemo ]; then $(DOTNET) build/view-cs/bin-$$pkg/schema-view.dll unflattened > build/view-cs/unflattened.listing; fi \
+	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
 	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/view-cs/negative
 	@cp build/view-cs/unflattened.listing build/view-cs/negative/tabledemo.listing

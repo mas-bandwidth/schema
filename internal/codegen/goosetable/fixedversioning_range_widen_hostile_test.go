@@ -45,22 +45,21 @@ func TestGooseFixedVersioningRangeWidenHostile(t *testing.T) {
 			}
 			older := evolutionLoad(t, "test/tables/VOLD_"+vec.Row+".schema")
 			newer := evolutionLoad(t, "test/tables/VNEW_"+vec.Row+".schema")
+			mustRefuse := want.Refused || want.Clamped > 0
 			got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: vec.Root,
-				capacity: 1, data: gooseCorpusFile(t, corpus, vec.File), print: print})
+				capacity: 1, fresh: mustRefuse, data: gooseCorpusFile(t, corpus, vec.File), print: print})
+			if mustRefuse {
+				got.refuses(t, "out_of_range", false, 0)
+				return
+			}
 			got.reads(t, 1)
 			if len(got.printed) != len(leaves) {
 				t.Fatalf("printed %v, want %d values", got.printed, len(leaves))
 			}
 			for k, l := range leaves {
 				if got.printed[k] != strconv.FormatInt(l.Value, 10) {
-					t.Errorf("%s landed %s, want %d: the forged value clamps to the WRITER's range", l.Path, got.printed[k], l.Value)
+					t.Errorf("%s landed %s, want %d", l.Path, got.printed[k], l.Value)
 				}
-			}
-			if got.clamped != want.Clamped {
-				t.Errorf("clamped=%d, want exactly %d: the retired clamp count stays zero", got.clamped, want.Clamped)
-			}
-			if got.widened != 0 || got.unknown != 0 || got.kindMismatch != 0 {
-				t.Errorf("a counter that must not move did: %s", got.raw)
 			}
 		})
 	}

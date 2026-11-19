@@ -155,6 +155,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Tblfixedevo.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Graphdemo.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -390,6 +394,9 @@ static partial class Program
         Row<Scalardemo2.SimState, Scalardemo2.TableReport>("tblscalars2", "SimState", () => new Scalardemo2.TableReport(), Copy,
             Scalardemo2.Schema.SimStateLoad, Scalardemo2.Schema.SimStateMeasure, Scalardemo2.Schema.SimStateSave,
             Scalardemo2.Schema.SimStateFromJson, Scalardemo2.Schema.SimStateToJsonMeasure, Scalardemo2.Schema.SimStateToJson),
+        Row<Tblfixedevo.EvoRoot, Tblfixedevo.TableReport>("tblfixedevo", "EvoRoot", () => new Tblfixedevo.TableReport(), Copy,
+            Tblfixedevo.Schema.EvoRootLoad, Tblfixedevo.Schema.EvoRootMeasure, Tblfixedevo.Schema.EvoRootSave,
+            Tblfixedevo.Schema.EvoRootFromJson, Tblfixedevo.Schema.EvoRootToJsonMeasure, Tblfixedevo.Schema.EvoRootToJson),
         Row<Scalardemo.Pose, Scalardemo.TableReport>("scalars", "Pose", () => new Scalardemo.TableReport(), Copy,
             Scalardemo.Schema.PoseLoad, Scalardemo.Schema.PoseMeasure, Scalardemo.Schema.PoseSave,
             Scalardemo.Schema.PoseFromJson, Scalardemo.Schema.PoseToJsonMeasure, Scalardemo.Schema.PoseToJson),
@@ -1388,11 +1395,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblr2.TableVocabulary(); var inner = new Tblr2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblr2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblr2.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblr2.Cfg(); }
-                if (!inner.Refused && !inner.Damaged) { Tblr2.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblr2.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblr2.Schema.CfgMeasureMessages(new Tblr2.Cfg[] { (Tblr2.Cfg)value });
-            c.MessageSave = (value, bytes) => Tblr2.Schema.CfgSaveMessages(new Tblr2.Cfg[] { (Tblr2.Cfg)value }, bytes);
+            c.MessageMeasure = value => value is Tblr2.Cfg[] batch ? Tblr2.Schema.CfgMeasureMessages(batch) : Tblr2.Schema.CfgMeasureMessages(new Tblr2.Cfg[] { (Tblr2.Cfg)value });
+            c.MessageSave = (value, bytes) => value is Tblr2.Cfg[] batch ? Tblr2.Schema.CfgSaveMessages(batch, bytes) : Tblr2.Schema.CfgSaveMessages(new Tblr2.Cfg[] { (Tblr2.Cfg)value }, bytes);
         }
         {
             Codec c = Find("tblr1", "Cfg");
@@ -1405,11 +1413,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblr1.TableVocabulary(); var inner = new Tblr1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblr1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblr1.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblr1.Cfg(); }
-                if (!inner.Refused && !inner.Damaged) { Tblr1.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblr1.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblr1.Schema.CfgMeasureMessages(new Tblr1.Cfg[] { (Tblr1.Cfg)value });
-            c.MessageSave = (value, bytes) => Tblr1.Schema.CfgSaveMessages(new Tblr1.Cfg[] { (Tblr1.Cfg)value }, bytes);
+            c.MessageMeasure = value => value is Tblr1.Cfg[] batch ? Tblr1.Schema.CfgMeasureMessages(batch) : Tblr1.Schema.CfgMeasureMessages(new Tblr1.Cfg[] { (Tblr1.Cfg)value });
+            c.MessageSave = (value, bytes) => value is Tblr1.Cfg[] batch ? Tblr1.Schema.CfgSaveMessages(batch, bytes) : Tblr1.Schema.CfgSaveMessages(new Tblr1.Cfg[] { (Tblr1.Cfg)value }, bytes);
         }
         {
             Codec c = Find("vocab9demo", "Wide19");
@@ -1422,11 +1431,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocab9demo.TableVocabulary(); var inner = new Vocab9demo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Vocab9demo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Vocab9demo.Wide19[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocab9demo.Wide19(); }
-                if (!inner.Refused && !inner.Damaged) { Vocab9demo.Schema.Wide19LoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Vocab9demo.Schema.Wide19LoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Vocab9demo.Schema.Wide19MeasureMessages(new Vocab9demo.Wide19[] { (Vocab9demo.Wide19)value });
-            c.MessageSave = (value, bytes) => Vocab9demo.Schema.Wide19SaveMessages(new Vocab9demo.Wide19[] { (Vocab9demo.Wide19)value }, bytes);
+            c.MessageMeasure = value => value is Vocab9demo.Wide19[] batch ? Vocab9demo.Schema.Wide19MeasureMessages(batch) : Vocab9demo.Schema.Wide19MeasureMessages(new Vocab9demo.Wide19[] { (Vocab9demo.Wide19)value });
+            c.MessageSave = (value, bytes) => value is Vocab9demo.Wide19[] batch ? Vocab9demo.Schema.Wide19SaveMessages(batch, bytes) : Vocab9demo.Schema.Wide19SaveMessages(new Vocab9demo.Wide19[] { (Vocab9demo.Wide19)value }, bytes);
         }
         {
             Codec c = Find("vocab9demo", "Wide00");
@@ -1439,11 +1449,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocab9demo.TableVocabulary(); var inner = new Vocab9demo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Vocab9demo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Vocab9demo.Wide00[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocab9demo.Wide00(); }
-                if (!inner.Refused && !inner.Damaged) { Vocab9demo.Schema.Wide00LoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Vocab9demo.Schema.Wide00LoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Vocab9demo.Schema.Wide00MeasureMessages(new Vocab9demo.Wide00[] { (Vocab9demo.Wide00)value });
-            c.MessageSave = (value, bytes) => Vocab9demo.Schema.Wide00SaveMessages(new Vocab9demo.Wide00[] { (Vocab9demo.Wide00)value }, bytes);
+            c.MessageMeasure = value => value is Vocab9demo.Wide00[] batch ? Vocab9demo.Schema.Wide00MeasureMessages(batch) : Vocab9demo.Schema.Wide00MeasureMessages(new Vocab9demo.Wide00[] { (Vocab9demo.Wide00)value });
+            c.MessageSave = (value, bytes) => value is Vocab9demo.Wide00[] batch ? Vocab9demo.Schema.Wide00SaveMessages(batch, bytes) : Vocab9demo.Schema.Wide00SaveMessages(new Vocab9demo.Wide00[] { (Vocab9demo.Wide00)value }, bytes);
         }
         {
             Codec c = Find("vocabdemo", "Wide09");
@@ -1456,11 +1467,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocabdemo.TableVocabulary(); var inner = new Vocabdemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Vocabdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Vocabdemo.Wide09[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocabdemo.Wide09(); }
-                if (!inner.Refused && !inner.Damaged) { Vocabdemo.Schema.Wide09LoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Vocabdemo.Schema.Wide09LoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Vocabdemo.Schema.Wide09MeasureMessages(new Vocabdemo.Wide09[] { (Vocabdemo.Wide09)value });
-            c.MessageSave = (value, bytes) => Vocabdemo.Schema.Wide09SaveMessages(new Vocabdemo.Wide09[] { (Vocabdemo.Wide09)value }, bytes);
+            c.MessageMeasure = value => value is Vocabdemo.Wide09[] batch ? Vocabdemo.Schema.Wide09MeasureMessages(batch) : Vocabdemo.Schema.Wide09MeasureMessages(new Vocabdemo.Wide09[] { (Vocabdemo.Wide09)value });
+            c.MessageSave = (value, bytes) => value is Vocabdemo.Wide09[] batch ? Vocabdemo.Schema.Wide09SaveMessages(batch, bytes) : Vocabdemo.Schema.Wide09SaveMessages(new Vocabdemo.Wide09[] { (Vocabdemo.Wide09)value }, bytes);
         }
         {
             Codec c = Find("vocabdemo", "Wide00");
@@ -1473,11 +1485,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocabdemo.TableVocabulary(); var inner = new Vocabdemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Vocabdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Vocabdemo.Wide00[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocabdemo.Wide00(); }
-                if (!inner.Refused && !inner.Damaged) { Vocabdemo.Schema.Wide00LoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Vocabdemo.Schema.Wide00LoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Vocabdemo.Schema.Wide00MeasureMessages(new Vocabdemo.Wide00[] { (Vocabdemo.Wide00)value });
-            c.MessageSave = (value, bytes) => Vocabdemo.Schema.Wide00SaveMessages(new Vocabdemo.Wide00[] { (Vocabdemo.Wide00)value }, bytes);
+            c.MessageMeasure = value => value is Vocabdemo.Wide00[] batch ? Vocabdemo.Schema.Wide00MeasureMessages(batch) : Vocabdemo.Schema.Wide00MeasureMessages(new Vocabdemo.Wide00[] { (Vocabdemo.Wide00)value });
+            c.MessageSave = (value, bytes) => value is Vocabdemo.Wide00[] batch ? Vocabdemo.Schema.Wide00SaveMessages(batch, bytes) : Vocabdemo.Schema.Wide00SaveMessages(new Vocabdemo.Wide00[] { (Vocabdemo.Wide00)value }, bytes);
         }
         {
             Codec c = Find("backenddemo", "Envelope");
@@ -1490,11 +1503,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Backenddemo.Envelope[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.Envelope(); }
-                if (!inner.Refused && !inner.Damaged) { Backenddemo.Schema.EnvelopeLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Backenddemo.Schema.EnvelopeLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Backenddemo.Schema.EnvelopeMeasureMessages(new Backenddemo.Envelope[] { (Backenddemo.Envelope)value });
-            c.MessageSave = (value, bytes) => Backenddemo.Schema.EnvelopeSaveMessages(new Backenddemo.Envelope[] { (Backenddemo.Envelope)value }, bytes);
+            c.MessageMeasure = value => value is Backenddemo.Envelope[] batch ? Backenddemo.Schema.EnvelopeMeasureMessages(batch) : Backenddemo.Schema.EnvelopeMeasureMessages(new Backenddemo.Envelope[] { (Backenddemo.Envelope)value });
+            c.MessageSave = (value, bytes) => value is Backenddemo.Envelope[] batch ? Backenddemo.Schema.EnvelopeSaveMessages(batch, bytes) : Backenddemo.Schema.EnvelopeSaveMessages(new Backenddemo.Envelope[] { (Backenddemo.Envelope)value }, bytes);
         }
         {
             Codec c = Find("backenddemo", "StorePurchase");
@@ -1507,11 +1521,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Backenddemo.StorePurchase[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.StorePurchase(); }
-                if (!inner.Refused && !inner.Damaged) { Backenddemo.Schema.StorePurchaseLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Backenddemo.Schema.StorePurchaseLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Backenddemo.Schema.StorePurchaseMeasureMessages(new Backenddemo.StorePurchase[] { (Backenddemo.StorePurchase)value });
-            c.MessageSave = (value, bytes) => Backenddemo.Schema.StorePurchaseSaveMessages(new Backenddemo.StorePurchase[] { (Backenddemo.StorePurchase)value }, bytes);
+            c.MessageMeasure = value => value is Backenddemo.StorePurchase[] batch ? Backenddemo.Schema.StorePurchaseMeasureMessages(batch) : Backenddemo.Schema.StorePurchaseMeasureMessages(new Backenddemo.StorePurchase[] { (Backenddemo.StorePurchase)value });
+            c.MessageSave = (value, bytes) => value is Backenddemo.StorePurchase[] batch ? Backenddemo.Schema.StorePurchaseSaveMessages(batch, bytes) : Backenddemo.Schema.StorePurchaseSaveMessages(new Backenddemo.StorePurchase[] { (Backenddemo.StorePurchase)value }, bytes);
         }
         {
             Codec c = Find("backenddemo", "MatchResult");
@@ -1524,11 +1539,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Backenddemo.MatchResult[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.MatchResult(); }
-                if (!inner.Refused && !inner.Damaged) { Backenddemo.Schema.MatchResultLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Backenddemo.Schema.MatchResultLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Backenddemo.Schema.MatchResultMeasureMessages(new Backenddemo.MatchResult[] { (Backenddemo.MatchResult)value });
-            c.MessageSave = (value, bytes) => Backenddemo.Schema.MatchResultSaveMessages(new Backenddemo.MatchResult[] { (Backenddemo.MatchResult)value }, bytes);
+            c.MessageMeasure = value => value is Backenddemo.MatchResult[] batch ? Backenddemo.Schema.MatchResultMeasureMessages(batch) : Backenddemo.Schema.MatchResultMeasureMessages(new Backenddemo.MatchResult[] { (Backenddemo.MatchResult)value });
+            c.MessageSave = (value, bytes) => value is Backenddemo.MatchResult[] batch ? Backenddemo.Schema.MatchResultSaveMessages(batch, bytes) : Backenddemo.Schema.MatchResultSaveMessages(new Backenddemo.MatchResult[] { (Backenddemo.MatchResult)value }, bytes);
         }
         {
             Codec c = Find("backenddemo", "LoginRequest");
@@ -1541,11 +1557,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Backenddemo.LoginRequest[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.LoginRequest(); }
-                if (!inner.Refused && !inner.Damaged) { Backenddemo.Schema.LoginRequestLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Backenddemo.Schema.LoginRequestLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Backenddemo.Schema.LoginRequestMeasureMessages(new Backenddemo.LoginRequest[] { (Backenddemo.LoginRequest)value });
-            c.MessageSave = (value, bytes) => Backenddemo.Schema.LoginRequestSaveMessages(new Backenddemo.LoginRequest[] { (Backenddemo.LoginRequest)value }, bytes);
+            c.MessageMeasure = value => value is Backenddemo.LoginRequest[] batch ? Backenddemo.Schema.LoginRequestMeasureMessages(batch) : Backenddemo.Schema.LoginRequestMeasureMessages(new Backenddemo.LoginRequest[] { (Backenddemo.LoginRequest)value });
+            c.MessageSave = (value, bytes) => value is Backenddemo.LoginRequest[] batch ? Backenddemo.Schema.LoginRequestSaveMessages(batch, bytes) : Backenddemo.Schema.LoginRequestSaveMessages(new Backenddemo.LoginRequest[] { (Backenddemo.LoginRequest)value }, bytes);
         }
         {
             Codec c = Find("tblg1", "Guarded");
@@ -1678,11 +1695,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblw2.TableVocabulary(); var inner = new Tblw2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblw2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblw2.Ship[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblw2.Ship(); }
-                if (!inner.Refused && !inner.Damaged) { Tblw2.Schema.ShipLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblw2.Schema.ShipLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblw2.Schema.ShipMeasureMessages(new Tblw2.Ship[] { (Tblw2.Ship)value });
-            c.MessageSave = (value, bytes) => Tblw2.Schema.ShipSaveMessages(new Tblw2.Ship[] { (Tblw2.Ship)value }, bytes);
+            c.MessageMeasure = value => value is Tblw2.Ship[] batch ? Tblw2.Schema.ShipMeasureMessages(batch) : Tblw2.Schema.ShipMeasureMessages(new Tblw2.Ship[] { (Tblw2.Ship)value });
+            c.MessageSave = (value, bytes) => value is Tblw2.Ship[] batch ? Tblw2.Schema.ShipSaveMessages(batch, bytes) : Tblw2.Schema.ShipSaveMessages(new Tblw2.Ship[] { (Tblw2.Ship)value }, bytes);
         }
         {
             Codec c = Find("tblw2", "Fleet");
@@ -1700,11 +1718,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblw1.TableVocabulary(); var inner = new Tblw1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblw1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblw1.Vessel[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblw1.Vessel(); }
-                if (!inner.Refused && !inner.Damaged) { Tblw1.Schema.VesselLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblw1.Schema.VesselLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblw1.Schema.VesselMeasureMessages(new Tblw1.Vessel[] { (Tblw1.Vessel)value });
-            c.MessageSave = (value, bytes) => Tblw1.Schema.VesselSaveMessages(new Tblw1.Vessel[] { (Tblw1.Vessel)value }, bytes);
+            c.MessageMeasure = value => value is Tblw1.Vessel[] batch ? Tblw1.Schema.VesselMeasureMessages(batch) : Tblw1.Schema.VesselMeasureMessages(new Tblw1.Vessel[] { (Tblw1.Vessel)value });
+            c.MessageSave = (value, bytes) => value is Tblw1.Vessel[] batch ? Tblw1.Schema.VesselSaveMessages(batch, bytes) : Tblw1.Schema.VesselSaveMessages(new Tblw1.Vessel[] { (Tblw1.Vessel)value }, bytes);
         }
         {
             Codec c = Find("tblw1", "Fleet");
@@ -1753,11 +1772,30 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Scalardemo2.TableVocabulary(); var inner = new Scalardemo2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Scalardemo2.SimState[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Scalardemo2.SimState(); }
-                if (!inner.Refused && !inner.Damaged) { Scalardemo2.Schema.SimStateLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Scalardemo2.Schema.SimStateLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Scalardemo2.Schema.SimStateMeasureMessages(new Scalardemo2.SimState[] { (Scalardemo2.SimState)value });
-            c.MessageSave = (value, bytes) => Scalardemo2.Schema.SimStateSaveMessages(new Scalardemo2.SimState[] { (Scalardemo2.SimState)value }, bytes);
+            c.MessageMeasure = value => value is Scalardemo2.SimState[] batch ? Scalardemo2.Schema.SimStateMeasureMessages(batch) : Scalardemo2.Schema.SimStateMeasureMessages(new Scalardemo2.SimState[] { (Scalardemo2.SimState)value });
+            c.MessageSave = (value, bytes) => value is Scalardemo2.SimState[] batch ? Scalardemo2.Schema.SimStateSaveMessages(batch, bytes) : Scalardemo2.Schema.SimStateSaveMessages(new Scalardemo2.SimState[] { (Scalardemo2.SimState)value }, bytes);
+        }
+        {
+            Codec c = Find("tblfixedevo", "EvoRoot");
+            c.Announcement = Tblfixedevo.Schema.Announce().ToArray();
+            c.CookMeasure = value => Tblfixedevo.Schema.EvoRootCookMeasure((Tblfixedevo.EvoRoot)value);
+            c.Cook = (value, bytes, big) => Tblfixedevo.Schema.EvoRootCook((Tblfixedevo.EvoRoot)value, bytes, big ? Tblfixedevo.TableByteOrder.Big : Tblfixedevo.TableByteOrder.Little);
+            var ownVocabulary = new Tblfixedevo.TableVocabulary(); Tblfixedevo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblfixedevo.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblfixedevo.TableVocabulary(); var inner = new Tblfixedevo.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblfixedevo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tblfixedevo.EvoRoot[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblfixedevo.EvoRoot(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblfixedevo.Schema.EvoRootLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tblfixedevo.EvoRoot[] batch ? Tblfixedevo.Schema.EvoRootMeasureMessages(batch) : Tblfixedevo.Schema.EvoRootMeasureMessages(new Tblfixedevo.EvoRoot[] { (Tblfixedevo.EvoRoot)value });
+            c.MessageSave = (value, bytes) => value is Tblfixedevo.EvoRoot[] batch ? Tblfixedevo.Schema.EvoRootSaveMessages(batch, bytes) : Tblfixedevo.Schema.EvoRootSaveMessages(new Tblfixedevo.EvoRoot[] { (Tblfixedevo.EvoRoot)value }, bytes);
         }
         {
             Codec c = Find("scalars", "Pose");
@@ -1770,11 +1808,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Scalardemo.TableVocabulary(); var inner = new Scalardemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Scalardemo.Pose[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Scalardemo.Pose(); }
-                if (!inner.Refused && !inner.Damaged) { Scalardemo.Schema.PoseLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Scalardemo.Schema.PoseLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Scalardemo.Schema.PoseMeasureMessages(new Scalardemo.Pose[] { (Scalardemo.Pose)value });
-            c.MessageSave = (value, bytes) => Scalardemo.Schema.PoseSaveMessages(new Scalardemo.Pose[] { (Scalardemo.Pose)value }, bytes);
+            c.MessageMeasure = value => value is Scalardemo.Pose[] batch ? Scalardemo.Schema.PoseMeasureMessages(batch) : Scalardemo.Schema.PoseMeasureMessages(new Scalardemo.Pose[] { (Scalardemo.Pose)value });
+            c.MessageSave = (value, bytes) => value is Scalardemo.Pose[] batch ? Scalardemo.Schema.PoseSaveMessages(batch, bytes) : Scalardemo.Schema.PoseSaveMessages(new Scalardemo.Pose[] { (Scalardemo.Pose)value }, bytes);
         }
         {
             Codec c = Find("scalars", "SimState");
@@ -1787,11 +1826,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Scalardemo.TableVocabulary(); var inner = new Scalardemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Scalardemo.SimState[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Scalardemo.SimState(); }
-                if (!inner.Refused && !inner.Damaged) { Scalardemo.Schema.SimStateLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Scalardemo.Schema.SimStateLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Scalardemo.Schema.SimStateMeasureMessages(new Scalardemo.SimState[] { (Scalardemo.SimState)value });
-            c.MessageSave = (value, bytes) => Scalardemo.Schema.SimStateSaveMessages(new Scalardemo.SimState[] { (Scalardemo.SimState)value }, bytes);
+            c.MessageMeasure = value => value is Scalardemo.SimState[] batch ? Scalardemo.Schema.SimStateMeasureMessages(batch) : Scalardemo.Schema.SimStateMeasureMessages(new Scalardemo.SimState[] { (Scalardemo.SimState)value });
+            c.MessageSave = (value, bytes) => value is Scalardemo.SimState[] batch ? Scalardemo.Schema.SimStateSaveMessages(batch, bytes) : Scalardemo.Schema.SimStateSaveMessages(new Scalardemo.SimState[] { (Scalardemo.SimState)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "User");
@@ -1804,11 +1844,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.User[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.User(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.UserLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.UserLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.UserMeasureMessages(new Messagedemo.User[] { (Messagedemo.User)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.UserSaveMessages(new Messagedemo.User[] { (Messagedemo.User)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.User[] batch ? Messagedemo.Schema.UserMeasureMessages(batch) : Messagedemo.Schema.UserMeasureMessages(new Messagedemo.User[] { (Messagedemo.User)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.User[] batch ? Messagedemo.Schema.UserSaveMessages(batch, bytes) : Messagedemo.Schema.UserSaveMessages(new Messagedemo.User[] { (Messagedemo.User)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "Script");
@@ -1821,11 +1862,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.Script[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Script(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.ScriptLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.ScriptLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.ScriptMeasureMessages(new Messagedemo.Script[] { (Messagedemo.Script)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.ScriptSaveMessages(new Messagedemo.Script[] { (Messagedemo.Script)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.Script[] batch ? Messagedemo.Schema.ScriptMeasureMessages(batch) : Messagedemo.Schema.ScriptMeasureMessages(new Messagedemo.Script[] { (Messagedemo.Script)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.Script[] batch ? Messagedemo.Schema.ScriptSaveMessages(batch, bytes) : Messagedemo.Schema.ScriptSaveMessages(new Messagedemo.Script[] { (Messagedemo.Script)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "Selection");
@@ -1838,11 +1880,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.Selection[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Selection(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.SelectionLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.SelectionLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.SelectionMeasureMessages(new Messagedemo.Selection[] { (Messagedemo.Selection)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.SelectionSaveMessages(new Messagedemo.Selection[] { (Messagedemo.Selection)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.Selection[] batch ? Messagedemo.Schema.SelectionMeasureMessages(batch) : Messagedemo.Schema.SelectionMeasureMessages(new Messagedemo.Selection[] { (Messagedemo.Selection)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.Selection[] batch ? Messagedemo.Schema.SelectionSaveMessages(batch, bytes) : Messagedemo.Schema.SelectionSaveMessages(new Messagedemo.Selection[] { (Messagedemo.Selection)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "InsertText");
@@ -1855,11 +1898,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.InsertText[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.InsertText(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.InsertTextLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.InsertTextLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.InsertTextMeasureMessages(new Messagedemo.InsertText[] { (Messagedemo.InsertText)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.InsertTextSaveMessages(new Messagedemo.InsertText[] { (Messagedemo.InsertText)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.InsertText[] batch ? Messagedemo.Schema.InsertTextMeasureMessages(batch) : Messagedemo.Schema.InsertTextMeasureMessages(new Messagedemo.InsertText[] { (Messagedemo.InsertText)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.InsertText[] batch ? Messagedemo.Schema.InsertTextSaveMessages(batch, bytes) : Messagedemo.Schema.InsertTextSaveMessages(new Messagedemo.InsertText[] { (Messagedemo.InsertText)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "RemoveText");
@@ -1872,11 +1916,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.RemoveText[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.RemoveText(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.RemoveTextLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.RemoveTextLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.RemoveTextMeasureMessages(new Messagedemo.RemoveText[] { (Messagedemo.RemoveText)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.RemoveTextSaveMessages(new Messagedemo.RemoveText[] { (Messagedemo.RemoveText)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.RemoveText[] batch ? Messagedemo.Schema.RemoveTextMeasureMessages(batch) : Messagedemo.Schema.RemoveTextMeasureMessages(new Messagedemo.RemoveText[] { (Messagedemo.RemoveText)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.RemoveText[] batch ? Messagedemo.Schema.RemoveTextSaveMessages(batch, bytes) : Messagedemo.Schema.RemoveTextSaveMessages(new Messagedemo.RemoveText[] { (Messagedemo.RemoveText)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "Edit");
@@ -1889,11 +1934,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.Edit[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Edit(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.EditLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.EditLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.EditMeasureMessages(new Messagedemo.Edit[] { (Messagedemo.Edit)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.EditSaveMessages(new Messagedemo.Edit[] { (Messagedemo.Edit)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.Edit[] batch ? Messagedemo.Schema.EditMeasureMessages(batch) : Messagedemo.Schema.EditMeasureMessages(new Messagedemo.Edit[] { (Messagedemo.Edit)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.Edit[] batch ? Messagedemo.Schema.EditSaveMessages(batch, bytes) : Messagedemo.Schema.EditSaveMessages(new Messagedemo.Edit[] { (Messagedemo.Edit)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "OpenDocument");
@@ -1906,11 +1952,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.OpenDocument[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.OpenDocument(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.OpenDocumentLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.OpenDocumentLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.OpenDocumentMeasureMessages(new Messagedemo.OpenDocument[] { (Messagedemo.OpenDocument)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.OpenDocumentSaveMessages(new Messagedemo.OpenDocument[] { (Messagedemo.OpenDocument)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.OpenDocument[] batch ? Messagedemo.Schema.OpenDocumentMeasureMessages(batch) : Messagedemo.Schema.OpenDocumentMeasureMessages(new Messagedemo.OpenDocument[] { (Messagedemo.OpenDocument)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.OpenDocument[] batch ? Messagedemo.Schema.OpenDocumentSaveMessages(batch, bytes) : Messagedemo.Schema.OpenDocumentSaveMessages(new Messagedemo.OpenDocument[] { (Messagedemo.OpenDocument)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "SaveDocument");
@@ -1923,11 +1970,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.SaveDocument[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.SaveDocument(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.SaveDocumentLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.SaveDocumentLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.SaveDocumentMeasureMessages(new Messagedemo.SaveDocument[] { (Messagedemo.SaveDocument)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.SaveDocumentSaveMessages(new Messagedemo.SaveDocument[] { (Messagedemo.SaveDocument)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.SaveDocument[] batch ? Messagedemo.Schema.SaveDocumentMeasureMessages(batch) : Messagedemo.Schema.SaveDocumentMeasureMessages(new Messagedemo.SaveDocument[] { (Messagedemo.SaveDocument)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.SaveDocument[] batch ? Messagedemo.Schema.SaveDocumentSaveMessages(batch, bytes) : Messagedemo.Schema.SaveDocumentSaveMessages(new Messagedemo.SaveDocument[] { (Messagedemo.SaveDocument)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "Transaction");
@@ -1940,11 +1988,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.Transaction[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Transaction(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.TransactionLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.TransactionLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.TransactionMeasureMessages(new Messagedemo.Transaction[] { (Messagedemo.Transaction)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.TransactionSaveMessages(new Messagedemo.Transaction[] { (Messagedemo.Transaction)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.Transaction[] batch ? Messagedemo.Schema.TransactionMeasureMessages(batch) : Messagedemo.Schema.TransactionMeasureMessages(new Messagedemo.Transaction[] { (Messagedemo.Transaction)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.Transaction[] batch ? Messagedemo.Schema.TransactionSaveMessages(batch, bytes) : Messagedemo.Schema.TransactionSaveMessages(new Messagedemo.Transaction[] { (Messagedemo.Transaction)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "ToolMessage");
@@ -1957,11 +2006,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.ToolMessage[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.ToolMessage(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.ToolMessageLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.ToolMessageLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.ToolMessageMeasureMessages(new Messagedemo.ToolMessage[] { (Messagedemo.ToolMessage)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.ToolMessageSaveMessages(new Messagedemo.ToolMessage[] { (Messagedemo.ToolMessage)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.ToolMessage[] batch ? Messagedemo.Schema.ToolMessageMeasureMessages(batch) : Messagedemo.Schema.ToolMessageMeasureMessages(new Messagedemo.ToolMessage[] { (Messagedemo.ToolMessage)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.ToolMessage[] batch ? Messagedemo.Schema.ToolMessageSaveMessages(batch, bytes) : Messagedemo.Schema.ToolMessageSaveMessages(new Messagedemo.ToolMessage[] { (Messagedemo.ToolMessage)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "Cursor");
@@ -1974,11 +2024,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.Cursor[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Cursor(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.CursorLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.CursorLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.CursorMeasureMessages(new Messagedemo.Cursor[] { (Messagedemo.Cursor)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.CursorSaveMessages(new Messagedemo.Cursor[] { (Messagedemo.Cursor)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.Cursor[] batch ? Messagedemo.Schema.CursorMeasureMessages(batch) : Messagedemo.Schema.CursorMeasureMessages(new Messagedemo.Cursor[] { (Messagedemo.Cursor)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.Cursor[] batch ? Messagedemo.Schema.CursorSaveMessages(batch, bytes) : Messagedemo.Schema.CursorSaveMessages(new Messagedemo.Cursor[] { (Messagedemo.Cursor)value }, bytes);
         }
         {
             Codec c = Find("messagedemo", "Ping");
@@ -1991,11 +2042,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Messagedemo.Ping[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Ping(); }
-                if (!inner.Refused && !inner.Damaged) { Messagedemo.Schema.PingLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Messagedemo.Schema.PingLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Messagedemo.Schema.PingMeasureMessages(new Messagedemo.Ping[] { (Messagedemo.Ping)value });
-            c.MessageSave = (value, bytes) => Messagedemo.Schema.PingSaveMessages(new Messagedemo.Ping[] { (Messagedemo.Ping)value }, bytes);
+            c.MessageMeasure = value => value is Messagedemo.Ping[] batch ? Messagedemo.Schema.PingMeasureMessages(batch) : Messagedemo.Schema.PingMeasureMessages(new Messagedemo.Ping[] { (Messagedemo.Ping)value });
+            c.MessageSave = (value, bytes) => value is Messagedemo.Ping[] batch ? Messagedemo.Schema.PingSaveMessages(batch, bytes) : Messagedemo.Schema.PingSaveMessages(new Messagedemo.Ping[] { (Messagedemo.Ping)value }, bytes);
         }
         {
             Codec c = Find("tblm1", "Open");
@@ -2008,11 +2060,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm1.Open[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Open(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm1.Schema.OpenLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm1.Schema.OpenLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm1.Schema.OpenMeasureMessages(new Tblm1.Open[] { (Tblm1.Open)value });
-            c.MessageSave = (value, bytes) => Tblm1.Schema.OpenSaveMessages(new Tblm1.Open[] { (Tblm1.Open)value }, bytes);
+            c.MessageMeasure = value => value is Tblm1.Open[] batch ? Tblm1.Schema.OpenMeasureMessages(batch) : Tblm1.Schema.OpenMeasureMessages(new Tblm1.Open[] { (Tblm1.Open)value });
+            c.MessageSave = (value, bytes) => value is Tblm1.Open[] batch ? Tblm1.Schema.OpenSaveMessages(batch, bytes) : Tblm1.Schema.OpenSaveMessages(new Tblm1.Open[] { (Tblm1.Open)value }, bytes);
         }
         {
             Codec c = Find("tblm1", "Save");
@@ -2025,11 +2078,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm1.Save[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Save(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm1.Schema.SaveLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm1.Schema.SaveLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm1.Schema.SaveMeasureMessages(new Tblm1.Save[] { (Tblm1.Save)value });
-            c.MessageSave = (value, bytes) => Tblm1.Schema.SaveSaveMessages(new Tblm1.Save[] { (Tblm1.Save)value }, bytes);
+            c.MessageMeasure = value => value is Tblm1.Save[] batch ? Tblm1.Schema.SaveMeasureMessages(batch) : Tblm1.Schema.SaveMeasureMessages(new Tblm1.Save[] { (Tblm1.Save)value });
+            c.MessageSave = (value, bytes) => value is Tblm1.Save[] batch ? Tblm1.Schema.SaveSaveMessages(batch, bytes) : Tblm1.Schema.SaveSaveMessages(new Tblm1.Save[] { (Tblm1.Save)value }, bytes);
         }
         {
             Codec c = Find("tblm1", "Quit");
@@ -2042,11 +2096,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm1.Quit[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Quit(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm1.Schema.QuitLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm1.Schema.QuitLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm1.Schema.QuitMeasureMessages(new Tblm1.Quit[] { (Tblm1.Quit)value });
-            c.MessageSave = (value, bytes) => Tblm1.Schema.QuitSaveMessages(new Tblm1.Quit[] { (Tblm1.Quit)value }, bytes);
+            c.MessageMeasure = value => value is Tblm1.Quit[] batch ? Tblm1.Schema.QuitMeasureMessages(batch) : Tblm1.Schema.QuitMeasureMessages(new Tblm1.Quit[] { (Tblm1.Quit)value });
+            c.MessageSave = (value, bytes) => value is Tblm1.Quit[] batch ? Tblm1.Schema.QuitSaveMessages(batch, bytes) : Tblm1.Schema.QuitSaveMessages(new Tblm1.Quit[] { (Tblm1.Quit)value }, bytes);
         }
         {
             Codec c = Find("tblm1", "Msg");
@@ -2059,11 +2114,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm1.Msg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Msg(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm1.Schema.MsgLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm1.Schema.MsgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm1.Schema.MsgMeasureMessages(new Tblm1.Msg[] { (Tblm1.Msg)value });
-            c.MessageSave = (value, bytes) => Tblm1.Schema.MsgSaveMessages(new Tblm1.Msg[] { (Tblm1.Msg)value }, bytes);
+            c.MessageMeasure = value => value is Tblm1.Msg[] batch ? Tblm1.Schema.MsgMeasureMessages(batch) : Tblm1.Schema.MsgMeasureMessages(new Tblm1.Msg[] { (Tblm1.Msg)value });
+            c.MessageSave = (value, bytes) => value is Tblm1.Msg[] batch ? Tblm1.Schema.MsgSaveMessages(batch, bytes) : Tblm1.Schema.MsgSaveMessages(new Tblm1.Msg[] { (Tblm1.Msg)value }, bytes);
         }
         {
             Codec c = Find("tblm2", "Open");
@@ -2076,11 +2132,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm2.Open[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Open(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm2.Schema.OpenLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm2.Schema.OpenLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm2.Schema.OpenMeasureMessages(new Tblm2.Open[] { (Tblm2.Open)value });
-            c.MessageSave = (value, bytes) => Tblm2.Schema.OpenSaveMessages(new Tblm2.Open[] { (Tblm2.Open)value }, bytes);
+            c.MessageMeasure = value => value is Tblm2.Open[] batch ? Tblm2.Schema.OpenMeasureMessages(batch) : Tblm2.Schema.OpenMeasureMessages(new Tblm2.Open[] { (Tblm2.Open)value });
+            c.MessageSave = (value, bytes) => value is Tblm2.Open[] batch ? Tblm2.Schema.OpenSaveMessages(batch, bytes) : Tblm2.Schema.OpenSaveMessages(new Tblm2.Open[] { (Tblm2.Open)value }, bytes);
         }
         {
             Codec c = Find("tblm2", "Close");
@@ -2093,11 +2150,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm2.Close[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Close(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm2.Schema.CloseLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm2.Schema.CloseLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm2.Schema.CloseMeasureMessages(new Tblm2.Close[] { (Tblm2.Close)value });
-            c.MessageSave = (value, bytes) => Tblm2.Schema.CloseSaveMessages(new Tblm2.Close[] { (Tblm2.Close)value }, bytes);
+            c.MessageMeasure = value => value is Tblm2.Close[] batch ? Tblm2.Schema.CloseMeasureMessages(batch) : Tblm2.Schema.CloseMeasureMessages(new Tblm2.Close[] { (Tblm2.Close)value });
+            c.MessageSave = (value, bytes) => value is Tblm2.Close[] batch ? Tblm2.Schema.CloseSaveMessages(batch, bytes) : Tblm2.Schema.CloseSaveMessages(new Tblm2.Close[] { (Tblm2.Close)value }, bytes);
         }
         {
             Codec c = Find("tblm2", "Quit");
@@ -2110,11 +2168,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm2.Quit[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Quit(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm2.Schema.QuitLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm2.Schema.QuitLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm2.Schema.QuitMeasureMessages(new Tblm2.Quit[] { (Tblm2.Quit)value });
-            c.MessageSave = (value, bytes) => Tblm2.Schema.QuitSaveMessages(new Tblm2.Quit[] { (Tblm2.Quit)value }, bytes);
+            c.MessageMeasure = value => value is Tblm2.Quit[] batch ? Tblm2.Schema.QuitMeasureMessages(batch) : Tblm2.Schema.QuitMeasureMessages(new Tblm2.Quit[] { (Tblm2.Quit)value });
+            c.MessageSave = (value, bytes) => value is Tblm2.Quit[] batch ? Tblm2.Schema.QuitSaveMessages(batch, bytes) : Tblm2.Schema.QuitSaveMessages(new Tblm2.Quit[] { (Tblm2.Quit)value }, bytes);
         }
         {
             Codec c = Find("tblm2", "Msg");
@@ -2127,11 +2186,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblm2.Msg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Msg(); }
-                if (!inner.Refused && !inner.Damaged) { Tblm2.Schema.MsgLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblm2.Schema.MsgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblm2.Schema.MsgMeasureMessages(new Tblm2.Msg[] { (Tblm2.Msg)value });
-            c.MessageSave = (value, bytes) => Tblm2.Schema.MsgSaveMessages(new Tblm2.Msg[] { (Tblm2.Msg)value }, bytes);
+            c.MessageMeasure = value => value is Tblm2.Msg[] batch ? Tblm2.Schema.MsgMeasureMessages(batch) : Tblm2.Schema.MsgMeasureMessages(new Tblm2.Msg[] { (Tblm2.Msg)value });
+            c.MessageSave = (value, bytes) => value is Tblm2.Msg[] batch ? Tblm2.Schema.MsgSaveMessages(batch, bytes) : Tblm2.Schema.MsgSaveMessages(new Tblm2.Msg[] { (Tblm2.Msg)value }, bytes);
         }
         {
             Codec c = Find("tbla1", "Body");
@@ -2144,11 +2204,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla1.TableVocabulary(); var inner = new Tbla1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tbla1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tbla1.Body[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla1.Body(); }
-                if (!inner.Refused && !inner.Damaged) { Tbla1.Schema.BodyLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tbla1.Schema.BodyLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tbla1.Schema.BodyMeasureMessages(new Tbla1.Body[] { (Tbla1.Body)value });
-            c.MessageSave = (value, bytes) => Tbla1.Schema.BodySaveMessages(new Tbla1.Body[] { (Tbla1.Body)value }, bytes);
+            c.MessageMeasure = value => value is Tbla1.Body[] batch ? Tbla1.Schema.BodyMeasureMessages(batch) : Tbla1.Schema.BodyMeasureMessages(new Tbla1.Body[] { (Tbla1.Body)value });
+            c.MessageSave = (value, bytes) => value is Tbla1.Body[] batch ? Tbla1.Schema.BodySaveMessages(batch, bytes) : Tbla1.Schema.BodySaveMessages(new Tbla1.Body[] { (Tbla1.Body)value }, bytes);
         }
         {
             Codec c = Find("tbla1", "Root");
@@ -2161,11 +2222,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla1.TableVocabulary(); var inner = new Tbla1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tbla1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tbla1.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla1.Root(); }
-                if (!inner.Refused && !inner.Damaged) { Tbla1.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tbla1.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tbla1.Schema.RootMeasureMessages(new Tbla1.Root[] { (Tbla1.Root)value });
-            c.MessageSave = (value, bytes) => Tbla1.Schema.RootSaveMessages(new Tbla1.Root[] { (Tbla1.Root)value }, bytes);
+            c.MessageMeasure = value => value is Tbla1.Root[] batch ? Tbla1.Schema.RootMeasureMessages(batch) : Tbla1.Schema.RootMeasureMessages(new Tbla1.Root[] { (Tbla1.Root)value });
+            c.MessageSave = (value, bytes) => value is Tbla1.Root[] batch ? Tbla1.Schema.RootSaveMessages(batch, bytes) : Tbla1.Schema.RootSaveMessages(new Tbla1.Root[] { (Tbla1.Root)value }, bytes);
         }
         {
             Codec c = Find("tbla2", "Body");
@@ -2178,11 +2240,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla2.TableVocabulary(); var inner = new Tbla2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tbla2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tbla2.Body[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla2.Body(); }
-                if (!inner.Refused && !inner.Damaged) { Tbla2.Schema.BodyLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tbla2.Schema.BodyLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tbla2.Schema.BodyMeasureMessages(new Tbla2.Body[] { (Tbla2.Body)value });
-            c.MessageSave = (value, bytes) => Tbla2.Schema.BodySaveMessages(new Tbla2.Body[] { (Tbla2.Body)value }, bytes);
+            c.MessageMeasure = value => value is Tbla2.Body[] batch ? Tbla2.Schema.BodyMeasureMessages(batch) : Tbla2.Schema.BodyMeasureMessages(new Tbla2.Body[] { (Tbla2.Body)value });
+            c.MessageSave = (value, bytes) => value is Tbla2.Body[] batch ? Tbla2.Schema.BodySaveMessages(batch, bytes) : Tbla2.Schema.BodySaveMessages(new Tbla2.Body[] { (Tbla2.Body)value }, bytes);
         }
         {
             Codec c = Find("tbla2", "Root");
@@ -2195,11 +2258,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla2.TableVocabulary(); var inner = new Tbla2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tbla2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tbla2.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla2.Root(); }
-                if (!inner.Refused && !inner.Damaged) { Tbla2.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tbla2.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tbla2.Schema.RootMeasureMessages(new Tbla2.Root[] { (Tbla2.Root)value });
-            c.MessageSave = (value, bytes) => Tbla2.Schema.RootSaveMessages(new Tbla2.Root[] { (Tbla2.Root)value }, bytes);
+            c.MessageMeasure = value => value is Tbla2.Root[] batch ? Tbla2.Schema.RootMeasureMessages(batch) : Tbla2.Schema.RootMeasureMessages(new Tbla2.Root[] { (Tbla2.Root)value });
+            c.MessageSave = (value, bytes) => value is Tbla2.Root[] batch ? Tbla2.Schema.RootSaveMessages(batch, bytes) : Tbla2.Schema.RootSaveMessages(new Tbla2.Root[] { (Tbla2.Root)value }, bytes);
         }
         {
             Codec c = Find("tblk1", "Root");
@@ -2212,11 +2276,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblk1.TableVocabulary(); var inner = new Tblk1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblk1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblk1.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblk1.Root(); }
-                if (!inner.Refused && !inner.Damaged) { Tblk1.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblk1.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblk1.Schema.RootMeasureMessages(new Tblk1.Root[] { (Tblk1.Root)value });
-            c.MessageSave = (value, bytes) => Tblk1.Schema.RootSaveMessages(new Tblk1.Root[] { (Tblk1.Root)value }, bytes);
+            c.MessageMeasure = value => value is Tblk1.Root[] batch ? Tblk1.Schema.RootMeasureMessages(batch) : Tblk1.Schema.RootMeasureMessages(new Tblk1.Root[] { (Tblk1.Root)value });
+            c.MessageSave = (value, bytes) => value is Tblk1.Root[] batch ? Tblk1.Schema.RootSaveMessages(batch, bytes) : Tblk1.Schema.RootSaveMessages(new Tblk1.Root[] { (Tblk1.Root)value }, bytes);
         }
         {
             Codec c = Find("tblk2", "Root");
@@ -2229,11 +2294,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblk2.TableVocabulary(); var inner = new Tblk2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblk2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblk2.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblk2.Root(); }
-                if (!inner.Refused && !inner.Damaged) { Tblk2.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblk2.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblk2.Schema.RootMeasureMessages(new Tblk2.Root[] { (Tblk2.Root)value });
-            c.MessageSave = (value, bytes) => Tblk2.Schema.RootSaveMessages(new Tblk2.Root[] { (Tblk2.Root)value }, bytes);
+            c.MessageMeasure = value => value is Tblk2.Root[] batch ? Tblk2.Schema.RootMeasureMessages(batch) : Tblk2.Schema.RootMeasureMessages(new Tblk2.Root[] { (Tblk2.Root)value });
+            c.MessageSave = (value, bytes) => value is Tblk2.Root[] batch ? Tblk2.Schema.RootSaveMessages(batch, bytes) : Tblk2.Schema.RootSaveMessages(new Tblk2.Root[] { (Tblk2.Root)value }, bytes);
         }
         {
             Codec c = Find("tblv1", "Cfg");
@@ -2246,11 +2312,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblv1.TableVocabulary(); var inner = new Tblv1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblv1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblv1.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblv1.Cfg(); }
-                if (!inner.Refused && !inner.Damaged) { Tblv1.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblv1.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblv1.Schema.CfgMeasureMessages(new Tblv1.Cfg[] { (Tblv1.Cfg)value });
-            c.MessageSave = (value, bytes) => Tblv1.Schema.CfgSaveMessages(new Tblv1.Cfg[] { (Tblv1.Cfg)value }, bytes);
+            c.MessageMeasure = value => value is Tblv1.Cfg[] batch ? Tblv1.Schema.CfgMeasureMessages(batch) : Tblv1.Schema.CfgMeasureMessages(new Tblv1.Cfg[] { (Tblv1.Cfg)value });
+            c.MessageSave = (value, bytes) => value is Tblv1.Cfg[] batch ? Tblv1.Schema.CfgSaveMessages(batch, bytes) : Tblv1.Schema.CfgSaveMessages(new Tblv1.Cfg[] { (Tblv1.Cfg)value }, bytes);
         }
         {
             Codec c = Find("tblv2", "Cfg");
@@ -2263,11 +2330,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblv2.TableVocabulary(); var inner = new Tblv2.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblv2.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblv2.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblv2.Cfg(); }
-                if (!inner.Refused && !inner.Damaged) { Tblv2.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblv2.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblv2.Schema.CfgMeasureMessages(new Tblv2.Cfg[] { (Tblv2.Cfg)value });
-            c.MessageSave = (value, bytes) => Tblv2.Schema.CfgSaveMessages(new Tblv2.Cfg[] { (Tblv2.Cfg)value }, bytes);
+            c.MessageMeasure = value => value is Tblv2.Cfg[] batch ? Tblv2.Schema.CfgMeasureMessages(batch) : Tblv2.Schema.CfgMeasureMessages(new Tblv2.Cfg[] { (Tblv2.Cfg)value });
+            c.MessageSave = (value, bytes) => value is Tblv2.Cfg[] batch ? Tblv2.Schema.CfgSaveMessages(batch, bytes) : Tblv2.Schema.CfgSaveMessages(new Tblv2.Cfg[] { (Tblv2.Cfg)value }, bytes);
         }
         {
             Codec c = Find("tblp1", "Chain");
@@ -2280,11 +2348,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblp1.TableVocabulary(); var inner = new Tblp1.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblp1.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblp1.Chain[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblp1.Chain(); }
-                if (!inner.Refused && !inner.Damaged) { Tblp1.Schema.ChainLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblp1.Schema.ChainLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblp1.Schema.ChainMeasureMessages(new Tblp1.Chain[] { (Tblp1.Chain)value });
-            c.MessageSave = (value, bytes) => Tblp1.Schema.ChainSaveMessages(new Tblp1.Chain[] { (Tblp1.Chain)value }, bytes);
+            c.MessageMeasure = value => value is Tblp1.Chain[] batch ? Tblp1.Schema.ChainMeasureMessages(batch) : Tblp1.Schema.ChainMeasureMessages(new Tblp1.Chain[] { (Tblp1.Chain)value });
+            c.MessageSave = (value, bytes) => value is Tblp1.Chain[] batch ? Tblp1.Schema.ChainSaveMessages(batch, bytes) : Tblp1.Schema.ChainSaveMessages(new Tblp1.Chain[] { (Tblp1.Chain)value }, bytes);
         }
         {
             Codec c = Find("tblp3", "Chain");
@@ -2297,11 +2366,12 @@ static partial class Program
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblp3.TableVocabulary(); var inner = new Tblp3.TableReport();
                 if (!ReferenceEquals(announcement, c.Announcement)) { Tblp3.Schema.AnnounceRead(vocabulary, announcement, inner); }
                 var values = new Tblp3.Chain[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblp3.Chain(); }
-                if (!inner.Refused && !inner.Damaged) { Tblp3.Schema.ChainLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblp3.Schema.ChainLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
             };
-            c.MessageMeasure = value => Tblp3.Schema.ChainMeasureMessages(new Tblp3.Chain[] { (Tblp3.Chain)value });
-            c.MessageSave = (value, bytes) => Tblp3.Schema.ChainSaveMessages(new Tblp3.Chain[] { (Tblp3.Chain)value }, bytes);
+            c.MessageMeasure = value => value is Tblp3.Chain[] batch ? Tblp3.Schema.ChainMeasureMessages(batch) : Tblp3.Schema.ChainMeasureMessages(new Tblp3.Chain[] { (Tblp3.Chain)value });
+            c.MessageSave = (value, bytes) => value is Tblp3.Chain[] batch ? Tblp3.Schema.ChainSaveMessages(batch, bytes) : Tblp3.Schema.ChainSaveMessages(new Tblp3.Chain[] { (Tblp3.Chain)value }, bytes);
         }
     }
 

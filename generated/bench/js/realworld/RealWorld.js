@@ -441,6 +441,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
+  if (typeof value.f002F64 !== "number" || !Number.isFinite(value.f002F64)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.f002F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
@@ -476,6 +479,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
+  if (typeof value.f007F32 !== "number" || !Number.isFinite(Math.fround(value.f007F32))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.f007F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
@@ -494,6 +500,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
     return false;
   }
+  if (typeof value.f010F32 !== "number" || !Number.isFinite(Math.fround(value.f010F32))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.f010F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
@@ -507,6 +516,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   if (value.f012Bool) {
+    if (typeof value.f013F32 !== "number" || !Number.isFinite(Math.fround(value.f013F32))) {
+      return false; // a bare float must be finite (SPEC §4.3, §5.1)
+    }
     NUMBER_SCRATCH.value = value.f013F32;
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
@@ -544,9 +556,15 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
+  if (typeof value.f019F64 !== "number" || !Number.isFinite(value.f019F64)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.f019F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.f020F32 !== "number" || !Number.isFinite(Math.fround(value.f020F32))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.f020F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
@@ -556,6 +574,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 20, 12, 0, 25141)) {
     return false;
   }
+  if (typeof value.f022F32 !== "number" || !Number.isFinite(Math.fround(value.f022F32))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.f022F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
@@ -563,6 +584,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f023Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
+  }
+  if (typeof value.f024F32 !== "number" || !Number.isFinite(Math.fround(value.f024F32))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.f024F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
@@ -596,6 +620,9 @@ export function WriteRealPacket(stream, value) {
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f029I64);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
+  }
+  if (typeof value.f030F32 !== "number" || !Number.isFinite(Math.fround(value.f030F32))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.f030F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
@@ -669,6 +696,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   if (value.f043Bool) {
+    if (typeof value.f044F32 !== "number" || !Number.isFinite(Math.fround(value.f044F32))) {
+      return false; // a bare float must be finite (SPEC §4.3, §5.1)
+    }
     NUMBER_SCRATCH.value = value.f044F32;
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
@@ -691,6 +721,9 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
       return false;
     }
+  }
+  if (typeof value.f048F64 !== "number" || !Number.isFinite(value.f048F64)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.f048F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -715,6 +748,9 @@ export function WriteRealPacket(stream, value) {
     NUMBER_SCRATCH.value = ((value.f052Int >>> 0) - (-57 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
       return false;
+    }
+    if (typeof value.f053F32 !== "number" || !Number.isFinite(Math.fround(value.f053F32))) {
+      return false; // a bare float must be finite (SPEC §4.3, §5.1)
     }
     NUMBER_SCRATCH.value = value.f053F32;
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
@@ -746,9 +782,15 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
+  if (typeof value.f058F32 !== "number" || !Number.isFinite(Math.fround(value.f058F32))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.f058F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.f059F64 !== "number" || !Number.isFinite(value.f059F64)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.f059F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -932,6 +974,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f086Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
+  }
+  if (typeof value.f087F64 !== "number" || !Number.isFinite(value.f087F64)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.f087F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {

@@ -566,10 +566,24 @@ local function compat_old(d, node)
       if node.size == 4 then return node.kind >= 6 and node.kind <= 8 end
       return node.size == 8 and node.kind == 9
     end
+    if d.kind and d.kind >= 20 and d.kind <= 23 then return node.kind >= 20 and node.kind <= d.kind and node.size <= d.width end
+    if d.kind and d.kind >= 25 and d.kind <= 28 then return node.kind >= 25 and node.kind <= d.kind and node.size <= d.width end
     if d.kind and d.kind >= 20 and d.kind <= 29 then return node.kind == d.kind and node.size == d.width end
     return node.kind >= 2 and node.kind <= 9 and node.size <= d.width
   elseif s == "wide" then
-    return (node.kind == 18 or node.kind == 19 or (node.kind >= 20 and node.kind <= 29)) and node.size == 16
+    if d.kind == 18 then
+      return (node.kind == 18 and node.size == 16) or (node.kind >= 2 and node.kind <= 5 and node.size <= 8)
+    elseif d.kind == 19 then
+      return (node.kind == 19 and node.size == 16) or (node.kind >= 6 and node.kind <= 9 and node.size <= 8)
+    elseif d.kind == 24 then
+      return (node.kind == 24 and node.size == 16) or (node.kind >= 20 and node.kind <= 23 and node.size <= 8)
+    elseif d.kind == 29 then
+      return (node.kind == 29 and node.size == 16) or (node.kind >= 25 and node.kind <= 28 and node.size <= 8)
+    elseif d.signed then
+      return ((node.kind == 18 or node.kind == 24) and node.size == 16) or (((node.kind >= 2 and node.kind <= 5) or (node.kind >= 20 and node.kind <= 23)) and node.size <= 8)
+    else
+      return ((node.kind == 19 or node.kind == 29) and node.size == 16) or (((node.kind >= 6 and node.kind <= 9) or (node.kind >= 25 and node.kind <= 28)) and node.size <= 8)
+    end
   elseif s == "bool" then
     return node.kind == 1 and node.size == 1
   elseif s == "float" then
@@ -647,7 +661,16 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local signed = (node.kind >= 2 and node.kind <= 5) or d.timestamp
     return unpack_int(buf, pos, node.size, signed)
   elseif s == "wide" then
-    return { lo = unpack_int(buf, pos, 8, false), hi = unpack_int(buf, pos + 8, 8, false) }
+    if node.size == 16 then
+      return { lo = unpack_int(buf, pos, 8, false), hi = unpack_int(buf, pos + 8, 8, false) }
+    end
+    if rep then rep.widened = rep.widened + 1 end
+    local signed = (node.kind >= 2 and node.kind <= 5) or (node.kind >= 20 and node.kind <= 23)
+    local x = unpack_int(buf, pos, node.size, signed)
+    if signed and x < 0 then
+      return { lo = x, hi = -1 }
+    end
+    return { lo = x, hi = 0 }
   elseif s == "bool" then
     return bool_byte(buf, pos)
   elseif s == "float" then

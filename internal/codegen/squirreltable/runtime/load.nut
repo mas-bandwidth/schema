@@ -1784,10 +1784,8 @@ local fixedBody, fixedField, fixedPayload, fixedElement;
 
 fixedBody = function(T, c, v, bytes, off, report, st) {
   foreach (fd in c.fields) {
-    if (!fd.deprecated) {
-      local why = fixedField(T, fd, v, bytes, off, report, st);
-      if (why != null) return why;
-    }
+    local why = fixedField(T, fd, v, bytes, off, report, st);
+    if (why != null) return why;
     off += fd.fb;
   }
   return null;

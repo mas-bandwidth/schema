@@ -4,6 +4,8 @@
 // AGPL-3.0, its output is not.
 // package bench — the variable wire's framing (docs/SPEC-TABLES.md §3, §4, §5)
 
+#![allow(clippy::int_plus_one, clippy::manual_range_patterns, clippy::question_mark, clippy::needless_late_init)]
+
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};

@@ -129,7 +129,7 @@ for pair in \
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart/$unit" "$input" >/dev/null &
 done
-for pair in scalars:tables/scalars scalars2:test/tables/Scalars2.schema; do
+for pair in scalars:tables/scalars scalars2:test/tables/Scalars2.schema fixedevo:test/tables/fixedevo; do
     unit=${pair%%:*}
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart-scalars/$unit" "$input" >/dev/null &

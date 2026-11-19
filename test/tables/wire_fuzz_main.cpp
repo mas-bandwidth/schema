@@ -357,13 +357,14 @@ struct FixedMessage
         bool ok = load( value, &count, *vocabulary, wire, bytes, &report );
         copy_report( report, reply );
         reply.malformed = reply.malformed || ( !ok && !reply.refused );
-        reply.loaded = true;
+        reply.loaded = ok && count >= 1 && !reply.malformed && !reply.refused;
         reply.measure = -1;
+        if ( !reply.loaded ) { reply.saved = -1; return; }
         Report ignored;
-        int64_t size = measure( value, 1, &ignored );
+        int64_t size = measure( value, count, &ignored );
         if ( size < 0 ) { reply.saved = -1; return; }
         reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
-        if ( save( value, 1, reply.bytes, size, &ignored ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
+        if ( save( value, count, reply.bytes, size, &ignored ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.saved = -1; return; }
         reply.saved = size;
     }
 };

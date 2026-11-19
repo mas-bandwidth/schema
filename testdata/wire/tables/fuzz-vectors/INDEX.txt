@@ -357,3 +357,6 @@ stream_tag_short_width streamdemo Feed testdata/wire/tables/stream_tag_short_wid
 # wire first; when the measure refuses, the report still carries the refused
 # verdict. The first truncation of featurewitnesses.Root.
 region_empty_wire_refused featurewitnesses Root testdata/wire/tables/fuzz-vectors/region_empty_wire_refused.bin
+
+# Multi-message Form-2 batch (M = 3 StorePurchase records) round-tripped in one stream frame (§3.3).
+store_batch3_message backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/store_batch3_message.bin message

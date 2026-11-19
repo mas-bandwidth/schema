@@ -626,14 +626,33 @@ func enumeratedShard(live []*wireSeed, shard, shards int, draw func(*wireMutant)
 	}
 }
 
+func nonZeroByteCount(b []byte) int {
+	n := 0
+	for _, v := range b {
+		if v != 0 {
+			n++
+		}
+	}
+	return n
+}
+
+func seedMorePopulated(a, b *wireSeed) bool {
+	na, nb := nonZeroByteCount(a.wire), nonZeroByteCount(b.wire)
+	if na != nb {
+		return na > nb
+	}
+	return len(a.wire) > len(b.wire)
+}
+
 // emitBoundedStream emits up to opts.maxMutants mutants deterministically for
 // fast per-language verification:
 //  1. Every pinned hostile vector (preserving --relax-vector invariants).
 //  2. Every manifest seed's canonical wire across all live roots.
-//  3. A stateful multi-call reuse sequence (empty -> bad-form -> truncated ->
-//     valid) on every live root in the same persistent driver process, proving
-//     refused/damaged reads leave no dirty scratch, unflushed words, or stale
-//     cursors for the subsequent valid read.
+//  3. A stateful shrinking-destination & post-refusal reuse sequence
+//     (valid_big -> valid_small -> empty -> bad-form -> half-truncated ->
+//     valid_small) on every live root in the same persistent driver process,
+//     catching stale elements/arms/maps/text when shrinking AND dirty scratch
+//     or cursors left behind by refused/truncated reads.
 //  4. Uniform rational-stride sampling across all remaining enumerated and
 //     random mutants so every root receives coverage within the budget.
 func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts wireFuzzOptions, draw func(*wireMutant)) string {
@@ -656,7 +675,8 @@ func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts 
 	}
 
 	var rootOrder []int
-	rootSeed := map[int]*wireSeed{}
+	rootBig := map[int]*wireSeed{}
+	rootSmall := map[int]*wireSeed{}
 	for _, s := range live {
 		if s.vector {
 			continue
@@ -664,24 +684,38 @@ func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts 
 		if !emit(&wireMutant{seed: s, pass: "seed", index: 0, data: s.wire}) {
 			return ""
 		}
+		if s.reportSeed || s.wireRefused || len(s.wire) == 0 {
+			continue
+		}
 		ri := seedRoot[s]
-		if _, seen := rootSeed[ri]; !seen && len(s.wire) > 0 {
-			rootSeed[ri] = s
+		if curBig, seen := rootBig[ri]; !seen {
+			rootBig[ri] = s
+			rootSmall[ri] = s
 			rootOrder = append(rootOrder, ri)
+		} else {
+			if seedMorePopulated(s, curBig) {
+				rootBig[ri] = s
+			}
+			if seedMorePopulated(rootSmall[ri], s) {
+				rootSmall[ri] = s
+			}
 		}
 	}
 
 	for _, ri := range rootOrder {
-		rs := rootSeed[ri]
-		half := append([]byte(nil), rs.wire[:len(rs.wire)/2]...)
+		bigSeed := rootBig[ri]
+		smallSeed := rootSmall[ri]
+		half := append([]byte(nil), bigSeed.wire[:len(bigSeed.wire)/2]...)
 		seq := [][]byte{
+			bigSeed.wire,
+			smallSeed.wire,
 			{},
 			{0xff, 0x7f, 0x00},
 			half,
-			rs.wire,
+			smallSeed.wire,
 		}
 		for idx, payload := range seq {
-			if !emit(&wireMutant{seed: rs, pass: "stateful-reuse", index: idx, data: payload}) {
+			if !emit(&wireMutant{seed: smallSeed, pass: "stateful-reuse", index: idx, data: payload}) {
 				return ""
 			}
 		}
@@ -834,13 +868,21 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 		}
 	} else {
 		for _, inst := range m.Instances {
+			before := len(seeds)
 			if err := addSeed(inst.Name, inst.Unit, inst.Root, inst.Wire); err != nil {
 				return nil, nil, nil, 0, err
 			}
+			if len(seeds) > before {
+				seeds[len(seeds)-1].wireRefused = inst.WireRefused
+			}
 		}
 		for _, rc := range m.Reports {
+			before := len(seeds)
 			if err := addSeed(rc.Name, rc.Unit, rc.Root, rc.Wire); err != nil {
 				return nil, nil, nil, 0, err
+			}
+			if len(seeds) > before {
+				seeds[len(seeds)-1].reportSeed = true
 			}
 		}
 		// AND THE REFERENCE BOUND UNDER A CONNECTION TABLE

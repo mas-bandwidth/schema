@@ -18,6 +18,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -80,7 +81,20 @@ func generateLoadUnit(t *testing.T, paths []string) (*loadUnit, error) {
 	if err != nil {
 		return nil, err
 	}
-	tables, err := lobstertable.Generate(u)
+	var lineage map[string][]lobstertable.FixedLineageEntry
+	if lock, ok, lerr := lockfile.Open(paths); lerr != nil {
+		t.Fatal(lerr)
+	} else if ok && lock != nil {
+		lineage = map[string][]lobstertable.FixedLineageEntry{}
+		for _, st := range ir.TableFixedRoots(u) {
+			for _, e := range lockfile.Lineage(lock, st.WireName()) {
+				lineage[st.Name] = append(lineage[st.Name], lobstertable.FixedLineageEntry{
+					Wire: e.Wire, Layout: e.Layout, Record: e.Record + 8, Retired: e.Retired, Reason: e.Reason,
+				})
+			}
+		}
+	}
+	tables, err := lobstertable.GenerateLineage(u, lineage)
 	if err != nil {
 		return nil, err
 	}

@@ -143,11 +143,7 @@ func fixedLayoutEntries(b []byte) ([]fixedLayoutEntry, bool) {
 // into f64. A pair off every ladder is the kind mismatch, which leaves the
 // field at its default and is never reinterpreted.
 func fixedPlanWidens(src, dst int) bool {
-	ints := func(k int) bool { return k >= ir.TableKindI8 && k <= ir.TableKindU64 }
-	if ints(src) && ints(dst) {
-		return true
-	}
-	return src == ir.TableKindF32 && dst == ir.TableKindF64
+	return ir.TableFixedWidens(src, dst)
 }
 
 // fixedPlanLeafWidens reports whether one planned leaf reads at a narrower kind
@@ -293,11 +289,19 @@ func emitFixedWriterRanges(m *Module, st *ir.Struct, root *fixedLayoutNode, rang
 			}
 			expr := "v." + squirrel.Member(f)
 			storage := fixedStorageBytes(f.Type)
+			wStorage := fixedStorageBytes(w.Type)
 			if f.Array == ir.ArrayFixed {
 				m.Printf("  for (local i = 0; i < %s.len(); i++) {\n", expr)
-				m.Printf("    local x = %s[i];\n", expr)
-				fixedEmitRangeGuard(m, w, "x", "    ", storage)
+				if storage == 16 && wStorage < 16 {
+					m.Printf("    local x = %s[i][0];\n", expr)
+					fixedEmitRangeGuard(m, w, "x", "    ", 8)
+				} else {
+					m.Printf("    local x = %s[i];\n", expr)
+					fixedEmitRangeGuard(m, w, "x", "    ", storage)
+				}
 				m.Printf("  }\n")
+			} else if storage == 16 && wStorage < 16 {
+				fixedEmitRangeGuard(m, w, expr+"[0]", "  ", 8)
 			} else {
 				fixedEmitRangeGuard(m, w, expr, "  ", storage)
 			}
@@ -547,6 +551,18 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 	}
 	if node.size == 16 {
 		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
+		fixedEmitRange128Guard(m, f, expr, ind, "return \"out_of_range\";")
+		return
+	}
+	if fixedStorageBytes(f.Type) == 16 {
+		if fixedPlanLeafWidens(f, node) {
+			m.Printf("%s_M.FixedWidened <- _M.FixedWidened + 1;\n", ind)
+		}
+		if node.kind >= ir.TableKindU8 && node.kind <= ir.TableKindU64 || (node.kind >= ir.TableKindUFixed8 && node.kind <= ir.TableKindUFixed64) {
+			m.Printf("%s%s = [_rt_fixed.getu(b, at + %s, %d), 0];\n", ind, expr, off, node.size)
+		} else {
+			m.Printf("%s{ local x = _rt_fixed.get(b, at + %s, %d); %s = [x, x < 0 ? -1 : 0]; }\n", ind, off, node.size, expr)
+		}
 		fixedEmitRange128Guard(m, f, expr, ind, "return \"out_of_range\";")
 		return
 	}

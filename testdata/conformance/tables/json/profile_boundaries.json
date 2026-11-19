@@ -1,0 +1,106 @@
+{
+  "name": "🚀🚀🚀🚀🚀🚀🚀🚀",
+  "icon": "AAECAwQFBgcICQoLDA0ODw==",
+  "experience": 4294967295,
+  "tilt": -128,
+  "heading": 32767,
+  "timestamp": "-9223372036854775808",
+  "badge": 255,
+  "port": 65535,
+  "epoch": "18446744073709551615",
+  "precision": 4.94065645841247e-324,
+  "ratings": [
+    1.4013e-45,
+    -1.4013e-45,
+    -0,
+    3.4028235e+38
+  ],
+  "has_loadout": true,
+  "loadout": {
+    "grade": "Gold",
+    "grades": [
+      "Bronze",
+      "Silver",
+      "Gold",
+      "Bronze"
+    ],
+    "podium": [
+      "Gold",
+      "Silver",
+      "Bronze"
+    ],
+    "perks": [
+      "Shielded",
+      "Cloaked",
+      "Turbo"
+    ],
+    "primary": {
+      "damage": 0,
+      "speed": -0,
+      "penetration": 10,
+      "channel": 63,
+      "homing": true,
+      "effect": {
+        "debuff": {
+          "amount": 100
+        }
+      }
+    },
+    "backups": [
+      {
+        "damage": 21,
+        "speed": 500,
+        "penetration": 0,
+        "channel": 0,
+        "homing": false,
+        "effect": {
+          "buff": {
+            "multiplier": 2.5
+          }
+        }
+      },
+      {
+        "damage": -0,
+        "speed": 1,
+        "penetration": 5,
+        "channel": 32,
+        "homing": true,
+        "effect": {}
+      }
+    ],
+    "attachments": [
+      {
+        "slot": 0,
+        "power": 0
+      },
+      {
+        "slot": 1,
+        "power": -0
+      },
+      {
+        "slot": 2,
+        "power": 1.5
+      },
+      {
+        "slot": 3,
+        "power": 2.5
+      },
+      {
+        "slot": 4,
+        "power": 3.5
+      },
+      {
+        "slot": 5,
+        "power": 4.5
+      },
+      {
+        "slot": 6,
+        "power": 5.5
+      },
+      {
+        "slot": 7,
+        "power": 6.5
+      }
+    ]
+  }
+}

@@ -1338,6 +1338,9 @@ export function WriteTestData(stream, value) {
       return false;
     }
   }
+  if (typeof value.floatValue !== "number" || !Number.isFinite(Math.fround(value.floatValue))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.floatValue;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
@@ -1351,6 +1354,9 @@ export function WriteTestData(stream, value) {
   NUMBER_SCRATCH.value = value.compressedFloatValue;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
+  }
+  if (typeof value.doubleValue !== "number" || !Number.isFinite(value.doubleValue)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.doubleValue;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {

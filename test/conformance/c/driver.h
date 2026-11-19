@@ -163,6 +163,7 @@ const ConformanceCodec * conformance_codecs_tblp1( int * count );
 const ConformanceCodec * conformance_codecs_tblp3( int * count );
 const ConformanceCodec * conformance_codecs_scalars( int * count );
 const ConformanceCodec * conformance_codecs_tblscalars2( int * count );
+const ConformanceCodec * conformance_codecs_tblfixedevo( int * count );
 const ConformanceCodec * conformance_codecs_widelist( int * count );
 const ConformanceCodec * conformance_codecs_featurewitnesses( int * count );
 
