@@ -421,6 +421,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('kind_mismatch');
     return def;
   }
+  if (!integer && !RegExp(r'^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$').hasMatch(token)) {
+    r.refuse('kind_mismatch');
+    return def;
+  }
   final parts = _jsonNumberParts(token);
   final digits = parts.digits;
   final point = parts.point;
@@ -721,6 +725,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal v = %s();\n", un.Name)
 		g.pf("\tif (entries.isEmpty) return v;\n")
 		g.pf("\tif (entries.length != 1) throw const FormatException('union has two keys');\n")
+		g.pf("\t_jsonText(entries.first.key);\n")
 		g.pf("\tif (!_jsonName(entries.first.key, r)) return v;\n")
 		g.pf("\tfinal item = entries.first.value;\n")
 		g.pf("\tswitch (entries.first.key) {\n")

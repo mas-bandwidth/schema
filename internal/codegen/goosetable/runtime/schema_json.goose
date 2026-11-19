@@ -1374,7 +1374,7 @@ fn json_read_bytes(jr: JsonIn&, buf: u8[:], length: i32&) -> bool {
 // this build cannot name reads as None and counts unknown (§16.2).
 fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
     var key: u8[256] = [0; 256];
-    let n, ok = json_key(jr, key);
+    let n, ok = json_scan_into(jr, key[..JsonMaxKey], false);
     if !ok { return false; }
     let name = key[..n];
     if json_name_is("None", name) {
@@ -1413,7 +1413,7 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
             if !json_skip_value(jr, depth + 1) { return false; }
         } else {
             var key: u8[256] = [0; 256];
-            let n, ok = json_key(jr, key);
+            let n, ok = json_scan_into(jr, key[..JsonMaxKey], false);
             if !ok { return false; }
             var found = false;
             var b: i64 = 0;

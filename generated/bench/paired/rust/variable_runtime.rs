@@ -2567,6 +2567,14 @@ impl<'a> Jr<'a> {
         }
         Some(s)
     }
+    pub fn read_variant_name(&mut self) -> Option<String> {
+        let s = self.read_string()?;
+        if s.len() > 255 {
+            self.damaged = true;
+            return None;
+        }
+        Some(s)
+    }
     pub fn read_null(&mut self) -> bool {
         self.space();
         if self.p + 4 <= self.b.len() && &self.b[self.p..self.p + 4] == b"null" {

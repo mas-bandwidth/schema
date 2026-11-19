@@ -1226,9 +1226,44 @@ end
 -- shape holds { lo, hi }, a narrower fixed kind holds its raw Lua integer. A
 -- wide integer reads as a string OR a number; a 128-bit integer takes an
 -- integer token only, while a fixed kind keeps its exact decimal.
+local function number_token(text)
+  local k = 1
+  local n = #text
+  if k <= n and text:byte(k) == 45 then k = k + 1 end
+  if k > n then return false end
+  local b = text:byte(k)
+  if b == 48 then
+    k = k + 1
+    if k <= n and text:byte(k) >= 48 and text:byte(k) <= 57 then return false end
+  elseif b >= 49 and b <= 57 then
+    while k <= n and text:byte(k) >= 48 and text:byte(k) <= 57 do
+      k = k + 1
+    end
+  else
+    return false
+  end
+  if k <= n and text:byte(k) == 46 then
+    k = k + 1
+    if k > n or text:byte(k) < 48 or text:byte(k) > 57 then return false end
+    while k <= n and text:byte(k) >= 48 and text:byte(k) <= 57 do
+      k = k + 1
+    end
+  end
+  if k <= n and (text:byte(k) == 101 or text:byte(k) == 69) then
+    k = k + 1
+    if k <= n and (text:byte(k) == 45 or text:byte(k) == 43) then k = k + 1 end
+    if k > n or text:byte(k) < 48 or text:byte(k) > 57 then return false end
+    while k <= n and text:byte(k) >= 48 and text:byte(k) <= 57 do
+      k = k + 1
+    end
+  end
+  return k == n + 1
+end
+
 local function read_wide_token(token, d, holder, key, report)
   local kind = d.kind or 0
-  if (kind == 18 or kind == 19) and not integer_token(token) then
+  local is_i128 = kind == 18 or kind == 19
+  if (is_i128 and not integer_token(token)) or (not is_i128 and not number_token(token)) then
     report.kindChanged = report.kindChanged + 1
     return true
   end
@@ -1396,7 +1431,7 @@ local function read_table(T, desc, inp, v, depth, graph, report)
   return read_keys(T, desc, inp, v, depth, nil, graph, report)
 end
 
-local function read_pointer(T, d, inp, holder, key, depth, graph, report)
+local function read_pointer(T, d, inp, holder, key, depth, graph, report, elem)
   if depth + 1 > MAX_DEPTH then
     inp.bad = true
     return false
@@ -1450,13 +1485,19 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report)
       inp.bad = true
       return false
     end
-    holder[key] = nil
+    local null_slot = nil
+    if elem or type(key) == "number" then null_slot = false end
+    holder[key] = null_slot
     if entry.st == nil then return true end
     if entry.st ~= d.target then
       report.kindChanged = report.kindChanged + 1
       return true
     end
-    holder[key] = entry.node
+    if entry.node ~= nil then
+      holder[key] = entry.node
+    else
+      holder[key] = null_slot
+    end
     return true
   end
   local node = fresh(T, T.Tables[d.target])
@@ -1478,14 +1519,12 @@ local function read_base64(inp, bound, report)
   local over_bound, bad = false, false
   local digits, pads = 0, 0
   while true do
-    if inp.p > #inp.t then
-      inp.bad = true
-      return nil
-    end
-    local ch = inp.t:sub(inp.p, inp.p)
-    inp.p = inp.p + 1
-    if ch == '"' then break end
-    if ch == "=" then
+    local ch, done, ok = scan_unit(inp)
+    if not ok then return nil end
+    if done then break end
+    if #ch ~= 1 then
+      bad = true
+    elseif ch == "=" then
       pads = pads + 1
     elseif not bad then
       local at = BASE64:find(ch, 1, true)
@@ -1977,7 +2016,7 @@ end
 read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_name, field_name)
   local s = d.shape
   if s == "pointer" then
-    return read_pointer(T, d, inp, holder, key, depth, graph, report)
+    return read_pointer(T, d, inp, holder, key, depth, graph, report, elem)
   elseif s == "string" then
     local out, over_bound, ok, nul = scan_string(inp, d.bound)
     if not ok then return false end
@@ -2184,20 +2223,8 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         -- the EXACT float32 overflow midpoint, compared on the token's own
         -- digits: parsing through a double first rounds the upper band onto
         -- the midpoint, where narrowing would answer infinity (§16.2)
-        local mid = "340282356779733661637539395458142568448"
         local neg = token:sub(1, 1) == "-"
-        local digits = neg and token:sub(2) or token
-        local below = false
-        if digits:match("^%d+$") then
-          local d0 = digits:gsub("^0+", "")
-          if d0 == "" then
-            below = true
-          elseif #d0 < #mid then
-            below = true
-          elseif #d0 == #mid and d0 < mid then
-            below = true
-          end
-        end
+        local below = math.abs(x) == 3.4028235677973366e38 and token_cmp(token, x) < 0
         if below then
           x = neg and -3.4028234663852886e38 or 3.4028234663852886e38
         else

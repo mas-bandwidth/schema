@@ -2162,8 +2162,34 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
 // jr_place_wide places a 128-bit integer or a fixed-point kind from one
 // token: a pure integer takes an integer token only, and a fixed kind the
 // exact decimal (§16.2). The value never passes through a float.
+fn jv_number_token(tok: const u8[:]) -> bool {
+    var k: i64 = 0;
+    if k < tok.len && tok[k] == '-' { k += 1; }
+    if k >= tok.len { return false; }
+    if tok[k] == '0' {
+        k += 1;
+        if k < tok.len && tok[k] >= '0' && tok[k] <= '9' { return false; }
+    } else if tok[k] >= '1' && tok[k] <= '9' {
+        while k < tok.len && tok[k] >= '0' && tok[k] <= '9' { k += 1; }
+    } else {
+        return false;
+    }
+    if k < tok.len && tok[k] == '.' {
+        k += 1;
+        if k >= tok.len || tok[k] < '0' || tok[k] > '9' { return false; }
+        while k < tok.len && tok[k] >= '0' && tok[k] <= '9' { k += 1; }
+    }
+    if k < tok.len && (tok[k] == 'e' || tok[k] == 'E') {
+        k += 1;
+        if k < tok.len && (tok[k] == '-' || tok[k] == '+') { k += 1; }
+        if k >= tok.len || tok[k] < '0' || tok[k] > '9' { return false; }
+        while k < tok.len && tok[k] >= '0' && tok[k] <= '9' { k += 1; }
+    }
+    return k == tok.len;
+}
+
 fn jr_place_wide(c: JvIn&, s: i64, d: FieldDesc, pure: bool, tok: const u8[:]) -> bool {
-    if pure && !json_integer_token(tok) {
+    if (pure && !json_integer_token(tok)) || (!pure && !jv_number_token(tok)) {
         c.jr.rep.mismatch += 1;
         return true;
     }

@@ -2014,6 +2014,29 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_wide( blockdemo_table_json_in
         in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
     }
+    if ( blockdemo_table_json_kind_fixed( f->kind ) )
+    {
+        int64_t k = 0;
+        if ( k < length && token[k] == '-' ) { k++; }
+        if ( k >= length ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+        if ( token[k] == '0' ) { k++; if ( k < length && token[k] >= '0' && token[k] <= '9' ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; } }
+        else if ( token[k] >= '1' && token[k] <= '9' ) { while ( k < length && token[k] >= '0' && token[k] <= '9' ) { k++; } }
+        else { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+        if ( k < length && token[k] == '.' )
+        {
+            k++;
+            if ( k >= length || token[k] < '0' || token[k] > '9' ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+            while ( k < length && token[k] >= '0' && token[k] <= '9' ) { k++; }
+        }
+        if ( k < length && ( token[k] == 'e' || token[k] == 'E' ) )
+        {
+            k++;
+            if ( k < length && ( token[k] == '-' || token[k] == '+' ) ) { k++; }
+            if ( k >= length || token[k] < '0' || token[k] > '9' ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+            while ( k < length && token[k] >= '0' && token[k] <= '9' ) { k++; }
+        }
+        if ( k != length ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+    }
     if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
     const char * int_digits = token + i;
     int64_t int_len = 0;
@@ -2412,7 +2435,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
         for ( v = 0; v <= f->enum_max; v++ )
         {
             const char * variant = blockdemo_table_json_variant_name( f, (uint64_t) v );
-            if ( variant != NULL && strcmp( variant, name ) == 0 )
+            if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
                 blockdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
                 return 1;
@@ -2450,7 +2473,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
                 for ( bit = 0; bit <= f->enum_max; bit++ )
                 {
                     const char * variant = blockdemo_table_json_variant_name( f, (uint64_t) bit );
-                    if ( variant != NULL && strcmp( variant, name ) == 0 )
+                    if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
                     {
                         /* a known variant named twice is a repeated key, refused like one
                            (§16.2): a conforming writer writes each set bit's name once */

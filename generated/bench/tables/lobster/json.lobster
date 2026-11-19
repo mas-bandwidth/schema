@@ -2145,6 +2145,42 @@ def j_place_wide(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, kind
     if (kind == 18 or kind == 19) and not j_integer_token(token):
         j_refuse(r, "kind_mismatch")
         return
+    if kind != 18 and kind != 19:
+        var k = 0
+        let n = length(token)
+        var ok_num = true
+        if k < n and token[k] == '-':
+            k++
+        if k >= n:
+            ok_num = false
+        elif token[k] == '0':
+            k++
+            if k < n and token[k] >= '0' and token[k] <= '9':
+                ok_num = false
+        elif token[k] >= '1' and token[k] <= '9':
+            while k < n and token[k] >= '0' and token[k] <= '9':
+                k++
+        else:
+            ok_num = false
+        if ok_num and k < n and token[k] == '.':
+            k++
+            if k >= n or token[k] < '0' or token[k] > '9':
+                ok_num = false
+            else:
+                while k < n and token[k] >= '0' and token[k] <= '9':
+                    k++
+        if ok_num and k < n and (token[k] == 'e' or token[k] == 'E'):
+            k++
+            if k < n and (token[k] == '-' or token[k] == '+'):
+                k++
+            if k >= n or token[k] < '0' or token[k] > '9':
+                ok_num = false
+            else:
+                while k < n and token[k] >= '0' and token[k] <= '9':
+                    k++
+        if not ok_num or k != n:
+            j_refuse(r, "kind_mismatch")
+            return
     let raw, exact, saturated = j_parse_wide(token, kind, f.fbits)
     if not exact:
         j_refuse(r, "kind_mismatch")

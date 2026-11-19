@@ -1977,7 +1977,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '"') {
-                        String s = in.scanName();
+                        String s = in.scanVariantName();
                         if ("None".equals(s)) {
                             v.weapon = 0;
                         } else if ("Fists".equals(s)) {

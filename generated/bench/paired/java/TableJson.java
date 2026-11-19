@@ -47,7 +47,7 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanName();
+                String name = in.scanVariantName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
@@ -233,9 +233,10 @@ public final class TableJson {
             while (i < n) {
                 int dg = timestampDigit(s, i);
                 if (dg < 0) break;
-                if (i - fracStart >= 9) return null;
-                sub += dg * scale;
-                scale /= 10L;
+                if (i - fracStart < 9) {
+                    sub += dg * scale;
+                    scale /= 10L;
+                }
                 i++;
             }
             if (i == fracStart) return null;
@@ -769,6 +770,21 @@ public final class TableJson {
         // value are data and go through scanStored, never this.
         public String scanName() {
             String s = scanStored();
+            if (s == null) {
+                return null;
+            }
+            if (s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+                bad = true;
+                if (rep != null) {
+                    rep.refuse("length_over_bound");
+                }
+                return null;
+            }
+            return s;
+        }
+
+        public String scanVariantName() {
+            String s = scanString();
             if (s == null) {
                 return null;
             }

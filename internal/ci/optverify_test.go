@@ -126,6 +126,15 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 	if !strings.Contains(string(ncBytes), "verify-sabotage-negative-control") {
 		t.Errorf("verify-negative-controls.json does not register verify-sabotage-negative-control")
 	}
+	if !strings.Contains(string(ncBytes), "verify-json-fuzz-negative-control") {
+		t.Errorf("verify-negative-controls.json does not register verify-json-fuzz-negative-control")
+	}
+	if !strings.Contains(compiledText, "json-fuzz --only") {
+		t.Errorf("make/verify-compiled.mk missing json-fuzz wiring")
+	}
+	if !strings.Contains(vmText, "json-fuzz --only") {
+		t.Errorf("make/verify-vm.mk missing json-fuzz wiring")
+	}
 }
 
 // TestOptVerifyFastWorkflowSelector checks that .github/workflows/ci-fast.yml

@@ -2947,7 +2947,7 @@ public final class TableJson {
                 in.rep.refuse("kind_mismatch");
                 in.skipValue();
             } else {
-                String name = in.scanName();
+                String name = in.scanVariantName();
                 if (in.bad) return null;
                 boolean found = false;
                 for (int i = 0; i < names.length; i++)
@@ -3120,9 +3120,10 @@ public final class TableJson {
             while (i < n) {
                 int dg = timestampDigit(s, i);
                 if (dg < 0) break;
-                if (i - fracStart >= 9) return null;
-                sub += dg * scale;
-                scale /= 10L;
+                if (i - fracStart < 9) {
+                    sub += dg * scale;
+                    scale /= 10L;
+                }
                 i++;
             }
             if (i == fracStart) return null;
@@ -3652,6 +3653,21 @@ public final class TableJson {
         // value are data and go through scanStored, never this.
         public String scanName() {
             String s = scanStored();
+            if (s == null) {
+                return null;
+            }
+            if (s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
+                bad = true;
+                if (rep != null) {
+                    rep.refuse("length_over_bound");
+                }
+                return null;
+            }
+            return s;
+        }
+
+        public String scanVariantName() {
+            String s = scanString();
             if (s == null) {
                 return null;
             }
@@ -5516,7 +5532,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				b.WriteString("                        if (ec == '\"') {\n")
-				b.WriteString("                            String s = in.scanName();\n")
+				b.WriteString("                            String s = in.scanVariantName();\n")
 				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
 				for j := range ref.Variants {
 					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
@@ -5956,7 +5972,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			b.WriteString("                if (in.peek() == '\"') {\n")
-			b.WriteString("                    String s = in.scanName();\n")
+			b.WriteString("                    String s = in.scanVariantName();\n")
 			fmt.Fprintf(b, "                    if(\"None\".equals(s)){v.%s=0;}else ", m)
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %d; }\n", enum.Variants[i], m, i+1)
