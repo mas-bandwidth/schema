@@ -877,11 +877,6 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 			local hi = if f.signed then 2 ^ (bits - 1) - 1 else 2 ^ bits - 1
 			if typeof(v) ~= "number" or v ~= math.floor(v) or v < lo or v > hi then error(outOfRange(f), 0) end
 		end
-		if f.flags ~= nil then
-			local iv = asInt(v)
-			local fmax = if #f.flags >= 64 then -1i else integer.sub(integer.lshift(1i, integer.create(#f.flags)), 1i)
-			if #f.flags < 64 and integer.ult(fmax, iv) then error(outOfRange(f), 0) end
-		end
 		bounds(f, v, { widened = 0 }, nil)
 		if w == 1 then
 			buffer.writeu8(buf, off, v % 256)

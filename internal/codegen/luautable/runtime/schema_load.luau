@@ -197,6 +197,14 @@ local function skip(r: any, kind: number): boolean
 	return false
 end
 
+local function arrayElementKindAllowed(kind: number): boolean
+	return (kind >= 1 and kind <= 13) or kind == 15 or kind == 17 or (kind >= 18 and kind <= 30)
+end
+
+local function keyedElementKindAllowed(kind: number): boolean
+	return (kind >= 1 and kind <= 11) or kind == 13 or (kind >= 18 and kind <= 30)
+end
+
 -- THE WIDENING RUNGS (§4): a narrower kind on its own signedness ladder, and
 -- f32 into f64.
 local function widens(kind: number, declared: number): boolean
@@ -768,6 +776,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 		local count = r_leb(hdr)
 		if hdr.bad then report.malformed = true; noteField("malformed", mapName); r.at = endpos; return true end
 		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
+		if not arrayElementKindAllowed(ek) then report.malformed = true; noteField("malformed", mapName); r.at = endpos; return true end
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName); r.at = endpos; return true end
 		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2; internal/tablewire
 		-- collectionCap): a count inside the map's L refuses the read as
@@ -916,7 +925,8 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 		local ek = r_u8(hdr)
 		local count = r_leb(hdr)
 		if hdr.bad then report.malformed = true; noteField("malformed", keyedName); r.at = endpos; return true end
-		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
+		if hdr.at > endpos or not keyedElementKindAllowed(ek) then report.malformed = true; noteField("malformed", keyedName); r.at = endpos; return true end
+		local sub = new_reader(r.b, hdr.at, endpos)
 		if ek ~= fd.ek then
 			if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", keyedName); r.at = endpos; return true end
 			report.widened = report.widened + 1; noteField("widened", keyedName)
@@ -1024,6 +1034,11 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	local crossed = head.at > sub.e
 	sub.at = if crossed then sub.e else head.at
 	if head.bad then
+		report.malformed = true; noteField("malformed", arrayName)
+		if fd.present ~= nil and v ~= nil then v[fd.present] = true end
+		return false
+	end
+	if not arrayElementKindAllowed(ek) then
 		report.malformed = true; noteField("malformed", arrayName)
 		if fd.present ~= nil and v ~= nil then v[fd.present] = true end
 		return false
@@ -1913,7 +1928,7 @@ end
 -- A ROOT THAT DECLARES INTEGRITY (docs/SPEC-TABLES.md §2.14) opens its
 -- trailer first, as the strict read does; a trailer that does not match is the
 -- whole-file damage named integrity_mismatch.
-function L.loadWalk(root: string, bytes: buffer, report: any): any
+function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?): any
 	local d = S.lookup(root)
 	if d ~= nil and d.fixed then
 		if bytes == nil or buffer.len(bytes) < 1 then
@@ -1950,7 +1965,13 @@ function L.loadWalk(root: string, bytes: buffer, report: any): any
 		end
 		bytes = body
 	end
-	return loadBody(root, bytes, report)
+	local res = loadBody(root, bytes, report)
+	if res ~= nil and outNodes ~= nil then
+		for idx, nd in _nodes do
+			if nd ~= nil and nd.kind == "t" then outNodes[idx] = nd.v end
+		end
+	end
+	return res
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
@@ -2301,6 +2322,7 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 	local function scanArrayBody(s: number, e: number): boolean
 		if e - s < 2 then return true end
 		local ek = buffer.readu8(b, s)
+		if not arrayElementKindAllowed(ek) then return true end
 		local count, p = leb(b, s + 1, e)
 		if count == nil then return true end
 		if count > 0x7fffffff then
@@ -2330,6 +2352,7 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 	local function scanKeyedBody(s: number, e: number): boolean
 		if e - s < 2 then return true end
 		local ek = buffer.readu8(b, s)
+		if not keyedElementKindAllowed(ek) then return true end
 		local count, p = leb(b, s + 1, e)
 		if count == nil then return true end
 		if count > 0x7fffffff then
@@ -2646,8 +2669,14 @@ end
 -- schema_refusal.luau: the pinned Luau refuses a require cycle at load time, and
 -- schema_load.luau -> schema_refusal.luau -> schema_load.luau is exactly one. schema_refusal.luau's
 -- ReadStrict still owns the fixed-form dispatch and delegates form 1 here.
-function L.load(root: string, bytes: buffer, report: any): any
-	return L.ReadStrict(root, bytes, report)
+function L.load(root: string, bytes: buffer, report: any, outNodes: { any }?): any
+	local res = L.ReadStrict(root, bytes, report)
+	if res ~= nil and outNodes ~= nil then
+		for idx, nd in _nodes do
+			if nd ~= nil and nd.kind == "t" then outNodes[idx] = nd.v end
+		end
+	end
+	return res
 end
 
 -- THE WALK SEAM (a test reads a count, never a clock): the whole-body walks
