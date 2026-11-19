@@ -238,7 +238,7 @@ local function companion(s, at, bound)
   return true
 end
 
-local record, field, field_span, element, ref, key_order
+local record, field_span, element, ref, key_order
 
 local function enum_width(f)
   local n = #(f.variants or {})
@@ -516,11 +516,6 @@ field_span = function(s, at, f)
     return zero_range(s.data, at + used, buf_end), finish
   end
   return element(s, at, f), finish
-end
-
-field = function(s, at, f)
-  local ok = field_span(s, at, f)
-  return ok
 end
 
 -- one RECORD's declaration: every field, including those nested by value, at
