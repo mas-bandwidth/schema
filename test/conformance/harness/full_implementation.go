@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"slices"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -50,6 +53,12 @@ func implementationAudit(m *Manifest, langs, required []string, carried func(str
 	// refusal fixture, or an unused unit declaration is not a runtime witness.
 	witnesses := map[string][]string{}
 	qualified := map[string]bool{}
+	type genJob struct {
+		lang string
+		unit string
+		u    *ir.Unit
+	}
+	var jobs []genJob
 	generated := map[string]bool{}
 	for _, inst := range m.Instances {
 		if inst.WireRefused {
@@ -87,11 +96,48 @@ func implementationAudit(m *Manifest, langs, required []string, carried func(str
 				continue
 			}
 			generated[key] = true
-			files, err := generator.Generate(u, lang, compiler.Options{"runtime": "standalone"})
+			jobs = append(jobs, genJob{lang: lang, unit: inst.Unit, u: u})
+		}
+	}
+	if _, concurrent := generator.(*compiler.Compiler); concurrent && len(jobs) > 1 {
+		jobProblems := make([]string, len(jobs))
+		workers := min(max(runtime.GOMAXPROCS(0), 1), len(jobs))
+		var next atomic.Int64
+		var wg sync.WaitGroup
+		wg.Add(workers)
+		for range workers {
+			go func() {
+				defer wg.Done()
+				c := compiler.New()
+				opts := compiler.Options{"runtime": "standalone"}
+				for {
+					idx := int(next.Add(1) - 1)
+					if idx >= len(jobs) {
+						return
+					}
+					job := jobs[idx]
+					files, err := c.Generate(job.u, job.lang, opts)
+					if err != nil {
+						jobProblems[idx] = fmt.Sprintf("%s: required feature witness unit %s cannot generate: %v", job.lang, job.unit, err)
+					} else if len(files) == 0 {
+						jobProblems[idx] = fmt.Sprintf("%s: required feature witness unit %s generated no files", job.lang, job.unit)
+					}
+				}
+			}()
+		}
+		wg.Wait()
+		for _, p := range jobProblems {
+			if p != "" {
+				problems = append(problems, p)
+			}
+		}
+	} else {
+		for _, job := range jobs {
+			files, err := generator.Generate(job.u, job.lang, compiler.Options{"runtime": "standalone"})
 			if err != nil {
-				problems = append(problems, fmt.Sprintf("%s: required feature witness unit %s cannot generate: %v", lang, inst.Unit, err))
+				problems = append(problems, fmt.Sprintf("%s: required feature witness unit %s cannot generate: %v", job.lang, job.unit, err))
 			} else if len(files) == 0 {
-				problems = append(problems, fmt.Sprintf("%s: required feature witness unit %s generated no files", lang, inst.Unit))
+				problems = append(problems, fmt.Sprintf("%s: required feature witness unit %s generated no files", job.lang, job.unit))
 			}
 		}
 	}
