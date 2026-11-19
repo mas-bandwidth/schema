@@ -211,10 +211,16 @@ for (local i = 0; i < count; i++) {
   local form = fr[0] & 0xff;
   local retain = fr[1] & 0xff;
   local codec = null;
-  if (form == FORM_VARIABLE && retain == 0) {
+  if (form == FORM_VARIABLE) {
     local u = openUnit(unit);
-    if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].variable == builder) {
-      codec = { u = u, root = root, d = u.T.Descriptors[root] };
+    if (retain == 0) {
+      if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].variable == builder) {
+        codec = { u = u, root = root, d = u.T.Descriptors[root], retain = false };
+      }
+    } else if (retain == 1) {
+      if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].variable && ((root + "LoadRetain") in u.T)) {
+        codec = { u = u, root = root, d = u.T.Descriptors[root], retain = true };
+      }
     }
   }
   roster[i] = codec;
@@ -237,24 +243,34 @@ for (;;) {
   local c = roster[index];
   local report = {
     unknown = 0, mismatch = 0, widened = 0, oor = 0,
-    repeated = 0, bodyDamaged = false, refused = false, stopped = false
+    repeated = 0, bodyDamaged = false, refused = false, stopped = false,
+    retained = 0, retainLost = 0
   };
-  local v = c.u.L.loadWalk(c.u.T, c.root, wire, report);
-  // THE BUILDER ARM: `loaded` is whether the read finished. A refused form
-  // and a framing too damaged to open answer null, a root body that stopped
-  // before its terminator says so in `stopped`, and a stopped builder saves
-  // nothing.
-  // THE PLAIN ARM (a fixed-class root): the root always loads. Where the read
-  // opened nothing, the value is the one it read into, at its declared
-  // defaults, and that is what is saved (test/conformance/harness/
-  // wirefuzz.go, the oracle on a refusal; docs/SPEC-TABLES.md §4.2).
-  local loaded = v != null && !report.stopped;
-  if (!builder) {
-    if (v == null) v = c.d.make();
-    loaded = true;
-  }
+  local loaded = false;
+  local strictRefused = false;
   local saved = null;
-  if (loaded) saved = c.u.S.save(c.u.T, c.root, v);
+  if (c.retain) {
+    local store = { capacity = 64 * wire.len() + 4096, idCapacity = 1 << 17 };
+    local v = c.u.T[c.root + "LoadRetain"](wire, store, report);
+    loaded = v != null && !report.bodyDamaged && !report.refused;
+    strictRefused = !loaded;
+    if (loaded) {
+      local n = c.u.T[c.root + "MeasureRetain"](v, store);
+      if (n >= 0) {
+        local outBuf = blob(n);
+        if (c.u.T[c.root + "SaveRetain"](v, store, outBuf, report) == n) saved = outBuf;
+      }
+    }
+  } else {
+    local v = c.u.L.loadWalk(c.u.T, c.root, wire, report);
+    loaded = v != null && !report.stopped;
+    if (!builder) {
+      if (v == null) v = c.d.make();
+      loaded = true;
+    }
+    if (loaded) saved = c.u.S.save(c.u.T, c.root, v);
+    strictRefused = c.u.R.ReadStrict(c.u.T, c.root, wire, {}) == null;
+  }
   local r = blob(0);
   putU8(r, loaded ? 1 : 0);
   putLE(r, report.unknown, 4);
@@ -263,15 +279,10 @@ for (;;) {
   putLE(r, report.oor, 4);
   putLE(r, report.repeated, 4);
   putU8(r, report.bodyDamaged ? 1 : 0);
-  // THE REFUSED BYTE IS THE STRICT READ'S VERDICT (docs/SPEC-TABLES.md §6.5,
-  // docs/plans/strict-only.md): every condition the one read refuses on,
-  // a count past the storage cap (count_over_extent_cap, §2.9) included,
-  // refuses the whole load; the walk's counters above are diagnostics.
-  local strictRefused = c.u.R.ReadStrict(c.u.T, c.root, wire, {}) == null;
   putU8(r, strictRefused ? 1 : 0);
   putLE(r, -1, 8);   // measure: no region (the header above)
-  putLE(r, 0, 4);    // retained: no retention
-  putLE(r, 0, 4);    // retain_lost
+  putLE(r, report.retained, 4);
+  putLE(r, report.retainLost, 4);
   putLE(r, saved == null ? -1 : saved.len(), 8);
   out.writeblob(r);
   if (saved != null && saved.len() > 0) out.writeblob(saved);

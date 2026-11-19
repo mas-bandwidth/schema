@@ -1165,7 +1165,7 @@ transcodeValue = function(r: any, pv: any, ov: any, pe: any, oe: any, fd: any, r
 		end
 		local pa = entryOf(pv, pref)
 		if pa == nil then return nil, false end
-		local udesc = if fd ~= nil and fd.t ~= nil then S.lookup(fd.t) else nil
+		local udesc: any = if fd ~= nil and fd.t ~= nil then S.lookup(fd.t) else nil
 		local armFd = nil
 		if udesc ~= nil and udesc.arms ~= nil then
 			for _, a in udesc.arms do
@@ -1324,7 +1324,7 @@ transcodeBody = function(r: any, pv: any, ov: any, desc: any, rep: any): ({ any 
 			end
 		end
 	end
-	table.sort(items, function(a, b) return a.ord < b.ord end)
+	table.sort(items, function(a: any, b: any) return (a.ord :: number) < (b.ord :: number) end)
 	return items, true
 end
 
@@ -1716,13 +1716,6 @@ local function mValidScalar(e: any, val: any): (boolean, string?)
 			local hi = if e.signed then 2 ^ (n - 1) - 1 else 2 ^ n - 1
 			if val < lo or val > hi then return false, "invalid_value" end
 		end
-		if e.flags ~= nil then
-			local iv = if typeof(val) == "integer" then val else integer.create(val)
-			if #e.flags < 64 then
-				local fmax = integer.sub(integer.lshift(1i, integer.create(#e.flags)), 1i)
-				if integer.ult(fmax, iv) then return false, "invalid_value" end
-			end
-		end
 		if e.lo ~= nil then
 			local lo, hi = e.lo, e.hi
 			if e.fbits ~= nil and e.fbits > 0 then
@@ -2091,7 +2084,6 @@ function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): num
 		return sz
 	end
 	reset(report)
-	local n = #bodies
 	if n < 1 or n > BATCH_MAX then
 		refuse(report, "batch_too_large")
 		return -1

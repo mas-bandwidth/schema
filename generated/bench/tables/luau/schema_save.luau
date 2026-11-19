@@ -1097,9 +1097,12 @@ end
 -- table and its count, and for a root that declares integrity = "crc32c" the
 -- four-byte little-endian CRC-32C trailer. A data cycle or a value with no
 -- wire identity refuses (nil).
-local function walk(d: any, v: any, count: boolean): (any, any?)
+local function walk(d: any, v: any, count: boolean, outIndex: { [any]: number }?): (any, any?)
 	local nodes, why = number(d, v)
 	if nodes == nil then return nil, why end
+	if outIndex ~= nil then
+		for obj, idx in nodes.index do outIndex[obj] = idx end
+	end
 	local c: any = { ids = new_ids(), nodes = nodes, count = count, why = nil }
 	local w = new_writer(count)
 	w_u8(w, Form)
@@ -1187,7 +1190,7 @@ local function invalid_deprecated(d: any, v: any, seen: any): any
 	return nil
 end
 
-function S.save(d: any, v: any): (buffer?, any?)
+function S.save(d: any, v: any, outIndex: { [any]: number }?): (buffer?, any?)
 	if v == nil then return nil, { name = "nil_value", field = d.name } end
 	local checked, invalid = pcall(invalid_deprecated, d, v, {})
 	if not checked then return nil, { name = "invalid_value", field = d.name } end
@@ -1197,7 +1200,7 @@ function S.save(d: any, v: any): (buffer?, any?)
 		if not ok then return nil, res end
 		return res, nil
 	end
-	local ok, w, why = pcall(walk, d, v, false)
+	local ok, w, why = pcall(walk, d, v, false, outIndex)
 	if not ok then return nil, { name = "invalid_value", field = d.name } end
 	if w == nil then return nil, why end
 	local out = buffer.create(w.n)

@@ -228,7 +228,8 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		local e = r.at + n
 		if r.at + 1 > e then return false end
 		local sub = new_reader(r.b, r.at, e)
-		local ek = r_u8(sub); if ek == 17 then return false end
+		local ek = r_u8(sub)
+		if not ((ek >= 1 and ek <= 13) or ek == 15 or (ek >= 18 and ek <= 30)) then return false end
 		o_byte(out, ek)
 		local count = r_leb(sub); if sub.bad then return false end
 		o_leb(out, count)
@@ -244,7 +245,9 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local e = r.at + n
 		if r.at + 1 > e then return false end
-		local ek = r_u8(r); o_byte(out, ek)
+		local ek = r_u8(r)
+		if not ((ek >= 1 and ek <= 11) or ek == 13 or (ek >= 18 and ek <= 30)) then return false end
+		o_byte(out, ek)
 		local count = r_leb(r); if r.bad then return false end
 		o_leb(out, count)
 		for _ = 1, count do
@@ -699,14 +702,16 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 	local idCap: number = idCount or math.floor(cap / 8)
 	if idCap < 0 then idCap = 0 end
 	local new_store = function()
-		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0, idCap = idCap }
+		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0, idCap = idCap, nodeObjs = {} }
 	end
-	local v = read(root, bytes, report)
+	local nodeObjs = {}
+	local v = read(root, bytes, report, nodeObjs)
 	if v == nil then
 		return v, new_store()
 	end
 	_nonFinite = nil
 	local store = new_store()
+	store.nodeObjs = nodeObjs
 	local len = buffer.len(bytes)
 	local count = 0
 	if len >= 9 then
@@ -1563,7 +1568,8 @@ end
 -- given, one retain_lost is counted for every record the path no longer names.
 function R.SaveRetain(root: string, value: any, retained: any, report: any?): (buffer?, any?)
 	local desc = S.lookup(root)
-	local plain, refused = Save.save(desc, value)
+	local savedNodeIndex: { [any]: number } = {}
+	local plain, refused = Save.save(desc, value, savedNodeIndex)
 	if plain == nil then return nil, refused end
 	if retained == nil or retained.used == 0 then
 		return plain, nil
@@ -1589,6 +1595,7 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 
 	local rootReader = save_reader(string.sub(wire, 2, endpos))
 	local rootBody = save_parse_body(rootReader, ids)
+
 
 	local place = {}
 	if desc.place ~= nil then
@@ -1622,12 +1629,16 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		if node == 1 then
 			target, tdesc = rootBody, desc
 		elseif node > 1 then
-			for _, f in rootBody.fields do
-				if f.node ~= nil and f.node.t == "nodes" and node - 1 <= #f.node.nodes then
-					local nr = f.node.nodes[node - 1]
-					target = nr.body
-					tdesc = place[ids[nr.tref]]
-					break
+			local obj = if store.nodeObjs ~= nil then store.nodeObjs[node - 1] else nil
+			local savedNode = if obj ~= nil then savedNodeIndex[obj] else nil
+			if savedNode ~= nil and savedNode > 1 then
+				for _, f in rootBody.fields do
+					if f.node ~= nil and f.node.t == "nodes" and savedNode - 1 <= #f.node.nodes then
+						local nr = f.node.nodes[savedNode - 1]
+						target = nr.body
+						tdesc = place[ids[nr.tref]]
+						break
+					end
 				end
 			end
 		end

@@ -98,14 +98,18 @@ local outRaw = function(out, b, at, n) {
 local idOf = function(c, ref, table) {
   if (ref == 0 || ref > table.len()) { c.bad = true; return 0; }
   local id = table[ref - 1];
-  if (id == 0 || id == NODE_TABLE_ID || id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID) {
+  if (id == NODE_TABLE_ID || id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID) {
     c.bad = true;
     return 0;
   }
   return id;
 };
 
-local resolvePayload, resolveContent, resolveBody;
+local resolvePayload, resolveFramed, resolveContent, resolveBody;
+
+local structuralKind = function(kind) {
+  return kind == 13 || kind == 14 || kind == 15 || kind == 16;
+};
 
 // skipPayload steps one payload by §3's framing alone and answers false on
 // damage; kinds 13, 14, 15, 16, 17 and 30 are never copied (§6.6).
@@ -123,6 +127,21 @@ local skipPayload = function(c, kind) {
     return true;
   }
   return false;
+};
+
+resolveFramed = function(c, kind, table, out, depth) {
+  local n = cleb(c);
+  if (c.bad || n < 0 || n > c.end - c.at) { c.bad = true; return; }
+  local sub = cursor(c.b, c.at, c.at + n);
+  c.at += n;
+  local mark = out.b.len();
+  outU64(out, 0);
+  if (kind == 13 || kind == 14 || kind == 16) depth = depth + 1;
+  resolveContent(sub, kind, table, out, depth);
+  if (sub.bad || sub.at != sub.end) c.bad = true;
+  if (c.bad) return;
+  local len = out.b.len() - mark - 8;
+  for (local k = 0; k < 8; k++) out.b[mark + k] = (len >>> (8 * k)) & 0xff;
 };
 
 // framed reads one length and resolves the content it frames; a nested length
@@ -148,17 +167,7 @@ resolveContent = function(c, kind, table, out, depth) {
           if (c.bad) return;
           outU64(out, idOf(c, ref, table));
           if (c.bad) return;
-          local n = cleb(c);
-          if (c.bad || n < 0 || c.at + n > c.end) { c.bad = true; return; }
-          local sub = cursor(c.b, c.at, c.at + n);
-          c.at += n;
-          local mark = out.b.len();
-          outU64(out, 0);
-          resolveContent(sub, ek, table, out, depth + 1);
-          if (sub.bad || sub.at != sub.end) c.bad = true;
-          if (c.bad) return;
-          local len = out.b.len() - mark - 8;
-          for (local k = 0; k < 8; k++) out.b[mark + k] = (len >>> (8 * k)) & 0xff;
+          resolveFramed(c, ek, table, out, depth);
         } else {
           resolvePayload(c, ek, table, out, depth);
         }
@@ -167,9 +176,8 @@ resolveContent = function(c, kind, table, out, depth) {
     }
     case 15: case 30: resolvePayload(c, kind, table, out, depth); break;
     default: {
-      local from = c.at;
-      if (!skipPayload(c, kind)) { c.bad = true; return; }
-      outRaw(out, c.b, from, c.at - from);
+      outRaw(out, c.b, c.at, c.end - c.at);
+      c.at = c.end;
     }
   }
   if (!c.bad && c.at != c.end) c.bad = true;
@@ -182,44 +190,25 @@ resolvePayload = function(c, kind, table, out, depth) {
     case 30: {
       local ref = cleb(c);
       if (c.bad) return;
-      if (ref == 0) { outU64(out, 0); return; }
+      if (ref == 0) { outU64(out, NODE_TABLE_ID); return; }
       outU64(out, idOf(c, ref, table));
       return;
     }
     case 15: {
       local ref = cleb(c);
       if (c.bad) return;
-      if (ref == 0) { outU64(out, 0); return; }
+      if (ref == 0) { outU64(out, NODE_TABLE_ID); return; }
       outU64(out, idOf(c, ref, table));
       if (c.bad) return;
       local armKind = cu8(c);
       if (c.bad) return;
       outU8(out, armKind);
-      local n = cleb(c);
-      if (c.bad || n < 0 || c.at + n > c.end) { c.bad = true; return; }
-      local sub = cursor(c.b, c.at, c.at + n);
-      c.at += n;
-      local mark = out.b.len();
-      outU64(out, 0);
-      resolveContent(sub, armKind, table, out, depth + 1);
-      if (sub.bad || sub.at != sub.end) c.bad = true;
-      if (c.bad) return;
-      local len = out.b.len() - mark - 8;
-      for (local k = 0; k < 8; k++) out.b[mark + k] = (len >>> (8 * k)) & 0xff;
+      if (structuralKind(armKind)) depth = depth + 1;
+      resolveFramed(c, armKind, table, out, depth);
       return;
     }
     case 13: case 14: case 16: {
-      local n = cleb(c);
-      if (c.bad || n < 0 || n > c.end - c.at) { c.bad = true; return; }
-      local sub = cursor(c.b, c.at, c.at + n);
-      c.at += n;
-      local mark = out.b.len();
-      outU64(out, 0);
-      resolveContent(sub, kind, table, out, depth + 1);
-      if (sub.bad || sub.at != sub.end) c.bad = true;
-      if (c.bad) return;
-      local len = out.b.len() - mark - 8;
-      for (local k = 0; k < 8; k++) out.b[mark + k] = (len >>> (8 * k)) & 0xff;
+      resolveFramed(c, kind, table, out, depth);
       return;
     }
     default: {
@@ -235,7 +224,7 @@ resolveBody = function(c, table, out, depth) {
     if (c.bad || out.failed) return;
     local ref = cleb(c);
     if (c.bad) return;
-    if (ref == 0) { outU64(out, 0); return; }
+    if (ref == 0) { outU64(out, NODE_TABLE_ID); return; }
     outU64(out, idOf(c, ref, table));
     if (c.bad) return;
     local kind = cu8(c);
@@ -316,6 +305,7 @@ local emitRef = function(w, ids, id) {
 };
 
 emitContent = function(w, c, kind, ids) {
+  if (c.bad || (EMIT != null && EMIT.bad)) return;
   switch (kind) {
     case 13: { emitBody(w, c, ids); break; }
     case 14: case 16: {
@@ -326,18 +316,19 @@ emitContent = function(w, c, kind, ids) {
       if (c.bad) return;
       emitLeb(w, count);
       for (local i = 0; i < count; i++) {
-        if (c.bad) return;
+        if (c.bad || (EMIT != null && EMIT.bad)) return;
         if (kind == 16) {
           local id = cu64(c);
           if (c.bad) return;
           emitRef(w, ids, id);
+          if (EMIT != null && EMIT.bad) return;
           local n = cu64(c);
-          if (c.bad || c.at + n > c.end) { c.bad = true; return; }
+          if (c.bad || n < 0 || c.at + n > c.end) { c.bad = true; return; }
           local sub = cursor(c.b, c.at, c.at + n);
           c.at += n;
           local inner = { b = [] };
           emitContent(inner, sub, ek, ids);
-          if (c.bad) return;
+          if (sub.bad || (EMIT != null && EMIT.bad)) { c.bad = true; return; }
           emitLeb(w, inner.b.len());
           foreach (x in inner.b) w.b.append(x);
         } else {
@@ -348,51 +339,51 @@ emitContent = function(w, c, kind, ids) {
     }
     case 15: case 30: emitPayload(w, c, kind, ids); break;
     default: {
-      local from = c.at;
-      if (!skipPayload(c, kind)) { c.bad = true; return; }
-      emitRaw(w, c, from, c.at - from);
+      emitRaw(w, c, c.at, c.end - c.at);
+      c.at = c.end;
     }
   }
   if (!c.bad && c.at != c.end) c.bad = true;
 };
 
 emitPayload = function(w, c, kind, ids) {
-  if (c.bad) return;
+  if (c.bad || (EMIT != null && EMIT.bad)) return;
   switch (kind) {
     case 30: {
       local id = cu64(c);
       if (c.bad) return;
-      if (id == 0) { emitLeb(w, 0); return; }
+      if (id == NODE_TABLE_ID) { emitLeb(w, 0); return; }
       emitRef(w, ids, id);
       return;
     }
     case 15: {
       local id = cu64(c);
       if (c.bad) return;
-      if (id == 0) { emitLeb(w, 0); return; }
+      if (id == NODE_TABLE_ID) { emitLeb(w, 0); return; }
       emitRef(w, ids, id);
+      if (EMIT != null && EMIT.bad) return;
       local armKind = cu8(c);
       if (c.bad) return;
       w.b.append(armKind & 0xff);
       local n = cu64(c);
-      if (c.bad || c.at + n > c.end) { c.bad = true; return; }
+      if (c.bad || n < 0 || c.at + n > c.end) { c.bad = true; return; }
       local sub = cursor(c.b, c.at, c.at + n);
       c.at += n;
       local inner = { b = [] };
       emitContent(inner, sub, armKind, ids);
-      if (c.bad) return;
+      if (sub.bad || (EMIT != null && EMIT.bad)) { c.bad = true; return; }
       emitLeb(w, inner.b.len());
       foreach (x in inner.b) w.b.append(x);
       return;
     }
     case 13: case 14: case 16: {
       local n = cu64(c);
-      if (c.bad || c.at + n > c.end) { c.bad = true; return; }
+      if (c.bad || n < 0 || c.at + n > c.end) { c.bad = true; return; }
       local sub = cursor(c.b, c.at, c.at + n);
       c.at += n;
       local inner = { b = [] };
       emitContent(inner, sub, kind, ids);
-      if (c.bad) return;
+      if (sub.bad || (EMIT != null && EMIT.bad)) { c.bad = true; return; }
       emitLeb(w, inner.b.len());
       foreach (x in inner.b) w.b.append(x);
       return;
@@ -409,7 +400,7 @@ emitBody = function(w, c, ids) {
   for (;;) {
     local id = cu64(c);
     if (c.bad) return;
-    if (id == 0) { w.b.append(0); return; }
+    if (id == NODE_TABLE_ID) { w.b.append(0); return; }
     emitRef(w, ids, id);
     local kind = cu8(c);
     if (c.bad) return;

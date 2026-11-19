@@ -842,7 +842,7 @@ function TableVariableStrictMark(report) {
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
   const strings = new Map();
-  for (const [holder, key, index, d] of st.pending) {
+  for (const [holder, key, index, d, owner] of st.pending) {
     let value = null, str = null;
     if (st.good) { TableVariableNoteBlobReference(index, st); }
     if (st.good && index !== 0) {
@@ -873,6 +873,18 @@ function TableVariableResolve(st, report) {
           } else {
             report.mismatch++;
           }
+        }
+      }
+    }
+    if (st.good && value === null && index !== 0 && owner !== undefined) {
+      if (index === 1) {
+        st.graphFrom.push(owner);
+        st.graphTo.push(0);
+      } else if (index >= 2 && index - 2 < st.nodes.length) {
+        const tid = st.nodeTypes[index - 2];
+        if (tid !== TableStringBlobId && tid !== TableBytesBlobId) {
+          st.graphFrom.push(owner);
+          st.graphTo.push(index - 1);
         }
       }
     }
@@ -1449,7 +1461,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path, atFie
       // A pointer payload is an index, bounds-checked at resolution; 0 is null.
       const index = r.leb();
       if (r.bad) { report.damaged = true; return false; }
-      st.pending.push([v, fd.n, index, fd]);
+      st.pending.push([v, fd.n, index, fd, st.owner]);
       return true;
     }
     case "tab": {
@@ -1623,7 +1635,7 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
       const index = r.leb();
       if (r.bad) { report.damaged = true; return false; }
       out[i] = null;
-      st.pending.push([out, i, index, e]);
+      st.pending.push([out, i, index, e, st.owner]);
       return true;
     }
     case "enum": {
