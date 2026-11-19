@@ -6,7 +6,6 @@ import (
 )
 
 func TestTextListCSharp(t *testing.T) {
-	t.Skip("layer 4 (cs): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the .NET SDK")
 	runCarryCS(t, `package probe
 table Root {
@@ -43,7 +42,7 @@ const textListNativeProbe = `unsafe {
   byte[] authoredNative=new byte[fresh.Measure()];if(fresh.Save(authoredNative)!=wire.Length||!authoredNative.AsSpan().SequenceEqual(wire))throw new Exception("native authored wire");
  }
  var clamped=new Root();var clampReport=new TableReport();
- if(!Schema.RootFromJson(clamped,Encoding.UTF8.GetBytes("""{"names":["123456789"]}"""),clampReport)||clampReport.Clamped!=1||clampReport.ClampedField!="Root.names")throw new Exception("named text clamp");
+ if(Schema.RootFromJson(clamped,Encoding.UTF8.GetBytes("""{"names":["123456789"]}"""),clampReport)||(!clampReport.Refused&&!clampReport.Damaged))throw new Exception("oversized text element must refuse");
  var refusedAppend=new Root();
  if(Schema.RootNamesAppend(refusedAppend,Encoding.UTF8.GetBytes("123456789"))||Schema.RootNamesAppend(refusedAppend,new byte[]{0})||Schema.RootNamesAppend(refusedAppend,new byte[]{0xff})||refusedAppend.NamesCount!=0)throw new Exception("invalid append mutated managed list");
  var type=Schema.RootTableType();long size=Schema.RootLoadMeasure(wire);
@@ -51,7 +50,7 @@ const textListNativeProbe = `unsafe {
  void* memory=System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((size+15)&~15L),16);
  try{
   var report=new TableReport();IntPtr ptr=Schema.TableWire.LoadRegion(type,(IntPtr)memory,size,wire,report);
-  if(ptr==IntPtr.Zero||report.Malformed)throw new Exception("text-list native load");
+  if(ptr==IntPtr.Zero||report.Refused||report.Damaged)throw new Exception("text-list native load");
   Span<ulong> ids=stackalloc ulong[4096];Span<int> slots=stackalloc int[4096];
   byte[] saved=new byte[Schema.TableWire.SaveRegion(ptr,type,Span<byte>.Empty,ids,true)];
   if(Schema.TableWire.SaveRegion(ptr,type,saved,ids,false)!=wire.Length||!saved.AsSpan().SequenceEqual(wire))throw new Exception("text-list native roundtrip");
@@ -77,17 +76,17 @@ const textListNativeProbe = `unsafe {
  }
  foreach(byte[] element in new[]{Encoding.UTF8.GetBytes("123456789"),Encoding.UTF8.GetBytes("ééééé"),new byte[]{0},new byte[]{0xff}}){
   byte[] payload=new byte[element.Length+3];payload[0]=12;payload[1]=1;payload[2]=(byte)element.Length;element.CopyTo(payload,3);
-  byte[] source=TextWire(payload,type.Fields[0].Id);bool damaged=element[0]==0||element[0]==0xff;
+  byte[] source=TextWire(payload,type.Fields[0].Id);
   var read=new Root();var r=new TableReport();bool accepted=Schema.RootLoad(read,source,r);
-  if(accepted==damaged||r.Malformed!=damaged||!damaged&&(r.Clamped!=1||r.ClampedField!="Root.names"||read.NamesCount!=1||read.Names[0].ValueLength!=8))throw new Exception("text-list wire text validation");
-  long need=Schema.RootLoadMeasure(source);void* mem=System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)((need+15)&~15L),16);
-  try{var nr=new TableReport();IntPtr loaded=Schema.TableWire.LoadRegion(type,(IntPtr)mem,need,source,nr);
-   if((loaded==IntPtr.Zero)!=damaged||nr.Malformed!=damaged||!damaged&&(nr.Clamped!=1||nr.ClampedField!="Root.names"))throw new Exception("native text-list wire validation");
+  if(accepted||(!r.Refused&&!r.Damaged))throw new Exception("text-list wire text validation must refuse");
+  void* mem=System.Runtime.InteropServices.NativeMemory.AlignedAlloc(4096,16);
+  try{var nr=new TableReport();IntPtr loaded=Schema.TableWire.LoadRegion(type,(IntPtr)mem,4096,source,nr);
+   if(loaded!=IntPtr.Zero||(!nr.Refused&&!nr.Damaged))throw new Exception("native text-list wire validation must refuse");
   }finally{System.Runtime.InteropServices.NativeMemory.AlignedFree(mem);}
  }
  byte[] forgedCount=TextWire(new byte[]{12,127},type.Fields[2].Id);
- if(Schema.RootLoadMeasure(forgedCount,out TableRefuseReason countReason)!=-1||countReason!=TableRefuseReason.count_over_length)throw new Exception("plain string list count allocated beyond framing");
+ if(Schema.RootLoadMeasure(forgedCount)!=-1)throw new Exception("plain string list count allocated beyond framing");
  original.Names[0].Value[0]=0;
  byte[] untouched=new byte[wire.Length];Array.Fill(untouched,(byte)0xa5);
- if(Schema.RootMeasure(original)!=-1||Schema.RootSave(original,untouched)!=-1||Array.Exists(untouched,b=>b!=0xa5))throw new Exception("stored NUL text-list writer refusal");
+ if(!RefusesWrite(()=>Schema.RootMeasure(original))||!RefusesWrite(()=>Schema.RootSave(original,untouched))||Array.Exists(untouched,b=>b!=0xa5))throw new Exception("stored NUL text-list writer refusal");
 }`

@@ -442,8 +442,21 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			g.emitCookListAccessors(f, fl.Offset, ind, origin)
 			continue
 		case f.Type.TextUnbounded() && bl == nil:
-			g.pf("%sint get %sLength {final p=tableCookTextStart(view,%s+%d);return p<0?0:view.getUint32(p,Endian.little);}\n", ind, name, origin, fl.Offset)
-			g.pf("%sUint8List %sBytes(Uint8List buffer){final p=tableCookTextStart(view,%s+%d);return p<0?Uint8List(0):Uint8List.sublistView(buffer,p+8,p+8+%sLength);}\n", ind, name, origin, fl.Offset, name)
+			g.pf("%sint get %sLength {\n", ind, name)
+			g.pf("%s  final p = tableCookTextStart(view, %s + %d);\n", ind, origin, fl.Offset)
+			g.pf("%s  return p < 0 ? 0 : view.getUint32(p, Endian.little);\n", ind)
+			g.pf("%s}\n\n", ind)
+			g.pf("%sUint8List %sBytes(Uint8List buffer) {\n", ind, name)
+			g.pf("%s  final p = tableCookTextStart(view, %s + %d);\n", ind, origin, fl.Offset)
+			one := fmt.Sprintf("%s  return p < 0 ? Uint8List(0) : Uint8List.sublistView(buffer, p + 8, p + 8 + %sLength);", ind, name)
+			if len(one) <= 80 {
+				g.pf("%s\n", one)
+			} else {
+				g.pf("%s  return p < 0\n", ind)
+				g.pf("%s      ? Uint8List(0)\n", ind)
+				g.pf("%s      : Uint8List.sublistView(buffer, p + 8, p + 8 + %sLength);\n", ind, name)
+			}
+			g.pf("%s}\n\n", ind)
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("%s// %s: the USED length, and a view of the bytes it names\n", ind, tableFieldTypeName(f))
 			g.pf("%sint get %sLength {\n", ind, name)

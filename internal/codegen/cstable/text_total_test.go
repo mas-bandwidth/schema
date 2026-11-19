@@ -77,8 +77,8 @@ const textTotalNativeProbe = `unsafe {
  }
  appended.A[1].Value[0]=(byte)'a';appended.A[1].Value[1]=(byte)'b';appended.A[1].ValueLength=2;
  byte[] untouched=new byte[512];Array.Fill(untouched,(byte)0x5a);
- if(Schema.RootMeasure(appended)!=-1||Schema.RootSave(appended,untouched)!=-1||Schema.RootToJsonMeasure(appended)!=-1||Array.Exists(untouched,b=>b!=0x5a))throw new Exception("over-total managed writer preflight");
- if(Schema.WrapMeasure(new Wrap{Child=appended})!=-1)throw new Exception("nested total writer preflight");
+ if(!RefusesWrite(()=>Schema.RootMeasure(appended))||!RefusesWrite(()=>Schema.RootSave(appended,untouched))||!RefusesWrite(()=>Schema.RootToJsonMeasure(appended))||Array.Exists(untouched,b=>b!=0x5a))throw new Exception("over-total managed writer preflight");
+ if(!RefusesWrite(()=>Schema.WrapMeasure(new Wrap{Child=appended})))throw new Exception("nested total writer preflight");
 }`
 
 func textTotalGoRefuses(t *testing.T, wire []byte) {

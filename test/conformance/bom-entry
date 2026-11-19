@@ -35,6 +35,7 @@ mkdir -p "$out"
 printf '%s sh test/conformance/bom-entry --driver %s\n' "$lang" "$lang" > "$out/drivers.txt"
 status=0
 "$harness" run --manifest testdata/conformance/tables/bom-entry/MANIFEST.txt \
+    --json testdata/conformance/tables/bom-entry/json \
     --drivers "$out/drivers.txt" --work "$out/work" \
     --results "$out/bom-results.json" > "$out/log" 2>&1 || status=$?
 cat "$out/log"

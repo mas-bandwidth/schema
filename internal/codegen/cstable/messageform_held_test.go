@@ -653,10 +653,9 @@ var csHeldUnits = []csHeldUnit{
 type csHeldConn struct{ key, pkg, wire, version string }
 
 var csHeldConns = []csHeldConn{
-	{"backend_conn", "backenddemo", "backend_conn.bin", "0x16d0630a084485ae"},
-	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0x40062c876abfc027"},
-	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x3a923c7d0da66dd8"},
-	{"graph_conn", "graphdemo", "graph_conn.bin", "0xfdaabe4726d81d5c"},
+	{"backend_conn", "backenddemo", "backend_conn.bin", "0x2309093a1139c6cc"},
+	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0x849644d72721d12e"},
+	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x354e211ad4f819ce"},
 }
 
 // csHeldMsg is one MANIFEST `message` row: one value in BOTH forms, the file

@@ -51,8 +51,7 @@ case Bench.WrapFixed.fixed_table_fixed_load(want) do
     end
 
     # A CLEAN READ OF THIS BUILD'S OWN RECORDS MOVES NO COUNTER.
-    if {report.unknown, report.kind_mismatch, report.clamped, report.widened, report.malformed} !=
-         {0, 0, 0, 0, false} do
+    if {report.unknown, report.widened} != {0, 0} do
       IO.puts("FAILED: a same-schema read moved a counter: #{inspect(report)}")
       System.halt(1)
     end

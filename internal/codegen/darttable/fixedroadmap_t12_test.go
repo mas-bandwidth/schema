@@ -510,16 +510,21 @@ func t12SchemaBase(file string) string {
 		return "VBRA_" + strings.TrimSuffix(file[len("a_"):], ".bin")
 	case strings.HasPrefix(file, "b_"):
 		return "VBRB_" + strings.TrimSuffix(file[len("b_"):], ".bin")
+	case strings.HasPrefix(file, "deprecated_"):
+		return "FD1"
+	case strings.HasPrefix(file, "dead_"):
+		return "DeadBytes"
 	}
 	return map[string]string{
-		"fx1.bin":   "FX1",
-		"fx2.bin":   "FX2",
-		"p1.bin":    "P1",
-		"p3.bin":    "P3",
-		"fu1.bin":   "FU1",
-		"fu2.bin":   "FU2",
-		"keyed.bin": "examples/Keyed",
-		"pack.bin":  "examples/Pack",
+		"fx1.bin":           "FX1",
+		"fx2.bin":           "FX2",
+		"p1.bin":            "P1",
+		"p3.bin":            "P3",
+		"fu1.bin":           "FU1",
+		"fu2.bin":           "FU2",
+		"negative_zero.bin": "FNZ",
+		"keyed.bin":         "examples/Keyed",
+		"pack.bin":          "examples/Pack",
 
 		"many_unknown_census.bin":        "VOLD_unknown_census",
 		"past_cfloat_range_widen.bin":    "VNEW_cfloat_range_widen",

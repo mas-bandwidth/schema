@@ -49,7 +49,7 @@ func TestDartDeclaredFormsNative(t *testing.T) {
 			if !m.Read(v, []byte(`{"value":7}`), &tabletext.Report{}) {
 				t.Fatal("neutral read")
 			}
-			pin, err := tablewire.Encode(m, v)
+			pin, err := tablewire.EncodeVariable(m, v)
 			if err != nil {
 				t.Fatal(err)
 			}

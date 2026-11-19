@@ -34,7 +34,7 @@ for (int i = 0; i < texts.Length; i++) {
  var value = new Probe.Root();
  var report = new Probe.TableReport { Unknown = 3 };
  bool ok = Probe.Schema.RootFromJson(value, System.Text.Encoding.UTF8.GetBytes(texts[i]), report);
- if (ok || !report.Damaged || report.Reason != "text_holds_zero: " + fields[i] || report.Unknown != 3)
+ if (ok || (!report.Damaged && !report.Refused) || report.Reason != "text_holds_zero: " + fields[i] || report.Unknown != 3)
   bad += ProbeLog.Fail("stored NUL scope " + i + " reason=" + report.Reason);
  if (!Probe.Schema.RootFromJson(value, System.Text.Encoding.UTF8.GetBytes("{\"name\":\"ok\"}"), report) || report.Refused || report.Reason != null)
   bad += ProbeLog.Fail("prior diagnostic poisoned a clean read");
@@ -53,7 +53,7 @@ foreach (string text in new[] { "{\"name\":\"ab~\"}", "{\"unknown\":\"~\"}", "{\
  byte[] bytes = System.Text.Encoding.UTF8.GetBytes(text);
  bytes[Array.IndexOf(bytes, (byte)'~')] = 0xff;
  var report = new Probe.TableReport { Unknown = 3 };
- if (Probe.Schema.RootFromJson(new Probe.Root(), bytes, report) || !report.Damaged ||
+ if (Probe.Schema.RootFromJson(new Probe.Root(), bytes, report) || (!report.Damaged && !report.Refused) ||
      report.Reason == null || !report.Reason.StartsWith("string_not_utf8: "))
   bad += ProbeLog.Fail("invalid UTF8 must refuse before clamp at every string site");
 }

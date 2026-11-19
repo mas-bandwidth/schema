@@ -22,7 +22,7 @@ func TestRetainedUnknownBeforeNonFiniteRefusalRust(t *testing.T) {
 	if !m.Read(v, []byte(`{"extra":77,"value":1.25}`), &report) {
 		t.Fatal(report)
 	}
-	wire, err := tablewire.Encode(m, v)
+	wire, err := tablewire.EncodeVariable(m, v)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -183,14 +183,15 @@ func TestFixedRoadmapJavaT18OracleHostile(t *testing.T) {
 // t18Plain names the schema that wrote each corpus file that is not a side of a
 // versioning row (test/tables/fixedform_dump.cpp: emit(dir, "fx1.bin", ...)).
 var t18Plain = map[string]string{
-	"fx1.bin":   "test/tables/FX1.schema",
-	"fx2.bin":   "test/tables/FX2.schema",
-	"p1.bin":    "test/tables/P1.schema",
-	"p3.bin":    "test/tables/P3.schema",
-	"keyed.bin": "tables/examples/Keyed.schema",
-	"pack.bin":  "tables/examples/Pack.schema",
-	"fu1.bin":   "test/tables/FU1.schema",
-	"fu2.bin":   "test/tables/FU2.schema",
+	"fx1.bin":           "test/tables/FX1.schema",
+	"fx2.bin":           "test/tables/FX2.schema",
+	"p1.bin":            "test/tables/P1.schema",
+	"p3.bin":            "test/tables/P3.schema",
+	"keyed.bin":         "tables/examples/Keyed.schema",
+	"pack.bin":          "tables/examples/Pack.schema",
+	"fu1.bin":           "test/tables/FU1.schema",
+	"fu2.bin":           "test/tables/FU2.schema",
+	"negative_zero.bin": "test/tables/FNZ.schema",
 }
 
 // t18Prefix is the schema file name prefix of a versioning row's side
@@ -224,9 +225,15 @@ func t18Rows(t *testing.T, corpus string) []t18Row {
 	for _, f := range names {
 		m := rows[f]
 		r := t18Row{m: m}
-		if s, ok := t18Plain[f]; ok {
+		s, plain := t18Plain[f]
+		switch {
+		case plain:
 			r.writer, r.reader = s, s
-		} else {
+		case strings.HasPrefix(f, "dead_"):
+			r.writer, r.reader = "test/tables/DeadBytes.schema", "test/tables/DeadBytes.schema"
+		case strings.HasPrefix(f, "deprecated_"):
+			r.writer, r.reader = "test/tables/FD1.schema", "test/tables/FD1.schema"
+		default:
 			pre, ok := t18Prefix[m.Side]
 			if !ok {
 				t.Fatalf("manifest row %s names side %q, which the Java oracle harness has no schema for", f, m.Side)

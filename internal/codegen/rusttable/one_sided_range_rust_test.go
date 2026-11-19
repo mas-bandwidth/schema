@@ -92,14 +92,14 @@ func TestRustOneSidedRangeNative(t *testing.T) {
 	var body strings.Builder
 	var goBody strings.Builder
 	for i, tc := range rustRangeCases {
-		text := fmt.Sprintf(`{"%s":%s}`, tc.field, tc.input)
-		expected := fmt.Sprintf(`{"%s":%s}`, tc.field, tc.value)
+		text := fmt.Sprintf(`{"%s":%q}`, tc.field, tc.input)
+		expected := fmt.Sprintf(`{"%s":%q}`, tc.field, tc.value)
 		value := m.New(u.Tables["Ranges"])
 		var report tabletext.Report
 		if !m.Read(value, []byte(expected), &report) || report != (tabletext.Report{}) {
 			t.Fatalf("literal expected value %s refused: %+v", expected, report)
 		}
-		want, err := tablewire.Encode(m, value)
+		want, err := tablewire.EncodeVariable(m, value)
 		if err != nil {
 			t.Fatal(err)
 		}

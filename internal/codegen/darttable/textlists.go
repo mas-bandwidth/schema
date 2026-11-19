@@ -22,18 +22,21 @@ func textListWriteCheck(f *ir.Field, expr, ind, prefix, refusal string) string {
 	if f.Array == ir.ArrayCounted {
 		fmt.Fprintf(&b, "%sif (%s.length > %d) %s\n", ind, expr, f.ArrayBound, refusal)
 	}
+	lind := ind
 	if f.TextTotal > 0 {
-		fmt.Fprintf(&b, "%s{ var textSpent=0;\n", ind)
+		fmt.Fprintf(&b, "%s{\n%s  var textSpent = 0;\n", ind, ind)
+		lind = ind + "  "
 	}
-	fmt.Fprintf(&b, "%sfor (final element in %s) {\n", ind, expr)
+	fmt.Fprintf(&b, "%sfor (final element in %s) {\n", lind, expr)
 	if ir.TextListOptional(f) {
-		fmt.Fprintf(&b, "%s  if (!element.hasValue) continue;\n", ind)
+		fmt.Fprintf(&b, "%s  if (!element.hasValue) continue;\n", lind)
 	}
-	fmt.Fprintf(&b, "%s  if (!%stableTextValueValid(element.value, %d)) %s\n", ind, prefix, textBound(ir.TextListValue(f)), refusal)
+	fmt.Fprintf(&b, "%s  if (!%stableTextValueValid(element.value, %d)) %s\n", lind, prefix, textBound(ir.TextListValue(f)), refusal)
 	if f.TextTotal > 0 {
-		fmt.Fprintf(&b, "%s  textSpent += %stableTextByteLength(element.value); if(textSpent > %d) %s\n", ind, prefix, f.TextTotal, refusal)
+		fmt.Fprintf(&b, "%s  textSpent += %stableTextByteLength(element.value);\n", lind, prefix)
+		fmt.Fprintf(&b, "%s  if (textSpent > %d) %s\n", lind, f.TextTotal, refusal)
 	}
-	fmt.Fprintf(&b, "%s}\n", ind)
+	fmt.Fprintf(&b, "%s}\n", lind)
 	if f.TextTotal > 0 {
 		fmt.Fprintf(&b, "%s}\n", ind)
 	}

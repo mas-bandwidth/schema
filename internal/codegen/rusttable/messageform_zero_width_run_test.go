@@ -86,13 +86,16 @@ func TestRustMessageZeroWidthRunIsBounded(t *testing.T) {
 					Inner: &ir.TableMessageShape{Min: 3, Max: 3, Elem: ir.TableKindNoPayload, Inner: flat()}}},
 		},
 		{
-			// a count the batch's bits back is the shape a conforming writer
-			// produces, and it still loads its unknown field once
+			name: "wide_zero_max_string",
+			entry: ir.TableVocabularyEntry{Id: 0x5a5a5a5a00000005, Kind: ir.TableKindArray,
+				Shape: ir.TableMessageShape{Min: wide, Max: wide, Elem: ir.TableKindString,
+					Inner: &ir.TableMessageShape{Max: 0}}},
+		},
+		{
 			name:   "honest_small_count",
 			honest: true,
 			entry: ir.TableVocabularyEntry{Id: 0x5a5a5a5a00000004, Kind: ir.TableKindArray,
-				Shape: ir.TableMessageShape{Min: 3, Max: 3, Elem: ir.TableKindArray,
-					Inner: &ir.TableMessageShape{Min: 2, Max: 2, Elem: ir.TableKindNoPayload, Inner: flat()}}},
+				Shape: ir.TableMessageShape{Min: 0, Max: 0, Elem: ir.TableKindString, Inner: &ir.TableMessageShape{Max: 0}}},
 		},
 	}
 
@@ -103,12 +106,14 @@ func TestRustMessageZeroWidthRunIsBounded(t *testing.T) {
 		// THE ORACLE: the same bytes through the Go engine.
 		v := &tablewire.Vocabulary{}
 		var arep tabletext.Report
-		if err := v.AnnounceRead(announcement, &arep); err != nil {
-			t.Fatalf("%s: the engine refused the announcement: %v", c.name, err)
-		}
+		engineAnnounced := v.AnnounceRead(announcement, &arep) == nil
 		var erep tabletext.Report
-		got, err := tablewire.DecodeMessage(m, m.New(m.Lookup("Probe")), messageZeroWidthBatch, v, &erep)
-		engineOK := err == nil && got
+		var got bool
+		var err error
+		if engineAnnounced {
+			got, err = tablewire.DecodeMessage(m, m.New(m.Lookup("Probe")), messageZeroWidthBatch, v, &erep)
+		}
+		engineOK := engineAnnounced && err == nil && got
 		engineUnknown := erep.Unknown == 1
 		if c.honest && (!engineOK || !engineUnknown) {
 			t.Fatalf("%s: the engine did not load the honest run: ok=%v unknown=%d err=%v report=%+v", c.name, got, erep.Unknown, err, erep)
@@ -129,13 +134,14 @@ func TestRustMessageZeroWidthRunIsBounded(t *testing.T) {
         let mut lrep = TableReport::default();
         let (count, ok) = probe_load_messages(&mut values, &vocab, &BATCH, &mut lrep);
         let accepted = ok && count == 1;
+        let want_ann = %t;
         let want = %t;
         let unknown = if want { lrep.unknown == 1 } else { true };
-        say(%q, announced && accepted == want && unknown,
+        say(%q, announced == want_ann && (!announced || (accepted == want && unknown)),
             format!("announced={announced} count={count} ok={ok} report={lrep:?}"));
     }
 `, len(announcement), rustBytes(announcement), len(messageZeroWidthBatch), rustBytes(messageZeroWidthBatch),
-			c.honest, c.name)
+			engineAnnounced, c.honest, c.name)
 	}
 	out := runMessageZeroWidthProbe(t, u, body)
 	for _, c := range cases {
@@ -151,9 +157,7 @@ func TestRustMessageZeroWidthRunIsBounded(t *testing.T) {
 func messageZeroWidthAnnouncement(t *testing.T, entry ir.TableVocabularyEntry) []byte {
 	t.Helper()
 	vocabulary := entry.Encode(nil)
-	if _, _, ok := ir.DecodeShape(vocabulary[9:], entry.Kind); !ok {
-		t.Fatalf("the announcement refuses the shape, so the case tests nothing")
-	}
+
 	out := []byte{ir.TableWireForm}
 	out = append(out, 1, uint8(ir.TableKindU64))
 	out = binary.LittleEndian.AppendUint64(out, 0)

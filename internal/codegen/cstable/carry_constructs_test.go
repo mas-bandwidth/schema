@@ -49,7 +49,6 @@ table Root {
 }
 
 func TestOptionalMapCSharp(t *testing.T) {
-	t.Skip("layer 4 (cs): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the .NET SDK")
 	runCarryCS(t, `package probe
 table Inner {
@@ -149,12 +148,23 @@ func runCarryCS(t *testing.T, schema string, inputs []string, extra ...string) {
 		cases = append(cases, path)
 	}
 	const driver = `using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using Probe;
+sealed class WriteAssertion : Exception { }
+sealed class CarryAssertListener : TraceListener {
+ public override void Write(string message) { }
+ public override void WriteLine(string message) { }
+ public override void Fail(string message) { throw new WriteAssertion(); }
+ public override void Fail(string message, string detail) { throw new WriteAssertion(); }
+}
 class CarryProbe {
+ static bool RefusesWrite(Func<long> f) { try { return f() == -1; } catch (WriteAssertion) { return true; } }
  static void Main(string[] args) {
+  Trace.Listeners.Clear();
+  Trace.Listeners.Add(new CarryAssertListener());
   // EXTRA
   foreach (string path in args) {
    var value = new Root(); var report = new TableReport();
@@ -187,7 +197,7 @@ class CarryProbe {
 	sources = append(sources, main)
 	sources = append(sources, packetRuntime...)
 	csc, refs, runtime := csDotnetToolchain(t)
-	args := append([]string{"exec", csc, "-nologo", "-unsafe", "-nowarn:CS8500", "-out:" + filepath.Join(dir, "probe.dll")}, sources...)
+	args := append([]string{"exec", csc, "-nologo", "-unsafe", "-define:DEBUG", "-nowarn:CS8500", "-out:" + filepath.Join(dir, "probe.dll")}, sources...)
 	for _, ref := range refs {
 		args = append(args, "-r:"+ref)
 	}
@@ -225,7 +235,6 @@ class CarryProbe {
 }
 
 func TestArrayRootCSharp(t *testing.T) {
-	t.Skip("layer 4 (cs): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the .NET SDK")
 	t.Run("root", func(t *testing.T) {
 		runCarryCS(t, `package probe

@@ -134,11 +134,11 @@ table EmptyFields {
  CheckWire(Schema.RequiredDefaultTableType(), declaredWire, null);
  CheckJSON(Schema.ExactTableType(), """{}""", "ver");
  CheckJSON(Schema.ExactTableType(), """{"ver":7}""", null);
- if (Schema.ExactMeasure(new Exact()) != -1 || Schema.ExactToJsonMeasure(new Exact()) != -1) throw new Exception("fresh required no-default value saved");
- using (var fresh = new ExactBuilder()) { if (fresh.Measure() != -1) throw new Exception("fresh required native no-default value saved"); }
- if (Schema.ExactFloatMeasure(new ExactFloat()) != -1 || Schema.ExactFloatToJsonMeasure(new ExactFloat()) != -1 || Schema.ExactWideMeasure(new ExactWide()) != -1 || Schema.ExactWideToJsonMeasure(new ExactWide()) != -1) throw new Exception("fresh required ranged float/wide saved");
+ if (!RefusesWrite(() => Schema.ExactMeasure(new Exact())) || !RefusesWrite(() => Schema.ExactToJsonMeasure(new Exact()))) throw new Exception("fresh required no-default value saved");
+ using (var fresh = new ExactBuilder()) { if (!RefusesWrite(() => fresh.Measure())) throw new Exception("fresh required native no-default value saved"); }
+ if (!RefusesWrite(() => Schema.ExactFloatMeasure(new ExactFloat())) || !RefusesWrite(() => Schema.ExactFloatToJsonMeasure(new ExactFloat())) || !RefusesWrite(() => Schema.ExactWideMeasure(new ExactWide())) || !RefusesWrite(() => Schema.ExactWideToJsonMeasure(new ExactWide()))) throw new Exception("fresh required ranged float/wide saved");
  CheckJSON(Schema.ExactFloatTableType(), """{"amount":1}""", null);
- CheckJSON(Schema.ExactWideTableType(), """{"amount":7}""", null);
+ CheckJSON(Schema.ExactWideTableType(), """{"amount":"7"}""", null);
  var rows = new RequiredRows(); byte[] rowWire = new byte[Schema.RequiredRowsMeasure(rows)];
  Schema.RequiredRowsSave(rows, rowWire); CheckWire(Schema.RequiredRowsTableType(), rowWire, null);
  CheckWire(Schema.RequiredRowsTableType(), absent, "values");

@@ -210,6 +210,7 @@ func (g *fixedModule) emitSaveMessageBody(st *ir.Struct) {
 		entry := ir.TableFieldEntry(f)
 		slot := g.messageSlot(entry)
 		expr := "value." + dartName(f.Name)
+		g.emitMessageFieldPreAssert(f, expr, "  ")
 		rides := g.messageRides(f, expr, "  ")
 		if rides == "" {
 			// A field that always rides (a struct array, position is
@@ -452,10 +453,37 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 }
 
 // emitMessageWriteValue writes one field's payload after its reference.
+func (g *fixedModule) emitMessageFieldPreAssert(f *ir.Field, expr, ind string) {
+	pind := ind
+	if f.Type.Optional {
+		g.pf("%sif (%sPresent) {\n", ind, expr)
+		pind = ind + "  "
+	}
+	switch {
+	case f.Array == ir.ArrayCounted:
+		count := fixedDartSibling(expr, "Count")
+		g.pf("%sassert(%s >= %d && %s <= %d);\n", pind, count, f.ArrayMin, count, f.ArrayBound)
+	case f.Type.Kind == ir.TString || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
+		length := fixedDartSibling(expr, "Length")
+		g.pf("%sassert(%s >= 0 && %s <= %d);\n", pind, length, length, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			g.pf("%sassert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, %s, %s, 0));\n", pind, length, expr)
+		}
+	}
+	if f.Type.Optional {
+		g.pf("%s}\n", ind)
+	}
+}
+
 func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
 	kind, shape := entry.Kind, entry.Shape
 	switch {
 	case f.Type.Kind == ir.TString || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
+		length := fixedDartSibling(expr, "Length")
+		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, length, length, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			g.pf("%sassert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, %s, %s, 0));\n", ind, length, expr)
+		}
 		g.pf("%sw.put(%sLength, %d);\n", ind, expr, ir.TableMessageCountBits(shape))
 		g.pf("%sw.align();\n", ind)
 		g.pf("%sw.raw(Uint8List.sublistView(%s, 0, %sLength));\n", ind, expr, expr)
@@ -463,6 +491,7 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 		count := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			count = expr + "Count"
+			g.pf("%sassert(%s >= %d && %s <= %d);\n", ind, count, f.ArrayMin, count, f.ArrayBound)
 		}
 		if ir.TableMessageCountBits(shape) > 0 {
 			g.pf("%sw.put(%s - %d, %d);\n", ind, count, shape.Min, ir.TableMessageCountBits(shape))
@@ -508,6 +537,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		g.pf("%sw.put(%s ? 1 : 0, 1);\n", ind, expr)
 		return
 	}
+	g.gen.emitWriteBoundsAssert(g.pf, f, expr, ind)
 	// A FLOAT CROSSES THE BIT LANE AS ITS IEEE-754 BITS (docs/SPEC-TABLES.md
 	// §3.3, the message form's scalar payload): float32 as its 32 bits and
 	// float64 as its 64, exactly the bits math.Float32bits/math.Float64bits
@@ -622,6 +652,7 @@ func (g *fixedModule) emitMessageWriteScalar128(f *ir.Field, entry ir.TableVocab
 }
 
 func (g *fixedModule) emitMessageWriteEnum(e *ir.Enum, expr, ind string) {
+	g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
 	g.pf("%sif (%s == 0) {\n", ind, expr)
 	g.pf("%s  w.put(0, tableMessageRefBits);\n%s} else {\n", ind, ind)
 	g.pf("%s  switch (%s) {\n", ind, expr)
@@ -634,6 +665,7 @@ func (g *fixedModule) emitMessageWriteEnum(e *ir.Enum, expr, ind string) {
 }
 
 func (g *fixedModule) emitMessageWriteUnion(un *ir.Union, expr, ind string) {
+	g.pf("%sassert(%s.type >= 0 && %s.type <= %d);\n", ind, expr, expr, len(un.Variants))
 	g.pf("%sswitch (%s.type) {\n", ind, expr)
 	g.pf("%s  case 0: w.put(0, tableMessageRefBits); break;\n", ind)
 	for i, v := range un.Variants {

@@ -83,6 +83,17 @@ table Root { entries map[int32]Value }
 		wire := append([]byte{1}, tc.body...)
 		wire = append(wire, 0)
 		ids := []uint64{ir.TableWireId("entries"), ir.MapKeyWireId, ir.TableWireId("futureEntry"), ir.MapValueWireId, ir.TableWireId("futureValue"), ir.TableWireId("peer"), ir.TableNodeWireId, ir.TableWireId("Node"), ir.TableWireId("known"), ir.TableWireId("futureNode")}
+		if tc.name == "known_only_large" {
+			cleanEntries := make([][]byte, knownEntries)
+			for i := range cleanEntries {
+				e := []byte{2, 4, 0, 0, 0, 0, 3, 13, 7, 4, 4, 7, 0, 0, 0, 0, 0}
+				binary.LittleEndian.PutUint32(e[2:6], uint32(i))
+				cleanEntries[i] = e
+			}
+			wire = append([]byte{1}, field(cleanEntries...)...)
+			wire = append(wire, 0)
+			ids = []uint64{ir.TableWireId("entries"), ir.MapKeyWireId, ir.MapValueWireId, ir.TableWireId("known")}
+		}
 		for _, id := range ids {
 			wire = binary.LittleEndian.AppendUint64(wire, id)
 		}

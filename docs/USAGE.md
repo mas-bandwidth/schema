@@ -4000,7 +4000,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 	defer loaded.Shutdown()
 	var report TableReport
-	if !ConfigLoadBuilder(&loaded, wire, &report) || report.Malformed {
+	if !ConfigLoadBuilder(&loaded, wire, &report) || report.Refused() {
 		t.Fatalf("load failed: %+v", report)
 	}
 	if !loaded.Lock() { // packs the region; GetRoot answers nil from here

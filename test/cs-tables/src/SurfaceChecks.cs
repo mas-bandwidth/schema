@@ -88,8 +88,11 @@ static partial class Program
         var keyedBatch=new[] {keyed}; byte[] keyedMessage=new byte[Tabledemo.Schema.KeyedConfigMeasureMessages(keyedBatch)];
         Tabledemo.Schema.KeyedConfigSaveMessages(keyedBatch,keyedMessage);
         var keyedVocabulary=new Tabledemo.TableVocabulary(); var keyedReport=new Tabledemo.TableReport();
-        Tabledemo.Schema.AnnounceRead(keyedVocabulary,Tabledemo.Schema.Announce(),keyedReport);
-        foreach(var entry in keyedVocabulary.Entries) { if(entry.Kind==0 && entry.Id==FieldId("Red")) { entry.Id=FieldId("UnknownTeam"); } }
+        byte[] keyedAnnounce=Tabledemo.Schema.Announce().ToArray();
+        byte[] redBytes=U64(FieldId("Red")), unknownTeamBytes=U64(FieldId("UnknownTeam"));
+        for(int i=0;i<=keyedAnnounce.Length-8;i++) { if(keyedAnnounce.AsSpan(i,8).SequenceEqual(redBytes)) { unknownTeamBytes.CopyTo(keyedAnnounce,i); } }
+        Tabledemo.Schema.AnnounceRead(keyedVocabulary,keyedAnnounce,keyedReport);
+        keyedVocabulary.BuildVersion ^= 1;
         var keyedTarget=new[] {new Tabledemo.KeyedConfig()};
         Tabledemo.Schema.KeyedConfigLoadMessages(keyedTarget,keyedMessage,keyedVocabulary,keyedReport,out _);
         Check(!keyedReport.Damaged && keyedReport.Unknown==1 && keyedTarget[0].Teams[(int)Tabledemo.Team.Red].SpawnCount==4,"unknown keyed table body is discarded with its report");

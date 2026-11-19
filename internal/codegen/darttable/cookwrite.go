@@ -363,7 +363,7 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		if rs == nil || rs.IsMapEntry() {
 			continue
 		}
-		g.pf("        if (obj is wire.%s) { wire.%sNumber(s, obj, <Object>{}); return; }\n", rs.Name, dartName(rs.Name))
+		g.pf("        if (obj is wire.%s) {\n          wire.%sNumber(s, obj, <Object>{});\n          return;\n        }\n", rs.Name, dartName(rs.Name))
 	}
 	g.pf("        throw StateError('no node numberer for ${obj.runtimeType}');\n      });\n    } on StateError {\n")
 	g.pf("      if (report != null) report.reason = 'data_cycle';\n      return -1;\n    }\n")
@@ -1083,9 +1083,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		// docs/rulings.json fixed-dead-bytes-are-zero): zero on write whatever
 		// the element's declared default is, so the payload rides only when the
 		// field is present.
-		g.pf("%sif (%s.%s) {\n", ind, owner, hasMember(f))
-		g.emitCookVariableField(nonOptional(f), offset, expr, ind+"  ")
-		g.pf("%s}\n", ind)
+		if !nonOptional(f).IsMap() {
+			g.pf("%sif (%s.%s) {\n", ind, owner, hasMember(f))
+			g.emitCookVariableField(nonOptional(f), offset, expr, ind+"  ")
+			g.pf("%s}\n", ind)
+		}
 		return
 	}
 	switch {
@@ -1189,7 +1191,14 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		case ref != nil && f.Type.Pointer:
 			g.emitCookRef(ind+"  ", fmt.Sprintf("at + %d + i * %d", offset, stride), expr+"[i]")
 		case ref != nil:
-			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
+			if call := fmt.Sprintf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;", ind, ref.Name, expr, offset, stride); len(call) <= 80 {
+				g.pf("%s\n", call)
+			} else if head := fmt.Sprintf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d))", ind, ref.Name, expr, offset, stride); len(head) <= 80 {
+				g.pf("%s\n%s    return false;\n", head, ind)
+			} else {
+				g.pf("%s  final e = %s[i];\n", ind, expr)
+				g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+			}
 		case unionRef(f) != nil:
 			g.emitCookForm1UnionElement(unionRef(f), expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
 		case isWide(f):
@@ -1202,9 +1211,16 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 	case isPointerTable(f):
 		g.emitCookRef(ind, fmt.Sprintf("at + %d", offset), expr)
 	case isByValueTable(f):
-		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
+		ref := tableRef(f).Name
+		if line := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d)) return false;", ind, ref, expr, offset); len(line) <= 80 {
+			g.pf("%s\n", line)
+		} else if head := fmt.Sprintf("%sif (!_cook%s(%s, c, at + %d))", ind, ref, expr, offset); len(head) <= 80 {
+			g.pf("%s\n%s  return false;\n", head, ind)
+		} else {
+			g.pf("%sif (!_cook%s(\n%s  %s,\n%s  c,\n%s  at + %d,\n%s))\n%s  return false;\n", ind, ref, ind, expr, ind, ind, offset, ind, ind)
+		}
 	case f.Type.TextUnbounded():
-		g.pf("%sif(!wire.tableTextValueValid(%s,-1))return false;\n", ind, expr)
+		g.pf("%sif (!wire.tableTextValueValid(%s, -1)) return false;\n", ind, expr)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needConvert = true
 		text := dartName(f.Name) + "Text"
@@ -1298,7 +1314,8 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
+  final int Function(int id, Object blob, [Object? owner, String? field])
+  blobIndex;
   ByteData? out;
   bool valid = true;
 

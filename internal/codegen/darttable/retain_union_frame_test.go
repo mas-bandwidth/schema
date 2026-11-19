@@ -47,9 +47,15 @@ table Root { known uint32
 		wire := []byte{1, 1, 8, 7, 0, 0, 0, 2, 15, 3, tc.kind, byte(len(tc.payload))}
 		wire = append(wire, tc.payload...)
 		wire = append(wire, 0)
-		for _, id := range []uint64{ir.TableWireId("known"), ir.TableWireId("future"), ir.TableWireId("arm"), ir.TableWireId("key"), 4} {
+		allIDs := []uint64{ir.TableWireId("known"), ir.TableWireId("future"), ir.TableWireId("arm"), ir.TableWireId("key")}
+		nIDs := 3
+		if tc.name == "enum" || tc.name == "table" || tc.name == "keyed" {
+			nIDs = 4
+		}
+		for _, id := range allIDs[:nIDs] {
 			wire = binary.LittleEndian.AppendUint64(wire, id)
 		}
+		wire = binary.LittleEndian.AppendUint64(wire, uint64(nIDs))
 		v := m.New(u.Tables["Root"])
 		store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
 		var r tabletext.Report

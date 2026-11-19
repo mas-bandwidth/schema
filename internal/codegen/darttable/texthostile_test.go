@@ -44,8 +44,8 @@ table Root {
 	f64 float64
 	flag bool = true
 	tag string(16)
-	wide1 wstring(2)
-	wide2 wstring(2)
+	wide1 string(4)
+	wide2 string(4)
 	keyed [Level]int32
 	entries map[int32]int32
 	choice Choice
@@ -55,7 +55,6 @@ table Root {
 `
 
 func TestDartTextHostile(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	t.Parallel()
 

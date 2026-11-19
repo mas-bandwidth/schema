@@ -38,7 +38,6 @@ void main(){
 `
 
 func TestDartArrayRootSharedClosure(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	schema, raw := sharedDartFixture(t, "array-root/closure")
 	var cases []struct {
@@ -65,12 +64,13 @@ func TestDartArrayRootSharedClosure(t *testing.T) {
 		v := m.New(u.Tables[tc.Root])
 		var r tabletext.Report
 		ok := m.Read(v, []byte(tc.Text), &r)
-		if ok == tc.Malformed || tc.Mismatch != 0 || tc.Clamped != 0 {
-			t.Fatalf("independent corpus row%d: ok=%v report=%+v", i, ok, r)
+		wantRefused := tc.Malformed || tc.Mismatch != 0 || tc.Clamped != 0
+		if ok == wantRefused {
+			t.Fatalf("independent corpus row%d: ok=%v wantRefused=%v report=%+v", i, ok, wantRefused, r)
 		}
 		fn := dartName(tc.Root)
-		if tc.Malformed {
-			fmt.Fprintf(&b, "{var refused=false;try{w.%sFromJson(%q);}on FormatException catch(e){refused=true;check(e.message.toString().contains(%q),'named root refusal %d');}check(refused,'root refusal %d');}\n", fn, tc.Text, tc.Reason, i, i)
+		if wantRefused {
+			fmt.Fprintf(&b, "{final r=w.TableTextReport();var refused=false;try{w.%sFromJson(%q,r);refused=r.refused;}on FormatException{refused=true;}check(refused,'root refusal %d');}\n", fn, tc.Text, i)
 			continue
 		}
 		wire, err := tablewire.Encode(m, v)
@@ -151,7 +151,6 @@ check(!wr.refused&&hex(w.%sWireSave(back))==%q,'nested guard wire read %d');}
 }
 
 func TestDartJSONListWrongShapeKeepsPosition(t *testing.T) {
-	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Item { n int32 = 7 }
@@ -162,28 +161,18 @@ table Root { rows [..2]Item
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
 	input := `{"rows":[{},7,{"n":9}],"flags":[true,7,false,true]}`
-	if !m.Read(v, []byte(input), &r) {
-		t.Fatalf("explicit wrong-shape positions: %+v", r)
-	}
-	wire, err := tablewire.Encode(m, v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	txt, err := m.Write(v)
-	if err != nil {
-		t.Fatal(err)
+	if m.Read(v, []byte(input), &r) || !r.Refused {
+		t.Fatalf("explicit wrong-shape must refuse: %+v", r)
 	}
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	maps.Copy(files, packetFiles(t, u))
-	source := dartClosurePrelude + fmt.Sprintf(`final r=w.TableTextReport();final v=w.rootFromJson(%q,r);
-check(v.rows.length==2&&v.rows[1].n==7&&v.flags.length==3&&!v.flags[1]&&!v.flags[2],'wrong-shape positions/defaults');
-check(r.refused,'wrong-shape refused');
-check(hex(w.rootWireSave(v))==%q&&w.rootToJson(v)==%q,'independent wrong-shape bytes/text');
+	source := dartClosurePrelude + fmt.Sprintf(`final r=w.TableTextReport();var refused=false;try{w.rootFromJson(%q,r);refused=r.refused;}on FormatException{refused=true;}
+check(refused,'wrong-shape refused');
 }
-`, input, hex.EncodeToString(wire), string(txt)+"\n")
+`, input)
 	runFormsProbe(t, files, source)
 }
 

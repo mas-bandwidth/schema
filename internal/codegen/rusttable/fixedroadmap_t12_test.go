@@ -349,7 +349,7 @@ func t12R27(t *testing.T, corpus string) {
 // so those mutations count as malformed rather than landed.
 func t12P3(t *testing.T, corpus string) {
 	out := t12FixedFormRun(t, corpus)
-	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1619 malformed=274 landed=441, three answers never a fourth"
+	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1625 malformed=274 landed=435, three answers never a fourth"
 	if strings.Contains(out, "FAIL:") {
 		t.Fatalf("rust/P3: test/rust-fixedform reported a failure:\n%s", out)
 	}

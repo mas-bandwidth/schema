@@ -2797,56 +2797,67 @@ void _tableEventEdges(TableWireReader r, int owner, TableEvent v) {
 }
 
 void tableEntityWireSaveBodyFields(TableWireWriter w, TableEntity v) {
+  assert(v.entityId >= 0 && v.entityId <= 4095);
   if (v.entityId != 0) {
     w.putLeb(w.refFor(2593226102015223570));
     w.putByte(7);
     w.putU16(v.entityId);
   }
+  assert(v.posX >= -16383 && v.posX <= 16383);
   if (v.posX != 0) {
     w.putLeb(w.refFor(-3797881157997612786));
     w.putByte(4);
     w.putU32(v.posX);
   }
+  assert(v.posY >= -16383 && v.posY <= 16383);
   if (v.posY != 0) {
     w.putLeb(w.refFor(-3797880058485984575));
     w.putByte(4);
     w.putU32(v.posY);
   }
+  assert(v.posZ >= -16383 && v.posZ <= 16383);
   if (v.posZ != 0) {
     w.putLeb(w.refFor(-3797883357020869208));
     w.putByte(4);
     w.putU32(v.posZ);
   }
+  assert(v.yaw >= 0 && v.yaw <= 511);
   if (v.yaw != 0) {
     w.putLeb(w.refFor(-5382489739573192984));
     w.putByte(7);
     w.putU16(v.yaw);
   }
+  assert(v.pitch >= 0 && v.pitch <= 511);
   if (v.pitch != 0) {
     w.putLeb(w.refFor(6028620492700434865));
     w.putByte(7);
     w.putU16(v.pitch);
   }
+  assert(v.velX >= -2048 && v.velX <= 2047);
   if (v.velX != 0) {
     w.putLeb(w.refFor(7849183398884077159));
     w.putByte(4);
     w.putU32(v.velX);
   }
+  assert(v.velY >= -2048 && v.velY <= 2047);
   if (v.velY != 0) {
     w.putLeb(w.refFor(7849182299372448948));
     w.putByte(4);
     w.putU32(v.velY);
   }
+  assert(v.velZ >= -2048 && v.velZ <= 2047);
   if (v.velZ != 0) {
     w.putLeb(w.refFor(7849185597907333581));
     w.putByte(4);
     w.putU32(v.velZ);
   }
+  assert(v.health >= 0 && v.health <= 1000);
   if (v.health != 0) {
     w.putLeb(w.refFor(9181103189905877455));
     w.putByte(4);
     w.putU32(v.health);
   }
+  assert(v.weapon >= 0 && v.weapon <= 15);
   if (v.weapon != TableWeapon.none) {
     w.putLeb(w.refFor(-6866282850657997311));
     w.putByte(30);
@@ -2893,11 +2904,13 @@ void tableEntityWireSaveBody(TableWireWriter w, TableEntity v) {
 }
 
 void tableStatWireSaveBodyFields(TableWireWriter w, TableStat v) {
+  assert(v.statId >= 0 && v.statId <= 255);
   if (v.statId != 0) {
     w.putLeb(w.refFor(-9175110139929313435));
     w.putByte(6);
     w.putByte(v.statId);
   }
+  assert(v.delta >= -512 && v.delta <= 511);
   if (v.delta != 0) {
     w.putLeb(w.refFor(5910805692604981441));
     w.putByte(4);
@@ -2912,16 +2925,19 @@ void tableStatWireSaveBody(TableWireWriter w, TableStat v) {
 }
 
 void tableHitEventWireSaveBodyFields(TableWireWriter w, TableHitEvent v) {
+  assert(v.targetId >= 0 && v.targetId <= 4095);
   if (v.targetId != 0) {
     w.putLeb(w.refFor(-5207116919359778736));
     w.putByte(7);
     w.putU16(v.targetId);
   }
+  assert(v.damage >= 0 && v.damage <= 4095);
   if (v.damage != 0) {
     w.putLeb(w.refFor(9179190079975030720));
     w.putByte(4);
     w.putU32(v.damage);
   }
+  assert(v.hitKind >= 0 && v.hitKind <= 7);
   if (v.hitKind != 0) {
     w.putLeb(w.refFor(142922654710085925));
     w.putByte(4);
@@ -2941,11 +2957,13 @@ void tableHitEventWireSaveBody(TableWireWriter w, TableHitEvent v) {
 }
 
 void tableChatEventWireSaveBodyFields(TableWireWriter w, TableChatEvent v) {
+  assert(v.channel >= 0 && v.channel <= 3);
   if (v.channel != 0) {
     w.putLeb(w.refFor(-6556890747741999708));
     w.putByte(4);
     w.putU32(v.channel);
   }
+  assert(v.speaker >= 0 && v.speaker <= 4095);
   if (v.speaker != 0) {
     w.putLeb(w.refFor(-292263051557875678));
     w.putByte(7);
@@ -2960,11 +2978,13 @@ void tableChatEventWireSaveBody(TableWireWriter w, TableChatEvent v) {
 }
 
 void tablePickupEventWireSaveBodyFields(TableWireWriter w, TablePickupEvent v) {
+  assert(v.itemId >= 0 && v.itemId <= 1023);
   if (v.itemId != 0) {
     w.putLeb(w.refFor(-7025667724851298986));
     w.putByte(7);
     w.putU16(v.itemId);
   }
+  assert(v.amount >= 0 && v.amount <= 255);
   if (v.amount != 0) {
     w.putLeb(w.refFor(-9145686598410475159));
     w.putByte(4);
@@ -2984,16 +3004,19 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(7);
     w.putU16(v.protocolMagic);
   }
+  assert(v.sequence >= 0 && v.sequence <= 65535);
   if (v.sequence != 0) {
     w.putLeb(w.refFor(-6181000666011064152));
     w.putByte(7);
     w.putU16(v.sequence);
   }
+  assert(v.ackSequence >= 0 && v.ackSequence <= 65535);
   if (v.ackSequence != 0) {
     w.putLeb(w.refFor(990229364654832702));
     w.putByte(4);
     w.putU32(v.ackSequence);
   }
+  assert(v.ackBits >= 0 && v.ackBits <= 4294967295);
   if (v.ackBits != 0) {
     w.putLeb(w.refFor(-7228825333587644925));
     w.putByte(8);
@@ -3009,26 +3032,32 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(8);
     w.putU32(v.clientId);
   }
+  assert((v.nonce ^ 0x8000000000000000) >= -9223372036854775807);
+  assert((v.nonce ^ 0x8000000000000000) <= -1);
   if (v.nonce != 1) {
     w.putLeb(w.refFor(8334276637232054488));
     w.putByte(9);
     w.putU64(v.nonce);
   }
+  assert(v.worldTime >= -1000000000000 && v.worldTime <= 1000000000000);
   if (v.worldTime != 0) {
     w.putLeb(w.refFor(4534679873638431877));
     w.putByte(5);
     w.putU64(v.worldTime);
   }
+  assert(v.frameTick >= 0 && v.frameTick <= 281474976710655);
   if (v.frameTick != 0) {
     w.putLeb(w.refFor(8916005070914257170));
     w.putByte(9);
     w.putU64(v.frameTick);
   }
+  assert(!v.serverTime.isFinite || (v.serverTime >= 0.0 && v.serverTime <= 65535.0));
   if (_f32Bits(v.serverTime) != 0) {
     w.putLeb(w.refFor(4343163795393112518));
     w.putByte(10);
     w.putU32(_f32Write(v.serverTime, 'TableMixed.server_time'));
   }
+  assert(v.entities.length >= 1 && v.entities.length <= 8);
   if (v.entities.isNotEmpty) {
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
@@ -3047,6 +3076,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
+  assert(v.stats.length >= 0 && v.stats.length <= 80);
   if (v.stats.isNotEmpty) {
     final ref = w.refFor(-1268998401975805620);
     final s = w.sub();
@@ -3065,11 +3095,13 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
+  assert(v.gameEvent.armTag >= 0 && v.gameEvent.armTag <= 3);
   if (v.gameEvent.armTag != 0) {
     w.putLeb(w.refFor(3329809749115557776));
     w.putByte(15);
     if (v.gameEvent.armTag == 0) { w.putLeb(0); } else { _tableEventSaveArm(w, v.gameEvent); }
   }
+  assert(v.loadout.length == 4);
   if (v.loadout.any((e) => e != 0)) {
     final ref = w.refFor(6294288958393922979);
     final s = w.sub();
@@ -3083,6 +3115,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
+  assert(tableTextValueValid(v.playerName, 15));
   if (v.playerName != '') {
     w.putLeb(w.refFor(1415871171432867950));
     w.putByte(12);
@@ -3090,6 +3123,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(b.length);
     w.putBytes(b);
   }
+  assert(v.payload.length <= 16);
   if (v.payload != '') {
     final ref = w.refFor(-3478843999652550171);
     final b = latin1.encode(v.payload);
@@ -3102,16 +3136,19 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
+  assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
   if (_f32Bits(v.aimX) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
     w.putU32(_f32Write(v.aimX, 'TableMixed.aim_x'));
   }
+  assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
   if (_f32Bits(v.aimY) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
     w.putU32(_f32Write(v.aimY, 'TableMixed.aim_y'));
   }
+  assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
   if (_f32Bits(v.aimZ) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
@@ -3132,16 +3169,19 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(9);
     w.putU64(v.wideKey);
   }
+  assert(v.flux >= -1000000000000000000 && v.flux <= 1000000000000000000);
   if (v.flux != 0) {
     w.putLeb(w.refFor(-3018575613315307966));
     w.putByte(5);
     w.putU64(v.flux);
   }
+  assert(!v.ping.isFinite || (v.ping >= 0.0 && v.ping <= 250.0));
   if (_f32Bits(v.ping) != 0) {
     w.putLeb(w.refFor(-4669986463835551831));
     w.putByte(10);
     w.putU32(_f32Write(v.ping, 'TableMixed.ping'));
   }
+  assert(v.crcHint >= 0 && v.crcHint <= 16777215);
   if (v.crcHint != 0) {
     w.putLeb(w.refFor(6200723483573899615));
     w.putByte(8);
@@ -3152,11 +3192,13 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(1);
     w.putByte(v.hasExtra ? 1 : 0);
   }
+  assert(v.extra >= 0 && v.extra <= 255);
   if (v.extra != 0) {
     w.putLeb(w.refFor(-204370544148493463));
     w.putByte(4);
     w.putU32(v.extra);
   }
+  assert(v.idleTicks >= 0 && v.idleTicks <= 15);
   if (v.idleTicks != 0) {
     w.putLeb(w.refFor(8651444298976115966));
     w.putByte(4);

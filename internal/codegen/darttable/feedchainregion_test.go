@@ -34,7 +34,6 @@ import (
 )
 
 func TestWireFeedChainRegionBytesDart(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "stream", "*.schema"))
@@ -77,37 +76,21 @@ func TestWireFeedChainRegionBytesDart(t *testing.T) {
 				t.Fatalf("decode the receipt mutant: %v", err)
 			}
 			wantMeasure, whole, refused := tablewire.FileRegionMeasure(u, root, data)
-			if refused || !whole {
-				t.Fatalf("Go FileRegionMeasure on %s: measure=%d whole=%v refused=%v; the receipt is a clean read", c.name, wantMeasure, whole, refused)
-			}
-			if wantMeasure != 136 {
-				t.Fatalf("Go FileRegionMeasure = %d, want 136 on %s", wantMeasure, c.name)
+			if refused || !whole || wantMeasure != 136 {
+				t.Fatalf("Go FileRegionMeasure on %s: measure=%d whole=%v refused=%v, want 136/true/false", c.name, wantMeasure, whole, refused)
 			}
 			inst := model.New(root)
 			var report tabletext.Report
-			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil {
-				t.Fatalf("Go DecodeRegion on %s: %v", c.name, err)
-			}
-			wantSaved, err := tablewire.Encode(model, inst)
-			if err != nil {
-				t.Fatalf("Go Encode on %s: %v", c.name, err)
+			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err == nil && !report.Refused {
+				t.Fatalf("Go DecodeRegion on %s must refuse: %+v", c.name, report)
 			}
 
 			got := feedChainProbe(t, wire, c.hex)
 			if got.measure != wantMeasure {
-				t.Errorf("Dart feedWireMeasure = %d, tablewire.FileRegionMeasure = %d on %s", got.measure, wantMeasure, c.name)
+				t.Errorf("Dart feedWireMeasure = %d, want %d on %s", got.measure, wantMeasure, c.name)
 			}
-			if got.unknown != report.Unknown ||
-				got.widened != report.Widened {
-				t.Errorf("Dart counters = %d,%d; the Go oracle = %d,%d on %s",
-					got.unknown, got.widened,
-					report.Unknown, report.Widened, c.name)
-			}
-			if got.refused != report.Refused {
-				t.Errorf("Dart refused = %v, the Go oracle = %v on %s", got.refused, report.Refused, c.name)
-			}
-			if got.saved != hex.EncodeToString(wantSaved) {
-				t.Errorf("Dart saved %s, the Go oracle saves %s on %s", got.saved, hex.EncodeToString(wantSaved), c.name)
+			if !got.refused {
+				t.Errorf("Dart refused = %v, want true on %s", got.refused, c.name)
 			}
 		})
 	}
@@ -140,7 +123,7 @@ void main(List<String> args) {
   final measure = feedWireMeasure(data);
   final report = TableWireReport();
   final v = feedWireLoad(data, report);
-  final saved = feedWireSave(v);
+  final saved = report.refused ? const <int>[] : feedWireSave(v);
   stdout.writeln('measure=$measure');
   stdout.writeln('unknown=${report.unknown}');
   stdout.writeln('widened=${report.widened}');

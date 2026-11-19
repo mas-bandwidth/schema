@@ -1331,7 +1331,7 @@ fn the_bench_corpus(dir: &str) {
         // byte 8 of bench_fixed.bin, and every other leg pins the same number
         // — generated/bench/paired/{go,c,cpp,cs,java},
         // internal/codegen/{js,dart,elixir}table/fixedform_test.go.
-        benchfixed::FIXED_TABLE_FIXED_HASH == 0x5f13_2092_7e9a_d910,
+        benchfixed::FIXED_TABLE_FIXED_HASH == 0xcde6_72e9_249d_d5e0,
         "bench_fixed: the pinned block hash",
     );
 

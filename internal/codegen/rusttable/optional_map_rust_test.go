@@ -115,7 +115,7 @@ func TestRustOptionalMapClosureNative(t *testing.T) {
 		if !m.Read(value, text, &report) || report != (tabletext.Report{}) {
 			t.Fatalf("%s text: %+v", name, report)
 		}
-		wire, err := tablewire.Encode(m, value)
+		wire, err := tablewire.EncodeVariable(m, value)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -194,7 +194,6 @@ assert_eq!(got.is_some(),*want,"truncated %s at {}",cut);
 // Kind mismatches, duplicate keys, explicit absence and truncated text must
 // reach the same verdict as the neutral reader.
 func TestRustOptionalMapTextRecoveryNative(t *testing.T) {
-	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (optional map malformed text and presence)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/optional-map")

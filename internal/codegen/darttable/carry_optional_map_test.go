@@ -16,7 +16,6 @@ import (
 )
 
 func TestDartOptionalMapNative(t *testing.T) {
-	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Child { n int32 }
@@ -52,7 +51,15 @@ table Root {
 	for i, input := range cases {
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
-		if !m.Read(v, []byte(input), &r) {
+		ok := m.Read(v, []byte(input), &r)
+		if i >= 4 {
+			if ok || !r.Refused {
+				t.Fatalf("neutral case%d must refuse: ok=%v %+v", i, ok, r)
+			}
+			fmt.Fprintf(&b, "{final r=w.TableTextReport();var refused=false;try{w.rootFromJson(%q,r);refused=r.refused;}on FormatException{refused=true;}check(refused,'refused%d');}\n", input, i)
+			continue
+		}
+		if !ok {
 			t.Fatalf("neutral case%d: %+v", i, r)
 		}
 		wire, err := tablewire.Encode(m, v)
@@ -132,11 +139,11 @@ for(final order in [Endian.little,Endian.big]){
 		fmt.Fprintf(&b, "{final wire=Uint8List.fromList([%s]);final r=w.TableWireReport();final v=w.rootWireLoad(wire,r);check(r.refused,'map mismatch presence %s');}\n", strings.Join(wireList, ","), decl)
 	}
 	b.WriteString(`{
-final r=w.TableTextReport();final v=w.rootFromJson('{"values":{"a":"bad","b":null,"c":7,"c":false}}',r);
-check(r.refused,'map value shapes and a repeated key refuse');
+final r=w.TableTextReport();var v=w.Root();var refused1=false;try{v=w.rootFromJson('{"values":{"a":"bad","b":null,"c":7,"c":false}}',r);refused1=r.refused;}on FormatException{refused1=true;}
+check(refused1,'map value shapes and a repeated key refuse');
 check(!v.hasValues&&v.values.isEmpty,'a refused text read lands defaults');
-final plainReport=w.TableTextReport();final plain=w.rootFromJson('{"plain":{"a":null,"b":"bad"}}',plainReport);
-check(plainReport.refused&&plain.plain.isEmpty,'plain wrong shapes refuse');
+final plainReport=w.TableTextReport();var plain=w.Root();var refused2=false;try{plain=w.rootFromJson('{"plain":{"a":null,"b":"bad"}}',plainReport);refused2=plainReport.refused;}on FormatException{refused2=true;}
+check(refused2&&plain.plain.isEmpty,'plain wrong shapes refuse');
 }
 `)
 	b.WriteString("}\n")

@@ -115,7 +115,7 @@ const unboundedTextNativeProbe = `unsafe {
  // refusal-verdict-only): a count past the framing measures as a refusal
  if(Schema.RootLoadMeasure(forgedCount)!=-1)throw new Exception("unbounded allocation beyond framing");
  original.Names[0].Value[0]=0;byte[] untouched=new byte[wire.Length];Array.Fill(untouched,(byte)0xa5);
- if(Schema.RootMeasure(original)!=-1||Schema.RootSave(original,untouched)!=-1||Array.Exists(untouched,b=>b!=0xa5))throw new Exception("unbounded writer invalid text");
+ if(!RefusesWrite(()=>Schema.RootMeasure(original))||!RefusesWrite(()=>Schema.RootSave(original,untouched))||Array.Exists(untouched,b=>b!=0xa5))throw new Exception("unbounded writer invalid text");
 }`
 
 func strconvQuoteCS(s string) string { b, _ := json.Marshal(s); return string(b) }

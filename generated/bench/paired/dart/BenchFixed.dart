@@ -3401,46 +3401,57 @@ bool tableMessageReservedId(int id) =>
 bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
   if (value.entityId != 0) {
     w.put(31, tableMessageRefBits);
+    assert(value.entityId >= 0 && value.entityId <= 4095);
     w.put(value.entityId - 0, 12);
   }
   if (value.posX != 0) {
     w.put(32, tableMessageRefBits);
+    assert(value.posX >= -16383 && value.posX <= 16383);
     w.put(value.posX - -16383, 15);
   }
   if (value.posY != 0) {
     w.put(33, tableMessageRefBits);
+    assert(value.posY >= -16383 && value.posY <= 16383);
     w.put(value.posY - -16383, 15);
   }
   if (value.posZ != 0) {
     w.put(34, tableMessageRefBits);
+    assert(value.posZ >= -16383 && value.posZ <= 16383);
     w.put(value.posZ - -16383, 15);
   }
   if (value.yaw != 0) {
     w.put(35, tableMessageRefBits);
+    assert(value.yaw >= 0 && value.yaw <= 511);
     w.put(value.yaw - 0, 9);
   }
   if (value.pitch != 0) {
     w.put(36, tableMessageRefBits);
+    assert(value.pitch >= 0 && value.pitch <= 511);
     w.put(value.pitch - 0, 9);
   }
   if (value.velX != 0) {
     w.put(37, tableMessageRefBits);
+    assert(value.velX >= -2048 && value.velX <= 2047);
     w.put(value.velX - -2048, 12);
   }
   if (value.velY != 0) {
     w.put(38, tableMessageRefBits);
+    assert(value.velY >= -2048 && value.velY <= 2047);
     w.put(value.velY - -2048, 12);
   }
   if (value.velZ != 0) {
     w.put(39, tableMessageRefBits);
+    assert(value.velZ >= -2048 && value.velZ <= 2047);
     w.put(value.velZ - -2048, 12);
   }
   if (value.health != 0) {
     w.put(40, tableMessageRefBits);
+    assert(value.health >= 0 && value.health <= 1000);
     w.put(value.health - 0, 10);
   }
   if (value.weapon != MixedWeapon.none) {
     w.put(41, tableMessageRefBits);
+    assert(value.weapon >= 0 && value.weapon <= 15);
     if (value.weapon == 0) {
       w.put(0, tableMessageRefBits);
     } else {
@@ -3776,10 +3787,12 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
 bool mixedStatSaveMessageBody(TableBitWriter w, MixedStat value) {
   if (value.statId != 0) {
     w.put(51, tableMessageRefBits);
+    assert(value.statId >= 0 && value.statId <= 255);
     w.put(value.statId - 0, 8);
   }
   if (value.delta != 0) {
     w.put(52, tableMessageRefBits);
+    assert(value.delta >= -512 && value.delta <= 511);
     w.put(value.delta - -512, 10);
   }
   w.put(0, tableMessageRefBits);
@@ -3855,14 +3868,17 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
 bool mixedHitEventSaveMessageBody(TableBitWriter w, MixedHitEvent value) {
   if (value.targetId != 0) {
     w.put(45, tableMessageRefBits);
+    assert(value.targetId >= 0 && value.targetId <= 4095);
     w.put(value.targetId - 0, 12);
   }
   if (value.damage != 0) {
     w.put(46, tableMessageRefBits);
+    assert(value.damage >= 0 && value.damage <= 4095);
     w.put(value.damage - 0, 12);
   }
   if (value.hitKind != 0) {
     w.put(47, tableMessageRefBits);
+    assert(value.hitKind >= 0 && value.hitKind <= 7);
     w.put(value.hitKind - 0, 3);
   }
   if (value.crit != false) {
@@ -3976,10 +3992,12 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
 bool mixedChatEventSaveMessageBody(TableBitWriter w, MixedChatEvent value) {
   if (value.channel != 0) {
     w.put(29, tableMessageRefBits);
+    assert(value.channel >= 0 && value.channel <= 3);
     w.put(value.channel - 0, 2);
   }
   if (value.speaker != 0) {
     w.put(30, tableMessageRefBits);
+    assert(value.speaker >= 0 && value.speaker <= 4095);
     w.put(value.speaker - 0, 12);
   }
   w.put(0, tableMessageRefBits);
@@ -4055,10 +4073,12 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
 bool mixedPickupEventSaveMessageBody(TableBitWriter w, MixedPickupEvent value) {
   if (value.itemId != 0) {
     w.put(49, tableMessageRefBits);
+    assert(value.itemId >= 0 && value.itemId <= 1023);
     w.put(value.itemId - 0, 10);
   }
   if (value.amount != 0) {
     w.put(50, tableMessageRefBits);
+    assert(value.amount >= 0 && value.amount <= 255);
     w.put(value.amount - 0, 8);
   }
   w.put(0, tableMessageRefBits);
@@ -4137,14 +4157,17 @@ bool mixedPickupEventLoadMessageBody(
 bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   if (value.sequence != 0) {
     w.put(1, tableMessageRefBits);
+    assert(value.sequence >= 0 && value.sequence <= 65535);
     w.put(value.sequence - 0, 16);
   }
   if (value.ackSequence != 0) {
     w.put(2, tableMessageRefBits);
+    assert(value.ackSequence >= 0 && value.ackSequence <= 65535);
     w.put(value.ackSequence - 0, 16);
   }
   if (value.ackBits != 0) {
     w.put(3, tableMessageRefBits);
+    assert(value.ackBits >= 0 && value.ackBits <= 4294967295);
     w.put(value.ackBits - 0, 32);
   }
   if (value.sessionId != 0) {
@@ -4161,25 +4184,32 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.worldTime != 0) {
     w.put(7, tableMessageRefBits);
+    assert(value.worldTime >= -1000000000000 && value.worldTime <= 1000000000000);
     w.put(value.worldTime - -1000000000000, 41);
   }
   if (value.frameTick != 0) {
     w.put(8, tableMessageRefBits);
+    assert(value.frameTick >= 0 && value.frameTick <= 281474976710655);
     w.put(value.frameTick - 0, 48);
   }
   if (value.serverTime != 0) {
     w.put(9, tableMessageRefBits);
+    assert(value.serverTime >= 0 && value.serverTime <= 16776960);
     w.put(value.serverTime - 0, 24);
   }
+  assert(value.entitiesCount >= 1 && value.entitiesCount <= 8);
   if (value.entitiesCount > 0) {
     w.put(10, tableMessageRefBits);
+    assert(value.entitiesCount >= 1 && value.entitiesCount <= 8);
     w.put(value.entitiesCount - 1, 3);
     for (var i = 0; i < value.entitiesCount; i++) {
       if (!mixedEntitySaveMessageBody(w, value.entities[i])) return false;
     }
   }
+  assert(value.statsCount >= 0 && value.statsCount <= 80);
   if (value.statsCount > 0) {
     w.put(11, tableMessageRefBits);
+    assert(value.statsCount >= 0 && value.statsCount <= 80);
     w.put(value.statsCount - 0, 7);
     for (var i = 0; i < value.statsCount; i++) {
       if (!mixedStatSaveMessageBody(w, value.stats[i])) return false;
@@ -4187,6 +4217,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.gameEvent.type != 0) {
     w.put(12, tableMessageRefBits);
+    assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
     switch (value.gameEvent.type) {
       case 0: w.put(0, tableMessageRefBits); break;
       case 1:
@@ -4209,14 +4240,20 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   for (var i = 0; i < 4; i++) {
     w.put(value.loadout[i], 8);
   }
+  assert(value.playerNameLength >= 0 && value.playerNameLength <= 15);
+  assert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, value.playerNameLength, value.playerName, 0));
   if (value.playerNameLength > 0) {
     w.put(14, tableMessageRefBits);
+    assert(value.playerNameLength >= 0 && value.playerNameLength <= 15);
+    assert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, value.playerNameLength, value.playerName, 0));
     w.put(value.playerNameLength, 4);
     w.align();
     w.raw(Uint8List.sublistView(value.playerName, 0, value.playerNameLength));
   }
+  assert(value.payloadLength >= 0 && value.payloadLength <= 16);
   if (value.payloadLength > 0) {
     w.put(15, tableMessageRefBits);
+    assert(value.payloadLength >= 0 && value.payloadLength <= 16);
     w.put(value.payloadLength, 5);
     w.align();
     w.raw(Uint8List.sublistView(value.payload, 0, value.payloadLength));
@@ -4224,6 +4261,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   TableBitWriter._float32Cell[0] = value.aimX;
   if (TableBitWriter._float32Words[0] != 0) {
     w.put(16, tableMessageRefBits);
+    assert(!value.aimX.isFinite || (value.aimX >= -1.0 && value.aimX <= 1.0));
     {
       final f = value.aimX;
       if (!f.isFinite) return false;
@@ -4247,6 +4285,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   TableBitWriter._float32Cell[0] = value.aimY;
   if (TableBitWriter._float32Words[0] != 0) {
     w.put(17, tableMessageRefBits);
+    assert(!value.aimY.isFinite || (value.aimY >= -1.0 && value.aimY <= 1.0));
     {
       final f = value.aimY;
       if (!f.isFinite) return false;
@@ -4270,6 +4309,7 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   TableBitWriter._float32Cell[0] = value.aimZ;
   if (TableBitWriter._float32Words[0] != 0) {
     w.put(18, tableMessageRefBits);
+    assert(!value.aimZ.isFinite || (value.aimZ >= -1.0 && value.aimZ <= 1.0));
     {
       final f = value.aimZ;
       if (!f.isFinite) return false;
@@ -4318,6 +4358,8 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.flux != Int128.zero) {
     w.put(22, tableMessageRefBits);
+    assert(!(value.flux < Int128(0xfffffff000000000, 0)));
+    assert(!(value.flux > Int128(68719476736, 0)));
     var lo = value.flux.lo;
     var hi = value.flux.hi;
     var dlo = lo - 0;
@@ -4329,10 +4371,12 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.ping != 0) {
     w.put(23, tableMessageRefBits);
+    assert(value.ping >= 0 && value.ping <= 64000);
     w.put(value.ping - 0, 16);
   }
   if (value.crcHint != 0) {
     w.put(24, tableMessageRefBits);
+    assert(value.crcHint >= 0 && value.crcHint <= 16777215);
     w.put(value.crcHint - 0, 24);
   }
   if (value.hasExtra != true) {
@@ -4341,10 +4385,12 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
   }
   if (value.extra != 0) {
     w.put(26, tableMessageRefBits);
+    assert(value.extra >= 0 && value.extra <= 255);
     w.put(value.extra - 0, 8);
   }
   if (value.idleTicks != 0) {
     w.put(27, tableMessageRefBits);
+    assert(value.idleTicks >= 0 && value.idleTicks <= 15);
     w.put(value.idleTicks - 0, 4);
   }
   w.put(0, tableMessageRefBits);
@@ -5082,16 +5128,27 @@ void mixedEntityFixedWriteBody(
   int at,
   MixedEntity value,
 ) {
+  assert(value.entityId >= 0 && value.entityId <= 4095);
   view.setUint32(at, value.entityId, Endian.little);
+  assert(value.posX >= -16383 && value.posX <= 16383);
   view.setInt32(at + 4, value.posX, Endian.little);
+  assert(value.posY >= -16383 && value.posY <= 16383);
   view.setInt32(at + 8, value.posY, Endian.little);
+  assert(value.posZ >= -16383 && value.posZ <= 16383);
   view.setInt32(at + 12, value.posZ, Endian.little);
+  assert(value.yaw >= 0 && value.yaw <= 511);
   view.setUint32(at + 16, value.yaw, Endian.little);
+  assert(value.pitch >= 0 && value.pitch <= 511);
   view.setUint32(at + 20, value.pitch, Endian.little);
+  assert(value.velX >= -2048 && value.velX <= 2047);
   view.setInt32(at + 24, value.velX, Endian.little);
+  assert(value.velY >= -2048 && value.velY <= 2047);
   view.setInt32(at + 28, value.velY, Endian.little);
+  assert(value.velZ >= -2048 && value.velZ <= 2047);
   view.setInt32(at + 32, value.velZ, Endian.little);
+  assert(value.health >= 0 && value.health <= 1000);
   view.setInt32(at + 36, value.health, Endian.little);
+  assert(value.weapon >= 0 && value.weapon <= 15);
   view.setUint8(at + 40, value.weapon);
   view.setUint64(at + 41, value.damage, Endian.little);
   view.setUint8(at + 49, value.moving ? 1 : 0);
@@ -5220,7 +5277,9 @@ void mixedStatFixedWriteBody(
   int at,
   MixedStat value,
 ) {
+  assert(value.statId >= 0 && value.statId <= 255);
   view.setUint32(at, value.statId, Endian.little);
+  assert(value.delta >= -512 && value.delta <= 511);
   view.setInt32(at + 4, value.delta, Endian.little);
 }
 
@@ -5266,8 +5325,11 @@ void mixedHitEventFixedWriteBody(
   int at,
   MixedHitEvent value,
 ) {
+  assert(value.targetId >= 0 && value.targetId <= 4095);
   view.setUint32(at, value.targetId, Endian.little);
+  assert(value.damage >= 0 && value.damage <= 4095);
   view.setInt32(at + 4, value.damage, Endian.little);
+  assert(value.hitKind >= 0 && value.hitKind <= 7);
   view.setInt32(at + 8, value.hitKind, Endian.little);
   view.setUint8(at + 12, value.crit ? 1 : 0);
 }
@@ -5329,7 +5391,9 @@ void mixedChatEventFixedWriteBody(
   int at,
   MixedChatEvent value,
 ) {
+  assert(value.channel >= 0 && value.channel <= 3);
   view.setInt32(at, value.channel, Endian.little);
+  assert(value.speaker >= 0 && value.speaker <= 4095);
   view.setUint32(at + 4, value.speaker, Endian.little);
 }
 
@@ -5375,7 +5439,9 @@ void mixedPickupEventFixedWriteBody(
   int at,
   MixedPickupEvent value,
 ) {
+  assert(value.itemId >= 0 && value.itemId <= 1023);
   view.setUint32(at, value.itemId, Endian.little);
+  assert(value.amount >= 0 && value.amount <= 255);
   view.setInt32(at + 4, value.amount, Endian.little);
 }
 
@@ -5421,16 +5487,22 @@ void benchMixedFixedWriteBody(
   int at,
   BenchMixed value,
 ) {
+  assert(value.sequence >= 0 && value.sequence <= 65535);
   view.setUint32(at, value.sequence, Endian.little);
+  assert(value.ackSequence >= 0 && value.ackSequence <= 65535);
   view.setInt32(at + 4, value.ackSequence, Endian.little);
+  assert(value.ackBits >= 0 && value.ackBits <= 4294967295);
   view.setUint32(at + 8, value.ackBits, Endian.little);
   view.setUint64(at + 12, value.sessionId, Endian.little);
   view.setUint32(at + 20, value.clientId, Endian.little);
   view.setUint64(at + 24, value.nonce, Endian.little);
+  assert(value.worldTime >= -1000000000000 && value.worldTime <= 1000000000000);
   view.setInt64(at + 32, value.worldTime, Endian.little);
+  assert(value.frameTick >= 0 && value.frameTick <= 281474976710655);
   view.setUint64(at + 40, value.frameTick, Endian.little);
+  assert(value.serverTime >= 0 && value.serverTime <= 16776960);
   view.setInt32(at + 48, value.serverTime, Endian.little);
-  assert(value.entitiesCount >= 0);
+  assert(value.entitiesCount >= 1);
   assert(value.entitiesCount <= 8);
   view.setInt32(at + 52, value.entitiesCount, Endian.little);
   for (var i = 0; i < value.entitiesCount; i++) {
@@ -5442,6 +5514,7 @@ void benchMixedFixedWriteBody(
   for (var i = 0; i < value.statsCount; i++) {
     mixedStatFixedWriteBody(bytes, view, at + 468 + i * 8, value.stats[i]);
   }
+  assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
   view.setUint8(at + 1108, value.gameEvent.type);
   switch (value.gameEvent.type) {
     case 1:
@@ -5469,6 +5542,7 @@ void benchMixedFixedWriteBody(
   bytes.setRange(at + 1122, at + 1122 + 4, value.loadout);
   assert(value.playerNameLength >= 0);
   assert(value.playerNameLength <= 15);
+  assert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, value.playerNameLength, value.playerName, 0));
   view.setInt32(at + 1126, value.playerNameLength, Endian.little);
   bytes.setRange(
     at + 1130,
@@ -5481,16 +5555,19 @@ void benchMixedFixedWriteBody(
   view.setInt32(at + 1145, value.payloadLength, Endian.little);
   bytes.setRange(at + 1149, at + 1149 + value.payloadLength, value.payload);
   bytes.fillRange(at + 1149 + value.payloadLength, at + 1165, 0);
+  assert(!value.aimX.isFinite || (value.aimX >= -1.0 && value.aimX <= 1.0));
   view.setUint32(
     at + 1165,
     TableFixedLayout.float32Bits(value.aimX),
     Endian.little,
   );
+  assert(!value.aimY.isFinite || (value.aimY >= -1.0 && value.aimY <= 1.0));
   view.setUint32(
     at + 1169,
     TableFixedLayout.float32Bits(value.aimY),
     Endian.little,
   );
+  assert(!value.aimZ.isFinite || (value.aimZ >= -1.0 && value.aimZ <= 1.0));
   view.setUint32(
     at + 1173,
     TableFixedLayout.float32Bits(value.aimZ),
@@ -5504,12 +5581,18 @@ void benchMixedFixedWriteBody(
   view.setFloat64(at + 1181, value.drift, Endian.little);
   view.setUint64(at + 1189, value.wideKey.lo, Endian.little);
   view.setUint64(at + 1189 + 8, value.wideKey.hi, Endian.little);
+  assert(!(value.flux < Int128(0xfffffff000000000, 0)));
+  assert(!(value.flux > Int128(68719476736, 0)));
   view.setUint64(at + 1205, value.flux.lo, Endian.little);
   view.setUint64(at + 1205 + 8, value.flux.hi, Endian.little);
+  assert(value.ping >= 0 && value.ping <= 64000);
   view.setUint16(at + 1221, value.ping, Endian.little);
+  assert(value.crcHint >= 0 && value.crcHint <= 16777215);
   view.setUint32(at + 1223, value.crcHint, Endian.little);
   view.setUint8(at + 1227, value.hasExtra ? 1 : 0);
+  assert(value.extra >= 0 && value.extra <= 255);
   view.setInt32(at + 1228, value.extra, Endian.little);
+  assert(value.idleTicks >= 0 && value.idleTicks <= 15);
   view.setInt32(at + 1232, value.idleTicks, Endian.little);
 }
 

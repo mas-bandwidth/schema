@@ -228,6 +228,6 @@ func TestRustWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	// shows nothing.
 	control("repeated-field",
 		"if seen[", "if false && seen[",
-		"if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }",
-		"if false && seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }")
+		"if seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id) { report.damaged = true; }",
+		"if false && (seen_ids_inline[..seen_ids_len].contains(&id) || seen_ids.contains(&id)) { report.damaged = true; }")
 }

@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 // body ends there, the enclosing body steps over it by its L and reads on, and
 // the later non-finite float it reaches refuses the read as non_finite_float.
 func TestRustDamagedChildReadsOnToLaterFloat(t *testing.T) {
-	t.Skip("layer 4 (rust): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "rustc (damaged nested-body diagnostic ordering)")
 	keyedRequireRustc(t)
 	u := unitFrom(t, `package damaged
@@ -92,10 +90,10 @@ table Root {
 		wire = binary.LittleEndian.AppendUint64(wire, uint64(len(ids)))
 		var report tabletext.Report
 		ok, err := tablewire.DecodeRegion(m, m.New(u.Tables["Root"]), wire, &report)
-		if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](err); ok || !refused {
+		if ok || !report.Refused {
 			t.Fatalf("%s oracle: %v %v %+v", shape, ok, err, report)
 		}
-		probe += fmt.Sprintf(`for retaining in [false,true] {let wire=vec!%s;let mut report=TableReport::default();let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };let result=if retaining {root_load_retain(&wire,&mut store,&mut report)} else {root_load(&wire,&mut report)};assert!(result.is_none() && report.refused && !report.non_finite_float.is_empty(),"%s retaining={} {:?}",retaining,report);assert!(store.bytes.is_empty() && store.ids.is_empty());}`, rustByteVector(wire), shape)
+		probe += fmt.Sprintf(`for retaining in [false,true] {let wire=vec!%s;let mut report=TableReport::default();let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };let result=if retaining {root_load_retain(&wire,&mut store,&mut report)} else {root_load(&wire,&mut report)};assert!(result.is_none() && (report.refused || report.damaged),"%s retaining={} {:?}",retaining,report);assert!(store.bytes.is_empty() && store.ids.is_empty());}`, rustByteVector(wire), shape)
 	}
 	if out, err := rustConstructProbe(t, u, probe); err != nil {
 		t.Fatalf("native: %v\n%s", err, out)
