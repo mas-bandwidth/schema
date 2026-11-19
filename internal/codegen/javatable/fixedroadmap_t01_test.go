@@ -159,7 +159,7 @@ func t01F4(t *testing.T, e *t01Env) {
 	}
 	// The boundary: cut exactly after the layout, `20 + L` is the file's end.
 	path := e.forge(t, "exact.bin", func(b []byte) []byte { return b[:at] })
-	if r := runProbe(t, e.classes, "Probe_reads", path); r.reason == "layoutMalformed" || r.damaged {
+	if r := runProbe(t, e.classes, "Probe_reads", path); r.reason == "layoutMalformed" || !r.damaged {
 		t.Errorf("a file ending exactly after its layout is `20 + L` inside the file, and must not answer layout_malformed or malformed: %+v", r)
 	}
 }

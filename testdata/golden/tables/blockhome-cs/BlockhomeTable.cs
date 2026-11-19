@@ -4885,25 +4885,32 @@ namespace Blockhome
                     // announced it. A None element of an array of unions is positional.
                     if (entry.Kind == 15 && !field.IsArray && !field.Required)
                     { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
+                    int unknownBefore = d.Report.Unknown;
+                    long startBit = r.At;
                     if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
                     if (widened && !field.MapKey) { d.Report.Widened++; }
                     if (field.Optional && value != null) { field.SetPresent(value, true); }
-                    if (same && value != null && MessageAtDefault(value, field)) { return false; }
+                    if (same && !widened && d.Report.Unknown == unknownBefore && value != null && MessageAtDefault(value, field, r.At - startBit, d.Vocabulary.RefBits, entry.Shape)) { return false; }
                 }
             }
             // MessageAtDefault is the message writer's elision (MessageRides) of a
             // field that is neither optional nor required, whatever its guard says.
-            static bool MessageAtDefault(object value, TableFieldInfo f)
+            static bool MessageAtDefault(object value, TableFieldInfo f, long bitsRead, int refBits, TableMessageShape shape)
             {
                 if (f.Optional || f.Required) { return false; }
+                if (f.KeyId != null) { return bitsRead == BitCount(shape.Max - shape.Min); }
                 if (f.Counted)
                 {
                     int n = f.GetCount(value);
                     if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
                     return n == 0;
                 }
-                if (!f.IsArray) { return DefaultElement(value, f, 0); }
-                if (f.Kind == 13 && f.KeyId == null) { return false; }
+                if (!f.IsArray)
+                {
+                    if (f.Kind == 13) { return bitsRead == refBits; }
+                    return DefaultElement(value, f, 0);
+                }
+                if (f.Kind == 13) { return false; }
                 for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }
                 return true;
             }

@@ -1461,6 +1461,8 @@ C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ib
 	-Ibuild/tables-generated-c-fixed/ut1 -Ibuild/tables-generated-c-fixed/ut2 \
 	-Ibuild/tables-generated-c-fixed/fu1 -Ibuild/tables-generated-c-fixed/fu2 -I$(SERIALIZE_C)
 
+$(filter build/tables-generated-c-fixed/%,$(C_FIXEDFORM_SOURCES)): build/tables-generated-c-fixed/.stamp ;
+
 build/schema_test_c_fixedform: build/tables-generated-c-fixed/.stamp $(C_FIXEDFORM_SOURCES) test/c-tables/fixedform.h
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS) $(C_FIXEDFORM_INCLUDES) $(C_FIXEDFORM_SOURCES) -o $@ -lm
@@ -1911,6 +1913,8 @@ build/runcopy-c/.stamp: bin/schema tables/scalars/Scalars.schema
 	@mkdir -p build/runcopy-c
 	./bin/schema generate --lang c --out build/runcopy-c tables/scalars
 	@touch $@
+
+build/runcopy-c/ScalarsTable.c: build/runcopy-c/.stamp ;
 
 build/schema_test_c_runcopy: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c build/runcopy-c/ScalarsTable.c
 	@mkdir -p build

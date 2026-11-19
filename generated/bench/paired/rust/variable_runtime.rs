@@ -1347,7 +1347,7 @@ fn retain_id(ids: &[u64], r: u64, bad: &mut bool) -> u64 {
         return 0;
     }
     let id = ids[r as usize - 1];
-    if id == 0 || id == NODE_TABLE_ID || id == BUILD_VERSION_ID || id == VOCABULARY_ID {
+    if id == NODE_TABLE_ID || id == BUILD_VERSION_ID || id == VOCABULARY_ID {
         *bad = true;
         return 0;
     }
@@ -1413,7 +1413,7 @@ fn retain_resolve(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &
             // an enum variant reference; zero is None and names no id
             let Some(r) = c.leb() else { *bad = true; return; };
             if r == 0 {
-                out.extend_from_slice(&0u64.to_le_bytes());
+                out.extend_from_slice(&NODE_TABLE_ID.to_le_bytes());
                 return;
             }
             let id = retain_id(ids, r, bad);
@@ -1422,7 +1422,7 @@ fn retain_resolve(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &
         15 => {
             let Some(r) = c.leb() else { *bad = true; return; };
             if r == 0 {
-                out.extend_from_slice(&0u64.to_le_bytes());
+                out.extend_from_slice(&NODE_TABLE_ID.to_le_bytes());
                 return;
             }
             let id = retain_id(ids, r, bad);
@@ -1532,7 +1532,7 @@ fn retain_body(c: &mut RetainCur, ids: &[u64], depth: usize, out: &mut Vec<u8>, 
     loop {
         let Some(r) = c.leb() else { *bad = true; return; };
         if r == 0 {
-            out.extend_from_slice(&0u64.to_le_bytes());
+            out.extend_from_slice(&NODE_TABLE_ID.to_le_bytes());
             return;
         }
         if c.off >= c.buf.len() {
@@ -1675,9 +1675,11 @@ fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetai
     }
     let id = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
     c.off += 8;
-    // The zero reference is a union/enum None, not an id to intern (§3, §6.6).
-    if id == 0 { return 0; }
-    retain_ref(ids, retain, known, id)
+    // NODE_TABLE_ID marks a union/enum None, not an id to intern (§3, §6.6).
+    if id == NODE_TABLE_ID { return 0; }
+    let slot = retain_ref(ids, retain, known, id);
+    if slot == 0 { *bad = true; }
+    slot
 }
 
 #[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
@@ -1815,7 +1817,7 @@ fn retain_emit_body(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableReta
         }
         let id = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
         c.off += 8;
-        if id == 0 {
+        if id == NODE_TABLE_ID {
             leb_write(out, 0);
             return;
         }

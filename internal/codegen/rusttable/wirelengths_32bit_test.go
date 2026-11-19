@@ -357,6 +357,11 @@ func rustLLD() (string, error) {
 func targetCommand(target, bin string) *exec.Cmd {
 	key := "CARGO_TARGET_" + strings.ToUpper(strings.NewReplacer("-", "_", ".", "_").Replace(target)) + "_RUNNER"
 	runner := strings.Fields(os.Getenv(key))
+	if len(runner) == 0 && strings.HasPrefix(target, "wasm32-") {
+		if wasmtime, err := exec.LookPath("wasmtime"); err == nil {
+			runner = []string{wasmtime, "run", "--dir=."}
+		}
+	}
 	if len(runner) == 0 {
 		return exec.Command(bin)
 	}

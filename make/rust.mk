@@ -1011,7 +1011,8 @@ tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 tables-rust-wire-fuzz-negative-control: build/conformance-harness build/conformance-rust-all
 	@rm -rf build/rust-wire-fuzz-control && mkdir -p build/rust-wire-fuzz-control
 	@sed -e '/index - 2 >= self.slots.len() as u64 {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
-		-e '/if target >= self.wire_edges.len() {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
+		-e 's|if index - 2 >= self.slots.len() as u64 { report.damaged = true; return; }|if index - 2 >= self.slots.len() as u64 { /* SABOTAGED */ return; }|' \
+		-e '/if index - 1 >= self.wire_edges.len() as u64 {/{n;s|report.damaged = true;|/* SABOTAGED */|;}' \
 		internal/codegen/rusttable/variable.go > build/rust-wire-fuzz-control/variable.go.txt
 	@test "$$(grep -c SABOTAGED build/rust-wire-fuzz-control/variable.go.txt)" = 3 || \
 		{ echo "NEGATIVE CONTROL: the node-index sabotage did not apply three times"; exit 1; }

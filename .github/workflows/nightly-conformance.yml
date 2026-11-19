@@ -239,6 +239,10 @@ jobs:
       # the readiness gate's prerequisites build the Dart driver, and its
       # compiler package runs the Luau and Squirrel testgen tests: the pinned
       # Luau and Squirrel come from make/<lang>.mk, Dart is the runner's own
+      - uses: ./.github/actions/python
+        if: ${{ !cancelled() }}
+      - uses: ./.github/actions/ruby
+        if: ${{ !cancelled() }}
       - name: install the Luau and Squirrel pins the C++ readiness gate runs
         if: ${{ !cancelled() }}
         run: make dist-luau dist-squirrel

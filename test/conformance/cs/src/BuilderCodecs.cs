@@ -222,6 +222,13 @@ static partial class Program
             builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
             return Mapdemo.Schema.TableWire.CopyRegion(Mapdemo.Schema.WideRowTableType(),(IntPtr)builder.GetRoot(),true);
         };
+        Find("messagedemo","ToolEnvelope").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Messagedemo.ToolEnvelopeBuilder();
+            var inner=new Messagedemo.TableReport();
+            builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            return Messagedemo.Schema.TableWire.CopyRegion(Messagedemo.Schema.ToolEnvelopeTableType(),(IntPtr)builder.GetRoot(),true);
+        };
         Find("streamdemo","Feed").PartialLoad=(bytes,report)=>
         {
             using var builder=new Streamdemo.FeedBuilder();

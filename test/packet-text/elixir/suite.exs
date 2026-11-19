@@ -14,19 +14,26 @@ defmodule PacketTextTest do
       text = String.trim(line)
       wire = if text == "-", do: <<>>, else: Base.decode16!(text, case: :mixed)
 
-      case Text.read_narrow_bits(wire, byte_size(wire) * 8) do
+      case Text.read_narrow(wire, byte_size(wire) * 8) do
         :error ->
           IO.puts("REFUSE")
 
-        {:ok, value, bits} ->
+        {:ok, value} ->
+          {:ok, _, bits} = Text.read_narrow_bits(wire, byte_size(wire) * 8)
+
           if Text.read_narrow_bits(wire, bits) != {:ok, value, bits} or
                Text.read_narrow_bits(wire, bits - 1) != :error do
             raise "exact bit bound"
           end
 
-          encoded = Text.write_narrow!(value)
-          {:ok, _, written_bits} = Text.read_narrow_bits(encoded, bit_size(encoded))
-          IO.puts("OK #{bits} #{hex(value.text)} #{written_bits} #{hex(encoded)}")
+          case Text.write_narrow(value) do
+            {:ok, encoded} ->
+              {:ok, _, written_bits} = Text.read_narrow_bits(encoded, bit_size(encoded))
+              IO.puts("OK #{bits} #{hex(value.text)} #{written_bits} #{hex(encoded)}")
+
+            {:error, _} ->
+              IO.puts("WRITE-REFUSED")
+          end
       end
     end
   end

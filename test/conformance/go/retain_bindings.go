@@ -6,6 +6,7 @@ import (
 	"graphdemo"
 	"listdemo"
 	"mapdemo"
+	"messagedemo"
 	"streamdemo"
 	"tblg1"
 	"tblp2"
@@ -45,6 +46,11 @@ var retentionCodecs = []retentionCodec{
 	}, tblw2.FleetLoadMeasure, tblw2.FleetLoadRetain, tblw2.FleetMeasureRetain, tblw2.FleetSaveRetain, func(r *tblw2.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}, func(r *tblw2.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("messagedemo", "ToolEnvelope", func() *messagedemo.TableRetain {
+		return &messagedemo.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]messagedemo.TableRetainID, (1<<20)/8)}
+	}, messagedemo.ToolEnvelopeLoadMeasure, messagedemo.ToolEnvelopeLoadRetain, messagedemo.ToolEnvelopeMeasureRetain, messagedemo.ToolEnvelopeSaveRetain, func(r *messagedemo.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *messagedemo.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
 	retainRow("tblg1", "Guarded", func() *tblg1.TableRetain {
 		return &tblg1.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblg1.TableRetainID, (1<<20)/8)}
 	}, tblg1.GuardedLoadMeasure, tblg1.GuardedLoadRetain, tblg1.GuardedMeasureRetain, tblg1.GuardedSaveRetain, func(r *tblg1.TableReport) report {

@@ -2060,7 +2060,7 @@ void _lebOut(List<int> out, int v) {
 // reference above the entry count, at zero, or at a reserved id.
 int? _retainId(TableWireReader r, int ref) {
   final id = r.refToId[ref];
-  if (id == null || id == 0 || id == _kNodeTableId || id == _kBuildVersionId || id == _kVocabularyId) {
+  if (id == null || id == _kNodeTableId || id == _kBuildVersionId || id == _kVocabularyId) {
     return null;
   }
   return id;
@@ -2098,7 +2098,7 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
     case 30:
       final ref = r.readLeb();
       if (ref == null) return null;
-      if (ref == 0) return _u64le(0);
+      if (ref == 0) return _u64le(_kNodeTableId);
       final id = _retainId(r, ref);
       if (id == null) return null;
       return _u64le(id);
@@ -2109,7 +2109,7 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
     case 15:
       final ref = r.readLeb();
       if (ref == null) return null;
-      if (ref == 0) return _u64le(0);
+      if (ref == 0) return _u64le(_kNodeTableId);
       final id = _retainId(r, ref);
       if (id == null) return null;
       if (!r.has(1)) return null;
@@ -2161,7 +2161,7 @@ List<int>? _retainBody(TableWireReader r, int depth) {
     final ref = r.readLeb();
     if (ref == null) return null;
     if (ref == 0) {
-      out.addAll(_u64le(0));
+      out.addAll(_u64le(_kNodeTableId));
       return out;
     }
     final id = _retainId(r, ref);
@@ -2265,7 +2265,7 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
     case 30:
       final id = c.u64();
       if (id == null) return null;
-      if (id == 0) return <int>[0];
+      if (id == _kNodeTableId) return <int>[0];
       final ref = state.retainRefFor(id);
       if (ref == 0) return null;
       final o = <int>[];
@@ -2278,7 +2278,7 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
     case 15:
       final id = c.u64();
       if (id == null) return null;
-      if (id == 0) return <int>[0];
+      if (id == _kNodeTableId) return <int>[0];
       final ref = state.retainRefFor(id);
       if (ref == 0) return null;
       final ak = c.byte();
@@ -2333,7 +2333,7 @@ List<int>? _retainEmitBody(WireState state, _RetainCursor c, int end, int depth)
   while (true) {
     final id = c.u64();
     if (id == null) return null;
-    if (id == 0) {
+    if (id == _kNodeTableId) {
       o.add(0);
       return o;
     }

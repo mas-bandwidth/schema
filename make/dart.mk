@@ -747,7 +747,9 @@ tables-dart-retain-negative-control: build/conformance-harness build/conformance
 	@sed -e "s|'../../../build/tables-generated-dart/|'$(CURDIR)/build/dart-retain-nc/generated/|" \
 	     -e "s|'../../../build/|'$(CURDIR)/build/|" \
 		test/conformance/dart/main.dart > build/dart-retain-nc/main.dart
-	$(DART) compile exe -o build/dart-retain-nc/conformance-dart build/dart-retain-nc/main.dart >/dev/null
+	$(DART) --enable-asserts --snapshot-kind=kernel --snapshot=build/dart-retain-nc/conformance-dart.dill build/dart-retain-nc/main.dart >/dev/null
+	@printf '#!/bin/sh\nexec "%s" --enable-asserts "%s/build/dart-retain-nc/conformance-dart.dill" "$$@"\n' "$(DART)" "$(CURDIR)" > build/dart-retain-nc/conformance-dart
+	@chmod +x build/dart-retain-nc/conformance-dart
 	@echo "dart build/dart-retain-nc/conformance-dart" > build/dart-retain-nc/drivers.txt
 	@if ./build/conformance-harness run --drivers build/dart-retain-nc/drivers.txt \
 		--work build/dart-retain-nc/work > build/dart-retain-nc/log 2>&1; then \
