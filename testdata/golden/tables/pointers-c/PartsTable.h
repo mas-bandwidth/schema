@@ -1603,7 +1603,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
             }
             if ( p->dstsize == 16u )
             {
-                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~(uint64_t) 0 : 0ull;
+                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~0ull : 0ull;
                 graphdemo_table_fixed_store_native( dst + p->dst, raw, 8u );
                 graphdemo_table_fixed_store_native( dst + p->dst + 8u, hi, 8u );
             }

@@ -1604,7 +1604,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
             }
             if ( p->dstsize == 16u )
             {
-                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~(uint64_t) 0 : 0ull;
+                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~0ull : 0ull;
                 tabledemo_table_fixed_store_native( dst + p->dst, raw, 8u );
                 tabledemo_table_fixed_store_native( dst + p->dst + 8u, hi, 8u );
             }
