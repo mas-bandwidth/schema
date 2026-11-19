@@ -148,7 +148,7 @@ end
 -- ---- THE RESOLVING WALK, capture side -------------------------------------
 
 local function reserved(id: string): boolean
-	return id == ZERO or id == NodeTableId or id == BuildVersionId or id == MessageVocabularyId
+	return id == NodeTableId or id == BuildVersionId or id == MessageVocabularyId
 end
 
 -- id resolves one reference against the FILE's id table: a reference above
@@ -214,9 +214,9 @@ local function walk_body(rs: any, c: any, depth: number)
 			return
 		end
 		if ref == 0 then
-			-- THE TERMINATOR IS A REFERENCE, and in the resolved form a
-			-- reference is a fixed eight-byte id
-			o_u64(rs.out, 0)
+			-- THE TERMINATOR IS A REFERENCE, marked by the reserved NodeTableId
+			-- sentinel so hash 0 remains an ordinary ID (§6.6)
+			o_id(rs.out, NodeTableId)
 			return
 		end
 		if c.at >= c.e then
@@ -247,7 +247,7 @@ walk_payload = function(rs: any, c: any, kind: number, depth: number)
 			return
 		end
 		if ref == 0 then
-			o_u64(rs.out, 0) -- the enum's None: a value, not a reference
+			o_id(rs.out, NodeTableId) -- the enum's None: a value, not a reference
 			return
 		end
 		o_id(rs.out, rs_id(rs, ref))
@@ -258,7 +258,7 @@ walk_payload = function(rs: any, c: any, kind: number, depth: number)
 			return
 		end
 		if ref == 0 then
-			o_u64(rs.out, 0) -- the union holding nothing
+			o_id(rs.out, NodeTableId) -- the union holding nothing
 			return
 		end
 		o_id(rs.out, rs_id(rs, ref))
@@ -579,7 +579,7 @@ local function e_body(em: any, o: any, c: any)
 		if em.bad then
 			return
 		end
-		if id == ZERO then
+		if id == NodeTableId then
 			o_u8(o, 0) -- the body ENDS AT ITS OWN ZERO REFERENCE
 			return
 		end
@@ -607,7 +607,7 @@ emit_payload = function(em: any, o: any, c: any, kind: number)
 		if em.bad then
 			return
 		end
-		if id == ZERO then
+		if id == NodeTableId then
 			o_leb(o, 0)
 			return
 		end
@@ -617,7 +617,7 @@ emit_payload = function(em: any, o: any, c: any, kind: number)
 		if em.bad then
 			return
 		end
-		if arm == ZERO then
+		if arm == NodeTableId then
 			o_leb(o, 0)
 			return
 		end

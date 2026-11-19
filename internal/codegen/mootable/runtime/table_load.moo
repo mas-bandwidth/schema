@@ -2178,10 +2178,21 @@ local function wcHeader(s: number, e: number): (number?, number, number)
 	return buffer.readu8(wc.b, s), count, at
 end
 
+local function arrayElemKindClosed(ek: number): boolean
+	return (ek >= 1 and ek <= 13) or ek == 15 or ek == 17 or (ek >= 18 and ek <= 30)
+end
+
+local function keyedElemKindClosed(ek: number): boolean
+	return (ek >= 1 and ek <= 11) or ek == 13 or (ek >= 18 and ek <= 30)
+end
+
 local function wcArray(s: number, e: number): boolean
 	local ek, count, at = wcHeader(s, e)
 	if ek == nil then
 		return false
+	end
+	if not arrayElemKindClosed(ek :: number) then
+		return wcFail("wire_damaged")
 	end
 	for _ = 1, count do
 		local stop = wcPayload(at, e, ek :: number)
@@ -2200,6 +2211,9 @@ local function wcKeyed(s: number, e: number): boolean
 	local ek, count, at = wcHeader(s, e)
 	if ek == nil then
 		return false
+	end
+	if not keyedElemKindClosed(ek :: number) then
+		return wcFail("wire_damaged")
 	end
 	local seen: { [number]: boolean } = {}
 	for _ = 1, count do

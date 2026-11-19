@@ -127,18 +127,27 @@ func cookStrictCellsFails(t *testing.T, mutate func(*testing.T, *generatedUnit))
 	}
 
 	// block-read: dumps equal the pinned dumps; forgeries answer verdicts.
-	bg := generateUnit(t, units, "blockdemo")
-	if bg.err != nil {
-		t.Fatalf("unit blockdemo: %v", bg.err)
-	}
-	if mutate != nil {
-		mutate(t, bg)
+	blockUnits := map[string]*generatedUnit{}
+	blockUnitFor := func(unitKey string) *generatedUnit {
+		u, ok := blockUnits[unitKey]
+		if !ok {
+			u = generateUnit(t, units, unitKey)
+			if u.err != nil {
+				t.Fatalf("unit %s: %v", unitKey, u.err)
+			}
+			if mutate != nil {
+				mutate(t, u)
+			}
+			blockUnits[unitKey] = u
+		}
+		return u
 	}
 	blockRows := manifestLines(t, "block")
 	if len(blockRows) == 0 {
 		fails = append(fails, "block-read: the manifest names no block")
 	}
 	for _, row := range blockRows {
+		bg := blockUnitFor(row[2])
 		data, err := os.ReadFile(filepath.Join(root, row[3]))
 		if err != nil {
 			t.Fatal(err)
@@ -157,6 +166,11 @@ func cookStrictCellsFails(t *testing.T, mutate func(*testing.T, *generatedUnit))
 		fails = append(fails, "block-read: the manifest names no block forgery")
 	}
 	for _, fg := range blockFgs {
+		fgUnit := "blockdemo"
+		if fg.base == "block_torture" {
+			fgUnit = "cooktorture"
+		}
+		bg := blockUnitFor(fgUnit)
 		base, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", fg.base+".bin"))
 		if err != nil {
 			t.Fatal(err)

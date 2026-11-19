@@ -87,6 +87,10 @@ export type Node = {
 	-- the WRITER's declared range for this entry, raw (§4.5)
 	wlo: any?,
 	whi: any?,
+	wbRaw: boolean?,
+	wflo: any?,
+	wfhi: any?,
+	wmin: number?,
 }
 
 local function leafSize(kind: number): number
@@ -101,7 +105,7 @@ end
 -- offsets, holding §1.1's rules: the count fits the length, every child
 -- inside its parent, a table's size the sum of its fields', the walk consumes
 -- exactly the entries, no deeper than 64.
-local function parseLayout(bytes: string, recordBytes: number): Node
+local function parseLayout(bytes: string, recordBytes: number, ranges: any?): Node
 	local n = #bytes
 	if n < LAYOUT_HEADER then
 		refuse("layout_malformed")
@@ -146,6 +150,19 @@ local function parseLayout(bytes: string, recordBytes: number): Node
 		end
 		local e = entries[i]
 		local node: Node = { id = e.id, kind = e.kind, size = e.size, off = off, children = {} }
+		if ranges ~= nil then
+			local wb = ranges[i]
+			if wb ~= nil then
+				if wb.raw then
+					node.wbRaw = true
+					node.wlo = wb.lo
+					node.whi = wb.hi
+				end
+				node.wflo = wb.flo
+				node.wfhi = wb.fhi
+				node.wmin = wb.min
+			end
+		end
 		i += 1
 		local kids = e.children
 		if kids > count then
@@ -441,7 +458,7 @@ end
 
 -- a plan: the writer's tree with its pairs, or the refusal of an UNLAWFUL entry
 local function compilePlan(d: any, layout: string, recordBytes: number, ranges: any?): any
-	local root = parseLayout(layout, recordBytes)
+	local root = parseLayout(layout, recordBytes, ranges)
 	local census = { unlawful = 0 }
 	compileStruct(d, root, census)
 	-- AN UNLAWFUL ENTRY IS REFUSED, NEVER COUNTED (§5.4, §5.9 #30): a writer
@@ -465,7 +482,7 @@ local function compilePlan(d: any, layout: string, recordBytes: number, ranges: 
 			elseif f.s == "arr" and f.array == "fixed" and f.e.s == "int" then
 				node = p.v.children[1]
 			end
-			if r ~= nil and node ~= nil then
+			if r ~= nil and node ~= nil and not node.wbRaw then
 				node.wlo = r.lo
 				node.whi = r.hi
 			end
@@ -556,9 +573,22 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 		if not V.finite32(bits) then
 			refuse("non_finite_float", false, fieldName(named))
 		end
+		if n.wflo ~= nil then
+			local lo, hi = V.f32to64(bits)
+			if V.cmp64(lo, hi, n.wflo[1], n.wflo[2]) < 0 or V.cmp64(lo, hi, n.wfhi[1], n.wfhi[2]) > 0 then
+				refuse("out_of_range", false, fieldName(named))
+			end
+		end
 		if f.k == 11 then
 			rep.widened += 1
 			local lo, hi = V.f32to64(bits)
+			if f.flo ~= nil then
+				if V.cmp64(lo, hi, f.flo[1], f.flo[2]) < 0 or V.cmp64(lo, hi, f.fhi[1], f.fhi[2]) > 0 then
+					refuse("out_of_range", false, fieldName(named))
+				elseif bits == 0x80000000 then
+					return V.Uint64.new(0, 0)
+				end
+			end
 			return V.Uint64.new(lo, hi)
 		end
 		if f.flo ~= nil then
@@ -575,10 +605,22 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 		if not V.finite64(lo, hi) then
 			refuse("non_finite_float", false, fieldName(named))
 		end
+		if n.wflo ~= nil and (V.cmp64(lo, hi, n.wflo[1], n.wflo[2]) < 0 or V.cmp64(lo, hi, n.wfhi[1], n.wfhi[2]) > 0) then
+			refuse("out_of_range", false, fieldName(named))
+		end
+		if f.flo ~= nil then
+			if V.cmp64(lo, hi, f.flo[1], f.flo[2]) < 0 or V.cmp64(lo, hi, f.fhi[1], f.fhi[2]) > 0 then
+				refuse("out_of_range", false, fieldName(named))
+			elseif lo == 0 and hi == 0x80000000 then
+				return V.Uint64.new(0, 0)
+			end
+		end
 		return V.Uint64.new(lo, hi)
 	end
 	-- the raw value at the writer's STORAGE width and its kind's signedness
-	local x = rawAt(rec, off, n.size, V.signedKind(k))
+	local wSigned = V.signedKind(k)
+	local raw = rawAt(rec, off, n.size, wSigned)
+	local x = raw
 	local kw = f.kw
 	local signed = f.signed == true
 	if n.size < (f.fw or kw) then
@@ -590,7 +632,10 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 	-- the bounds pass holds the WRITER's range for the entry being read
 	-- (§4.6); the reader's own, which contains it, follows. It REFUSES
 	-- out_of_range, the whole load
-	if n.wlo ~= nil and (V.rawCmp(x, n.wlo, kw, signed) < 0 or V.rawCmp(x, n.whi, kw, signed) > 0) then
+	local wx = if n.wbRaw then raw else x
+	local wkw = if n.wbRaw then n.size else kw
+	local wsigned = if n.wbRaw then wSigned else signed
+	if n.wlo ~= nil and (V.rawCmp(wx, n.wlo, wkw, wsigned) < 0 or V.rawCmp(wx, n.whi, wkw, wsigned) > 0) then
 		refuse("out_of_range", false, fieldName(named))
 	end
 	if f.lo ~= nil and (V.rawCmp(x, f.lo, kw, signed) < 0 or V.rawCmp(x, f.hi, kw, signed) > 0) then
@@ -796,7 +841,8 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 		if f.array == "counted" then
 			count = buffer.readi32(rec, off)
 			local writerBound = (n.size - COUNT) // c.size
-			if count < 0 or count > writerBound or count > f.bound then
+			local minCount = if n.wmin ~= nil then n.wmin else (f.min or 0)
+			if count < minCount or count > writerBound or count > f.bound then
 				refuse("count_over_bound")
 			end
 			first = COUNT

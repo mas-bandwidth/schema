@@ -4092,16 +4092,21 @@ def TableMixedFixedLeaves(out·:[schema_rt.TableFixedEntry], src·:int, dst·:in
         q_Hit_2_0· += 1
     let grd_at_Chat_2_1· = length(out·)
     TableChatEventFixedLeaves(out·, src· + 1110 + 1, dst· + 1110 + 1)
+    push(out·, schema_rt.TableFixedEntry { src: src· + 1110 + 9, size: 5, grd: schema_rt.tableFixedNoGuard, op: 9 })
     var q_Chat_2_1· = grd_at_Chat_2_1·
     while q_Chat_2_1· < length(out·):
         push(out·[q_Chat_2_1·].chain, schema_rt.TableFixedGuardLink { grd: src· + 1110, arg: 2, arg_w: 1 })
         q_Chat_2_1· += 1
     let grd_at_Pickup_2_2· = length(out·)
     TablePickupEventFixedLeaves(out·, src· + 1110 + 1, dst· + 1110 + 1)
+    push(out·, schema_rt.TableFixedEntry { src: src· + 1110 + 9, size: 5, grd: schema_rt.tableFixedNoGuard, op: 9 })
     var q_Pickup_2_2· = grd_at_Pickup_2_2·
     while q_Pickup_2_2· < length(out·):
         push(out·[q_Pickup_2_2·].chain, schema_rt.TableFixedGuardLink { grd: src· + 1110, arg: 3, arg_w: 1 })
         q_Pickup_2_2· += 1
+    let z_slk_2· = length(out·)
+    push(out·, schema_rt.TableFixedEntry { src: src· + 1110 + 1, size: 13, grd: schema_rt.tableFixedNoGuard, op: 9 })
+    push(out·[z_slk_2·].chain, schema_rt.TableFixedGuardLink { grd: src· + 1110, arg: 0, arg_w: 1 })
     for(4) i_lf_Loadout_3·:
         push(out·, schema_rt.TableFixedEntry { src: src· + 1124 + i_lf_Loadout_3· * 1, dst: dst· + 1124 + i_lf_Loadout_3· * 1, size: 1, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })
     push(out·, schema_rt.TableFixedEntry { src: src· + 1128, dst: dst· + 1128, size: 15, aux: dst· + 1132, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 1 })

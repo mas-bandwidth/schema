@@ -17,9 +17,12 @@ package mootable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
+	"sync"
 
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -181,8 +184,9 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 	g.Pf("\tfloor = %d,\n", floor)
 	g.Pf("\tlineage = {\n")
 	for _, e := range entries {
+		writer := resolveMooEntryWriter(g.Unit, root, e, own.Wire)
 		g.Pf("\t\t{ hash = %s, recordBytes = %d, retired = %v, layout = %s%s }, -- 0x%016x\n",
-			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), writerRanges(g, root, e.Writer), e.Wire)
+			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), writerRanges(g, root, writer, e.Layout), e.Wire)
 	}
 	g.Pf("\t},\n")
 	g.Pf("})\n\n")
@@ -196,7 +200,53 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 // ranged fixed array's range holds each element the same as a scalar; the
 // runtime lands it on the array's element node. An entry with no writer, or
 // no such field, lays down nothing.
-func writerRanges(g *Gen, reader, writer *ir.Struct) string {
+var mooUnitLocks sync.Map // *ir.Unit -> *lockfile.Unit
+
+func resolveMooEntryWriter(u *ir.Unit, root *ir.Struct, e FixedLineageEntry, ownWire uint64) *ir.Struct {
+	if e.Writer != nil {
+		return e.Writer
+	}
+	if u == nil || root == nil || e.Wire == ownWire {
+		return nil
+	}
+	var lock *lockfile.Unit
+	if v, ok := mooUnitLocks.Load(u); ok {
+		lock, _ = v.(*lockfile.Unit)
+	} else {
+		var paths []string
+		for _, f := range u.Files {
+			if f != nil && f.Path != "" {
+				paths = append(paths, f.Path)
+			}
+		}
+		if len(paths) > 0 {
+			if lk, ok, err := lockfile.Open(paths); err == nil && ok {
+				lock = lk
+			}
+		}
+		mooUnitLocks.Store(u, lock)
+	}
+	if lock == nil {
+		return nil
+	}
+	for _, le := range lockfile.Lineage(lock, root.WireName()) {
+		if le.Wire == e.Wire {
+			return le.Writer
+		}
+	}
+	return nil
+}
+
+func mooStorageBounds(signed bool, bits int) (*big.Int, *big.Int) {
+	one := big.NewInt(1)
+	if signed {
+		hi := new(big.Int).Lsh(one, uint(bits-1))
+		return new(big.Int).Neg(hi), new(big.Int).Sub(hi, one)
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
+}
+
+func writerRanges(g *Gen, reader, writer *ir.Struct, layout []byte) string {
 	if writer == nil {
 		return ""
 	}
@@ -227,8 +277,156 @@ func writerRanges(g *Gen, reader, writer *ir.Struct) string {
 		kw, signed := ir.TableKindWidth(kind), ir.TableKindSigned(kind)
 		parts = append(parts, fmt.Sprintf("[%s] = { lo = %s, hi = %s }", IdLit(ir.TableFieldWireId(rf)), rawLit(g, kw, signed, lo), rawLit(g, kw, signed, hi)))
 	}
+	parts = append(parts, writerIndexedBounds(g, writer, layout)...)
 	if len(parts) == 0 {
 		return ""
 	}
 	return ", ranges = { " + strings.Join(parts, ", ") + " }"
+}
+
+// writerIndexedBounds walks the writer closure in exact TableFixedWalkRoot
+// pre-order (1-based layout entry index) and emits raw source bounds for every
+// constrained leaf or counted array, including widened scalars/bits/floats and
+// nested structs/unions/arrays.
+func writerIndexedBounds(g *Gen, writer *ir.Struct, layout []byte) []string {
+	if writer == nil || len(layout) < ir.TableFixedLayoutHeaderBytes {
+		return nil
+	}
+	wantCount := (len(layout) - ir.TableFixedLayoutHeaderBytes) / ir.TableFixedEntryBytes
+	idx := 0
+	next := func() int {
+		idx++
+		return idx
+	}
+	var out []string
+	var walkField func(f *ir.Field)
+	var walkPayload func(f *ir.Field)
+	var walkElement func(f *ir.Field)
+	var walkArm func(v ir.UnionVariant)
+	walkEnum := func(e *ir.Enum) {
+		next()
+		for range e.Variants {
+			next()
+		}
+	}
+	walkElement = func(f *ir.Field) {
+		if f.Type.Kind == ir.TNamed {
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				next()
+				for _, sub := range r.Fields {
+					walkField(sub)
+				}
+				return
+			case *ir.Union:
+				next()
+				for _, v := range r.Variants {
+					walkArm(v)
+				}
+				return
+			case *ir.Enum:
+				walkEnum(r)
+				return
+			}
+		}
+		cur := next()
+		switch f.Type.Kind {
+		case ir.TInt, ir.TFixed, ir.TBits:
+			w := int(ir.TableFixedStorageBytes(f.Type))
+			if w <= 0 {
+				return
+			}
+			leafKind := ir.TableFixedLeafKind(f)
+			signed := ir.TableKindSigned(leafKind)
+			smin, smax := mooStorageBounds(signed, w*8)
+			lo, hi := new(big.Int).Set(smin), new(big.Int).Set(smax)
+			has := false
+			if rlo, rhi, ok := ir.TableRawRange(f); ok {
+				lo, hi, has = new(big.Int).Set(rlo), new(big.Int).Set(rhi), true
+			}
+			if f.Type.Kind == ir.TBits && f.Type.Width < w*8 {
+				bmax := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+				if !has {
+					lo, hi, has = big.NewInt(0), bmax, true
+				} else {
+					if lo.Sign() < 0 {
+						lo = big.NewInt(0)
+					}
+					if hi.Cmp(bmax) > 0 {
+						hi = bmax
+					}
+				}
+			}
+			if has && (lo.Cmp(smin) > 0 || hi.Cmp(smax) < 0) {
+				out = append(out, fmt.Sprintf("[%d] = { raw = true, lo = %s, hi = %s }", cur, rawLit(g, w, signed, lo), rawLit(g, w, signed, hi)))
+			}
+		case ir.TFloat32, ir.TFloat64:
+			if f.HasFloatRange {
+				fmin, fmax := f.FMin, f.FMax
+				if f.Type.Kind == ir.TFloat32 {
+					fmin, fmax = float64(float32(fmin)), float64(float32(fmax))
+				}
+				out = append(out, fmt.Sprintf("[%d] = { flo = %s, fhi = %s }", cur, f64Pair(fmin), f64Pair(fmax)))
+			}
+		}
+	}
+	walkArm = func(v ir.UnionVariant) {
+		if v.F == nil {
+			next()
+			return
+		}
+		f := v.F
+		switch {
+		case f.Array != ir.ArrayNone:
+			acur := next()
+			if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+				out = append(out, fmt.Sprintf("[%d] = { min = %d }", acur, f.ArrayMin))
+			}
+			walkElement(f)
+		case f.Type.Kind == ir.TBytes:
+			next()
+			next()
+		case f.Type.Kind == ir.TString:
+			next()
+		default:
+			walkElement(f)
+		}
+	}
+	walkPayload = func(f *ir.Field) {
+		switch {
+		case f.KeyEnum != "" && f.KeyEnumRef != nil:
+			next()
+			walkEnum(f.KeyEnumRef)
+			walkElement(f)
+		case f.Array != ir.ArrayNone:
+			acur := next()
+			if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+				out = append(out, fmt.Sprintf("[%d] = { min = %d }", acur, f.ArrayMin))
+			}
+			walkElement(f)
+		case f.Type.Kind == ir.TBytes:
+			next()
+			next()
+		case f.Type.Kind == ir.TString:
+			next()
+		default:
+			walkElement(f)
+		}
+	}
+	walkField = func(f *ir.Field) {
+		if f.Type.Optional {
+			next()
+			walkPayload(f)
+			return
+		}
+		walkPayload(f)
+	}
+	next()
+	for _, f := range writer.Fields {
+		walkField(f)
+	}
+	if idx != wantCount {
+		return nil
+	}
+	return out
 }
