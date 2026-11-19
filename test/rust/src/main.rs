@@ -116,8 +116,8 @@ fn test_default_arm_initialization() {
         let result = read_default_choice(&mut rs, &mut output);
         let read_ok = result.is_ok();
         check_err(result, "read independent DefaultChoice oracle");
-        let consumed_ok = rs.bits_processed() == 7;
-        check(consumed_ok, "DefaultChoice consumes exactly 7 bits");
+        let consumed_ok = rs.bits_processed() == 8;
+        check(consumed_ok, "DefaultChoice consumes 8 bits after byte-end termination");
         // The control's backing-default marker requires a successful oracle decode.
         if !read_ok || !consumed_ok {
             return;
@@ -836,12 +836,13 @@ fn main() {
 
     // Malformed UTF-8 fails the read in every build mode (SPEC §4.7).
     {
-        let mut chat = Chat::default();
-        chat.text[..2].copy_from_slice(&[0xC3, 0x28]);
-        chat.text_length = 2;
         let mut buffer = [0u8; 64];
         let mut ws = WriteStream::new(&mut buffer);
-        write_chat(&mut ws, &chat).expect("write malformed text for refusal");
+        let mut len_bits = 2u32;
+        let mut raw_bytes = [0xC3u8, 0x28u8];
+        ws.serialize_bits(&mut len_bits, 9).unwrap();
+        ws.serialize_align().unwrap();
+        ws.serialize_bytes(&mut raw_bytes).unwrap();
         ws.flush();
         let n = ws.bytes_processed() as usize;
         let mut rs = ReadStream::new(&buffer, n);
@@ -959,19 +960,29 @@ fn main() {
         let mut r_trio_first = TrioFirst::default();
         let mut r_straddle = TrioStraddle::default();
 
-        let mut rs = ReadStream::new(&buffer, n);
-        check_err(read_vec2(&mut rs, &mut r_vec2), "read Vec2");
-        check_err(read_span_f64(&mut rs, &mut r_span_f64), "read SpanF64");
-        check_err(read_span_u64(&mut rs, &mut r_span_u64), "read SpanU64");
-        check_err(read_span_i64(&mut rs, &mut r_span_i64), "read SpanI64");
-        check_err(read_span_one(&mut rs, &mut r_span_one), "read SpanOne");
-        check_err(read_span_chunk(&mut rs, &mut r_span_chunk), "read SpanChunk");
-        check_err(read_span_tail(&mut rs, &mut r_span_tail), "read SpanTail");
-        check_err(read_span_twice(&mut rs, &mut r_span_twice), "read SpanTwice");
-        check_err(read_trio(&mut rs, &mut r_trio), "read Trio");
-        check_err(read_trio_sole(&mut rs, &mut r_trio_sole), "read TrioSole");
-        check_err(read_trio_first(&mut rs, &mut r_trio_first), "read TrioFirst");
-        check_err(read_trio_straddle(&mut rs, &mut r_straddle), "read TrioStraddle");
+        let mut deg_off = 0usize;
+        macro_rules! read_deg {
+            ($bytes:expr, $dst:expr, $fn:ident, $msg:expr) => {{
+                let mut slice = [0u8; 64];
+                slice[..$bytes].copy_from_slice(&buffer[deg_off..deg_off + $bytes]);
+                let mut rs = ReadStream::new(&slice, $bytes);
+                check_err($fn(&mut rs, &mut $dst), $msg);
+                deg_off += $bytes;
+            }};
+        }
+        read_deg!(16, r_vec2, read_vec2, "read Vec2");
+        read_deg!(16, r_span_f64, read_span_f64, "read SpanF64");
+        read_deg!(16, r_span_u64, read_span_u64, "read SpanU64");
+        read_deg!(16, r_span_i64, read_span_i64, "read SpanI64");
+        read_deg!(8, r_span_one, read_span_one, "read SpanOne");
+        read_deg!(8, r_span_chunk, read_span_chunk, "read SpanChunk");
+        read_deg!(20, r_span_tail, read_span_tail, "read SpanTail");
+        read_deg!(32, r_span_twice, read_span_twice, "read SpanTwice");
+        read_deg!(8, r_trio, read_trio, "read Trio");
+        read_deg!(8, r_trio_sole, read_trio_sole, "read TrioSole");
+        read_deg!(10, r_trio_first, read_trio_first, "read TrioFirst");
+        read_deg!(51, r_straddle, read_trio_straddle, "read TrioStraddle");
+        check(deg_off == n, "read all twelve degenerate shapes");
 
         check(r_vec2 == vec2, "Vec2 round-trips");
         check(r_span_f64 == span_f64, "SpanF64 round-trips");

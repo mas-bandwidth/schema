@@ -864,7 +864,7 @@ def driver_command(root, lang, builder=False):
     if lang == "cs":
         return shlex.join(tool("DOTNET", "dotnet") +
                           ["test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll",
-                           "wire-fuzz-builder" if builder else "wire-fuzz-region"])
+                           "wire-fuzz-builder" if builder else "wire-fuzz"])
     if lang == "java":
         return shlex.join(tool("JAVA", "java") + ["-cp", str(root / "build/conformance-java"), "TablesWireFuzz"])
     if lang == "rust":

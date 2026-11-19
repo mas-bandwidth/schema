@@ -2353,7 +2353,7 @@ static partial class Program
             long need = message || codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
             builderLoaded = null; regionLoaded = null;
             object value = message ? codec.MessageLoad(codec.Announcement, bytes, report) : codec.PartialLoad(bytes, report);
-            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : regionLoaded ?? (message || codec.LoadMeasure == null || need >= 0);
+            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : message ? (!report.Malformed && !report.Refused) : (regionLoaded ?? (codec.LoadMeasure == null || need >= 0));
             output.Write((byte)(loaded ? 1 : 0));
             output.Write(report.Unknown); output.Write(report.KindMismatch); output.Write(report.Widened);
             output.Write(report.Clamped); output.Write(report.Duplicate);

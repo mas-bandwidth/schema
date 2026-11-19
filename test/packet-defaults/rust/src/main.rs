@@ -61,7 +61,7 @@ fn read<T: PartialEq + Debug>(
     buffer[..bytes.len()].copy_from_slice(bytes);
     let mut stream = ReadStream::new(&buffer, bytes.len());
     decode(&mut stream, &mut initial).expect("read");
-    assert_eq!(stream.bits_processed(), bits, "read consumed bits");
+    assert_eq!(stream.bits_processed(), (bits + 7) & !7, "read consumed bits");
     assert_eq!(initial, want, "read values and backing storage");
 }
 fn golden<T: PartialEq + Debug>(

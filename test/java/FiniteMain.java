@@ -191,17 +191,21 @@ public final class FiniteMain {
         }
     }
 
-    // the compressed float's finite domain is unchanged: out-of-range values
-    // still clamp to the ends
+    // SPEC §5.1 row 10: out-of-range compressed floats refuse on write;
+    // in-range endpoints round-trip cleanly.
     static void testQuantizedClamp() {
         final Finite.Quantized q = new Finite.Quantized();
         final Finite.Quantized out = new Finite.Quantized();
         q.q = 5.0f;
-        int bits = Finite.writeQuantizedBits(q, buf, 0);
-        check(Finite.readQuantized(out, buf, bits) && out.q == 1.0f, "a compressed float above max clamps to max");
+        expectAssert(() -> Finite.writeQuantizedBits(q, buf, 0), "compressed float above max");
         q.q = -5.0f;
+        expectAssert(() -> Finite.writeQuantizedBits(q, buf, 0), "compressed float below min");
+        q.q = 1.0f;
+        int bits = Finite.writeQuantizedBits(q, buf, 0);
+        check(bits > 0 && Finite.readQuantized(out, buf, bits) && out.q == 1.0f, "compressed float at max round-trips");
+        q.q = -1.0f;
         bits = Finite.writeQuantizedBits(q, buf, 0);
-        check(Finite.readQuantized(out, buf, bits) && out.q == -1.0f, "a compressed float below min clamps to min");
+        check(bits > 0 && Finite.readQuantized(out, buf, bits) && out.q == -1.0f, "compressed float at min round-trips");
     }
 
     public static void main(String[] args) {

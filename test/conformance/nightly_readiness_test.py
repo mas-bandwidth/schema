@@ -314,7 +314,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(len(region), 6)
             self.assertEqual(len(builder), 3)
             for name, argv in region:
-                self.assertIn("wire-fuzz-region", argv[argv.index("--driver")+1])
+                self.assertTrue(argv[argv.index("--driver")+1].endswith(" wire-fuzz"))
                 self.assertNotIn("--builder", argv)
                 self.assertEqual("--retain" in argv, name.startswith("wire-retain-"))
             for name, argv in builder:

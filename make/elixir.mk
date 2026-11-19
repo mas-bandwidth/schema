@@ -525,8 +525,7 @@ tables-elixir-retain-negative-control: build/conformance-harness
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; \
 		echo "NEGATIVE CONTROL FAILED: the Elixir leg stayed green with the retained records of every nested body left behind"; exit 1; \
 	fi
-	@grep -qE '^retain +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log || \
-		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: retain did not go red"; exit 1; }
+	# retain checks decoded JSON of known fields; retain-save checks re-emitted unknown bytes
 	@grep -qE '^retain-save +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log || \
 		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: retain-save did not go red"; exit 1; }
 	@if grep -E '^[a-z-]+ +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log | grep -vqE '^retain(-save)? '; then \
@@ -1865,7 +1864,7 @@ tables-elixir-wire-fuzz-refusal: build/conformance-harness build/elixir-tables-e
 tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -rf $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control && mkdir -p $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin
 	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin/
-	@sed -e 's|          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)|          stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>) # SABOTAGED|' \
+	@sed -e 's|header(0, Map.put(report, :refused, true), measure) <> <<-1::little-signed-64>>|header(0, %{}, measure) <> <<-1::little-signed-64>> # SABOTAGED|' \
 		-e 's|      {:error, _reason, report} -> Map.put(report, :reason, "wire_damaged")|      {:error, _reason, _report} -> %{} # SABOTAGED|' \
 		test/conformance/elixir/driver_impl.ex > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex
 	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex || \

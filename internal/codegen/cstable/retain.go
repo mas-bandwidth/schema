@@ -181,8 +181,8 @@ const tableRetainSource = `
     }
     static bool RetainInRef(ref RetainIn s, bool zero)
     {
-        if (!s.R.Ref(out ulong reference, out ulong id) || reference == 0 && !zero || reference != 0 && (id == 0 || RetainReserved(id))) { return false; }
-        s.Fixed(id, 8); return true;
+        if (!s.R.Ref(out ulong reference, out ulong id) || reference == 0 && !zero || reference != 0 && RetainReserved(id)) { return false; }
+        s.Fixed(reference == 0 ? ulong.MaxValue : id, 8); return true;
     }
     static bool RetainInFrame(ref RetainIn s, byte kind, int bytes, int depth)
     {
@@ -202,7 +202,7 @@ const tableRetainSource = `
                 {
                     int mark = s.R.Offset;
                     if (!s.R.Var(out ulong field)) { return false; }
-                    if (field == 0) { s.Fixed(0, 8); break; }
+                    if (field == 0) { s.Fixed(ulong.MaxValue, 8); break; }
                     s.R.Offset = mark;
                     if (!RetainInRef(ref s, false) || s.R.Offset >= end) { return false; }
                     byte fieldKind = s.R.Byte(); s.Fixed(fieldKind, 1);
@@ -344,7 +344,7 @@ const tableRetainSource = `
     static bool RetainOutRef(ref RetainOut s, ref RetainIds ids)
     {
         if (!s.R.Has(8)) { return false; }
-        ulong id = s.R.Fixed(8); s.Var(id == 0 ? 0 : ids.Record(id)); return !ids.Lost && !ids.Overflow;
+        ulong id = s.R.Fixed(8); s.Var(id == ulong.MaxValue ? 0 : ids.Record(id)); return !ids.Lost && !ids.Overflow;
     }
     static bool RetainOutFrame(ref RetainOut s, ref RetainIds ids, byte kind, int depth)
     {
@@ -371,7 +371,7 @@ const tableRetainSource = `
                 {
                     if (!s.R.Has(8)) { return false; }
                     ulong id = s.R.Fixed(8);
-                    if (id == 0) { s.Var(0); break; }
+                    if (id == ulong.MaxValue) { s.Var(0); break; }
                     s.R.Offset -= 8;
                     if (!RetainOutRef(ref s, ref ids) || !s.R.Has(1)) { return false; }
                     byte field = s.R.Byte(); s.Byte(field);
@@ -417,7 +417,7 @@ const tableRetainSource = `
                 if (!s.R.Has(8)) { return false; }
                 ulong arm = s.R.Fixed(8); s.R.Offset -= 8;
                 if (!RetainOutRef(ref s, ref ids)) { return false; }
-                if (arm == 0) { return true; }
+                if (arm == ulong.MaxValue) { return true; }
                 if (!s.R.Has(1)) { return false; }
                 byte armKind = s.R.Byte(); s.Byte(armKind); return RetainOutFrame(ref s, ref ids, armKind, depth + 1);
             case 30: return RetainOutRef(ref s, ref ids);

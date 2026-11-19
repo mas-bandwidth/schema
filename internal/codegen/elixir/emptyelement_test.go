@@ -27,12 +27,12 @@ type Nothing {}
 
 type Crowd
 {
-    people [..1000000000]Nothing
+    people [3]Nothing
 }
 
 type Locked
 {
-    values [..1000000000]uint8 | min = 0, max = 0
+    values [3]uint8 | min = 0, max = 0
 }
 
 type Tag
@@ -98,6 +98,24 @@ case Emptypacket.Shapes.read_crowd_bits(wire, Emptypacket.Shapes.crowd_max_bits(
 
   other ->
     IO.puts(:stderr, "FAIL: Crowd read back #{inspect(other)}")
+    System.halt(1)
+end
+
+tags = %Emptypacket.Tags{
+  items: [%Emptypacket.Tag{}, %Emptypacket.Tag{}, %Emptypacket.Tag{}]
+}
+
+twire = Emptypacket.Shapes.write_tags!(tags)
+
+case Emptypacket.Shapes.read_tags_bits(twire, byte_size(twire) * 8) do
+  {:ok, back, _bits_read} ->
+    if length(back.items) != 3 do
+      IO.puts(:stderr, "FAIL: Tags read back #{length(back.items)} elements, want 3")
+      System.halt(1)
+    end
+
+  other ->
+    IO.puts(:stderr, "FAIL: Tags read back #{inspect(other)}")
     System.halt(1)
 end
 `

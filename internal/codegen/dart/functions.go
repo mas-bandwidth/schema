@@ -1117,8 +1117,11 @@ func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	if f.Type.Kind == ir.TString {
 		g.useRuntime()
 		check := fmt.Sprintf("%sassert(Schema.utf8Valid(%s, %s));", ind, name, length)
+		call := fmt.Sprintf("%s  Schema.utf8Valid(%s, %s),", ind, name, length)
 		if len(check) <= 80 {
 			g.pf("%s\n", check)
+		} else if len(call) <= 80 {
+			g.pf("%sassert(\n%s\n%s);\n", ind, call, ind)
 		} else {
 			g.pf("%sassert(\n%s  Schema.utf8Valid(\n%s    %s,\n%s    %s,\n%s  ),\n%s);\n",
 				ind, ind, ind, name, ind, length, ind, ind)

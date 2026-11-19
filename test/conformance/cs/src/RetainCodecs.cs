@@ -929,6 +929,31 @@ static partial class Program
             }
             finally { NativeMemory.AlignedFree(region); }
         };
+        Find("messagedemo","ToolEnvelope").Retain=wire=>
+        {
+            long need=Messagedemo.Schema.ToolEnvelopeLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Messagedemo.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Messagedemo.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Messagedemo.TableReport();
+                var root=Messagedemo.Schema.ToolEnvelopeLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Messagedemo.Schema.ToolEnvelopeMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Messagedemo.Schema.ToolEnvelopeSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
         Find("tblw2","Fleet").Retain=wire=>
         {
             long need=Tblw2.Schema.FleetLoadMeasure(wire);

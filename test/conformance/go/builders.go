@@ -10,6 +10,7 @@ import (
 	"graphdemo"
 	"listdemo"
 	"mapdemo"
+	"messagedemo"
 	"streamdemo"
 )
 
@@ -62,6 +63,9 @@ var builderCodecs = []builderCodec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	builderRow("tblw2", "Fleet", (*tblw2.FleetBuilder).Init, (*tblw2.FleetBuilder).Shutdown, (*tblw2.FleetBuilder).GetRoot, func(b *tblw2.FleetBuilder) tblw2.TableWriteContext { return &b.Arena }, tblw2.FleetLoadBuilder, tblw2.FleetMeasure, tblw2.FleetSave, func(r *tblw2.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	builderRow("messagedemo", "ToolEnvelope", (*messagedemo.ToolEnvelopeBuilder).Init, (*messagedemo.ToolEnvelopeBuilder).Shutdown, (*messagedemo.ToolEnvelopeBuilder).GetRoot, func(b *messagedemo.ToolEnvelopeBuilder) messagedemo.TableWriteContext { return &b.Arena }, messagedemo.ToolEnvelopeLoadBuilder, messagedemo.ToolEnvelopeMeasure, messagedemo.ToolEnvelopeSave, func(r *messagedemo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	builderRow("tblg1", "Guarded", (*tblg1.GuardedBuilder).Init, (*tblg1.GuardedBuilder).Shutdown, (*tblg1.GuardedBuilder).GetRoot, func(b *tblg1.GuardedBuilder) tblg1.TableWriteContext { return &b.Arena }, tblg1.GuardedLoadBuilder, tblg1.GuardedMeasure, tblg1.GuardedSave, func(r *tblg1.TableReport) report {
