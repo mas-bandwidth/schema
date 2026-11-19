@@ -36,12 +36,24 @@ table Fixed { values [3]Mode
 			refs []byte
 			lost int
 		}{{[]byte{2, 3, 0}, 1}, {[]byte{3, 3, 2}, 2}, {[]byte{2, 0, 2}, 0}} {
+			baseIDs := []uint64{0, ir.TableWireId("values"), ir.TableWireId(u.Enums["Mode"].VariantWireName(0)), ir.TableWireId("Future")}
+			usedIDs := []uint64{baseIDs[1]}
+			remap := map[byte]byte{0: 0}
+			mappedRefs := make([]byte, len(tc.refs))
+			for i, ref := range tc.refs {
+				if ref != 0 && remap[ref] == 0 {
+					remap[ref] = byte(len(usedIDs) + 1)
+					usedIDs = append(usedIDs, baseIDs[ref])
+				}
+				mappedRefs[i] = remap[ref]
+			}
 			wire := []byte{1, 1, 14, 5, 30, 3}
-			wire = append(wire, tc.refs...)
+			wire = append(wire, mappedRefs...)
 			wire = append(wire, 0)
-			for _, id := range []uint64{ir.TableWireId("values"), ir.TableWireId(u.Enums["Mode"].VariantWireName(0)), ir.TableWireId("Future"), 3} {
+			for _, id := range usedIDs {
 				wire = binary.LittleEndian.AppendUint64(wire, id)
 			}
+			wire = binary.LittleEndian.AppendUint64(wire, uint64(len(usedIDs)))
 			v := m.New(u.Tables[root])
 			var r tabletext.Report
 			store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}

@@ -131,7 +131,8 @@ func runMessageWriteContract(t *testing.T, u *ir.Unit, javac, javaBin string) (s
 	args := []string{"--release", "17", "-nowarn", "-d", classes}
 	var names []string
 	for name := range files {
-		keep := name == "TableFixed.java" ||
+		keep := name == "TableVariable.java" ||
+			name == "TableFixed.java" ||
 			name == "TableVocabulary.java" ||
 			name == "TableMessage.java" ||
 			strings.HasSuffix(name, "Fixed.java") ||
@@ -223,7 +224,7 @@ const messageWriteContractDriver = `public final class Driver {
         Outcome o = new Outcome();
         try {
             o.result = RootMessage.saveMessages(new RootFixed.Value[] { v }, 1, new byte[4096], new TableVocabulary.Report());
-        } catch (AssertionError e) {
+        } catch (AssertionError | RuntimeException e) {
             o.threw = true;
             o.result = Integer.MIN_VALUE;
         }

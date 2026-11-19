@@ -1054,13 +1054,34 @@ final class FixedTableCookWire {
     final s = wire.WireState();
     try {
       s.numberGraph(value, (obj) {
-        if (obj is wire.FixedTable) { wire.fixedTableNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.BenchMixed) { wire.benchMixedNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.MixedHitEvent) { wire.mixedHitEventNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.MixedChatEvent) { wire.mixedChatEventNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.MixedPickupEvent) { wire.mixedPickupEventNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.MixedEntity) { wire.mixedEntityNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.MixedStat) { wire.mixedStatNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.FixedTable) {
+          wire.fixedTableNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.BenchMixed) {
+          wire.benchMixedNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.MixedHitEvent) {
+          wire.mixedHitEventNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.MixedChatEvent) {
+          wire.mixedChatEventNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.MixedPickupEvent) {
+          wire.mixedPickupEventNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.MixedEntity) {
+          wire.mixedEntityNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.MixedStat) {
+          wire.mixedStatNumber(s, obj, <Object>{});
+          return;
+        }
         throw StateError('no node numberer for ${obj.runtimeType}');
       });
     } on StateError {

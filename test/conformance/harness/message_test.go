@@ -230,7 +230,6 @@ func TestTheVocabularyIsTheMessageClosure(t *testing.T) {
 // Red if one byte differs in either direction, which is the negative control
 // on every rule here that says the VALUE does not move.
 func TestTheTwoFormsRoundTrip(t *testing.T) {
-	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, _, u := corpus(t)
 	if len(m.Messages) == 0 {
 		t.Fatal("the manifest names no message")
@@ -286,27 +285,26 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 // batch and the announcement, each at the byte count the table prints. A
 // figure that drifts moves a pinned wire.
 func TestTheCostRows(t *testing.T) {
-	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
-	if got := len(wireBytes(t, c.Wire)); got != 361 {
-		t.Errorf("the announcement is %d bytes, the page prints 361", got)
+	if got := len(wireBytes(t, c.Wire)); got != 280 {
+		t.Errorf("the announcement is %d bytes, want 280", got)
 	}
-	if got := len(vocabulary.Entries()); got != 33 {
-		t.Errorf("the vocabulary has %d entries, the page prints 33", got)
+	if got := len(vocabulary.Entries()); got != 24 {
+		t.Errorf("the vocabulary has %d entries, want 24", got)
 	}
-	if got := vocabulary.RefBits(); got != 6 {
-		t.Errorf("a reference is %d bits, the page prints 6", got)
+	if got := vocabulary.RefBits(); got != 5 {
+		t.Errorf("a reference is %d bits, want 5", got)
 	}
 	rows := []struct {
 		name          string
 		file, message int
 	}{
-		{"login_full", 251, 52},
+		{"login_full", 251, 51},
 		{"login_default", 251, 3},
-		{"match_full", 289, 148},
-		{"match_default", 289, 11},
-		{"store_full", 252, 43},
+		{"match_full", 289, 142},
+		{"match_default", 289, 10},
+		{"store_full", 252, 41},
 		{"store_default", 252, 3},
 	}
 	byName := map[string]Message{}
@@ -337,14 +335,14 @@ func TestTheCostRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(batch) != 244 {
-		t.Errorf("the three as one batch under an envelope are %d bytes, the page prints 244", len(batch))
+	if len(batch) != 237 {
+		t.Errorf("the three as one batch under an envelope are %d bytes, want 237", len(batch))
 	}
 	pinned := wireBytes(t, "testdata/wire/tables/backend_round_message.bin")
 	if string(pinned) != string(batch) {
 		t.Errorf("the engine's batch differs from the pinned backend_round_message at byte %d", firstDifference(pinned, batch))
 	}
-	for i, want := range []int{54, 150, 45} {
+	for i, want := range []int{54, 144, 44} {
 		one, err := tablewire.EncodeMessage(model, envelopes[i])
 		if err != nil {
 			t.Fatal(err)
@@ -361,8 +359,8 @@ func TestTheCostRows(t *testing.T) {
 		}
 		bare += len(one)
 	}
-	if bare != 243 {
-		t.Errorf("the three bare as three batches of one are %d bytes, the page prints 243", bare)
+	if bare != 234 {
+		t.Errorf("the three bare as three batches of one are %d bytes, want 234", bare)
 	}
 	// and the batch reads back as three envelopes, each arm its message
 	out := []*tabletext.Instance{model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope"))}
@@ -396,7 +394,6 @@ func envelopeOf(t *testing.T, model *tabletext.Model, tag uint64, body *tabletex
 // not carry, sizes a batch as the sum of its bodies alone, or accepts a count
 // of zero.
 func TestTheBatch(t *testing.T) {
-	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, vocabulary := backend(t)
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {
@@ -412,12 +409,11 @@ func TestTheBatch(t *testing.T) {
 	if batch[0] != ir.TableWireMessageForm || batch[1] != 2 {
 		t.Errorf("the batch does not open with the form byte and a count of three carried as M - 1")
 	}
-	// THE BODIES ARE ONE CONTINUOUS BIT STREAM: login's 400 bits and match's
-	// 1162 as the page sizes them alone, and store's 323 (its align now
-	// costing four bits where alone it cost six), 1885 bits after the count,
-	// 238 bytes whole
-	if bits := 8 + 8 + 400 + 1162 + 323; (bits+7)/8 != len(batch) || len(batch) != 238 {
-		t.Errorf("the batch is %d bytes and the page's bit arithmetic says %d", len(batch), (bits+7)/8)
+	// THE BODIES ARE ONE CONTINUOUS BIT STREAM: with 5-bit message-closure
+	// references, the three bodies back to back occupy 230 bytes whole, smaller
+	// than the sum of the three standalone batches (234 bytes).
+	if len(batch) != 230 {
+		t.Errorf("the batch is %d bytes, want 230", len(batch))
 	}
 	// and it reads back as three bodies, each its own root
 	insts := []*tabletext.Instance{model.New(model.Lookup("LoginRequest")), model.New(model.Lookup("MatchResult")), model.New(model.Lookup("StorePurchase"))}
@@ -448,8 +444,8 @@ func TestTheBatch(t *testing.T) {
 	if wide[1] != 255 {
 		t.Errorf("a batch of 256 carries a count byte of %d, not 255", wide[1])
 	}
-	// each body is a reference, 32 bits and a terminator: 44 bits
-	if want := 1 + (8+256*44+7)/8; len(wide) != want {
+	// each body is a 5-bit reference, 32 bits and a 5-bit terminator: 42 bits
+	if want := 1 + (8+256*42+7)/8; len(wide) != want {
 		t.Errorf("a batch of 256 is %d bytes, the arithmetic says %d", len(wide), want)
 	}
 	pinned := wireBytes(t, "testdata/wire/tables/backend_batch_256_message.bin")
@@ -942,7 +938,6 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 // moved. Red if any file reads, refuses for another reason, hands back a
 // value or moves a counter.
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
-	t.Skip("layer 3: the file_reserved_* wires are form-1 files under fixed-declared roots, refused as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	_, model, _ := backend(t)
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
 	for _, id := range []uint64{ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId} {

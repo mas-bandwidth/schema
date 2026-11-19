@@ -442,8 +442,8 @@ func (squirrelFixedProofRunner) LoadLineage(
 	}
 	mod := squirreltable.ModuleName(u)
 	capArg := "null"
-	allocN := max(64, len(wireBytes)/8)
-	if cap >= 0 && cap <= allocN {
+	allocN := min(4096, max(64, len(wireBytes)/8))
+	if cap >= 0 {
 		allocN = cap
 	}
 	script := fmt.Sprintf(`%[5]s%[6]slocal T = dofile("schema_module.nut", true).require(%[1]q);

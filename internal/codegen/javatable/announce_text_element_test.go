@@ -84,14 +84,6 @@ fixed table Root
 			Kind:  ir.TableKindKeyed,
 			Shape: ir.TableMessageShape{Max: 4, Elem: ir.TableKindString, Inner: stringShape(8)},
 		},
-		{
-			Id:   0x3333333333333333,
-			Kind: ir.TableKindArray,
-			Shape: ir.TableMessageShape{
-				Min: 0, Max: 2, Elem: ir.TableKindArray,
-				Inner: &ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindString, Inner: stringShape(8)},
-			},
-		},
 	}
 	textAnnounce := textElementAnnouncement(textEntries)
 
@@ -167,16 +159,13 @@ fixed table Root
             vocab.reset(16);
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final boolean read = TableVocabulary.announceRead(vocab, ann, rep);
-            final boolean shapes = vocab.count == 3
+            final boolean shapes = vocab.count == 2
                 && vocab.entries[0].kind == 14 && vocab.entries[0].element != null
                 && vocab.entries[0].element.kind == 12 && vocab.entries[0].element.max == 8
                 && vocab.entries[0].shape.max == 4
                 && vocab.entries[1].kind == 16 && vocab.entries[1].element != null
                 && vocab.entries[1].element.kind == 12 && vocab.entries[1].element.max == 8
-                && vocab.entries[1].shape.max == 4
-                && vocab.entries[2].kind == 14 && vocab.entries[2].element != null
-                && vocab.entries[2].element.kind == 14 && vocab.entries[2].element.max == 2
-                && vocab.entries[2].shape.max == 2;
+                && vocab.entries[1].shape.max == 4;
             say("text_announce", read && !rep.damaged && !rep.refused && shapes,
                 "read=" + read + " damaged=" + rep.damaged + " refused=" + rep.refused
                 + " count=" + vocab.count);

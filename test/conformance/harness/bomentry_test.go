@@ -14,7 +14,7 @@ import (
 // once, then each original-nine driver reads the same four files once.
 func TestBOMEntryCorpusOracle(t *testing.T) {
 	_, _, units := corpus(t)
-	m, err := ReadManifest("testdata/conformance/tables/bom-entry/MANIFEST.txt", defaultJSONDir)
+	m, err := ReadManifest("testdata/conformance/tables/bom-entry/MANIFEST.txt", "testdata/conformance/tables/bom-entry/json")
 	if err != nil {
 		t.Fatal(err)
 	}

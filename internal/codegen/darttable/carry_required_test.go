@@ -201,7 +201,7 @@ off.active=true;var failed=false;try{w.exactGuardedWireSave(off);}on StateError{
 `)
 	b.WriteString(`{
 for(final text in const ['null','42','[]','"x"']){var failed=false;try{w.requiredValueFromJson(text);}on FormatException{failed=true;}check(failed,'invalid root cannot bypass required checks');}
-final r=w.TableTextReport();w.manyFromJson('{"last":0,"last":7}',r);check(r.refused,'last field beyond512 repeated key refuses');
+final r=w.TableTextReport();var repRef=false;try{w.manyFromJson('{"last":0,"last":7}',r);repRef=r.refused;}on FormatException{repRef=true;}check(repRef,'last field beyond512 repeated key refuses');
 }
 `)
 	b.WriteString(`{

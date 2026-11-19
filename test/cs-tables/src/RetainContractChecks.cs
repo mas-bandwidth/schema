@@ -118,17 +118,18 @@ static partial class Program
         // A by-value body containing only an unknown field must survive elision.
         RetainProbe(Fixture(Join(RetainFrame(1,13,future),new byte[]{0}),"inner","future"),1,1,0,0);
         RetainProbe(Fixture(Join(RetainFrame(1,13,future),new byte[]{0}),"inner","future"),1,1,0,1,idsCapacity:0);
-        byte[] defaultSlot=Join(new byte[]{13,1,3},Var((ulong)future.Length),future);
-        RetainProbe(Fixture(Join(RetainFrame(1,16,defaultSlot),new byte[]{0}),"banks","future","Low"),1,1,0,1,idsCapacity:0);
+        byte[] future3=Join(RetainScalar(3,7),new byte[]{0});
+        byte[] defaultSlot=Join(new byte[]{13,1,2},Var((ulong)future3.Length),future3);
+        RetainProbe(Fixture(Join(RetainFrame(1,16,defaultSlot),new byte[]{0}),"banks","Low","future"),1,1,0,1,idsCapacity:0);
         // Disjoint enum-keyed occurrences overwrite only the slot they carry.
-        byte[] low=Join(RetainScalar(2,41),RetainScalar(3,4),new byte[]{0});
-        byte[] high=Join(RetainScalar(2,42),RetainScalar(3,5),new byte[]{0});
-        byte[] bankLow=Join(new byte[]{13,1,4},Var((ulong)low.Length),low);
+        byte[] low=Join(RetainScalar(3,41),RetainScalar(4,4),new byte[]{0});
+        byte[] high=Join(RetainScalar(3,42),RetainScalar(4,5),new byte[]{0});
+        byte[] bankLow=Join(new byte[]{13,1,2},Var((ulong)low.Length),low);
         byte[] bankHigh=Join(new byte[]{13,1,5},Var((ulong)high.Length),high);
-        RetainRefused(Fixture(Join(RetainFrame(1,16,bankLow),RetainFrame(1,16,bankHigh),new byte[]{0}),"banks","future","hits","Low","High"),"a repeated keyed field id refuses the retaining load");
+        RetainRefused(Fixture(Join(RetainFrame(1,16,bankLow),RetainFrame(1,16,bankHigh),new byte[]{0}),"banks","Low","future","hits","High"),"a repeated keyed field id refuses the retaining load");
         // both slots in one keyed body is the lawful form of the same value
-        byte[] banks=Join(new byte[]{13,2,4},Var((ulong)low.Length),low,new byte[]{5},Var((ulong)high.Length),high);
-        RetainProbe(Fixture(Join(RetainFrame(1,16,banks),new byte[]{0}),"banks","future","hits","Low","High"),2,2,0,0,n=>Check(n.Banks[1].Hits==4 && n.Banks[2].Hits==5,"two keyed slots in one body survive"));
+        byte[] banks=Join(new byte[]{13,2,2},Var((ulong)low.Length),low,new byte[]{5},Var((ulong)high.Length),high);
+        RetainProbe(Fixture(Join(RetainFrame(1,16,banks),new byte[]{0}),"banks","Low","future","hits","High"),2,2,0,0,n=>Check(n.Banks[1].Hits==4 && n.Banks[2].Hits==5,"two keyed slots in one body survive"));
         foreach(int depth in new int[]{8,20,40,64,65})
         {
             byte[] content=Join(RetainScalar(2,1),new byte[]{0});

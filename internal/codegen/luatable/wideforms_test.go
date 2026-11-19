@@ -208,6 +208,7 @@ type WriteStream struct{ err error }
 
 func (s *WriteStream) Err() error                                  { return s.err }
 func (s *WriteStream) SerializeAlign()                             {}
+func (s *WriteStream) SerializeEnd() error                         { return s.err }
 func (s *WriteStream) SerializeBits(v *uint32, bits int)           {}
 func (s *WriteStream) SerializeBits64(v *uint64, bits int)         {}
 func (s *WriteStream) SerializeInt128(v *Int128, lo, hi Int128)    {}
@@ -219,6 +220,7 @@ type ReadStream struct{ err error }
 
 func (s *ReadStream) Err() error                                  { return s.err }
 func (s *ReadStream) SerializeAlign()                             {}
+func (s *ReadStream) SerializeEnd() error                         { return s.err }
 func (s *ReadStream) SerializeBits(v *uint32, bits int)           {}
 func (s *ReadStream) SerializeBits64(v *uint64, bits int)         {}
 func (s *ReadStream) SerializeInt128(v *Int128, lo, hi Int128)    {}

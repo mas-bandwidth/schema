@@ -550,16 +550,22 @@ namespace Probe
         {
             Root w = new Root();
             w.Seq = 41;
-            w.Pick.Type = (WideType)tag;
-            if (arm) { SetArm(w.Pick, (int)tag, 1000 + (int)tag); }
+            if (arm) { w.Pick.Type = (WideType)tag; SetArm(w.Pick, (int)tag, 1000 + (int)tag); }
             byte[] buf = new byte[Schema.RootFixedMeasure(1)];
             long wrote = Schema.RootFixedSave(w, buf);
             if (wrote != buf.Length) { return "tag " + tag + ": wrote " + wrote + " of " + buf.Length; }
+            uint layoutBytes = BinaryPrimitives.ReadUInt32LittleEndian(buf.AsSpan(Schema.TableFixedWire.HeaderBytes));
+            int recAt = Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes + 8;
+            if (!arm)
+            {
+                if (Arms <= 255) { buf[recAt] = (byte)tag; }
+                else if (Arms <= 65535) { BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(recAt), (ushort)tag); }
+                else { BinaryPrimitives.WriteUInt32LittleEndian(buf.AsSpan(recAt), (uint)tag); }
+            }
             if (endpoint)
             {
                 ulong oldHash = Schema.RootFixedHash ^ 0x5a5a5a5aUL;
                 BinaryPrimitives.WriteUInt64LittleEndian(buf.AsSpan(Schema.TableFixedWire.HashAt), oldHash);
-                uint layoutBytes = BinaryPrimitives.ReadUInt32LittleEndian(buf.AsSpan(Schema.TableFixedWire.HeaderBytes));
                 BinaryPrimitives.WriteUInt64LittleEndian(buf.AsSpan(Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes), oldHash);
             }
             Root[] back = new Root[] { new Root() };
@@ -568,10 +574,6 @@ namespace Probe
             long n = Schema.RootFixedLoad(back, buf, plan, rep);
             if (!arm && !endpoint)
             {
-                // The identity lane's bounds pass refuses an ordinal past the
-                // reader's own set. The compiled lane remaps through the
-                // writer's table: a tag no reader arm names lands None, the
-                // unknown-arm evolution answer, checked below.
                 if (n == -1 && rep.Refused) { return null; }
                 return "tag " + tag + ": a forged tag did not refuse the load: n=" + n + " reason=" + rep.Reason;
             }

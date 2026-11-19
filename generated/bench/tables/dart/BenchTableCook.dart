@@ -61,14 +61,15 @@ BigInt tableCookGetWide(ByteData view, int at, int width, bool signed) {
 // pointer past the region is the caller's problem at the dereference, and in
 // Dart the read after it would be an escaping RangeError — which is not a
 // refusal.
-int tableCookTextStart(ByteData view,int slot) {
- if(slot<0||slot>view.lengthInBytes-8)return -1;
- final delta=view.getInt64(slot,Endian.little);
- if(delta==0||delta < -slot||delta > view.lengthInBytes-slot-8)return -1;
- final at=slot+delta;
- final n=view.getUint32(at,Endian.little);
- if(n>view.lengthInBytes-at-9)return -1;
- return at;
+int tableCookTextStart(ByteData view, int slot) {
+  if (slot < 0 || slot > view.lengthInBytes - 8) return -1;
+  final delta = view.getInt64(slot, Endian.little);
+  if (delta == 0 || delta < -slot || delta > view.lengthInBytes - slot - 8)
+    return -1;
+  final at = slot + delta;
+  final n = view.getUint32(at, Endian.little);
+  if (n > view.lengthInBytes - at - 9) return -1;
+  return at;
 }
 
 abstract final class TableCookRef {
@@ -186,7 +187,8 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
+  final int Function(int id, Object blob, [Object? owner, String? field])
+  blobIndex;
   ByteData? out;
   bool valid = true;
 
@@ -1019,7 +1021,10 @@ final class TableEntityCookWire {
     final s = wire.WireState();
     try {
       s.numberGraph(value, (obj) {
-        if (obj is wire.TableEntity) { wire.tableEntityNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TableEntity) {
+          wire.tableEntityNumber(s, obj, <Object>{});
+          return;
+        }
         throw StateError('no node numberer for ${obj.runtimeType}');
       });
     } on StateError {
@@ -1461,7 +1466,10 @@ final class TableStatCookWire {
     final s = wire.WireState();
     try {
       s.numberGraph(value, (obj) {
-        if (obj is wire.TableStat) { wire.tableStatNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TableStat) {
+          wire.tableStatNumber(s, obj, <Object>{});
+          return;
+        }
         throw StateError('no node numberer for ${obj.runtimeType}');
       });
     } on StateError {
@@ -2562,12 +2570,30 @@ final class TableMixedCookWire {
     final s = wire.WireState();
     try {
       s.numberGraph(value, (obj) {
-        if (obj is wire.TableMixed) { wire.tableMixedNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.TableHitEvent) { wire.tableHitEventNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.TableChatEvent) { wire.tableChatEventNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.TablePickupEvent) { wire.tablePickupEventNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.TableEntity) { wire.tableEntityNumber(s, obj, <Object>{}); return; }
-        if (obj is wire.TableStat) { wire.tableStatNumber(s, obj, <Object>{}); return; }
+        if (obj is wire.TableMixed) {
+          wire.tableMixedNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.TableHitEvent) {
+          wire.tableHitEventNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.TableChatEvent) {
+          wire.tableChatEventNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.TablePickupEvent) {
+          wire.tablePickupEventNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.TableEntity) {
+          wire.tableEntityNumber(s, obj, <Object>{});
+          return;
+        }
+        if (obj is wire.TableStat) {
+          wire.tableStatNumber(s, obj, <Object>{});
+          return;
+        }
         throw StateError('no node numberer for ${obj.runtimeType}');
       });
     } on StateError {

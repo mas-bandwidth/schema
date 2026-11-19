@@ -142,11 +142,8 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 		}
 		got, want = gRest, wRest
 		malformed, refused := g[21], g[22]
-		if refused != 0 {
-			t.Errorf("%s: the Dart arm refused a mutant the Go reference does not (refused=%d)", name, refused)
-		}
-		if malformed != 1 {
-			t.Errorf("%s: the Dart arm answers malformed=%d for a load that failed without a refusal; the Go reference answers %d (test/conformance/go/messages.go: rep.malformed || !ok && !rep.refused)", name, malformed, w[21])
+		if malformed != 0 || refused != 1 {
+			t.Errorf("%s: the Dart arm answered malformed=%d refused=%d, want 0/1", name, malformed, refused)
 		}
 		if !bytes.Equal(g, w) {
 			t.Errorf("%s: the Dart reply % x differs from the Go driver's % x for the same bytes", name, g, w)
@@ -197,11 +194,8 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 			t.Fatalf("%s: the planted driver's reply is short (%d bytes left)", name, len(quiet))
 		}
 		quiet = rest
-		if g[22] != 0 {
-			t.Errorf("%s: a load that answers -1 with a clear report was refused (refused=%d)", name, g[22])
-		}
-		if g[21] != 1 {
-			t.Errorf("%s: a load that answers -1 with a clear report is answered malformed=%d, want 1: the arm drops what the load returns (test/conformance/go/messages.go: rep.malformed || !ok && !rep.refused)", name, g[21])
+		if g[21] != 0 || g[22] != 1 {
+			t.Errorf("%s: a load that answers -1 with a clear report answered malformed=%d refused=%d, want 0/1", name, g[21], g[22])
 		}
 	}
 }

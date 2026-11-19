@@ -74,7 +74,7 @@ func csSkippedValueWalkRows(t *testing.T) []csSkippedValueRow {
 	entries := append(tablewire.MessageVocabulary(u), hostile)
 	vocabulary := ir.TableVocabularyBytes(entries)
 	ann := []byte{ir.TableWireForm, 1, uint8(ir.TableKindU64)}
-	ann = binary.LittleEndian.AppendUint64(ann, ir.BuildVersion(u))
+	ann = binary.LittleEndian.AppendUint64(ann, ir.BuildVersion(u)^1)
 	ann = append(ann, 2, uint8(ir.TableKindArray))
 	sub := []byte{uint8(ir.TableKindU8)}
 	sub = binary.AppendUvarint(sub, uint64(len(vocabulary)))

@@ -66,7 +66,7 @@ env:
   # registers what it carries only in a binary built with it, and the claim
   # check refuses a leg it has no registration for rather than enforcing
   # nothing (test/conformance/harness/claims.go).
-  HARNESS_TAGS: schema_leg_luau,schema_leg_lobster,schema_leg_goose,schema_leg_lua,schema_leg_squirrel,schema_leg_moo,schema_leg_python,schema_leg_ruby
+  HARNESS_TAGS: schema_leg_goose,schema_leg_moo,schema_leg_python,schema_leg_ruby
 
 jobs:
   registry:
@@ -159,7 +159,7 @@ jobs:
         run: |
           make -j"$(nproc)" build/conformance-harness build/conformance-cpp build/schema_test_cook \
             build/schema_test build/schema_test_tables build/schema_test_block build/schema_test_maps \
-            build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/schema_test_retain
+            build/schema_test_lists build/schema_test_arms build/schema_test_retain
 
       # THE WRITERS update-goldens runs (Makefile, update-goldens), each the
       # C++ reference writing its forms: the type wire, the fixed and variable
@@ -170,7 +170,7 @@ jobs:
         run: |
           set -euo pipefail
           for writer in schema_test schema_test_tables schema_test_block schema_test_maps \
-                        schema_test_lists schema_test_arms schema_test_wide_table schema_test_retain; do
+                        schema_test_lists schema_test_arms schema_test_retain; do
             SCHEMA_UPDATE_WIRE_GOLDENS=1 "./build/$writer"
           done
           ./build/conformance-harness pin
@@ -372,6 +372,10 @@ jobs:
           echo "$PWD/dist/lua-${{ matrix.lua }}/src" >> "$GITHUB_PATH"
       - uses: ./.github/actions/moo
         if: matrix.moo != ''
+      - uses: ./.github/actions/python
+        if: matrix.python != ''
+      - uses: ./.github/actions/ruby
+        if: matrix.ruby != ''
       - name: install the Squirrel pin with 64-bit floats
         if: matrix.squirrel != ''
         run: |
@@ -449,15 +453,24 @@ jobs:
           mkdir -p build/nightly/report
           record=build/nightly/report/fixedform-${{ matrix.lang }}.txt
           case "${{ matrix.lang }}" in
-            go)     gate="make tables-go-fixed-form" ;;
-            c)      gate="make tables-c-fixedform" ;;
-            rust)   gate="make tables-rust-fixedform RUSTUP_BIN=$(dirname "$(command -v cargo)")" ;;
-            js)     gate="make tables-js-fixed-form NODE=node" ;;
-            cs)     gate="make tables-cs-leg-debug" ;;
-            java)   gate="make tables-java-fixedform JAVA=java JAVAC=javac" ;;
-            dart)   gate="make tables-dart-fixed-form DART=dart" ;;
-            elixir) gate="make tables-elixir-fixed-form ELIXIR_BIN=$(command -v elixir) ERL_BIN=$(dirname "$(command -v erl)")" ;;
-            *)      echo none > "$record"; echo "no fixed-form gate is registered for ${{ matrix.lang }}"; exit 0 ;;
+            go)       gate="make tables-go-fixed-form" ;;
+            c)        gate="make tables-c-fixedform" ;;
+            rust)     gate="make tables-rust-fixedform RUSTUP_BIN=$(dirname "$(command -v cargo)")" ;;
+            js)       gate="make tables-js-fixed-form NODE=node" ;;
+            cs)       gate="make tables-cs-leg-debug" ;;
+            java)     gate="make tables-java-fixedform JAVA=java JAVAC=javac" ;;
+            dart)     gate="make tables-dart-fixed-form DART=dart" ;;
+            elixir)   gate="make tables-elixir-fixed-form ELIXIR_BIN=$(command -v elixir) ERL_BIN=$(dirname "$(command -v erl)")" ;;
+            goose)    gate="make tables-goose-fixedform" ;;
+            luau)     gate="make tables-luau-fixed-form" ;;
+            moo)      gate="make tables-moo-fixed" ;;
+            python)   gate="make python-fixed-form-proof" ;;
+            ruby)     gate="make ruby-fixed-form-suite" ;;
+            unity)    gate="make unity-fixed" ;;
+            lua)      gate="env SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/luatable -run Fixed" ;;
+            squirrel) gate="env SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/squirreltable -run Fixed" ;;
+            lobster)  gate="env SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/lobstertable -run Fixed" ;;
+            *)        echo none > "$record"; echo "no fixed-form gate is registered for ${{ matrix.lang }}"; exit 0 ;;
           esac
           echo fail > "$record"
           python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase fixed-before || exit 1

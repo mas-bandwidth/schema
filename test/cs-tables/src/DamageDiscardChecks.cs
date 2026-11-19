@@ -411,27 +411,65 @@ static unsafe partial class Program
         byte[] unreached = CycleWire(id42, (9, n2), (9, n3));
         DiscardCycleNode("cycle_unreached", unreached, true);
 
-        // 3. False-guard pointer slot: active=false (0), guarded=&root (node 1) -> cyclic; guarded=&leaf (node 2) -> acyclic
-        byte[] falseGuardCycle = CycleWire(Join(id42, new byte[] { 2, 1, 0, 4, 17, 1 }));
+        static byte[] CycleCustomWire(byte[] rootBody, string[] usedNames, params (ulong TypeId, byte[] Body)[] nodes)
+        {
+            using var into = new MemoryStream();
+            into.WriteByte(1);
+            into.Write(rootBody);
+            if (nodes.Length > 0)
+            {
+                using var table = new MemoryStream();
+                table.Write(Var((ulong)nodes.Length));
+                foreach (var n in nodes)
+                {
+                    table.Write(Var(n.TypeId));
+                    table.Write(Var((ulong)n.Body.Length));
+                    table.Write(n.Body);
+                }
+                byte[] payload = table.ToArray();
+                into.Write(Var((ulong)(usedNames.Length + 1)));
+                into.WriteByte(12);
+                into.Write(Var((ulong)payload.Length));
+                into.Write(payload);
+            }
+            into.WriteByte(0);
+            foreach (string name in usedNames)
+            {
+                ulong h = FieldId(name);
+                for (int i = 0; i < 8; i++) { into.WriteByte((byte)h); h >>= 8; }
+            }
+            if (nodes.Length > 0)
+            {
+                ulong max = ulong.MaxValue;
+                for (int i = 0; i < 8; i++) { into.WriteByte((byte)max); max >>= 8; }
+                ulong cn = FieldId("CycleNode");
+                for (int i = 0; i < 8; i++) { into.WriteByte((byte)cn); cn >>= 8; }
+            }
+            ulong count = (ulong)usedNames.Length + (nodes.Length > 0 ? 2UL : 0UL);
+            for (int i = 0; i < 8; i++) { into.WriteByte((byte)count); count >>= 8; }
+            return into.ToArray();
+        }
+
+        // 3. False-guard pointer slot: active=false (0), guarded=&root (node 1) -> cyclic; active=true (1), guarded=&leaf (node 2) -> acyclic
+        byte[] falseGuardCycle = CycleCustomWire(Join(id42, new byte[] { 2, 1, 0, 3, 17, 1 }), new[] { "id", "active", "guarded" });
         DiscardCycleNode("cycle_false_guard", falseGuardCycle, true);
-        byte[] falseGuardAcyclic = CycleWire(Join(id42, new byte[] { 2, 1, 0, 4, 17, 2 }), (9, leaf));
+        byte[] falseGuardAcyclic = CycleCustomWire(Join(id42, new byte[] { 2, 1, 1, 3, 17, 2 }), new[] { "id", "active", "guarded" }, (5, leaf));
         DiscardCycleNode("acyclic_false_guard", falseGuardAcyclic, false);
 
         // 4. []*CycleNode list pointer slot: links=[&root] -> cyclic; links=[&leaf] -> acyclic
-        byte[] listCycle = CycleWire(Join(id42, new byte[] { 5, 14, 3, 17, 1, 1 }));
+        byte[] listCycle = CycleCustomWire(Join(id42, new byte[] { 2, 14, 3, 17, 1, 1 }), new[] { "id", "links" });
         DiscardCycleNode("cycle_list_slot", listCycle, true);
-        byte[] listAcyclic = CycleWire(Join(id42, new byte[] { 5, 14, 3, 17, 1, 2 }), (9, leaf));
+        byte[] listAcyclic = CycleCustomWire(Join(id42, new byte[] { 2, 14, 3, 17, 1, 2 }), new[] { "id", "links" }, (4, leaf));
         DiscardCycleNode("acyclic_list_slot", listAcyclic, false);
 
         // 5. map[int32]*CycleNode map pointer slot: edges={1: &root} -> cyclic; edges={1: &leaf} -> acyclic
-        byte[] entrySelf = Join(new byte[] { 7, 4 }, U32(1), new byte[] { 8, 17, 1, 0 });
+        byte[] entrySelf = Join(new byte[] { 3, 4 }, U32(1), new byte[] { 4, 17, 1, 0 });
         byte[] mapPayloadSelf = Join(new byte[] { 13, 1 }, Var((ulong)entrySelf.Length), entrySelf);
-        byte[] mapCycle = CycleWire(Join(id42, new byte[] { 6, 14 }, Var((ulong)mapPayloadSelf.Length), mapPayloadSelf));
+        byte[] mapCycle = CycleCustomWire(Join(id42, new byte[] { 2, 14 }, Var((ulong)mapPayloadSelf.Length), mapPayloadSelf), new[] { "id", "edges", "key", "value" });
         DiscardCycleNode("cycle_map_slot", mapCycle, true);
-
-        byte[] entryLeaf = Join(new byte[] { 7, 4 }, U32(1), new byte[] { 8, 17, 2, 0 });
+        byte[] entryLeaf = Join(new byte[] { 3, 4 }, U32(1), new byte[] { 4, 17, 2, 0 });
         byte[] mapPayloadLeaf = Join(new byte[] { 13, 1 }, Var((ulong)entryLeaf.Length), entryLeaf);
-        byte[] mapAcyclic = CycleWire(Join(id42, new byte[] { 6, 14 }, Var((ulong)mapPayloadLeaf.Length), mapPayloadLeaf), (9, leaf));
+        byte[] mapAcyclic = CycleCustomWire(Join(id42, new byte[] { 2, 14 }, Var((ulong)mapPayloadLeaf.Length), mapPayloadLeaf), new[] { "id", "edges", "key", "value" }, (6, leaf));
         DiscardCycleNode("acyclic_map_slot", mapAcyclic, false);
 
         // 6. Manifest acyclic twins (node_chain_two and node_diamond_chain) load cleanly across all 4 entry points

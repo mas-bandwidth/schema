@@ -734,7 +734,7 @@ func (g *fixedGen) emitWriteValue(f *ir.Field, base string, at int64, expr, ind 
 		g.emitWriteLoop(f, base, at, fmt.Sprintf("%d", f.ArrayBound), expr, ind)
 	case f.Array == ir.ArrayCounted:
 		count := fixedDartSibling(expr, "Count")
-		g.pf("%sassert(%s >= 0);\n", ind, count)
+		g.pf("%sassert(%s >= %d);\n", ind, count, f.ArrayMin)
 		g.pf("%sassert(%s <= %d);\n", ind, count, f.ArrayBound)
 		g.call(ind, "", "view.setInt32",
 			[]string{fixedOff(base, at), count, "Endian.little"}, ";")
@@ -743,6 +743,9 @@ func (g *fixedGen) emitWriteValue(f *ir.Field, base string, at int64, expr, ind 
 		length := fixedDartSibling(expr, "Length")
 		g.pf("%sassert(%s >= 0);\n", ind, length)
 		g.pf("%sassert(%s <= %d);\n", ind, length, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			g.pf("%sassert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, %s, %s, 0));\n", ind, length, expr)
+		}
 		g.call(ind, "", "view.setInt32",
 			[]string{fixedOff(base, at), length, "Endian.little"}, ";")
 		g.call(ind, "", "bytes.setRange", []string{
@@ -768,14 +771,21 @@ func fixedDartSibling(expr, suffix string) string {
 	return expr + suffix
 }
 
+func fixedHasWriteAssert(f *ir.Field) bool {
+	if f.HasIntRange || f.HasFloatRange {
+		return true
+	}
+	return f.Type.Kind == ir.TBits && f.Type.Width < 64
+}
+
 func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
 	elem := fixedElementBytes(f)
-	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) {
+	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) && !fixedHasWriteAssert(f) {
 		g.call(ind, "", "bytes.setRange",
 			[]string{fixedOff(base, at), fixedOff(base, at) + " + " + count, expr}, ";")
 		return
 	}
-	if fixedIsFloat32List(f) {
+	if fixedIsFloat32List(f) && !fixedHasWriteAssert(f) {
 		// THE ELEMENTS' BITS, read through a view of the Float32List's own
 		// storage, one word an element; the save's finite pass already
 		// refused a NaN or an infinity (docs/SPEC-TABLES.md §3.3). Reuse the
@@ -803,6 +813,7 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 				[]string{"bytes", "view", fixedOff(base, at), expr}, ";")
 			return
 		case *ir.Union:
+			g.pf("%sassert(%s.type >= 0 && %s.type <= %d);\n", ind, expr, expr, len(r.Variants))
 			tag := fixedUnionTagBytes(r)
 			g.storeTag(ind, fixedOff(base, at), tag, expr+".type")
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
@@ -818,11 +829,44 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 		case *ir.Enum:
 			// the ORDINAL is the variant's POSITION IN THE LAYOUT, from 1, and
 			// 0 is None — which is the value the declaration already carries
+			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(r.Variants))
 			g.storeTag(ind, fixedOff(base, at), int64(r.StorageBits/8), expr)
 			return
 		}
 	}
+	g.emitWriteBoundsAssert(g.pf, f, expr, ind)
 	g.store(ind, fixedOff(base, at), f.Type, expr)
+}
+
+func (g *fixedGen) emitWriteBoundsAssert(pf func(string, ...any), f *ir.Field, expr, ind string) {
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		switch {
+		case fixedIs128(f.Type):
+			lhsLo, cmpLo, _ := g.fixedClampTerms(f.Type, expr, lo)
+			lhsHi, cmpHi, _ := g.fixedClampTerms(f.Type, expr, hi)
+			pf("%sassert(!(%s < %s));\n", ind, lhsLo, cmpLo)
+			pf("%sassert(!(%s > %s));\n", ind, lhsHi, cmpHi)
+		case !fixedSigned(f.Type) && fixedStorageBytes(f.Type) == 8:
+			_, shi := fixedStorageRange(f.Type)
+			if lo.Sign() > 0 {
+				lhsLo, cmpLo, _ := g.fixedClampTerms(f.Type, expr, lo)
+				pf("%sassert(!(%s < %s));\n", ind, lhsLo, cmpLo)
+			}
+			if hi.Cmp(shi) < 0 {
+				lhsHi, cmpHi, _ := g.fixedClampTerms(f.Type, expr, hi)
+				pf("%sassert(!(%s > %s));\n", ind, lhsHi, cmpHi)
+			}
+		default:
+			pf("%sassert(%s >= %s && %s <= %s);\n", ind, expr, lo.String(), expr, hi.String())
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		maxv := (int64(1) << uint(f.Type.Width)) - 1
+		pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, maxv)
+	}
+	if lo, hi, ok := fixedFloatClampEnds(f); ok {
+		pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, expr, lo, expr, hi)
+	}
 }
 
 // ---------------------------------------------------------------------------

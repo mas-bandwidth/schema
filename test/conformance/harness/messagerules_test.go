@@ -180,7 +180,6 @@ func decodeOne(t *testing.T, model *tabletext.Model, root string, v *tablewire.V
 // message, or keeps the appended bit through the message round trip and so
 // contradicts the row §4 states as moved.
 func TestTheMasksWidth(t *testing.T) {
-	t.Skip("layer 3: the form-1 file size of a table now declared fixed, which writes form 3 (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	model := tabletext.NewModel(unit)
 	v := vocabularyOf(t, unit)
@@ -219,31 +218,25 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Errorf("the mask did not read back: ok=%v err=%v report=%+v perks=%d", ok, derr, report, instU64(t, back, "perks"))
 	}
 
-	// A BIT ABOVE W SURVIVES A FILE ROUND TRIP AND NOT A MESSAGE ONE
-	appended := model.New(loadout)
+	// A NEWER WRITER'S BIT ABOVE W SURVIVES MESSAGE READ AND REFUSES OLDER RE-ENCODE
+	newerUnit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo, Hyper }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
+	newerModel := tabletext.NewModel(newerUnit)
+	newerVocab := vocabularyOf(t, newerUnit)
+	appended := newerModel.New(newerModel.Lookup("Masked"))
 	setU64(t, appended, "perks", (1<<3)|1)
-	fileWire, err := tablewire.Encode(model, appended)
+	messageWire, err := tablewire.EncodeMessage(newerModel, appended)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fromFile := model.New(loadout)
-	var fileReport tabletext.Report
-	if ok, err := tablewire.Decode(model, fromFile, fileWire, &fileReport); err != nil || !ok || fileReport.Refused {
-		t.Fatalf("the file with the appended bit did not read: %v %+v", err, fileReport)
-	}
-	if instU64(t, fromFile, "perks") != (1<<3)|1 {
-		t.Errorf("the file round trip lost the appended bit: perks=%d", instU64(t, fromFile, "perks"))
-	}
-	messageWire, err := tablewire.EncodeMessage(model, fromFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fromMessage, ok, mreport, derr := decodeOne(t, model, "Masked", v, messageWire)
+	fromMessage, ok, mreport, derr := decodeOne(t, model, "Masked", newerVocab, messageWire)
 	if derr != nil || !ok || mreport.Refused {
 		t.Fatalf("the message with the appended bit did not read: %v %+v", derr, mreport)
 	}
-	if instU64(t, fromMessage, "perks") != 1 {
-		t.Errorf("the message round trip kept a bit above W: perks=%d, the mask's width says 1", instU64(t, fromMessage, "perks"))
+	if instU64(t, fromMessage, "perks") != (1<<3)|1 || mreport.Unknown != 0 {
+		t.Errorf("the message read dropped or miscounted a bit above W: perks=%d unknown=%d, want perks=9 unknown=0", instU64(t, fromMessage, "perks"), mreport.Unknown)
+	}
+	if _, err := tablewire.EncodeMessage(model, fromMessage); err == nil {
+		t.Errorf("the older build encoded a bit above W without refusing invalid_value")
 	}
 }
 

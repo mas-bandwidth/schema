@@ -165,7 +165,7 @@ int CheckChain(Probe.TableFixedEntry[] entries, int count, byte[] pool, string w
     for (int i = 0; i < count; ++i)
     {
         Probe.TableFixedEntry e = entries[i];
-        if (e.GuardCount != 3) { continue; }
+        if (e.GuardCount != 3 || BitConverter.ToUInt64(pool, (int)e.GuardIndex + 2 * Probe.Schema.TableFixedWire.GuardLinkBytes + 4) == 0) { continue; }
         for (int j = 0; j < 3; ++j)
         {
             int at = (int)e.GuardIndex + j * Probe.Schema.TableFixedWire.GuardLinkBytes;

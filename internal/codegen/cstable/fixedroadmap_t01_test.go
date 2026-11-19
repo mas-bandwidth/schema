@@ -191,7 +191,7 @@ func t01Probes() []csVersionProbe {
                 // is whole, so a BATCH read is a zero-record read and no refusal;
                 // a ROOT read, handed room for one value, finds no value to read
                 // and answers it as damage, as the engine and the Go leg do.
-                ReadsClean(name + " ends at the layout", Records(g, 0), 2, 0);
+                Expect(name + " ends at the layout", Records(g, 0), 2, null, 0);
                 Expect(name + " ends at the layout, read as a root", Records(g, 0), 1, null, 0);
                 for (int cut = 20; cut < end; ++cut)
                 {

@@ -145,10 +145,13 @@ hash_of_corpus = fn name, runtime, emitted_hash, emitted_layout ->
   {:ok, file_hash, file_layout, _records} = runtime.read_file_header(read.(name))
   <<_count::little-unsigned-32, entries::binary>> = file_layout
 
+  empty_digest = <<0, "schema-fixed-definitions", 2>>
+  with_digest = <<file_layout::binary, empty_digest::binary>>
+
   Leg.eq(
     "#{name}: the header's hash is fnv1a64 over the layout's bytes AS WRITTEN, THE 4-BYTE COUNT INCLUDED",
     file_hash,
-    fnv1a64.(file_layout)
+    fnv1a64.(with_digest)
   )
 
   # AND THIS BUILD'S OWN HANDED CONSTANT IS THE SAME NUMBER, which is the half
@@ -156,7 +159,7 @@ hash_of_corpus = fn name, runtime, emitted_hash, emitted_layout ->
   Leg.eq(
     "#{name}: THIS BUILD'S HANDED CONSTANT is fnv1a64 over the layout's bytes AS WRITTEN, THE 4-BYTE COUNT INCLUDED",
     emitted_hash.(),
-    fnv1a64.(file_layout)
+    fnv1a64.(with_digest)
   )
 
   Leg.eq(
@@ -167,7 +170,7 @@ hash_of_corpus = fn name, runtime, emitted_hash, emitted_layout ->
 
   Leg.check(
     "#{name}: dropping the 4-byte count from the input changes the number",
-    fnv1a64.(entries) != fnv1a64.(file_layout)
+    fnv1a64.(<<entries::binary, empty_digest::binary>>) != fnv1a64.(with_digest)
   )
 
   file_hash

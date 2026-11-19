@@ -671,8 +671,12 @@ func (g *cookGen) emitCookDescriptors(st *ir.Struct) {
 		if !g.cookNamed[r] {
 			continue
 		}
-		g.pf("  static TableCookInfo _%s() => %s;\n",
-			dartCookInfoSymbol(st.Name, r), dartCookInfoSymbol(st.Name, r))
+		sym := dartCookInfoSymbol(st.Name, r)
+		if line := fmt.Sprintf("  static TableCookInfo _%s() => %s;", sym, sym); len(line) <= 80 {
+			g.pf("%s\n", line)
+		} else {
+			g.pf("  static TableCookInfo _%s() =>\n      %s;\n", sym, sym)
+		}
 	}
 	g.trimBlank()
 }
@@ -894,10 +898,13 @@ func (g *blockGen) emitCookMapAccessors(f *ir.Field, offset int64, ind, origin s
 	g.pf("%sint _%sOrder(int entry, %s key) {\n", ind, name, keyType)
 	if key.Type.Kind == ir.TString {
 		if key.Type.TextUnbounded() {
-			g.pf("%s  final data=tableCookTextStart(view,entry+%d);\n", ind, keyOffset)
-			g.pf("%s  final used=data<0?0:view.getUint32(data,Endian.little);\n", ind)
-			g.pf("%s  for(var i=0;i<used&&i<key.length;i++){final order=view.getUint8(data+8+i)-key[i];if(order!=0)return order;}\n", ind)
-			g.pf("%s  return used-key.length;\n", ind)
+			g.pf("%s  final data = tableCookTextStart(view, entry + %d);\n", ind, keyOffset)
+			g.pf("%s  final used = data < 0 ? 0 : view.getUint32(data, Endian.little);\n", ind)
+			g.pf("%s  for (var i = 0; i < used && i < key.length; i++) {\n", ind)
+			g.pf("%s    final order = view.getUint8(data + 8 + i) - key[i];\n", ind)
+			g.pf("%s    if (order != 0) return order;\n", ind)
+			g.pf("%s  }\n", ind)
+			g.pf("%s  return used - key.length;\n", ind)
 		} else {
 			pieces := ir.FieldPieces(g.unit, key, keyOffset)
 			g.pf("%s  var used = view.getInt32(entry + %d, Endian.little);\n", ind, pieces[1].Offset)

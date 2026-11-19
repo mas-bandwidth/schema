@@ -88,7 +88,7 @@ func TestRustDeclaredFormsNative(t *testing.T) {
 			if !m.Read(v, []byte(`{"value":7}`), &tabletext.Report{}) {
 				t.Fatal("fixture read")
 			}
-			wire, err := tablewire.Encode(m, v)
+			wire, err := tablewire.EncodeVariable(m, v)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,7 +165,7 @@ func TestRustDeclaredFormsMixedClosure(t *testing.T) {
 		if !m.Read(v, []byte(tc.text), &tabletext.Report{}) {
 			t.Fatal("mixed fixture read")
 		}
-		wire, err := tablewire.Encode(m, v)
+		wire, err := tablewire.EncodeVariable(m, v)
 		if err != nil {
 			t.Fatal(err)
 		}

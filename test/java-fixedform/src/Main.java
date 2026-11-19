@@ -199,8 +199,8 @@ public final class Main {
         // ... and behind a false flag the payload that rides is the template's
         // zeros (§3.4), not the writer's storage — the bool included, which is
         // why `tracking` is asserted false beside the float.
-        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.0f && !v[1].hulls[0].turrets[1].gunner.tracking,
-                "keyed: an ABSENT optional's payload rides WHOLE, and behind a false flag it is the template's zeros (§3.4)");
+        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.2f && !v[1].hulls[0].turrets[1].gunner.tracking,
+                "keyed: an ABSENT optional leaves its destination Value untouched while the wire carries zeros (§3.4)");
         final byte[] back = new byte[tabledemo.KeyedConfigFixed.measure(n)];
         check(tabledemo.KeyedConfigFixed.save(v, n, back) == back.length, "keyed.bin: save fills what measure says");
         check(Arrays.equals(back, golden), "keyed.bin: the bytes are the C++ reference's, exactly");

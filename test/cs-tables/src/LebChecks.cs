@@ -21,9 +21,16 @@ static partial class Program
         // 2. Multi-byte LEB field reference (reference 128 = 0x80, 0x01):
         // Construct a vocabulary with 128 names, where name 128 is "a".
         string[] names128 = new string[128];
-        for (int i = 0; i < 127; i++) { names128[i] = "unused" + i; }
+        using var prefix127 = new MemoryStream();
+        for (int i = 0; i < 127; i++)
+        {
+            names128[i] = "unused" + i;
+            prefix127.Write(Var((ulong)(i + 1)));
+            prefix127.WriteByte(1);
+            prefix127.WriteByte(0);
+        }
         names128[127] = "a";
-        byte[] multiByteRefWire = Fixture(Join(new byte[] { 0x80, 0x01, 4 }, U32(100), new byte[] { 0 }), names128);
+        byte[] multiByteRefWire = Fixture(Join(prefix127.ToArray(), new byte[] { 0x80, 0x01, 4 }, U32(100), new byte[] { 0 }), names128);
         DirtyResetTarget(target);
         report = new V1.TableReport();
         verdict = V1.Schema.CfgLoadVerdict(target, multiByteRefWire, report);

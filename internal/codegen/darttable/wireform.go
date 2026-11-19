@@ -2578,6 +2578,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%sif(%s!tableTextValueValid(%s,-1))throw StateError('invalid_value: unbounded text');\n", ind, guard, expr)
 		g.pf("%sif(%stableTextByteLength(%s)>0xffffffff)throw StateError('blob_over_size_cap');\n", ind, guard, expr)
 	}
+	g.emitWireWriteAssert(f, expr, ind)
 	switch {
 	case ir.TextListPlain(f):
 		g.emitSavePlainTextList(f, expr, ind, id)
@@ -4158,4 +4159,82 @@ func stringBlobSlot(expr string) string {
 		panic(fmt.Sprintf("darttable: string blob requires an owning field expression, got %q", expr))
 	}
 	return fmt.Sprintf("%s, %q", expr[:i], expr[i+1:])
+}
+
+func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
+	if f == nil || f.IsTextList() || f.IsMap() {
+		return
+	}
+	if f.Type.Optional {
+		var sub wireGen
+		sub.cur = g.cur
+		sub.emitWireWriteAssert(nonOptional(f), expr, ind+"\t")
+		if sub.body.Len() > 0 {
+			g.pf("%sif (v.%s) {\n%s%s}\n", ind, hasMember(f), sub.body.String(), ind)
+		}
+		return
+	}
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
+		if f.Array == ir.ArrayCounted {
+			g.pf("%sassert(%s.length >= %d && %s.length <= %d);\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
+		} else if f.Array == ir.ArrayFixed || f.KeyEnum != "" {
+			g.pf("%sassert(%s.length == %d);\n", ind, expr, f.ArrayBound)
+		}
+		var sub wireGen
+		sub.cur = g.cur
+		sub.emitWireWriteAssert(singleOf(f), "assertElem", ind+"\t")
+		if sub.body.Len() > 0 {
+			g.pf("%sfor (final assertElem in %s) {\n%s%s}\n", ind, expr, sub.body.String(), ind)
+		}
+		return
+	}
+	if un := unionRef(f); un != nil {
+		g.pf("%sassert(%s.armTag >= 0 && %s.armTag <= %d);\n", ind, expr, expr, len(un.Variants))
+		return
+	}
+	if e := enumRef(f); e != nil {
+		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+		return
+	}
+	if f.Type.Blob() {
+		if f.Type.Kind == ir.TString {
+			g.pf("%sassert(%s == null || _wideValid(%s!.codeUnits));\n", ind, expr, expr)
+		}
+		return
+	}
+	if f.Type.Kind == ir.TString && !f.Type.TextUnbounded() {
+		g.pf("%sassert(tableTextValueValid(%s, %d));\n", ind, expr, f.Type.Size)
+		return
+	}
+	if f.Type.Kind == ir.TBytes && f.Type.Size > 0 {
+		g.pf("%sassert(%s.length <= %d);\n", ind, expr, f.Type.Size)
+		return
+	}
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		switch {
+		case isWide(f):
+			g.pf("%sassert(%s >= %s && %s <= %s);\n", ind, expr, bigLiteral(lo), expr, bigLiteral(hi))
+		case f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64:
+			if lo.Sign() > 0 {
+				flipLo := new(big.Int).Xor(new(big.Int).Set(lo), new(big.Int).Lsh(big.NewInt(1), 63))
+				g.pf("%sassert((%s ^ 0x8000000000000000) >= %s);\n", ind, expr, dartBoundLiteral(flipLo))
+			}
+			u64Max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
+			if hi.Cmp(u64Max) < 0 {
+				flipHi := new(big.Int).Xor(new(big.Int).Set(hi), new(big.Int).Lsh(big.NewInt(1), 63))
+				g.pf("%sassert((%s ^ 0x8000000000000000) <= %s);\n", ind, expr, dartBoundLiteral(flipHi))
+			}
+		default:
+			g.pf("%sassert(%s >= %s && %s <= %s);\n", ind, expr, lo.String(), expr, hi.String())
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		maxv := (int64(1) << uint(f.Type.Width)) - 1
+		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, maxv)
+	}
+	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sassert(!%s.isFinite || (%s >= %s && %s <= %s));\n", ind, expr, expr, lo, expr, hi)
+		}
+	}
 }

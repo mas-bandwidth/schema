@@ -167,7 +167,14 @@ func runCountRefusalProbe(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 	}
 	// An in-cap count without enough elements is damage, not storage refusal.
 	short := wrap(append(append([]byte{}, prefix...), field(3, 14, []byte{4, 2, 23, 0, 0, 0})...))
-	valid := wrap([]byte{1, 4, 99, 0, 0, 0})
+	vInst := model.New(model.Lookup("Root"))
+	if !model.Read(vInst, []byte(`{"marker":99}`), &tabletext.Report{}) {
+		t.Fatal("valid marker read")
+	}
+	valid, err := tablewire.Encode(model, vInst)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bounded := binary.AppendUvarint([]byte{4}, 1<<31)
 	bounded = append(bounded, 23, 0, 0, 0, 24, 0, 0, 0)
 	boundedWire := wrap(field(10, 14, bounded))

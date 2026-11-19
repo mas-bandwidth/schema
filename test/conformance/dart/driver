@@ -11,4 +11,9 @@
 #
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
+case "${2:-}" in
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json)
+    exec "${DART:-dart}" --enable-asserts test/conformance/dart/main.dart "$@"
+    ;;
+esac
 exec build/conformance-dart "$@"

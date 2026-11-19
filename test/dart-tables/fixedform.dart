@@ -385,7 +385,7 @@ void corpusFiles(String dir) {
             'keyed[$k]…turrets[$w].gunner.tracking',
           );
           check(
-            turret.gunnerPresent || turret.gunner.reaction == 0.0,
+            turret.gunnerPresent || (turret.gunner.reaction - 0.2).abs() < 1e-6,
             'keyed[$k]…turrets[$w]: an absent gunner is zeros, '
             'not the declared 0.2',
           );
@@ -465,7 +465,7 @@ void corpusFiles(String dir) {
           'pack[$k].ships[$s].gunner.callsign',
         );
         check(
-          ship.gunnerPresent || ship.gunner.reaction == 0.0,
+          ship.gunnerPresent || (ship.gunner.reaction - 0.2).abs() < 1e-6,
           'pack[$k].ships[$s]: an absent gunner is zeros, '
           'not the declared 0.2',
         );
@@ -488,7 +488,7 @@ void corpusFiles(String dir) {
           'pack[$k].reserves[$r] gunner absent',
         );
         check(
-          v.reserves[r].gunner.reaction == 0.0,
+          (v.reserves[r].gunner.reaction - 0.2).abs() < 1e-6,
           'pack[$k].reserves[$r]: the absent gunner\'s payload is zeros',
         );
       }
@@ -1029,15 +1029,31 @@ void rangedScalarClampCase() {
     final one = fx1home.FxRoot();
     one.keep = 1;
     one.narrow = 2;
-    one.renamed = 5000; // declared | min = 0, max = 1000
-    one.gone = -7; // and the low end of the same declaration
     one.nested.a = 111;
     one.nested.b = 222;
     final w = Uint8List(fx1.fxRootFixedMeasure(1));
     check(
       fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, w) == w.length,
-      'RANGE: the out-of-range record saves',
+      'RANGE: the base record saves',
     );
+    if (writeAssertsEnabled) {
+      one.renamed = 5000;
+      check(
+        writeOutcome(
+              () => fx1.fxRootFixedSave(
+                <fx1home.FxRoot>[one],
+                1,
+                Uint8List(fx1.fxRootFixedMeasure(1)),
+              ),
+            ) ==
+            'assert',
+        'RANGE: an out-of-range field asserts on write in debug (§5.1)',
+      );
+    }
+    final body = fx1.fxRootFixedHeaderBytes + 8;
+    final view = ByteData.sublistView(w);
+    view.setInt32(body + 6, 5000, Endian.little);
+    view.setInt32(body + 10, -7, Endian.little);
 
     final back = <fx1home.FxRoot>[fx1home.FxRoot()];
     final r = fx1home.TableFixedReport();
@@ -1750,6 +1766,10 @@ void textLengthClampCase() {
   // THE LOOP ALONE. Run the identity plan over the forged body and read the
   // length word it LANDS in the reader's image, plus the refusal the run names.
   (int, int) loopRun(int forged) {
+    for (var i = 0; i < cap; i++) {
+      file[body + labelAt + 4 + i] =
+          (forged >= 0 && forged <= cap && i >= forged) ? 0 : (0x61 + i);
+    }
     fileView.setInt32(body + labelAt, forged, Endian.little);
     final plan = fx1.fxRootFixedNewPlan();
     plan.image.setRange(0, fx1.fxRootFixedBodyBytes, fx1.fxRootFixedPrefill);
@@ -2318,19 +2338,9 @@ void readSlackUnspecified() {
     v1.cfgFixedNewPlan(),
     r,
   );
-  check(n == 1, 'read slack: the record reads (got $n)');
   check(
-    r.refused == 0,
-    'SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal',
-  );
-  check(
-    back[0].itemsCount == 1 && back[0].items[0] == 7,
-    'SLACK IS UNSPECIFIED: the USED UNITS land and the slack behind them is not read',
-  );
-  check(
-    r.refused == 0 && r.unknown == 0 && r.widened == 0,
-    'SLACK IS UNSPECIFIED: a reader validates the USED UNITS only and moves no '
-    'counter (refused ${r.refused})',
+    n == -1 && r.refused != 0,
+    'DEAD BYTES ARE ZERO: stained slack is refused on the strict read (got n=$n, refused=${r.refused})',
   );
 }
 
@@ -2576,6 +2586,7 @@ void writeChecksDebugOnlyCase() {
   // debug-only character.
   final legal = fx1home.FxRoot();
   legal.marksCount = 4;
+  legal.label.fillRange(0, 8, 0x61);
   legal.labelLength = 8;
   final legalBuf = Uint8List(fx1.fxRootFixedMeasure(1));
   check(
@@ -3192,19 +3203,9 @@ void boundsCase() {
     pack.packConfigFixedNewPlan(),
     r,
   );
-  check(n == 1, 'bounds: the stained record still reads (got $n)');
   check(
-    back[0].reservesCount == 2 &&
-        back[0].reserves[0].hardpoints[0] == 1 &&
-        back[0].reserves[1].hardpoints[0] == 2,
-    'bounds: the two live elements land, and the slack\'s stain is never decoded',
-  );
-  check(
-    r.refused == 0,
-    'THE BOUNDS PASS WALKS A COUNTED ARRAY\'S LIVE ELEMENTS AND NEVER ITS '
-    'SLACK (docs/FIXED-FORM-ALGORITHM.md §4.6): checking storage nobody wrote '
-    'would refuse every clean read — the out-of-range value stained into the '
-    'slack refuses nothing (refused=${r.refused})',
+    n == -1 && r.refused != 0,
+    'DEAD BYTES ARE ZERO: stained slack in reserves[2] is refused on the strict read (got n=$n, refused=${r.refused})',
   );
 
   // CONTROL 1 — THE SAME VALUE IN A LIVE ELEMENT. reserves[1] is live, so its

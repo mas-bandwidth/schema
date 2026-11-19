@@ -45,7 +45,9 @@ import '../../../build/tables-generated-dart/vocab/VocabFixed.dart' as vocab;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoFixed.dart' as vocab9demo_fixed;
 import '../../../build/tables-generated-dart/vocab9/Vocab9Fixed.dart' as vocab9;
 import '../../../build/tables-generated-dart/examples/TabledemoFixed.dart' as tabledemo_fixed;
+import '../../../build/tables-generated-dart/examples/Tables.dart' as tables_pkt;
 import '../../../build/tables-generated-dart/examples/TablesFixed.dart' as tables_fixed;
+import '../../../build/tables-generated-dart/backend/Backend.dart' as backend_pkt;
 import '../../../build/tables-generated-dart/examples/NestedFixed.dart' as nested_fixed;
 import '../../../build/tables-generated-dart/examples/PackFixed.dart' as pack_fixed;
 import '../../../build/tables-generated-dart/examples/KeyedFixed.dart' as keyed_fixed;
@@ -2048,6 +2050,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.squadWireLoad, listdemo.squadWireSave);
     case 'tblp2 Chain':
       return _wireResaveOne(wire, tblp2.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblp2.chainWireLoad, tblp2.chainWireSave);
+    case 'messagedemo ToolEnvelope':
+      return _wireResaveOne(wire, messagedemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), messagedemo.toolEnvelopeWireLoad, messagedemo.toolEnvelopeWireSave);
     case 'backenddemo LoginRequest':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = backenddemo.TableWireReport();
@@ -2449,6 +2453,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = tblp2.chainFromJson(text, rep);
       if (rep.refused) return null;
       return tblp2.chainWireSave(v);
+    case 'messagedemo ToolEnvelope':
+      final rep = messagedemo.TableTextReport();
+      final v = messagedemo.toolEnvelopeFromJson(text, rep);
+      if (rep.refused) return null;
+      return messagedemo.toolEnvelopeWireSave(v);
     case 'backenddemo LoginRequest':
       final rep = backenddemo.TableTextReport();
       final w = backenddemo.loginRequestFromJson(text, rep);
@@ -2781,6 +2790,11 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = tblp2.chainWireLoad(wire, rep);
       if (rep.refused) return null;
       return tblp2.chainToJson(v);
+    case 'messagedemo ToolEnvelope':
+      final rep = messagedemo.TableWireReport();
+      final v = messagedemo.toolEnvelopeWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return messagedemo.toolEnvelopeToJson(v);
     case 'backenddemo LoginRequest':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = backenddemo.TableWireReport();
@@ -3192,6 +3206,10 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
     case 'tblp2 Chain':
       final rep = tblp2.TableWireReport();
       tblp2.chainWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'messagedemo ToolEnvelope':
+      final rep = messagedemo.TableWireReport();
+      messagedemo.toolEnvelopeWireLoad(wire, rep);
       return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'backenddemo LoginRequest':
       return _fixedReportLine(wire, backenddemo_fixed.LoginRequest.new, backend.loginRequestFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), backend.loginRequestFixedLoad);
@@ -4128,8 +4146,8 @@ MessageCodec _messageRow<T, V, R>({
       loaded: true,
       unknown: rep.unknown as int,
       clamped: 0 as int,
-      malformed: (rep.refused as bool) || !ok && !(rep.refused as bool),
-      refused: rep.refused as bool,
+      malformed: false,
+      refused: (rep.refused as bool) || !ok,
       measure: -1,
       saved: saved,
     );
@@ -4313,7 +4331,8 @@ const String surfaces =
     ''
     'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
+    'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
+    'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -4613,6 +4632,10 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'messagedemo ToolMessage':
       return _FuzzRoot(
           _plainCodec(messagedemo.TableWireReport.new, messagedemo.toolMessageWireMeasure, messagedemo.toolMessageWireLoad, messagedemo.toolMessageWireSave));
+    case 'messagedemo ToolEnvelope':
+      return _FuzzRoot(
+          _plainCodec(messagedemo.TableWireReport.new, messagedemo.toolEnvelopeWireMeasure, messagedemo.toolEnvelopeWireLoad, messagedemo.toolEnvelopeWireSave),
+          retain: _retainCodec(messagedemo.TableRetain.new, messagedemo.TableWireReport.new, messagedemo.toolEnvelopeWireMeasure, messagedemo.toolEnvelopeWireLoadRetain, messagedemo.toolEnvelopeWireSaveRetain));
     case 'scalars SimState':
       return _FuzzRoot(
           _plainCodec(scalardemo.TableWireReport.new, scalardemo.simStateWireMeasure, scalardemo.simStateWireLoad, scalardemo.simStateWireSave));
@@ -4809,6 +4832,289 @@ int run(List<String> args) {
       return surfaceReason(out, 'cook');
     case 'block-reason':
       return surfaceReason(out, 'block');
+    case 'write-refusal':
+    case 'write-refusal-fixed':
+    case 'write-refusal-message':
+    case 'write-refusal-json':
+      return surfaceWriteRefusal(out, surface);
   }
   return 2;
+}
+
+Uint8List _hexBytes(String s) {
+  final out = Uint8List(s.length ~/ 2);
+  for (var i = 0; i < out.length; i++) {
+    out[i] = int.parse(s.substring(i * 2, i * 2 + 2), radix: 16);
+  }
+  return out;
+}
+
+double _parseRefusalFloat(String s) {
+  switch (s) {
+    case 'nan':
+      return double.nan;
+    case 'inf':
+    case '+inf':
+      return double.infinity;
+    case '-inf':
+      return double.negativeInfinity;
+    default:
+      return double.parse(s);
+  }
+}
+
+void _fillTextFixed(Uint8List dst, void Function(int) setLen, String kind, String val) {
+  if (kind == 'length') {
+    final n = int.parse(val);
+    for (var i = 0; i < n && i < dst.length; i++) {
+      dst[i] = 0x61;
+    }
+    setLen(n);
+    return;
+  }
+  final b = _hexBytes(val);
+  for (var i = 0; i < b.length && i < dst.length; i++) {
+    dst[i] = b[i];
+  }
+  setLen(b.length);
+}
+
+String _catchWrite(int Function() fn) {
+  try {
+    return fn() < 0 ? 'refused' : 'wrote';
+  } on AssertionError {
+    return 'refused';
+  } on Error {
+    return 'refused';
+  } on Exception {
+    return 'refused';
+  }
+}
+
+int surfaceWriteRefusal(String outDir, String surface) {
+  for (final f in kind(surface)) {
+    final name = f[1];
+    var unit = f[2];
+    final root = f[3];
+    final wirePath = f[4];
+    final path = f[5];
+    final vkind = f[6];
+    final text = f[7];
+    if (surface == 'write-refusal-message') {
+      List<String>? conn;
+      for (final c in kind('connection')) {
+        if (c[1] == unit) {
+          conn = c;
+          break;
+        }
+      }
+      if (conn == null) {
+        stderr.writeln('$surface $name: no connection $unit');
+        return 1;
+      }
+      unit = conn[2];
+    }
+    final wire = File(wirePath).readAsBytesSync();
+    var answer = '';
+    if (surface == 'write-refusal-json') {
+      if ('$unit $root' != 'tabledemo RootConfig') {
+        stderr.writeln('$surface $name: unsupported $unit.$root');
+        return 1;
+      }
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
+      if (fx == null) {
+        stderr.writeln('$surface $name: load failed');
+        return 1;
+      }
+      final w = tabledemo.RootConfig();
+      _f2w_examples_RootConfig(fx, w);
+      if (path == 'version_note' && vkind == 'bytes') {
+        try {
+          w.versionNote = utf8.decode(_hexBytes(text), allowMalformed: false);
+        } on FormatException {
+          answer = 'unrepresentable';
+        }
+      } else {
+        stderr.writeln('$surface $name: unsupported json mutation $path $vkind');
+        return 1;
+      }
+      if (answer.isEmpty) {
+        try {
+          final js = tabledemo.rootConfigToJson(w);
+          answer = js.isEmpty ? 'refused' : 'wrote';
+        } on AssertionError {
+          answer = 'refused';
+        } on Error {
+          answer = 'refused';
+        } on Exception {
+          answer = 'refused';
+        }
+      }
+    } else if ('$unit $root' == 'tabledemo RootConfig') {
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
+      if (fx == null) {
+        stderr.writeln('$surface $name: load failed');
+        return 1;
+      }
+      if (surface == 'write-refusal') {
+        final w = tabledemo.RootConfig();
+        _f2w_examples_RootConfig(fx, w);
+        var representable = true;
+        switch ('$path $vkind') {
+          case 'weapons[0].penetration int':
+            w.weapons[0].penetration = int.parse(text);
+            break;
+          case 'weapons[0].channel int':
+            w.weapons[0].channel = int.parse(text);
+            break;
+          case 'weapons count':
+            final n = int.parse(text);
+            while (w.weapons.length < n) {
+              w.weapons.add(tabledemo.WeaponConfig());
+            }
+            if (w.weapons.length > n) {
+              w.weapons = w.weapons.sublist(0, n);
+            }
+            break;
+          case 'version_note length':
+            w.versionNote = 'a' * int.parse(text);
+            break;
+          case 'version_note bytes':
+            try {
+              w.versionNote = utf8.decode(_hexBytes(text), allowMalformed: false);
+            } on FormatException {
+              representable = false;
+            }
+            break;
+          case 'weapons[0].effect tag':
+            w.weapons[0].effect.armTag = int.parse(text);
+            break;
+          case 'weapons[0].damage float':
+            w.weapons[0].damage = _parseRefusalFloat(text);
+            break;
+          default:
+            stderr.writeln('$surface $name: unsupported RootConfig mutation $path $vkind');
+            return 1;
+        }
+        answer = !representable ? 'unrepresentable' : _catchWrite(() {
+          tabledemo.rootConfigWireSave(w);
+          return 0;
+        });
+      } else {
+        var representable = true;
+        switch ('$path $vkind') {
+          case 'weapons[0].penetration int':
+            fx.weapons[0].penetration = int.parse(text);
+            break;
+          case 'weapons[0].channel int':
+            fx.weapons[0].channel = int.parse(text);
+            break;
+          case 'weapons count':
+            fx.weaponsCount = int.parse(text);
+            break;
+          case 'version_note length':
+          case 'version_note bytes':
+            _fillTextFixed(fx.versionNote, (n) => fx.versionNoteLength = n, vkind, text);
+            break;
+          case 'weapons[0].effect tag':
+            fx.weapons[0].effect.type = tables_pkt.EffectType(int.parse(text));
+            break;
+          case 'weapons[0].damage float':
+            fx.weapons[0].damage = _parseRefusalFloat(text);
+            break;
+          default:
+            stderr.writeln('$surface $name: unsupported RootConfig mutation $path $vkind');
+            return 1;
+        }
+        answer = !representable ? 'unrepresentable' : _catchWrite(() {
+          final n = tables_fixed.rootConfigFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.rootConfigFixedSave(<tabledemo_fixed.RootConfig>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'tabledemo LoadoutConfig') {
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad);
+      if (fx == null) {
+        stderr.writeln('$surface $name: load failed');
+        return 1;
+      }
+      if ('$path $vkind' != 'grade ordinal') {
+        stderr.writeln('$surface $name: unsupported LoadoutConfig mutation $path $vkind');
+        return 1;
+      }
+      if (surface == 'write-refusal') {
+        final w = tabledemo.LoadoutConfig();
+        _f2w_examples_LoadoutConfig(fx, w);
+        w.grade = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          tabledemo.loadoutConfigWireSave(w);
+          return 0;
+        });
+      } else {
+        fx.grade = tables_pkt.Grade(int.parse(text));
+        answer = _catchWrite(() {
+          final n = tables_fixed.loadoutConfigFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.loadoutConfigFixedSave(<tabledemo_fixed.LoadoutConfig>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'backenddemo StorePurchase') {
+      final fx = _fixedLoadOne(wire, backenddemo_fixed.StorePurchase.new, backend.storePurchaseFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.storePurchaseFixedLoad);
+      if (fx == null) {
+        stderr.writeln('$surface $name: load failed');
+        return 1;
+      }
+      var representable = true;
+      switch ('$path $vkind') {
+        case 'quantity int':
+          fx.quantity = int.parse(text);
+          break;
+        case 'sku length':
+        case 'sku bytes':
+          _fillTextFixed(fx.sku, (n) => fx.skuLength = n, vkind, text);
+          break;
+        case 'currency ordinal':
+          fx.currency = backend_pkt.Currency(int.parse(text));
+          break;
+        default:
+          stderr.writeln('$surface $name: unsupported StorePurchase mutation $path $vkind');
+          return 1;
+      }
+      if (!representable) {
+        answer = 'unrepresentable';
+      } else {
+        answer = _catchWrite(() {
+          final batch = <backenddemo_fixed.StorePurchase>[fx];
+          final n = backend.storePurchaseMeasureMessages(batch, backenddemo_fixed.TableReport());
+          if (n < 0) return -1;
+          final out = Uint8List(n);
+          return backend.storePurchaseSaveMessages(batch, out, backenddemo_fixed.TableReport()) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'backenddemo MatchResult') {
+      final fx = _fixedLoadOne(wire, backenddemo_fixed.MatchResult.new, backend.matchResultFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.matchResultFixedLoad);
+      if (fx == null) {
+        stderr.writeln('$surface $name: load failed');
+        return 1;
+      }
+      if ('$path $vkind' == 'players[0].score int') {
+        fx.players[0].score = int.parse(text);
+      } else {
+        stderr.writeln('$surface $name: unsupported MatchResult mutation $path $vkind');
+        return 1;
+      }
+      answer = _catchWrite(() {
+        final batch = <backenddemo_fixed.MatchResult>[fx];
+        final n = backend.matchResultMeasureMessages(batch, backenddemo_fixed.TableReport());
+        if (n < 0) return -1;
+        final out = Uint8List(n);
+        return backend.matchResultSaveMessages(batch, out, backenddemo_fixed.TableReport()) == n ? 0 : -1;
+      });
+    } else {
+      stderr.writeln('$surface $name: unsupported $unit.$root');
+      return 1;
+    }
+    File('$outDir/$name').writeAsStringSync('$answer\n');
+  }
+  return 0;
 }

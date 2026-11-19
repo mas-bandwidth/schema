@@ -700,7 +700,7 @@ func runAllRuntimesElixir(t *testing.T, u *ir.Unit, ann []byte, cases []depthBou
   def check_case(name, vocab, wire, true) do
     case M.load_messages(vocab, wire, 2) do
       {:ok, [b0, b1]} ->
-        if length(b0) == 2 and Enum.at(b0, 1) == {1, 42} and b1 == [{1, 99}] do
+        if b0 == [{1, 42}] and b1 == [{1, 99}] do
           IO.puts("PASS " <> name)
         else
           IO.puts("FAIL " <> name)
@@ -722,7 +722,7 @@ func runAllRuntimesElixir(t *testing.T, u *ir.Unit, ann []byte, cases []depthBou
   end
   def run do
 `)
-	fmt.Fprintf(&probe, "    {:ok, vocab} = M.announce_read(<<%s>>)\n", depthBoundaryHexList(ann, ""))
+	fmt.Fprintf(&probe, "    {:ok, vocab} = M.announce_read(<<%s>>)\n    {:ok, vocab} = M.for_root(vocab, \"Root\")\n", depthBoundaryHexList(ann, ""))
 	for _, tc := range cases {
 		fmt.Fprintf(&probe, "    check_case(%q, vocab, <<%s>>, %v)\n", tc.name, depthBoundaryHexList(tc.wire, ""), tc.expectOK)
 	}

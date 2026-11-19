@@ -138,6 +138,42 @@ func fixedCorpusRoundTrip(t *testing.T, corpus, file string, records int) {
 		runDeadVectorAt(t, dartBinary(t), corpus, vec)
 		return
 	}
+	if file == "negative_zero.bin" || strings.HasPrefix(file, "deprecated_") {
+		// Re-saving canonicalizes compressed -0 to +0 (FNZ) and zeroes deprecated fields (FD1);
+		// verify clean load, re-save, and canonical idempotence on the second round trip.
+		u := t12Schema(t, t12SchemaBase(file))
+		dir, codec, typefile, typ, lower := t12Emit(t, u)
+		probe := fmt.Sprintf(`import 'dart:io';
+import 'dart:typed_data';
+import %q as c;
+import %q as t;
+void check(bool ok, String what) {
+  if (!ok) { stderr.writeln('FAIL: $what'); exitCode = 1; }
+}
+void main() {
+  final data = File(%q).readAsBytesSync();
+  final plan = c.%sFixedNewPlan();
+  final report = t.TableFixedReport();
+  final values = <t.%s>[for (var i = 0; i < %d; i++) t.%s()];
+  for (final v in values) { t.init%s(v); }
+  check(c.%sFixedLoad(values, values.length, data, data.length, plan, report) == %d && report.refused == 0, 'canonicalize load');
+  final saved = Uint8List(c.%sFixedMeasure(%d));
+  check(c.%sFixedSave(values, %d, saved) == saved.length, 'canonicalize save');
+  final values2 = <t.%s>[for (var i = 0; i < %d; i++) t.%s()];
+  for (final v in values2) { t.init%s(v); }
+  check(c.%sFixedLoad(values2, values2.length, saved, saved.length, plan, report) == %d && report.refused == 0, 'canonicalize reload');
+  final saved2 = Uint8List(c.%sFixedMeasure(%d));
+  check(c.%sFixedSave(values2, %d, saved2) == saved2.length, 'canonicalize resave');
+  for (var i = 0; i < saved.length; i++) { check(saved[i] == saved2[i], 'canonicalize idempotent'); }
+  if (exitCode == 0) { stdout.writeln('ok'); }
+}
+`, "./"+codec, "./"+typefile, path, lower, typ, records, typ, typ, lower, records, lower, records, lower, records, typ, records, typ, typ, lower, records, lower, records, lower, records)
+		out := t12RunProbe(t, dir, "t12_canonicalize.dart", probe)
+		if !strings.Contains(out, "ok") {
+			t.Fatalf("R27 canonicalize round trip of %s printed no ok: %s", file, out)
+		}
+		return
+	}
 	if leaf := fixedManifestNonFinite(t, corpus)[file]; leaf != "" {
 		// THE REFERENCE STILL WRITES A NaN OR AN INFINITY HERE, and under the
 		// finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3) the file is a

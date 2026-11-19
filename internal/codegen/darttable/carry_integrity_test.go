@@ -94,7 +94,7 @@ final reused=w.TableWireReport();final damaged=Uint8List.fromList(pin)..[1]^=1;w
 	if !m.Read(reading, []byte(`{"x":19,"y":-3,"label":"ok"}`), &tabletext.Report{}) {
 		t.Fatal("reading input")
 	}
-	raw, err := tablewire.Encode(m, reading)
+	raw, err := tablewire.EncodeVariable(m, reading)
 	if err != nil {
 		t.Fatal(err)
 	}

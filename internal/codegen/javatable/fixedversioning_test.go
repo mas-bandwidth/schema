@@ -1294,6 +1294,30 @@ public final class ArmProbe {
         if (trueBytes) {
             data[body] = 2;
             data[body + 1] = 7;
+            final tblfu1.FuRootFixed.Value[] rv1 = {
+                new tblfu1.FuRootFixed.Value(),
+                new tblfu1.FuRootFixed.Value(),
+                new tblfu1.FuRootFixed.Value(),
+            };
+            final tblfu1.TableFixed.Report rr1 = new tblfu1.TableFixed.Report();
+            final int rn1 = tblfu1.FuRootFixed.load(rv1, rv1.length, data,
+                    tblfu1.TableFixed.plan(4096), new short[4096], tblfu1.FuRootFixed.image(), rr1);
+            if (rn1 != -1 || !rr1.refused) {
+                fail("FU1 non-boolean byte must refuse: n=" + rn1 + " refused=" + rr1.refused);
+            }
+            final tblfu2.FuRootFixed.Value[] rv2 = {
+                new tblfu2.FuRootFixed.Value(),
+                new tblfu2.FuRootFixed.Value(),
+                new tblfu2.FuRootFixed.Value(),
+            };
+            final tblfu2.TableFixed.Report rr2 = new tblfu2.TableFixed.Report();
+            final int rn2 = tblfu2.FuRootFixed.load(rv2, rv2.length, data,
+                    tblfu2.TableFixed.plan(4096), new short[4096], tblfu2.FuRootFixed.image(), rr2);
+            if (rn2 != -1 || !rr2.refused) {
+                fail("FU2 non-boolean byte must refuse: n=" + rn2 + " refused=" + rr2.refused);
+            }
+            System.out.println("ok");
+            return;
         }
 
         // 1. Identity read on FU1

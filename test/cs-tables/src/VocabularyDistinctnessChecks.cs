@@ -7,14 +7,28 @@ static partial class Program
 {
     static byte[] VocabularyFixture(ulong[] ids)
     {
-        byte[] bytes = new byte[10 + ids.Length * 8];
-        bytes[0] = 1; // form 1; byte 1 is the empty body's terminator
+        using var body = new System.IO.MemoryStream();
+        body.WriteByte(1); // form 1
         for (int i = 0; i < ids.Length; i++)
         {
-            BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(2 + i * 8), ids[i]);
+            byte[] r = Var((ulong)(i + 1));
+            body.Write(r, 0, r.Length);
+            body.WriteByte(1); // bool kind
+            body.WriteByte(0);
         }
-        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(bytes.Length - 8), (ulong)ids.Length);
-        return bytes;
+        body.WriteByte(0); // body terminator
+        Span<byte> word = stackalloc byte[8];
+        for (int i = 0; i < ids.Length; i++)
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(word, ids[i]);
+            body.Write(word);
+        }
+        {
+            Span<byte> countWord = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt64LittleEndian(countWord, (ulong)ids.Length);
+            body.Write(countWord);
+        }
+        return body.ToArray();
     }
 
     static void TestVocabularyDistinctness()
@@ -33,7 +47,7 @@ static partial class Program
             var expected = distinct ? V1.Schema.TableWire.Verdict.Ok : V1.Schema.TableWire.Verdict.Damaged;
             var verdict = V1.Schema.CfgLoadVerdict(target, padded.AsSpan(3, wire.Length), report);
             Check(verdict == expected && report.Verdict == expected && report.Damaged == !distinct &&
-                !report.Refused && report.Reason == null && report.Unknown == 0 && report.Widened == 0,
+                !report.Refused && report.Reason == null && report.Unknown == (distinct ? ids.Length : 0) && report.Widened == 0,
                 "vocabulary verdict and report: " + label);
             Check(ResetTargetDefaults(target, 5), "vocabulary preserves root defaults: " + label);
             Check(padded.AsSpan(3, wire.Length).SequenceEqual(wire), "vocabulary never mutates input: " + label);
@@ -43,7 +57,7 @@ static partial class Program
         {
             ulong[] ids = new ulong[count];
             for (int i = 0; i < count; i++) { ids[i] = (ulong)i; }
-            if (count > 1) { ids[1] = ulong.MaxValue; }
+            if (count > 1) { ids[1] = ulong.MaxValue - 16; }
             CheckIds(ids, "distinct count " + count);
             if (count > 1)
             {
@@ -88,11 +102,9 @@ static partial class Program
             CheckIds(ids, "independent randomized set " + sample);
         }
 
-        byte[] valid = VocabularyFixture(new ulong[16]);
-        for (int i = 0; i < 16; i++)
-        {
-            BinaryPrimitives.WriteUInt64LittleEndian(valid.AsSpan(2 + i * 8), (ulong)i);
-        }
+        ulong[] validIds = new ulong[16];
+        for (int i = 0; i < 16; i++) { validIds[i] = (ulong)(i + 100); }
+        byte[] valid = VocabularyFixture(validIds);
         byte[] forgedCount = (byte[])valid.Clone();
         BinaryPrimitives.WriteUInt64LittleEndian(forgedCount.AsSpan(forgedCount.Length - 8), ulong.MaxValue);
         DirtyResetTarget(target);

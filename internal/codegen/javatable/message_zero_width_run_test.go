@@ -60,9 +60,13 @@ func TestJavaMessageZeroWidthRunIsBounded(t *testing.T) {
 				Inner: &ir.TableMessageShape{Min: 3, Max: 3, Elem: 0, Inner: zero()}},
 		},
 		{
-			name: "a small honest count",
-			shape: ir.TableMessageShape{Min: 2, Max: 2, Elem: ir.TableKindArray,
-				Inner: &ir.TableMessageShape{Min: 0, Max: 0, Elem: 0, Inner: zero()}},
+			name: "a wide zero-max string run",
+			shape: ir.TableMessageShape{Min: wide, Max: wide, Elem: ir.TableKindString,
+				Inner: &ir.TableMessageShape{Max: 0}},
+		},
+		{
+			name:   "a small honest count",
+			shape:  ir.TableMessageShape{Min: 2, Max: 2, Elem: 0, Inner: zero()},
 			honest: true,
 		},
 	}
@@ -76,13 +80,16 @@ func TestJavaMessageZeroWidthRunIsBounded(t *testing.T) {
 
 			v := &tablewire.Vocabulary{}
 			var arep tabletext.Report
-			if err := v.AnnounceRead(ann, &arep); err != nil {
-				t.Fatalf("the engine refused the announcement: %v %+v", err, arep)
-			}
+			engineAnnounced := v.AnnounceRead(ann, &arep) == nil
 			var rep tabletext.Report
-			count, ok, err := tablewire.DecodeMessages(m,
-				[]*tabletext.Instance{m.New(m.Lookup("Probe"))}, batch, v, &rep)
-			engineAccepted := err == nil && ok
+			var count int
+			var ok bool
+			var err error
+			if engineAnnounced {
+				count, ok, err = tablewire.DecodeMessages(m,
+					[]*tabletext.Instance{m.New(m.Lookup("Probe"))}, batch, v, &rep)
+			}
+			engineAccepted := engineAnnounced && err == nil && ok
 			if row.honest {
 				if !engineAccepted || count != 1 || rep.Unknown != 1 {
 					t.Fatalf("the engine's rule does not accept the honest run: count=%d ok=%v err=%v report=%+v",
@@ -125,7 +132,7 @@ func TestJavaMessageZeroWidthRunIsBounded(t *testing.T) {
 				t.Fatalf("no ZWR report line in the probe output:\n%s", out)
 			}
 			javaAccepted := strings.Contains(line, "accepted=true")
-			if javaAccepted != engineAccepted {
+			if strings.Contains(line, "announced=true") != engineAnnounced || javaAccepted != engineAccepted {
 				t.Errorf("the Java verdict differs from the engine: Java %s", line)
 			}
 			if row.honest && !strings.Contains(line, "unknown=1") {

@@ -7,7 +7,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
@@ -86,9 +85,9 @@ check(w.rootWireMeasure(wire)>0,'text list region measure');
 		wire = append(wire, 0)
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("names"))
 		wire = binary.LittleEndian.AppendUint64(wire, 1)
-		damaged := len(payload) < 4 || payload[3] == 0 || payload[3] == 0xff || (len(payload) > 3 && utf8.RuneCount(payload[3:]) > 8)
+		damaged := len(payload) < 4 || payload[3] == 0 || payload[3] == 0xff || len(payload)-3 > 8
 		fmt.Fprintf(&b, `{final r=w.TableWireReport();final v=w.rootWireLoad(bytes(%q),r);check(r.refused==%t,'handframed text validity: ${r.reason}');
-if(r.refused){check(r.reason=='length_over_bound'||r.reason=='wire_damaged','handframed refusal named: ${r.reason}');}
+if(r.refused){check(r.reason=='length_over_bound'||r.reason=='count_over_bound'||r.reason=='wire_damaged','handframed refusal named: ${r.reason}');}
 if(!r.refused){check(v.names.length==1&&v.names[0].value.length>0,'bounded UTF8 read');}}
 `, hex.EncodeToString(wire), damaged)
 	}
@@ -104,7 +103,7 @@ for(final bad in ['123456789','a\u0000b',String.fromCharCode(0xd800)]){
  try{w.rootWireSave(v);}on StateError{wireRefused=true;}
  check(wireRefused,'invalid authored wire text refused');
  if(bad==String.fromCharCode(0xd800)){var textRefused=false;try{w.rootToJson(v);}on StateError{textRefused=true;}check(textRefused,'authored surrogate JSON refused');}
- else if(bad.contains('\u0000')){var textRefused=false;try{w.rootToJson(v);}on AssertionError{textRefused=true;}check(textRefused,'authored NUL JSON refused');}
+ else if(bad.contains('\u0000')){var assertsOn=false;assert(assertsOn=true);if(assertsOn){var textRefused=false;try{w.rootToJson(v);}on AssertionError{textRefused=true;}check(textRefused,'authored NUL JSON refused');}}
  final out=Uint8List(4096)..fillRange(0,4096,0xa5);final cr=c.TableCookWriteReport();
  check(!c.RootCook.cook(v,out,Endian.little,report:cr)&&out.every((x)=>x==0xa5),'invalid authored cook untouched');
 }

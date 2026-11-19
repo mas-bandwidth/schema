@@ -150,7 +150,7 @@ public final class Main {
             }
         }
 
-        // (c) Message form 2: FixedLedgerMessage matches Go oracle golden (0200813e00002007000078f2be34)
+        // (c) Message form 2: FixedLedgerMessage matches Go oracle golden (0200a10f000078000073cfdf7e)
         byte[] ann = new byte[TableVocabulary.announceMeasure()];
         check(TableVocabulary.announce(ann) == ann.length, "announce");
         TableVocabulary vocab = new TableVocabulary();
@@ -163,7 +163,7 @@ public final class Main {
         check(mLen == mpLen + 4, "FixedLedgerMessage.measureMessages +4");
         byte[] mWire = new byte[mLen];
         check(FixedLedgerMessage.saveMessages(new FixedLedgerFixed.Value[]{flf}, 1, mWire, mRep) == mLen, "FixedLedgerMessage.saveMessages");
-        check("0200813e00002007000078f2be34".equals(toHex(mWire)), "FixedLedgerMessage golden: " + toHex(mWire));
+        check("0200a10f000078000073cfdf7e".equals(toHex(mWire)), "FixedLedgerMessage golden: " + toHex(mWire));
         FixedLedgerFixed.Value[] mBack = {new FixedLedgerFixed.Value()};
         mRep.zero();
         check(FixedLedgerMessage.loadMessages(mBack, 1, vocab, mWire, mRep) == 1 && !mRep.damaged && !mRep.refused && mBack[0].n == 1000 && mBack[0].count == 7, "FixedLedgerMessage.loadMessages");

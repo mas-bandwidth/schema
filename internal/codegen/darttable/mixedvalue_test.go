@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The listdemo unit (tables/lists/Save.schema). The Mixed table carries four
@@ -130,8 +131,10 @@ func runMixedListProbe(t *testing.T, sabotage bool) ([]byte, error) {
 	clean = binary.LittleEndian.AppendUint64(clean, 3)
 	clean = binary.LittleEndian.AppendUint64(clean, 4)
 	clean = append(clean, 0)
-	ids := binary.LittleEndian.Uint64(mutant[len(mutant)-8:])
-	clean = append(clean, mutant[len(mutant)-int(ids)*8-8:]...)
+	for _, name := range []string{"grades", "A", "B", "C"} {
+		clean = binary.LittleEndian.AppendUint64(clean, ir.TableWireId(name))
+	}
+	clean = binary.LittleEndian.AppendUint64(clean, 4)
 	model := tabletext.NewModel(u)
 	var rows strings.Builder
 	for _, c := range []struct {
@@ -149,7 +152,7 @@ func runMixedListProbe(t *testing.T, sabotage bool) ([]byte, error) {
 			r.Widened != 0 {
 			t.Fatalf("%s engine oracle: ok=%v err=%v report=%+v", c.name, ok, e, r)
 		}
-		saved, e := tablewire.Encode(model, value)
+		saved, e := tablewire.EncodeVariable(model, value)
 		if e != nil {
 			t.Fatal(e)
 		}

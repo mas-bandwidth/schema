@@ -446,7 +446,7 @@ table Probe
 var variableClassProbeTexts = []struct{ name, text string }{
 	{"probe_default", `{}`},
 	{"probe_full", `{
-  "u8v": 200, "u16v": 65535, "u32v": 4000000000, "u64v": 18446744073709551615,
+  "u8v": 200, "u16v": 65535, "u32v": 4000000000, "u64v": "18446744073709551615",
   "i8v": -128, "i16v": -100, "f32v": 3.25, "f64v": -1e-300, "flag": false,
   "b10": 1023, "raw": "AQIDBAUG", "blob": "3q2+7w==", "note": "nöte",
   "mood": "sleepy", "moods": ["calm", "None", "angry"], "flags": [true, false, true],

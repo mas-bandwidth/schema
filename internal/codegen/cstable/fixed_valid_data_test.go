@@ -425,6 +425,17 @@ func pickVersionPath(paths []string, version string) string {
 			return p
 		}
 	}
+	major := strings.SplitN(version, ".", 2)[0] + "."
+	var matching []string
+	for _, p := range paths {
+		if strings.HasPrefix(filepath.Base(p), major) || strings.Contains(p, string(os.PathSeparator)+major) {
+			matching = append(matching, p)
+		}
+	}
+	if len(matching) > 0 {
+		sort.Strings(matching)
+		return matching[len(matching)-1]
+	}
 	sort.Strings(paths)
 	return paths[len(paths)-1]
 }
