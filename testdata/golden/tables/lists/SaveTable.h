@@ -9279,9 +9279,9 @@ T & TableDeclRef();
 // locale, never a code point, never a case fold.
 inline int TableKeyOrder( uint64_t a, uint64_t b ) { return a < b ? -1 : ( a > b ? 1 : 0 ); }
 inline int TableKeyOrder( int64_t a, int64_t b ) { return a < b ? -1 : ( a > b ? 1 : 0 ); }
-inline int TableKeyOrder( const char * a, int32_t a_length, const char * b, int32_t b_length )
+inline int TableKeyOrder( const char * a, int64_t a_length, const char * b, int64_t b_length )
 {
-    const int32_t common = a_length < b_length ? a_length : b_length;
+    const int64_t common = a_length < b_length ? a_length : b_length;
     if ( common > 0 )
     {
         const int order = memcmp( (const void *) a, (const void *) b, (size_t) common );
@@ -9292,10 +9292,10 @@ inline int TableKeyOrder( const char * a, int32_t a_length, const char * b, int3
 
 // the length of a NUL-terminated key at a call site, bounded by the storage it
 // has to fit: a key one byte longer than the bound is refused, never truncated
-inline int32_t TableKeyLength( const char * key, int32_t bound )
+inline int64_t TableKeyLength( const char * key, int64_t bound )
 {
     if ( key == NULL ) { return 0; }
-    for ( int32_t i = 0; i <= bound; i++ )
+    for ( int64_t i = 0; i <= bound; i++ )
     {
         if ( key[i] == 0 ) { return i; }
     }
@@ -9312,7 +9312,7 @@ inline int32_t TableKeyLength( const char * key, int32_t bound )
 struct TableMapKeyRef
 {
     const char * data;
-    int32_t length;
+    int64_t length;
 };
 
 // ---- the storage: SIXTEEN BYTES in the holder's record (§2.8, §7.2) ----
@@ -10025,18 +10025,18 @@ struct TableMapIndex
 };
 
 // this runtime's own, and no port reproduces it: fnv1a64 over the key's bytes
-inline uint64_t TableMapHash( const void * bytes, int32_t length )
+inline uint64_t TableMapHash( const void * bytes, int64_t length )
 {
     uint64_t hash = 0xCBF29CE484222325ull;
     const uint8_t * at = (const uint8_t *) bytes;
-    for ( int32_t i = 0; i < length; i++ )
+    for ( int64_t i = 0; i < length; i++ )
     {
         hash ^= (uint64_t) at[i];
         hash *= 0x100000001B3ull;
     }
     return hash;
 }
-inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( (const void *) &key, (int32_t) sizeof( key ) ); }
+inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( (const void *) &key, (int64_t) sizeof( key ) ); }
 inline uint64_t schema_table_map_hash_text_( const TableRef & ref )
 {
     int32_t n = 0;
