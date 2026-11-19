@@ -481,7 +481,8 @@ _T.TableMessageEntriesHere = 70
 _T.TableMessageBuildVersion = 4484788518692264406i
 
 _schema_tables.messageAnnouncement(_T.TableMessageBuildVersion, _T.TableMessageAnnouncement)
-_schema_tables.buildVersion(_T.TableMessageBuildVersion, { "TableEntity", "TableMixed", "TableStat" })
+_schema_tables.messageSlots(_T.TableMessageBuildVersion, { ["TableChatEvent"] = { 1, 2 }, ["TableEntity"] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }, ["TableHitEvent"] = { 17, 18, 19, 20 }, ["TableMixed"] = { 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48 }, ["TablePickupEvent"] = { 49, 50 }, ["TableStat"] = { 51, 52 }, ["TableEvent"] = { 68, 69, 70 }, })
+_schema_tables.buildVersion(_T.TableMessageBuildVersion, { "TableChatEvent", "TableEntity", "TableHitEvent", "TableMixed", "TablePickupEvent", "TableStat" })
 
 -- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)
 _schema_tables.wireIds({

@@ -657,8 +657,16 @@ func emitKeyedAccessors(b *strings.Builder, st *ir.Struct, ns string) {
 			continue
 		}
 		fn := elixirName(f.Name)
+		slot := fn
 		if st.IsTable {
-			fn = f.Name
+			slot = f.Name
+			if len(slot) == 0 || slot[0] < 'A' || slot[0] > 'Z' {
+				fn = slot
+			}
+		}
+		slotRef := "s." + slot
+		if len(slot) > 0 && slot[0] >= 'A' && slot[0] <= 'Z' {
+			slotRef = "Map.fetch!(s, :" + slot + ")"
 		}
 		enumName := f.KeyEnum
 		maxLit := intLit64(f.KeyEnumRef.Max)
@@ -673,42 +681,42 @@ func emitKeyedAccessors(b *strings.Builder, st *ir.Struct, ns string) {
 		key := "pos_integer()"
 		if ns != "" {
 			key = ns + "." + enumName + ".t()"
-			b.WriteString("  @doc \"The " + fn + " element at an " + enumName + " key, by atom or by its 1-based wire value.\"\n")
+			b.WriteString("  @doc \"The " + slot + " element at an " + enumName + " key, by atom or by its 1-based wire value.\"\n")
 			b.WriteString("  @spec " + fn + "_at(t(), " + key + ") :: term()\n")
 		}
 		b.WriteString("  def " + fn + "_at(s, key) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
-		b.WriteString("    Enum.at(s." + fn + ", key - 1)\n")
+		b.WriteString("    Enum.at(" + slotRef + ", key - 1)\n")
 		b.WriteString("  end\n\n")
 		if ns != "" {
 			b.WriteString("  def " + fn + "_at(s, key) when " + atomGuard + ",\n    do: " + fn + "_at(s, " + ns + "." + enumName + ".to_int(key))\n\n")
 		}
 		b.WriteString("  def " + fn + "_at(_s, key), do: refuse_" + fn + "_key(key)\n\n")
 		if ns != "" {
-			b.WriteString("  @doc \"Replaces the " + fn + " element at an " + enumName + " key.\"\n")
+			b.WriteString("  @doc \"Replaces the " + slot + " element at an " + enumName + " key.\"\n")
 			b.WriteString("  @spec put_" + fn + "_at(t(), " + key + ", term()) :: t()\n")
 		}
 		b.WriteString("  def put_" + fn + "_at(s, key, v) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
-		b.WriteString("    %{s | " + fn + ": List.replace_at(s." + fn + ", key - 1, v)}\n")
+		b.WriteString("    %{s | " + slot + ": List.replace_at(" + slotRef + ", key - 1, v)}\n")
 		b.WriteString("  end\n\n")
 		if ns != "" {
 			b.WriteString("  def put_" + fn + "_at(s, key, v) when " + atomGuard + ",\n    do: put_" + fn + "_at(s, " + ns + "." + enumName + ".to_int(key), v)\n\n")
 		}
 		b.WriteString("  def put_" + fn + "_at(_s, key, _v), do: refuse_" + fn + "_key(key)\n\n")
 		if ns != "" {
-			b.WriteString("  @doc \"The " + fn + " elements as {key, element} pairs, keyed by wire value.\"\n")
+			b.WriteString("  @doc \"The " + slot + " elements as {key, element} pairs, keyed by wire value.\"\n")
 			b.WriteString("  @spec " + fn + "_entries(t()) :: [{pos_integer(), term()}]\n")
 		}
 		b.WriteString("  def " + fn + "_entries(s) do\n")
-		b.WriteString("    Enum.with_index(s." + fn + ", 1) |> Enum.map(fn {v, k} -> {k, v} end)\n")
+		b.WriteString("    Enum.with_index(" + slotRef + ", 1) |> Enum.map(fn {v, k} -> {k, v} end)\n")
 		b.WriteString("  end\n\n")
 		b.WriteString("  defp refuse_" + fn + "_key(0) do\n")
-		b.WriteString("    raise ArgumentError, \"" + fn + ": key 0 is None and names no slot\"\n")
+		b.WriteString("    raise ArgumentError, \"" + slot + ": key 0 is None and names no slot\"\n")
 		b.WriteString("  end\n\n")
 		b.WriteString("  defp refuse_" + fn + "_key(key) when is_integer(key) and key > " + maxLit + " do\n")
-		b.WriteString("    raise ArgumentError, \"" + fn + ": key #{key} is past " + enumName + ".max (" + maxPlain + ")\"\n")
+		b.WriteString("    raise ArgumentError, \"" + slot + ": key #{key} is past " + enumName + ".max (" + maxPlain + ")\"\n")
 		b.WriteString("  end\n\n")
 		b.WriteString("  defp refuse_" + fn + "_key(key) do\n")
-		b.WriteString("    raise ArgumentError, \"" + fn + ": key #{inspect(key)} is not a variant of " + enumName + "\"\n")
+		b.WriteString("    raise ArgumentError, \"" + slot + ": key #{inspect(key)} is not a variant of " + enumName + "\"\n")
 		b.WriteString("  end\n")
 	}
 }

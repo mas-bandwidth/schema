@@ -68,7 +68,7 @@ const blockModuleBanner = `//
 // many there are and how far apart they sit — and then those rows, each array
 // at a fixed pitch. This side reads those three facts and points.
 
-#![allow(clippy::manual_range_contains)]
+#![allow(non_snake_case, clippy::manual_range_contains)]
 
 `
 

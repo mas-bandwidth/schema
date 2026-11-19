@@ -4256,14 +4256,14 @@ func variableDefault(f *ir.Field) string {
 				}
 			}
 			if _, ok := f.Type.Ref.(*ir.Flags); ok && f.DefInt != nil {
-				return f.DefInt.String() + "L"
+				return fixedNarrowLit("long", f.DefInt)
 			}
 		default:
 			if f.DefInt != nil {
 				if f.Type.Width <= 32 {
 					return f.DefInt.String()
 				}
-				return f.DefInt.String() + "L"
+				return fixedNarrowLit("long", f.DefInt)
 			}
 		}
 	}

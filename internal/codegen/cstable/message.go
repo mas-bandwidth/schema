@@ -171,6 +171,17 @@ const tableMessageSource = `
                     if (!r.Var(out ulong raw)) { return false; }
                     shape.Base = Signed(kind) ? unchecked((UInt128)(Int128)((long)(raw >> 1) ^ -(long)(raw & 1))) : raw;
                 }
+                int dom = Width(kind) * 8;
+                if (dom < 128)
+                {
+                    if (Signed(kind))
+                    {
+                        Int128 sb = unchecked((Int128)shape.Base);
+                        Int128 mn = -(Int128.One << (dom - 1)), mx = (Int128.One << (dom - 1)) - 1;
+                        if (sb < mn || sb > mx) { return false; }
+                    }
+                    else if (shape.Base > (UInt128.One << dom) - 1) { return false; }
+                }
             }
             else if (shape.Packing == 2 && kind == 10)
             {
@@ -192,10 +203,8 @@ const tableMessageSource = `
             if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
             if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
             shape.Elem = r.Byte();
-            if (!MessageKind(shape.Elem)) { return false; }
-            // An entry carries its own shape and one element shape. The C++
-            // announcement reader does not recursively parse nested arrays.
-            if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
+            if (!MessageKind(shape.Elem) || shape.Elem == 14 || shape.Elem == 16) { return false; }
+            if (!Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
         }
         return true;
     }
@@ -221,7 +230,10 @@ const tableMessageSource = `
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
         if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), ids);
-        if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+        int whole = WireCheck(r.Buffer, ids, true, out bool wireNonFinite);
+        if (whole == WireDamaged) { Damage(report); return Finish(report, Verdict.Damaged); }
+        if (whole != WireWhole) { Fail(report, whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"); return Finish(report, Verdict.Refused); }
+        if (wireNonFinite) { report.NonFiniteFloat = "a float the wire carries"; report.NonFiniteReason = "non_finite_float: a float the wire carries"; report.Refused = true; report.Reason = report.NonFiniteReason; return Finish(report, Verdict.Refused); }
         Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
         while (r.Ref(out ulong reference, out ulong id))
         {

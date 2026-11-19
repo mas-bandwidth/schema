@@ -7395,6 +7395,19 @@ const WeaponConfigFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var WeaponConfigFixedLineagePlans = tableFixedLineagePlans(WeaponConfigFixedKnown, WeaponConfigFixedLayout, WeaponConfigFixedDst, WeaponConfigFixedHash)
 
+func WeaponConfigFixedBoundsKnown0(value *WeaponConfig) bool {
+	var count int32
+	over := &count
+	_ = value
+	if value.Penetration < 0 || value.Penetration > 10 {
+		(*over)++
+	}
+	if value.Channel > 63 {
+		(*over)++
+	}
+	return count == 0
+}
+
 var WeaponConfigFixedResetImage = func() []byte {
 	var def WeaponConfig
 	WeaponConfigReset(&def)
@@ -7592,6 +7605,15 @@ func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixed
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
+		}
+		switch pick {
+		case 0:
+			if !WeaponConfigFixedBoundsKnown0(&values[k : k+1][0]) {
+				for j := range values[:k+1] {
+					WeaponConfigReset(&values[j])
+				}
+				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).

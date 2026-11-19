@@ -1745,7 +1745,7 @@ defmodule WireFuzz do
   # bound to it was available and then diverged instead of being fuzzed.
   # The namespace is the unit's PACKAGE, not its manifest key
   # (Driver.table_module does the same mapping).
-  defp codec(%{form: 2} = r), do: message_codec(r.unit, r.root)
+  defp codec(%{form: f} = r) when f in [2, 5], do: message_codec(r.unit, r.root)
   defp codec(r), do: file_codec(r.unit, r.root)
 
   # the FILE form's codec, docs/SPEC-TABLES.md §3: load_measure/2 and load/2.
@@ -1784,6 +1784,18 @@ defmodule WireFuzz do
   defp avail(%{form: 2} = r) do
     if message_codec(r.unit, r.root) == nil, do: 0, else: 1
   end
+
+  defp avail(%{form: 5, retain: 0} = r) do
+    with mod when mod != nil <- message_codec(r.unit, r.root),
+         announced when announced != nil <- vocab(mod),
+         {:ok, _} <- mod.for_root(announced, r.root) do
+      1
+    else
+      _ -> 0
+    end
+  end
+
+  defp avail(%{form: 5}), do: 0
 
   defp avail(r) do
     case file_codec(r.unit, r.root) do
@@ -1832,17 +1844,105 @@ defmodule WireFuzz do
   defp answer(roster, index, wire) do
     r = Enum.at(roster, index)
 
-    if r.form == 2 do
-      # THE MESSAGE FORM IS ITS OWN ARM (docs/SPEC-TABLES.md §3.3): the batch
-      # verbs read and write it, and the file codec never sees a form-2 byte.
-      answer_message(r, wire)
-    else
+    cond do
+      r.form == 2 ->
+        # THE MESSAGE FORM IS ITS OWN ARM (docs/SPEC-TABLES.md §3.3): the batch
+        # verbs read and write it, and the file codec never sees a form-2 byte.
+        answer_message(r, wire)
+
+      r.form == 5 ->
+        answer_message_framed(r, wire)
+
+      true ->
       mod = file_codec(r.unit, r.root)
 
       if r.retain == 1 do
         answer_retain(mod, r, wire)
       else
         answer_plain(mod, r, wire)
+      end
+    end
+  end
+
+  defp answer_message_framed(r, wire) do
+    case wire do
+      <<alen::little-unsigned-32, rest::binary>> when byte_size(rest) >= alen ->
+        <<ann::binary-size(^alen), batch::binary>> = rest
+
+        with mod when mod != nil <- message_codec(r.unit, r.root),
+             tmod when tmod != nil <- file_codec(r.unit, r.root),
+             own_ann when own_ann != nil <- vocab(mod),
+             {:ok, own_vocab} <- mod.for_root(own_ann, r.root),
+             {:ok, read_vocab} <-
+               (if alen == 0 do
+                  {:ok, own_vocab}
+                else
+                  with {:ok, peer_ann} <- mod.announce_read(ann),
+                       do: mod.for_root(peer_ann, r.root)
+                end) do
+          case mod.load_messages(read_vocab, batch) do
+            {:ok, bodies} ->
+              unions = if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
+              tables = Map.put(tmod.descriptors(), {:unions}, unions)
+              desc = Map.fetch!(tables, r.root)
+              message_decode_and_reply_cross(mod, read_vocab, own_vocab, tables, desc, bodies)
+
+            _ ->
+              stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+          end
+        else
+          _ ->
+            stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+        end
+
+      _ ->
+        stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+    end
+  end
+
+  defp message_decode_and_reply_cross(mod, read_vocab, own_vocab, tables, desc, bodies) do
+    empty = %{
+      unknown: 0,
+      widened: 0,
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0,
+      refused: false
+    }
+
+    {_decoded_rev, report} =
+      Enum.reduce_while(bodies, {[], empty}, fn raw_body, {acc, rep} ->
+        case msg_decode_body(read_vocab, tables, desc, raw_body, rep) do
+          {:ok, val, rep2} -> {:cont, {[val | acc], rep2}}
+          {:malformed, rep2} -> {:halt, {[], Map.put(rep2, :reason, "wire_damaged")}}
+        end
+      end)
+
+    if damaged?(report) do
+      stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+    else
+      rebound = mod.rebind_messages(read_vocab, own_vocab, bodies)
+
+      case rebound do
+        {:ok, encoded} ->
+          measure =
+            case mod.measure_messages(own_vocab, encoded) do
+              {:ok, n} -> n
+              _ -> -1
+            end
+
+          case mod.save_messages(own_vocab, encoded) do
+            {:ok, bytes} when measure >= 0 ->
+              stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
+              stdout_write(bytes)
+
+            _ ->
+              stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+          end
+
+        _ ->
+          stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
       end
     end
   end
@@ -1862,7 +1962,8 @@ defmodule WireFuzz do
          {:ok, vocab} <- mod.for_root(announced, r.root) do
       case mod.load_messages(vocab, wire) do
         {:ok, bodies} ->
-          tables = tmod.descriptors()
+          unions = if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
+          tables = Map.put(tmod.descriptors(), {:unions}, unions)
           desc = Map.fetch!(tables, r.root)
           message_decode_and_reply(mod, vocab, tables, desc, bodies)
 
@@ -1988,6 +2089,7 @@ defmodule WireFuzz do
 
   defp msg_field_elem_kind(%{t: :bytes}), do: 6
   defp msg_field_elem_kind(%{t: :list, elem_kind: k}), do: k
+  defp msg_field_elem_kind(%{t: :keyed, elem_kind: k}), do: k
   defp msg_field_elem_kind(_), do: 0
 
   defp msg_widens?(tk, te, mk, me) when te == me and me == 0, do: msg_scalar_widens?(tk, mk)
@@ -2003,6 +2105,31 @@ defmodule WireFuzz do
   end
 
   defp msg_decode_field(_vocab, _tables, %{t: :int} = f, val, rep) do
+    {lo, hi} =
+      cond do
+        Map.has_key?(f, :min) and Map.has_key?(f, :max) ->
+          {f.min, f.max}
+
+        Map.has_key?(f, :bit_width) ->
+          {0, (Bitwise.bsl(1, f.bit_width)) - 1}
+
+        Map.get(f, :signed, false) ->
+          bits = Map.get(f, :width, 8) * 8
+          {-(Bitwise.bsl(1, bits - 1)), (Bitwise.bsl(1, bits - 1)) - 1}
+
+        true ->
+          bits = Map.get(f, :width, 8) * 8
+          {0, (Bitwise.bsl(1, bits)) - 1}
+      end
+
+    if val < lo or val > hi do
+      {:malformed, rep}
+    else
+      {:ok, val, rep}
+    end
+  end
+
+  defp msg_decode_field(_vocab, _tables, %{t: :float} = f, val, rep) when is_number(val) do
     if Map.has_key?(f, :min) and Map.has_key?(f, :max) and (val < f.min or val > f.max) do
       {:malformed, rep}
     else
@@ -2049,10 +2176,11 @@ defmodule WireFuzz do
   end
 
   defp msg_decode_field(vocab, tables, %{t: :list, elem_kind: 13} = f, raw_elems, rep) do
+    min_c = if Map.get(f, :array) == :counted or Map.get(f, :shape) == :counted, do: Map.get(f, :min_count, 0), else: 0
     bound = Map.get(f, :max_count, Map.get(f, :array_bound, length(raw_elems)))
     elem_desc = Map.fetch!(tables, f.elem)
 
-    if length(raw_elems) > bound do
+    if length(raw_elems) < min_c or length(raw_elems) > bound do
       {:malformed, rep}
     else
       case Enum.reduce_while(raw_elems, {:ok, [], rep}, fn raw_elem, {:ok, acc, r} ->
@@ -2067,6 +2195,138 @@ defmodule WireFuzz do
         {:malformed, rep2} ->
           {:malformed, rep2}
       end
+    end
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :keyed, elem_kind: 13} = f, raw_pairs, rep) when is_list(raw_pairs) do
+    elem_desc = Map.fetch!(tables, Map.get(f, :type_name) || f.item.elem)
+    by_id = Map.get(f, :by_id, %{})
+
+    case Enum.reduce_while(raw_pairs, {:ok, [], rep}, fn {kref, raw_elem}, {:ok, acc, r} ->
+           ke = Enum.at(vocab.entries, kref - 1)
+           r_key = if ke != nil and Map.has_key?(by_id, ke.id), do: r, else: %{r | unknown: r.unknown + 1}
+
+           case msg_decode_body(vocab, tables, elem_desc, raw_elem, r_key) do
+             {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
+             {:malformed, r2} -> {:halt, {:malformed, r2}}
+           end
+         end) do
+      {:ok, rev, rep2} -> {:ok, Enum.reverse(rev), rep2}
+      {:malformed, rep2} -> {:malformed, rep2}
+    end
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :list, elem_t: elem_t} = f, raw_elems, rep)
+       when is_list(raw_elems) and not is_map_key(f, :item) do
+    base_item = %{
+      t: elem_t,
+      width: Map.get(f, :elem_size, 8),
+      signed: Map.get(f, :elem_signed, false),
+      size: Map.get(f, :elem_size, 0),
+      by_id: Map.get(f, :by_id, %{}),
+      elem: Map.get(f, :elem)
+    }
+
+    base_item =
+      if Map.has_key?(f, :elem_min) and Map.has_key?(f, :elem_max) do
+        Map.merge(base_item, %{min: f.elem_min, max: f.elem_max})
+      else
+        base_item
+      end
+
+    base_item =
+      if Map.has_key?(f, :elem_bit_width) do
+        Map.put(base_item, :bit_width, f.elem_bit_width)
+      else
+        base_item
+      end
+
+    msg_decode_field(vocab, tables, Map.put(f, :item, base_item), raw_elems, rep)
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :list, item: item} = f, raw_elems, rep) when is_list(raw_elems) do
+    min_c = if Map.get(f, :array) == :counted or Map.get(f, :shape) == :counted, do: Map.get(f, :min_count, 0), else: 0
+    bound = Map.get(f, :max_count, Map.get(f, :array_bound, length(raw_elems)))
+
+    if length(raw_elems) < min_c or length(raw_elems) > bound do
+      {:malformed, rep}
+    else
+      case Enum.reduce_while(raw_elems, {:ok, [], rep}, fn raw_elem, {:ok, acc, r} ->
+             case msg_decode_field(vocab, tables, item, raw_elem, r) do
+               {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
+               {:malformed, r2} -> {:halt, {:malformed, r2}}
+             end
+           end) do
+        {:ok, rev, rep2} -> {:ok, Enum.reverse(rev), rep2}
+        {:malformed, rep2} -> {:malformed, rep2}
+      end
+    end
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :keyed, item: item} = f, raw_pairs, rep) when is_list(raw_pairs) do
+    by_id = Map.get(f, :by_id, %{})
+
+    case Enum.reduce_while(raw_pairs, {:ok, [], rep}, fn {kref, raw_elem}, {:ok, acc, r} ->
+           ke = Enum.at(vocab.entries, kref - 1)
+
+           if ke != nil and Map.has_key?(by_id, ke.id) do
+             case msg_decode_field(vocab, tables, item, raw_elem, r) do
+               {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
+               {:malformed, r2} -> {:halt, {:malformed, r2}}
+             end
+           else
+             case msg_decode_field(vocab, tables, item, raw_elem, %{r | unknown: r.unknown + 1}) do
+               {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
+               {:malformed, r2} -> {:halt, {:malformed, r2}}
+             end
+           end
+         end) do
+      {:ok, rev, rep2} -> {:ok, Enum.reverse(rev), rep2}
+      {:malformed, rep2} -> {:malformed, rep2}
+    end
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :union} = f, raw_union, rep) do
+    case raw_union do
+      x when x in [:none, :unknown_arm] ->
+        {:ok, :none, rep}
+
+      {arm_ref, arm_raw} ->
+        arm_entry = Enum.at(vocab.entries, arm_ref - 1)
+        unions = Map.get(tables, {:unions}, %{})
+        un = Map.get(unions, f.elem, %{by_name: %{}})
+        arm_decl = un.by_name |> Map.values() |> Enum.find(fn a -> a.arm_id == arm_entry.id end)
+
+        cond do
+          arm_decl == nil ->
+            {:ok, :none, %{rep | unknown: rep.unknown + 1}}
+
+          arm_decl.arm_kind == 32 ->
+            if arm_entry.kind == 32, do: {:ok, :void, rep}, else: {:malformed, rep}
+
+          true ->
+            mine_elem = msg_field_elem_kind(arm_decl)
+
+            theirs_elem =
+              case Map.get(arm_entry, :element) do
+                %{kind: k} -> k
+                _ -> 0
+              end
+
+            cond do
+              arm_entry.kind == arm_decl.arm_kind and theirs_elem == mine_elem ->
+                msg_decode_field(vocab, tables, arm_decl, arm_raw, rep)
+
+              msg_widens?(arm_entry.kind, theirs_elem, arm_decl.arm_kind, mine_elem) ->
+                msg_decode_field(vocab, tables, arm_decl, arm_raw, %{rep | widened: rep.widened + 1})
+
+              true ->
+                {:malformed, rep}
+            end
+        end
+
+      _ ->
+        {:ok, raw_union, rep}
     end
   end
 

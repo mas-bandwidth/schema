@@ -12,7 +12,7 @@
 // IS the blittable row, so a build with only the block form and a build with
 // only the cooked form want the same structs.
 
-#![allow(unused_imports)]
+#![allow(unused_imports, non_snake_case)]
 
 use crate::*;
 

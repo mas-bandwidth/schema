@@ -667,7 +667,7 @@ func (g *tableGen) emitMessageKeyed(f *ir.Field, entry ir.TableVocabularyEntry, 
 	switch kind {
 	case tkTable:
 		if pass == messagePassMeasure {
-			g.pf("                bits += elem_bits%s;\n", sfx)
+			g.pf("                bits += %s;\n", g.msgMeasureCall(f.Type.Name, g.msgAt(pass), elem))
 		} else {
 			g.pf("                if ( !%s ) { return false; }\n", g.msgSaveCall(f.Type.Name, elem))
 		}

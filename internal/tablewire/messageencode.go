@@ -35,6 +35,13 @@ const TableMessageBatchMax = 256
 // Every reference is a SLOT of the unit's vocabulary, which is a compile-time
 // fact, so nothing is interned and no id is written.
 func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, error) {
+	return EncodeMessagesWithVocabulary(m, insts, MessageVocabulary(m.Unit))
+}
+
+// EncodeMessagesWithVocabulary encodes a Form-2 batch against an explicit
+// vocabulary table (used by EncodeMessages with the unit's own vocabulary and
+// by message-fuzz to construct peer/shuffled/shifted-slot test batches).
+func EncodeMessagesWithVocabulary(m *tabletext.Model, insts []*tabletext.Instance, vocabulary []ir.TableVocabularyEntry) ([]byte, error) {
 	if len(insts) == 0 {
 		// A BATCH OF ZERO IS NOT SPELLABLE, and a caller with nothing to send
 		// writes nothing at all.
@@ -57,7 +64,6 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 	if err := messageRoot(m, insts[0].Def); err != nil {
 		return nil, err
 	}
-	vocabulary := MessageVocabulary(m.Unit)
 	slots := make(map[string]uint64, len(vocabulary))
 	for i, e := range vocabulary {
 		slots[e.Key()] = uint64(i + 1)

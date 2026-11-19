@@ -2379,9 +2379,18 @@ edge_union = function(T: any, u: any, val: any, out: { any }, cache: any)
   edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache)
 end
 
+local function guard_holds(fd: any, v: any): boolean
+  local g = fd.guard
+  if g == nil then return true end
+  for _, pair in ipairs(g) do
+    if (v[pair[1]] == true) ~= pair[2] then return false end
+  end
+  return true
+end
+
 edges = function(T: any, desc: any, v: any, out: { any }, cache: any): { any }
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
       edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
     end
   end
@@ -2427,7 +2436,7 @@ local write_fields: (any, any, any, number, any, any, boolean) -> (boolean, bool
 
 write_fields = function(T: any, desc: any, v: any, depth: number, g: any, w: any, any: boolean): (boolean, boolean)
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
       if not any then put(w, '{') else put(w, ',') end
       any = true
       line(w, depth + 1)
@@ -2770,6 +2779,7 @@ adapt_field = function(fd: any, owner: any): any
     key = fd.json or fd.name,
     optional = fd.present ~= nil,
     present = fd.present,
+    guard = fd.guard,
     raw = fd,
   }
   if s == "bool" then o.shape = "bool"

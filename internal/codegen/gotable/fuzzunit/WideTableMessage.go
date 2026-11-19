@@ -74,8 +74,8 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			}
 			w.Put(uint64(value.PayloadLength)-0, 17)
 			w.Align()
-			for i := range int(value.PayloadLength) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i]), uint64(0))
+			for i1 := range int(value.PayloadLength) {
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i1]), uint64(0))
 			}
 		}
 	}
@@ -89,8 +89,8 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 				return false
 			}
 			w.Put(uint64(value.SamplesCount)-0, 17)
-			for i := range int(value.SamplesCount) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 7, Packing: 0, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Samples[i]), uint64(0))
+			for i1 := range int(value.SamplesCount) {
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 7, Packing: 0, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Samples[i1]), uint64(0))
 			}
 		}
 	}

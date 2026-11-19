@@ -375,8 +375,71 @@ struct FixedMessage
     }
 };
 
+template <typename T, typename Report, typename Vocabulary, typename Entry, int64_t entries_here>
+struct FixedMessageFramed
+{
+    template <int64_t ( *announce_measure )(), int64_t ( *announce )( uint8_t *, int64_t ),
+              bool ( *announce_read )( Vocabulary &, const uint8_t *, int64_t, Report * ),
+              bool ( *load )( T *, int64_t *, const Vocabulary &, const uint8_t *, int64_t, Report * ),
+              int64_t ( *measure )( const T *, int64_t, Report * ),
+              int64_t ( *save )( const T *, int64_t, uint8_t *, int64_t, Report * )>
+    static void run( const uint8_t * wire, int64_t bytes, Reply & reply )
+    {
+        reply.measure = -1;
+        if ( bytes < 4 ) { reply.malformed = true; reply.refused = true; reply.loaded = false; reply.saved = -1; return; }
+        uint32_t alen = (uint32_t)wire[0] | ( (uint32_t)wire[1] << 8 ) | ( (uint32_t)wire[2] << 16 ) | ( (uint32_t)wire[3] << 24 );
+        if ( 4 + (int64_t)alen > bytes ) { reply.malformed = true; reply.refused = true; reply.loaded = false; reply.saved = -1; return; }
+        const Vocabulary * use_vocab = NULL;
+        const int64_t cap = entries_here > 4096 ? entries_here : 4096;
+        static Entry * dyn_entries = new Entry[ (size_t) cap ];
+        Vocabulary dyn_vocab( dyn_entries, cap );
+        if ( alen == 0 )
+        {
+            use_vocab = announced_to_itself<Vocabulary, Entry, Report>( entries_here, announce_measure, announce, announce_read );
+        }
+        else
+        {
+            Report arep;
+            bool aok = announce_read( dyn_vocab, wire + 4, (int64_t)alen, &arep );
+            copy_report( arep, reply );
+            if ( !aok || reply.malformed || reply.refused )
+            {
+                reply.loaded = false;
+                if ( !reply.malformed && !reply.refused ) { reply.refused = true; }
+                reply.saved = -1;
+                return;
+            }
+            use_vocab = &dyn_vocab;
+        }
+        static T * value = new T[256];
+        const uint8_t * batch = wire + 4 + alen;
+        const int64_t batch_len = bytes - 4 - (int64_t)alen;
+        int init_count = batch_len >= 2 ? ( (int)batch[1] + 1 ) : 1;
+        if ( init_count > 256 ) { init_count = 256; }
+        for ( int i = 0; i < init_count; i++ ) { new ( value + i ) T(); }
+        Report report;
+        int64_t count = 256;
+        bool ok = load( value, &count, *use_vocab, batch, batch_len, &report );
+        copy_report( report, reply );
+        reply.malformed = reply.malformed || ( !ok && !reply.refused );
+        reply.loaded = ok && count >= 1 && !reply.malformed && !reply.refused;
+        if ( !reply.loaded ) { if ( !reply.malformed && !reply.refused ) { reply.refused = true; } reply.saved = -1; return; }
+        Report ignored;
+        int64_t size = measure( value, count, &ignored );
+        if ( size < 0 ) { reply.loaded = false; reply.refused = true; reply.saved = -1; return; }
+        reply.bytes = (uint8_t *) malloc( size > 0 ? (size_t) size : 1 );
+        if ( save( value, count, reply.bytes, size, &ignored ) != size ) { free( reply.bytes ); reply.bytes = NULL; reply.loaded = false; reply.refused = true; reply.saved = -1; return; }
+        reply.saved = size;
+    }
+};
+
 #define MESSAGE( unit_key, ns, type ) \
     { unit_key, #type, 2, 0, FixedMessage<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere>::run< \
+        ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
+        ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages> }
+
+#define MESSAGE5( unit_key, ns, type ) \
+    { unit_key, #type, 5, 0, FixedMessageFramed<ns::type, ns::TableReport, ns::TableVocabulary, ns::TableMessageEntry, ns::kTableMessageEntriesHere>::run< \
         ns::AnnounceMeasure, ns::Announce, ns::AnnounceRead, \
         ns::type##LoadMessages, ns::type##MeasureMessages, ns::type##SaveMessages> }
 
@@ -468,6 +531,31 @@ static const Codec codecs[] = {
     MESSAGE( "vocab9demo", vocab9demo, Wide19 ),
     MESSAGE( "tblvarevo1", tblvarevo1, EvoMsg ),
     MESSAGE( "tblvarevo3", tblvarevo3, EvoMsg ),
+    MESSAGE5( "backenddemo", backenddemo, LoginRequest ),
+    MESSAGE5( "backenddemo", backenddemo, MatchResult ),
+    MESSAGE5( "backenddemo", backenddemo, StorePurchase ),
+    MESSAGE5( "vocabdemo", vocabdemo, Wide00 ),
+    MESSAGE5( "vocabdemo", vocabdemo, Wide09 ),
+    MESSAGE5( "vocab9demo", vocab9demo, Wide00 ),
+    MESSAGE5( "vocab9demo", vocab9demo, Wide19 ),
+    MESSAGE5( "messagedemo", messagedemo, ToolMessage ),
+    MESSAGE5( "tblvarevo1", tblvarevo1, EvoMsg ),
+    MESSAGE5( "tblvarevo2", tblvarevo2, EvoMsg ),
+    MESSAGE5( "tblvarevo3", tblvarevo3, EvoMsg ),
+    MESSAGE5( "tblfixedevo", tblfixedevo, EvoRoot ),
+    MESSAGE5( "tabledemo", tabledemo, RootConfig ),
+    MESSAGE5( "tabledemo", tabledemo, ProfileConfig ),
+    MESSAGE5( "tabledemo", tabledemo, KeyedConfig ),
+    MESSAGE5( "tblv1", tblv1, Cfg ),
+    MESSAGE5( "tblv2", tblv2, Cfg ),
+    MESSAGE5( "tblm1", tblm1, Msg ),
+    MESSAGE5( "tblm2", tblm2, Msg ),
+    MESSAGE5( "tbla1", tbla1, Root ),
+    MESSAGE5( "tbla2", tbla2, Root ),
+    MESSAGE5( "tblk1", tblk1, Root ),
+    MESSAGE5( "tblk2", tblk2, Root ),
+    MESSAGE5( "scalars", scalardemo, SimState ),
+    MESSAGE5( "tblscalars2", scalardemo2, SimState ),
     // AND THE SAME VARIABLE-CLASS FILE ROOTS THROUGH THE RETAIN FAMILY
     // (docs/SPEC-TABLES.md §6.6). RETENTION IS THE VARIABLE CLASS'S: a
     // fixed-class root's LoadRetain is refused by name, so it is not an entry

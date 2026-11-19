@@ -92,6 +92,7 @@ type fixedModule struct {
 	// the message form's body codecs ride
 	messageClosure []*ir.Struct
 	gen            fixedGen
+	probeSeq       int
 	body           strings.Builder
 }
 

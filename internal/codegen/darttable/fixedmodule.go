@@ -92,6 +92,7 @@ type fixedModule struct {
 	lineage  map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	imports  map[string]map[string]bool
 	gen      fixedGen
+	loopSeq  int
 	body     strings.Builder
 }
 

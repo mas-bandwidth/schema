@@ -899,7 +899,11 @@ local checkRequired = function(T, c, r, v, seen) {
 // by its value otherwise (load.nut, stringIdentity), as the wire save keys it
 local countBlob = function(kind, val, g, holder = null, key = null) {
   if (val == null) return true;
-  local id = (kind == "s" && holder != null) ? _require("schema_table_load").stringIdentity(holder, key, val) : val;
+  local id = val;
+  if (kind == "s" && holder != null) {
+    id = _require("schema_table_load").stringIdentity(holder, key, val);
+    if (typeof id == "string") id = {};
+  }
   if (id in g.blobs[kind]) {
     g.reason = "blob_shared";
     return false;

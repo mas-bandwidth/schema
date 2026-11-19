@@ -918,6 +918,16 @@ const ArchiveConfigFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var ArchiveConfigFixedLineagePlans = tableFixedLineagePlans(ArchiveConfigFixedKnown, ArchiveConfigFixedLayout, ArchiveConfigFixedDst, ArchiveConfigFixedHash)
 
+func ArchiveConfigFixedBoundsKnown0(value *ArchiveConfig) bool {
+	var count int32
+	over := &count
+	_ = value
+	if value.Count < 0 || value.Count > 100 {
+		(*over)++
+	}
+	return count == 0
+}
+
 var ArchiveConfigFixedResetImage = func() []byte {
 	var def ArchiveConfig
 	ArchiveConfigReset(&def)
@@ -1115,6 +1125,15 @@ func ArchiveConfigFixedLoad(values []ArchiveConfig, data []byte, plan []TableFix
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
+		}
+		switch pick {
+		case 0:
+			if !ArchiveConfigFixedBoundsKnown0(&values[k : k+1][0]) {
+				for j := range values[:k+1] {
+					ArchiveConfigReset(&values[j])
+				}
+				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).

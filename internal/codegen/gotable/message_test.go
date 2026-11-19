@@ -166,13 +166,10 @@ func TestHostileAnnouncementBounded(t *testing.T) {
 	var vocab2 TableVocabulary
 	vocab2.Init(storage[:])
 	var rep2 TableReport
-	if !AnnounceRead(&vocab2, announcement2, &rep2) || !vocab2.Announced {
-		t.Fatalf("AnnounceRead 2 failed: %+v", rep2)
+	if AnnounceRead(&vocab2, announcement2, &rep2) || vocab2.Announced {
+		t.Fatalf("AnnounceRead 2 accepted nested array element: %+v", rep2)
 	}
-
-	var loadRep2 TableReport
-	n2, ok2 := RootLoadMessages(out[:], &vocab2, batch, &loadRep2)
-	if ok2 || n2 != 0 || !(loadRep2.Refusal.Error() == "wire_damaged" || loadRep2.Refusal.Error() == "malformed") {
+	if !(rep2.Refusal.Error() == "wire_damaged" || rep2.Refusal.Error() == "malformed") {
 		t.Fatalf("expected nested zero-width element to be refused as malformed: n=%d ok=%v rep=%+v", n2, ok2, loadRep2)
 	}
 }

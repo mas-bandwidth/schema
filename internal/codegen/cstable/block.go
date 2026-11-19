@@ -573,6 +573,11 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 	g.hf("    public ref readonly %sBlockProjection Projection { get { return ref *(%sBlockProjection*)basePointer; } }\n\n", name, name)
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
+		prop := field
+		switch prop {
+		case "BlockMaxBytes", "Base", "Bytes", "Projection", "Open", "Type":
+			prop += "_"
+		}
 		g.hf("    // %s: the constants this build asserts against. A consumer INDEXES with\n", a.Field.Name)
 		g.hf("    // what it read from the instance, never with these (docs/SPEC-TABLES.md §19.2).\n")
 		g.hf("    public const long %sStride = %d;\n", field, a.Stride)
@@ -580,7 +585,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.hf("    public const long %sProjectionOffset = %d;\n\n", field, a.TripleOffset)
 		g.hf("    // ITERATED, not indexed by hand: the accessor yields a reference to each\n")
 		g.hf("    // row where it lies, at the pitch the INSTANCE gives, for count rows.\n")
-		g.hf("    public TableBlockRows<%sRow> %s\n    {\n", a.ElemName, field)
+		g.hf("    public TableBlockRows<%sRow> %s\n    {\n", a.ElemName, prop)
 		g.hf("        get\n        {\n")
 		g.hf("            %sBlockProjection* p = (%sBlockProjection*)basePointer;\n", name, name)
 		g.hf("            return new TableBlockRows<%sRow>(basePointer + p->%s.OffsetOf, (int)p->%s.Count, (int)p->%s.Stride);\n",

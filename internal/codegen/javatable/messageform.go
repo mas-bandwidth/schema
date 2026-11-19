@@ -593,6 +593,21 @@ public final class TableVocabulary {
                     }
                     s.baseLo = r.u64();
                     s.baseHi = r.u64();
+                    if (kind >= 20 && kind <= 23) {
+                        long whi = s.baseLo < 0L ? -1L : 0L;
+                        if (s.baseHi != whi) { return null; }
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64) {
+                            long mn = -(1L << (dom - 1)), mx = (1L << (dom - 1)) - 1L;
+                            if (s.baseLo < mn || s.baseLo > mx) { return null; }
+                        }
+                    } else if (kind >= 25 && kind <= 28) {
+                        if (s.baseHi != 0L) { return null; }
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64 && Long.compareUnsigned(s.baseLo, (1L << dom) - 1L) > 0) {
+                            return null;
+                        }
+                    }
                 } else {
                     long base = r.leb();
                     if (r.err) {
@@ -600,7 +615,17 @@ public final class TableVocabulary {
                     }
                     if (kind >= 2 && kind <= 5) {
                         base = (base >>> 1) ^ -(base & 1);
-                    } // zigzag, the signed kind's base
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64) {
+                            long mn = -(1L << (dom - 1)), mx = (1L << (dom - 1)) - 1L;
+                            if (base < mn || base > mx) { return null; }
+                        }
+                    } else {
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64 && Long.compareUnsigned(base, (1L << dom) - 1L) > 0) {
+                            return null;
+                        }
+                    }
                     s.baseLo = base;
                 }
                 return s;
@@ -1021,7 +1046,7 @@ public final class TableMessage {
     // bits can spell a value past the sender's maximum whenever the range is
     // not one less than a power of two, and no conforming writer emits one.
     public static boolean skipRanged(Reader r, TableVocabulary.Shape s) {
-        int width = TableVocabulary.kindWidth(s.kind) * 8;
+        int width = (int) s.bits;
         long lo, hi;
         if (width > 64) {
             lo = r.get(64);
@@ -2435,6 +2460,8 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §4,
 		// §5): the keys this value has carried take the reader's seen stack's
 		// own region for the value.
+		lastSlotVar := g.nextTemp("lastSlot")
+		g.pf("%sint %s = -1;\n", ind, lastSlotVar)
 		g.pf("%sint seenSlotMark = r.seenMark();\n", ind)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, nVar, idxVar)
 		g.pf("%s    TableVocabulary.Entry %s = r.nameRef();\n", ind, keyVar)
@@ -2459,7 +2486,11 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		}
 		g.pf("%s    if (%s >= 0) {\n", ind, slotVar)
 		if canonical {
+			g.pf("%s        if (r.vocab.ownBuild() && %s <= %s) { r.report.damaged = true; return false; }\n", ind, slotVar, lastSlotVar)
+			g.pf("%s        %s = %s;\n", ind, lastSlotVar, slotVar)
 			g.pf("%s        %s\n", ind, g.messageSlotPre(f))
+		} else {
+			g.pf("%s        %s = %s;\n", ind, lastSlotVar, slotVar)
 		}
 		g.emitLoadElement(f, expr+"["+slotVar+"]", entryVar+".element", indent+8)
 		if canonical {

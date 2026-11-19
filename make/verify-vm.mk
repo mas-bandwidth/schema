@@ -34,6 +34,7 @@ VERIFY_FUZZ_MAX_squirrel ?= 5000
 VERIFY_FUZZ_MAX_moo      ?= 14000
 VERIFY_FUZZ_MAX_goose    ?= 60000
 VERIFY_FUZZ_MAX_lobster  ?= 40000
+VERIFY_MESSAGE_FUZZ_N    ?= 1500
 
 VERIFY_CARDS_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
 
@@ -50,7 +51,8 @@ build/conformance-squirrel \
 build/conformance-moo \
 build/conformance-goose \
 build/conformance-lobster \
-build/goose-wirefuzz-legs/.verify-stamp: $(CONFORMANCE_UNIT_LOCKS)
+build/goose-wirefuzz-legs/.verify-stamp \
+build/goose-messagefuzz-legs/.verify-stamp: $(CONFORMANCE_UNIT_LOCKS)
 
 # Harness built with all VM build tags so `--claims` resolves compiler.Carried(<lang>)
 # across every VM backend (including schema_leg_moo and schema_leg_python).
@@ -288,6 +290,9 @@ _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-g
 	NODE="$(NODE)" ./build/conformance-harness-vm json-fuzz --only js \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-js
+	NODE="$(NODE)" ./build/conformance-harness-vm message-fuzz --only js \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-js
 
 # ---- 2. python ----
 
@@ -311,6 +316,9 @@ _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/
 	PYTHON="$(PYTHON)" ./build/conformance-harness-vm json-fuzz --only python \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-python
+	PYTHON="$(PYTHON)" ./build/conformance-harness-vm message-fuzz --only python \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-python
 
 # ---- 3. ruby ----
 
@@ -334,6 +342,9 @@ _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conf
 	RUBY="$(RUBY)" ./build/conformance-harness-vm json-fuzz --only ruby \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-ruby
+	RUBY="$(RUBY)" ./build/conformance-harness-vm message-fuzz --only ruby \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-ruby
 
 # ---- 4. lua ----
 
@@ -357,6 +368,9 @@ _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/confor
 	LUA="$(LUA)" ./build/conformance-harness-vm json-fuzz --only lua \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lua
+	LUA="$(LUA)" ./build/conformance-harness-vm message-fuzz --only lua \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-lua
 
 # ---- 5. luau ----
 
@@ -380,6 +394,9 @@ _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conf
 	LUAU="$(LUAU)" ./build/conformance-harness-vm json-fuzz --only luau \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-luau
+	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm message-fuzz --only luau \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-luau
 
 # ---- 6. squirrel ----
 
@@ -408,6 +425,9 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 	SQ="$(SQ)" ./build/conformance-harness-vm json-fuzz --only squirrel \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-squirrel
+	SQ="$(SQ)" ./build/conformance-harness-vm message-fuzz --only squirrel \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-squirrel
 
 # ---- 7. moo ----
 
@@ -432,6 +452,9 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm json-fuzz --only moo \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-moo
+	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm message-fuzz --only moo \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-moo
 
 # ---- 8. goose ----
 
@@ -450,7 +473,13 @@ build/goose-wirefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMA
 	@GOOSE_FUZZ_JOBS=$(VERIFY_JOBS) $(MAKE) --no-print-directory build/conformance-goose-wirefuzz
 	@touch $@
 
-_verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-wirefuzz-legs/.verify-stamp
+build/goose-messagefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMAS) \
+	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
+	test/conformance/goose/messagefuzz.goose test/conformance/goose/wirefuzz_io.c test/conformance/goose/wirefuzzdispatch/main.go make/goose-messagefuzz-build.sh
+	@GOOSE_FUZZ_JOBS=$(VERIFY_JOBS) $(MAKE) --no-print-directory build/conformance-goose-messagefuzz
+	@touch $@
+
+_verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-wirefuzz-legs/.verify-stamp build/goose-messagefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz --mixed-builder \
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
@@ -463,6 +492,10 @@ _verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/co
 	GOOSE="$(GOOSE)" ./build/conformance-harness-vm json-fuzz --only goose \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-goose
+	GOOSE="$(GOOSE)" GOOSE_DISPATCH="./$(GOOSE_DISPATCH)" GOOSE_MESSAGEFUZZ_LEGS="$(GOOSE_MFUZZ_LEGS_DIR)/legs" \
+		./build/conformance-harness-vm message-fuzz --only goose \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-goose
 
 # ---- 9. lobster ----
 
@@ -486,6 +519,9 @@ _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm buil
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm json-fuzz --only lobster \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lobster
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm message-fuzz --only lobster \
+		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-lobster
 
 # ---- 4-Class Optimization Sabotage Negative Controls ----
 # Proves that subtle 1-line emitter corruptions across all four major runtime

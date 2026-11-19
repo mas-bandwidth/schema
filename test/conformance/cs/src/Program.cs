@@ -1478,13 +1478,39 @@ static partial class Program
     {
         {
             Codec c = Find("tabledemo", "RootConfig");
+            c.Announcement = Tabledemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Tabledemo.Schema.RootConfigCookMeasure((Tabledemo.RootConfig)value);
             c.Cook = (value, bytes, big) => Tabledemo.Schema.RootConfigCook((Tabledemo.RootConfig)value, bytes, big ? Tabledemo.TableByteOrder.Big : Tabledemo.TableByteOrder.Little);
+            var ownVocabulary = new Tabledemo.TableVocabulary(); Tabledemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tabledemo.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tabledemo.TableVocabulary(); var inner = new Tabledemo.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tabledemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tabledemo.RootConfig[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tabledemo.RootConfig(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tabledemo.Schema.RootConfigLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tabledemo.RootConfig[] batch ? Tabledemo.Schema.RootConfigMeasureMessages(batch) : Tabledemo.Schema.RootConfigMeasureMessages(new Tabledemo.RootConfig[] { (Tabledemo.RootConfig)value });
+            c.MessageSave = (value, bytes) => value is Tabledemo.RootConfig[] batch ? Tabledemo.Schema.RootConfigSaveMessages(batch, bytes) : Tabledemo.Schema.RootConfigSaveMessages(new Tabledemo.RootConfig[] { (Tabledemo.RootConfig)value }, bytes);
         }
         {
             Codec c = Find("tabledemo", "ProfileConfig");
+            c.Announcement = Tabledemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Tabledemo.Schema.ProfileConfigCookMeasure((Tabledemo.ProfileConfig)value);
             c.Cook = (value, bytes, big) => Tabledemo.Schema.ProfileConfigCook((Tabledemo.ProfileConfig)value, bytes, big ? Tabledemo.TableByteOrder.Big : Tabledemo.TableByteOrder.Little);
+            var ownVocabulary = new Tabledemo.TableVocabulary(); Tabledemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tabledemo.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tabledemo.TableVocabulary(); var inner = new Tabledemo.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tabledemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tabledemo.ProfileConfig[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tabledemo.ProfileConfig(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tabledemo.Schema.ProfileConfigLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tabledemo.ProfileConfig[] batch ? Tabledemo.Schema.ProfileConfigMeasureMessages(batch) : Tabledemo.Schema.ProfileConfigMeasureMessages(new Tabledemo.ProfileConfig[] { (Tabledemo.ProfileConfig)value });
+            c.MessageSave = (value, bytes) => value is Tabledemo.ProfileConfig[] batch ? Tabledemo.Schema.ProfileConfigSaveMessages(batch, bytes) : Tabledemo.Schema.ProfileConfigSaveMessages(new Tabledemo.ProfileConfig[] { (Tabledemo.ProfileConfig)value }, bytes);
         }
         {
             Codec c = Find("tabledemo", "LoadoutConfig");
@@ -1503,8 +1529,21 @@ static partial class Program
         }
         {
             Codec c = Find("tabledemo", "KeyedConfig");
+            c.Announcement = Tabledemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Tabledemo.Schema.KeyedConfigCookMeasure((Tabledemo.KeyedConfig)value);
             c.Cook = (value, bytes, big) => Tabledemo.Schema.KeyedConfigCook((Tabledemo.KeyedConfig)value, bytes, big ? Tabledemo.TableByteOrder.Big : Tabledemo.TableByteOrder.Little);
+            var ownVocabulary = new Tabledemo.TableVocabulary(); Tabledemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tabledemo.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tabledemo.TableVocabulary(); var inner = new Tabledemo.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tabledemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tabledemo.KeyedConfig[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tabledemo.KeyedConfig(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tabledemo.Schema.KeyedConfigLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tabledemo.KeyedConfig[] batch ? Tabledemo.Schema.KeyedConfigMeasureMessages(batch) : Tabledemo.Schema.KeyedConfigMeasureMessages(new Tabledemo.KeyedConfig[] { (Tabledemo.KeyedConfig)value });
+            c.MessageSave = (value, bytes) => value is Tabledemo.KeyedConfig[] batch ? Tabledemo.Schema.KeyedConfigSaveMessages(batch, bytes) : Tabledemo.Schema.KeyedConfigSaveMessages(new Tabledemo.KeyedConfig[] { (Tabledemo.KeyedConfig)value }, bytes);
         }
         {
             Codec c = Find("tabledemo", "PackConfig");
@@ -1808,6 +1847,24 @@ static partial class Program
             Codec c = Find("tblvarevo2", "EvoDoc");
             c.CookMeasure = value => Tblvarevo2.Schema.EvoDocCookMeasure((Tblvarevo2.EvoDoc)value);
             c.Cook = (value, bytes, big) => Tblvarevo2.Schema.EvoDocCook((Tblvarevo2.EvoDoc)value, bytes, big ? Tblvarevo2.TableByteOrder.Big : Tblvarevo2.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvarevo2", "EvoMsg");
+            c.Announcement = Tblvarevo2.Schema.Announce().ToArray();
+            c.CookMeasure = value => Tblvarevo2.Schema.EvoMsgCookMeasure((Tblvarevo2.EvoMsg)value);
+            c.Cook = (value, bytes, big) => Tblvarevo2.Schema.EvoMsgCook((Tblvarevo2.EvoMsg)value, bytes, big ? Tblvarevo2.TableByteOrder.Big : Tblvarevo2.TableByteOrder.Little);
+            var ownVocabulary = new Tblvarevo2.TableVocabulary(); Tblvarevo2.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblvarevo2.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblvarevo2.TableVocabulary(); var inner = new Tblvarevo2.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblvarevo2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tblvarevo2.EvoMsg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblvarevo2.EvoMsg(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblvarevo2.Schema.EvoMsgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tblvarevo2.EvoMsg[] batch ? Tblvarevo2.Schema.EvoMsgMeasureMessages(batch) : Tblvarevo2.Schema.EvoMsgMeasureMessages(new Tblvarevo2.EvoMsg[] { (Tblvarevo2.EvoMsg)value });
+            c.MessageSave = (value, bytes) => value is Tblvarevo2.EvoMsg[] batch ? Tblvarevo2.Schema.EvoMsgSaveMessages(batch, bytes) : Tblvarevo2.Schema.EvoMsgSaveMessages(new Tblvarevo2.EvoMsg[] { (Tblvarevo2.EvoMsg)value }, bytes);
         }
         {
             Codec c = Find("tblvarevo3", "EvoDoc");
@@ -2581,10 +2638,11 @@ static partial class Program
             Codec found=Find(unit,root);
             roster[i] = retain == 0 || found?.Retain!=null?found:null;
             // a variable root has no message form, so no form-2 binding
-            if (form == 2 && roster[i]?.MessageLoad == null) { roster[i] = null; }
+            if ((form == 2 || form == 5) && (retain != 0 || builder || roster[i]?.MessageLoad == null)) { roster[i] = null; }
+            if (form != 1 && form != 2 && form != 5) { roster[i] = null; }
             // THE REGION ARM IS THE REGION READ'S: a root with no region codec
             // (a fixed root, or a message) is not this arm's to fuzz.
-            if (regionMode && (roster[i] == null || !roster[i].Region || form == 2)) { roster[i] = null; }
+            if (regionMode && (roster[i] == null || !roster[i].Region || form == 2 || form == 5)) { roster[i] = null; }
             retaining[i]=retain!=0;
             forms[i] = form;
             output.Write((byte)(roster[i] != null ? 1 : 0));
@@ -2607,19 +2665,51 @@ static partial class Program
                 output.Flush(); continue;
             }
             Report report = new Report();
-            bool message = forms[index] == 2;
+            bool message = forms[index] == 2 || forms[index] == 5;
             long need = message || codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
             builderLoaded = null; regionLoaded = null;
-            object value = message ? codec.MessageLoad(codec.Announcement, bytes, report) : codec.PartialLoad(bytes, report);
-            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : message ? (!report.Malformed && !report.Refused) : (regionLoaded ?? (codec.LoadMeasure == null || need >= 0));
+            object value = null;
+            if (forms[index] == 5)
+            {
+                if (bytes.Length < 4)
+                {
+                    report.Malformed = true;
+                    report.Refused = true;
+                }
+                else
+                {
+                    uint alen = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(0, 4));
+                    if (4L + alen > bytes.Length)
+                    {
+                        report.Malformed = true;
+                        report.Refused = true;
+                    }
+                    else
+                    {
+                        byte[] ann = alen == 0 ? codec.Announcement : bytes.AsSpan(4, (int)alen).ToArray();
+                        byte[] batch = bytes.AsSpan(4 + (int)alen).ToArray();
+                        value = codec.MessageLoad(ann, batch, report);
+                    }
+                }
+            }
+            else
+            {
+                value = message ? codec.MessageLoad(codec.Announcement, bytes, report) : codec.PartialLoad(bytes, report);
+            }
+            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : message ? (value != null && !report.Malformed && !report.Refused) : (regionLoaded ?? (codec.LoadMeasure == null || need >= 0));
+            long size = loaded ? (message ? codec.MessageMeasure(value) : codec.Measure(value)) : -1;
+            byte[] saved = size <= 0 ? Array.Empty<byte>() : new byte[checked((int)size)];
+            long written = !loaded || size < 0 ? -1 : (message ? codec.MessageSave(value, saved) : codec.Save(value, saved));
+            if (forms[index] == 5 && written < 0)
+            {
+                loaded = false;
+                report.Refused = true;
+            }
             output.Write((byte)(loaded ? 1 : 0));
             output.Write(report.Unknown); output.Write(report.KindMismatch); output.Write(report.Widened);
             output.Write(report.Clamped); output.Write(report.Duplicate);
             output.Write((byte)(report.Malformed ? 1 : 0)); output.Write((byte)(report.Refused ? 1 : 0));
             output.Write(need); output.Write(0); output.Write(0);
-            long size = loaded ? (message ? codec.MessageMeasure(value) : codec.Measure(value)) : -1;
-            byte[] saved = size < 0 ? Array.Empty<byte>() : new byte[checked((int)size)];
-            long written = size < 0 ? -1 : (message ? codec.MessageSave(value, saved) : codec.Save(value, saved));
             output.Write(written);
             if (written > 0) { output.Write(saved, 0, checked((int)written)); }
             output.Flush();

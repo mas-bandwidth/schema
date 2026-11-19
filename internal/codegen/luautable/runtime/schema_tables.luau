@@ -173,6 +173,7 @@ end
 -- reader's own build (docs/SPEC-TABLES.md §3.3 (a), (b)).
 local builds: { [string]: integer } = {}
 local announcements: { [integer]: buffer } = {}
+local msgSlots: { [integer]: { [string]: { number } } } = {}
 function S.buildVersion(version: integer, names: { string })
 	for _, name in names do
 		builds[name] = version
@@ -181,6 +182,20 @@ end
 
 function S.messageAnnouncement(version: integer, ann: buffer)
 	announcements[version] = ann
+end
+
+function S.messageSlots(version: integer, tbl: { [string]: { number } })
+	msgSlots[version] = tbl
+end
+
+function S.messageSlotOf(tableName: string, ownerName: string, index1: number): number
+	local bv = builds[tableName]
+	if bv == nil then return 0 end
+	local m = msgSlots[bv]
+	if m == nil then return 0 end
+	local arr = m[ownerName]
+	if arr == nil then return 0 end
+	return arr[index1] or 0
 end
 
 -- buildOf is the build version registered for the table, or nil.

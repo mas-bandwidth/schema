@@ -747,15 +747,16 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 		// §4.5), and the payload under an absent one is slack (§3.4): unspecified
 		// on read, never a refusal, so the scatter lands it at slack depth.
 		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.damaged = true;\n    }\n", base)
+		slackOff := base
 		g.pf("    value.%s_present = b[%d] == 1;\n", f.Name, base)
-		g.pf("    let %s_slack = u32::from(!value.%s_present);\n", f.Name, f.Name)
-		g.pf("    report.slack += %s_slack;\n", f.Name)
+		g.pf("    let _slack_%d = u32::from(!value.%s_present);\n", slackOff, f.Name)
+		g.pf("    report.slack += _slack_%d;\n", slackOff)
 		base += ir.TableFixedPresentBytes
+		g.emitFixedScatterValue(f, base)
+		g.pf("    report.slack -= _slack_%d;\n", slackOff)
+		return
 	}
 	g.emitFixedScatterValue(f, base)
-	if f.Type.Optional {
-		g.pf("    report.slack -= %s_slack;\n", f.Name)
-	}
 }
 
 // emitFixedScatterValue lands one field's value (its payload, for an optional)

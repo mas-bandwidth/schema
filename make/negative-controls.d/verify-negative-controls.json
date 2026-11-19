@@ -9,6 +9,8 @@
     "verify-json-fuzz-negative-control",
     "verify-bitphase-negative-control",
     "verify-canonical-negative-control",
-    "verify-reuse-negative-control"
+    "verify-reuse-negative-control",
+    "verify-message-fuzz-negative-control",
+    "verify-tablegen-negative-control"
   ]
 }

@@ -3,7 +3,6 @@ package darttable
 import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/ir"
-	"strconv"
 )
 
 // rideOpen opens the block that writes a field when it rides. A required
@@ -39,14 +38,14 @@ func (g *wireGen) emitRequiredCheck(st *ir.Struct, wire bool, ind string) {
 		if !f.Required {
 			continue
 		}
-		cond := "!" + seen + ".contains(" + strconv.Quote(ir.TableFieldJsonKey(f)) + ")"
+		cond := "!" + seen + ".contains(" + viewDartString(ir.TableFieldJsonKey(f)) + ")"
 		if wire {
 			cond = fmt.Sprintf("%s[%d] == 0", seen, i)
 		}
 		if guard := g.guardCond(st, guards[f.Name]); guard != "" {
 			cond = "(" + guard + ") && " + cond
 		}
-		g.pf("%sif (%s) missing.add(%s);\n", ind, cond, strconv.Quote(f.Name))
+		g.pf("%sif (%s) missing.add(%s);\n", ind, cond, viewDartString(f.Name))
 	}
 	if wire {
 		g.pf("%sif (missing.isNotEmpty && r.report.missingFields.isEmpty) { r.report.missingFields = missing.join(', '); r.report.refused = true; throw const _TableMissingRequired(); }\n", ind)

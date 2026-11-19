@@ -45,7 +45,7 @@ export class TableBitWriter {
     this.Overflow = false;
   }
   Put(value, n) {
-    if (n < 0 || n > 64) { this.Overflow = true; return; }
+    if (n < 0 || n > 128) { this.Overflow = true; return; }
     if (n === 0) { return; }
     const at = this.Bits;
     this.Bits += n;
@@ -74,7 +74,7 @@ export class TableBitWriter {
 export class TableBitReader {
   constructor(buffer) { this.Buffer = buffer; this.Offset = 0; }
   Get(n) {
-    if (n < 0 || n > 64 || this.Offset < 0 || n > this.Buffer.length * 8 - this.Offset) { return [0n, false]; }
+    if (n < 0 || n > 128 || this.Offset < 0 || n > this.Buffer.length * 8 - this.Offset) { return [0n, false]; }
     if (n === 0) { return [0n, true]; }
     let v = 0n;
     let at = this.Offset >> 3;
@@ -329,23 +329,41 @@ export function tableMessageSkipBody(r, v, indexBits, depth) {
 // offset plus the base, in unsigned 64-bit arithmetic so a negative base wraps
 // as it does in the reference; the caller then narrows to its own declared
 // width and clamps.
+export function tableMessageKindWidens(from, to) {
+  return (from >= 2 && from <= 5 && ((to > from && to <= 5) || to === 18)) ||
+         (from >= 6 && from <= 9 && ((to > from && to <= 9) || to === 19)) ||
+         (from === 10 && to === 11);
+}
 export function tableMessageReadScalar(r, s) {
+  const integer = (s.Kind >= 2 && s.Kind <= 9) || (s.Kind >= 18 && s.Kind <= 29) || s.Kind === 36;
+  const signed = integer && (s.Kind <= 5 || s.Kind === 18 || (s.Kind >= 20 && s.Kind <= 24) || s.Kind === 36);
   const bits = Math.min(s.Bits, 64);
   let [lo, ok] = r.Get(bits);
   if (!ok) { return [null, false]; }
   let hi = 0n;
   if (s.Bits > 64) { [hi, ok] = r.Get(s.Bits - 64); if (!ok) { return [null, false]; } }
   if (s.Packing === 1) {
+    let baseHi = s.Base[1];
+    if (signed && s.Kind < 18) { baseHi = (s.Base[0] >= 0x8000000000000000n) ? 0xffffffffffffffffn : 0n; }
     const sum = lo + s.Base[0];
-    const carry = (sum < lo) ? 1n : 0n;
+    const carry = (sum >= 0x10000000000000000n) ? 1n : 0n;
     lo = sum & 0xffffffffffffffffn;
-    hi = (hi + s.Base[1] + carry) & 0xffffffffffffffffn;
+    hi = (hi + baseHi + carry) & 0xffffffffffffffffn;
   } else if (s.Packing === 2) {
     const index = Number(lo & 0xffffffffn);
     if (s.QCount <= 0 || index > s.QCount) { return [null, false]; }
     const ratio = Math.fround(index / s.QCount);
     const scaled = Math.fround(ratio * s.QDelta);
     lo = BigInt(Math.fround(scaled + s.QMin) === 0 ? 0 : TableMessageFloat32Bits(Math.fround(scaled + s.QMin)));
+  } else if (signed) {
+    if (s.Bits < 64) {
+      if (s.Bits > 0) { lo = BigInt.asUintN(64, BigInt.asIntN(s.Bits, lo)); }
+      hi = (lo >= 0x8000000000000000n) ? 0xffffffffffffffffn : 0n;
+    } else if (s.Bits === 64) {
+      hi = (lo >= 0x8000000000000000n) ? 0xffffffffffffffffn : 0n;
+    } else if (s.Bits < 128) {
+      hi = BigInt.asUintN(64, BigInt.asIntN(s.Bits - 64, hi));
+    }
   }
   return [[lo, hi], true];
 }
@@ -465,10 +483,10 @@ func baseBigLit(base *big.Int) string {
 // §3.3; gotable/gotable.go emits the body verbs for every closure member and
 // gates only the batch verbs on FixedDeclared).
 func (g *fixedModule) emitMessageBody(st *ir.Struct) {
-	g.needHome("TableMessageRefBitsHere", "tableMessageEntry",
+	g.needHome("TableBitWriter", "TableMessageRefBitsHere", "tableMessageEntry",
 		"tableMessageUtf8Valid", "tableMessageUtf8Clamp",
 		"tableMessageCount", "tableMessageSkip", "tableMessageSkipBody",
-		"tableMessageReadScalar", "tableMessageWriteScalar",
+		"tableMessageKindWidens", "tableMessageReadScalar", "tableMessageWriteScalar",
 		"TableMessageFloat32Bits", "TableMessageFloat32FromBits",
 		"TableMessageFloat64Bits", "TableMessageFloat64FromBits")
 
@@ -547,23 +565,30 @@ func (g *fixedModule) emitMessageCheckText(mem, ind string, size int64, text boo
 	}
 }
 
+func (g *fixedModule) nextIdxVar() string {
+	g.probeSeq++
+	return fmt.Sprintf("_i%d", g.probeSeq)
+}
+
 func (g *fixedModule) emitMessageCheckArray(f *ir.Field, mem, ind string, bound int64) {
+	iv := g.nextIdxVar()
 	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" || %s.length < %d) { return false; }\n",
 		ind, mem, mem, mem, mem, bound)
-	g.pf("%sfor (let i = 0; i < %d; i++) {\n", ind, bound)
+	g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, bound, iv)
 	e := messageElementField(f)
-	g.emitMessageCheckElement(e, mem+"[i]", ind+"  ")
+	g.emitMessageCheckElement(e, mem+"["+iv+"]", ind+"  ")
 	g.pf("%s}\n", ind)
 }
 
 func (g *fixedModule) emitMessageCheckCounted(f *ir.Field, mem, ind string) {
+	iv := g.nextIdxVar()
 	count := mem + "Count"
 	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\") { return false; }\n", ind, mem, mem, mem)
 	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < %d || %s > %d || %s > %s.length) { return false; }\n",
 		ind, count, count, count, f.ArrayMin, count, f.ArrayBound, count, mem)
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 	e := messageElementField(f)
-	g.emitMessageCheckElement(e, mem+"[i]", ind+"  ")
+	g.emitMessageCheckElement(e, mem+"["+iv+"]", ind+"  ")
 	g.pf("%s}\n", ind)
 }
 
@@ -612,6 +637,11 @@ func (g *fixedModule) emitMessageCheckElement(f *ir.Field, expr, ind string) {
 	case *ir.Enum:
 		g.emitMessageCheckInteger(expr, ind, false)
 		g.pf("%sif (%s < 0 || %s > %d) { return false; }\n", ind, expr, expr, len(r.Variants))
+		for i := range r.Variants {
+			if i < len(r.VariantDeprecated) && r.VariantDeprecated[i] {
+				g.pf("%sif (%s === %d) { return false; }\n", ind, expr, i+1)
+			}
+		}
 	case *ir.Struct:
 		g.pf("%sif (%s === null || %s === undefined || !%sMessageBodyOk(%s)) { return false; }\n", ind, expr, expr, r.Name, expr)
 	case *ir.Union:
@@ -651,8 +681,7 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 	// arm would swallow it and answer a bound where the wire wants the number
 	// of present slots. The reference asks KeyEnum first (gotable/messagewrite.go).
 	if f.KeyEnum != "" {
-		g.emitMessageKeyedCount(f, mem, ind)
-		return ir.GoExportName(f.Name) + "Pairs > 0"
+		return g.emitMessageKeyedCount(f, mem, ind) + " > 0"
 	}
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
@@ -675,16 +704,25 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		if isStructRef(f.Type) && !f.Type.Pointer {
 			return "true"
 		}
-		lhs := mem + "[i]"
+		iv := g.nextIdxVar()
+		lhs := mem + "[" + iv + "]"
 		def := fixedElementZero(f)
 		if isUnionRef(f.Type) {
 			lhs += ".type"
 			def = "0"
 		}
-		v := ir.GoExportName(f.Name) + "AllDefault"
+		g.probeSeq++
+		v := fmt.Sprintf("_%sAllDefault%d", ir.GoExportName(f.Name), g.probeSeq)
 		g.pf("%slet %s = true;\n", ind, v)
-		g.pf("%sfor (let i = 0; i < %d; i++) { if (%s) { %s = false; break; } }\n", ind, f.ArrayBound, messageDiffers(f, lhs, def), v)
+		g.pf("%sfor (let %s = 0; %s < %d; %s++) { if (%s) { %s = false; break; } }\n", ind, iv, iv, f.ArrayBound, iv, messageDiffers(f, lhs, def), v)
 		return "!" + v
+	}
+	if isStructRef(f.Type) {
+		g.probeSeq++
+		pVar := fmt.Sprintf("_msgProbe%d", g.probeSeq)
+		g.pf("%sconst %s = new TableBitWriter(null, true);\n", ind, pVar)
+		g.pf("%sif (!%sSaveMessageBody(%s, %s)) { return false; }\n", ind, f.Type.Name, pVar, mem)
+		return fmt.Sprintf("(%s.Bits > TableMessageRefBitsHere)", pVar)
 	}
 	if isUnionRef(f.Type) {
 		return mem + ".type !== 0"
@@ -703,14 +741,17 @@ func messageDiffers(f *ir.Field, lhs, def string) string {
 	return lhs + " !== " + def
 }
 
-func (g *fixedModule) emitMessageKeyedCount(f *ir.Field, mem, ind string) {
+func (g *fixedModule) emitMessageKeyedCount(f *ir.Field, mem, ind string) string {
+	iv := g.nextIdxVar()
 	e := messageElementField(f)
-	v := ir.GoExportName(f.Name) + "Pairs"
+	g.probeSeq++
+	v := fmt.Sprintf("_%sPairs%d", ir.GoExportName(f.Name), g.probeSeq)
 	g.pf("%slet %s = 0;\n", ind, v)
-	g.pf("%sfor (let i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
-	cond := g.messageRides(e, mem+"[i]", ind+"  ")
+	g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.KeyEnumRef.Max, iv)
+	cond := g.messageRides(e, mem+"["+iv+"]", ind+"  ")
 	g.pf("%s  if (%s) { %s++; }\n", ind, cond, v)
 	g.pf("%s}\n", ind)
+	return v
 }
 
 func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
@@ -762,8 +803,7 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 		// key reference before each present element (§3.2): "the body carries
 		// `(variant id, element)` pairs". The reader consumes one key reference
 		// per element (emitMessageReadArray), so the writer must write one.
-		g.emitMessageKeyedCount(f, mem, ind)
-		countExpr = ir.GoExportName(f.Name) + "Pairs"
+		countExpr = g.emitMessageKeyedCount(f, mem, ind)
 		loopExpr = strconv.FormatInt(f.ArrayBound, 10)
 	case f.Array == ir.ArrayFixed:
 		countExpr = strconv.FormatInt(f.ArrayBound, 10)
@@ -778,18 +818,19 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 	}
 	e := messageElementField(f)
 	elemEntry := ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, loopExpr)
+	iv := g.nextIdxVar()
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, loopExpr, iv)
 	if keyed {
-		cond := g.messageRides(e, mem+"[i]", ind+"  ")
+		cond := g.messageRides(e, mem+"["+iv+"]", ind+"  ")
 		g.pf("%s  if (!(%s)) { continue; }\n", ind, cond)
-		g.pf("%s  switch (i) {\n", ind)
+		g.pf("%s  switch (%s) {\n", ind, iv)
 		for i := range f.KeyEnumRef.Variants {
 			slot := messageNameSlot(g.unit, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
 			g.pf("%s    case %d: w.Put(%dn, TableMessageRefBitsHere); break;\n", ind, i, slot)
 		}
 		g.pf("%s  }\n", ind)
 	}
-	g.emitMessageWriteElement(e, elemEntry, mem+"[i]", ind+"  ")
+	g.emitMessageWriteElement(e, elemEntry, mem+"["+iv+"]", ind+"  ")
 	g.pf("%s}\n", ind)
 }
 
@@ -843,6 +884,10 @@ func (g *fixedModule) emitMessageWriteEnum(f *ir.Field, mem, ind string) {
 	g.pf("%sif (%s === 0) { w.Put(0n, TableMessageRefBitsHere); } else {\n", ind, mem)
 	g.pf("%s  switch (%s) {\n", ind, mem)
 	for i, v := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			g.pf("%s    case %d: return false;\n", ind, i+1)
+			continue
+		}
 		g.pf("%s    case %d: w.Put(%dn, TableMessageRefBitsHere); break;\n", ind, i+1, messageNameSlot(g.unit, ir.TableWireId(e.VariantWireName(i))))
 		_ = v
 	}
@@ -898,25 +943,59 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("    }\n  }\n}\n\n")
 }
 
+func messageKindWidenable(kind int) bool {
+	return (kind >= 3 && kind <= 5) || (kind >= 7 && kind <= 9) || kind == 11 || kind == 18 || kind == 19
+}
+
+func messageCompatibilityCond(f *ir.Field, mine ir.TableVocabularyEntry, entry string) string {
+	if f != nil && messageKindWidenable(int(mine.Kind)) {
+		return fmt.Sprintf("%s.Element.Kind === %d && tableMessageKindWidens(%s.Shape.Kind, %d)", entry, mine.Shape.Elem, entry, mine.Kind)
+	}
+	if f != nil && (mine.Kind == 14 || mine.Kind == 16) && messageKindWidenable(int(mine.Shape.Elem)) {
+		return fmt.Sprintf("%s.Shape.Kind === %d && tableMessageKindWidens(%s.Element.Kind, %d)", entry, mine.Kind, entry, mine.Shape.Elem)
+	}
+	return ""
+}
+
 func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyEntry, ind string) {
 	mem := "value." + js.MemberName(f.Name)
-	g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
-	atField := !f.Type.Optional
-	cond := messageStoredDefaultCond(f, mem)
-	if enumRefOf(f) != nil && atField && cond != "" {
-		g.pf("%sconst unknownBefore = r.Report.Unknown;\n", ind)
+	compat := messageCompatibilityCond(f, mine, "entry")
+	g.pf("%slet widened = false;\n", ind)
+	if compat != "" {
+		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { if (%s) { widened = true; } else { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; } }\n", ind, mine.Kind, mine.Shape.Elem, compat)
+	} else {
+		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
 	}
-	g.emitMessageReadValue(f, mem, ind, "entry.Shape", atField)
-	if cond != "" {
-		extra := ""
-		if enumRefOf(f) != nil {
-			extra = " && r.Report.Unknown === unknownBefore"
-		}
-		g.pf("%sif (r.Vocabulary.BuildVersion === %s && (%s)%s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), cond, extra)
+	atField := !f.Type.Optional && !f.Required
+	g.pf("%sconst subBefore = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
+	g.emitMessageReadValue(f, mem, ind, "entry.Shape", !f.Type.Optional)
+	cond := ""
+	if !f.Required {
+		cond = messageStoredDefaultCond(f, mem)
+	}
+	switch {
+	case cond != "":
+		mineBits := ir.TableMessageValueBits(mine.Kind, mine.Shape)
+		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && entry.Shape.Packing === %d && entry.Shape.Bits === %d && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && (%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Packing, mineBits, cond)
+	case atField && f.KeyEnum == "" && f.Array == ir.ArrayFixed && (!isStructRef(f.Type) || f.Type.Pointer):
+		rides := g.messageRides(f, mem, ind)
+		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
+	case atField && f.KeyEnum == "" && f.Array == ir.ArrayCounted && f.ArrayMin > 0:
+		e := messageElementField(f)
+		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && %sCount === %d) {\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, mem, f.ArrayMin)
+		iv := g.nextIdxVar()
+		g.pf("%s  let _allDef = true;\n", ind)
+		g.pf("%s  for (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayMin, iv)
+		er := g.messageRides(e, mem+"["+iv+"]", ind+"    ")
+		g.pf("%s    if (%s) { _allDef = false; break; }\n", ind, er)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  if (_allDef) { r.Report.Damaged = true; return false; }\n", ind)
+		g.pf("%s}\n", ind)
 	}
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
 	}
+	g.pf("%sif (widened) { r.Report.Widened++; }\n", ind)
 }
 
 // messageStoredDefaultCond is the value a conforming writer of this build
@@ -957,21 +1036,23 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  let kept = rawLen;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
+		iv := g.nextIdxVar()
 		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
+		g.pf("%s  for (let %s = 0; %s < kept; %s++) { %s[%s] = r.Bits.Buffer[start + %s]; }\n", ind, iv, iv, iv, mem, iv, iv)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.Type.Kind == ir.TBytes:
+		iv := g.nextIdxVar()
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
 		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  let kept = Number(n);\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
+		g.pf("%s  for (let %s = 0; %s < kept; %s++) { %s[%s] = r.Bits.Buffer[start + %s]; }\n", ind, iv, iv, iv, mem, iv, iv)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		elide := atField && (f.Array != ir.ArrayFixed || !isStructRef(f.Type) || f.Type.Pointer || f.KeyEnum != "")
-		g.emitMessageReadArray(f, mem, ind, elide)
+		g.emitMessageReadArray(f, mem, ind, shape, elide)
 	case isStructRef(f.Type):
 		elideEmpty := "false"
 		if atField {
@@ -981,14 +1062,16 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 	case isUnionRef(f.Type):
 		g.emitMessageReadUnion(f, mem, ind, atField)
 	case enumRefOf(f) != nil:
-		g.emitMessageReadEnum(f, mem, ind)
+		g.emitMessageReadEnum(f, mem, ind, atField)
 	default:
 		g.emitMessageReadScalar(f, mem, ind, shape)
 	}
 }
 
-func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEmpty bool) {
+func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, elideEmpty bool) {
 	bad := "r.Report.Damaged = true; return false"
+	elemExpr := strings.TrimSuffix(shape, ".Shape") + ".Element"
+	iv := g.nextIdxVar()
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
 	companion := mem + "Count"
@@ -996,9 +1079,9 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEm
 		bound = f.Type.Size
 		companion = mem + "Length"
 	}
-	g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { %s; }\n", ind, bad)
+	g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok) { %s; }\n", ind, shape, bad)
 	if f.KeyEnum == "" {
-		g.pf("%s  if (entry.Element.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, bad)
+		g.pf("%s  if (%s.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, elemExpr, bad)
 	}
 	g.pf("%s  let keep = Number(n);\n", ind)
 	if elideEmpty {
@@ -1009,7 +1092,7 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEm
 	if f.KeyEnum != "" {
 		g.pf("%s  const seenKeys = [];\n", ind)
 		g.pf("%s  let lastKey = 0;\n", ind)
-		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
+		g.pf("%s  for (let %s = 0n; %s < n; %s++) {\n", ind, iv, iv, iv)
 		g.pf("%s    const [kref, kok] = r.Bits.Get(r.RefBits); if (!kok) { %s; }\n", ind, bad)
 		g.pf("%s    const ken = tableMessageEntry(r.Vocabulary, kref);\n", ind)
 		g.pf("%s    if (ken === null || ken.Shape.Kind !== 0 || ken.Id >= 0xfffffffffffffffdn || seenKeys.includes(ken.Id)) { %s; }\n", ind, bad)
@@ -1021,28 +1104,37 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind string, elideEm
 			g.pf("%s      case 0x%016xn: key = %d; break;\n", ind, ir.TableWireId(ke.VariantWireName(i)), i+1)
 		}
 		g.pf("%s      default: r.Report.Unknown++;\n%s    }\n", ind, ind)
-		g.pf("%s    if (key !== 0 && r.Vocabulary.BuildVersion === %s && key <= lastKey) { %s; }\n", ind, jsId(ir.BuildVersion(g.unit)), bad)
+		g.pf("%s    const _exactKeyed = r.Vocabulary.BuildVersion === %s && Number(%s.Max) === %d;\n", ind, jsId(ir.BuildVersion(g.unit)), shape, bound)
+		g.pf("%s    if (key !== 0 && _exactKeyed && key <= lastKey) { %s; }\n", ind, bad)
 		g.pf("%s    if (key !== 0) { lastKey = key; }\n", ind)
-		g.pf("%s    if (key === 0) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0)) { %s; } }\n", ind, bad)
+		g.pf("%s    if (key === 0) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: %s }, 0)) { %s; } }\n", ind, elemExpr, bad)
 		g.pf("%s    else {\n", ind)
-		g.emitMessageReadElement(e, mem+"[key - 1]", ind+"      ", "entry.Element")
+		g.pf("%s      const _subSlot = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
+		g.pf("%s      const _bitsSlot = r.Bits.Offset;\n", ind)
+		g.emitMessageReadElement(e, mem+"[key - 1]", ind+"      ", elemExpr)
+		if isStructRef(e.Type) {
+			g.pf("%s      if (_exactKeyed && r.Report.Unknown + (r.Substituted ?? 0) === _subSlot && r.Bits.Offset - _bitsSlot === r.RefBits) { %s; }\n", ind, bad)
+		} else {
+			slotRide := g.messageRides(e, mem+"[key - 1]", ind+"      ")
+			g.pf("%s      if (_exactKeyed && %s.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === _subSlot && !(%s)) { %s; }\n", ind, elemExpr, slotRide, bad)
+		}
 		g.pf("%s    }\n", ind)
 		g.pf("%s  }\n", ind)
 		if counted {
 			g.pf("%s  %s = 0;\n", ind, companion)
 		}
 	} else {
-		g.pf("%s  for (let i = 0n; i < n; i++) {\n", ind)
-		g.pf("%s    const p = i < BigInt(keep) ? %s[Number(i)] : null;\n", ind, mem)
+		g.pf("%s  for (let %s = 0n; %s < n; %s++) {\n", ind, iv, iv, iv)
+		g.pf("%s    const p = %s < BigInt(keep) ? %s[Number(%s)] : null;\n", ind, iv, mem, iv)
 		g.pf("%s    if (p === null) {\n", ind)
-		g.pf("%s      if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {\n", ind)
-		g.pf("%s        if (!r.Bits.Skip(Number(n - i) * Math.max(0, entry.Element.Bits))) { %s; }\n", ind, bad)
+		g.pf("%s      if (%s.Bits >= 0 || %s.Kind === 0 || %s.Kind === 32) {\n", ind, elemExpr, elemExpr, elemExpr)
+		g.pf("%s        if (!r.Bits.Skip(Number(n - %s) * Math.max(0, %s.Bits))) { %s; }\n", ind, iv, elemExpr, bad)
 		g.pf("%s        break;\n", ind)
 		g.pf("%s      }\n", ind)
 		g.pf("%s      const before = r.Bits.Offset;\n", ind)
-		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0) || r.Bits.Offset === before) { %s; }\n", ind, bad)
+		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: %s }, 0) || r.Bits.Offset === before) { %s; }\n", ind, elemExpr, bad)
 		g.pf("%s    } else {\n", ind)
-		g.emitMessageReadElement(e, mem+"[Number(i)]", ind+"      ", "entry.Element")
+		g.emitMessageReadElement(e, mem+"[Number("+iv+")]", ind+"      ", elemExpr)
 		g.pf("%s    }\n", ind)
 		g.pf("%s  }\n", ind)
 		if counted {
@@ -1087,8 +1179,15 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 			g.pf("%s  let x = TableMessageFloat32FromBits(b);\n", ind)
 		} else {
 			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; }\n", ind, shape)
-			g.pf("%s  if ((v[0] & 0x7ff0000000000000n) === 0x7ff0000000000000n) %s\n", ind, refuse)
-			g.pf("%s  let x = TableMessageFloat64FromBits(v[0]);\n", ind)
+			g.pf("%s  let x;\n", ind)
+			g.pf("%s  if (%s.Kind === 10) {\n", ind, shape)
+			g.pf("%s    const b = Number(v[0] & 0xffffffffn);\n", ind)
+			g.pf("%s    if (%s.Packing !== 2 && (b & 0x7f800000) === 0x7f800000) %s\n", ind, shape, refuse)
+			g.pf("%s    x = TableMessageFloat32FromBits(b);\n", ind)
+			g.pf("%s  } else {\n", ind)
+			g.pf("%s    if ((v[0] & 0x7ff0000000000000n) === 0x7ff0000000000000n) %s\n", ind, refuse)
+			g.pf("%s    x = TableMessageFloat64FromBits(v[0]);\n", ind)
+			g.pf("%s  }\n", ind)
 		}
 		g.emitMessageFloatClamp(f, "x", ind+"  ")
 		g.pf("%s  %s = x;\n%s}\n", ind, mem, ind)
@@ -1141,8 +1240,12 @@ func (g *fixedModule) emitMessageFloatClamp(f *ir.Field, x, ind string) {
 	g.pf("%sif (%s < %s) { %s = %s; r.Report.Oor++; } else if (%s > %s) { %s = %s; r.Report.Oor++; }\n", ind, x, lo, x, lo, x, hi, x, hi)
 }
 
-func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
+func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string, atField bool) {
 	e := enumRefOf(f)
+	depDef := "0"
+	if atField {
+		depDef = fixedZeroFor(f)
+	}
 	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Damaged = true; return false; }\n", ind)
 	g.pf("%s  if (ref === 0n) { %s = 0; }\n", ind, mem)
 	g.pf("%s  else {\n", ind)
@@ -1150,6 +1253,10 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
 	g.pf("%s    if (en === null || en.Shape.Kind !== 0 || en.Id >= 0xfffffffffffffffdn) { r.Report.Damaged = true; return false; }\n", ind)
 	g.pf("%s    switch (en.Id) {\n", ind)
 	for i := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			g.pf("%s      case 0x%016xn: %s = %s; r.Substituted = (r.Substituted ?? 0) + 1; break;\n", ind, ir.TableWireId(e.VariantWireName(i)), mem, depDef)
+			continue
+		}
 		g.pf("%s      case 0x%016xn: %s = %d; break;\n", ind, ir.TableWireId(e.VariantWireName(i)), mem, i+1)
 	}
 	g.pf("%s      default: %s = 0; r.Report.Unknown++;\n", ind, mem)
@@ -1171,12 +1278,19 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string, atField
 	g.pf("%s    switch (arm.Id) {\n", ind)
 	for i, v := range un.Variants {
 		arm := ir.TableArmEntry(v)
+		compat := messageCompatibilityCond(v.F, arm, "arm")
 		g.pf("%s      case 0x%016xn: {\n", ind, arm.Id)
-		g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, arm.Kind, arm.Shape.Elem, mem)
+		g.pf("%s        let armWidened = false;\n", ind)
+		if compat != "" {
+			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { if (%s) { armWidened = true; } else { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; } }\n", ind, arm.Kind, arm.Shape.Elem, compat, mem)
+		} else {
+			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, arm.Kind, arm.Shape.Elem, mem)
+		}
 		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
 			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape", false)
 		}
+		g.pf("%s        if (armWidened) { r.Report.Widened++; }\n", ind)
 		g.pf("%s        break;\n%s      }\n", ind, ind)
 	}
 	g.pf("%s      default: { %s.type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } }\n", ind, mem)

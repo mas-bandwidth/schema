@@ -4624,9 +4624,10 @@ typedef MessageFuzz = List<int> Function(Uint8List wire);
 // surface's batch read against a connection's announcement, and the wire
 // fuzzer's mutant read against the unit's OWN announcement.
 final class MessageCodec {
-  const MessageCodec(this.batch, this.fuzz);
+  const MessageCodec(this.batch, this.fuzz, this.framedFuzz);
   final MessageRun batch;
   final MessageFuzz fuzz;
+  final MessageFuzz framedFuzz;
 }
 
 // _ownAnnouncement is the unit's compiled announcement, which the fuzzer's
@@ -4735,7 +4736,86 @@ MessageCodec _messageRow<T, V, R>({
       return null;
     }
     return out;
-  }, fuzz);
+  }, fuzz, (Uint8List frame) {
+    if (frame.length < 4) {
+      return _fuzzReply(loaded: false, unknown: 0, clamped: 0, malformed: true, refused: true, measure: -1, saved: null);
+    }
+    final alen = ByteData.sublistView(frame, 0, 4).getUint32(0, Endian.little);
+    if (4 + alen > frame.length) {
+      return _fuzzReply(loaded: false, unknown: 0, clamped: 0, malformed: true, refused: true, measure: -1, saved: null);
+    }
+    V? vocab;
+    if (alen == 0) {
+      if (ownVocabulary == null && !ownRefused) {
+        final v = vocabulary();
+        if (announceRead(v, own(), report())) {
+          ownVocabulary = v;
+        } else {
+          ownRefused = true;
+        }
+      }
+      vocab = ownVocabulary;
+    } else {
+      final v = vocabulary();
+      final R arep = report();
+      final dynamic darep = arep;
+      final ann = Uint8List.sublistView(frame, 4, 4 + alen);
+      if (announceRead(v, ann, arep) && !damaged(arep) && !(darep.refused as bool)) {
+        vocab = v;
+      } else {
+        return _fuzzReply(
+          loaded: false,
+          unknown: darep.unknown as int,
+          clamped: 0,
+          malformed: false,
+          refused: true,
+          measure: -1,
+          saved: null,
+        );
+      }
+    }
+    if (vocab == null) {
+      return _fuzzReply(loaded: false, unknown: 0, clamped: 0, malformed: false, refused: true, measure: -1, saved: null);
+    }
+    final batchWire = Uint8List.sublistView(frame, 4 + alen);
+    final initLim = batchWire.length >= 2 ? ((batchWire[1] & 0xff) + 1).clamp(1, 256) : 1;
+    for (var i = 0; i < initLim; i++) {
+      init(storage[i]);
+    }
+    final R typedRep = report();
+    final dynamic rep = typedRep;
+    final count = load(storage, batchWire, vocab, typedRep);
+    final ok = count >= 1 && count <= 256 && !damaged(typedRep) && !(rep.refused as bool);
+    if (!ok) {
+      return _fuzzReply(
+        loaded: false,
+        unknown: rep.unknown as int,
+        clamped: 0,
+        malformed: false,
+        refused: true,
+        measure: -1,
+        saved: null,
+      );
+    }
+    final bodies = storage.sublist(0, count);
+    final n = measure(bodies, report());
+    if (n < 0) {
+      return _fuzzReply(loaded: false, unknown: rep.unknown as int, clamped: 0, malformed: false, refused: true, measure: -1, saved: null);
+    }
+    final out = Uint8List(n);
+    if (save(bodies, out, report()) != n) {
+      return _fuzzReply(loaded: false, unknown: rep.unknown as int, clamped: 0, malformed: false, refused: true, measure: -1, saved: null);
+    }
+    return _fuzzReply(
+      loaded: true,
+      unknown: rep.unknown as int,
+      clamped: 0,
+      malformed: false,
+      refused: false,
+      measure: -1,
+      saved: out,
+    );
+  });
 }
 
 List<E> _entries<E>(E Function() zero) => List<E>.generate(4096, (_) => zero());
@@ -4859,6 +4939,190 @@ final Map<String, MessageCodec> messageRuns = {
     load: varevo3_fixed.evoMsgLoadMessages,
     measure: varevo3_fixed.evoMsgMeasureMessages,
     save: varevo3_fixed.evoMsgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+};
+
+final Map<String, MessageCodec> messageFuzzRuns = {
+  ...messageRuns,
+  'tblvarevo2 EvoMsg': _messageRow<tblvarevo2_fixed.EvoMsg, tblvarevo2_fixed.TableVocabulary, tblvarevo2_fixed.TableReport>(
+    fresh: tblvarevo2_fixed.EvoMsg.new,
+    init: tblvarevo2_fixed.initEvoMsg,
+    vocabulary: () => tblvarevo2_fixed.TableVocabulary(entries: _entries(() => tblvarevo2_fixed.TableMessageEntry(0, 0))),
+    report: tblvarevo2_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblvarevo2_fixed.announceMeasure, tblvarevo2_fixed.announce),
+    announceRead: tblvarevo2_fixed.announceRead,
+    load: varevo2_fixed.evoMsgLoadMessages,
+    measure: varevo2_fixed.evoMsgMeasureMessages,
+    save: varevo2_fixed.evoMsgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'messagedemo ToolMessage': _messageRow<messagedemo_fixed.ToolMessage, messagedemo_fixed.TableVocabulary, messagedemo_fixed.TableReport>(
+    fresh: messagedemo_fixed.ToolMessage.new,
+    init: messagedemo_fixed.initToolMessage,
+    vocabulary: () => messagedemo_fixed.TableVocabulary(entries: _entries(() => messagedemo_fixed.TableMessageEntry(0, 0))),
+    report: messagedemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(messagedemo_fixed.announceMeasure, messagedemo_fixed.announce),
+    announceRead: messagedemo_fixed.announceRead,
+    load: messages_fixed.toolMessageLoadMessages,
+    measure: messages_fixed.toolMessageMeasureMessages,
+    save: messages_fixed.toolMessageSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblfixedevo EvoRoot': _messageRow<tblfixedevo_fixed.EvoRoot, tblfixedevo_fixed.TableVocabulary, tblfixedevo_fixed.TableReport>(
+    fresh: tblfixedevo_fixed.EvoRoot.new,
+    init: tblfixedevo_fixed.initEvoRoot,
+    vocabulary: () => tblfixedevo_fixed.TableVocabulary(entries: _entries(() => tblfixedevo_fixed.TableMessageEntry(0, 0))),
+    report: tblfixedevo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblfixedevo_fixed.announceMeasure, tblfixedevo_fixed.announce),
+    announceRead: tblfixedevo_fixed.announceRead,
+    load: fixedevo_fixed.evoRootLoadMessages,
+    measure: fixedevo_fixed.evoRootMeasureMessages,
+    save: fixedevo_fixed.evoRootSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tabledemo RootConfig': _messageRow<tabledemo_fixed.RootConfig, tabledemo_fixed.TableVocabulary, tabledemo_fixed.TableReport>(
+    fresh: tabledemo_fixed.RootConfig.new,
+    init: tabledemo_fixed.initRootConfig,
+    vocabulary: () => tabledemo_fixed.TableVocabulary(entries: _entries(() => tabledemo_fixed.TableMessageEntry(0, 0))),
+    report: tabledemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tabledemo_fixed.announceMeasure, tabledemo_fixed.announce),
+    announceRead: tabledemo_fixed.announceRead,
+    load: tables_fixed.rootConfigLoadMessages,
+    measure: tables_fixed.rootConfigMeasureMessages,
+    save: tables_fixed.rootConfigSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tabledemo ProfileConfig': _messageRow<tabledemo_fixed.ProfileConfig, tabledemo_fixed.TableVocabulary, tabledemo_fixed.TableReport>(
+    fresh: tabledemo_fixed.ProfileConfig.new,
+    init: tabledemo_fixed.initProfileConfig,
+    vocabulary: () => tabledemo_fixed.TableVocabulary(entries: _entries(() => tabledemo_fixed.TableMessageEntry(0, 0))),
+    report: tabledemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tabledemo_fixed.announceMeasure, tabledemo_fixed.announce),
+    announceRead: tabledemo_fixed.announceRead,
+    load: tables_fixed.profileConfigLoadMessages,
+    measure: tables_fixed.profileConfigMeasureMessages,
+    save: tables_fixed.profileConfigSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tabledemo KeyedConfig': _messageRow<tabledemo_fixed.KeyedConfig, tabledemo_fixed.TableVocabulary, tabledemo_fixed.TableReport>(
+    fresh: tabledemo_fixed.KeyedConfig.new,
+    init: tabledemo_fixed.initKeyedConfig,
+    vocabulary: () => tabledemo_fixed.TableVocabulary(entries: _entries(() => tabledemo_fixed.TableMessageEntry(0, 0))),
+    report: tabledemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tabledemo_fixed.announceMeasure, tabledemo_fixed.announce),
+    announceRead: tabledemo_fixed.announceRead,
+    load: keyed_fixed.keyedConfigLoadMessages,
+    measure: keyed_fixed.keyedConfigMeasureMessages,
+    save: keyed_fixed.keyedConfigSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblv1 Cfg': _messageRow<tblv1_fixed.Cfg, tblv1_fixed.TableVocabulary, tblv1_fixed.TableReport>(
+    fresh: tblv1_fixed.Cfg.new,
+    init: tblv1_fixed.initCfg,
+    vocabulary: () => tblv1_fixed.TableVocabulary(entries: _entries(() => tblv1_fixed.TableMessageEntry(0, 0))),
+    report: tblv1_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblv1_fixed.announceMeasure, tblv1_fixed.announce),
+    announceRead: tblv1_fixed.announceRead,
+    load: v1_fixed.cfgLoadMessages,
+    measure: v1_fixed.cfgMeasureMessages,
+    save: v1_fixed.cfgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblv2 Cfg': _messageRow<tblv2_fixed.Cfg, tblv2_fixed.TableVocabulary, tblv2_fixed.TableReport>(
+    fresh: tblv2_fixed.Cfg.new,
+    init: tblv2_fixed.initCfg,
+    vocabulary: () => tblv2_fixed.TableVocabulary(entries: _entries(() => tblv2_fixed.TableMessageEntry(0, 0))),
+    report: tblv2_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblv2_fixed.announceMeasure, tblv2_fixed.announce),
+    announceRead: tblv2_fixed.announceRead,
+    load: v2_fixed.cfgLoadMessages,
+    measure: v2_fixed.cfgMeasureMessages,
+    save: v2_fixed.cfgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblm1 Msg': _messageRow<tblm1_fixed.Msg, tblm1_fixed.TableVocabulary, tblm1_fixed.TableReport>(
+    fresh: tblm1_fixed.Msg.new,
+    init: tblm1_fixed.initMsg,
+    vocabulary: () => tblm1_fixed.TableVocabulary(entries: _entries(() => tblm1_fixed.TableMessageEntry(0, 0))),
+    report: tblm1_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblm1_fixed.announceMeasure, tblm1_fixed.announce),
+    announceRead: tblm1_fixed.announceRead,
+    load: m1_fixed.msgLoadMessages,
+    measure: m1_fixed.msgMeasureMessages,
+    save: m1_fixed.msgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblm2 Msg': _messageRow<tblm2_fixed.Msg, tblm2_fixed.TableVocabulary, tblm2_fixed.TableReport>(
+    fresh: tblm2_fixed.Msg.new,
+    init: tblm2_fixed.initMsg,
+    vocabulary: () => tblm2_fixed.TableVocabulary(entries: _entries(() => tblm2_fixed.TableMessageEntry(0, 0))),
+    report: tblm2_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblm2_fixed.announceMeasure, tblm2_fixed.announce),
+    announceRead: tblm2_fixed.announceRead,
+    load: m2_fixed.msgLoadMessages,
+    measure: m2_fixed.msgMeasureMessages,
+    save: m2_fixed.msgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tbla2 Root': _messageRow<tbla2_fixed.Root, tbla2_fixed.TableVocabulary, tbla2_fixed.TableReport>(
+    fresh: tbla2_fixed.Root.new,
+    init: tbla2_fixed.initRoot,
+    vocabulary: () => tbla2_fixed.TableVocabulary(entries: _entries(() => tbla2_fixed.TableMessageEntry(0, 0))),
+    report: tbla2_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tbla2_fixed.announceMeasure, tbla2_fixed.announce),
+    announceRead: tbla2_fixed.announceRead,
+    load: a2_fixed.rootLoadMessages,
+    measure: a2_fixed.rootMeasureMessages,
+    save: a2_fixed.rootSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblk1 Root': _messageRow<tblk1_fixed.Root, tblk1_fixed.TableVocabulary, tblk1_fixed.TableReport>(
+    fresh: tblk1_fixed.Root.new,
+    init: tblk1_fixed.initRoot,
+    vocabulary: () => tblk1_fixed.TableVocabulary(entries: _entries(() => tblk1_fixed.TableMessageEntry(0, 0))),
+    report: tblk1_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblk1_fixed.announceMeasure, tblk1_fixed.announce),
+    announceRead: tblk1_fixed.announceRead,
+    load: k1_fixed.rootLoadMessages,
+    measure: k1_fixed.rootMeasureMessages,
+    save: k1_fixed.rootSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblk2 Root': _messageRow<tblk2_fixed.Root, tblk2_fixed.TableVocabulary, tblk2_fixed.TableReport>(
+    fresh: tblk2_fixed.Root.new,
+    init: tblk2_fixed.initRoot,
+    vocabulary: () => tblk2_fixed.TableVocabulary(entries: _entries(() => tblk2_fixed.TableMessageEntry(0, 0))),
+    report: tblk2_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblk2_fixed.announceMeasure, tblk2_fixed.announce),
+    announceRead: tblk2_fixed.announceRead,
+    load: k2_fixed.rootLoadMessages,
+    measure: k2_fixed.rootMeasureMessages,
+    save: k2_fixed.rootSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'scalars SimState': _messageRow<scalardemo_fixed.SimState, scalardemo_fixed.TableVocabulary, scalardemo_fixed.TableReport>(
+    fresh: scalardemo_fixed.SimState.new,
+    init: scalardemo_fixed.initSimState,
+    vocabulary: () => scalardemo_fixed.TableVocabulary(entries: _entries(() => scalardemo_fixed.TableMessageEntry(0, 0))),
+    report: scalardemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(scalardemo_fixed.announceMeasure, scalardemo_fixed.announce),
+    announceRead: scalardemo_fixed.announceRead,
+    load: scalars_fixed.simStateLoadMessages,
+    measure: scalars_fixed.simStateMeasureMessages,
+    save: scalars_fixed.simStateSaveMessages,
+    damaged: (r) => r.refused,
+  ),
+  'tblscalars2 SimState': _messageRow<scalardemo2_fixed.SimState, scalardemo2_fixed.TableVocabulary, scalardemo2_fixed.TableReport>(
+    fresh: scalardemo2_fixed.SimState.new,
+    init: scalardemo2_fixed.initSimState,
+    vocabulary: () => scalardemo2_fixed.TableVocabulary(entries: _entries(() => scalardemo2_fixed.TableMessageEntry(0, 0))),
+    report: scalardemo2_fixed.TableReport.new,
+    own: () => _ownAnnouncement(scalardemo2_fixed.announceMeasure, scalardemo2_fixed.announce),
+    announceRead: scalardemo2_fixed.announceRead,
+    load: scalars2_fixed.simStateLoadMessages,
+    measure: scalars2_fixed.simStateMeasureMessages,
+    save: scalars2_fixed.simStateSaveMessages,
     damaged: (r) => r.refused,
   ),
 };
@@ -5412,7 +5676,11 @@ Future<void> wireFuzz() async {
     // a form-2 root rides the message arm (§3.3), as findMessageCodec binds
     // it in test/conformance/go/wire_fuzz.go; a variable table carries no
     // message verbs and so answers absent, as the Go leg's does
-    final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
+    final message = retain == 0
+        ? (form == 2
+            ? messageRuns['$unit $root']?.fuzz
+            : (form == 5 ? messageFuzzRuns['$unit $root']?.framedFuzz : null))
+        : null;
     runs.add(run);
     messages.add(message);
     available.add(run != null || message != null ? 1 : 0);

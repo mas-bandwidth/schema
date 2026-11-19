@@ -739,12 +739,22 @@ func (g *cookGen) emitAt(st *ir.Struct) {
 //
 // They are STATIC and take the row, because a cooked record is shared with the
 // block form and neither accelerator adds members to the other's structs.
+var cookReservedMembers = map[string]bool{
+	"Region": true, "RegionLength": true, "RegionAlignment": true,
+	"RootSize": true, "RootAlign": true, "RootPointer": true, "Root": true,
+	"Open": true, "At": true, "Type": true,
+}
+
 func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 	name := st.Name
 	wrote := false
 	for _, fl := range ml.Fields {
 		f := fl.Field
 		member := ir.GoExportName(f.Name)
+		accessor := member
+		if cookReservedMembers[accessor] {
+			accessor += "_"
+		}
 		if !wrote {
 			g.hf("    // The pieces a consumer reads THROUGH rather than at: each is a SPAN over\n")
 			g.hf("    // the region itself, so reading one copies nothing and allocates nothing.\n")
@@ -757,28 +767,28 @@ func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 			if f.IsMap() {
 				elem = f.MapEntry.Name + "Row"
 			}
-			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>((byte*)&row->%s + row->%s.Reference, Math.Max(0, row->%s.Count)); }\n\n", elem, member, name, elem, member, member, member)
+			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>((byte*)&row->%s + row->%s.Reference, Math.Max(0, row->%s.Count)); }\n\n", elem, accessor, name, elem, member, member, member)
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			continue
 		case f.Type.TextUnbounded():
-			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row) { byte* slot = (byte*)&row->%s; long delta = *(long*)slot; if (delta == 0) { return default; } byte* blob = slot + delta; return new ReadOnlySpan<byte>(blob + 8, checked((int)*(uint*)blob)); }\n", member, name, member)
+			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row) { byte* slot = (byte*)&row->%s; long delta = *(long*)slot; if (delta == 0) { return default; } byte* blob = slot + delta; return new ReadOnlySpan<byte>(blob + 8, checked((int)*(uint*)blob)); }\n", accessor, name, member)
 		case f.Type.Kind == ir.TString:
 			g.hf("    // string(%d): the used bytes, without the zero tail (§7.2).\n", f.Type.Size)
-			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row)\n    {\n", member, name)
+			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row)\n    {\n", accessor, name)
 			g.hf("        int used = row->%sLength;\n", member)
 			g.hf("        if (used < 0 || used > %d) { used = 0; } // a companion outside its bound is cook-check's refusal, not a read\n", f.Type.Size)
 			g.hf("        return new ReadOnlySpan<byte>(row->%s, used);\n", member)
 			g.hf("    }\n\n")
 		case f.Type.Kind == ir.TBytes:
 			g.hf("    // bytes(%d): the used bytes.\n", f.Type.Size)
-			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row)\n    {\n", member, name)
+			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row)\n    {\n", accessor, name)
 			g.hf("        int used = row->%sLength;\n", member)
 			g.hf("        if (used < 0 || used > %d) { used = 0; }\n", f.Type.Size)
 			g.hf("        return new ReadOnlySpan<byte>(row->%s, used);\n", member)
 			g.hf("    }\n\n")
 		case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 			elem := g.cookBlittableType(f.Type)
-			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row)\n    {\n", elem, member, name)
+			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row)\n    {\n", elem, accessor, name)
 			if f.Array == ir.ArrayCounted {
 				g.hf("        int used = row->%sCount;\n", member)
 				g.hf("        if (used < 0 || used > %d) { used = 0; }\n", f.ArrayBound)

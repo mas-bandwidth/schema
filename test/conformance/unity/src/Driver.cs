@@ -728,15 +728,19 @@ namespace SchemaUnityConformance
                 byte form = input.ReadByte();
                 byte retain = input.ReadByte();
                 ICodec codec = FindCodec(unit, root);
-                if (retain != 0 && (codec == null || !codec.HasRetain || codec.IsFixed || form == 2))
+                if (retain != 0 && (codec == null || !codec.HasRetain || codec.IsFixed || form == 2 || form == 5))
                 {
                     codec = null;
                 }
-                if (form == 2 && (codec == null || !codec.HasMessage))
+                if ((form == 2 || form == 5) && (codec == null || !codec.HasMessage))
                 {
                     codec = null;
                 }
-                if (form != 2 && retain == 0 && (codec == null || !codec.HasWire))
+                if (form != 2 && form != 5 && retain == 0 && (codec == null || !codec.HasWire))
+                {
+                    codec = null;
+                }
+                if (form != 1 && form != 2 && form != 5)
                 {
                     codec = null;
                 }
@@ -785,11 +789,36 @@ namespace SchemaUnityConformance
                 }
 
                 var rep = new DriverReport();
-                bool message = forms[index] == 2;
+                bool message = forms[index] == 2 || forms[index] == 5;
                 long need = message ? -1 : codec.LoadMeasure(bytes);
-                object value = message
-                    ? codec.MessageLoad(codec.Announcement, bytes, rep)
-                    : codec.Load(bytes, rep);
+                object value = null;
+                if (forms[index] == 5)
+                {
+                    if (bytes.Length < 4)
+                    {
+                        rep.Refused = true;
+                    }
+                    else
+                    {
+                        uint alen = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(0, 4));
+                        if (4L + alen > bytes.Length)
+                        {
+                            rep.Refused = true;
+                        }
+                        else
+                        {
+                            byte[] ann = alen == 0 ? codec.Announcement : bytes.AsSpan(4, (int)alen).ToArray();
+                            byte[] batch = bytes.AsSpan(4 + (int)alen).ToArray();
+                            value = codec.MessageLoad(ann, batch, rep);
+                        }
+                    }
+                }
+                else
+                {
+                    value = message
+                        ? codec.MessageLoad(codec.Announcement, bytes, rep)
+                        : codec.Load(bytes, rep);
+                }
                 bool loaded = value != null && !rep.Refused && !rep.Malformed;
                 output.Write((byte)(loaded ? 1 : 0));
                 output.Write(rep.Unknown);

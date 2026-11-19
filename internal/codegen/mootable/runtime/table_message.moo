@@ -448,6 +448,39 @@ readShape = function(b: buffer, at: number, e: number, kind: number, level: numb
 					s.base = z
 				end
 			end
+			local dom = kindWidth(kind) * 8
+			if dom < 128 then
+				local w0, w1, w2, w3 = s.base[1], s.base[2], s.base[3], s.base[4]
+				if V.signedKind(kind) then
+					local neg = w1 >= 2147483648
+					local want = if neg then 4294967295 else 0
+					if w2 ~= want or w3 ~= want then
+						return s, nil
+					end
+					if dom <= 32 then
+						if w1 ~= want then
+							return s, nil
+						end
+						local sv = if w0 >= 2147483648 then w0 - 4294967296 else w0
+						local lim = 2 ^ (dom - 1)
+						if sv < -lim or sv > lim - 1 then
+							return s, nil
+						end
+					end
+				else
+					if w2 ~= 0 or w3 ~= 0 then
+						return s, nil
+					end
+					if dom <= 32 then
+						if w1 ~= 0 then
+							return s, nil
+						end
+						if dom < 32 and w0 > (2 ^ dom) - 1 then
+							return s, nil
+						end
+					end
+				end
+			end
 			return s, at
 		elseif s.packing == 2 and kind == 10 then
 			if at + 12 > e then
@@ -495,7 +528,7 @@ readShape = function(b: buffer, at: number, e: number, kind: number, level: numb
 		end
 		s.elem = buffer.readu8(b, at)
 		at += 1
-		if not knownKind(s.elem) then
+		if not knownKind(s.elem) or s.elem == 14 or s.elem == 16 then
 			return s, nil
 		end
 		local inner, next = readShape(b, at, e, s.elem, level + 1)
@@ -724,7 +757,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 			return false
 		end
 		seen[key] = true
-		entries[#entries + 1] = { id = id, kind = kind, shape = shape }
+		entries[#entries + 1] = { id = id, kind = kind, shape = shape, key = key }
 		p = next
 	end
 	local maxEntries = if v.maxEntries ~= nil and v.maxEntries > 0 then v.maxEntries else DEFAULT_MAX_ENTRIES
@@ -1107,9 +1140,9 @@ end
 local function mineEntry(slot: number): any
 	local e = home.entries[slot]
 	if e == nil then
-		return { slot = 0, kind = 0, shape = { packing = 0, bits = 0, min = 0, max = 0, elem = 0 } }
+		return { slot = 0, kind = 0, key = "", shape = { packing = 0, bits = 0, min = 0, max = 0, elem = 0 } }
 	end
-	return { slot = slot, kind = e.kind, shape = e.shape }
+	return { slot = slot, kind = e.kind, key = e.key, shape = e.shape }
 end
 
 -- one field (encodeBitField): the elisions are the variable form's
@@ -1941,7 +1974,7 @@ local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 end
 
 -- an enum-keyed array (keyed): the present-slot count, then (key, element)
-local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
+local function decodeKeyed(t: any, fd: any, entry: any, holder: any, exact: boolean?): boolean
 	local shape = entry.shape
 	local n, ok = get(t.r, bitsReq(0, shape.max))
 	if not ok then
@@ -1950,6 +1983,7 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 	local dst = holder[fd.slot]
 	-- A KEYED SLOT TWICE IS DAMAGE (§3.3; docs/plans/strict-only.md decision 5)
 	local seen: { [string]: boolean } = {}
+	local lastAt = 0
 	for _ = 1, n do
 		local ref, rok = reference(t)
 		if not rok then
@@ -1977,8 +2011,26 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 		elseif at > fd.bound then
 			return refuseRead(t, "out_of_range")
 		end
+		if exact and keep then
+			if at <= lastAt then
+				return dmal(t)
+			end
+			lastAt = at
+		end
+		local slotOff, slotSubst = t.r.off, t.subst
 		if not decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep) then
 			return false
+		end
+		if exact and keep and t.subst == slotSubst then
+			local slotDef = false
+			if shape.elem == 13 then
+				slotDef = (t.r.off - slotOff) == t.v.refBits
+			elseif shape.inner == nil or shape.inner.packing ~= 2 then
+				slotDef = elemDefault(fd.e, dst[at])
+			end
+			if slotDef then
+				return dmal(t)
+			end
 		end
 	end
 	return true
@@ -1986,10 +2038,10 @@ end
 
 -- one field's payload under its announced entry (field); `field` is true for
 -- a body field's own payload, false for a union arm's
-local function decodeField(t: any, fd: any, entry: any, holder: any, field: boolean?): boolean
+local function decodeField(t: any, fd: any, entry: any, holder: any, field: boolean?, exact: boolean?): boolean
 	local s = fd.s
 	if s == "arr" and fd.array == "keyed" then
-		return decodeKeyed(t, fd, entry, holder)
+		return decodeKeyed(t, fd, entry, holder, exact)
 	elseif s == "str" or s == "bytes" then
 		return decodeText(t, fd, entry, holder)
 	elseif s == "arr" then
@@ -2159,13 +2211,16 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			end
 			continue
 		end
-		-- FIELDS OUT OF THE WRITER'S DECLARATION ORDER
-		if same and hit.k <= lastK then
-			return dmal(t)
-		end
-		lastK = hit.k
 		local fd = hit.fd
 		local mine = mineEntry(slotOf(d, hit.k))
+		local exact = same and entry.key == mine.key
+		-- FIELDS OUT OF THE WRITER'S DECLARATION ORDER
+		if exact then
+			if hit.k <= lastK then
+				return dmal(t)
+			end
+			lastK = hit.k
+		end
 		if entry.kind ~= mine.kind or entry.shape.elem ~= mine.shape.elem then
 			if widens(entry, mine.kind, mine.shape.elem) then
 				if not decodeField(t, fd, entry, v, true) then
@@ -2181,13 +2236,13 @@ decodeBody = function(t: any, d: any, v: any): boolean
 			return refuseRead(t, "kind_mismatch")
 		end
 		local off, subst, nonFinite = t.r.off, t.subst, t.report.nonFinite
-		if not decodeField(t, fd, entry, v, true) then
+		if not decodeField(t, fd, entry, v, true, exact) then
 			return false
 		end
 		-- A FIELD STORED AT ITS DECLARED DEFAULT: a field whose read substituted
 		-- a value (a deprecated or unknown variant, an unknown arm, a non-finite
 		-- float) is not judged
-		if same and fd.present == nil and not fd.required and t.subst == subst and t.report.nonFinite == nonFinite and messageElides(t, fd, entry, v, t.r.off - off) then
+		if exact and fd.present == nil and not fd.required and t.subst == subst and t.report.nonFinite == nonFinite and messageElides(t, fd, entry, v, t.r.off - off) then
 			return dmal(t)
 		end
 		if fd.present ~= nil and fd.s ~= "arr" then

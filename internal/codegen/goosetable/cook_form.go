@@ -180,8 +180,17 @@ func emitCookHome(g *goose.Gen, u *ir.Unit, records []*ir.Struct, recordIndex fu
 	g.Pf("// record IS the blittable row, so one set serves both accelerators.\n")
 	for _, st := range records {
 		ml := ir.RecordLayout(u, st)
-		g.Declare(st.Name + "RowSize")
-		g.Pf("let %sRowSize: i64 = %d;\n", st.Name, ml.Size)
+		hasSizeField := false
+		for _, fl := range ml.Fields {
+			if ir.GoExportName(fl.Field.Name) == "Size" {
+				hasSizeField = true
+				break
+			}
+		}
+		if !hasSizeField {
+			g.Declare(st.Name + "RowSize")
+			g.Pf("let %sRowSize: i64 = %d;\n", st.Name, ml.Size)
+		}
 		emitAccessors(g, u, st.Name+"Row", ml.Fields, false)
 	}
 	g.Pf("\n")

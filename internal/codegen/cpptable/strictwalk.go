@@ -51,6 +51,7 @@ struct TableStrict
     // whether this reader carries pointer-bearing types and can therefore
     // reach a node: a fixed reader cannot, so a non-null pointer is damage
     bool pointers;
+    bool announcement;
     TableRefuseReason refusal;
     uint64_t next_ref;
 };
@@ -169,8 +170,11 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
             continue;
         }
         // a reserved announcement id out of place (R6): they ride the message
-        // form's announcement, never a file's body
-        if ( id == 0xFFFFFFFFFFFFFFFEull || id == 0xFFFFFFFFFFFFFFFDull ) { return false; }
+        // form's announcement root body, never any other body
+        if ( id == 0xFFFFFFFFFFFFFFFEull || id == 0xFFFFFFFFFFFFFFFDull )
+        {
+            if ( !root || !s.announcement ) { return false; }
+        }
         if ( !TableStrictPayload( s, r, kind, depth ) ) { return false; }
     }
 }
@@ -354,6 +358,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     s.node_table_bytes = 0;
     s.node_table_present = false;
     s.pointers = false;
+    s.announcement = false;
     s.refusal = wire_damaged;
     s.next_ref = 1;
     if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }
@@ -399,6 +404,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     s.node_table_bytes = 0;
     s.node_table_present = false;
     s.pointers = true;
+    s.announcement = false;
     s.refusal = wire_damaged;
     s.next_ref = 1;
     if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }

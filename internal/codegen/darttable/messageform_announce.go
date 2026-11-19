@@ -190,6 +190,19 @@ final class TableMessageShape {
               (sig[at + 13] << 40) | (sig[at + 14] << 48) |
               (sig[at + 15] << 56);
           s.base = s.baseLo;
+          if (kind >= 20 && kind <= 23) {
+            final whi = s.baseLo < 0 ? -1 : 0;
+            if (s.baseHi != whi) return null;
+            final dom = tableMessageKindWidth(kind) * 8;
+            if (dom < 64) {
+              final mn = -(1 << (dom - 1)), mx = (1 << (dom - 1)) - 1;
+              if (s.baseLo < mn || s.baseLo > mx) return null;
+            }
+          } else if (kind >= 25 && kind <= 28) {
+            if (s.baseHi != 0) return null;
+            final dom = tableMessageKindWidth(kind) * 8;
+            if (dom < 64 && (s.baseLo ^ 0x8000000000000000) > (((1 << dom) - 1) ^ 0x8000000000000000)) return null;
+          }
           return (s, at + 16);
         }
         final b = tableMessageLeb(sig, at, end);
@@ -197,10 +210,18 @@ final class TableMessageShape {
         var base = b.$1;
         if (kind >= 2 && kind <= 5) {
           base = (base >>> 1) ^ -(base & 1);
+          final dom = tableMessageKindWidth(kind) * 8;
+          if (dom < 64) {
+            final mn = -(1 << (dom - 1)), mx = (1 << (dom - 1)) - 1;
+            if (base < mn || base > mx) return null;
+          }
+        } else {
+          final dom = tableMessageKindWidth(kind) * 8;
+          if (dom < 64 && (base ^ 0x8000000000000000) > (((1 << dom) - 1) ^ 0x8000000000000000)) return null;
         }
         s.base = base;
         s.baseLo = base;
-        s.baseHi = base < 0 ? -1 : 0;
+        s.baseHi = (kind >= 2 && kind <= 5 && base < 0) ? -1 : 0;
         return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
@@ -433,6 +454,9 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   var vocabularyStart = 0;
   var vocabularyLength = 0;
   var terminated = false;
+  final nextRef = <int>[1];
+  final seenBody = <int>{};
+  var nonFinite = false;
   while (at < bodyEnd) {
     final reference = tableMessageLeb(bytes, at, bodyEnd);
     if (!reference.$3 || reference.$1 < 0) {
@@ -447,13 +471,19 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       terminated = true;
       break;
     }
-    if (ref > ids.length) {
+    if (ref > ids.length || ref > nextRef[0] || !seenBody.add(ref)) {
       break;
+    }
+    if (ref == nextRef[0]) {
+      nextRef[0]++;
     }
     if (at >= bodyEnd) {
       break;
     }
     final id = ids[ref - 1];
+    if (id == TableVocabulary.nodeWireId) {
+      break;
+    }
     final kind = bytes[at];
     at += 1;
     if (id == TableVocabulary.buildVersionWireId) {
@@ -499,20 +529,19 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       at += length.$1;
       vocabularies++;
     } else {
-      // §3.3: "Every other field of its body is ordinary and tolerant, so an
-      // unknown one is skipped and counted and the announcement can GAIN a
-      // field in a later minor without a lockstep redeploy." Only a failed
-      // strict check is malformed, so the payload is stepped over by its kind
-      // and the walk continues; a payload that will not step is the one break.
-      final skipped = tableMessageSkipField(bytes, at, bodyEnd, kind);
+      final skipped = tableMessageSkipChecked(bytes, view, at, bodyEnd, kind, ids, nextRef, 0);
       if (skipped < 0) {
+        if (skipped == -2) nonFinite = true;
         break;
       }
       at = skipped;
       report.unknown++;
     }
   }
-  if (!terminated || versions != 1 || vocabularies != 1) {
+  if (nonFinite) {
+    return report.Refuse('non_finite_float');
+  }
+  if (!terminated || versions != 1 || vocabularies != 1 || nextRef[0] - 1 != ids.length) {
     report.Damage();
     return false;
   }
@@ -642,16 +671,119 @@ int tableMessageKindWidth(int kind) {
 /// length-prefixed slice — 12, 13, 14, 16, 31, 32 — is a LEB length then
 /// that many bytes. Answers the offset past the payload, or -1
 /// where the bytes run out or a kind this reader cannot step is named.
-int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
+bool tableMessageAnnounceUtf8(Uint8List b, int start, int end) {
+  var i = start;
+  while (i < end) {
+    final c = b[i];
+    if (c == 0) return false;
+    if (c < 0x80) { i++; continue; }
+    int more, cp;
+    if (c >= 0xc2 && c <= 0xdf) { more = 1; cp = c & 0x1f; }
+    else if (c >= 0xe0 && c <= 0xef) { more = 2; cp = c & 0x0f; }
+    else if (c >= 0xf0 && c <= 0xf4) { more = 3; cp = c & 0x07; }
+    else return false;
+    if (i + 1 + more > end) return false;
+    for (var j = 1; j <= more; j++) {
+      final cc = b[i + j];
+      if ((cc & 0xc0) != 0x80) return false;
+      cp = (cp << 6) | (cc & 0x3f);
+    }
+    if ((more == 2 && cp < 0x800) || (more == 3 && cp < 0x10000) || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+    i += 1 + more;
+  }
+  return true;
+}
+
+int tableMessageSkipFramed(Uint8List bytes, ByteData view, int start, int end, int kind, List<int> ids, List<int> nextRef, int depth) {
+  if (kind == 12) return tableMessageAnnounceUtf8(bytes, start, end) ? end : -1;
+  if (kind == 31) return end;
+  if (kind == 32) return start == end ? end : -1;
+  if (kind == 13) {
+    if (depth >= 128) return -1;
+    var at = start;
+    final seen = <int>{};
+    while (true) {
+      final r = tableMessageLeb(bytes, at, end);
+      if (!r.$3 || r.$1 < 0) return -1;
+      at = r.$2;
+      if (r.$1 == 0) return at == end ? end : -1;
+      if (r.$1 > ids.length || r.$1 > nextRef[0] || at >= end || !seen.add(r.$1)) return -1;
+      if (r.$1 == nextRef[0]) nextRef[0]++;
+      final id = ids[r.$1 - 1];
+      if (id == TableVocabulary.buildVersionWireId || id == TableVocabulary.vocabularyWireId || id == TableVocabulary.nodeWireId) return -1;
+      final k = bytes[at];
+      at += 1;
+      final nx = tableMessageSkipChecked(bytes, view, at, end, k, ids, nextRef, depth + 1);
+      if (nx < 0) return nx;
+      at = nx;
+    }
+  }
+  if (kind == 14 || kind == 16) {
+    if (depth >= 128 || end - start < 2) return -1;
+    final ek = bytes[start];
+    final allowed = kind == 16
+        ? ((ek >= 1 && ek <= 11) || ek == 13 || (ek >= 18 && ek <= 30))
+        : ((ek >= 1 && ek <= 13) || ek == 15 || ek == 17 || (ek >= 18 && ek <= 30));
+    if (!allowed) return -1;
+    final cnt = tableMessageLeb(bytes, start + 1, end);
+    if (!cnt.$3 || cnt.$1 < 0 || cnt.$1 > 0x7fffffff) return -1;
+    var at = cnt.$2;
+    if (cnt.$1 > end - at) return -1;
+    if (kind == 14) {
+      for (var i = 0; i < cnt.$1; i++) {
+        final nx = tableMessageSkipChecked(bytes, view, at, end, ek, ids, nextRef, depth + 1);
+        if (nx < 0) return nx;
+        at = nx;
+      }
+      return at == end ? end : -1;
+    }
+    final seenKeys = <int>{};
+    for (var i = 0; i < cnt.$1; i++) {
+      final kr = tableMessageLeb(bytes, at, end);
+      if (!kr.$3 || kr.$1 <= 0 || kr.$1 > ids.length || kr.$1 > nextRef[0] || !seenKeys.add(kr.$1)) return -1;
+      if (kr.$1 == nextRef[0]) nextRef[0]++;
+      final sp = tableMessageLeb(bytes, kr.$2, end);
+      if (!sp.$3 || sp.$1 < 0 || sp.$2 + sp.$1 > end) return -1;
+      final nx = tableMessageSkipFramed(bytes, view, sp.$2, sp.$2 + sp.$1, ek, ids, nextRef, depth + 1);
+      if (nx < 0) return nx;
+      at = sp.$2 + sp.$1;
+    }
+    return at == end ? end : -1;
+  }
+  final nx = tableMessageSkipChecked(bytes, view, start, end, kind, ids, nextRef, depth);
+  if (nx < 0) return nx;
+  return nx == end ? end : -1;
+}
+
+int tableMessageSkipChecked(Uint8List bytes, ByteData view, int at, int end, int kind, List<int> ids, List<int> nextRef, int depth) {
+  if (depth > 128) return -1;
+  if (kind == 1) return (at < end && bytes[at] <= 1) ? at + 1 : -1;
+  if (kind == 10) {
+    if (at + 4 > end) return -1;
+    final raw = view.getUint32(at, Endian.little);
+    return (raw & 0x7f800000) == 0x7f800000 ? -2 : at + 4;
+  }
+  if (kind == 11) {
+    if (at + 8 > end) return -1;
+    final raw = view.getUint64(at, Endian.little);
+    return (raw & 0x7ff0000000000000) == 0x7ff0000000000000 ? -2 : at + 8;
+  }
   final width = tableMessageKindWidth(kind);
   if (width != 0) {
     return at + width <= end ? at + width : -1;
   }
   switch (kind) {
     case 17:
+      final v = tableMessageLeb(bytes, at, end);
+      return (!v.$3 || v.$1 != 0) ? -1 : v.$2;
     case 30:
       final v = tableMessageLeb(bytes, at, end);
-      return (!v.$3 || v.$1 < 0) ? -1 : v.$2;
+      if (!v.$3 || v.$1 < 0 || v.$1 > ids.length) return -1;
+      if (v.$1 > 0) {
+        if (v.$1 > nextRef[0]) return -1;
+        if (v.$1 == nextRef[0]) nextRef[0]++;
+      }
+      return v.$2;
     case 12:
     case 13:
     case 14:
@@ -659,26 +791,22 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 31:
     case 32:
       final n = tableMessageLeb(bytes, at, end);
-      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
-        return -1;
-      }
-      return n.$2 + n.$1;
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) return -1;
+      final nx = tableMessageSkipFramed(bytes, view, n.$2, n.$2 + n.$1, kind, ids, nextRef, depth);
+      return nx < 0 ? nx : n.$2 + n.$1;
     case 15:
       final arm = tableMessageLeb(bytes, at, end);
-      if (!arm.$3 || arm.$1 < 0) {
-        return -1;
-      }
-      if (arm.$1 == 0) {
-        return arm.$2;
-      }
-      if (arm.$2 >= end) {
-        return -1;
-      }
+      if (!arm.$3 || arm.$1 < 0 || arm.$1 > ids.length) return -1;
+      if (arm.$1 == 0) return arm.$2;
+      if (arm.$1 > nextRef[0] || arm.$2 >= end) return -1;
+      if (arm.$1 == nextRef[0]) nextRef[0]++;
+      final armKind = bytes[arm.$2];
       final n = tableMessageLeb(bytes, arm.$2 + 1, end);
-      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
-        return -1;
-      }
-      return n.$2 + n.$1;
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) return -1;
+      final structural = armKind == 13 || armKind == 14 || armKind == 15 || armKind == 16;
+      if (structural && depth >= 128) return -1;
+      final nx = tableMessageSkipFramed(bytes, view, n.$2, n.$2 + n.$1, armKind, ids, nextRef, structural ? depth + 1 : depth);
+      return nx < 0 ? nx : n.$2 + n.$1;
     default:
       return -1;
   }

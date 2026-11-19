@@ -20,7 +20,6 @@ package darttable
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -674,7 +673,7 @@ func (g *wireGen) emitTextMoreDecls() {
 			if i == 0 {
 				sep = "" // the first bit has no comma before it, so none is tested
 			}
-			g.pf("\tif (bits & %d != 0) { %sfirst = false; out.line(depth + 1); out.raw(_jsonString(%s)); }\n", uint64(1)<<i, sep, strconv.Quote(name))
+			g.pf("\tif (bits & %d != 0) { %sfirst = false; out.line(depth + 1); out.raw(_jsonString(%s)); }\n", uint64(1)<<i, sep, viewDartString(name))
 		}
 		g.pf("\tif (first) { throw StateError('flags %s: bits $bits name no variant (docs/SPEC-TABLES.md §16.2)'); }\n", fl.Name)
 		g.pf("\tout.line(depth);\n")
@@ -688,7 +687,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\t\tswitch (item) {\n")
 		// a known name set twice refuses the read, as a repeated key does (§16.2)
 		for i, name := range fl.Variants {
-			g.pf("\t\t\tcase %s: if (bits & %d != 0) { r.refuse('text_damaged'); return def; } bits |= %d;\n", strconv.Quote(name), uint64(1)<<i, uint64(1)<<i)
+			g.pf("\t\t\tcase %s: if (bits & %d != 0) { r.refuse('text_damaged'); return def; } bits |= %d;\n", viewDartString(name), uint64(1)<<i, uint64(1)<<i)
 		}
 		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t}\n")
@@ -704,7 +703,7 @@ func (g *wireGen) emitTextMoreDecls() {
 			g.pf("\t\tcase %d:\n", i+1)
 			g.pf("\t\t\tout.raw('{');\n")
 			g.pf("\t\t\tout.line(depth + 1);\n")
-			g.pf("\t\t\tout.raw(_jsonString(%s));\n", strconv.Quote(arm.Name))
+			g.pf("\t\t\tout.raw(_jsonString(%s));\n", viewDartString(arm.Name))
 			g.pf("\t\t\tout.raw(': ');\n")
 			if arm.Void() {
 				g.pf("\t\t\tout.raw('null');\n")
@@ -730,7 +729,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tfinal item = entries.first.value;\n")
 		g.pf("\tswitch (entries.first.key) {\n")
 		for i, arm := range un.Variants {
-			g.pf("\t\tcase %s:\n", strconv.Quote(arm.Name))
+			g.pf("\t\tcase %s:\n", viewDartString(arm.Name))
 			if arm.Void() {
 				g.pf("\t\t\tif (item == null) { v.armTag = %d; } else { r.refuse('kind_mismatch'); }\n", i+1)
 			} else {
@@ -827,7 +826,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 				g.pf("%sout.raw(',');\n", ind)
 			}
 			g.pf("%sout.line(%s);\n", ind, depthExpr(d+1))
-			g.pf("%sout.raw(_jsonString(%s));\n", ind, strconv.Quote(en.Variants[i]))
+			g.pf("%sout.raw(_jsonString(%s));\n", ind, viewDartString(en.Variants[i]))
 			g.pf("%sout.raw(': ');\n", ind)
 			g.emitJsonValue(singleOf(f), fmt.Sprintf("%s[%d]", expr, i), d+1, ind, where)
 		}
@@ -976,7 +975,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		var slots strings.Builder
 		slots.WriteString("const <String, int>{")
 		for i := 0; i < int(f.ArrayBound) && i < len(en.Variants); i++ {
-			fmt.Fprintf(&slots, "%s: %d, ", strconv.Quote(en.Variants[i]), i)
+			fmt.Fprintf(&slots, "%s: %d, ", viewDartString(en.Variants[i]), i)
 		}
 		slots.WriteString("}")
 		return fmt.Sprintf("_jsonKeyed<%s>(%s, r, %d, () => %s, %s, (%s, %s) => %s%s)",

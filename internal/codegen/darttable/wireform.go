@@ -2432,7 +2432,7 @@ func (g *wireGen) intDefault(f *ir.Field) string {
 
 func (g *wireGen) stringDefault(f *ir.Field) string {
 	if f.HasDefault && len(f.DefBytes) > 0 {
-		return fmt.Sprintf("%q", string(f.DefBytes))
+		return viewDartString(string(f.DefBytes))
 	}
 	return "''"
 }

@@ -581,8 +581,35 @@ const messageRows = [
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
 ];
 
+const messageFuzzRows = [
+  ...messageRows,
+  ["messagedemo", "ToolMessage", "messages/MessagedemoTable.js", "messages/MessagesTable.js"],
+  ["tblvarevo2", "EvoMsg", "varevo2/Tblvarevo2Table.js", "varevo2/VarEvo2Table.js"],
+  ["tblfixedevo", "EvoRoot", "fixedevo/TblfixedevoTable.js", "fixedevo/FixedEvoTable.js"],
+  ["tabledemo", "RootConfig", "examples/TabledemoTable.js", "examples/TablesTable.js"],
+  ["tabledemo", "ProfileConfig", "examples/TabledemoTable.js", "examples/TablesTable.js"],
+  ["tabledemo", "KeyedConfig", "examples/TabledemoTable.js", "examples/KeyedTable.js"],
+  ["tblv1", "Cfg", "v1/Tblv1Table.js", "v1/V1Table.js"],
+  ["tblv2", "Cfg", "v2/Tblv2Table.js", "v2/V2Table.js"],
+  ["tblm1", "Msg", "m1/Tblm1Table.js", "m1/M1Table.js"],
+  ["tblm2", "Msg", "m2/Tblm2Table.js", "m2/M2Table.js"],
+  ["tbla1", "Root", "a1/Tbla1Table.js", "a1/A1Table.js"],
+  ["tbla2", "Root", "a2/Tbla2Table.js", "a2/A2Table.js"],
+  ["tblk1", "Root", "k1/Tblk1Table.js", "k1/K1Table.js"],
+  ["tblk2", "Root", "k2/Tblk2Table.js", "k2/K2Table.js"],
+  ["scalars", "SimState", "scalars/ScalardemoTable.js", "scalars/ScalarsTable.js"],
+  ["tblscalars2", "SimState", "scalars2/Scalardemo2Table.js", "scalars2/Scalars2Table.js"],
+];
+
 function messageRow(unit, root) {
   for (const r of messageRows) {
+    if (r[0] === unit && r[1] === root) { return r; }
+  }
+  return null;
+}
+
+function messageFuzzRow(unit, root) {
+  for (const r of messageFuzzRows) {
     if (r[0] === unit && r[1] === root) { return r; }
   }
   return null;
@@ -1317,6 +1344,94 @@ async function wireFuzz() {
       if (codec !== null && (retain !== 1 || retaining)) {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
+      }
+    } else if (form === 5 && retain === 0) {
+      const row = messageFuzzRow(unit, root);
+      if (row !== null && existsSync(resolve(generated, row[2])) && existsSync(resolve(generated, row[3]))) {
+        const runtime = await load(row[2]);
+        const m = await load(row[3]);
+        const loadMessages = m[root + "LoadMessages"];
+        const measureMessages = m[root + "MeasureMessages"];
+        const saveMessages = m[root + "SaveMessages"];
+        const initRoot = runtime["Init" + root];
+        const RootClass = runtime[root];
+        if (typeof loadMessages === "function" && typeof measureMessages === "function" &&
+            typeof saveMessages === "function" && typeof initRoot === "function" &&
+            typeof RootClass === "function") {
+          const ownVocab = new runtime.TableVocabulary();
+          ownVocab.Init(new Array(Math.max(runtime.TableMessageEntriesHere, 4096)));
+          if (!runtime.AnnounceRead(ownVocab, runtime.TableMessageAnnouncement, {})) {
+            fail(unit + "." + root + ": own announcement was refused");
+          }
+          const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new RootClass());
+          roster[i] = {
+            message: true,
+            run(frame) {
+              if (frame.length < 4) {
+                return { loaded: false, saved: null, report: { malformed: true, damaged: true, refused: true } };
+              }
+              const alen = (frame[0] | (frame[1] << 8) | (frame[2] << 16) | (frame[3] << 24)) >>> 0;
+              if (4 + alen > frame.length) {
+                return { loaded: false, saved: null, report: { malformed: true, damaged: true, refused: true } };
+              }
+              let vocab = ownVocab;
+              if (alen > 0) {
+                vocab = new runtime.TableVocabulary();
+                vocab.Init(new Array(Math.max(runtime.TableMessageEntriesHere, 4096)));
+                const arep = {};
+                const ann = frame.subarray(4, 4 + alen);
+                const aok = runtime.AnnounceRead(vocab, ann, arep);
+                if (!aok || arep.Damaged || arep.Verdict === runtime.TableMessageOpenRefused) {
+                  return { loaded: false, saved: null, report: { malformed: Boolean(arep.Damaged), damaged: Boolean(arep.Damaged), refused: true } };
+                }
+              }
+              const batchWire = frame.subarray(4 + alen);
+              const initLim = Math.min(values.length, batchWire.length >= 2 ? batchWire[1] + 1 : 1);
+              for (let j = 0; j < initLim; j++) { initRoot(values[j]); }
+              const rep = {};
+              const n = loadMessages(values, vocab, batchWire, rep);
+              const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat) || ((rep.Mismatch | 0) + (rep.Oor | 0) > 0 && !rep.Damaged);
+              const malformed = Boolean(rep.Damaged) || (n < 1 && !refused);
+              const delivered = n >= 1 && !malformed && !refused;
+              let out = null;
+              if (delivered) {
+                const prevBits = runtime.TableMessageSetRefBits(runtime.TableMessageWriteRefBitsHere);
+                try {
+                  const batch = values.slice(0, n);
+                  const ignored = {};
+                  const size = measureMessages(batch, ignored);
+                  if (size >= 0) {
+                    const buf = new Uint8Array(size);
+                    if (saveMessages(batch, buf, ignored) === size) {
+                      out = buf;
+                    }
+                  }
+                } finally {
+                  runtime.TableMessageSetRefBits(prevBits);
+                }
+              }
+              return {
+                loaded: delivered && out !== null,
+                saved: out,
+                report: {
+                  reason: rep.Reason ?? "",
+                  unknown: rep.Unknown | 0,
+                  mismatch: 0,
+                  widened: rep.Widened | 0,
+                  oor: 0,
+                  repeated: 0,
+                  duplicate: 0,
+                  malformed,
+                  damaged: malformed,
+                  refused: refused || !delivered || out === null,
+                  retained: 0,
+                  retainLost: 0,
+                },
+              };
+            },
+          };
+          known[i] = 1;
+        }
       }
     } else if (form === 2 && retain === 0) {
       const row = messageRow(unit, root);

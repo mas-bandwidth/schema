@@ -1374,6 +1374,7 @@ defmodule Benchtable.Table do
   # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool
   # walks a record by name and kind with, no per-version struct on hand.
   def descriptors, do: @tables
+  def union_descriptors, do: @unions
 
   # Maps, keyed arrays and union payloads participate in region measurement.
   @uncarried []

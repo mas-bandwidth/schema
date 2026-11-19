@@ -159,8 +159,8 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 				return false
 			}
 			w.Put(uint64(value.EdgesCount)-0, 3)
-			for i := range int(value.EdgesCount) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 3, Packing: 1, Bits: 16, Base: [2]uint64{0xffffffffffff8000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Edges[i]), uint64(0))
+			for i1 := range int(value.EdgesCount) {
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 3, Packing: 1, Bits: 16, Base: [2]uint64{0xffffffffffff8000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Edges[i1]), uint64(0))
 			}
 		}
 	}
@@ -1467,8 +1467,8 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 				return false
 			}
 			w.Put(uint64(value.CountsCount)-0, 3)
-			for i := range int(value.CountsCount) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Counts[i]), uint64(0))
+			for i1 := range int(value.CountsCount) {
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Counts[i1]), uint64(0))
 			}
 		}
 	}

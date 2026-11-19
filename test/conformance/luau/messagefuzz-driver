@@ -1,0 +1,9 @@
+#!/bin/sh
+host=${LUAUFUZZHOST:-build/luaufuzzhost/luaufuzzhost}
+for need in "$host" build/conformance-luau build/luau-driver/units.luau; do
+	if [ ! -e "$need" ]; then
+		echo "messagefuzz-driver: $need is missing: run make tables-luau-wire-fuzz, which builds it" >&2
+		exit 2
+	fi
+done
+exec "$host" test/conformance/luau/messagefuzz.luau

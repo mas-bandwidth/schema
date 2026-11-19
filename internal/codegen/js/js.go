@@ -96,13 +96,33 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	runtimeHome := ir.TableJSRuntimeHome(u)
 	fixedUnions := ir.TableFixedJSUnions(u)
 	for _, f := range u.Files {
+		fixedArmTables := map[string]bool{}
+		collectFixedArms := func(un *ir.Union) {
+			if un == nil || !fixedUnions[un.Name] {
+				return
+			}
+			for _, v := range un.Variants {
+				if !v.Void() && v.Ref != nil && u.Tables[v.Type] != nil {
+					fixedArmTables[v.Type] = true
+				}
+			}
+		}
+		for _, d := range f.Decls {
+			if un, ok := d.(*ir.Union); ok {
+				collectFixedArms(un)
+			}
+		}
+		for _, un := range f.TableUnions {
+			collectFixedArms(un)
+		}
 		g := &gen{
-			unit:        u,
-			file:        f,
-			home:        f.Base == home,
-			runtimeHome: runtimeHome,
-			fixedUnions: fixedUnions,
-			imports:     map[string]map[string]bool{},
+			unit:           u,
+			file:           f,
+			home:           f.Base == home,
+			runtimeHome:    runtimeHome,
+			fixedUnions:    fixedUnions,
+			fixedArmTables: fixedArmTables,
+			imports:        map[string]map[string]bool{},
 		}
 		g.emitFile(g.home)
 		out[f.Base+".js"] = g.assemble()
@@ -118,12 +138,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit        *ir.Unit
-	file        *ir.File
-	home        bool // this file carries ProtocolId and the unit-level target notes
-	runtimeHome string
-	fixedUnions map[string]bool
-	tableHome   string
+	unit           *ir.Unit
+	file           *ir.File
+	home           bool // this file carries ProtocolId and the unit-level target notes
+	runtimeHome    string
+	fixedUnions    map[string]bool
+	fixedArmTables map[string]bool
+	tableHome      string
 
 	body strings.Builder
 
@@ -592,6 +613,12 @@ func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
 			g.emitStorageField(v.F)
 			continue
 		}
+		if !g.fixedUnions[name] && g.unit.Tables[v.Type] != nil && g.fixedArmTables[v.Type] {
+			alias := "_Var" + v.Type
+			g.addRefBase(g.runtimeHome+"Variable", v.Type+" as "+alias)
+			g.pf("    this.%s = new %s();\n", MemberName(v.Name), alias)
+			continue
+		}
 		g.addRef(v.Type, v.Type)
 		g.pf("    this.%s = new %s();\n", MemberName(v.Name), v.Type)
 	}
@@ -827,7 +854,11 @@ func formatFloat32(v float64) string {
 func liveImports(syms []string, used map[string]bool) []string {
 	live := syms[:0:0]
 	for _, s := range syms {
-		if used[s] {
+		local := s
+		if _, alias, ok := strings.Cut(s, " as "); ok {
+			local = alias
+		}
+		if used[local] {
 			live = append(live, s)
 		}
 	}

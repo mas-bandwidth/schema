@@ -261,12 +261,26 @@ def message_shape_read(r:Reader, k:int) -> MessageShape, bool:
             if not ok or ult(s.bits, n):
                 return s, false
             s.bits = n
+            let dom = message_kind_bits(k)
             if k >= 18:
                 if not has(r, 16):
                     return s, false
                 s.base_lo = read_int64_le(r.b, r.off)
                 s.base_hi = read_int64_le(r.b, r.off + 8)
                 r.off += 16
+                if k >= 20 and k <= 23:
+                    let whi = if s.base_lo < 0: -1 else: 0
+                    if s.base_hi != whi:
+                        return s, false
+                    if dom < 64:
+                        let lim = shl(1, dom - 1)
+                        if s.base_lo < 0 - lim or s.base_lo > lim - 1:
+                            return s, false
+                elif k >= 25 and k <= 28:
+                    if s.base_hi != 0:
+                        return s, false
+                    if dom < 64 and ult(shl(1, dom) - 1, s.base_lo):
+                        return s, false
                 return s, true
             let base, bok = leb(r)
             if not bok:
@@ -274,8 +288,14 @@ def message_shape_read(r:Reader, k:int) -> MessageShape, bool:
             if k >= 2 and k <= 5:
                 // a signed kind's base is a zigzag LEB128 (§3.3)
                 s.base_lo = shr(base, 1) ^ (0 - (base & 1))
+                if dom < 64:
+                    let lim = shl(1, dom - 1)
+                    if s.base_lo < 0 - lim or s.base_lo > lim - 1:
+                        return s, false
             else:
                 s.base_lo = base
+                if dom < 64 and ult(shl(1, dom) - 1, s.base_lo):
+                    return s, false
             return s, true
         if s.packing == 2 and k == 10:
             if not has(r, 12):
@@ -329,18 +349,12 @@ def message_entry_read(r:Reader) -> MessageEntry, bool:
         if not has(r, 1):
             return e, false
         let elem = u8(r)
-        if not message_known_kind(elem) or elem == 12:
+        if not message_known_kind(elem) or elem == 14 or elem == 16:
             return e, false
         let es, eok = message_shape_read(r, elem)
         e.element = es
         if not eok:
             return e, false
-        if elem == 14 or elem == 16:
-            if not has(r, 1):
-                return e, false
-            let inner = u8(r)
-            if not message_known_kind(inner) or inner == 12:
-                return e, false
     return e, true
 
 // message_open is the announcement's form-1 open (§3): the form byte, the id
@@ -355,13 +369,17 @@ def message_open(data:string, rep:LoadReport) -> Reader?, int:
     if size < 9:
         return nil, 2
     let n = read_int64_le(data, size - 8)
-    if ult((size - 9) / 8, n):
+    if ult(4096, n) or ult((size - 9) / 8, n):
         return nil, 2
     let start = size - 8 - n * 8
     let ids:[int] = []
     var i = 0
     while i < n:
-        push(ids, read_int64_le(data, start + i * 8))
+        let id = read_int64_le(data, start + i * 8)
+        for(ids) prev:
+            if prev == id:
+                return nil, 2
+        push(ids, id)
         i++
     let st = LoadState { data: data, ids: ids, report: rep }
     let r = reader(st, 1, start)
@@ -398,6 +416,8 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
     var words_count = 0
     var words_lo = 0
     var words_n = 0
+    let seen_refs:[int] = []
+    var next_ref = 1
     while true:
         let ref, ok = leb(r)
         if not ok:
@@ -405,8 +425,18 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
             return false
         if ref == 0:
             break
+        if ult(next_ref, ref):
+            rep.malformed = true
+            return false
+        if ref == next_ref:
+            next_ref++
+        for(seen_refs) sr:
+            if sr == ref:
+                rep.malformed = true
+                return false
+        push(seen_refs, ref)
         let id, named = rid(r, ref)
-        if not named or not has(r, 1):
+        if not named or id == node_table_id or not has(r, 1):
             rep.malformed = true
             return false
         let kind = u8(r)
@@ -448,7 +478,7 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
             if not skip(r, kind):
                 rep.malformed = true
                 return false
-    if version_count != 1 or words_count != 1:
+    if version_count != 1 or words_count != 1 or (rep.unknown == 0 and next_ref - 1 != length(r.st.ids)):
         rep.malformed = true
         return false
     if v.strict and v.build_version != message_facts.build_version:
@@ -877,7 +907,8 @@ def message_union(m:MessageRead, cell:Value, fd:FieldDescriptor) -> bool:
     elif a.s != "void":
         let fv = new_slot(a)
         cell.arm = fv
-        if not message_value(m, fv, e):
+        let arm_exact = (v.build_version == message_facts.build_version) and message_same_encoding(e, mine)
+        if not message_value(m, fv, e, arm_exact):
             return false
     if widened:
         rep.widened++
@@ -930,7 +961,7 @@ def message_array(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
 // message_keyed reads an enum-keyed array (§3.2): the present-slot count, then
 // one (key reference, element) pair a slot; a key this reader cannot name
 // reads into a sink and counts unknown.
-def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
+def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry, exact:bool) -> bool:
     let rep = m.rep
     let f = sl.fd
     let n, ok = message_count(m.bits, e.shape)
@@ -940,6 +971,7 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
     let keys = keyed_variants(f)
     let ed = elem_of(f)
     let seen:[int] = []
+    var last_slot = 0
     var i = 0
     while i < n:
         let ref, rok = mb_get(m.bits, m.v.ref_bits)
@@ -957,6 +989,9 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         let value = enum_value(keys, id)
         var cell = Value {}
         if value >= 1 and value <= length(sl.elems):
+            if exact and value <= last_slot:
+                return message_refuse(rep, "wire_damaged")
+            last_slot = value
             cell = sl.elems[value - 1]
         else:
             rep.unknown++
@@ -968,7 +1003,7 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
 
 // message_value reads one field's payload under the entry e that announced
 // it, by this reader's declaration (Go's emitMessageReadValue).
-def message_value(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
+def message_value(m:MessageRead, sl:Slot, e:MessageEntry, exact:bool) -> bool:
     let f = sl.fd
     let sh = f.s
     if sh == "str" or sh == "text":
@@ -977,7 +1012,7 @@ def message_value(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
         return message_bytes(m, sl, e.shape)
     if sh == "arr":
         if f.array == "keyed":
-            return message_keyed(m, sl, e)
+            return message_keyed(m, sl, e, exact)
         if f.array == "list":
             m.rep.malformed = true
             return false
@@ -1086,14 +1121,14 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             m.bits.off = arm_at
             if arm_ok and arm == 0:
                 return message_refuse(rep, "wire_damaged")
+        let exact = same_build and message_same_encoding(e, mine)
         let sub_before = m.substituted
-        if not message_value(m, sl, e):
+        if not message_value(m, sl, e, exact):
             return false
         // A BY-VALUE BODY THAT NAMED NO FIELD IS THE BODY A WRITER ELIDES
         // (§3.3 (a)): its field is at its declared default, judged under this
         // reader's own build version. A required field never elides and a
         // present optional always rides.
-        let exact = same_build and message_same_encoding(e, mine)
         if exact and f.s == "tab" and not f.required and f.present == "" and m.body_fields == 0:
             return message_refuse(rep, "wire_damaged")
         if strict_reason(rep) != "":

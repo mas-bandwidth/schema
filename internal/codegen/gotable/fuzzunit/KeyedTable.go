@@ -5466,6 +5466,16 @@ const TeamConfigFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var TeamConfigFixedLineagePlans = tableFixedLineagePlans(TeamConfigFixedKnown, TeamConfigFixedLayout, TeamConfigFixedDst, TeamConfigFixedHash)
 
+func TeamConfigFixedBoundsKnown0(value *TeamConfig) bool {
+	var count int32
+	over := &count
+	_ = value
+	if value.SpawnCount < 0 || value.SpawnCount > 64 {
+		(*over)++
+	}
+	return count == 0
+}
+
 var TeamConfigFixedResetImage = func() []byte {
 	var def TeamConfig
 	TeamConfigReset(&def)
@@ -5655,6 +5665,15 @@ func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntr
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		switch pick {
+		case 0:
+			if !TeamConfigFixedBoundsKnown0(&values[k : k+1][0]) {
+				for j := range values[:k+1] {
+					TeamConfigReset(&values[j])
+				}
+				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).

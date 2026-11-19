@@ -62,7 +62,7 @@ def carried(name:string, form:int, retain:int) -> bool:
         return false
     if arm == "builder":
         return form == 1 and retain == 0 and d.variable
-    if form == 2:
+    if form == 2 or form == 5:
         return retain == 0 and not d.variable and schema_rt.is_message_root(name)
     if retain == 1:
         return d.variable
@@ -126,6 +126,9 @@ def load_one(name:string, form:int, retain:int):
     if arm == "file" and form == 2:
         message_one(name, data)
         return
+    if arm == "file" and form == 5:
+        message_framed_one(name, data)
+        return
     if arm == "file" and schema_rt.table_of(name).variable:
         variable_one(name, data, retain == 1)
         return
@@ -171,6 +174,40 @@ def variable_one(name:string, data:string, retain:bool):
     let n, out = save_answer(rec)
     schema_rt.release(rec)
     reply(record_measured(true, rep, false, false, measure, false, n, out))
+
+def message_framed_one(name:string, data:string):
+    let rep = schema_rt.LoadReport {}
+    if length(data) < 4:
+        reply(record(false, rep, true, true, -1, ""))
+        return
+    let alen = read_uint32_le(data, 0)
+    if alen < 0 or 4 + alen > length(data):
+        reply(record(false, rep, true, true, -1, ""))
+        return
+    var vocab = schema_rt.own_vocabulary()
+    if alen > 0:
+        vocab = schema_rt.new_vocabulary(4096)
+        let ann = substring(data, 4, alen)
+        let aok = schema_rt.announce_read(vocab, ann, rep)
+        if not aok or rep.malformed or rep.refused or rep.non_finite_float != "":
+            reply(record(false, rep, rep.malformed, true, -1, ""))
+            return
+    let batch = substring(data, 4 + alen, length(data) - 4 - alen)
+    let bodies:[schema_rt.Record] = []
+    let _count, ok = schema_rt.load_messages_into(name, vocab, batch, rep, 256, bodies)
+    if not ok:
+        assert length(bodies) == 0
+        reply(record(false, rep, rep.malformed, true, -1, ""))
+        return
+    assert length(bodies) > 0
+    let saved_rep = schema_rt.LoadReport {}
+    let out, n = schema_rt.save_messages(bodies, saved_rep)
+    for(bodies) b:
+        schema_rt.release(b)
+    if n < 0:
+        reply(record(false, rep, false, true, -1, ""))
+        return
+    reply(record(true, rep, false, false, n, out))
 
 // message_one reads and writes the complete batch against the unit vocabulary.
 def message_one(name:string, data:string):

@@ -291,6 +291,8 @@ recursive fn msg_shape(w: const u8[:], at: i64&, kind: u8, e: MsgEntry&, v: MsgV
                 e.base_hi = le_at(w, at + 8, 8);
                 at += 16;
                 if !msg_wide_kind(kind) {
+                    let want_hi: u64 = if msg_signed_kind(kind) && (e.base_lo as! i64) < 0 { 0xFFFFFFFFFFFFFFFF } else { 0 };
+                    if e.base_hi != want_hi { return false; }
                     // a 64-bit-or-narrower fixed kind's base is its low lane
                     e.base_hi = 0;
                     if !msg_base_inside_kind(kind, e.base_lo) { return false; }
@@ -341,8 +343,7 @@ recursive fn msg_shape(w: const u8[:], at: i64&, kind: u8, e: MsgEntry&, v: MsgV
         if at >= w.len { return false; }
         e.elem = w[at];
         at += 1;
-        // an element kind of 12 is refused at the announcement (§3.3)
-        if !msg_known_kind(e.elem) || e.elem == 12 { return false; }
+        if !msg_known_kind(e.elem) || e.elem == 14 || e.elem == 16 { return false; }
         var sub = MsgEntry { .. };
         if !msg_shape(w, at, e.elem, sub, v, store) { return false; }
         if store {

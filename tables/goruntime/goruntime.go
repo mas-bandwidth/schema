@@ -2027,6 +2027,50 @@ func TableMessageKindBits(k uint8) int64 {
 	return -1
 }
 
+func TableMessageBaseInsideKind(k uint8, b [2]uint64) bool {
+	switch k {
+	case 18, 19, 24, 29:
+		return true
+	case 2, 3, 4:
+		w := uint(TableMessageKindBits(k))
+		lo := -(int64(1) << (w - 1))
+		hi := (int64(1) << (w - 1)) - 1
+		v := int64(b[0])
+		return v >= lo && v <= hi
+	case 6, 7, 8:
+		w := uint(TableMessageKindBits(k))
+		return b[0] <= (uint64(1)<<w)-1
+	case 5, 9:
+		return true
+	case 20, 21, 22, 23:
+		v := int64(b[0])
+		wantHi := uint64(0)
+		if v < 0 {
+			wantHi = ^uint64(0)
+		}
+		if b[1] != wantHi {
+			return false
+		}
+		if k == 23 {
+			return true
+		}
+		w := uint(TableMessageKindBits(k))
+		lo := -(int64(1) << (w - 1))
+		hi := (int64(1) << (w - 1)) - 1
+		return v >= lo && v <= hi
+	case 25, 26, 27, 28:
+		if b[1] != 0 {
+			return false
+		}
+		if k == 28 {
+			return true
+		}
+		w := uint(TableMessageKindBits(k))
+		return b[0] <= (uint64(1)<<w)-1
+	}
+	return true
+}
+
 func TableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
 	raw, ok := r.Get(TableMessageBits(uint64(s.Max - s.Min)))
 	return raw + uint64(s.Min), ok
@@ -2329,4 +2373,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x678b00cf6a914d9d
+const Version uint64 = 0x6a30f7b72ed039a3

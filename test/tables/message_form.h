@@ -1850,9 +1850,9 @@ static void test_message_form_cold_read()
         CHECK( report.damaged && !vocabulary.announced );
     }
 
-    // AN ELEMENT KIND OF 12 OR 33 IS REFUSED AT THE ANNOUNCEMENT, rather than
-    // at the skip that would meet it: no declaration this language accepts is
-    // an array of string(N) or of wstring(N), so it is one rule and not two.
+    // AN ARRAY OF string(N) (ELEMENT KIND 12) IS ACCEPTED AT THE ANNOUNCEMENT,
+    // while nested array/keyed element kinds (14, 16) and wstring(N) (33) are
+    // refused at the announcement rather than at the skip that would meet them.
     {
         const uint8_t of_strings[4] = { 0x00, 0x03, 0x0C, 0x08 }; // min 0, max 3, element kind 12 over string(8)
         static uint8_t forged[8192];
@@ -1860,8 +1860,16 @@ static void test_message_form_cold_read()
         CHECK( bytes > 0 );
         VOCABULARY( basesdemo, vocabulary );
         basesdemo::TableReport report;
-        CHECK( !basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
-        CHECK( report.damaged && !vocabulary.announced );
+        CHECK( basesdemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
+        CHECK( !report.damaged && vocabulary.announced );
+
+        const uint8_t of_nested[4] = { 0x00, 0x03, 0x0E, 0x08 }; // min 0, max 3, element kind 14 (nested array)
+        const int64_t bad_bytes = forge_over_vocabulary( forged, sizeof( forged ), own_words, own_bytes, is_few, of_nested, 4 );
+        CHECK( bad_bytes > 0 );
+        VOCABULARY( basesdemo, bad_vocab );
+        basesdemo::TableReport bad_report;
+        CHECK( !basesdemo::AnnounceRead( bad_vocab, forged, bad_bytes, &bad_report ) );
+        CHECK( bad_report.damaged && !bad_vocab.announced );
     }
 
     // A QUANTIZED INDEX ABOVE `count` IS REJECTED, as the packet wire rejects
