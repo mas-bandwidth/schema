@@ -684,7 +684,7 @@ local function eq16(a: buffer, b: buffer): boolean
 	return true
 end
 
-local function readInt16FromPeer(r: any, shape: any): (buffer, boolean)
+local function readInt16FromWriter(r: any, shape: any): (buffer, boolean)
 	local raw = buffer.create(16)
 	local bits = shape.bits or 0
 	if (shape.packing or 0) == 0 and bits == 0 then
@@ -869,7 +869,7 @@ messageFieldDefault = function(fd: any, r: any, e: any, st: any): boolean
 		return ok and (raw ~= 0) == (fd.def == true)
 	end
 	if not ((k >= 2 and k <= 9) or (k >= 18 and k <= 29) or k == 36) then return false end
-	local v16, vok = readInt16FromPeer(r, e.shape)
+	local v16, vok = readInt16FromWriter(r, e.shape)
 	return vok and eq16(v16, defTo16(fd.def or 0))
 end
 
@@ -1290,7 +1290,7 @@ transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, o
 			oaref, oa = ownSlotEntry(ov, rootName, udesc.name, armIdx, pa.id)
 		end
 		if armFd == nil or oaref == 0 or oa == nil then
-			-- Unknown union arm in peer: skip payload and fold to None (§4).
+			-- Unknown union arm in writer: skip payload and fold to None (§4).
 			local st: any = { v = pv, refBits = pv.refBits, owner = nil, nonFinite = nil }
 			if not skipShape(r, st, pa, nil, nil) then return nil, false end
 			rep.unknown = (rep.unknown or 0) + 1
@@ -1382,7 +1382,7 @@ transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, o
 		end
 	end
 	local oSigned = isSignedKind(okind)
-	local val16, ok = readInt16FromPeer(r, pe.shape)
+	local val16, ok = readInt16FromWriter(r, pe.shape)
 	if not ok then return nil, false end
 	if widens then rep.widened = (rep.widened or 0) + 1 end
 	if fd ~= nil then
@@ -2179,14 +2179,14 @@ local function mEncodeFieldPayload(c: any, owner: string, fd: any, entrySlot: nu
 		end
 		local cb = mCountBits(shape)
 		if cb > 0 then mPut(c.w, count - shape.min, cb) end
-		if mAligns(entry.kind, shape) then mAlign(c.w) end
+		if mAligns(shape.kind, shape) then mAlign(c.w) end
 		for i = 1, count do
 			local elVal = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
 			if not mEncodeElem(c, owner, fd, shape, elVal) then return false end
 		end
 		return true
 	end
-	return mEncodeScalar(c, owner, fd, entry.kind, shape, val, fd.name)
+	return mEncodeScalar(c, owner, fd, shape.kind, shape, val, fd.name)
 end
 
 mEncodeArm = function(c: any, owner: string, un: any, u: any, fname: string): boolean

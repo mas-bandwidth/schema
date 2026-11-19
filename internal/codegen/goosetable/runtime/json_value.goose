@@ -753,8 +753,7 @@ recursive fn jw_fields(c: JvOut&, out: u8[>..]&, tab: i64, rec: i64, depth: i64,
         let d = c.unit.tables[tab].fields[i];
         let s = jv_slot(c.vals, rec, i);
         if jv_guard(c.unit, c.vals, tab, rec, i) && !(d.optional && jv_state(c.vals, s) == ValAbsent) {
-            if d.required && d.ranged && d.shape == ShapeInt {
-                // an out-of-range required value is invalid (§2.3)
+            if d.ranged && d.shape == ShapeInt {
                 let v = jv_int(c.vals, s, d);
                 let lo, hi = jv_raw_range(d);
                 if cmp128(v, d.signed, lo, d.signed) < 0 || cmp128(v, d.signed, hi, d.signed) > 0 { return false; }
@@ -816,10 +815,14 @@ recursive fn jw_pointer(c: JvOut&, out: u8[>..]&, wire: i64, depth: i64) -> bool
 recursive fn jw_field(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     if d.shape == ShapeSBlob || d.shape == ShapeBBlob { return jw_blob(c, out, s, d); }
     if d.shape == ShapeStr || d.shape == ShapeText {
-        return json_put_text(out, jw_view(c, s, d));
+        let view = jw_view(c, s, d);
+        if d.shape == ShapeStr && d.bound > 0 && view.len > d.bound { return false; }
+        return json_put_text(out, view);
     }
     if d.shape == ShapeBytes {
-        json_put_base64(out, jw_view(c, s, d));
+        let view = jw_view(c, s, d);
+        if d.bound > 0 && view.len > d.bound { return false; }
+        json_put_base64(out, view);
         return true;
     }
     if d.shape == ShapeMap { return jw_map(c, out, s, d, owner, depth); }
@@ -855,6 +858,8 @@ recursive fn jw_array(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
     var count: i64 = d.bound;
     if d.array == ArrayCounted || d.array == ArrayList {
         count = if made { c.vals[s].len } else if d.array == ArrayCounted { d.min } else { 0 };
+        if d.array == ArrayCounted && (count < d.min || count > d.bound) { return false; }
+        if d.array == ArrayList && d.bound > 0 && count > d.bound { return false; }
     }
     if count == 0 {
         out.append("[]");
@@ -1047,6 +1052,11 @@ recursive fn jw_value(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
         return json_put_float(out, fixed_bits_f64(bits), false);
     }
     let v = jv_int(c.vals, s, d);
+    if d.ranged {
+        let lo, hi = jv_raw_range(d);
+        if cmp128(v, d.signed, lo, d.signed) < 0 || cmp128(v, d.signed, hi, d.signed) > 0 { return false; }
+    }
+    if d.bits > 0 && (v.hi != 0 || (d.bits < 64 && v.lo >= ((1 as u64) << (d.bits as! u64)))) { return false; }
     let fi = jv_fact(c.text, owner, ord);
     if fi >= 0 && c.text.facts[fi].is_flags {
         return json_write_flags(out, v.lo, c.text.facts[fi].flags, depth);

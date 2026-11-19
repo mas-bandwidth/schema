@@ -123,3 +123,56 @@ func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
 	}
 	return fmt.Sprintf("%sif (!(%s)) { %s }\n", ind, cond, refusal)
 }
+
+func jsonWriteCheck(f *ir.Field, expr, ind, refusal string) string {
+	if f.Type.Optional {
+		return ""
+	}
+	var out string
+	if f.Array == ir.ArrayCounted {
+		out += fmt.Sprintf("%sif (%s.length < %d || %s.length > %d) { %s }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound, refusal)
+	} else if f.Array == ir.ArrayList && f.ArrayBound > 0 && !f.IsTextList() {
+		out += fmt.Sprintf("%sif (%s.length > %d) { %s }\n", ind, expr, f.ArrayBound, refusal)
+	}
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
+		if f.IsTextList() {
+			return out
+		}
+		inner := *singleOf(f)
+		body := jsonWriteCheck(&inner, "jsonElement", ind+"\t", refusal)
+		if body != "" {
+			out += fmt.Sprintf("%sfor (final jsonElement in %s) {\n%s%s}\n", ind, expr, body, ind)
+		}
+		return out
+	}
+	if f.Type.Kind == ir.TString && !f.Type.Blob() && !f.Type.TextUnbounded() && f.Type.Size > 0 {
+		return fmt.Sprintf("%sif (utf8.encode(%s).length > %d) { %s }\n", ind, expr, f.Type.Size, refusal)
+	}
+	if f.Type.Kind == ir.TBytes && !f.Type.Blob() && f.Type.Size > 0 {
+		return fmt.Sprintf("%sif (%s.length > %d) { %s }\n", ind, expr, f.Type.Size, refusal)
+	}
+	var cond string
+	switch {
+	case f.HasFloatRange:
+		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, fmtFloat(f.FMin), expr, fmtFloat(f.FMax))
+	case f.Type.Kind == ir.TBits && f.Type.Width < 64:
+		cond = fmt.Sprintf("(%s & ~%s) == 0", expr, dartU64Literal((uint64(1)<<f.Type.Width)-1))
+	case f.HasIntRange || f.Type.Kind == ir.TFixed:
+		lo, hi, ok := ir.TableRawRange(f)
+		if ok {
+			switch {
+			case isWide(f):
+				cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, bigLiteral(lo), expr, bigLiteral(hi))
+			case f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 64:
+				value := "BigInt.from(" + expr + ").toUnsigned(64)"
+				cond = fmt.Sprintf("%s >= %s && %s <= %s", value, bigLiteral(lo), value, bigLiteral(hi))
+			default:
+				cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, dartBoundLiteral(lo), expr, dartBoundLiteral(hi))
+			}
+		}
+	}
+	if cond != "" {
+		out += fmt.Sprintf("%sif (!(%s)) { %s }\n", ind, cond, refusal)
+	}
+	return out
+}

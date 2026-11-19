@@ -117,11 +117,19 @@ func (g *gen) emitTypeAlts(alts []string) {
 	}
 	g.bpf("  @type t ::\n")
 	for i, a := range alts {
+		prefix := "          | "
+		indent := "             "
 		if i == 0 {
-			g.bpf("          %s\n", a)
-			continue
+			prefix = "          "
+			indent = "           "
 		}
-		g.bpf("          | %s\n", a)
+		if len(prefix+a) > formatWidth && strings.HasPrefix(a, "{") {
+			if head, tail, ok := strings.Cut(a, ", "); ok {
+				g.bpf("%s%s,\n%s%s\n", prefix, head, indent, tail)
+				continue
+			}
+		}
+		g.bpf("%s%s\n", prefix, a)
 	}
 }
 

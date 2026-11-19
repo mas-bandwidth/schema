@@ -673,7 +673,7 @@ func (g *wireGen) emitTextMoreDecls() {
 			if i == 0 {
 				sep = "" // the first bit has no comma before it, so none is tested
 			}
-			g.pf("\tif (bits & %d != 0) { %sfirst = false; out.line(depth + 1); out.raw(_jsonString(%s)); }\n", uint64(1)<<i, sep, viewDartString(name))
+			g.pf("\tif (bits & %s != 0) { %sfirst = false; out.line(depth + 1); out.raw(_jsonString(%s)); }\n", dartU64Literal(uint64(1)<<i), sep, viewDartString(name))
 		}
 		g.pf("\tif (first) { throw StateError('flags %s: bits $bits name no variant (docs/SPEC-TABLES.md §16.2)'); }\n", fl.Name)
 		g.pf("\tout.line(depth);\n")
@@ -687,7 +687,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\t\tswitch (item) {\n")
 		// a known name set twice refuses the read, as a repeated key does (§16.2)
 		for i, name := range fl.Variants {
-			g.pf("\t\t\tcase %s: if (bits & %d != 0) { r.refuse('text_damaged'); return def; } bits |= %d;\n", viewDartString(name), uint64(1)<<i, uint64(1)<<i)
+			g.pf("\t\t\tcase %s: if (bits & %s != 0) { r.refuse('text_damaged'); return def; } bits |= %s;\n", viewDartString(name), dartU64Literal(uint64(1)<<i), dartU64Literal(uint64(1)<<i))
 		}
 		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t}\n")
@@ -708,6 +708,7 @@ func (g *wireGen) emitTextMoreDecls() {
 			if arm.Void() {
 				g.pf("\t\t\tout.raw('null');\n")
 			} else {
+				g.pf("%s", jsonWriteCheck(arm.F, "v."+armMember(arm), "\t\t\t", "throw StateError('invalid_value: arm "+un.Name+"."+arm.Name+" out of range');"))
 				g.emitJsonValue(arm.F, "v."+armMember(arm), 1, "\t\t\t", un.Name+"."+arm.Name)
 			}
 			g.pf("\t\t\tout.line(depth);\n")

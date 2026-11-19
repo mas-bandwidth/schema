@@ -5943,6 +5943,7 @@ static SCHEMA_UNUSED int tabledemo_score_board_load_message_body(tabledemo_table
 static SCHEMA_UNUSED int schema_tabledemo_team_config_wire_banner_( tabledemo_table_writer_t * w, const tabledemo_team_config_t * value )
 {
     schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->banner, value->banner_length );
     return !w->overflow;
 }
@@ -11642,6 +11643,8 @@ static SCHEMA_UNUSED int schema_tabledemo_team_config_wire_banner__retain( table
     (void)retention;
 
     schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->banner, value->banner_length );
     return !w->overflow;
 }

@@ -107,6 +107,7 @@ func init() {
 		Name{Name: "tableMessageNameSlot", What: "the announced message bit codec"},
 		Name{Name: "tableMessageReadScalar", What: "the announced message bit codec"},
 		Name{Name: "tableMessageRefuse", What: "the announced message bit codec"},
+		Name{Name: "tableMessageBaseInsideKind", What: "the announced message bit codec"},
 		Name{Name: "tableMessageShapeRead", What: "the announced message bit codec"},
 		Name{Name: "tableMessageSeenFirst", What: "the announced message bit codec"},
 		Name{Name: "tableMessageSeenOpen", What: "the announced message bit codec"},

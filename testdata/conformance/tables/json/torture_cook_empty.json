@@ -21,5 +21,91 @@
   "banner_two": null,
   "payload": null,
   "payload_empty": null,
-  "alias_ptr": null
+  "alias_ptr": null,
+  "b_i8": 0,
+  "b_u8": 0,
+  "b_i16": 0,
+  "b_u16": 0,
+  "b_i32": 0,
+  "b_u32": 0,
+  "b_i64": "0",
+  "b_u64": "0",
+  "b_bits13": 0,
+  "b_bits37": "0",
+  "b_flags": [],
+  "arr_i8": [
+    0,
+    0
+  ],
+  "arr_u8": [
+    0,
+    0
+  ],
+  "arr_i16": [
+    0,
+    0
+  ],
+  "arr_u16": [
+    0,
+    0
+  ],
+  "arr_i32": [],
+  "arr_u32": [],
+  "arr_i64": [],
+  "arr_u64": [],
+  "arr_bits": [],
+  "arr_flags": [],
+  "chan_i8": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0
+  },
+  "chan_u8": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0
+  },
+  "chan_i16": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0
+  },
+  "chan_u16": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0
+  },
+  "chan_i32": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0
+  },
+  "chan_u32": {
+    "Alpha": 0,
+    "Beta": 0,
+    "Gamma": 0
+  },
+  "chan_i64": {
+    "Alpha": "0",
+    "Beta": "0",
+    "Gamma": "0"
+  },
+  "chan_u64": {
+    "Alpha": "0",
+    "Beta": "0",
+    "Gamma": "0"
+  },
+  "chan_flags": {
+    "Alpha": [],
+    "Beta": [],
+    "Gamma": []
+  },
+  "map_i8_u8": {},
+  "map_u16_i16": {},
+  "map_i32_u32": {},
+  "map_i64_u64": {},
+  "bound_unions": [],
+  "slice_f32": [],
+  "str_arr": [],
+  "map_f64": {}
 }

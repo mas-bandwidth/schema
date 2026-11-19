@@ -6195,6 +6195,7 @@ static SCHEMA_UNUSED int graphdemo_settings_load_message_body(graphdemo_table_me
 static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_meta_t * value )
 {
     schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -6575,6 +6576,7 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages(graphdemo_meta_t * values,
 static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label_( graphdemo_table_writer_t * w, const graphdemo_settings_t * value )
 {
     schema_assert( 0 <= value->label_length && value->label_length <= 16 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6947,6 +6949,7 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages(graphdemo_settings_t *
 static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name_( graphdemo_table_writer_t * w, const graphdemo_list_node_t * value )
 {
     schema_assert( 0 <= value->name_length && value->name_length <= 12 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7101,6 +7104,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_body( graphdemo_table_reader_t
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label_( graphdemo_table_writer_t * w, const graphdemo_tree_node_t * value )
 {
     schema_assert( 0 <= value->label_length && value->label_length <= 12 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -7339,6 +7343,7 @@ static SCHEMA_UNUSED int graphdemo_layer_load_body( graphdemo_table_reader_t * r
 static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name_( graphdemo_table_writer_t * w, const graphdemo_scene_t * value )
 {
     schema_assert( 0 <= value->name_length && value->name_length <= 24 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7721,6 +7726,7 @@ static SCHEMA_UNUSED int graphdemo_scene_load_body( graphdemo_table_reader_t * r
 static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name_( graphdemo_table_writer_t * w, const graphdemo_depot_t * value )
 {
     schema_assert( 0 <= value->name_length && value->name_length <= 12 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7968,6 +7974,7 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
 static SCHEMA_UNUSED int schema_graphdemo_album_wire_name_( graphdemo_table_writer_t * w, const graphdemo_album_t * value )
 {
     schema_assert( 0 <= value->name_length && value->name_length <= 16 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9342,6 +9349,8 @@ static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag__retain( graphdemo_table
     (void)retention;
 
     schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -9568,6 +9577,8 @@ static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label__retain( graphdemo
     (void)retention;
 
     schema_assert( 0 <= value->label_length && value->label_length <= 16 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -9788,6 +9799,8 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name__retain( graphdemo
     (void)retention;
 
     schema_assert( 0 <= value->name_length && value->name_length <= 12 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -10016,6 +10029,8 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label__retain( graphdem
     (void)retention;
 
     schema_assert( 0 <= value->label_length && value->label_length <= 12 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -10399,6 +10414,8 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name__retain( graphdemo_tab
     (void)retention;
 
     schema_assert( 0 <= value->name_length && value->name_length <= 24 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -10979,6 +10996,8 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name__retain( graphdemo_tab
     (void)retention;
 
     schema_assert( 0 <= value->name_length && value->name_length <= 12 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -11369,6 +11388,8 @@ static SCHEMA_UNUSED int schema_graphdemo_album_wire_name__retain( graphdemo_tab
     (void)retention;
 
     schema_assert( 0 <= value->name_length && value->name_length <= 16 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }

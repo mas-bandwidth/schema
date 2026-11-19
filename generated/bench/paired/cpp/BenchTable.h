@@ -12644,6 +12644,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         }
     }
     schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.player_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x13a62f542cf8e86eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.player_name_length ) ) + ( value.player_name_length ); } // player_name
     schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
@@ -12858,6 +12859,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         }
     }
     schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ) { return false; }
     if ( value.player_name_length > 0 )
     {
         w.header( ids.ref_at( 7, 0x13a62f542cf8e86eull ), 12 ); // player_name

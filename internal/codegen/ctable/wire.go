@@ -867,9 +867,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		g.pf("    if ( len < 0 || !table_wire_utf8( (const uint8_t *) text, (uint64_t) len ) ) { return 0; }\n")
 		g.pf("    table_writer_raw( w, text, len );\n")
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
-		if st.IsTextListElem() {
-			g.pf("    if ( !table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s_length ) ) { return 0; }\n", expr, expr)
-		}
+		g.pf("    if ( !table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s_length ) ) { return 0; }\n", expr, expr)
 		g.pf("    table_writer_raw( w, %s, %s_length );\n", expr, expr)
 	case (f.Type.Kind == ir.TBytes && !f.Type.Blob()):
 		g.pf("    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s_length );\n", tkU8, expr)

@@ -132,7 +132,7 @@ function makeAnnounce(entriesBytes) {
   }
 }
 
-// 2) Nested zero-width element {kind 14, min = max = 4, elem 14 (min=max=0, inner 0)}: refused on 1st iteration.
+// 2) Nested element shape {kind 14, min = max = 4, elem 14 (min=max=0, inner 0)}: refused at announcement.
 {
   const words = [];
   putU64(words, 0x123456789abcdef0n);
@@ -147,16 +147,8 @@ function makeAnnounce(entriesBytes) {
   const v = new TableVocabulary();
   v.Init(new Array(16));
   const rep = {};
-  if (!AnnounceRead(v, makeAnnounce(words), rep)) {
-    throw new Error("announce 2 failed: " + JSON.stringify(rep));
-  }
-  const batch = new Uint8Array([2, 0, 0x01]);
-  globalThis.__skipIters = 0;
-  const out = [new Msg()];
-  const rrep = {};
-  const n = MsgLoadMessages(out, v, batch, rrep);
-  if (n !== 0 || !rrep.Damaged || globalThis.__skipIters !== 1) {
-    throw new Error("case 2: n=" + n + " malformed=" + rrep.Damaged + " iters=" + globalThis.__skipIters);
+  if (AnnounceRead(v, makeAnnounce(words), rep) || !rep.Damaged) {
+    throw new Error("announce 2 accepted nested array element shape: " + JSON.stringify(rep));
   }
 }
 console.log("ok");

@@ -5850,6 +5850,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_wire_storage_(const tablede
 static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note_( tabledemo_table_writer_t * w, const tabledemo_patrol_t * value )
 {
     schema_assert( 0 <= value->note_length && value->note_length <= 8 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->note, (uint64_t) value->note_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }
@@ -6105,6 +6106,8 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note__retain( tabledemo_ta
     (void)retention;
 
     schema_assert( 0 <= value->note_length && value->note_length <= 8 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->note, (uint64_t) value->note_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }

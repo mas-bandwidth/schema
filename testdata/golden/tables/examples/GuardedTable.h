@@ -10873,6 +10873,7 @@ inline int64_t PatrolMeasureBody( const Ctx & ctx, const TableNumbering & number
     if ( !value.active )
     {
         schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
+        if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
         if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     return bytes;
@@ -10925,6 +10926,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     if ( !value.active )
     {
         schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
+        if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return false; }
         if ( value.note_length > 0 )
         {
             w.header( ids.ref_at( 37, 0x3bf8fbbad1587cddull ), 12 ); // note
@@ -12274,6 +12276,7 @@ inline int64_t PatrolMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     if ( !value.active )
     {
         schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
+        if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
         if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -12327,6 +12330,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     if ( !value.active )
     {
         schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
+        if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return false; }
         if ( value.note_length > 0 )
         {
             w.header( ids.ref_at( 37, 0x3bf8fbbad1587cddull ), 12 ); // note

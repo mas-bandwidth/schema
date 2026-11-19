@@ -286,7 +286,7 @@ var catalog = []Entry{
 	e("test/unity", "Unity C# packet wire tests", "make test-unity", "make unity-wire"),
 	e("test/verify-bitphase", "18-language packet 0..63 bit-phase sweep", "make verify-bitphase-js", "./build/verify-bitphase-bin --lang all"),
 	e("test/verify-canonical", "18-language canonical-write permutation gate", "make verify-canonical-js", "./build/verify-canonical-bin --lang all"),
-	e("test/verify-reuse", "18-language dirty stateful reuse gate", "make verify-reuse-js", "./build/verify-reuse-bin --lang all"),
+	e("test/verify-reuse", "18-language dirty-instance and sub-slice reuse gate", "make verify-reuse-js", "./build/verify-reuse-bin --lang all"),
 	e("test/verify-tablegen", "18-language random 2-generation schema & lineage fuzzer", "make verify-tablegen-js", "./build/verify-tablegen-bin --lang all"),
 	e("test/vocabgen", "wide-vocabulary generator", "make check", "go run ./test/vocabgen"),
 }

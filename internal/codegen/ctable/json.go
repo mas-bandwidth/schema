@@ -337,6 +337,32 @@ static SCHEMA_UNUSED void table_json_wide_store( void * storage, uint32_t width,
 /* a counted field's companion: a string's length, a bytes' length, a counted
    array's count. Bounded by the declared extent on the way out, so a storage
    invariant a caller broke cannot walk off the end of the array. */
+static SCHEMA_UNUSED int table_json_count_in_contract( const void * base, const TableFieldInfo * f )
+{
+    int32_t count = 0;
+    if ( !f->counted || f->sequence != 0 )
+    {
+        return 1;
+    }
+    memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
+    return count >= 0 && count <= f->array_bound;
+}
+
+static SCHEMA_UNUSED int table_json_wide_in_contract( const void * storage, const TableFieldInfo * f )
+{
+    int is_signed;
+    TableJsonWide raw, lo, hi;
+    if ( f->wide == NULL )
+    {
+        return 1;
+    }
+    is_signed = table_json_kind_wide_signed( f->kind ) || f->kind == 5;
+    raw = table_json_wide_load( storage, f->elem_size, is_signed );
+    lo.lo = f->wide->lo[0]; lo.hi = f->wide->lo[1];
+    hi.lo = f->wide->hi[0]; hi.hi = f->wide->hi[1];
+    return table_json_wide_compare( raw, lo, is_signed ) >= 0 && table_json_wide_compare( raw, hi, is_signed ) <= 0;
+}
+
 static SCHEMA_UNUSED int32_t table_json_count( const void * base, const TableFieldInfo * f )
 {
     int32_t count = 0;
@@ -893,8 +919,8 @@ static SCHEMA_UNUSED int schema_table_json_write_text_element_( TableJsonOut * o
 #ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
     if ( !v->counted ) { return schema_table_json_write_unbounded_text_( out, (const uint8_t *) p + v->offset ); }
 #endif
+    if ( !table_json_count_in_contract( p, v ) ) { return 0; }
     n = table_json_count( p, v );
-    if ( n < 0 || n > v->array_bound ) { return 0; }
     table_json_write_string( out, (const char *) p + v->offset, n );
     return 1;
 }
@@ -1001,7 +1027,29 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
         table_json_put( out, ']' );
         return 1;
     }
-    if ( table_json_kind_wide( f->kind ) || table_json_kind_wide_integer( f->kind ) ) { table_json_write_wide( out, storage, f ); return 1; }
+    if ( table_json_kind_wide( f->kind ) || table_json_kind_wide_integer( f->kind ) )
+    {
+        if ( !table_json_wide_in_contract( storage, f ) ) { return 0; }
+        table_json_write_wide( out, storage, f );
+        return 1;
+    }
+    if ( f->has_range && f->kind >= 2 && f->kind <= 9 )
+    {
+        if ( f->wide != NULL )
+        {
+            if ( !table_json_wide_in_contract( storage, f ) ) { return 0; }
+        }
+        else if ( f->kind <= 5 )
+        {
+            double val = (double) table_json_get_signed( storage, f->elem_size );
+            if ( val < f->range_min || val > f->range_max ) { return 0; }
+        }
+        else
+        {
+            double val = (double) table_json_get_raw( storage, f->elem_size );
+            if ( val < f->range_min || val > f->range_max ) { return 0; }
+        }
+    }
     switch ( f->kind )
     {
         case 1:
@@ -1011,12 +1059,14 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
         {
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
+            if ( f->has_range && ( v < (float) f->range_min || v > (float) f->range_max ) ) { return 0; }
             return table_json_write_float( out, (double) v, 1 );
         }
         case 11:
         {
             double v = 0.0;
             memcpy( &v, storage, sizeof( v ) );
+            if ( f->has_range && ( v < f->range_min || v > f->range_max ) ) { return 0; }
             return table_json_write_float( out, v, 0 );
         }
         case 36:
@@ -1039,6 +1089,7 @@ static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void 
     if(f->sequence==2) { return table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
+    if ( !table_json_count_in_contract( base, f ) ) { return 0; }
     if ( f->kind == 12 && f->text_list == 0 )
     {
 #ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME

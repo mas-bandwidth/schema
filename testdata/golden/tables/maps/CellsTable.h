@@ -11500,6 +11500,7 @@ inline int64_t CellsRowsEntryMeasureBody( TableIds & ids, const CellsRowsEntry &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         bool all_default_value = true;
@@ -11519,6 +11520,7 @@ inline int64_t CellsRowsEntryMeasureBody( TableIds & ids, const CellsRowsEntry &
 MAPDEMO_TABLE_INLINE bool CellsRowsEntrySaveBody( TableWriter & w, TableIds & ids, const CellsRowsEntry & value )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -13472,6 +13474,7 @@ inline int64_t CellsRowsEntryMeasureBodyRetain( TableRetainIds & ids, const Cell
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         bool all_default_value = true;
@@ -13492,6 +13495,7 @@ inline int64_t CellsRowsEntryMeasureBodyRetain( TableRetainIds & ids, const Cell
 MAPDEMO_TABLE_INLINE bool CellsRowsEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const CellsRowsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key

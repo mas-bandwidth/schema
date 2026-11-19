@@ -10805,6 +10805,7 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
@@ -10835,6 +10836,7 @@ inline int64_t WideBlobMeasure( const WideBlob & value )
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, const WideBlob & value )
 {
     schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -11780,6 +11782,7 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
@@ -11803,6 +11806,7 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
 TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 35, 0x39f7fcec8fcb623dull ), 12 ); // label

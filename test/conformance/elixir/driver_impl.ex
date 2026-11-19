@@ -837,8 +837,8 @@ defmodule Driver do
       end)
 
     batches =
-      Map.new(rows(rows, "message"), fn [_name, _conn, _root, file, batch | _] ->
-        {file, batch}
+      Map.new(rows(rows, "message"), fn [_name, conn, _root, file, batch | _] ->
+        {{conn, file}, batch}
       end)
 
     for [name, connection, root, wire, path, kind, text | _] <-
@@ -846,11 +846,15 @@ defmodule Driver do
       with {unit, announcement} <- Map.get(connections, connection),
            mod when mod != nil <- message_module(unit),
            table when table != nil <- table_module(unit),
-           batch when is_binary(batch) <- Map.get(batches, wire) do
+           batch when is_binary(batch) <- Map.get(batches, {connection, wire}) do
         {:ok, announced} = mod.announce_read(File.read!(announcement))
         {:ok, vocab} = mod.for_root(announced, root)
         {:ok, [body]} = mod.load_messages(vocab, File.read!(batch))
-        ctx = %{descs: table.descriptors(), vocab: vocab}
+        uview_mod = Module.concat([Macro.camelize(unit_package(unit)), "UnitView"])
+        unions = if Code.ensure_loaded?(uview_mod) and function_exported?(uview_mod, :unit_view, 0),
+          do: Map.new(uview_mod.unit_view().unions, fn u -> {u.name, u} end),
+          else: %{}
+        ctx = %{descs: table.descriptors(), vocab: vocab, unions: unions}
 
         answer =
           case WriteRefusal.set_message(ctx, root, body, path, kind, text) do
@@ -917,31 +921,38 @@ defmodule Driver do
       missing_required: 0
     }
 
-    cap =
+    loaded =
       if capacity == "short" do
-        {:ok, _v, _r, probe} = mod.load_retain(root, data, fresh.(roomy), empty)
-        max(probe.used - 1, 0)
+        case mod.load_retain(root, data, fresh.(roomy), empty) do
+          {:ok, _v, _r, probe} -> mod.load_retain(root, data, fresh.(max(probe.used - 1, 0)), empty)
+          err -> err
+        end
       else
-        roomy
+        mod.load_retain(root, data, fresh.(roomy), empty)
       end
 
-    {:ok, value, _report, retain} = mod.load_retain(root, data, fresh.(cap), empty)
-    size = mod.measure_retain(root, value, retain)
-    {:ok, out, save, retain} = mod.save_retain(root, value, retain, empty)
+    case loaded do
+      {:error, _reason, _report, _retain} ->
+        if not saves, do: write(outdir, name, "refused\n")
 
-    if byte_size(out) != size, do: raise("#{name}: retaining measure and save disagree")
-    {:ok, again, second, _} = mod.save_retain(root, value, retain, empty)
+      {:ok, value, _report, retain} ->
+        size = mod.measure_retain(root, value, retain)
+        {:ok, out, save, retain} = mod.save_retain(root, value, retain, empty)
 
-    if again != out or second.retain_lost != save.retain_lost,
-      do: raise("#{name}: retaining save is not repeatable")
+        if byte_size(out) != size, do: raise("#{name}: retaining measure and save disagree")
+        {:ok, again, second, _} = mod.save_retain(root, value, retain, empty)
 
-    if saves do
-      write(outdir, name, out)
-    else
-      case mod.to_json(root, value) do
-        {:ok, text} -> write(outdir, name, "read\n" <> IO.iodata_to_binary(text))
-        _ -> raise "#{name}: to_json refused the value"
-      end
+        if again != out or second.retain_lost != save.retain_lost,
+          do: raise("#{name}: retaining save is not repeatable")
+
+        if saves do
+          write(outdir, name, out)
+        else
+          case mod.to_json(root, value) do
+            {:ok, text} -> write(outdir, name, "read\n" <> IO.iodata_to_binary(text))
+            _ -> raise "#{name}: to_json refused the value"
+          end
+        end
     end
   end
 
@@ -1306,6 +1317,13 @@ end
 defmodule WriteRefusal do
   @segment ~r/^([A-Za-z_][A-Za-z0-9_]*)(?:\[([0-9]+)\])?$/
 
+  def set(ctx, root, {root_map, nodes}, path, kind, text) when is_map(root_map) do
+    case set_in(ctx, Map.fetch!(ctx.descs, root), root_map, String.split(path, "."), kind, text) do
+      {:ok, changed} -> {:ok, {changed, nodes}}
+      other -> other
+    end
+  end
+
   def set(ctx, root, value, path, kind, text) do
     set_in(ctx, Map.fetch!(ctx.descs, root), value, String.split(path, "."), kind, text)
   end
@@ -1322,21 +1340,54 @@ defmodule WriteRefusal do
     current = Map.get(owner, name)
 
     result =
-      case {rest, index} do
-        {[], nil} ->
-          leaf(ctx, f, current, kind, text)
+      cond do
+        f.t == :keyed and rest == [] and index != nil ->
+          kname = Enum.at(f.key_names, index)
+          with {:ok, v} <- leaf(ctx, f.item, Map.get(current, kname), kind, text),
+               do: {:ok, Map.put(current, kname, v)}
 
-        {[], i} ->
-          with {:ok, v} <- leaf(ctx, f, Enum.at(current, i), kind, text),
-               do: {:ok, List.replace_at(current, i, v)}
+        f.t == :map and index != nil and length(rest) == 1 ->
+          entries = Enum.sort_by(Map.to_list(current), &elem(&1, 0))
+          {old_k, old_v} = Enum.at(entries, index)
 
-        {_, nil} ->
-          set_in(ctx, Map.fetch!(ctx.descs, f.elem), current || %{}, rest, kind, text)
+          case hd(rest) do
+            "key" ->
+              with {:ok, new_k} <- scalar(old_k, kind, text),
+                   do: {:ok, current |> Map.delete(old_k) |> Map.put(new_k, old_v)}
 
-        {_, i} ->
-          with {:ok, v} <-
-                 set_in(ctx, Map.fetch!(ctx.descs, f.elem), Enum.at(current, i), rest, kind, text),
-               do: {:ok, List.replace_at(current, i, v)}
+            "value" ->
+              with {:ok, new_v} <- scalar(old_v, kind, text),
+                   do: {:ok, Map.put(current, old_k, new_v)}
+          end
+
+        f.t == :union and index == nil and length(rest) == 1 ->
+          arm_name = hd(rest)
+          cur_p = case current do {^arm_name, p} -> p; _ -> nil end
+          with {:ok, new_p} <- scalar(cur_p, kind, text),
+               do: {:ok, {arm_name, new_p}}
+
+        Map.get(f, :text_list, false) and rest == [] and index != nil ->
+          elem_map = Enum.at(current, index)
+          with {:ok, new_s} <- scalar(Map.get(elem_map, "value"), kind, text),
+               do: {:ok, List.replace_at(current, index, Map.put(elem_map, "value", new_s))}
+
+        true ->
+          case {rest, index} do
+            {[], nil} ->
+              leaf(ctx, f, current, kind, text)
+
+            {[], i} ->
+              with {:ok, v} <- leaf(ctx, f, Enum.at(current, i), kind, text),
+                   do: {:ok, List.replace_at(current, i, v)}
+
+            {_, nil} ->
+              set_in(ctx, Map.fetch!(ctx.descs, f.elem), current || %{}, rest, kind, text)
+
+            {_, i} ->
+              with {:ok, v} <-
+                     set_in(ctx, Map.fetch!(ctx.descs, f.elem), Enum.at(current, i), rest, kind, text),
+                   do: {:ok, List.replace_at(current, i, v)}
+          end
       end
 
     case result do
@@ -1381,28 +1432,36 @@ defmodule WriteRefusal do
       end
 
     result =
-      case {rest, index} do
-        {[], nil} ->
-          message_leaf(ctx, f, current, kind, text)
+      cond do
+        f.t == :union and index == nil and length(rest) == 1 ->
+          {arm_ref, arm_val} = current
+          with {:ok, new_v} <- scalar(arm_val, kind, text),
+               do: {:ok, {arm_ref, new_v}}
 
-        {[], i} ->
-          with {:ok, v} <- message_leaf(ctx, f, Enum.at(current, i), kind, text),
-               do: {:ok, List.replace_at(current, i, v)}
+        true ->
+          case {rest, index} do
+            {[], nil} ->
+              message_leaf(ctx, f, current, kind, text)
 
-        {_, nil} ->
-          set_body(ctx, Map.fetch!(ctx.descs, f.elem), current || [], rest, kind, text)
+            {[], i} ->
+              with {:ok, v} <- message_leaf(ctx, f, Enum.at(current, i), kind, text),
+                   do: {:ok, List.replace_at(current, i, v)}
 
-        {_, i} ->
-          with {:ok, v} <-
-                 set_body(
-                   ctx,
-                   Map.fetch!(ctx.descs, f.elem),
-                   Enum.at(current, i),
-                   rest,
-                   kind,
-                   text
-                 ),
-               do: {:ok, List.replace_at(current, i, v)}
+            {_, nil} ->
+              set_body(ctx, Map.fetch!(ctx.descs, f.elem), current || [], rest, kind, text)
+
+            {_, i} ->
+              with {:ok, v} <-
+                     set_body(
+                       ctx,
+                       Map.fetch!(ctx.descs, f.elem),
+                       Enum.at(current, i),
+                       rest,
+                       kind,
+                       text
+                     ),
+                   do: {:ok, List.replace_at(current, i, v)}
+          end
       end
 
     # a field set to its declared default is left out, as the writer elides it
@@ -1430,6 +1489,40 @@ defmodule WriteRefusal do
       name -> {:ok, ref_of(ctx.vocab, Map.fetch!(f.by_name, name))}
     end
   end
+
+  defp message_leaf(ctx, f, _current, "tag", text) do
+    t = String.to_integer(text)
+
+    if t == 0 do
+      {:ok, :none}
+    else
+      u = Map.get(ctx.unions, f.elem)
+      variant = if u, do: Enum.find(u.variants, &(&1.value == t)), else: nil
+
+      case variant do
+        nil ->
+          {:ok, {length(ctx.vocab.entries) + t, nil}}
+
+        v ->
+          default_val =
+            cond do
+              v.field == nil and v.payload == nil -> nil
+              v.payload != nil -> []
+              v.field.kind == 12 -> ""
+              v.field.kind in [10, 11] -> 0.0
+              true -> 0
+            end
+
+          {:ok, {ref_of(ctx.vocab, v.id), default_val}}
+      end
+    end
+  end
+
+  defp message_leaf(_ctx, %{t: :bytes}, _current, "length", text),
+    do: {:ok, List.duplicate(?a, String.to_integer(text))}
+
+  defp message_leaf(_ctx, %{t: :bytes}, _current, "bytes", text),
+    do: {:ok, :binary.bin_to_list(Base.decode16!(text, case: :mixed))}
 
   defp message_leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
 

@@ -121,7 +121,20 @@ int conformance_write_refusal_write_backenddemo( int surface, const char * root,
                                                  int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
 /* a narrow text's storage by `length` (filled with `a`) or `bytes` (exact), and
    a wide text's by `units`: 0 for a kind or a value the storage cannot take */
+int conformance_write_refusal_set_scalars( const char * root, void * value, const char * path,
+                                           const char * kind, const char * text );
+int conformance_write_refusal_write_scalars( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                             int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_cooktorture( const char * root, void * value, const char * path,
+                                               const char * kind, const char * text );
+int conformance_write_refusal_write_cooktorture( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                                 int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_tblvarevo3( const char * root, void * value, const char * path,
+                                              const char * kind, const char * text );
+int conformance_write_refusal_write_tblvarevo3( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                                int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
 int conformance_write_refusal_text( char * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
+int conformance_write_refusal_bytes( uint8_t * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
 int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
 #define CONFORMANCE_WROTE 1
 #define CONFORMANCE_REFUSED 2
@@ -133,6 +146,7 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
 
 int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 int conformance_retain_varevo1(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
+int conformance_retain_varevo2(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 int conformance_torture_block_open_ex(void * data,int64_t bytes,int * reason,const uint8_t ** out_base,const void ** out_type);
 
 /* the per-unit entry points, each defined in that unit's own translation unit */

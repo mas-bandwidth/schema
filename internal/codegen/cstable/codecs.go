@@ -1008,12 +1008,16 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		tags = armTags(f.Tags)
 	}
 
+	arrayMin := int64(0)
+	if f.Array == ir.ArrayCounted {
+		arrayMin = f.ArrayMin
+	}
 	jsonName := csQuote(ir.TableFieldJsonKey(f))
 	if g.outside {
 		jsonName = "null"
 	}
-	g.pf("        new TableFieldInfo { Name = \"%s\", Json = %s, TypeName = \"%s\", Id = 0x%016x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s, Doc = %s, NumTags = %s, Tags = %s%s },\n",
-		f.Name, jsonName, tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, bound,
+	g.pf("        new TableFieldInfo { Name = \"%s\", Json = %s, TypeName = \"%s\", Id = 0x%016x, Kind = %d, IsArray = %v, Counted = %v, Optional = %v, ArrayMin = %d, ArrayBound = %s, ElemWidth = %d, HasRange = %s, RangeMin = %s, RangeMax = %s, EnumMax = %s, EnumName = %s, VariantId = %s, KeyTypeName = %s, KeyName = %s, KeyId = %s, Guard = \"%s\", TableRef = %s, Arms = %s, Doc = %s, NumTags = %s, Tags = %s%s },\n",
+		f.Name, jsonName, tableFieldTypeName(f), id, kind, isArray, counted, f.Type.Optional, arrayMin, bound,
 		csElemWidth(f.Type), hasRange, rangeMin, rangeMax, enumMax, enumName, variantId,
 		keyTypeName, keyName, keyId, guard, tableRef, arms, doc, numTags, tags, g.tableStorageColumns(f)+g.wireColumns(f))
 }

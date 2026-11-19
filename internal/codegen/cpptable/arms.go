@@ -36,11 +36,19 @@ func (g *tableGen) emitArmStorage(v ir.UnionVariant) {
 		g.pf("        struct { uint8_t value[%d]; int32_t value_length; } %s; // bytes(%d)\n", f.Type.Size, v.Name, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
 		g.noteRef(f.Type.Name)
-		g.pf("        struct { %s value[%d]; int32_t value_count; } %s; // [..%d]%s\n",
-			g.armElementType(v), f.ArrayBound, v.Name, f.ArrayBound, ir.TableTypeSpelling(f))
+		align16 := ""
+		if !f.Type.Pointer && f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+			align16 = "alignas( 16 ) "
+		}
+		g.pf("        %sstruct { %s value[%d]; int32_t value_count; } %s; // [..%d]%s\n",
+			align16, g.armElementType(v), f.ArrayBound, v.Name, f.ArrayBound, ir.TableTypeSpelling(f))
 	case f.Array == ir.ArrayFixed:
 		g.noteRef(f.Type.Name)
-		g.pf("        %s %s[%d]; // [%d]%s\n", g.armElementType(v), v.Name, f.ArrayBound, f.ArrayBound, ir.TableTypeSpelling(f))
+		align16 := ""
+		if !f.Type.Pointer && f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+			align16 = "alignas( 16 ) "
+		}
+		g.pf("        %s%s %s[%d]; // [%d]%s\n", align16, g.armElementType(v), v.Name, f.ArrayBound, f.ArrayBound, ir.TableTypeSpelling(f))
 	default:
 		g.noteRef(f.Type.Name)
 		typ, _ := g.cppFieldType(f.Type)
@@ -155,6 +163,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		g.pf("%s    %s += TableLebBytes( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, into, index, ind)
 	case f.Type.Kind == ir.TString:
 		g.storageAssert(ind, count, f.Type.Size)
+		g.pf("%sif ( !TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s ) ) { %s } // well-formed, no zero byte (§2.6, §2.13)\n", ind, value, count, onBad)
 		g.pf("%s%s += %s; // the string's bytes under the arm's L\n", ind, into, count)
 	case f.Type.Kind == ir.TBytes:
 		g.storageAssert(ind, count, f.Type.Size)
@@ -215,6 +224,7 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 		g.pf("%s    w.putleb( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, index, ind)
 	case f.Type.Kind == ir.TString:
 		g.storageAssert(ind, count, f.Type.Size)
+		g.pf("%sif ( !TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s ) ) { %s }\n", ind, value, count, onBad)
 		g.pf("%sw.raw( %s, %s );\n", ind, value, count)
 	case f.Type.Kind == ir.TBytes:
 		g.storageAssert(ind, count, f.Type.Size)

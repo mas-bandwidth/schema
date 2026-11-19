@@ -361,6 +361,8 @@ present_offset = function(T, f)
     cur = at + enum_width(f)
   elseif s == "int" then
     cur = at + f.width
+  elseif s == "wide" then
+    cur = at + 16
   else
     cur = at
   end

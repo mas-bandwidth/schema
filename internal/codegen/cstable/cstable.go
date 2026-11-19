@@ -749,6 +749,7 @@ public sealed class TableFieldInfo
     public bool Counted;        // a <name>Count/<name>Length companion exists
     public bool Required;
     public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
+    public int ArrayMin;        // counted array minimum length; 0 otherwise
     public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
     // the STORAGE width of one element in bytes, C++'s elem_size where it has
     // a C# meaning: the last bound a numeric read clamps to (§16.2). 0 on

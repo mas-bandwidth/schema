@@ -1,0 +1,81 @@
+{
+  "label": "init",
+  "perms": [
+    "Read"
+  ],
+  "tier": "None",
+  "action": {},
+  "boost": {
+    "mult": 1,
+    "power": 10
+  },
+  "sub": {
+    "count": 0
+  },
+  "wide_num": 0,
+  "scores": [
+    0,
+    0
+  ],
+  "items": [
+    {
+      "count": 0
+    },
+    {
+      "count": 0
+    }
+  ],
+  "tally": {
+    "Bronze": 0,
+    "Silver": 0
+  },
+  "by_name": {
+    "def_map": {
+      "weight": 0
+    }
+  },
+  "head": {
+    "val": 0,
+    "next": null
+  },
+  "keyed_sub": {
+    "Bronze": {
+      "count": 0
+    },
+    "Silver": {
+      "count": 0
+    }
+  },
+  "fixed_sub": [
+    {
+      "count": 0
+    },
+    {
+      "count": 0
+    }
+  ],
+  "counted_sub": [
+    {
+      "count": 0
+    },
+    {
+      "count": 0
+    }
+  ],
+  "slice_sub": [
+    {
+      "count": 0
+    },
+    {
+      "count": 0
+    }
+  ],
+  "opt_sub": {
+    "count": 0
+  },
+  "choice_sub": {
+    "sub_arm": {
+      "count": 0
+    }
+  }
+}

@@ -594,10 +594,12 @@ local writeArrayBody = function(T, d, val, w, ids, at, root) {
     // A PLAIN TEXT LIST's element is kind 12 (docs/SPEC-TABLES.md §2.13, §3):
     // its storage is the generated element record, but the wire carries the
     // record's one `value` string as its own L and bytes.
+    local elemBound = null;
+    foreach (fd in tableDesc(T, e.table).fields) if (fd.member == "Value") elemBound = fd.bound;
     wleb(w, n);
     for (local i = 0; i < n; i++) {
       local s = val[i].Value;
-      if (!textOk(s)) { refuseValue(w); return -1; }
+      if (!textOk(s) || (elemBound != null && s.len() > elemBound)) { refuseValue(w); return -1; }
       wleb(w, s.len());
       for (local j = 0; j < s.len(); j++) wu8(w, s[j]);
     }

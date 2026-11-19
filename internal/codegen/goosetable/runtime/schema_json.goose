@@ -1807,6 +1807,14 @@ fn json_write_int<T>(out: u8[>..]&, v: T, f: const FieldDesc&) -> bool {
     // a kind wider than 32 bits is written as a STRING of decimal digits
     // (docs/SPEC-TABLES.md §16.2, §16.14 W10); a kind of 32 bits and under is
     // a bare number.
+    if f.bits > 0 && f.bits < 64 && (v as! u64) >= ((1 as u64) << (f.bits as! u64)) { return false; }
+    if f.ranged {
+        if f.signed {
+            if (v as! i64) < (f.lo.lo as! i64) || (v as! i64) > (f.hi.lo as! i64) { return false; }
+        } else {
+            if (v as! u64) < f.lo.lo || (v as! u64) > f.hi.lo { return false; }
+        }
+    }
     let wide = f.kw > 4;
     if wide { out.push('"'); }
     if f.signed { json_put_int(out, v as! i64); } else { json_put_uint(out, v as! u64); }

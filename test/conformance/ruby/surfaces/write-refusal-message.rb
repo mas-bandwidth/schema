@@ -14,33 +14,7 @@ def self.run(manifest, outdir)
       next
     end
     value = cls.load(RubyConformance.read_bytes(wire))
-    parts = path.tr('[', '.').delete(']').split('.').reject(&:empty?)
-    owner = parts.length > 1 ? RubyConformance.target_node(value, parts[0...-1].join('.')) : value
-    last = parts[-1]
-    current = last.match?(/\A\d+\z/) ? owner[last.to_i] : owner.public_send(last.to_sym)
-    converted = case kind
-                when 'int', 'ordinal'
-                  Integer(token, 10)
-                when 'length'
-                  len = Integer(token, 10)
-                  is_bytes = current.nil? ? RubyConformance.field_is_bytes?(owner, last) : (current.encoding == ::Encoding::BINARY)
-                  is_bytes ? ("\x00".b * len) : ('x' * len)
-                when 'float'
-                  RubyConformance.parse_float_token(token)
-                when 'bytes'
-                  raw = [token].pack('H*')
-                  is_bytes = current.nil? ? RubyConformance.field_is_bytes?(owner, last) : (current.encoding == ::Encoding::BINARY)
-                  is_bytes ? raw : raw.dup.force_encoding(::Encoding::UTF_8)
-                when 'bool'
-                  %w[true 1].include?(token.downcase)
-                else
-                  token
-                end
-    if last.match?(/\A\d+\z/)
-      owner[last.to_i] = converted
-    else
-      owner.public_send(:"#{last}=", converted)
-    end
+    RubyConformance.assign_mutation(value, path, kind, token)
     refused = [:measure_messages, :save_messages].map do |verb|
       pkg.public_send(verb, cls, [value])
       false

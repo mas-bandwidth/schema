@@ -194,6 +194,27 @@ namespace SchemaUnityConformance
             // Leaf mutation
             if (elemIdx.HasValue)
             {
+                if (kind == "float")
+                {
+                    double dv = text == "nan" ? double.NaN
+                        : text == "inf" ? double.PositiveInfinity
+                        : text == "-inf" ? double.NegativeInfinity
+                        : double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+                    object arr = f.GetValue(holder);
+                    object existing = BufferGet(arr, elemIdx.Value);
+                    BufferSet(arr, elemIdx.Value, existing is float ? (object)(float)dv : dv);
+                    f.SetValue(holder, arr);
+                    return true;
+                }
+                if (kind == "length" || kind == "bytes")
+                {
+                    object arr = f.GetValue(holder);
+                    object elem = BufferGet(arr, elemIdx.Value);
+                    if (!MutatePath(codec, wire, elem, new[] { "value" }, 0, kind, text)) { return false; }
+                    BufferSet(arr, elemIdx.Value, elem);
+                    f.SetValue(holder, arr);
+                    return true;
+                }
                 throw new InvalidOperationException("write-refusal: unexpected indexed leaf " + seg);
             }
 
@@ -348,12 +369,10 @@ namespace SchemaUnityConformance
             if (n == null || n < 0) { return "refused"; }
             string json = Encoding.UTF8.GetString(buffer, 0, checked((int)n));
             var spelled = new StringBuilder();
-            if (kind == "bytes")
+            if (kind != "bytes") { return "wrote"; }
+            foreach (byte b in ParseHexBytes(text))
             {
-                foreach (byte b in ParseHexBytes(text))
-                {
-                    spelled.Append(b == 0 ? "\\u0000" : ((char)b).ToString());
-                }
+                spelled.Append(b == 0 ? "\\u0000" : ((char)b).ToString());
             }
             return json.Contains("\"" + spelled + "\"", StringComparison.Ordinal) ? "wrote" : "misspelled";
         }

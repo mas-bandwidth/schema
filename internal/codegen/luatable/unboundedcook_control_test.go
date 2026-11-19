@@ -117,7 +117,7 @@ if c == nil then print("REFUSED") else hexline(c) end
 		edits [][2]string
 	}{
 		{"check_ignores_the_slot", "cook.lua", [][2]string{
-			{"  if shape == \"string\" and f.unbounded then return text_slot(s, at) end\n", ""},
+			{"  if shape == \"string\" and f.unbounded then return text_slot(s, at), finish end\n", ""},
 		}},
 		{"read_ignores_the_slot", "uncook.lua", [][2]string{
 			{"  elseif s == \"string\" and f.unbounded then\n    -- UNBOUNDED TEXT", "  elseif false then\n    -- UNBOUNDED TEXT"},

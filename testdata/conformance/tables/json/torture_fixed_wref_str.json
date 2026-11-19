@@ -1,0 +1,23 @@
+{
+  "fixed_f32": [
+    1.25,
+    2.5
+  ],
+  "counted_f64": [
+    3.5,
+    -4.5
+  ],
+  "chan_f32": {
+    "Alpha": 1,
+    "Beta": 2,
+    "Gamma": 3
+  },
+  "opt_f32": 5.5,
+  "str_val": "hello",
+  "raw_bytes": "AQIDBA==",
+  "chan_enum": "Beta",
+  "bits_val": 42,
+  "u_val": {
+    "u_str": "arm-ok"
+  }
+}

@@ -1489,9 +1489,9 @@ fn main() {
 				return
 			}
 			var n int64
-			for _, line := range strings.Split(out, "\n") {
-				if strings.HasPrefix(line, "UNIT_OK ") {
-					_, _ = fmt.Sscanf(strings.TrimPrefix(line, "UNIT_OK "), "%d", &n)
+			for line := range strings.SplitSeq(out, "\n") {
+				if rest, ok := strings.CutPrefix(line, "UNIT_OK "); ok {
+					_, _ = fmt.Sscanf(rest, "%d", &n)
 				}
 			}
 			ran.Add(n)
@@ -1680,9 +1680,9 @@ print("UNIT_OK " + ran)
 				return
 			}
 			var n int64
-			for _, line := range strings.Split(out, "\n") {
-				if strings.HasPrefix(line, "UNIT_OK ") {
-					_, _ = fmt.Sscanf(strings.TrimPrefix(line, "UNIT_OK "), "%d", &n)
+			for line := range strings.SplitSeq(out, "\n") {
+				if rest, ok := strings.CutPrefix(line, "UNIT_OK "); ok {
+					_, _ = fmt.Sscanf(rest, "%d", &n)
 				}
 			}
 			ran.Add(n)

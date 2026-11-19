@@ -701,7 +701,9 @@ func TestLuauCookCheckWholeUnreachableNode(t *testing.T) {
 	// A general cook checker can accept a different root type; the Luau
 	// caller requested Scene, so CheckWhole must not certify that image for
 	// Scene's reader just because its attribution is valid for Meta.
-	wrongRoot := append([]byte(nil), cooked...)
+	wrongRoot := append([]byte(nil), cooked[:h.AttribOffset()+16]...)
+	clear(wrongRoot[h.DataOffset():h.AttribOffset()])
+	binary.LittleEndian.PutUint64(wrongRoot[32:], 16)
 	binary.LittleEndian.PutUint64(wrongRoot[h.AttribOffset()+8:], ir.TableTypeId(meta.WireName()))
 	if result, err := tablecook.Check(cu.m, wrongRoot); err != nil || result.Root != "Meta" {
 		t.Fatalf("alternate-root premise: result=%+v err=%v", result, err)

@@ -763,13 +763,17 @@ static int surface_retain(const char * out,int saved)
  for(i=0;i<num_lines;i++){
   const Line * f=lines+i;uint8_t * wire,*answer=NULL;char * text=NULL;size_t n;int counters[4]={0},ok;int64_t size=0,text_size=0,ids;
   if(strcmp(f->field[0],"retain"))continue;
+  if(saved&&!strcmp(f->field[f->count-1],"-"))continue;
   wire=slurp(f->field[4],&n);if(!wire)return 1;ids=!strcmp(f->field[6],"full")?-1:strtoll(f->field[6],NULL,10);
   if(!strcmp(f->field[2],"tblrt1")&&!strcmp(f->field[3],"Node"))ok=conformance_retain(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else if(!strcmp(f->field[2],"tblvarevo1")&&!strcmp(f->field[3],"EvoDoc"))ok=conformance_retain_varevo1(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
+  else if(!strcmp(f->field[2],"tblvarevo2")&&!strcmp(f->field[3],"EvoDoc"))ok=conformance_retain_varevo2(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else{free(wire);return 1;}
   /* retain-save answers the write-back bytes; retain answers the read: `read`
      and the §16 text of the known value (the counters are local diagnostics) */
   if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{char * read=(char *)malloc((size_t)text_size+5);ok=read!=NULL;if(ok){memcpy(read,"read\n",5);memcpy(read+5,text,(size_t)text_size);ok=spill(out,f->field[1],read,(size_t)text_size+5);free(read);}}}
+  else if(!saved){ok=spill(out,f->field[1],"refused\n",8);}
+  else{ok=1;}
   free(answer);free(text);free(wire);if(!ok){fprintf(stderr,"retain %s failed\n",f->field[1]);return 1;}
  }
  return 0;

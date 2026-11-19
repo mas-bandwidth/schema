@@ -3918,6 +3918,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_wire_label_( blockdemo_table_writer_t * w, const blockdemo_padded_row_t * value )
 {
     schema_assert( 0 <= value->label_length && value->label_length <= 15 );
+    if ( !blockdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0; }
     blockdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }

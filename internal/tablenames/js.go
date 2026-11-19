@@ -211,6 +211,7 @@ func init() {
 		Name{Name: "tableMessageKindWidth", What: "the message bit codec: validate unknown scalar and array payloads"},
 		Name{Name: "tableMessageKindSigned", What: "the message bit codec: validate unknown scalar and array payloads"},
 		Name{Name: "tableMessageKindHolds", What: "the message bit codec: validate unknown scalar and array payloads"},
+		Name{Name: "tableMessageKindWidens", What: "the message bit codec: whether an announced kind widens exactly into the declared one (§4)"},
 		Name{Name: "tableMessageSkipRanged", What: "the message bit codec: validate unknown scalar and array payloads"},
 		Name{Name: "tableMessageSkip", What: "the message bit codec: step over one unknown field's payload"},
 		Name{Name: "tableMessageSkipBody", What: "the message bit codec: step over one unknown body"},

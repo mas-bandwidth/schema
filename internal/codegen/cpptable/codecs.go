@@ -297,12 +297,15 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		return
 	}
 	typ, selfInit := g.cppFieldType(f.Type)
+	align16 := ""
 	if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
 		// SIXTEEN BYTES AT SIXTEEN on every compiler (docs/SPEC-TABLES.md §7.2,
 		// §19.3): native __int128 is already 16-aligned and the emulated pair
 		// is not, and the layout the cook and the block are laid out by is
-		// the compiler's one model, asserted below
-		typ = "alignas( 16 ) " + typ
+		// the compiler's one model, asserted below. Keep alignas on the member
+		// declaration rather than inside TableKeyed<T, E>'s template argument
+		// (-Werror=ignored-attributes on GCC).
+		align16 = "alignas( 16 ) "
 	}
 	switch {
 	case f.Type.TextUnbounded():
@@ -334,19 +337,19 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// member states the zero; `<Name>Reset` fills either with one loop
 		// (docs/SPEC-TABLES.md §8.1).
 		g.noteRef(f.KeyEnum)
-		g.pf("    TableKeyed<%s, %s> %s%s; // [%s]: one slot per named variant, keyed by the value\n",
-			typ, f.KeyEnum, f.Name, tableArrayInit(selfInit), f.KeyEnum)
+		g.pf("    %sTableKeyed<%s, %s> %s%s; // [%s]: one slot per named variant, keyed by the value\n",
+			align16, typ, f.KeyEnum, f.Name, tableArrayInit(selfInit), f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
-		g.pf("    %s %s[%d]%s;\n", typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
+		g.pf("    %s%s %s[%d]%s;\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s %s[%d]%s; // used count beside it; count in [0, %d]\n", typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.ArrayBound)
+		g.pf("    %s%s %s[%d]%s; // used count beside it; count in [0, %d]\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.ArrayBound)
 		g.pf("    int32_t %s_count = 0;\n", f.Name)
 	default:
 		init := ""
 		if !selfInit {
 			init = " = " + g.fieldDefaultExpr(f)
 		}
-		g.pf("    %s %s%s;\n", typ, f.Name, init)
+		g.pf("    %s%s %s%s;\n", align16, typ, f.Name, init)
 	}
 	if f.Type.Optional {
 		// `?T` — the value plus its presence bool, and nothing else: the
@@ -1254,6 +1257,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    }\n")
 	case f.Type.Kind == ir.TString:
 		g.storageAssert("    ", "value."+f.Name+"_length", f.Type.Size)
+		g.pf("    if ( !TableUtf8Valid( (const uint8_t *) value.%s, (uint64_t) value.%s_length ) ) { return -1; } // well-formed, no zero byte (§2.13)\n", f.Name, f.Name)
 		if f.Required {
 			g.pf("    if ( true ) { bytes += %s + %s; } // %s (| required: always rides, empty included, §2.3)\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		} else {
@@ -1836,6 +1840,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            w.raw( text_%s, len_%s );\n        }\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.storageAssert("    ", "value."+f.Name+"_length", f.Type.Size)
+		g.pf("    if ( !TableUtf8Valid( (const uint8_t *) value.%s, (uint64_t) value.%s_length ) ) { return false; }\n", f.Name, f.Name)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
 		} else {
@@ -2981,6 +2986,7 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 			if v.Body() || v.Void() {
 				continue
 			}
+			g.emitWideStatic(fieldSpelling{owner: un.Name}.wideName(v.F), v.F, "static const", "")
 			g.emitTagsStatic(fieldSpelling{owner: un.Name}.tagsName(v.F), v.F.Tags, "static const", "")
 		}
 		tags := oneLine(g.body.String())
@@ -3043,7 +3049,7 @@ func (g *tableGen) emitArmFieldInfo(un *ir.Union, v ir.UnionVariant, hoisted boo
 	if armCompanioned(v) {
 		member = v.Name + ".value"
 	}
-	g.emitFieldInfo(v.F, fieldSpelling{owner: un.Name, member: member, indent: "", guard: ""}, hoisted)
+	g.emitFieldInfo(v.F, fieldSpelling{owner: un.Name, member: member, indent: "    ", guard: ""}, hoisted)
 }
 
 // oneLine folds an emitted block onto one line: the descriptor rows ride
@@ -3187,6 +3193,22 @@ type fieldSpelling struct {
 
 // wideName is the name of the TableWideRange static a wide-kind row points at.
 func (sp fieldSpelling) wideName(f *ir.Field) string { return sp.owner + "_" + f.Name + "_wide" }
+
+// emitWideStatic emits one wide-kind exact raw range as a constant TableWideRange
+// (docs/SPEC-TABLES.md §8.2), and nothing when the field has no wide raw range.
+func (g *tableGen) emitWideStatic(name string, f *ir.Field, qualifier, indent string) {
+	if !ir.TableKindWide(tableScalarKind(f)) {
+		return
+	}
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return
+	}
+	lo0, lo1 := wideLanes(rlo)
+	hi0, hi1 := wideLanes(rhi)
+	g.pf("%s%s TableWideRange %s = { { %sull, %sull }, { %sull, %sull } };\n",
+		indent, qualifier, name, lo0, lo1, hi0, hi1)
+}
 
 // tagsName is the name of the tag-list static a tagged row points at.
 func (sp fieldSpelling) tagsName(f *ir.Field) string { return sp.owner + "_" + f.Name + "_tags" }

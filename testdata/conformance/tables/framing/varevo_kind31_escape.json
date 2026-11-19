@@ -32,5 +32,24 @@
     "Silver": 0
   },
   "by_name": {},
-  "head": null
+  "head": null,
+  "keyed_sub": {
+    "Bronze": {
+      "count": 0
+    },
+    "Silver": {
+      "count": 0
+    }
+  },
+  "fixed_sub": [
+    {
+      "count": 0
+    },
+    {
+      "count": 0
+    }
+  ],
+  "counted_sub": [],
+  "slice_sub": [],
+  "choice_sub": {}
 }

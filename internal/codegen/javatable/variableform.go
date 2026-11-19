@@ -425,7 +425,7 @@ public final class TableVariable {
     // The ID TABLE (docs/SPEC-TABLES.md §3): one shared over the whole file, so
     // a list element's field ids intern into the same table the root's do.
     public static final class Ids {
-        public final long[] entries;
+        public long[] entries;
         public int count;
         public boolean overflow;
         // nonFinite is the SAVE's refusal of a NaN or an infinity
@@ -435,6 +435,7 @@ public final class TableVariable {
         // offRange is the SAVE's refusal of a ranged float off its range
         // (docs/SPEC.md §5.1 row 10), held in every build beside nonFinite.
         public boolean offRange;
+        public boolean growable;
 
         public Ids(int cap) {
             entries = new long[cap];
@@ -447,8 +448,11 @@ public final class TableVariable {
                 }
             }
             if (count >= entries.length) {
-                overflow = true;
-                return 0;
+                if (!growable || entries.length >= 65536) {
+                    overflow = true;
+                    return 0;
+                }
+                entries = java.util.Arrays.copyOf(entries, Math.min(65536, entries.length * 2));
             }
             entries[count++] = id;
             return count;
@@ -1959,6 +1963,20 @@ public final class TableVariable {
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
     // text is not text at whatever length the reader would have kept.
+    public static String utf8FromFixed(byte[] b, int len) {
+        assert len >= 0 && len <= b.length;
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(b, 0, len))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException bad) {
+            throw new AssertionError("ill-formed UTF-8 in fixed text");
+        }
+    }
+
     public static boolean textValid(byte[] b, int off, int len) {
         int i = off;
         int end = off + len;
@@ -2826,6 +2844,7 @@ public final class TableVariable {
         }
 
         public Saver(int capacity) {
+            ids.growable = true;
             writer = new Writer(new byte[Math.max(capacity, 16)], ids);
             writer.growable = true;
         }
@@ -4554,7 +4573,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	// A NaN OR AN INFINITY ANYWHERE IN THE VALUE REFUSES THE SAVE
 	// (docs/SPEC-TABLES.md §3.3), and so does a ranged float off its range
 	// (docs/SPEC.md §5.1 row 10): the writer marked it on the shared id table.
-	fmt.Fprintf(&b, "        if (w.ids.nonFinite || w.ids.offRange) {\n")
+	fmt.Fprintf(&b, "        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {\n")
 	fmt.Fprintf(&b, "            return null;\n")
 	fmt.Fprintf(&b, "        }\n")
 	if st.Integrity != "" {
@@ -5390,6 +5409,11 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 
 func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
+	if f.Array == ir.ArrayCounted {
+		fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
+	} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
+		fmt.Fprintf(b, "        if (v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayBound)
+	}
 	fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
 	b.WriteString("            b.append('[');\n")
 	fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
@@ -5402,6 +5426,17 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		case ir.TBool:
 			fmt.Fprintf(b, "                b.append(v.%s.get(i) ? \"true\" : \"false\");\n", m)
 		case ir.TInt:
+			if f.HasIntRange {
+				min, max := jsonIntRange(f)
+				switch {
+				case f.Type.Signed:
+					fmt.Fprintf(b, "                if ((long) v.%s.get(i) < %s || (long) v.%s.get(i) > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+				case f.Type.Width <= 32:
+					fmt.Fprintf(b, "                if (Long.compareUnsigned(Integer.toUnsignedLong(v.%s.get(i)), %s) < 0 || Long.compareUnsigned(Integer.toUnsignedLong(v.%s.get(i)), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+				default:
+					fmt.Fprintf(b, "                if (Long.compareUnsigned(v.%s.get(i), %s) < 0 || Long.compareUnsigned(v.%s.get(i), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+				}
+			}
 			switch {
 			case f.Type.Timestamp:
 				fmt.Fprintf(b, "                TableJson.writeTimestamp(b, v.%s.get(i));\n", m)
@@ -5419,6 +5454,9 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				}
 			}
 		case ir.TBits:
+			if f.Type.Width < 64 {
+				fmt.Fprintf(b, "                if (Long.compareUnsigned((long) v.%s.get(i), 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
+			}
 			if f.Type.Width <= 32 {
 				fmt.Fprintf(b, "                b.append(Integer.toUnsignedString(v.%s.get(i)));\n", m)
 			} else {
@@ -5429,6 +5467,9 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		case ir.TFloat64:
 			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), false);\n", m)
 		case ir.TString:
+			if !f.Type.TextUnbounded() && f.Type.Size > 0 {
+				fmt.Fprintf(b, "                if (TableVariable.utf8Len(v.%s.get(i)) > %dL) { throw new TableJson.Refused(\"length_over_bound\"); }\n", m, f.Type.Size)
+			}
 			fmt.Fprintf(b, "                TableJson.esc(b, v.%s.get(i));\n", m)
 		case ir.TNamed:
 			if un := variableUnion(f); un != nil {
@@ -5621,6 +5662,11 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		if f.Array == ir.ArrayCounted {
+			fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
+		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
+			fmt.Fprintf(b, "        if (v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayBound)
+		}
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
 		b.WriteString("            b.append('[');\n")
 		fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
@@ -5638,7 +5684,9 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		// release build, but toJson still answers null for a value its reader
 		// would refuse.
 		b.WriteString("        {\n")
-		if f.ArrayBound > 0 {
+		if f.Array == ir.ArrayCounted {
+			fmt.Fprintf(b, "            if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(%q); }\n", m, f.ArrayMin, m, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
+		} else if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "            if (v.%s.size() > %d) { throw new TableJson.Refused(%q); }\n", m, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
 		}
 		elementBound := int64(-1)
@@ -5681,6 +5729,11 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		b.WriteString("        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		if f.Array == ir.ArrayCounted {
+			fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
+		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
+			fmt.Fprintf(b, "        if (v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayBound)
+		}
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
 		b.WriteString("            b.append('[');\n")
 		fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
@@ -5704,8 +5757,14 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        %sVariable.jsonFields(b, graph, v.%s, depth);\n", target.Name, m)
 	case f.Type.Kind == ir.TBytes:
+		if f.Type.Size > 0 {
+			fmt.Fprintf(b, "        if (v.%s.length > %d) { throw new TableJson.Refused(\"length_over_bound\"); }\n", m, f.Type.Size)
+		}
 		fmt.Fprintf(b, "        TableJson.esc(b,java.util.Base64.getEncoder().encodeToString(v.%s));\n", m)
 	case f.Type.Kind == ir.TString:
+		if !f.Type.TextUnbounded() && f.Type.Size > 0 {
+			fmt.Fprintf(b, "        if (TableVariable.utf8Len(v.%s) > %dL) { throw new TableJson.Refused(\"length_over_bound\"); }\n", m, f.Type.Size)
+		}
 		fmt.Fprintf(b, "        TableJson.esc(b, v.%s);\n", m)
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "        b.append(v.%s ? \"true\" : \"false\");\n", m)
@@ -5714,12 +5773,32 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "        TableJson.writeFloat(b, v.%s, false);\n", m)
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
+		if f.Type.Kind == ir.TBits {
+			fmt.Fprintf(b, "        if (Long.compareUnsigned((long) v.%s, 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
+		} else if f.HasIntRange {
+			min, max := jsonIntRange(f)
+			if f.Type.Signed {
+				fmt.Fprintf(b, "        if ((long) v.%s < %s || (long) v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+			} else {
+				fmt.Fprintf(b, "        if (Long.compareUnsigned(Integer.toUnsignedLong(v.%s), %s) < 0 || Long.compareUnsigned(Integer.toUnsignedLong(v.%s), %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+			}
+		}
 		if f.Type.Signed && f.Type.Kind == ir.TInt {
 			fmt.Fprintf(b, "        b.append(Integer.toString(v.%s));\n", m)
 		} else {
 			fmt.Fprintf(b, "        b.append(Integer.toUnsignedString(v.%s));\n", m)
 		}
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits):
+		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+			fmt.Fprintf(b, "        if (Long.compareUnsigned(v.%s, 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
+		} else if f.Type.Kind == ir.TInt && f.HasIntRange {
+			min, max := jsonIntRange(f)
+			if f.Type.Signed {
+				fmt.Fprintf(b, "        if (v.%s < %s || v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+			} else {
+				fmt.Fprintf(b, "        if (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, min, m, max)
+			}
+		}
 		switch {
 		case f.Type.Timestamp:
 			fmt.Fprintf(b, "        TableJson.writeTimestamp(b, v.%s);\n", m)

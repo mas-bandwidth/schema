@@ -21,7 +21,10 @@ import (
 	"strings"
 )
 
-var writeRefusalGoSegment = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)(?:\[([0-9]+)\])?$`)
+var (
+	writeRefusalGoSegment          = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)(?:\[([0-9]+)\])?$`)
+	errWriteRefusalUnrepresentable = fmt.Errorf("unrepresentable")
+)
 
 func surfaceWriteRefusal(surface string, lines []line, out string) error {
 	for _, f := range lines {
@@ -58,6 +61,12 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			return fmt.Errorf("%s: load refused %s", name, wirePath)
 		}
 		if err := mutateWriteRefusalGo(value, path, kind, text); err != nil {
+			if err == errWriteRefusalUnrepresentable {
+				if err := spill(out, name, []byte("unrepresentable\n")); err != nil {
+					return err
+				}
+				continue
+			}
 			return fmt.Errorf("%s: %w", name, err)
 		}
 		answer := "wrote"
@@ -112,6 +121,9 @@ func connectionUnit(lines []line, connection string) string {
 
 // mutateWriteRefusalGo sets the one field a row names in the generated value.
 func mutateWriteRefusalGo(value any, path, kind, text string) error {
+	if mr, ok := value.(mutableRootProvider); ok {
+		value = mr.mutableRoot()
+	}
 	segments := strings.Split(path, ".")
 	cur := reflect.ValueOf(value).Elem()
 	for _, segment := range segments[:len(segments)-1] {
@@ -124,7 +136,10 @@ func mutateWriteRefusalGo(value any, path, kind, text string) error {
 			return fmt.Errorf("%s: no field %q in %s", path, name, cur.Type())
 		}
 		if indexed {
-			fv = fv.Index(index)
+			fv, err = writeRefusalGoIndex(fv, index, path)
+			if err != nil {
+				return err
+			}
 		}
 		cur = fv
 	}
@@ -138,9 +153,28 @@ func mutateWriteRefusalGo(value any, path, kind, text string) error {
 		return fmt.Errorf("%s: no field %q in %s", path, name, cur.Type())
 	}
 	if indexed {
-		fv = fv.Index(index)
+		fv, err = writeRefusalGoIndex(fv, index, path)
+		if err != nil {
+			return err
+		}
 	}
 	return writeRefusalGoSet(cur, fv, name, kind, text)
+}
+
+func writeRefusalGoIndex(fv reflect.Value, index int, path string) (reflect.Value, error) {
+	if fv.Kind() == reflect.Array || fv.Kind() == reflect.Slice {
+		return fv.Index(index), nil
+	}
+	if fv.CanAddr() {
+		if at := fv.Addr().MethodByName("At"); at.IsValid() {
+			out := at.Call([]reflect.Value{reflect.ValueOf(int32(index))})
+			if len(out) == 1 && !out[0].IsNil() {
+				return out[0].Elem(), nil
+			}
+			return reflect.Value{}, fmt.Errorf("%s: index %d out of bounds in %s", path, index, fv.Type())
+		}
+	}
+	return reflect.Value{}, fmt.Errorf("%s: %s is not indexable", path, fv.Type())
 }
 
 func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
@@ -161,6 +195,15 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		if err != nil {
 			return err
 		}
+		if fv.Kind() == reflect.Struct {
+			if val, ok := writeRefusalGoField(fv, "Value"); ok {
+				if comp, ok2 := writeRefusalGoField(fv, "ValueLength"); ok2 {
+					writeRefusalGoFill(val, n, 'a')
+					comp.SetInt(int64(n))
+					return nil
+				}
+			}
+		}
 		writeRefusalGoFill(fv, n, 'a')
 		companion, ok := writeRefusalGoField(owner, name+"Length")
 		if !ok {
@@ -172,6 +215,15 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		b, err := hex.DecodeString(text)
 		if err != nil {
 			return err
+		}
+		if fv.Kind() == reflect.Struct {
+			if val, ok := writeRefusalGoField(fv, "Value"); ok {
+				if comp, ok2 := writeRefusalGoField(fv, "ValueLength"); ok2 {
+					writeRefusalGoBytes(val, b)
+					comp.SetInt(int64(len(b)))
+					return nil
+				}
+			}
 		}
 		writeRefusalGoBytes(fv, b)
 		companion, ok := writeRefusalGoField(owner, name+"Length")
@@ -205,6 +257,9 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			fv.SetInt(n.Int64())
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if n.Sign() < 0 {
+				return errWriteRefusalUnrepresentable
+			}
 			fv.SetUint(n.Uint64())
 		default:
 			return fmt.Errorf("%s: %s is not an integer", name, fv.Type())
@@ -236,9 +291,15 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		if err != nil {
 			return err
 		}
+		if fv.Kind() == reflect.Struct && fv.NumField() == 1 && fv.Type().Field(0).Name == "Value" {
+			fv = fv.Field(0)
+		}
 		switch fv.Kind() {
 		case reflect.Float32, reflect.Float64:
 			fv.SetFloat(v)
+			if pres, ok := writeRefusalGoField(owner, name+"Present"); ok && pres.Kind() == reflect.Bool {
+				pres.SetBool(true)
+			}
 		default:
 			return fmt.Errorf("%s: %s is not a float", name, fv.Type())
 		}
@@ -308,6 +369,22 @@ func writeRefusalGoField(value reflect.Value, name string) (reflect.Value, bool)
 		}
 		if field.Name == want || writeRefusalGoFold(field.Name) == wantFold {
 			return value.Field(i), true
+		}
+	}
+	if value.CanAddr() {
+		ptr := value.Addr()
+		ptyp := ptr.Type()
+		for i := 0; i < ptyp.NumMethod(); i++ {
+			m := ptyp.Method(i)
+			if m.PkgPath != "" || m.Type.NumIn() != 1 || m.Type.NumOut() != 1 || m.Type.Out(0).Kind() != reflect.Pointer {
+				continue
+			}
+			if m.Name == want || writeRefusalGoFold(m.Name) == wantFold {
+				out := ptr.Method(i).Call(nil)
+				if !out[0].IsNil() {
+					return out[0].Elem(), true
+				}
+			}
 		}
 	}
 	return reflect.Value{}, false

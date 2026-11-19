@@ -1175,10 +1175,20 @@ local function wrefWalk(u: any, root: string, v: any, path: string): (any, any, 
 			return owner, fd, idx
 		end
 		local child = owner[fd.slot]
+		if fd.s == "union" and idx == nil and i == #segments - 1 then
+			local ud = u.S.lookup(fd.t)
+			local armName = segments[#segments]
+			for _, arm in ud.arms do
+				if arm.name == armName then
+					return child, arm, nil
+				end
+			end
+			error("no arm " .. armName .. " in union " .. fd.t)
+		end
 		if idx ~= nil then
 			child = child[idx]
 		end
-		local nextType = if idx ~= nil then fd.e.t else fd.t
+		local nextType = if idx ~= nil then (if fd.s == "map" then fd.t else fd.e.t) else fd.t
 		owner, tname = child, nextType
 	end
 	error("empty path")

@@ -530,7 +530,14 @@ func retainValues(u *units, retains []RetainCase, jsonDir string) error {
 		value := model.New(root)
 		store := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 		var report tabletext.Report
-		if ok, _ := strictDecodeRetain(model, value, wire, store, &report); !ok {
+		ok, _ := strictDecodeRetain(model, value, wire, store, &report)
+		if rc.Refused {
+			if ok {
+				return fmt.Errorf("retain %s: expected refusal, but LoadRetain succeeded", rc.Name)
+			}
+			continue
+		}
+		if !ok {
 			return fmt.Errorf("retain %s: read failed: report=%+v", rc.Name, report)
 		}
 		valRel := rc.Value

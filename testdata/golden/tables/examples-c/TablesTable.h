@@ -7820,6 +7820,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_messages(tabledemo_loadou
 static SCHEMA_UNUSED int schema_tabledemo_profile_config_wire_name_( tabledemo_table_writer_t * w, const tabledemo_profile_config_t * value )
 {
     schema_assert( 0 <= value->name_length && value->name_length <= 32 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9120,6 +9121,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_messages(tabledemo_profil
 static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_version_note_( tabledemo_table_writer_t * w, const tabledemo_root_config_t * value )
 {
     schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->version_note, (uint64_t) value->version_note_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->version_note, value->version_note_length );
     return !w->overflow;
 }
@@ -15611,6 +15613,8 @@ static SCHEMA_UNUSED int schema_tabledemo_profile_config_wire_name__retain( tabl
     (void)retention;
 
     schema_assert( 0 <= value->name_length && value->name_length <= 32 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -16511,6 +16515,8 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_version_note__retain(
     (void)retention;
 
     schema_assert( 0 <= value->version_note_length && value->version_note_length <= 16 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->version_note, (uint64_t) value->version_note_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->version_note, value->version_note_length );
     return !w->overflow;
 }

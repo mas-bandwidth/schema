@@ -189,8 +189,8 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 			fixed++
 		}
 	}
-	if fixed != 14 {
-		t.Fatalf("the manifest names %d message rows over a fixed root, want the 14 this card pins", fixed)
+	if fixed != 15 {
+		t.Fatalf("the manifest names %d message rows over a fixed root, want the 15 this card pins", fixed)
 	}
 	compared := 0
 	for _, row := range rows {

@@ -943,7 +943,7 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 }
 
 func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
-	g.pf("%s", requiredRangeCheck(f, "v."+fieldMember(f), "\t", "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
+	g.pf("%s", jsonWriteCheck(f, "v."+fieldMember(f), "\t", "throw StateError('invalid_value: field "+f.Name+" out of range');"))
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\tout.line(depth + 1);\n")

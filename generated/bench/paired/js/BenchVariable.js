@@ -3198,10 +3198,8 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     const er = new TableVariableReader(r.b, sub.at, sub.at + elen);
     switch (fd.e.s) {
       case "enum": {
-        const unknownBefore = report.unknown;
         const x = TableVariableEnumRead(fd.e, er, table, report, retain, st);
         if (x !== undefined) {
-          if (TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
           arr[slot] = x;
         }
         break;
@@ -3213,16 +3211,12 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (path !== null) { path.pop(); }
         if (TableVariableCountRefused(report)) { return false; }
         if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
-        // A slot whose table body is its terminator alone is the default the
-        // writer elides (§3.2).
-        if (elen <= 1) { report.damaged = true; break; }
         arr[slot] = inst;
         break;
       }
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
         if (x !== undefined) {
-          if (TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
           arr[slot] = x;
         }
       }
@@ -3641,16 +3635,18 @@ function TableVariableJsonPointer(c, node, depth, g, out) {
 }
 
 function TableVariableJsonField(fd, val, depth, g, out) {
+  if (fd.opt && val === null) { out.push("null"); return true; }
   switch (fd.s) {
     case "sblob": case "bblob":
       if (val === null) { out.push("null"); return true; }
+      if (!TableVariableBlobValid(fd, val)) { return false; }
       // a blob's text is a string, which has no first key to carry "&node": a
       // blob two slots name has no spelling, and the writer refuses (§16.7)
       if (typeof val === "object" && (g.blobs.get(val) || 0) > 1) { return false; }
       out.push(fd.s === "sblob" ? TableVariableJsonString(String(val)) : TableVariableBase64Text(val));
       return true;
-    case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
-    case "bytes": out.push(TableVariableBase64Text(val)); return true;
+    case "str": if (!TableVariableTextValid(val, fd.ub ? -1 : fd.bound)) { return false; } out.push(TableVariableJsonString(val)); return true;
+    case "bytes": if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; } out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
@@ -3716,12 +3712,14 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     }
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
+      if (!TableVariableFloatValid(d, val)) { return false; }
       const t = TableVariableFloatText(val, d.f32);
       if (t === null) { return false; }
       out.push(t);
       return true;
     }
     case "int":
+      if (!TableVariableIntegerValid(d, val)) { return false; }
       if (d.ts !== undefined) {
         const stamp = TableVariableTimestampText(val);
         if (stamp === null) { return false; }
@@ -4531,13 +4529,14 @@ function TableVariableTextInt(d, inp, holder, key, report) {
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
+  if (!(val instanceof Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
-  const vd = fd.c.fields[1];
+  const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ind = "\n" + "  ".repeat(depth + 1);
   out.push("{");
   for (let i = 0; i < ents.length; i++) {
-    if (fd.ks && fd.kb < 0 && !TableVariableUnboundedTextValid(ents[i].key)) { return false; }
+    if (!TableVariableJsonField(kd, ents[i].key, depth + 1, g, [])) { return false; }
     if (i > 0) { out.push(","); }
     out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
     if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }

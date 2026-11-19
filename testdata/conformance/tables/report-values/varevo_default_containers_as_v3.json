@@ -1,0 +1,149 @@
+{
+  "caption": "init",
+  "perms": [
+    "Read"
+  ],
+  "tier": "None",
+  "action": {},
+  "boost": {
+    "scale": 1,
+    "power": "10"
+  },
+  "sub": {
+    "count": 0,
+    "sub_tag": "s2",
+    "sub_future": "0"
+  },
+  "wide_num": "0",
+  "scores": [],
+  "items": [
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    }
+  ],
+  "tally": {
+    "Bronze": 0,
+    "Sterling": 0,
+    "Gold": 0,
+    "Platinum": 0
+  },
+  "by_name": {
+    "def_map": {
+      "weight": 0,
+      "rank": 0,
+      "secret": "map-only-v3"
+    }
+  },
+  "head": {
+    "val": "0",
+    "next": null,
+    "note": "leaf2",
+    "extra_leaf": 9501
+  },
+  "keyed_sub": {
+    "Bronze": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "9001"
+    },
+    "Sterling": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "-9002"
+    },
+    "Gold": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    "Platinum": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    }
+  },
+  "fixed_sub": [
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "9101"
+    },
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "-9102"
+    }
+  ],
+  "counted_sub": [
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "9201"
+    },
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "-9202"
+    }
+  ],
+  "slice_sub": [
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "9301"
+    },
+    {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "-9302"
+    }
+  ],
+  "opt_sub": {
+    "count": 0,
+    "sub_tag": "s2",
+    "sub_future": "9401"
+  },
+  "choice_sub": {
+    "sub_arm": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "9601"
+    }
+  },
+  "v2_epoch": "0",
+  "v3_stamp": "0",
+  "v3_parcel": {
+    "grade": "None",
+    "pick": {},
+    "bins": {
+      "Low": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      },
+      "Mid": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      },
+      "High": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      }
+    },
+    "core": {
+      "count": 0,
+      "sub_tag": "s2",
+      "sub_future": "0"
+    },
+    "stack": []
+  }
+}

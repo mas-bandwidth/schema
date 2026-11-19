@@ -5923,6 +5923,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
 static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_wire_callsign_( tabledemo_table_writer_t * w, const tabledemo_gunner_settings_t * value )
 {
     schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->callsign, value->callsign_length );
     return !w->overflow;
 }
@@ -6314,6 +6315,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_messages(tabledemo_gunne
 static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name_( tabledemo_table_writer_t * w, const tabledemo_ship_entry_t * value )
 {
     schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->display_name, value->display_name_length );
     return !w->overflow;
 }
@@ -6953,6 +6955,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_messages(tabledemo_ship_entry
 static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note_( tabledemo_table_writer_t * w, const tabledemo_global_settings_t * value )
 {
     schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->build_note, value->build_note_length );
     return !w->overflow;
 }
@@ -11265,6 +11268,8 @@ static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_wire_callsign__retain(
     (void)retention;
 
     schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->callsign, value->callsign_length );
     return !w->overflow;
 }
@@ -11458,6 +11463,8 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name__retain( 
     (void)retention;
 
     schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->display_name, value->display_name_length );
     return !w->overflow;
 }
@@ -11867,6 +11874,8 @@ static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note__retai
     (void)retention;
 
     schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->build_note, value->build_note_length );
     return !w->overflow;
 }

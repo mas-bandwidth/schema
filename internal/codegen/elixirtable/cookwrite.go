@@ -488,10 +488,12 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   # Declared ranges constrain live values. Physical storage behind an
   # inactive guard is still copied, just as it is without Required (§2.3).
-  defp cook_collect_field(%{t: :int} = f, v, acc) do
+  defp cook_collect_field(%{t: :int} = f, v, acc) when is_integer(v) do
     if Map.has_key?(f, :min) and (v < f.min or v > f.max), do: throw(:invalid)
     {v, acc}
   end
+
+  defp cook_collect_field(%{t: :int}, v, _acc) when not is_nil(v), do: throw(:invalid)
 
   defp cook_collect_field(_, v, acc), do: {v, acc}
 

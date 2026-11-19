@@ -6236,6 +6236,7 @@ static SCHEMA_UNUSED int graphdemo_tally_load_messages(graphdemo_tally_t * value
 static SCHEMA_UNUSED int schema_graphdemo_marker_wire_label_( graphdemo_table_writer_t * w, const graphdemo_marker_t * value )
 {
     schema_assert( 0 <= value->label_length && value->label_length <= 8 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -7050,6 +7051,8 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_wire_label__retain( graphdemo_t
     (void)retention;
 
     schema_assert( 0 <= value->label_length && value->label_length <= 8 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }

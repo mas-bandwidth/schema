@@ -1854,6 +1854,12 @@ func emitKeyedDesc(b *strings.Builder, f *ir.Field) {
 	if dep := deprecatedOrdinals(f); dep != "" {
 		fmt.Fprintf(b, "                deprecated=%s,\n", dep)
 	}
+	if isFloat(f) {
+		fmt.Fprintf(b, "                f32=%s,\n", pyBool(f.Type.Kind == ir.TFloat32))
+		fmt.Fprintf(b, "                fmin=%s,\n", floatBound(f, f.FMin))
+		fmt.Fprintf(b, "                fmax=%s,\n", floatBound(f, f.FMax))
+		fmt.Fprintf(b, "                float_range=%s,\n", pyBool(compressedFloat(f)))
+	}
 	fmt.Fprintf(b, "                default=%s,\n", defaultFor(f, codec))
 	fmt.Fprintf(b, "            ),\n")
 	keys := make([]string, 0, f.ArrayBound)
@@ -1894,8 +1900,12 @@ func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
 		return "bool"
-	case ir.TInt, ir.TFixed:
+	case ir.TInt, ir.TFixed, ir.TBits:
 		return "int"
+	case ir.TFloat32:
+		return "float32"
+	case ir.TFloat64:
+		return "float64"
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:

@@ -38,7 +38,7 @@ table Root
 }
 `
 
-const cookDirectoryText = `{"counts": {"a": 1, "b": 2}, "bag": {"items": [3, 4, 5]}, "blob": "AQID"}`
+const cookDirectoryText = `{"counts": {"a": "1", "b": "2"}, "bag": {"items": ["3", "4", "5"]}, "blob": "AQID"}`
 
 // TestLuaCookCheckDirectoryFitsRegion holds §7.4's pass one on the Lua cook
 // surface (docs/SPEC-TABLES.md §7.4): a directory entry whose node does not

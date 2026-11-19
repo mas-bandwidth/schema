@@ -1,8 +1,26 @@
 // CookTortureWide.schema — Pillar #3 16-byte aligned variable-class root for
 // `cook-write` (LE & BE), `wire`, `json-read`, and `json-write`:
-// Odd-width scalars (`bool`, `uint8`, `[3]uint8`) immediately before 16-byte
-// (`int128`, `uint128`) aligned fields and `[]uint128` extents (§6.2, §15).
+// int128 min/max, uint128 > 2^64 & max, and negative fixed(w,p) across
+// root fields, arrays, [Enum]T, maps, optionals, and union arms (§6.2, §15).
 package cooktorturewide
+
+enum WideAxis { X, Y, Z }
+
+table WideEntry
+{
+    s_wide int128       | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    u_wide uint128
+    neg_fx fixed(16, 16) | min = -180, max = 180
+}
+
+union WideChoice
+{
+    w_none
+    w_i128 int128        | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    w_u128 uint128
+    w_fx16 fixed(16, 16) | min = -180, max = 180
+    w_fx48 fixed(48, 16) | min = -30000, max = 30000
+}
 
 table TortureWideChild
 {
@@ -20,4 +38,24 @@ table TortureWideCook
     child         *TortureWideChild
     empty_wides   []uint128
     live_wides    []uint128
+
+    // Full 128-bit & negative fixed-point boundary extremes:
+    i128_min     int128             | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    i128_max     int128             | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    u128_hi      uint128
+    u128_max     uint128
+    neg_fx4      fixed(4, 4)        | min = -8, max = 7
+    neg_fx16     fixed(16, 16)      | min = -180, max = 180
+    neg_fx48     fixed(48, 16)      | min = -30000, max = 30000
+    neg_fx112    fixed(112, 16)     | min = -1000000, max = 1000000
+    arr_i128     [2]int128          | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    arr_fx16     [..4]fixed(16, 16) | min = -180, max = 180
+    axis_i128    [WideAxis]int128   | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    axis_u128    [WideAxis]uint128
+    axis_fx      [WideAxis]fixed(16, 16) | min = -180, max = 180
+    map_wide     map[int32]WideEntry
+    opt_i128     ?int128            | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    opt_u128     ?uint128
+    opt_fx16     ?fixed(16, 16)     | min = -180, max = 180
+    wide_choices []WideChoice
 }

@@ -60,5 +60,32 @@
     },
     "note": "v2-leaf"
   },
+  "keyed_sub": {
+    "Bronze": {
+      "count": 0,
+      "sub_tag": "s2"
+    },
+    "Argent": {
+      "count": 0,
+      "sub_tag": "s2"
+    },
+    "Gold": {
+      "count": 0,
+      "sub_tag": "s2"
+    }
+  },
+  "fixed_sub": [
+    {
+      "count": 0,
+      "sub_tag": "s2"
+    },
+    {
+      "count": 0,
+      "sub_tag": "s2"
+    }
+  ],
+  "counted_sub": [],
+  "slice_sub": [],
+  "choice_sub": {},
   "v2_epoch": "1700000000"
 }

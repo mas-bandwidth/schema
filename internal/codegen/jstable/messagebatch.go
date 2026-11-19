@@ -822,7 +822,11 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, loopExpr, iv)
 	if keyed {
 		cond := g.messageRides(e, mem+"["+iv+"]", ind+"  ")
-		g.pf("%s  if (!(%s)) { continue; }\n", ind, cond)
+		if strings.HasPrefix(cond, "!Object.is(") && strings.HasSuffix(cond, ")") {
+			g.pf("%s  if (%s) { continue; }\n", ind, cond[1:])
+		} else {
+			g.pf("%s  if (!(%s)) { continue; }\n", ind, cond)
+		}
 		g.pf("%s  switch (%s) {\n", ind, iv)
 		for i := range f.KeyEnumRef.Variants {
 			slot := messageNameSlot(g.unit, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
@@ -980,17 +984,6 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 	case atField && f.KeyEnum == "" && f.Array == ir.ArrayFixed && (!isStructRef(f.Type) || f.Type.Pointer):
 		rides := g.messageRides(f, mem, ind)
 		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
-	case atField && f.KeyEnum == "" && f.Array == ir.ArrayCounted && f.ArrayMin > 0:
-		e := messageElementField(f)
-		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && %sCount === %d) {\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, mem, f.ArrayMin)
-		iv := g.nextIdxVar()
-		g.pf("%s  let _allDef = true;\n", ind)
-		g.pf("%s  for (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayMin, iv)
-		er := g.messageRides(e, mem+"["+iv+"]", ind+"    ")
-		g.pf("%s    if (%s) { _allDef = false; break; }\n", ind, er)
-		g.pf("%s  }\n", ind)
-		g.pf("%s  if (_allDef) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s}\n", ind)
 	}
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))

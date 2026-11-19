@@ -15,6 +15,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Text;
 
 static partial class Program
@@ -184,12 +185,206 @@ static partial class Program
                     }
                     break;
             }
+            return WriteRefusalMutatePath(codec, wire, value, path.Split('.'), 0, kind, text);
         }
         catch (OverflowException)
         {
             return false;
         }
-        throw new InvalidOperationException("write-refusal: no setter for " + codec.Unit + "." + codec.Root + " " + path + " " + kind);
+    }
+
+    static string WriteRefusalPascal(string raw)
+    {
+        var sb = new StringBuilder(raw.Length);
+        bool upper = true;
+        foreach (char c in raw)
+        {
+            if (c == '_') { upper = true; continue; }
+            sb.Append(upper ? char.ToUpperInvariant(c) : c);
+            upper = false;
+        }
+        return sb.ToString();
+    }
+
+    static object WriteRefusalElementGet(object container, int idx)
+    {
+        if (container is Array arr) { return arr.GetValue(idx); }
+        FieldInfo slots = container.GetType().GetField("Slots", BindingFlags.Public | BindingFlags.Instance);
+        if (slots != null && slots.GetValue(container) is Array slotArr) { return slotArr.GetValue(idx); }
+        throw new InvalidOperationException("write-refusal: unsupported indexed container " + container.GetType().FullName);
+    }
+
+    static void WriteRefusalElementSet(object container, int idx, object val)
+    {
+        if (container is Array arr) { arr.SetValue(val, idx); return; }
+        FieldInfo slots = container.GetType().GetField("Slots", BindingFlags.Public | BindingFlags.Instance);
+        if (slots != null && slots.GetValue(container) is Array slotArr) { slotArr.SetValue(val, idx); return; }
+        throw new InvalidOperationException("write-refusal: unsupported indexed container " + container.GetType().FullName);
+    }
+
+    static int WriteRefusalCapacity(object container)
+    {
+        if (container is Array arr) { return arr.Length; }
+        FieldInfo slots = container.GetType().GetField("Slots", BindingFlags.Public | BindingFlags.Instance);
+        if (slots != null && slots.GetValue(container) is Array slotArr) { return slotArr.Length; }
+        throw new InvalidOperationException("write-refusal: unsupported buffer " + container.GetType().FullName);
+    }
+
+    static bool WriteRefusalMutatePath(Codec codec, byte[] wire, object holder, string[] segments, int segIdx, string kind, string text)
+    {
+        string seg = segments[segIdx];
+        int bracket = seg.IndexOf('[');
+        string fieldRaw = bracket >= 0 ? seg.Substring(0, bracket) : seg;
+        int? elemIdx = bracket >= 0
+            ? int.Parse(seg.Substring(bracket + 1, seg.IndexOf(']') - bracket - 1), CultureInfo.InvariantCulture)
+            : (int?)null;
+        string member = WriteRefusalPascal(fieldRaw);
+        Type holderType = holder.GetType();
+        FieldInfo f = holderType.GetField(member, BindingFlags.Public | BindingFlags.Instance);
+        if (f == null)
+        {
+            throw new InvalidOperationException("write-refusal: missing field " + member + " on " + holderType.FullName);
+        }
+        FieldInfo present = holderType.GetField(member + "Present", BindingFlags.Public | BindingFlags.Instance);
+        if (present != null && present.FieldType == typeof(bool))
+        {
+            present.SetValue(holder, true);
+        }
+
+        if (segIdx < segments.Length - 1)
+        {
+            object child = f.GetValue(holder);
+            if (elemIdx.HasValue)
+            {
+                object elem = WriteRefusalElementGet(child, elemIdx.Value);
+                if (!WriteRefusalMutatePath(codec, wire, elem, segments, segIdx + 1, kind, text)) { return false; }
+                WriteRefusalElementSet(child, elemIdx.Value, elem);
+            }
+            else
+            {
+                if (!WriteRefusalMutatePath(codec, wire, child, segments, segIdx + 1, kind, text)) { return false; }
+            }
+            f.SetValue(holder, child);
+            return true;
+        }
+
+        if (elemIdx.HasValue)
+        {
+            object arr = f.GetValue(holder);
+            if (kind == "float")
+            {
+                double dv = text == "nan" ? double.NaN
+                    : text == "inf" ? double.PositiveInfinity
+                    : text == "-inf" ? double.NegativeInfinity
+                    : double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+                object existing = WriteRefusalElementGet(arr, elemIdx.Value);
+                WriteRefusalElementSet(arr, elemIdx.Value, existing is float ? (object)(float)dv : dv);
+                f.SetValue(holder, arr);
+                return true;
+            }
+            if (kind == "length" || kind == "bytes")
+            {
+                object elem = WriteRefusalElementGet(arr, elemIdx.Value);
+                if (!WriteRefusalMutatePath(codec, wire, elem, new[] { "value" }, 0, kind, text)) { return false; }
+                WriteRefusalElementSet(arr, elemIdx.Value, elem);
+                f.SetValue(holder, arr);
+                return true;
+            }
+            throw new InvalidOperationException("write-refusal: unexpected indexed leaf " + seg);
+        }
+
+        switch (kind)
+        {
+            case "int":
+            {
+                Type ft = f.FieldType;
+                object converted;
+                if (ft == typeof(sbyte)) { converted = checked((sbyte)long.Parse(text, CultureInfo.InvariantCulture)); }
+                else if (ft == typeof(short)) { converted = checked((short)long.Parse(text, CultureInfo.InvariantCulture)); }
+                else if (ft == typeof(int)) { converted = checked((int)long.Parse(text, CultureInfo.InvariantCulture)); }
+                else if (ft == typeof(long)) { converted = long.Parse(text, CultureInfo.InvariantCulture); }
+                else if (ft == typeof(byte)) { converted = checked((byte)long.Parse(text, CultureInfo.InvariantCulture)); }
+                else if (ft == typeof(ushort)) { converted = checked((ushort)long.Parse(text, CultureInfo.InvariantCulture)); }
+                else if (ft == typeof(uint)) { converted = checked((uint)long.Parse(text, CultureInfo.InvariantCulture)); }
+                else if (ft == typeof(ulong)) { converted = checked((ulong)decimal.Parse(text, CultureInfo.InvariantCulture)); }
+                else { throw new InvalidOperationException("write-refusal: unexpected int field type " + ft.FullName); }
+                f.SetValue(holder, converted);
+                return true;
+            }
+            case "ordinal":
+            {
+                byte ord = checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture));
+                object enumVal = f.FieldType.IsEnum ? Enum.ToObject(f.FieldType, ord) : (object)ord;
+                f.SetValue(holder, enumVal);
+                return true;
+            }
+            case "float":
+            {
+                double dv = text == "nan" ? double.NaN
+                    : text == "inf" ? double.PositiveInfinity
+                    : text == "-inf" ? double.NegativeInfinity
+                    : double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+                f.SetValue(holder, f.FieldType == typeof(float) ? (object)(float)dv : dv);
+                return true;
+            }
+            case "tag":
+            {
+                byte tagVal = checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture));
+                object unionObj = f.GetValue(holder);
+                FieldInfo tf = unionObj.GetType().GetField("Type", BindingFlags.Public | BindingFlags.Instance);
+                object tagEnum = tf.FieldType.IsEnum ? Enum.ToObject(tf.FieldType, tagVal) : (object)tagVal;
+                tf.SetValue(unionObj, tagEnum);
+                foreach (FieldInfo af in unionObj.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    if (af.Name == "Type") { continue; }
+                    if (!af.FieldType.IsValueType && af.GetValue(unionObj) == null && !af.FieldType.IsArray)
+                    {
+                        af.SetValue(unionObj, Activator.CreateInstance(af.FieldType));
+                    }
+                }
+                f.SetValue(holder, unionObj);
+                return true;
+            }
+            case "count":
+            {
+                int n = int.Parse(text, CultureInfo.InvariantCulture);
+                FieldInfo cf = holderType.GetField(member + "Count", BindingFlags.Public | BindingFlags.Instance);
+                int oldCount = (int)cf.GetValue(holder);
+                object buf = f.GetValue(holder);
+                int cap = WriteRefusalCapacity(buf);
+                for (int i = oldCount; i < Math.Min(n, cap); i++)
+                {
+                    object freshRoot = codec.Load(wire, new Report());
+                    object freshBuf = f.GetValue(freshRoot);
+                    WriteRefusalElementSet(buf, i, WriteRefusalElementGet(freshBuf, 0));
+                }
+                f.SetValue(holder, buf);
+                cf.SetValue(holder, n);
+                return true;
+            }
+            case "length":
+            case "bytes":
+            {
+                FieldInfo lf = holderType.GetField(member + "Length", BindingFlags.Public | BindingFlags.Instance);
+                byte[] buf = (byte[])f.GetValue(holder);
+                if (kind == "length")
+                {
+                    int n = int.Parse(text, CultureInfo.InvariantCulture);
+                    for (int i = 0; i < Math.Min(n, buf.Length); i++) { buf[i] = (byte)'a'; }
+                    lf.SetValue(holder, n);
+                    return true;
+                }
+                byte[] rawBytes = WriteRefusalBytes(text);
+                if (rawBytes.Length > buf.Length) { return false; }
+                Array.Copy(rawBytes, 0, buf, 0, rawBytes.Length);
+                lf.SetValue(holder, rawBytes.Length);
+                return true;
+            }
+            case "units":
+                return false;
+            default:
+                throw new InvalidOperationException("write-refusal: unknown kind " + kind);
+        }
     }
 
     // The fixed form's FixedSave, as a batch of one, per root the battery names.
@@ -199,6 +394,8 @@ static partial class Program
         {
             case Tabledemo.RootConfig root: return Tabledemo.Schema.RootConfigFixedSave(root, buffer);
             case Tabledemo.LoadoutConfig loadout: return Tabledemo.Schema.LoadoutConfigFixedSave(loadout, buffer);
+            case Scalardemo.SimState sim: return Scalardemo.Schema.SimStateFixedSave(sim, buffer);
+            case Cooktorture.TortureFixedWref tfw: return Cooktorture.Schema.TortureFixedWrefFixedSave(tfw, buffer);
         }
         throw new InvalidOperationException("write-refusal-fixed: no FixedSave for " + value.GetType().Name);
     }
@@ -211,6 +408,7 @@ static partial class Program
         long? n = WriteRefusalRun(() => codec.ToJson(value, buffer), out string threw);
         if (threw != null) { return threw; }
         if (n == null || n < 0) { return "refused"; }
+        if (kind != "bytes" && kind != "units") { return "wrote"; }
         string json = Encoding.UTF8.GetString(buffer, 0, checked((int)n));
         var spelled = new StringBuilder();
         if (kind == "bytes") { foreach (byte b in WriteRefusalBytes(text)) { spelled.Append(b == 0 ? "\\u0000" : ((char)b).ToString()); } }

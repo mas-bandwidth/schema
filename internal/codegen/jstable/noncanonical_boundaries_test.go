@@ -156,8 +156,8 @@ table Hole {
 		ir.TableWireId("A"),
 	))
 
-	// A named keyed slot stored at its declared default elides.
-	add("keyed-default.bin", "VarContainers", false, nonCanonicalWire(
+	// A keyed slot carrying the current reader's default reads and re-saves canonically (§3.2, §4).
+	add("keyed-default.bin", "VarContainers", true, nonCanonicalWire(
 		[]byte{
 			0x01, byte(ir.TableKindKeyed), 0x08,
 			byte(ir.TableKindI32), 0x01,
@@ -167,8 +167,8 @@ table Hole {
 		ir.TableWireId("A"),
 	))
 
-	// Slot-default elision is independent of the field's Required flag.
-	add("required-keyed-default.bin", "RequiredKeyed", false, nonCanonicalWire(
+	// A required keyed field's default slot likewise reads and re-saves canonically.
+	add("required-keyed-default.bin", "RequiredKeyed", true, nonCanonicalWire(
 		[]byte{1, byte(ir.TableKindKeyed), 8, byte(ir.TableKindI32), 1, 2, 4, 0, 0, 0, 0},
 		ir.TableWireId("keyed"), ir.TableWireId("A")))
 
@@ -214,8 +214,10 @@ table Hole {
 			rows[i].Canonical = hex.EncodeToString(canonical("PtrRoot", `{"a":{"v":7}}`))
 		case "keyed-order.bin":
 			rows[i].Canonical = hex.EncodeToString(canonical("VarContainers", `{"keyed":{"A":3,"B":4}}`))
-		case "fixed-default.bin":
+		case "fixed-default.bin", "keyed-default.bin":
 			rows[i].Canonical = hex.EncodeToString(canonicalDefault("VarContainers"))
+		case "required-keyed-default.bin":
+			rows[i].Canonical = hex.EncodeToString(canonicalDefault("RequiredKeyed"))
 		}
 	}
 

@@ -1185,8 +1185,8 @@ defmodule Bench.TableMessage do
 
   defp rebind_body(from_vocab, to_vocab, to_lookup, rules, fields, rec) do
     present =
-      Enum.reduce(fields, %{}, fn {peer_ref, val}, acc ->
-        case entry_at(from_vocab, peer_ref) do
+      Enum.reduce(fields, %{}, fn {src_ref, val}, acc ->
+        case entry_at(from_vocab, src_ref) do
           {:ok, pe} -> Map.put(acc, pe.id, val)
           _ -> acc
         end
@@ -1362,11 +1362,11 @@ defmodule Bench.TableMessage do
          _fid,
          15,
          _elem,
-         {arm_peer_ref, arm_val},
+         {arm_src_ref, arm_val},
          _rule,
          sub
        ) do
-    with {:ok, ape} <- entry_at(from_vocab, arm_peer_ref),
+    with {:ok, ape} <- entry_at(from_vocab, arm_src_ref),
          true <- arm_known?(sub, ape.id),
          arm_raw when arm_raw != nil <- arm_raw(sub, ape.id),
          {to_arm_ref, ate} <- Map.get(to_lookup.by_raw, arm_raw) do
@@ -1400,8 +1400,8 @@ defmodule Bench.TableMessage do
     allowed_keys = rules |> Map.get({fid, 16}, %{}) |> Map.get(:member)
 
     val
-    |> Enum.flat_map(fn {key_peer_ref, kv} ->
-      with {:ok, kpe} <- entry_at(from_vocab, key_peer_ref),
+    |> Enum.flat_map(fn {key_src_ref, kv} ->
+      with {:ok, kpe} <- entry_at(from_vocab, key_src_ref),
            true <-
              (if key_list != nil,
                 do: kpe.id in key_list,
@@ -1445,7 +1445,7 @@ defmodule Bench.TableMessage do
   defp rebind_val(_from_vocab, _to_vocab, _to_lookup, _rules, _fid, 30, _elem, 0, _rule, _sub),
     do: 0
 
-  defp rebind_val(from_vocab, _to_vocab, to_lookup, rules, fid, 30, _elem, peer_vref, rule, _sub) do
+  defp rebind_val(from_vocab, _to_vocab, to_lookup, rules, fid, 30, _elem, src_vref, rule, _sub) do
     {allowed, retired} =
       case Map.get(rules, {fid, 30}) do
         %{member: m} = rmap -> {m, Map.get(rmap, :retired)}
@@ -1460,7 +1460,7 @@ defmodule Bench.TableMessage do
           end
       end
 
-    case entry_at(from_vocab, peer_vref) do
+    case entry_at(from_vocab, src_vref) do
       {:ok, vpe} ->
         cond do
           (allowed == nil or MapSet.member?(allowed, vpe.id)) and

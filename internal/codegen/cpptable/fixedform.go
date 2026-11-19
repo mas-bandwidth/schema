@@ -1397,6 +1397,42 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // is where that verdict lands on the fixed form (docs/FIXED-FORM-ALGORITHM.md
 // §4.5, fix 11). The slack is DEAD and must be zero (§4.5, §5.3 step 11);
 // the content rule itself runs over the used units only.
+func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int) {
+	f := v.F
+	ind := strings.Repeat(" ", indent)
+	val, cnt := armValue(expr, v), armCount(expr, v)
+	switch {
+	case f.Array == ir.ArrayFixed:
+		idx := fmt.Sprintf("ai_%d", indent)
+		g.pf("%sfor ( int64_t %s = 0; %s < %d; ++%s )\n%s{\n", ind, idx, idx, f.ArrayBound, idx, ind)
+		g.emitFixedClampElement(f, val+"["+idx+"]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		idx := fmt.Sprintf("ai_%d", indent)
+		count := fmt.Sprintf("(int64_t) %s", cnt)
+		if g.fixedWriteCheck {
+			count = fmt.Sprintf("( %s >= 0 && %s <= %d ? (int64_t) %s : 0 )", cnt, cnt, f.ArrayBound, cnt)
+		}
+		g.pf("%sfor ( int64_t %s = 0; %s < %s; ++%s )\n%s{\n", ind, idx, idx, count, idx, ind)
+		g.emitFixedClampElement(f, val+"["+idx+"]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString:
+		call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s )", val, cnt)
+		if g.fixedWriteCheck {
+			g.pf("%sbad |= (int) ( %s >= 0 && %s <= %d && !%s );\n", ind, cnt, cnt, f.Type.Size, call)
+			return
+		}
+		if g.fixedCheck {
+			g.pf("%sbad |= (int) !%s;\n", ind, call)
+			return
+		}
+		g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
+		g.pf("%s    damaged++;\n%s}\n", ind, ind)
+	default:
+		g.emitFixedClampElement(f, val, indent)
+	}
+}
+
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
 	if g.fixedWriteCheck {
@@ -1465,7 +1501,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 					continue
 				}
 				g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
-				g.emitFixedClampElement(v.F, fmt.Sprintf("%s.%s", expr, v.Name), indent+8)
+				g.emitFixedClampArm(v, expr, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
 			g.pf("%s    default: break;\n%s}\n", ind, ind)

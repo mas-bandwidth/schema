@@ -901,6 +901,13 @@ macro_rules! with_root {
                 use cooktorture::{torture_cook_from_json_bytes as $from_json, torture_cook_load as $load, torture_cook_save_checked as $save, torture_cook_to_json_checked as $to_json};
                 Some($body)
             }
+            ("cooktorture", "TortureFixedWref") => {
+                #[allow(unused_imports, unused_variables)]
+                use cooktorture::{torture_fixed_wref_from_json_bytes as $from_json, torture_fixed_wref_load as $load, torture_fixed_wref_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(cooktorture, TortureFixedWref, TortureFixedWrefRow, torture_fixed_wref_cook_write, torture_fixed_wref_fixed_save, torture_fixed_wref_fixed_measure);
+                Some($body)
+            }
             ("cooktorturewide", "TortureWideCook") => {
                 #[allow(unused_imports)]
                 use cooktorturewide::{torture_wide_cook_from_json_bytes as $from_json, torture_wide_cook_load as $load, torture_wide_cook_save_checked as $save, torture_wide_cook_to_json_checked as $to_json};
@@ -1326,6 +1333,7 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("scalars", "SimState") => fixed_read!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblscalars2", "SimState") => fixed_read!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblfixedevo", "EvoRoot") => fixed_read!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, data),
+        ("cooktorture", "TortureFixedWref") => fixed_read!(cooktorture, torture_fixed_wref_fixed_load, torture_fixed_wref_fixed_save, torture_fixed_wref_fixed_measure, TortureFixedWrefRow, data),
         ("tblvarevo1", "EvoMsg") => fixed_read!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo2", "EvoMsg") => fixed_read!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo3", "EvoMsg") => fixed_read!(tblvarevo3, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
@@ -1407,6 +1415,12 @@ macro_rules! with_fixed_value_root {
                 use tblfixedevo as $k;
                 #[allow(unused_imports)]
                 use $k::{EvoRootRow as $row, EvoRoot as $value, evo_root_fixed_load as $load, evo_root_fixed_save as $save, evo_root_fixed_measure as $measure, evo_root_to_json_checked as $to, evo_root_from_json_bytes as $from, evo_root_cook_write as $cook};
+                Some($body)
+            }
+            ("cooktorture", "TortureFixedWref") => {
+                use cooktorture as $k;
+                #[allow(unused_imports)]
+                use $k::{TortureFixedWrefRow as $row, TortureFixedWref as $value, torture_fixed_wref_fixed_load as $load, torture_fixed_wref_fixed_save as $save, torture_fixed_wref_fixed_measure as $measure, torture_fixed_wref_to_json_checked as $to, torture_fixed_wref_from_json_bytes as $from, torture_fixed_wref_cook_write as $cook};
                 Some($body)
             }
             ("tblvarevo1", "EvoMsg") => {
@@ -1769,9 +1783,14 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
             }
             let mut store = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity), nodes: Default::default() };
             let mut report = TableReport::default();
-            let value = $load_retain(&wire, &mut store, &mut report)
-                .unwrap_or_else(|| fail(&format!("{}: retaining load refused", $f[1])));
-            if report.damaged { fail(&format!("{}: retaining load malformed", $f[1])); }
+            let Some(value) = $load_retain(&wire, &mut store, &mut report) else {
+                if !saves { spill(out, &$f[1], b"refused\n"); }
+                continue;
+            };
+            if report.damaged || report.refused {
+                if !saves { spill(out, &$f[1], b"refused\n"); }
+                continue;
+            }
             let lost = report.retain_lost;
             let unknown = report.unknown;
             let widened = report.widened;
@@ -1801,6 +1820,7 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
         match (f[2].as_str(), f[3].as_str()) {
             ("tblrt1", "Node") => retain_case!(tblrt1, node_load_retain, node_save_retain, node_to_json_checked, f),
             ("tblvarevo1", "EvoDoc") => retain_case!(tblvarevo1, evo_doc_load_retain, evo_doc_save_retain, evo_doc_to_json_checked, f),
+            ("tblvarevo2", "EvoDoc") => retain_case!(tblvarevo2, evo_doc_load_retain, evo_doc_save_retain, evo_doc_to_json_checked, f),
             _ => spill_absent(out, &f[1]),
         }
     }
@@ -2237,7 +2257,7 @@ fn wref_float(value: &str) -> f32 {
         "nan" => f32::NAN,
         "inf" => f32::INFINITY,
         "-inf" => f32::NEG_INFINITY,
-        _ => fail(&format!("write-refusal: float value {value}")),
+        _ => value.parse::<f32>().unwrap_or_else(|_| fail(&format!("write-refusal: float value {value}"))),
     }
 }
 
@@ -2292,6 +2312,22 @@ fn wref_root_config(v: &mut tabledemo::RootConfig, path: &str, kind: &str, value
             }
             Err(_) => Mutation::Unrepresentable,
         },
+        ("profiles[0].precision", "float") => {
+            if v.profiles.is_empty() { v.profiles.push(Default::default()); }
+            v.profiles[0].precision = wref_float(value) as f64;
+            Mutation::Done
+        }
+        ("profiles[0].loadout.attachments[0].power", "float") => {
+            if v.profiles.is_empty() { v.profiles.push(Default::default()); }
+            if v.profiles[0].loadout.attachments.is_empty() { v.profiles[0].loadout.attachments.push(Default::default()); }
+            v.profiles[0].loadout.attachments[0].power = wref_float(value);
+            Mutation::Done
+        }
+        ("profiles[0].icon", "length") => {
+            if v.profiles.is_empty() { v.profiles.push(Default::default()); }
+            v.profiles[0].icon = vec![b'a'; wref_usize(value)];
+            Mutation::Done
+        }
         _ => fail(&format!("write-refusal: RootConfig names no {kind} path {path}")),
     }
 }
@@ -2400,16 +2436,174 @@ fn wref_check_match_result_row(v: &backenddemo::MatchResultRow, path: &str, kind
     }
 }
 
-fn wref_check_root_config_json(v: &tabledemo::RootConfig, path: &str, kind: &str) {
+fn wref_torture_cook(v: &mut cooktorture::TortureCook, path: &str, kind: &str, value: &str) -> Mutation {
     match (path, kind) {
-        ("version_note", "bytes") => wref_assert(!v.version_note.as_bytes().contains(&0), "RootConfig.version_note"),
+        ("slice_f32[0]", "float") => {
+            v.slice_f32[0] = wref_float(value);
+            Mutation::Done
+        }
+        ("map_f64[0].value", "float") => {
+            v.map_f64[0].value = wref_float(value) as f64;
+            Mutation::Done
+        }
+        ("map_f64[0].key", "bytes") => match String::from_utf8(wref_bytes(value)) {
+            Ok(text) => {
+                v.map_f64[0].key = text;
+                Mutation::Done
+            }
+            Err(_) => Mutation::Unrepresentable,
+        },
+        ("str_arr[0]", "bytes") => match String::from_utf8(wref_bytes(value)) {
+            Ok(text) => {
+                v.str_arr[0].value = text;
+                Mutation::Done
+            }
+            Err(_) => Mutation::Unrepresentable,
+        },
+        ("str_arr[0]", "length") => {
+            v.str_arr[0].value = "a".repeat(wref_usize(value));
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: TortureCook names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_torture_cook(v: &cooktorture::TortureCook, path: &str, kind: &str) {
+    match (path, kind) {
+        ("map_f64[0].key", "bytes") => {
+            wref_assert(!v.map_f64[0].key.as_bytes().contains(&0) && v.map_f64[0].key.len() <= 16, "TortureCook.map_f64[0].key");
+        }
+        ("str_arr[0]", "bytes" | "length") => {
+            wref_assert(!v.str_arr[0].value.as_bytes().contains(&0) && v.str_arr[0].value.len() <= 16, "TortureCook.str_arr[0]");
+        }
         _ => {}
     }
 }
 
-fn wref_check_root_config_json_row(v: &tabledemo::RootConfigRow, path: &str, kind: &str) {
+fn wref_sim_state_row(v: &mut scalars::SimStateRow, path: &str, kind: &str, value: &str) -> Mutation {
     match (path, kind) {
-        ("version_note", "bytes") => wref_assert(wref_text_holds(&v.version_note, v.version_note_length), "RootConfig.version_note"),
+        ("ticks", "int") => wref_int(value, &mut v.ticks),
+        ("angle", "int") => wref_int(value, &mut v.angle),
+        ("speed", "int") => wref_int(value, &mut v.speed),
+        _ => fail(&format!("write-refusal: SimState names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_sim_state_row(v: &scalars::SimStateRow, path: &str, kind: &str) {
+    match (path, kind) {
+        ("ticks", "int") => wref_assert(v.ticks >= 0 && v.ticks <= 1000000, "SimState.ticks"),
+        ("angle", "int") => wref_assert(v.angle >= -11796480 && v.angle <= 11796480, "SimState.angle"),
+        ("speed", "int") => wref_assert(v.speed <= 65536000, "SimState.speed"),
+        _ => {}
+    }
+}
+
+fn wref_torture_fixed_wref_row(v: &mut cooktorture::TortureFixedWrefRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("counted_f64[0]", "float") => {
+            v.counted_f64[0] = wref_float(value) as f64;
+            Mutation::Done
+        }
+        ("counted_f64", "count") => {
+            let n = wref_usize(value);
+            v.counted_f64_count = n as i32;
+            Mutation::Done
+        }
+        ("fixed_f32[1]", "float") => {
+            v.fixed_f32[1] = wref_float(value);
+            Mutation::Done
+        }
+        ("chan_f32[1]", "float") => {
+            v.chan_f32[1] = wref_float(value);
+            Mutation::Done
+        }
+        ("opt_f32", "float") => {
+            v.opt_f32_present = true;
+            v.opt_f32 = wref_float(value);
+            Mutation::Done
+        }
+        ("u_val.u_f32", "float") => {
+            v.u_val.set_u_f32(wref_float(value));
+            Mutation::Done
+        }
+        ("u_val.u_str", "bytes" | "length") => {
+            let mut arm = cooktorture::BoundUnionRowArmUStr { value: [0u8; 17], value_length: 0 };
+            wref_row_text(&mut arm.value, &mut arm.value_length, kind, value, wref_bytes);
+            v.u_val.set_u_str(arm);
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: TortureFixedWref names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_torture_fixed_wref_row(v: &cooktorture::TortureFixedWrefRow, path: &str, kind: &str) {
+    match (path, kind) {
+        ("u_val.u_str", "bytes") => {
+            if let Some(arm) = v.u_val.u_str() {
+                wref_assert(wref_text_holds(&arm.value, arm.value_length), "TortureFixedWref.u_val.u_str");
+            }
+        }
+        _ => {}
+    }
+}
+
+fn wref_login_request_row(v: &mut backenddemo::LoginRequestRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("session_token", "length") => {
+            let n = wref_usize(value);
+            for slot in v.session_token.iter_mut().take(n.min(32)) {
+                *slot = b'a';
+            }
+            v.session_token_length = n as i32;
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: LoginRequest names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_login_request_row(_v: &backenddemo::LoginRequestRow, _path: &str, _kind: &str) {}
+
+fn wref_evo_msg_row(v: &mut tblvarevo3::EvoMsgRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("payload.notice", "bytes" | "length") => {
+            let mut arm = tblvarevo3::EvoPayloadRowArmNotice { value: [0u8; 25], value_length: 0 };
+            wref_row_text(&mut arm.value, &mut arm.value_length, kind, value, wref_bytes);
+            v.payload.set_notice(arm);
+            Mutation::Done
+        }
+        ("payload", "tag") => {
+            match value {
+                "0" => v.payload.set_none(),
+                "1" => v.payload.set_beat(),
+                "2" => v.payload.set_telemetry(tblvarevo3::sub_cfg_message_default()),
+                _ => {
+                    let mut tag = 0u8;
+                    if let Mutation::Unrepresentable = wref_int(value, &mut tag) {
+                        return Mutation::Unrepresentable;
+                    }
+                    unsafe { *(&mut v.payload as *mut tblvarevo3::EvoPayloadRow as *mut u8) = tag };
+                }
+            }
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: EvoMsg names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_evo_msg_row(v: &tblvarevo3::EvoMsgRow, path: &str, kind: &str) {
+    match (path, kind) {
+        ("payload.notice", "bytes") => {
+            if let Some(arm) = v.payload.notice() {
+                wref_assert(wref_text_holds(&arm.value, arm.value_length), "EvoMsg.payload.notice");
+            }
+        }
+        _ => {}
+    }
+}
+
+fn wref_check_root_config_json(v: &tabledemo::RootConfig, path: &str, kind: &str) {
+    match (path, kind) {
+        ("version_note", "bytes") => wref_assert(!v.version_note.as_bytes().contains(&0), "RootConfig.version_note"),
         _ => {}
     }
 }
@@ -2463,6 +2657,20 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
                 Mutation::Unrepresentable => "unrepresentable\n",
             }
         }
+        ("scalars", "SimState") => {
+            let mut row = wref_fixed_row!(scalars, sim_state_fixed_load, SimStateRow, case, wire, data);
+            match wref_sim_state_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |row| wref_check_sim_state_row(row, path, kind), scalars::sim_state_fixed_measure, scalars::sim_state_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
+        ("cooktorture", "TortureFixedWref") => {
+            let mut row = wref_fixed_row!(cooktorture, torture_fixed_wref_fixed_load, TortureFixedWrefRow, case, wire, data);
+            match wref_torture_fixed_wref_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |row| wref_check_torture_fixed_wref_row(row, path, kind), cooktorture::torture_fixed_wref_fixed_measure, cooktorture::torture_fixed_wref_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
         _ => fail(&format!("write-refusal: no fixed root {unit} {root}")),
     }
 }
@@ -2496,6 +2704,17 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let Some(mut v) = tabledemo::loadout_config_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_loadout_config(&mut v, path, kind, value) {
                     Mutation::Done => wref_save(|| tabledemo::loadout_config_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("cooktorture", "TortureCook") => {
+                let mut report = cooktorture::TableReport::default();
+                let Some(mut v) = cooktorture::torture_cook_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_torture_cook(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| {
+                        wref_check_torture_cook(&v, path, kind);
+                        cooktorture::torture_cook_save_checked(&v)
+                    }),
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
@@ -2595,6 +2814,24 @@ fn wref_root_config_row(v: &mut tabledemo::RootConfigRow, path: &str, kind: &str
         }
         ("version_note", "length" | "bytes") => {
             wref_row_text(&mut v.version_note, &mut v.version_note_length, kind, value, wref_bytes);
+            Mutation::Done
+        }
+        ("profiles[0].precision", "float") => {
+            if v.profiles_count < 1 { v.profiles_count = 1; }
+            v.profiles[0].precision = wref_float(value) as f64;
+            Mutation::Done
+        }
+        ("profiles[0].loadout.attachments[0].power", "float") => {
+            if v.profiles_count < 1 { v.profiles_count = 1; }
+            if v.profiles[0].loadout.attachments_count < 1 { v.profiles[0].loadout.attachments_count = 1; }
+            v.profiles[0].loadout.attachments[0].power = wref_float(value);
+            Mutation::Done
+        }
+        ("profiles[0].icon", "length") => {
+            if v.profiles_count < 1 { v.profiles_count = 1; }
+            let n = wref_usize(value);
+            for slot in v.profiles[0].icon.iter_mut().take(n.min(16)) { *slot = b'a'; }
+            v.profiles[0].icon_length = n as i32;
             Mutation::Done
         }
         _ => fail(&format!("write-refusal: RootConfig names no {kind} path {path}")),
@@ -2724,6 +2961,8 @@ fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
         let answer = match (c[2].as_str(), root) {
             ("backenddemo", "StorePurchase") => message_case!(backenddemo, store_purchase_load, store_purchase_fixed_load, StorePurchaseRow, store_purchase_cook_write, wref_store_purchase_row, wref_check_store_purchase_row, store_purchase_measure_messages, store_purchase_save_messages),
             ("backenddemo", "MatchResult") => message_case!(backenddemo, match_result_load, match_result_fixed_load, MatchResultRow, match_result_cook_write, wref_match_result_row, wref_check_match_result_row, match_result_measure_messages, match_result_save_messages),
+            ("backenddemo", "LoginRequest") => message_case!(backenddemo, login_request_load, login_request_fixed_load, LoginRequestRow, login_request_cook_write, wref_login_request_row, wref_check_login_request_row, login_request_measure_messages, login_request_save_messages),
+            ("tblvarevo3", "EvoMsg") => message_case!(tblvarevo3, evo_msg_load, evo_msg_fixed_load, EvoMsgRow, evo_msg_cook_write, wref_evo_msg_row, wref_check_evo_msg_row, evo_msg_measure_messages, evo_msg_save_messages),
             _ => fail(&format!("write-refusal-message: no root {} {root}", c[2])),
         };
         spill(out, case, answer.as_bytes());
@@ -2760,26 +2999,29 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
         // checks refuse answer refused; an unhandled accepted mutation stays
         // absent rather than claiming that its text writer was exercised.
         if is_fixed_form(&data) && fixed_read(unit, root, &[]).is_some() {
-            let answer: Option<&'static [u8]> = match (unit, root) {
-                ("tabledemo", "RootConfig") => {
-                    let mut row = wref_fixed_row!(tabledemo, root_config_fixed_load, RootConfigRow, case, wire, &data);
-                    match wref_root_config_row(&mut row, path, kind, value) {
+            macro_rules! fixed_json_case {
+                ($k:ident, $load:ident, $row:ident, $val:ident, $mutate:ident, $to_json:ident) => {{
+                    let mut row = wref_fixed_row!($k, $load, $row, case, wire, &data);
+                    match $mutate(&mut row, path, kind, value) {
                         Mutation::Done => match wref_run(|| {
-                            wref_check_root_config_json_row(&row, path, kind);
-                            Ok(())
+                            let val = $k::$val::try_from(&row).map_err(|_| String::new())?;
+                            $k::$to_json(&val).ok_or_else(String::new)
                         }) {
-                            Ok(()) => None,
-                            Err(_) => Some(b"refused\n"),
+                            Ok(_) => "wrote\n",
+                            Err(_) => "refused\n",
                         },
-                        Mutation::Unrepresentable => Some(b"refused\n"),
+                        Mutation::Unrepresentable => "unrepresentable\n",
                     }
-                }
-                _ => None,
-            };
-            match answer {
-                Some(bytes) => spill(out, case, bytes),
-                None => spill(out, &format!("{case}.absent"), b"fixed value mutation has no text result"),
+                }};
             }
+            let answer = match (unit, root) {
+                ("tabledemo", "RootConfig") => fixed_json_case!(tabledemo, root_config_fixed_load, RootConfigRow, RootConfig, wref_root_config_row, root_config_to_json_checked),
+                ("tabledemo", "LoadoutConfig") => fixed_json_case!(tabledemo, loadout_config_fixed_load, LoadoutConfigRow, LoadoutConfig, wref_loadout_config_row, loadout_config_to_json_checked),
+                ("scalars", "SimState") => fixed_json_case!(scalars, sim_state_fixed_load, SimStateRow, SimState, wref_sim_state_row, sim_state_to_json_checked),
+                ("cooktorture", "TortureFixedWref") => fixed_json_case!(cooktorture, torture_fixed_wref_fixed_load, TortureFixedWrefRow, TortureFixedWref, wref_torture_fixed_wref_row, torture_fixed_wref_to_json_checked),
+                _ => fail(&format!("write-refusal-json: no fixed root {unit} {root}")),
+            };
+            spill(out, case, answer.as_bytes());
             continue;
         }
         let mut report = Default::default();
@@ -2795,11 +3037,20 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
                     Mutation::Unrepresentable => Err("unrepresentable\n"),
                 }
             }
+            ("cooktorture", "TortureCook") => {
+                let mut report = cooktorture::TableReport::default();
+                let Some(mut v) = cooktorture::torture_cook_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_torture_cook(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| {
+                        written(cooktorture::torture_cook_to_json_checked(&v))
+                    })),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
             _ => fail(&format!("write-refusal-json: no root {unit} {root}")),
         };
         let answer = match outcome {
-            Ok(Ok(text)) if wref_json_spells_zero(&text, path) => "wrote\n",
-            // written, but the zero not spelled as the escape: neither answer
+            Ok(Ok(text)) if kind != "bytes" || wref_json_spells_zero(&text, path) => "wrote\n",
             Ok(Ok(_)) => "unspelled\n",
             Ok(Err(_)) => "refused\n",
             Err(unrepresentable) => unrepresentable,

@@ -145,6 +145,7 @@ import '../../../build/tables-generated-dart-scalars/varevo3/Tblvarevo3Fixed.dar
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Fixed.dart' as varevo3_fixed;
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Cook.dart' as varevo3cook;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureWire.dart' as cooktorture;
+import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' as cooktorture_fixed;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideCook.dart' as cooktorturewidecook;
@@ -1017,6 +1018,78 @@ void _f2w_fixedevo_EvoRoot(tblfixedevo_fixed.EvoRoot f, tblfixedevo.EvoRoot w) {
   w.defFlags = f.defFlags;
   w.hasExtraOpt = f.extraOptPresent;
   if (f.extraOptPresent) _f2w_fixedevo_EvoSub(f.extraOpt, w.extraOpt);
+}
+
+void _w2f_cooktorture_TortureFixedWref(cooktorture.TortureFixedWref w, cooktorture_fixed.TortureFixedWref f) {
+  for (var i = 0; i < 2; i++) {
+    f.fixedF32[i] = i < w.fixedF32.length ? w.fixedF32[i] : 0.0;
+  }
+  f.countedF64Count = w.countedF64.length;
+  for (var i = 0; i < w.countedF64.length && i < 4; i++) {
+    f.countedF64[i] = w.countedF64[i];
+  }
+  for (var i = 0; i < 3; i++) {
+    f.chanF32[i] = i < w.chanF32.length ? w.chanF32[i] : 0.0;
+  }
+  f.optF32Present = w.hasOptF32;
+  f.optF32 = w.optF32;
+  _w2fUtf8(w.strVal, f.strVal, (n) => f.strValLength = n);
+  _w2fBytes(w.rawBytes, f.rawBytes, (n) => f.rawBytesLength = n);
+  f.chanEnum = (w.chanEnum as dynamic);
+  f.bitsVal = w.bitsVal;
+  f.uVal.type = w.uVal.armTag;
+  f.uVal.uI8 = w.uVal.uI8;
+  f.uVal.uU8 = w.uVal.uU8;
+  f.uVal.uI16 = w.uVal.uI16;
+  f.uVal.uU16 = w.uVal.uU16;
+  f.uVal.uI32 = w.uVal.uI32;
+  f.uVal.uU32 = w.uVal.uU32;
+  f.uVal.uI64 = w.uVal.uI64;
+  f.uVal.uU64 = w.uVal.uU64;
+  f.uVal.uBits = w.uVal.uBits;
+  f.uVal.uFlags = w.uVal.uFlags;
+  f.uVal.uF32 = w.uVal.uF32;
+  _w2fUtf8(w.uVal.uStr, f.uVal.uStr, (n) => f.uVal.uStrLength = n);
+}
+
+void _f2w_cooktorture_TortureFixedWref(cooktorture_fixed.TortureFixedWref f, cooktorture.TortureFixedWref w) {
+  w.fixedF32 = <double>[f.fixedF32[0], f.fixedF32[1]];
+  if (f.countedF64Count < 0 || f.countedF64Count > 4) {
+    throw StateError('count_over_bound');
+  }
+  w.countedF64 = List<double>.generate(f.countedF64Count, (i) => f.countedF64[i]);
+  w.chanF32 = <double>[f.chanF32[0], f.chanF32[1], f.chanF32[2]];
+  w.hasOptF32 = f.optF32Present;
+  w.optF32 = f.optF32;
+  w.strVal = _f2wUtf8Strict(f.strVal, f.strValLength);
+  if (f.rawBytesLength < 0 || f.rawBytesLength > 16) {
+    throw StateError('length_over_bound');
+  }
+  w.rawBytes = latin1.decode(f.rawBytes.sublist(0, f.rawBytesLength));
+  w.chanEnum = (f.chanEnum as dynamic);
+  w.bitsVal = f.bitsVal;
+  w.uVal.armTag = f.uVal.type;
+  w.uVal.uI8 = f.uVal.uI8;
+  w.uVal.uU8 = f.uVal.uU8;
+  w.uVal.uI16 = f.uVal.uI16;
+  w.uVal.uU16 = f.uVal.uU16;
+  w.uVal.uI32 = f.uVal.uI32;
+  w.uVal.uU32 = f.uVal.uU32;
+  w.uVal.uI64 = f.uVal.uI64;
+  w.uVal.uU64 = f.uVal.uU64;
+  w.uVal.uBits = f.uVal.uBits;
+  w.uVal.uFlags = f.uVal.uFlags;
+  w.uVal.uF32 = f.uVal.uF32;
+  if (f.uVal.type == 13) {
+    w.uVal.uStr = _f2wUtf8Strict(f.uVal.uStr, f.uVal.uStrLength);
+  }
+}
+
+String _f2wUtf8Strict(Uint8List buf, int len) {
+  if (len < 0 || len > buf.length) {
+    throw StateError('length_over_bound');
+  }
+  return utf8.decode(buf.sublist(0, len), allowMalformed: false);
 }
 
 void _w2f_varevo1_EvoMsg(tblvarevo1.EvoMsg w, tblvarevo1_fixed.EvoMsg f) {
@@ -2234,6 +2307,16 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _wireResaveOne(wire, tblvarevo3.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblvarevo3.evoDocWireLoad, tblvarevo3.evoDocWireSave);
     case 'cooktorture TortureCook':
       return _wireResaveOne(wire, cooktorture.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorture.tortureCookWireLoad, cooktorture.tortureCookWireSave);
+    case 'cooktorture TortureFixedWref':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = cooktorture.TableWireReport();
+        final w = cooktorture.tortureFixedWrefWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = cooktorture_fixed.TortureFixedWref();
+        _w2f_cooktorture_TortureFixedWref(w, f);
+        return _fixedSaveOne(f, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
+      }
+      return _fixedResave(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
     case 'cooktorturewide TortureWideCook':
       return _wireResaveOne(wire, cooktorturewide.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave);
     case 'listdemo Army':
@@ -2662,6 +2745,13 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = cooktorture.tortureCookFromJson(text, rep);
       if (rep.refused) return null;
       return cooktorture.tortureCookWireSave(v);
+    case 'cooktorture TortureFixedWref':
+      final rep = cooktorture.TableTextReport();
+      final w = cooktorture.tortureFixedWrefFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = cooktorture_fixed.TortureFixedWref();
+      _w2f_cooktorture_TortureFixedWref(w, f);
+      return _fixedSaveOne(f, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
     case 'cooktorturewide TortureWideCook':
       final rep = cooktorturewide.TableTextReport();
       final v = cooktorturewide.tortureWideCookFromJson(text, rep);
@@ -3045,6 +3135,18 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = cooktorture.tortureCookWireLoad(wire, rep);
       if (rep.refused) return null;
       return cooktorture.tortureCookToJson(v);
+    case 'cooktorture TortureFixedWref':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = cooktorture.TableWireReport();
+        final w = cooktorture.tortureFixedWrefWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return cooktorture.tortureFixedWrefToJson(w);
+      }
+      final f = _fixedLoadOne(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad);
+      if (f == null) return null;
+      final w = cooktorture.TortureFixedWref();
+      _f2w_cooktorture_TortureFixedWref(f, w);
+      return cooktorture.tortureFixedWrefToJson(w);
     case 'cooktorturewide TortureWideCook':
       final rep = cooktorturewide.TableWireReport();
       final v = cooktorturewide.tortureWideCookWireLoad(wire, rep);
@@ -3642,6 +3744,8 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, tblvarevo1_fixed.EvoMsg.new, varevo1_fixed.evoMsgFixedNewPlan, tblvarevo1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), varevo1_fixed.evoMsgFixedLoad);
     case 'tblvarevo3 EvoMsg':
       return _fixedReportLine(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), varevo3_fixed.evoMsgFixedLoad);
+    case 'cooktorture TortureFixedWref':
+      return _fixedReportLine(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), cooktorture_fixed.tortureFixedWrefFixedLoad);
   }
   return null;
 }
@@ -3826,6 +3930,26 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
       return (
         scalarscook.SimStateCookWire.cookMeasure(value),
         (out, order) => scalarscook.SimStateCookWire.cook(value, out, order),
+      );
+    case 'cooktorture TortureFixedWref':
+      final r = cooktorture.TableWireReport();
+      final tr = cooktorture.TableTextReport();
+      cooktorture.TortureFixedWref? value;
+      if (jsonText != null) {
+        value = cooktorture.tortureFixedWrefFromJson(jsonText, tr);
+        if (tr.refused) return (-1, (_, _) => false);
+      } else if (wire.isNotEmpty && wire[0] == 1) {
+        value = cooktorture.tortureFixedWrefWireLoad(wire, r);
+        if (r.refused) return (-1, (_, _) => false);
+      } else {
+        final f = _fixedLoadOne(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad);
+        if (f == null) return (-1, (_, _) => false);
+        value = cooktorture.TortureFixedWref();
+        _f2w_cooktorture_TortureFixedWref(f, value);
+      }
+      return (
+        cooktorturecook.TortureFixedWrefCookWire.cookMeasure(value),
+        (out, order) => cooktorturecook.TortureFixedWrefCookWire.cook(value!, out, order),
       );
     case 'tblfixedevo EvoRoot':
       final r = tblfixedevo.TableWireReport();
@@ -4429,6 +4553,10 @@ int surfaceRetain(String outDir, bool saves) {
       if (_retainVarEvo1(f, outDir, saves) != 0) return 1;
       continue;
     }
+    if (f[2] == 'tblvarevo2' && f[3] == 'EvoDoc') {
+      if (_retainVarEvo2(f, outDir, saves) != 0) return 1;
+      continue;
+    }
     if (f[2] != 'tblrt1' || f[3] != 'Node') {
       stderr.writeln('driver: retain ${f[1]} names ${f[2]} ${f[3]}');
       return 1;
@@ -4522,6 +4650,48 @@ int _retainVarEvo1(List<String> f, String outDir, bool saves) {
     File('$outDir/${f[1]}').writeAsBytesSync(out);
   } else {
     File('$outDir/${f[1]}').writeAsStringSync('read\n${tblvarevo1.evoDocToJson(root)}');
+  }
+  return 0;
+}
+
+int _retainVarEvo2(List<String> f, String outDir, bool saves) {
+  final wire = File(f[4]).readAsBytesSync();
+  final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
+  var store = tblvarevo2.TableRetain(_retainRoomy, ids);
+  var report = tblvarevo2.TableWireReport();
+  if (f[5] == 'short') {
+    tblvarevo2.evoDocWireLoadRetain(wire, store, report);
+    if (report.refused) {
+      stderr.writeln('driver: ${f[1]}: capacity probe refused');
+      return 1;
+    }
+    store = tblvarevo2.TableRetain(store.used - 1 < 0 ? 0 : store.used - 1, ids);
+    report = tblvarevo2.TableWireReport();
+  }
+  final root = tblvarevo2.evoDocWireLoadRetain(wire, store, report);
+  if (report.refused) {
+    if (!saves) {
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+    }
+    return 0;
+  }
+  final size = tblvarevo2.evoDocWireMeasureRetain(root, store);
+  final save = tblvarevo2.TableWireReport();
+  final out = tblvarevo2.evoDocWireSaveRetain(root, store, save);
+  if (size < 0 || out.length != size) {
+    stderr.writeln('driver: ${f[1]}: retaining measure and save disagree');
+    return 1;
+  }
+  final second = tblvarevo2.TableWireReport();
+  final again = tblvarevo2.evoDocWireSaveRetain(root, store, second);
+  if (!_sameBytes(again, out) || second.retainLost != save.retainLost) {
+    stderr.writeln('driver: ${f[1]}: retaining save is not repeatable');
+    return 1;
+  }
+  if (saves) {
+    File('$outDir/${f[1]}').writeAsBytesSync(out);
+  } else {
+    File('$outDir/${f[1]}').writeAsStringSync('read\n${tblvarevo2.evoDocToJson(root)}');
   }
   return 0;
 }
@@ -5597,6 +5767,9 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'tblfixedevo EvoRoot':
       return _FuzzRoot(
           _fixedFuzzCodec(tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, fixedevo_fixed.evoRootFixedLoad, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave));
+    case 'cooktorture TortureFixedWref':
+      return _FuzzRoot(
+          _fixedFuzzCodec(cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, cooktorture_fixed.tortureFixedWrefFixedLoad, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave));
     case 'tblv1 Cfg':
       return _FuzzRoot(
           _fixedFuzzCodec(tblv1_fixed.Cfg.new, v1_fixed.cfgFixedNewPlan, tblv1_fixed.TableFixedReport.new, v1_fixed.cfgFixedLoad, v1_fixed.cfgFixedMeasure, v1_fixed.cfgFixedSave));
@@ -5822,6 +5995,242 @@ String _catchWrite(int Function() fn) {
   }
 }
 
+String? _decodeDartUtf8Refusal(String hex) {
+  final b = _hexBytes(hex);
+  if (b.length == 3 && b[0] == 0xed && b[1] >= 0xa0 && b[1] <= 0xbf && b[2] >= 0x80 && b[2] <= 0xbf) {
+    final sur = ((b[0] & 0x0f) << 12) | ((b[1] & 0x3f) << 6) | (b[2] & 0x3f);
+    return String.fromCharCode(sur);
+  }
+  try {
+    return utf8.decode(b, allowMalformed: false);
+  } on FormatException {
+    return null;
+  }
+}
+
+bool _mutateRootConfigWire(tabledemo.RootConfig w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'weapons[0].penetration int':
+      w.weapons[0].penetration = int.parse(text);
+      return true;
+    case 'weapons[0].channel int':
+      w.weapons[0].channel = int.parse(text);
+      return true;
+    case 'weapons count':
+      final n = int.parse(text);
+      while (w.weapons.length < n) {
+        w.weapons.add(tabledemo.WeaponConfig());
+      }
+      if (w.weapons.length > n) {
+        w.weapons = w.weapons.sublist(0, n);
+      }
+      return true;
+    case 'version_note length':
+      w.versionNote = 'a' * int.parse(text);
+      return true;
+    case 'version_note bytes':
+      final s = _decodeDartUtf8Refusal(text);
+      if (s == null) return false;
+      w.versionNote = s;
+      return true;
+    case 'weapons[0].effect tag':
+      w.weapons[0].effect.armTag = int.parse(text);
+      return true;
+    case 'weapons[0].damage float':
+      w.weapons[0].damage = _parseRefusalFloat(text);
+      return true;
+    case 'profiles[0].precision float':
+      if (w.profiles.isEmpty) w.profiles.add(tabledemo.ProfileConfig());
+      w.profiles[0].precision = _parseRefusalFloat(text);
+      return true;
+    case 'profiles[0].loadout.attachments[0].power float':
+      if (w.profiles.isEmpty) w.profiles.add(tabledemo.ProfileConfig());
+      if (w.profiles[0].loadout.attachments.isEmpty) w.profiles[0].loadout.attachments.add(tabledemo.Attachment());
+      w.profiles[0].loadout.attachments[0].power = _parseRefusalFloat(text);
+      return true;
+    case 'profiles[0].icon length':
+      if (w.profiles.isEmpty) w.profiles.add(tabledemo.ProfileConfig());
+      w.profiles[0].icon = 'a' * int.parse(text);
+      return true;
+    default:
+      throw StateError('unsupported RootConfig wire mutation $path $vkind');
+  }
+}
+
+bool _mutateRootConfigFixed(tabledemo_fixed.RootConfig fx, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'weapons[0].penetration int':
+      fx.weapons[0].penetration = int.parse(text);
+      return true;
+    case 'weapons[0].channel int':
+      fx.weapons[0].channel = int.parse(text);
+      return true;
+    case 'weapons count':
+      fx.weaponsCount = int.parse(text);
+      return true;
+    case 'version_note length':
+    case 'version_note bytes':
+      _fillTextFixed(fx.versionNote, (n) => fx.versionNoteLength = n, vkind, text);
+      return true;
+    case 'weapons[0].effect tag':
+      fx.weapons[0].effect.type = tables_pkt.EffectType(int.parse(text));
+      return true;
+    case 'weapons[0].damage float':
+      fx.weapons[0].damage = _parseRefusalFloat(text);
+      return true;
+    case 'profiles[0].precision float':
+      if (fx.profilesCount < 1) fx.profilesCount = 1;
+      fx.profiles[0].precision = _parseRefusalFloat(text);
+      return true;
+    case 'profiles[0].loadout.attachments[0].power float':
+      if (fx.profilesCount < 1) fx.profilesCount = 1;
+      if (fx.profiles[0].loadout.attachmentsCount < 1) fx.profiles[0].loadout.attachmentsCount = 1;
+      fx.profiles[0].loadout.attachments[0].power = _parseRefusalFloat(text);
+      return true;
+    case 'profiles[0].icon length':
+      if (fx.profilesCount < 1) fx.profilesCount = 1;
+      _fillTextFixed(fx.profiles[0].icon, (n) => fx.profiles[0].iconLength = n, vkind, text);
+      return true;
+    default:
+      throw StateError('unsupported RootConfig fixed mutation $path $vkind');
+  }
+}
+
+bool _mutateTortureCookWire(cooktorture.TortureCook w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'slice_f32[0] float':
+      w.sliceF32[0] = _parseRefusalFloat(text);
+      return true;
+    case 'map_f64[0].value float':
+      w.mapF64[0].value = _parseRefusalFloat(text);
+      return true;
+    case 'map_f64[0].key bytes':
+      final s = _decodeDartUtf8Refusal(text);
+      if (s == null) return false;
+      w.mapF64[0].key = s;
+      return true;
+    case 'str_arr[0] bytes':
+      final s = _decodeDartUtf8Refusal(text);
+      if (s == null) return false;
+      w.strArr[0].value = s;
+      return true;
+    case 'str_arr[0] length':
+      w.strArr[0].value = 'a' * int.parse(text);
+      return true;
+    default:
+      throw StateError('unsupported TortureCook mutation $path $vkind');
+  }
+}
+
+bool _mutateTortureFixedWrefWire(cooktorture.TortureFixedWref w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'counted_f64[0] float':
+      w.countedF64[0] = _parseRefusalFloat(text);
+      return true;
+    case 'counted_f64 count':
+      final n = int.parse(text);
+      while (w.countedF64.length < n) {
+        w.countedF64.add(0.0);
+      }
+      if (w.countedF64.length > n) {
+        w.countedF64 = w.countedF64.sublist(0, n);
+      }
+      return true;
+    case 'fixed_f32[1] float':
+      w.fixedF32[1] = _parseRefusalFloat(text);
+      return true;
+    case 'chan_f32[1] float':
+      w.chanF32[1] = _parseRefusalFloat(text);
+      return true;
+    case 'opt_f32 float':
+      w.hasOptF32 = true;
+      w.optF32 = _parseRefusalFloat(text);
+      return true;
+    case 'u_val.u_f32 float':
+      w.uVal.armTag = 12;
+      w.uVal.uF32 = _parseRefusalFloat(text);
+      return true;
+    case 'u_val.u_str bytes':
+      final s = _decodeDartUtf8Refusal(text);
+      if (s == null) return false;
+      w.uVal.armTag = 13;
+      w.uVal.uStr = s;
+      return true;
+    case 'u_val.u_str length':
+      w.uVal.armTag = 13;
+      w.uVal.uStr = 'a' * int.parse(text);
+      return true;
+    default:
+      throw StateError('unsupported TortureFixedWref wire mutation $path $vkind');
+  }
+}
+
+void _mutateTortureFixedWrefFixed(cooktorture_fixed.TortureFixedWref fx, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'counted_f64[0] float':
+      fx.countedF64[0] = _parseRefusalFloat(text);
+      break;
+    case 'counted_f64 count':
+      fx.countedF64Count = int.parse(text);
+      break;
+    case 'fixed_f32[1] float':
+      fx.fixedF32[1] = _parseRefusalFloat(text);
+      break;
+    case 'chan_f32[1] float':
+      fx.chanF32[1] = _parseRefusalFloat(text);
+      break;
+    case 'opt_f32 float':
+      fx.optF32Present = true;
+      fx.optF32 = _parseRefusalFloat(text);
+      break;
+    case 'u_val.u_f32 float':
+      fx.uVal.type = 12;
+      fx.uVal.uF32 = _parseRefusalFloat(text);
+      break;
+    case 'u_val.u_str bytes':
+    case 'u_val.u_str length':
+      fx.uVal.type = 13;
+      _fillTextFixed(fx.uVal.uStr, (n) => fx.uVal.uStrLength = n, vkind, text);
+      break;
+    default:
+      throw StateError('unsupported TortureFixedWref fixed mutation $path $vkind');
+  }
+}
+
+void _mutateSimStateFixed(scalardemo_fixed.SimState fx, String path, String vkind, String text) {
+  final n = int.parse(text);
+  switch ('$path $vkind') {
+    case 'ticks int':
+      fx.ticks = n;
+      break;
+    case 'angle int':
+      fx.angle = n;
+      break;
+    case 'speed int':
+      fx.speed = n;
+      break;
+    default:
+      throw StateError('unsupported SimState fixed mutation $path $vkind');
+  }
+}
+
+void _mutateSimStateWire(scalardemo.SimState w, String path, String vkind, String text) {
+  final big = BigInt.parse(text);
+  switch ('$path $vkind') {
+    case 'ticks int':
+      w.ticks = big;
+      break;
+    case 'angle int':
+      w.angle = big;
+      break;
+    case 'speed int':
+      w.speed = big;
+      break;
+    default:
+      throw StateError('unsupported SimState wire mutation $path $vkind');
+  }
+}
+
 int surfaceWriteRefusal(String outDir, String surface) {
   for (final f in kind(surface)) {
     final name = f[1];
@@ -5848,116 +6257,74 @@ int surfaceWriteRefusal(String outDir, String surface) {
     final wire = File(wirePath).readAsBytesSync();
     var answer = '';
     if (surface == 'write-refusal-json') {
-      if ('$unit $root' != 'tabledemo RootConfig') {
-        stderr.writeln('$surface $name: unsupported $unit.$root');
-        return 1;
-      }
-      final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
-      if (fx == null) {
-        stderr.writeln('$surface $name: load failed');
-        return 1;
-      }
-      final w = tabledemo.RootConfig();
-      _f2w_examples_RootConfig(fx, w);
-      if (path == 'version_note' && vkind == 'bytes') {
-        try {
-          w.versionNote = utf8.decode(_hexBytes(text), allowMalformed: false);
-        } on FormatException {
-          answer = 'unrepresentable';
-        }
-      } else {
-        stderr.writeln('$surface $name: unsupported json mutation $path $vkind');
-        return 1;
-      }
-      if (answer.isEmpty) {
-        try {
-          final js = tabledemo.rootConfigToJson(w);
-          answer = js.isEmpty ? 'refused' : 'wrote';
-        } on AssertionError {
-          answer = 'refused';
-        } on Error {
-          answer = 'refused';
-        } on Exception {
-          answer = 'refused';
-        }
+      switch ('$unit $root') {
+        case 'tabledemo RootConfig':
+          final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
+          if (fx == null) return 1;
+          final w = tabledemo.RootConfig();
+          _f2w_examples_RootConfig(fx, w);
+          if (!_mutateRootConfigWire(w, path, vkind, text)) {
+            answer = 'unrepresentable';
+          } else {
+            answer = _catchWrite(() => tabledemo.rootConfigToJson(w).isEmpty ? -1 : 0);
+          }
+          break;
+        case 'tabledemo LoadoutConfig':
+          final fx = _fixedLoadOne(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad);
+          if (fx == null) return 1;
+          final w = tabledemo.LoadoutConfig();
+          _f2w_examples_LoadoutConfig(fx, w);
+          if ('$path $vkind' != 'grade ordinal') return 1;
+          w.grade = (int.parse(text) as dynamic);
+          answer = _catchWrite(() => tabledemo.loadoutConfigToJson(w).isEmpty ? -1 : 0);
+          break;
+        case 'scalars SimState':
+          final fx = _fixedLoadOne(wire, scalardemo_fixed.SimState.new, scalars_fixed.simStateFixedNewPlan, scalardemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars_fixed.simStateFixedLoad);
+          if (fx == null) return 1;
+          final w = scalardemo.SimState();
+          _f2w_scalars_SimState(fx, w);
+          _mutateSimStateWire(w, path, vkind, text);
+          answer = _catchWrite(() => scalardemo.simStateToJson(w).isEmpty ? -1 : 0);
+          break;
+        case 'cooktorture TortureCook':
+          final rep = cooktorture.TableWireReport();
+          final w = cooktorture.tortureCookWireLoad(wire, rep);
+          if (rep.refused) return 1;
+          if (!_mutateTortureCookWire(w, path, vkind, text)) {
+            answer = 'unrepresentable';
+          } else {
+            answer = _catchWrite(() => cooktorture.tortureCookToJson(w).isEmpty ? -1 : 0);
+          }
+          break;
+        case 'cooktorture TortureFixedWref':
+          final fx = _fixedLoadOne(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad);
+          if (fx == null) return 1;
+          final w = cooktorture.TortureFixedWref();
+          _f2w_cooktorture_TortureFixedWref(fx, w);
+          if (!_mutateTortureFixedWrefWire(w, path, vkind, text)) {
+            answer = 'unrepresentable';
+          } else {
+            answer = _catchWrite(() => cooktorture.tortureFixedWrefToJson(w).isEmpty ? -1 : 0);
+          }
+          break;
+        default:
+          stderr.writeln('$surface $name: unsupported $unit.$root');
+          return 1;
       }
     } else if ('$unit $root' == 'tabledemo RootConfig') {
       final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
-      if (fx == null) {
-        stderr.writeln('$surface $name: load failed');
-        return 1;
-      }
+      if (fx == null) return 1;
       if (surface == 'write-refusal') {
         final w = tabledemo.RootConfig();
         _f2w_examples_RootConfig(fx, w);
-        var representable = true;
-        switch ('$path $vkind') {
-          case 'weapons[0].penetration int':
-            w.weapons[0].penetration = int.parse(text);
-            break;
-          case 'weapons[0].channel int':
-            w.weapons[0].channel = int.parse(text);
-            break;
-          case 'weapons count':
-            final n = int.parse(text);
-            while (w.weapons.length < n) {
-              w.weapons.add(tabledemo.WeaponConfig());
-            }
-            if (w.weapons.length > n) {
-              w.weapons = w.weapons.sublist(0, n);
-            }
-            break;
-          case 'version_note length':
-            w.versionNote = 'a' * int.parse(text);
-            break;
-          case 'version_note bytes':
-            try {
-              w.versionNote = utf8.decode(_hexBytes(text), allowMalformed: false);
-            } on FormatException {
-              representable = false;
-            }
-            break;
-          case 'weapons[0].effect tag':
-            w.weapons[0].effect.armTag = int.parse(text);
-            break;
-          case 'weapons[0].damage float':
-            w.weapons[0].damage = _parseRefusalFloat(text);
-            break;
-          default:
-            stderr.writeln('$surface $name: unsupported RootConfig mutation $path $vkind');
-            return 1;
-        }
-        answer = !representable ? 'unrepresentable' : _catchWrite(() {
+        final ok = _mutateRootConfigWire(w, path, vkind, text);
+        answer = !ok ? 'unrepresentable' : _catchWrite(() {
           tabledemo.rootConfigWireSave(w);
           return 0;
         });
       } else {
-        var representable = true;
-        switch ('$path $vkind') {
-          case 'weapons[0].penetration int':
-            fx.weapons[0].penetration = int.parse(text);
-            break;
-          case 'weapons[0].channel int':
-            fx.weapons[0].channel = int.parse(text);
-            break;
-          case 'weapons count':
-            fx.weaponsCount = int.parse(text);
-            break;
-          case 'version_note length':
-          case 'version_note bytes':
-            _fillTextFixed(fx.versionNote, (n) => fx.versionNoteLength = n, vkind, text);
-            break;
-          case 'weapons[0].effect tag':
-            fx.weapons[0].effect.type = tables_pkt.EffectType(int.parse(text));
-            break;
-          case 'weapons[0].damage float':
-            fx.weapons[0].damage = _parseRefusalFloat(text);
-            break;
-          default:
-            stderr.writeln('$surface $name: unsupported RootConfig mutation $path $vkind');
-            return 1;
-        }
-        answer = !representable ? 'unrepresentable' : _catchWrite(() {
+        final ok = _mutateRootConfigFixed(fx, path, vkind, text);
+        answer = !ok ? 'unrepresentable' : _catchWrite(() {
           final n = tables_fixed.rootConfigFixedMeasure(1);
           final out = Uint8List(n);
           return tables_fixed.rootConfigFixedSave(<tabledemo_fixed.RootConfig>[fx], 1, out) == n ? 0 : -1;
@@ -5965,14 +6332,8 @@ int surfaceWriteRefusal(String outDir, String surface) {
       }
     } else if ('$unit $root' == 'tabledemo LoadoutConfig') {
       final fx = _fixedLoadOne(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad);
-      if (fx == null) {
-        stderr.writeln('$surface $name: load failed');
-        return 1;
-      }
-      if ('$path $vkind' != 'grade ordinal') {
-        stderr.writeln('$surface $name: unsupported LoadoutConfig mutation $path $vkind');
-        return 1;
-      }
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'grade ordinal') return 1;
       if (surface == 'write-refusal') {
         final w = tabledemo.LoadoutConfig();
         _f2w_examples_LoadoutConfig(fx, w);
@@ -5989,13 +6350,62 @@ int surfaceWriteRefusal(String outDir, String surface) {
           return tables_fixed.loadoutConfigFixedSave(<tabledemo_fixed.LoadoutConfig>[fx], 1, out) == n ? 0 : -1;
         });
       }
+    } else if ('$unit $root' == 'scalars SimState') {
+      final fx = _fixedLoadOne(wire, scalardemo_fixed.SimState.new, scalars_fixed.simStateFixedNewPlan, scalardemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars_fixed.simStateFixedLoad);
+      if (fx == null) return 1;
+      if (surface == 'write-refusal') {
+        final w = scalardemo.SimState();
+        _f2w_scalars_SimState(fx, w);
+        _mutateSimStateWire(w, path, vkind, text);
+        answer = _catchWrite(() {
+          scalardemo.simStateWireSave(w);
+          return 0;
+        });
+      } else {
+        _mutateSimStateFixed(fx, path, vkind, text);
+        answer = _catchWrite(() {
+          final n = scalars_fixed.simStateFixedMeasure(1);
+          final out = Uint8List(n);
+          return scalars_fixed.simStateFixedSave(<scalardemo_fixed.SimState>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'cooktorture TortureCook') {
+      final rep = cooktorture.TableWireReport();
+      final w = cooktorture.tortureCookWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      if (!_mutateTortureCookWire(w, path, vkind, text)) {
+        answer = 'unrepresentable';
+      } else {
+        answer = _catchWrite(() {
+          cooktorture.tortureCookWireSave(w);
+          return 0;
+        });
+      }
+    } else if ('$unit $root' == 'cooktorture TortureFixedWref') {
+      final fx = _fixedLoadOne(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad);
+      if (fx == null) return 1;
+      if (surface == 'write-refusal') {
+        final w = cooktorture.TortureFixedWref();
+        _f2w_cooktorture_TortureFixedWref(fx, w);
+        if (!_mutateTortureFixedWrefWire(w, path, vkind, text)) {
+          answer = 'unrepresentable';
+        } else {
+          answer = _catchWrite(() {
+            cooktorture.tortureFixedWrefWireSave(w);
+            return 0;
+          });
+        }
+      } else {
+        _mutateTortureFixedWrefFixed(fx, path, vkind, text);
+        answer = _catchWrite(() {
+          final n = cooktorture_fixed.tortureFixedWrefFixedMeasure(1);
+          final out = Uint8List(n);
+          return cooktorture_fixed.tortureFixedWrefFixedSave(<cooktorture_fixed.TortureFixedWref>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
     } else if ('$unit $root' == 'backenddemo StorePurchase') {
       final fx = _fixedLoadOne(wire, backenddemo_fixed.StorePurchase.new, backend.storePurchaseFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.storePurchaseFixedLoad);
-      if (fx == null) {
-        stderr.writeln('$surface $name: load failed');
-        return 1;
-      }
-      var representable = true;
+      if (fx == null) return 1;
       switch ('$path $vkind') {
         case 'quantity int':
           fx.quantity = int.parse(text);
@@ -6011,23 +6421,51 @@ int surfaceWriteRefusal(String outDir, String surface) {
           stderr.writeln('$surface $name: unsupported StorePurchase mutation $path $vkind');
           return 1;
       }
-      if (!representable) {
-        answer = 'unrepresentable';
-      } else {
-        answer = _catchWrite(() {
-          final batch = <backenddemo_fixed.StorePurchase>[fx];
-          final n = backend.storePurchaseMeasureMessages(batch, backenddemo_fixed.TableReport());
-          if (n < 0) return -1;
-          final out = Uint8List(n);
-          return backend.storePurchaseSaveMessages(batch, out, backenddemo_fixed.TableReport()) == n ? 0 : -1;
-        });
+      answer = _catchWrite(() {
+        final batch = <backenddemo_fixed.StorePurchase>[fx];
+        final n = backend.storePurchaseMeasureMessages(batch, backenddemo_fixed.TableReport());
+        if (n < 0) return -1;
+        final out = Uint8List(n);
+        return backend.storePurchaseSaveMessages(batch, out, backenddemo_fixed.TableReport()) == n ? 0 : -1;
+      });
+    } else if ('$unit $root' == 'backenddemo LoginRequest') {
+      final fx = _fixedLoadOne(wire, backenddemo_fixed.LoginRequest.new, backend.loginRequestFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.loginRequestFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'session_token length') return 1;
+      _fillTextFixed(fx.sessionToken, (n) => fx.sessionTokenLength = n, vkind, text);
+      answer = _catchWrite(() {
+        final batch = <backenddemo_fixed.LoginRequest>[fx];
+        final n = backend.loginRequestMeasureMessages(batch, backenddemo_fixed.TableReport());
+        if (n < 0) return -1;
+        final out = Uint8List(n);
+        return backend.loginRequestSaveMessages(batch, out, backenddemo_fixed.TableReport()) == n ? 0 : -1;
+      });
+    } else if ('$unit $root' == 'tblvarevo3 EvoMsg') {
+      final fx = _fixedLoadOne(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => rep.refused != 0, varevo3_fixed.evoMsgFixedLoad);
+      if (fx == null) return 1;
+      switch ('$path $vkind') {
+        case 'payload.notice bytes':
+        case 'payload.notice length':
+          fx.payload.type = 3;
+          _fillTextFixed(fx.payload.notice, (n) => fx.payload.noticeLength = n, vkind, text);
+          break;
+        case 'payload tag':
+          fx.payload.type = int.parse(text);
+          break;
+        default:
+          stderr.writeln('$surface $name: unsupported EvoMsg mutation $path $vkind');
+          return 1;
       }
+      answer = _catchWrite(() {
+        final batch = <tblvarevo3_fixed.EvoMsg>[fx];
+        final n = varevo3_fixed.evoMsgMeasureMessages(batch, tblvarevo3_fixed.TableReport());
+        if (n < 0) return -1;
+        final out = Uint8List(n);
+        return varevo3_fixed.evoMsgSaveMessages(batch, out, tblvarevo3_fixed.TableReport()) == n ? 0 : -1;
+      });
     } else if ('$unit $root' == 'backenddemo MatchResult') {
       final fx = _fixedLoadOne(wire, backenddemo_fixed.MatchResult.new, backend.matchResultFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.matchResultFixedLoad);
-      if (fx == null) {
-        stderr.writeln('$surface $name: load failed');
-        return 1;
-      }
+      if (fx == null) return 1;
       if ('$path $vkind' == 'players[0].score int') {
         fx.players[0].score = int.parse(text);
       } else {

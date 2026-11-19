@@ -96,33 +96,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	runtimeHome := ir.TableJSRuntimeHome(u)
 	fixedUnions := ir.TableFixedJSUnions(u)
 	for _, f := range u.Files {
-		fixedArmTables := map[string]bool{}
-		collectFixedArms := func(un *ir.Union) {
-			if un == nil || !fixedUnions[un.Name] {
-				return
-			}
-			for _, v := range un.Variants {
-				if !v.Void() && v.Ref != nil && u.Tables[v.Type] != nil {
-					fixedArmTables[v.Type] = true
-				}
-			}
-		}
-		for _, d := range f.Decls {
-			if un, ok := d.(*ir.Union); ok {
-				collectFixedArms(un)
-			}
-		}
-		for _, un := range f.TableUnions {
-			collectFixedArms(un)
-		}
 		g := &gen{
-			unit:           u,
-			file:           f,
-			home:           f.Base == home,
-			runtimeHome:    runtimeHome,
-			fixedUnions:    fixedUnions,
-			fixedArmTables: fixedArmTables,
-			imports:        map[string]map[string]bool{},
+			unit:        u,
+			file:        f,
+			home:        f.Base == home,
+			runtimeHome: runtimeHome,
+			fixedUnions: fixedUnions,
+			imports:     map[string]map[string]bool{},
 		}
 		g.emitFile(g.home)
 		out[f.Base+".js"] = g.assemble()
@@ -143,7 +123,7 @@ type gen struct {
 	home           bool // this file carries ProtocolId and the unit-level target notes
 	runtimeHome    string
 	fixedUnions    map[string]bool
-	fixedArmTables map[string]bool
+	fixedTableRefs map[string]bool
 	tableHome      string
 
 	body strings.Builder
@@ -189,6 +169,26 @@ func (g *gen) addRef(decl string, symbols ...string) {
 		return
 	}
 	g.addRefBase(base, symbols...)
+}
+
+// classRef returns the local constructor identifier for decl and records its
+// import. When a single schema file defines both a fixed-closure union and a
+// variable-closure union that construct the same table arm class, the variable
+// module import is aliased as Variable<Name> so ESM bindings never collide.
+func (g *gen) classRef(decl string) string {
+	if g.unit.Tables[decl] != nil {
+		if g.tableHome == g.runtimeHome+"Variable" && g.fixedTableRefs[decl] {
+			local := "Variable" + decl
+			g.addRefBase(g.tableHome, decl+" as "+local)
+			return local
+		}
+		if g.tableHome != "" {
+			g.addRefBase(g.tableHome, decl)
+		}
+		return decl
+	}
+	g.addRef(decl, decl)
+	return decl
 }
 
 // addRefBase imports symbols from a known file base — for the synthesized
@@ -274,6 +274,30 @@ func (g *gen) assemble() []byte {
 }
 
 func (g *gen) emitFile(carriesProtocolId bool) {
+	g.fixedTableRefs = map[string]bool{}
+	recordFixedUnionRefs := func(un *ir.Union) {
+		if !g.fixedUnions[un.Name] {
+			return
+		}
+		for _, v := range un.Variants {
+			if v.Void() {
+				continue
+			}
+			if v.Ref != nil && g.unit.Tables[v.Type] != nil {
+				g.fixedTableRefs[v.Type] = true
+			} else if v.Ref == nil && v.F != nil && v.F.Type.Kind == ir.TNamed && g.unit.Tables[v.F.Type.Name] != nil {
+				g.fixedTableRefs[v.F.Type.Name] = true
+			}
+		}
+	}
+	for _, d := range g.file.Decls {
+		if un, ok := d.(*ir.Union); ok {
+			recordFixedUnionRefs(un)
+		}
+	}
+	for _, un := range g.file.TableUnions {
+		recordFixedUnionRefs(un)
+	}
 	if carriesProtocolId {
 		g.pf("// The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two\n")
 		g.pf("// sides at the same id speak identical bits; there is no other versioning.\n")
@@ -503,8 +527,8 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			// pre-allocated element instances — the storage principle
 			// (SPEC §6.1): every buffer exists at construction; unions are
 			// classes here exactly like structs
-			g.addRef(f.Type.Name, f.Type.Name)
-			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, f.Type.Name, g.fieldComment(f))
+			ctor := g.classRef(f.Type.Name)
+			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, ctor, g.fieldComment(f))
 		case isByteElem(f.Type):
 			// uint8 arrays store as Uint8Array — the runtime's own byte-buffer
 			// type (serializeBytes' contract), so the aligned bulk path can
@@ -526,8 +550,7 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			init = g.defaultValue(f)
 		case f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref):
 			// pre-allocated at construction — the storage principle (SPEC §6.1)
-			g.addRef(f.Type.Name, f.Type.Name)
-			init = "new " + f.Type.Name + "()"
+			init = "new " + g.classRef(f.Type.Name) + "()"
 		default:
 			init = g.zeroValue(f.Type)
 		}
@@ -613,14 +636,8 @@ func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
 			g.emitStorageField(v.F)
 			continue
 		}
-		if !g.fixedUnions[name] && g.unit.Tables[v.Type] != nil && g.fixedArmTables[v.Type] {
-			alias := "_Var" + v.Type
-			g.addRefBase(g.runtimeHome+"Variable", v.Type+" as "+alias)
-			g.pf("    this.%s = new %s();\n", MemberName(v.Name), alias)
-			continue
-		}
-		g.addRef(v.Type, v.Type)
-		g.pf("    this.%s = new %s();\n", MemberName(v.Name), v.Type)
+		ctor := g.classRef(v.Type)
+		g.pf("    this.%s = new %s();\n", MemberName(v.Name), ctor)
 	}
 	g.pf("  }\n}\n\n")
 }

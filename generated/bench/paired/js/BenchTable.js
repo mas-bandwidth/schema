@@ -4907,15 +4907,6 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           }
           value.entitiesCount = keep;
         }
-        if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && Number(entry.Shape.Min) === 1 && Number(entry.Shape.Max) === 8 && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && value.entitiesCount === 1) {
-          let _allDef = true;
-          for (let _i11 = 0; _i11 < 1; _i11++) {
-            const _msgProbe12 = new TableBitWriter(null, true);
-            if (!MixedEntitySaveMessageBody(_msgProbe12, value.entities[_i11])) { return false; }
-            if ((_msgProbe12.Bits > TableMessageRefBitsHere)) { _allDef = false; break; }
-          }
-          if (_allDef) { r.Report.Damaged = true; return false; }
-        }
         if (widened) { r.Report.Widened++; }
         break;
       }
@@ -4930,17 +4921,17 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           let keep = Number(n);
           if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
           if (keep > 80) { keep = 80; r.Report.Oor++; }
-          for (let _i13 = 0n; _i13 < n; _i13++) {
-            const p = _i13 < BigInt(keep) ? value.stats[Number(_i13)] : null;
+          for (let _i11 = 0n; _i11 < n; _i11++) {
+            const p = _i11 < BigInt(keep) ? value.stats[Number(_i11)] : null;
             if (p === null) {
               if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {
-                if (!r.Bits.Skip(Number(n - _i13) * Math.max(0, entry.Element.Bits))) { r.Report.Damaged = true; return false; }
+                if (!r.Bits.Skip(Number(n - _i11) * Math.max(0, entry.Element.Bits))) { r.Report.Damaged = true; return false; }
                 break;
               }
               const before = r.Bits.Offset;
               if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0) || r.Bits.Offset === before) { r.Report.Damaged = true; return false; }
             } else {
-              if (!MixedStatLoadMessageBody(r, value.stats[Number(_i13)])) { return false; }
+              if (!MixedStatLoadMessageBody(r, value.stats[Number(_i11)])) { return false; }
             }
           }
           value.statsCount = keep;
@@ -5002,11 +4993,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           let keep = Number(n);
           if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
           if (keep > 4) { keep = 4; r.Report.Oor++; }
-          for (let _i14 = 0n; _i14 < n; _i14++) {
-            const p = _i14 < BigInt(keep) ? value.loadout[Number(_i14)] : null;
+          for (let _i12 = 0n; _i12 < n; _i12++) {
+            const p = _i12 < BigInt(keep) ? value.loadout[Number(_i12)] : null;
             if (p === null) {
               if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {
-                if (!r.Bits.Skip(Number(n - _i14) * Math.max(0, entry.Element.Bits))) { r.Report.Damaged = true; return false; }
+                if (!r.Bits.Skip(Number(n - _i12) * Math.max(0, entry.Element.Bits))) { r.Report.Damaged = true; return false; }
                 break;
               }
               const before = r.Bits.Offset;
@@ -5014,14 +5005,14 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
             } else {
               { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Element); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
                 x = BigInt.asUintN(8, x);
-                value.loadout[Number(_i14)] = Number(x);
+                value.loadout[Number(_i12)] = Number(x);
               }
             }
           }
         }
-        let _LoadoutAllDefault16 = true;
-        for (let _i15 = 0; _i15 < 4; _i15++) { if (value.loadout[_i15] !== 0) { _LoadoutAllDefault16 = false; break; } }
-        if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && Number(entry.Shape.Min) === 4 && Number(entry.Shape.Max) === 4 && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(!_LoadoutAllDefault16)) { r.Report.Damaged = true; return false; }
+        let _LoadoutAllDefault14 = true;
+        for (let _i13 = 0; _i13 < 4; _i13++) { if (value.loadout[_i13] !== 0) { _LoadoutAllDefault14 = false; break; } }
+        if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && Number(entry.Shape.Min) === 4 && Number(entry.Shape.Max) === 4 && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(!_LoadoutAllDefault14)) { r.Report.Damaged = true; return false; }
         if (widened) { r.Report.Widened++; }
         break;
       }
@@ -5039,7 +5030,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           let kept = rawLen;
           if (kept > 15) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, 15); r.Report.Oor++; }
           value.playerName.fill(0);
-          for (let _i17 = 0; _i17 < kept; _i17++) { value.playerName[_i17] = r.Bits.Buffer[start + _i17]; }
+          for (let _i15 = 0; _i15 < kept; _i15++) { value.playerName[_i15] = r.Bits.Buffer[start + _i15]; }
           value.playerNameLength = kept;
         }
         if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && entry.Shape.Packing === 0 && entry.Shape.Bits === -1 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && (value.playerNameLength === 0)) { r.Report.Damaged = true; return false; }
@@ -5058,7 +5049,7 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           let kept = Number(n);
           if (kept > 16) { kept = 16; r.Report.Oor++; }
           value.payload.fill(0);
-          for (let _i18 = 0; _i18 < kept; _i18++) { value.payload[_i18] = r.Bits.Buffer[start + _i18]; }
+          for (let _i16 = 0; _i16 < kept; _i16++) { value.payload[_i16] = r.Bits.Buffer[start + _i16]; }
           value.payloadLength = kept;
         }
         if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && entry.Shape.Packing === 0 && entry.Shape.Bits === -1 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && (value.payloadLength === 0)) { r.Report.Damaged = true; return false; }
@@ -5271,9 +5262,9 @@ function FixedTableMessageBodyOk(value) {
 
 export function FixedTableSaveMessageBody(w, value) {
   if (!FixedTableMessageBodyOk(value)) { return false; }
-  const _msgProbe19 = new TableBitWriter(null, true);
-  if (!BenchMixedSaveMessageBody(_msgProbe19, value.value)) { return false; }
-  if ((_msgProbe19.Bits > TableMessageRefBitsHere)) {
+  const _msgProbe17 = new TableBitWriter(null, true);
+  if (!BenchMixedSaveMessageBody(_msgProbe17, value.value)) { return false; }
+  if ((_msgProbe17.Bits > TableMessageRefBitsHere)) {
     w.Put(28n, TableMessageRefBitsHere);
     if (!BenchMixedSaveMessageBody(w, value.value)) { return false; }
   }

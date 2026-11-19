@@ -5827,6 +5827,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label_( tabledemo_table_writer_t * w, const tabledemo_wide_blob_t * value )
 {
     schema_assert( 0 <= value->label_length && value->label_length <= 70000 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0; }
     tabledemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6355,6 +6356,8 @@ static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label__retain( tabledem
     (void)retention;
 
     schema_assert( 0 <= value->label_length && value->label_length <= 70000 );
+    if ( !tabledemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0;
+    }
     tabledemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }

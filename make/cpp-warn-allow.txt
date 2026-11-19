@@ -87,8 +87,10 @@ build/tables-generated/cooktorture/CookTortureTable.cpp cast-align,float-equal,n
 build/tables-generated/cooktorture/CookTortureTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,nested-anon-types,old-style-cast,padded,sign-conversion,switch-default,switch-enum
 build/tables-generated/cooktorture/CooktortureView.cpp old-style-cast
 build/tables-generated/cooktorture/CooktortureView.h padded
-build/tables-generated/cooktorturewide/CookTortureWideTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
-build/tables-generated/cooktorturewide/CookTortureWideTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/cooktorturewide/CookTortureWide.h covered-switch-default
+build/tables-generated/cooktorturewide/CookTortureWideTable.cpp cast-align,float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/cooktorturewide/CookTortureWideTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
+build/tables-generated/cooktorturewide/CooktorturewideView.cpp old-style-cast
 build/tables-generated/cooktorturewide/CooktorturewideView.h padded
 build/tables-generated/dead/DeadBytes.h covered-switch-default
 build/tables-generated/dead/DeadBytesBlock.cpp old-style-cast

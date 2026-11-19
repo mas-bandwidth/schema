@@ -559,8 +559,11 @@ func variableCookField(f *ir.Field) bool {
 		if f.Type.Pointer {
 			return tableRef(f) != nil
 		}
+		if un := unionRef(f); un != nil {
+			return variableCookUnion(un) == ""
+		}
 		switch f.Type.Kind {
-		case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TInt:
+		case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TInt, ir.TFixed:
 			return true
 		case ir.TNamed:
 			if tableRef(f) != nil {
@@ -591,18 +594,10 @@ func variableCookField(f *ir.Field) bool {
 	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64:
 		return true
 	case ir.TFixed:
-		// the wide scalar kinds (§15): a raw fixed-point value at its storage
-		// width, carried by the wide write below; arrays of them are another
-		// card's family
-		return f.Array == ir.ArrayNone
+		return true
 	case ir.TString, ir.TBytes:
 		return f.Array == ir.ArrayNone
 	case ir.TInt:
-		if f.Type.Width == 128 {
-			// i128/u128 (§15): sixteen bytes, low half first, carried by the
-			// wide write below; arrays of them are another card's family
-			return f.Array == ir.ArrayNone
-		}
 		return true
 	case ir.TNamed:
 		if tableRef(f) != nil {
@@ -1034,10 +1029,10 @@ func (g *cookGen) emitCookMapOrders() {
 		switch {
 		case key.Type.Kind == ir.TString:
 			expr = fmt.Sprintf("TableCookGraph.bytesOrder(utf8.encode(a.%s), utf8.encode(b.%s));", k, k)
-		case key.Type.Kind == ir.TInt && key.Type.Signed:
-			expr = fmt.Sprintf("a.%s.compareTo(b.%s);", k, k)
-		default:
+		case !key.Type.Signed && key.Type.Width == 64:
 			expr = fmt.Sprintf("(a.%s ^ (1 << 63)).compareTo(b.%s ^ (1 << 63));", k, k)
+		default:
+			expr = fmt.Sprintf("a.%s.compareTo(b.%s);", k, k)
 		}
 		// the spellings `dart format` writes: one line, the body under the
 		// head, or the parameters one a line with the body after `) =>`

@@ -43,15 +43,38 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
         const int32_t note = (int32_t) sizeof( v->version_note ) - 1;
         int32_t i;
         if ( strcmp( path, "version_note" ) == 0 ) { return conformance_write_refusal_text( v->version_note, note, &v->version_note_length, kind, text ); }
+        if ( strcmp( path, "profiles[0].icon" ) == 0 ) { return v->profiles_count >= 1 && conformance_write_refusal_bytes( v->profiles[0].icon, (int32_t) sizeof( v->profiles[0].icon ), &v->profiles[0].icon_length, kind, text ); }
+        if ( strcmp( path, "profiles[0].precision" ) == 0 && strcmp( kind, "float" ) == 0 )
+        {
+            char * end = NULL;
+            if ( v->profiles_count < 1 ) { return 0; }
+            if ( strcmp( text, "nan" ) == 0 ) { v->profiles[0].precision = NAN; return 1; }
+            if ( strcmp( text, "inf" ) == 0 ) { v->profiles[0].precision = INFINITY; return 1; }
+            if ( strcmp( text, "-inf" ) == 0 ) { v->profiles[0].precision = -INFINITY; return 1; }
+            v->profiles[0].precision = strtod( text, &end );
+            return end != NULL && *end == 0;
+        }
         if ( v->weapons_count < 1 ) { return 0; } /* every weapons[0] path needs element 0 */
         if ( strcmp( path, "weapons[0].penetration" ) == 0 && strcmp( kind, "int" ) == 0 ) { w0->penetration = (int32_t) n; return 1; }
         if ( strcmp( path, "weapons[0].channel" ) == 0 && strcmp( kind, "int" ) == 0 ) { w0->channel = (uint32_t) n; return 1; }
         if ( strcmp( path, "weapons[0].damage" ) == 0 && strcmp( kind, "float" ) == 0 )
         {
+            char * end = NULL;
             if ( strcmp( text, "nan" ) == 0 ) { w0->damage = NAN; return 1; }
             if ( strcmp( text, "inf" ) == 0 ) { w0->damage = INFINITY; return 1; }
             if ( strcmp( text, "-inf" ) == 0 ) { w0->damage = -INFINITY; return 1; }
-            return 0;
+            w0->damage = strtof( text, &end );
+            return end != NULL && *end == 0;
+        }
+        if ( strcmp( path, "profiles[0].loadout.attachments[0].power" ) == 0 && strcmp( kind, "float" ) == 0 )
+        {
+            char * end = NULL;
+            if ( v->profiles_count < 1 || v->profiles[0].loadout.attachments_count < 1 ) { return 0; }
+            if ( strcmp( text, "nan" ) == 0 ) { v->profiles[0].loadout.attachments[0].power = NAN; return 1; }
+            if ( strcmp( text, "inf" ) == 0 ) { v->profiles[0].loadout.attachments[0].power = INFINITY; return 1; }
+            if ( strcmp( text, "-inf" ) == 0 ) { v->profiles[0].loadout.attachments[0].power = -INFINITY; return 1; }
+            v->profiles[0].loadout.attachments[0].power = strtof( text, &end );
+            return end != NULL && *end == 0;
         }
         if ( strcmp( path, "weapons[0].effect" ) == 0 && strcmp( kind, "tag" ) == 0 )
         {

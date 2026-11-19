@@ -73,6 +73,8 @@ var pythonVTMapRows = []string{
 	"varevo_v3_full",
 	"varevo_v3_compat",
 	"varevo_v3_rollback",
+	"varevo_2hop_v3_origin",
+	"varevo_v3_default_containers",
 	"varevo_v1_as_v2",
 	"varevo_v1_as_v3",
 	"varevo_v1_ping_as_v3",
@@ -80,9 +82,19 @@ var pythonVTMapRows = []string{
 	"varevo_v3_compat_as_v1",
 	"varevo_v3_full_as_v1",
 	"varevo_rollback_as_v3",
+	"varevo_2hop_step2_v2_report",
+	"varevo_2hop_step3_v3_report",
+	"varevo_cycle_root_via_unknown_report",
+	"varevo_cycle_known_via_unknown_report",
+	"varevo_cycle_unknown_self_report",
+	"varevo_cycle_two_unknowns_report",
+	"varevo_default_containers_as_v3",
 	"varevo_kind31_report",
 	"torture_cook_full",
 	"torture_cook_empty",
+	"torture_cook_extremes",
+	"torture_wide_cook",
+	"torture_wide_cook_extremes",
 }
 
 // pythonVTMapRowConstructs are the Go-engine constructs the map row names on

@@ -11653,8 +11653,10 @@ inline int64_t TextNamesEntryMeasureBody( TableIds & ids, const TextNamesEntry &
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.value, (uint64_t) value.value_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( value.value_length ) ) + ( value.value_length ); } // value
     return bytes;
 }
@@ -11662,6 +11664,7 @@ inline int64_t TextNamesEntryMeasureBody( TableIds & ids, const TextNamesEntry &
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBody( TableWriter & w, TableIds & ids, const TextNamesEntry & value )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -11669,6 +11672,7 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBody( TableWriter & w, TableIds & id
         w.raw( value.key, value.key_length );
     }
     schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.value, (uint64_t) value.value_length ) ) { return false; }
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 12 ); // value
@@ -14089,8 +14093,10 @@ inline int64_t TextNamesEntryMeasureBodyRetain( TableRetainIds & ids, const Text
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.value, (uint64_t) value.value_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( value.value_length ) ) + ( value.value_length ); } // value
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -14099,6 +14105,7 @@ inline int64_t TextNamesEntryMeasureBodyRetain( TableRetainIds & ids, const Text
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const TextNamesEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     schema_assert( value.key_length >= 0 && value.key_length <= 8 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.key, (uint64_t) value.key_length ) ) { return false; }
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -14106,6 +14113,7 @@ MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBodyRetain( TableWriter & w, TableRe
         w.raw( value.key, value.key_length );
     }
     schema_assert( value.value_length >= 0 && value.value_length <= 16 ); // storage invariant, debug only (§5.1)
+    if ( !TableUtf8Valid( (const uint8_t *) value.value, (uint64_t) value.value_length ) ) { return false; }
     if ( value.value_length > 0 )
     {
         w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 12 ); // value

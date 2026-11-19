@@ -110,7 +110,7 @@
       "row": "surface wire",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -118,7 +118,7 @@
       "row": "surface wire",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -126,7 +126,7 @@
       "row": "surface wire",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -134,7 +134,7 @@
       "row": "surface wire",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -142,7 +142,7 @@
       "row": "surface wire",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -150,7 +150,7 @@
       "row": "surface wire",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -158,7 +158,7 @@
       "row": "surface wire",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -166,7 +166,7 @@
       "row": "surface wire",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -174,7 +174,7 @@
       "row": "surface wire",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -182,7 +182,7 @@
       "row": "surface wire",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -190,7 +190,7 @@
       "row": "surface wire",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -198,7 +198,7 @@
       "row": "surface wire",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -206,7 +206,7 @@
       "row": "surface wire",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -214,7 +214,7 @@
       "row": "surface wire",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -222,7 +222,7 @@
       "row": "surface wire",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -230,7 +230,7 @@
       "row": "surface wire",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -238,7 +238,7 @@
       "row": "surface wire",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -246,7 +246,7 @@
       "row": "surface wire",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 132 case(s) pass, e.g. wire/archive",
+      "gate": "make conformance: 139 case(s) pass, e.g. wire/archive",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -254,7 +254,7 @@
       "row": "surface message",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -262,7 +262,7 @@
       "row": "surface message",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -270,7 +270,7 @@
       "row": "surface message",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -278,7 +278,7 @@
       "row": "surface message",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -286,7 +286,7 @@
       "row": "surface message",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -294,7 +294,7 @@
       "row": "surface message",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -302,7 +302,7 @@
       "row": "surface message",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -310,7 +310,7 @@
       "row": "surface message",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -318,7 +318,7 @@
       "row": "surface message",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -326,7 +326,7 @@
       "row": "surface message",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -334,7 +334,7 @@
       "row": "surface message",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -342,7 +342,7 @@
       "row": "surface message",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -350,7 +350,7 @@
       "row": "surface message",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -358,7 +358,7 @@
       "row": "surface message",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -366,7 +366,7 @@
       "row": "surface message",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -374,7 +374,7 @@
       "row": "surface message",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -382,7 +382,7 @@
       "row": "surface message",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -390,7 +390,7 @@
       "row": "surface message",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 17 case(s) pass, e.g. message/graph_tree",
+      "gate": "make conformance: 18 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -398,7 +398,7 @@
       "row": "surface report",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -406,7 +406,7 @@
       "row": "surface report",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -414,7 +414,7 @@
       "row": "surface report",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -422,7 +422,7 @@
       "row": "surface report",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -430,7 +430,7 @@
       "row": "surface report",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -438,7 +438,7 @@
       "row": "surface report",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -446,7 +446,7 @@
       "row": "surface report",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -454,7 +454,7 @@
       "row": "surface report",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -462,7 +462,7 @@
       "row": "surface report",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -470,7 +470,7 @@
       "row": "surface report",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -478,7 +478,7 @@
       "row": "surface report",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -486,7 +486,7 @@
       "row": "surface report",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -494,7 +494,7 @@
       "row": "surface report",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -502,7 +502,7 @@
       "row": "surface report",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -510,7 +510,7 @@
       "row": "surface report",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -518,7 +518,7 @@
       "row": "surface report",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -526,7 +526,7 @@
       "row": "surface report",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -534,7 +534,7 @@
       "row": "surface report",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 140 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
+      "gate": "make conformance: 147 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -542,7 +542,7 @@
       "row": "surface framing",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -550,7 +550,7 @@
       "row": "surface framing",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -558,7 +558,7 @@
       "row": "surface framing",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -566,7 +566,7 @@
       "row": "surface framing",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -574,7 +574,7 @@
       "row": "surface framing",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -582,7 +582,7 @@
       "row": "surface framing",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -590,7 +590,7 @@
       "row": "surface framing",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -598,7 +598,7 @@
       "row": "surface framing",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -606,7 +606,7 @@
       "row": "surface framing",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -614,7 +614,7 @@
       "row": "surface framing",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -622,7 +622,7 @@
       "row": "surface framing",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -630,7 +630,7 @@
       "row": "surface framing",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -638,7 +638,7 @@
       "row": "surface framing",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -646,7 +646,7 @@
       "row": "surface framing",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -654,7 +654,7 @@
       "row": "surface framing",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -662,7 +662,7 @@
       "row": "surface framing",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -670,7 +670,7 @@
       "row": "surface framing",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -678,7 +678,7 @@
       "row": "surface framing",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 104 case(s) pass, e.g. framing/array_L0_inert",
+      "gate": "make conformance: 108 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -686,7 +686,7 @@
       "row": "surface retain",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -694,7 +694,7 @@
       "row": "surface retain",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -702,7 +702,7 @@
       "row": "surface retain",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -710,7 +710,7 @@
       "row": "surface retain",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -718,7 +718,7 @@
       "row": "surface retain",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -726,7 +726,7 @@
       "row": "surface retain",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -734,7 +734,7 @@
       "row": "surface retain",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -742,7 +742,7 @@
       "row": "surface retain",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -750,7 +750,7 @@
       "row": "surface retain",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -758,7 +758,7 @@
       "row": "surface retain",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -766,7 +766,7 @@
       "row": "surface retain",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -774,7 +774,7 @@
       "row": "surface retain",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -782,7 +782,7 @@
       "row": "surface retain",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -790,7 +790,7 @@
       "row": "surface retain",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -798,7 +798,7 @@
       "row": "surface retain",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -806,7 +806,7 @@
       "row": "surface retain",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -814,7 +814,7 @@
       "row": "surface retain",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -822,7 +822,7 @@
       "row": "surface retain",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 13 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -830,7 +830,7 @@
       "row": "surface retain-save",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -838,7 +838,7 @@
       "row": "surface retain-save",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -846,7 +846,7 @@
       "row": "surface retain-save",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -854,7 +854,7 @@
       "row": "surface retain-save",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -862,7 +862,7 @@
       "row": "surface retain-save",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -870,7 +870,7 @@
       "row": "surface retain-save",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -878,7 +878,7 @@
       "row": "surface retain-save",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -886,7 +886,7 @@
       "row": "surface retain-save",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -894,7 +894,7 @@
       "row": "surface retain-save",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -902,7 +902,7 @@
       "row": "surface retain-save",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -910,7 +910,7 @@
       "row": "surface retain-save",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -918,7 +918,7 @@
       "row": "surface retain-save",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -926,7 +926,7 @@
       "row": "surface retain-save",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -934,7 +934,7 @@
       "row": "surface retain-save",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -942,7 +942,7 @@
       "row": "surface retain-save",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -950,7 +950,7 @@
       "row": "surface retain-save",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -958,7 +958,7 @@
       "row": "surface retain-save",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -966,7 +966,7 @@
       "row": "surface retain-save",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain-save/retain_enum_variant",
+      "gate": "make conformance: 12 case(s) pass, e.g. retain-save/retain_enum_variant",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -974,7 +974,7 @@
       "row": "surface json-read",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -982,7 +982,7 @@
       "row": "surface json-read",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -990,7 +990,7 @@
       "row": "surface json-read",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -998,7 +998,7 @@
       "row": "surface json-read",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -1006,7 +1006,7 @@
       "row": "surface json-read",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -1014,7 +1014,7 @@
       "row": "surface json-read",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -1022,7 +1022,7 @@
       "row": "surface json-read",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -1030,7 +1030,7 @@
       "row": "surface json-read",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -1038,7 +1038,7 @@
       "row": "surface json-read",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -1046,7 +1046,7 @@
       "row": "surface json-read",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -1054,7 +1054,7 @@
       "row": "surface json-read",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -1062,7 +1062,7 @@
       "row": "surface json-read",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -1070,7 +1070,7 @@
       "row": "surface json-read",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -1078,7 +1078,7 @@
       "row": "surface json-read",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -1086,7 +1086,7 @@
       "row": "surface json-read",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -1094,7 +1094,7 @@
       "row": "surface json-read",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -1102,7 +1102,7 @@
       "row": "surface json-read",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -1110,7 +1110,7 @@
       "row": "surface json-read",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 124 case(s) pass, e.g. json-read/archive",
+      "gate": "make conformance: 131 case(s) pass, e.g. json-read/archive",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1118,7 +1118,7 @@
       "row": "surface json-write",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -1126,7 +1126,7 @@
       "row": "surface json-write",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -1134,7 +1134,7 @@
       "row": "surface json-write",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1142,7 +1142,7 @@
       "row": "surface json-write",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -1150,7 +1150,7 @@
       "row": "surface json-write",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -1158,7 +1158,7 @@
       "row": "surface json-write",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -1166,7 +1166,7 @@
       "row": "surface json-write",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -1174,7 +1174,7 @@
       "row": "surface json-write",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -1182,7 +1182,7 @@
       "row": "surface json-write",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -1190,7 +1190,7 @@
       "row": "surface json-write",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -1198,7 +1198,7 @@
       "row": "surface json-write",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -1206,7 +1206,7 @@
       "row": "surface json-write",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -1214,7 +1214,7 @@
       "row": "surface json-write",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -1222,7 +1222,7 @@
       "row": "surface json-write",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -1230,7 +1230,7 @@
       "row": "surface json-write",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -1238,7 +1238,7 @@
       "row": "surface json-write",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -1246,7 +1246,7 @@
       "row": "surface json-write",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -1254,7 +1254,7 @@
       "row": "surface json-write",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 126 case(s) pass, e.g. json-write/archive.json",
+      "gate": "make conformance: 133 case(s) pass, e.g. json-write/archive.json",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1406,7 +1406,7 @@
       "row": "surface cook",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -1414,7 +1414,7 @@
       "row": "surface cook",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -1422,7 +1422,7 @@
       "row": "surface cook",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1430,7 +1430,7 @@
       "row": "surface cook",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -1438,7 +1438,7 @@
       "row": "surface cook",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -1446,7 +1446,7 @@
       "row": "surface cook",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -1454,7 +1454,7 @@
       "row": "surface cook",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -1462,7 +1462,7 @@
       "row": "surface cook",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -1470,7 +1470,7 @@
       "row": "surface cook",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -1478,7 +1478,7 @@
       "row": "surface cook",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -1486,7 +1486,7 @@
       "row": "surface cook",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -1494,7 +1494,7 @@
       "row": "surface cook",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -1502,7 +1502,7 @@
       "row": "surface cook",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -1510,7 +1510,7 @@
       "row": "surface cook",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -1518,7 +1518,7 @@
       "row": "surface cook",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -1526,7 +1526,7 @@
       "row": "surface cook",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -1534,7 +1534,7 @@
       "row": "surface cook",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -1542,7 +1542,7 @@
       "row": "surface cook",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1550,7 +1550,7 @@
       "row": "surface cook-write",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -1558,7 +1558,7 @@
       "row": "surface cook-write",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -1566,7 +1566,7 @@
       "row": "surface cook-write",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1574,7 +1574,7 @@
       "row": "surface cook-write",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -1582,7 +1582,7 @@
       "row": "surface cook-write",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -1590,7 +1590,7 @@
       "row": "surface cook-write",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -1598,7 +1598,7 @@
       "row": "surface cook-write",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -1606,7 +1606,7 @@
       "row": "surface cook-write",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -1614,7 +1614,7 @@
       "row": "surface cook-write",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -1622,7 +1622,7 @@
       "row": "surface cook-write",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -1630,7 +1630,7 @@
       "row": "surface cook-write",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -1638,7 +1638,7 @@
       "row": "surface cook-write",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -1646,7 +1646,7 @@
       "row": "surface cook-write",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -1654,7 +1654,7 @@
       "row": "surface cook-write",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -1662,7 +1662,7 @@
       "row": "surface cook-write",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -1670,7 +1670,7 @@
       "row": "surface cook-write",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -1678,7 +1678,7 @@
       "row": "surface cook-write",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -1686,7 +1686,7 @@
       "row": "surface cook-write",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 162 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 166 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1694,7 +1694,7 @@
       "row": "surface cook-foreign",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -1702,7 +1702,7 @@
       "row": "surface cook-foreign",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -1710,7 +1710,7 @@
       "row": "surface cook-foreign",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -1718,7 +1718,7 @@
       "row": "surface cook-foreign",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -1726,7 +1726,7 @@
       "row": "surface cook-foreign",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -1734,7 +1734,7 @@
       "row": "surface cook-foreign",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -1742,7 +1742,7 @@
       "row": "surface cook-foreign",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -1750,7 +1750,7 @@
       "row": "surface cook-foreign",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -1758,7 +1758,7 @@
       "row": "surface cook-foreign",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -1766,7 +1766,7 @@
       "row": "surface cook-foreign",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -1774,7 +1774,7 @@
       "row": "surface cook-foreign",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -1782,7 +1782,7 @@
       "row": "surface cook-foreign",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -1790,7 +1790,7 @@
       "row": "surface cook-foreign",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -1798,7 +1798,7 @@
       "row": "surface cook-foreign",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -1806,7 +1806,7 @@
       "row": "surface cook-foreign",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -1814,7 +1814,7 @@
       "row": "surface cook-foreign",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -1822,7 +1822,7 @@
       "row": "surface cook-foreign",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -1830,7 +1830,7 @@
       "row": "surface cook-foreign",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 6 case(s) pass, e.g. cook-foreign/Album",
+      "gate": "make conformance: 7 case(s) pass, e.g. cook-foreign/Album",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2270,7 +2270,7 @@
       "row": "surface forgery",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -2278,7 +2278,7 @@
       "row": "surface forgery",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -2286,7 +2286,7 @@
       "row": "surface forgery",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2294,7 +2294,7 @@
       "row": "surface forgery",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -2302,7 +2302,7 @@
       "row": "surface forgery",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -2310,7 +2310,7 @@
       "row": "surface forgery",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -2318,7 +2318,7 @@
       "row": "surface forgery",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -2326,7 +2326,7 @@
       "row": "surface forgery",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -2334,7 +2334,7 @@
       "row": "surface forgery",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -2342,7 +2342,7 @@
       "row": "surface forgery",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -2350,7 +2350,7 @@
       "row": "surface forgery",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -2358,7 +2358,7 @@
       "row": "surface forgery",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -2366,7 +2366,7 @@
       "row": "surface forgery",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -2374,7 +2374,7 @@
       "row": "surface forgery",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -2382,7 +2382,7 @@
       "row": "surface forgery",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -2390,7 +2390,7 @@
       "row": "surface forgery",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -2398,7 +2398,7 @@
       "row": "surface forgery",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -2406,7 +2406,7 @@
       "row": "surface forgery",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 20 case(s) pass, e.g. forgery/block_array_escapes",
+      "gate": "make conformance: 31 case(s) pass, e.g. forgery/block_array_escapes",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2414,7 +2414,7 @@
       "row": "surface cook-forgery",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -2422,7 +2422,7 @@
       "row": "surface cook-forgery",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -2430,7 +2430,7 @@
       "row": "surface cook-forgery",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2438,7 +2438,7 @@
       "row": "surface cook-forgery",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -2446,7 +2446,7 @@
       "row": "surface cook-forgery",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -2454,7 +2454,7 @@
       "row": "surface cook-forgery",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -2462,7 +2462,7 @@
       "row": "surface cook-forgery",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -2470,7 +2470,7 @@
       "row": "surface cook-forgery",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -2478,7 +2478,7 @@
       "row": "surface cook-forgery",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -2486,7 +2486,7 @@
       "row": "surface cook-forgery",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -2494,7 +2494,7 @@
       "row": "surface cook-forgery",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -2502,7 +2502,7 @@
       "row": "surface cook-forgery",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -2510,7 +2510,7 @@
       "row": "surface cook-forgery",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -2518,7 +2518,7 @@
       "row": "surface cook-forgery",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -2526,7 +2526,7 @@
       "row": "surface cook-forgery",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -2534,7 +2534,7 @@
       "row": "surface cook-forgery",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -2542,7 +2542,7 @@
       "row": "surface cook-forgery",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -2550,7 +2550,7 @@
       "row": "surface cook-forgery",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 113 case(s) pass, e.g. cook-forgery/cook_alignment_0",
+      "gate": "make conformance: 118 case(s) pass, e.g. cook-forgery/cook_alignment_0",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2558,7 +2558,7 @@
       "row": "surface write-refusal",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -2566,7 +2566,7 @@
       "row": "surface write-refusal",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -2574,7 +2574,7 @@
       "row": "surface write-refusal",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2582,7 +2582,7 @@
       "row": "surface write-refusal",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -2590,7 +2590,7 @@
       "row": "surface write-refusal",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -2598,7 +2598,7 @@
       "row": "surface write-refusal",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -2606,7 +2606,7 @@
       "row": "surface write-refusal",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -2614,7 +2614,7 @@
       "row": "surface write-refusal",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -2622,7 +2622,7 @@
       "row": "surface write-refusal",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -2630,7 +2630,7 @@
       "row": "surface write-refusal",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -2638,7 +2638,7 @@
       "row": "surface write-refusal",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -2646,7 +2646,7 @@
       "row": "surface write-refusal",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -2654,7 +2654,7 @@
       "row": "surface write-refusal",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -2662,7 +2662,7 @@
       "row": "surface write-refusal",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -2670,7 +2670,7 @@
       "row": "surface write-refusal",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -2678,7 +2678,7 @@
       "row": "surface write-refusal",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -2686,7 +2686,7 @@
       "row": "surface write-refusal",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -2694,7 +2694,7 @@
       "row": "surface write-refusal",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal/wref_bits_wide",
+      "gate": "make conformance: 82 case(s) pass, e.g. write-refusal/wref_bits_neg",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2702,7 +2702,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -2710,7 +2710,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -2718,7 +2718,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2726,7 +2726,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -2734,7 +2734,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -2742,7 +2742,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -2750,7 +2750,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -2758,7 +2758,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -2766,7 +2766,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -2774,7 +2774,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -2782,7 +2782,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -2790,7 +2790,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -2798,7 +2798,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -2806,7 +2806,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -2814,7 +2814,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -2822,7 +2822,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -2830,7 +2830,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -2838,7 +2838,7 @@
       "row": "surface write-refusal-fixed",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. write-refusal-fixed/fref_bits_wide",
+      "gate": "make conformance: 60 case(s) pass, e.g. write-refusal-fixed/fref_bits_neg",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2846,7 +2846,7 @@
       "row": "surface write-refusal-message",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -2854,7 +2854,7 @@
       "row": "surface write-refusal-message",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -2862,7 +2862,7 @@
       "row": "surface write-refusal-message",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2870,7 +2870,7 @@
       "row": "surface write-refusal-message",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -2878,7 +2878,7 @@
       "row": "surface write-refusal-message",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -2886,7 +2886,7 @@
       "row": "surface write-refusal-message",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -2894,7 +2894,7 @@
       "row": "surface write-refusal-message",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -2902,7 +2902,7 @@
       "row": "surface write-refusal-message",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -2910,7 +2910,7 @@
       "row": "surface write-refusal-message",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -2918,7 +2918,7 @@
       "row": "surface write-refusal-message",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -2926,7 +2926,7 @@
       "row": "surface write-refusal-message",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -2934,7 +2934,7 @@
       "row": "surface write-refusal-message",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -2942,7 +2942,7 @@
       "row": "surface write-refusal-message",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -2950,7 +2950,7 @@
       "row": "surface write-refusal-message",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -2958,7 +2958,7 @@
       "row": "surface write-refusal-message",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -2966,7 +2966,7 @@
       "row": "surface write-refusal-message",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -2974,7 +2974,7 @@
       "row": "surface write-refusal-message",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -2982,7 +2982,7 @@
       "row": "surface write-refusal-message",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 13 case(s) pass, e.g. write-refusal-message/mref_element",
+      "gate": "make conformance: 27 case(s) pass, e.g. write-refusal-message/mref_bytes_length",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -2990,7 +2990,7 @@
       "row": "surface write-refusal-json",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -2998,7 +2998,7 @@
       "row": "surface write-refusal-json",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -3006,7 +3006,7 @@
       "row": "surface write-refusal-json",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -3014,7 +3014,7 @@
       "row": "surface write-refusal-json",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -3022,7 +3022,7 @@
       "row": "surface write-refusal-json",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -3030,7 +3030,7 @@
       "row": "surface write-refusal-json",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -3038,7 +3038,7 @@
       "row": "surface write-refusal-json",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -3046,7 +3046,7 @@
       "row": "surface write-refusal-json",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -3054,7 +3054,7 @@
       "row": "surface write-refusal-json",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -3062,7 +3062,7 @@
       "row": "surface write-refusal-json",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -3070,7 +3070,7 @@
       "row": "surface write-refusal-json",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -3078,7 +3078,7 @@
       "row": "surface write-refusal-json",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -3086,7 +3086,7 @@
       "row": "surface write-refusal-json",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -3094,7 +3094,7 @@
       "row": "surface write-refusal-json",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -3102,7 +3102,7 @@
       "row": "surface write-refusal-json",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -3110,7 +3110,7 @@
       "row": "surface write-refusal-json",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -3118,7 +3118,7 @@
       "row": "surface write-refusal-json",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -3126,7 +3126,7 @@
       "row": "surface write-refusal-json",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 1 case(s) pass, e.g. write-refusal-json/jref_zero_byte",
+      "gate": "make conformance: 31 case(s) pass, e.g. write-refusal-json/jref_bits_neg",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -3278,7 +3278,7 @@
       "row": "cases tabledemo",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -3286,7 +3286,7 @@
       "row": "cases tabledemo",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -3294,7 +3294,7 @@
       "row": "cases tabledemo",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -3302,7 +3302,7 @@
       "row": "cases tabledemo",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -3310,7 +3310,7 @@
       "row": "cases tabledemo",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -3318,7 +3318,7 @@
       "row": "cases tabledemo",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -3326,7 +3326,7 @@
       "row": "cases tabledemo",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -3334,7 +3334,7 @@
       "row": "cases tabledemo",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -3342,7 +3342,7 @@
       "row": "cases tabledemo",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -3350,7 +3350,7 @@
       "row": "cases tabledemo",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -3358,7 +3358,7 @@
       "row": "cases tabledemo",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -3366,7 +3366,7 @@
       "row": "cases tabledemo",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -3374,7 +3374,7 @@
       "row": "cases tabledemo",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -3382,7 +3382,7 @@
       "row": "cases tabledemo",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -3390,7 +3390,7 @@
       "row": "cases tabledemo",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -3398,7 +3398,7 @@
       "row": "cases tabledemo",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -3406,7 +3406,7 @@
       "row": "cases tabledemo",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -3414,7 +3414,7 @@
       "row": "cases tabledemo",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 225 case(s) pass, e.g. cook-write/archive",
+      "gate": "make conformance: 264 case(s) pass, e.g. cook-write/archive",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -4142,7 +4142,7 @@
       "row": "cases graphdemo",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -4150,7 +4150,7 @@
       "row": "cases graphdemo",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -4158,7 +4158,7 @@
       "row": "cases graphdemo",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -4166,7 +4166,7 @@
       "row": "cases graphdemo",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -4174,7 +4174,7 @@
       "row": "cases graphdemo",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -4182,7 +4182,7 @@
       "row": "cases graphdemo",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -4190,7 +4190,7 @@
       "row": "cases graphdemo",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -4198,7 +4198,7 @@
       "row": "cases graphdemo",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -4206,7 +4206,7 @@
       "row": "cases graphdemo",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -4214,7 +4214,7 @@
       "row": "cases graphdemo",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -4222,7 +4222,7 @@
       "row": "cases graphdemo",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -4230,7 +4230,7 @@
       "row": "cases graphdemo",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -4238,7 +4238,7 @@
       "row": "cases graphdemo",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -4246,7 +4246,7 @@
       "row": "cases graphdemo",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -4254,7 +4254,7 @@
       "row": "cases graphdemo",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -4262,7 +4262,7 @@
       "row": "cases graphdemo",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -4270,7 +4270,7 @@
       "row": "cases graphdemo",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -4278,7 +4278,7 @@
       "row": "cases graphdemo",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 64 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 66 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -6302,7 +6302,7 @@
       "row": "cases scalars",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -6310,7 +6310,7 @@
       "row": "cases scalars",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -6318,7 +6318,7 @@
       "row": "cases scalars",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -6326,7 +6326,7 @@
       "row": "cases scalars",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -6334,7 +6334,7 @@
       "row": "cases scalars",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -6342,7 +6342,7 @@
       "row": "cases scalars",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -6350,7 +6350,7 @@
       "row": "cases scalars",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -6358,7 +6358,7 @@
       "row": "cases scalars",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -6366,7 +6366,7 @@
       "row": "cases scalars",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -6374,7 +6374,7 @@
       "row": "cases scalars",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -6382,7 +6382,7 @@
       "row": "cases scalars",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -6390,7 +6390,7 @@
       "row": "cases scalars",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -6398,7 +6398,7 @@
       "row": "cases scalars",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -6406,7 +6406,7 @@
       "row": "cases scalars",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -6414,7 +6414,7 @@
       "row": "cases scalars",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -6422,7 +6422,7 @@
       "row": "cases scalars",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -6430,7 +6430,7 @@
       "row": "cases scalars",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -6438,7 +6438,7 @@
       "row": "cases scalars",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 39 case(s) pass, e.g. cook-write/scalars_default",
+      "gate": "make conformance: 58 case(s) pass, e.g. cook-write/scalars_default",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -7742,7 +7742,7 @@
       "row": "cases tblvarevo1",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -7750,7 +7750,7 @@
       "row": "cases tblvarevo1",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -7758,7 +7758,7 @@
       "row": "cases tblvarevo1",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -7766,7 +7766,7 @@
       "row": "cases tblvarevo1",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -7774,7 +7774,7 @@
       "row": "cases tblvarevo1",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -7782,7 +7782,7 @@
       "row": "cases tblvarevo1",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -7790,7 +7790,7 @@
       "row": "cases tblvarevo1",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -7798,7 +7798,7 @@
       "row": "cases tblvarevo1",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -7806,7 +7806,7 @@
       "row": "cases tblvarevo1",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -7814,7 +7814,7 @@
       "row": "cases tblvarevo1",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -7822,7 +7822,7 @@
       "row": "cases tblvarevo1",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -7830,7 +7830,7 @@
       "row": "cases tblvarevo1",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -7838,7 +7838,7 @@
       "row": "cases tblvarevo1",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -7846,7 +7846,7 @@
       "row": "cases tblvarevo1",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -7854,7 +7854,7 @@
       "row": "cases tblvarevo1",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -7862,7 +7862,7 @@
       "row": "cases tblvarevo1",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -7870,7 +7870,7 @@
       "row": "cases tblvarevo1",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -7878,7 +7878,7 @@
       "row": "cases tblvarevo1",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 21 case(s) pass, e.g. cook-write/varevo_v1_full",
+      "gate": "make conformance: 33 case(s) pass, e.g. cook-write/varevo_v1_full",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -7886,7 +7886,7 @@
       "row": "cases tblvarevo2",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -7894,7 +7894,7 @@
       "row": "cases tblvarevo2",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -7902,7 +7902,7 @@
       "row": "cases tblvarevo2",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -7910,7 +7910,7 @@
       "row": "cases tblvarevo2",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -7918,7 +7918,7 @@
       "row": "cases tblvarevo2",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -7926,7 +7926,7 @@
       "row": "cases tblvarevo2",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -7934,7 +7934,7 @@
       "row": "cases tblvarevo2",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -7942,7 +7942,7 @@
       "row": "cases tblvarevo2",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -7950,7 +7950,7 @@
       "row": "cases tblvarevo2",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -7958,7 +7958,7 @@
       "row": "cases tblvarevo2",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -7966,7 +7966,7 @@
       "row": "cases tblvarevo2",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -7974,7 +7974,7 @@
       "row": "cases tblvarevo2",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -7982,7 +7982,7 @@
       "row": "cases tblvarevo2",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -7990,7 +7990,7 @@
       "row": "cases tblvarevo2",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -7998,7 +7998,7 @@
       "row": "cases tblvarevo2",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -8006,7 +8006,7 @@
       "row": "cases tblvarevo2",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -8014,7 +8014,7 @@
       "row": "cases tblvarevo2",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -8022,7 +8022,7 @@
       "row": "cases tblvarevo2",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. json-read/varevo_v2_full",
+      "gate": "make conformance: 7 case(s) pass, e.g. json-read/varevo_v2_full",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -8030,7 +8030,7 @@
       "row": "cases tblvarevo3",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -8038,7 +8038,7 @@
       "row": "cases tblvarevo3",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -8046,7 +8046,7 @@
       "row": "cases tblvarevo3",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -8054,7 +8054,7 @@
       "row": "cases tblvarevo3",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -8062,7 +8062,7 @@
       "row": "cases tblvarevo3",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -8070,7 +8070,7 @@
       "row": "cases tblvarevo3",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -8078,7 +8078,7 @@
       "row": "cases tblvarevo3",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -8086,7 +8086,7 @@
       "row": "cases tblvarevo3",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -8094,7 +8094,7 @@
       "row": "cases tblvarevo3",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -8102,7 +8102,7 @@
       "row": "cases tblvarevo3",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -8110,7 +8110,7 @@
       "row": "cases tblvarevo3",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -8118,7 +8118,7 @@
       "row": "cases tblvarevo3",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -8126,7 +8126,7 @@
       "row": "cases tblvarevo3",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -8134,7 +8134,7 @@
       "row": "cases tblvarevo3",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -8142,7 +8142,7 @@
       "row": "cases tblvarevo3",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -8150,7 +8150,7 @@
       "row": "cases tblvarevo3",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -8158,7 +8158,7 @@
       "row": "cases tblvarevo3",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -8166,7 +8166,7 @@
       "row": "cases tblvarevo3",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 19 case(s) pass, e.g. cook-write/varevo_v3_full",
+      "gate": "make conformance: 31 case(s) pass, e.g. cook-write/varevo_v3_full",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -8174,7 +8174,7 @@
       "row": "cases cooktorture",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -8182,7 +8182,7 @@
       "row": "cases cooktorture",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -8190,7 +8190,7 @@
       "row": "cases cooktorture",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -8198,7 +8198,7 @@
       "row": "cases cooktorture",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -8206,7 +8206,7 @@
       "row": "cases cooktorture",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -8214,7 +8214,7 @@
       "row": "cases cooktorture",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -8222,7 +8222,7 @@
       "row": "cases cooktorture",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -8230,7 +8230,7 @@
       "row": "cases cooktorture",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -8238,7 +8238,7 @@
       "row": "cases cooktorture",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -8246,7 +8246,7 @@
       "row": "cases cooktorture",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -8254,7 +8254,7 @@
       "row": "cases cooktorture",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -8262,7 +8262,7 @@
       "row": "cases cooktorture",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -8270,7 +8270,7 @@
       "row": "cases cooktorture",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -8278,7 +8278,7 @@
       "row": "cases cooktorture",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -8286,7 +8286,7 @@
       "row": "cases cooktorture",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -8294,7 +8294,7 @@
       "row": "cases cooktorture",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -8302,7 +8302,7 @@
       "row": "cases cooktorture",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -8310,7 +8310,7 @@
       "row": "cases cooktorture",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 11 case(s) pass, e.g. block/block_torture",
+      "gate": "make conformance: 97 case(s) pass, e.g. block/block_torture",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -8318,7 +8318,7 @@
       "row": "cases cooktorturewide",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (Certify / negative controls, nightly (base-conformance-cpp))"
     },
@@ -8326,7 +8326,7 @@
       "row": "cases cooktorturewide",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (Certify / negative controls, nightly (base-c-conformance))"
     },
@@ -8334,7 +8334,7 @@
       "row": "cases cooktorturewide",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (Certify / negative controls, nightly (cs-nightly))"
     },
@@ -8342,7 +8342,7 @@
       "row": "cases cooktorturewide",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (dart)",
       "control": "conformance-negative-control-dart-absent (Certify / negative controls, nightly (dart-conformance-2-a))"
     },
@@ -8350,7 +8350,7 @@
       "row": "cases cooktorturewide",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (elixir)",
       "control": "conformance-negative-control-elixir-arm (Certify / negative controls, nightly (elixir-nightly-conformance))"
     },
@@ -8358,7 +8358,7 @@
       "row": "cases cooktorturewide",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (Certify / negative controls, nightly (base-conformance-2-1))"
     },
@@ -8366,7 +8366,7 @@
       "row": "cases cooktorturewide",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (goose)",
       "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
@@ -8374,7 +8374,7 @@
       "row": "cases cooktorturewide",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (java)",
       "control": "conformance-negative-control-java-block (CI full / negative controls (java-cards))"
     },
@@ -8382,7 +8382,7 @@
       "row": "cases cooktorturewide",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (js)",
       "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof-2))"
     },
@@ -8390,7 +8390,7 @@
       "row": "cases cooktorturewide",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (lobster)",
       "control": "conformance-negative-control-lobster (Certify / negative controls, nightly (lobster-conformance))"
     },
@@ -8398,7 +8398,7 @@
       "row": "cases cooktorturewide",
       "lang": "lua",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (lua)",
       "control": "conformance-negative-control-lua (CI full / negative controls (lua-conformance))"
     },
@@ -8406,7 +8406,7 @@
       "row": "cases cooktorturewide",
       "lang": "luau",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (luau)",
       "control": "conformance-negative-control-luau (CI full / negative controls (luau-conformance))"
     },
@@ -8414,7 +8414,7 @@
       "row": "cases cooktorturewide",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -8422,7 +8422,7 @@
       "row": "cases cooktorturewide",
       "lang": "python",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (python)",
       "control": "conformance-negative-control-python (CI full / negative controls (python-table-core))"
     },
@@ -8430,7 +8430,7 @@
       "row": "cases cooktorturewide",
       "lang": "ruby",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (ruby)",
       "control": "conformance-negative-control-ruby (Certify / negative controls, nightly (ruby-vt))"
     },
@@ -8438,7 +8438,7 @@
       "row": "cases cooktorturewide",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (rust)",
       "control": "conformance-negative-control-rust-framing (Certify / negative controls, nightly (rust-conformance-framing-control))"
     },
@@ -8446,7 +8446,7 @@
       "row": "cases cooktorturewide",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel-conformance))"
     },
@@ -8454,7 +8454,7 @@
       "row": "cases cooktorturewide",
       "lang": "unity",
       "status": "proven",
-      "gate": "make conformance: 4 case(s) pass, e.g. cook-write/torture_wide_cook",
+      "gate": "make conformance: 8 case(s) pass, e.g. cook-write/torture_wide_cook",
       "job": "CI full / conformance (unity)",
       "control": "conformance-negative-control-unity (Certify / negative controls, nightly (cs-nightly))"
     },

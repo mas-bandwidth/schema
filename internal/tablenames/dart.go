@@ -78,7 +78,9 @@ func init() {
 		Name{Name: "TableMessageLeb", What: "the announced message bit codec: the canonical LEB128 length every length takes (§3)"},
 		Name{Name: "TableMessageSameEntry", What: "the announced message bit codec: whether one entry's bytes repeat an earlier entry's (§3.3)"},
 		Name{Name: "TableMessageSkipEntry", What: "the announced message bit codec: step over one announced entry by the shape its announcement decoded (§3.3)"},
-		Name{Name: "TableMessageSkipField", What: "the announced message bit codec: step over one unknown body field's payload by its kind (§3.3)"},
+		Name{Name: "TableMessageAnnounceUtf8", What: "the announced message bit codec: validate a vocabulary entry's UTF-8 name (§3.3)"},
+		Name{Name: "TableMessageSkipChecked", What: "the announced message bit codec: step over one checked unknown body field's payload by its kind (§3.3)"},
+		Name{Name: "TableMessageSkipFramed", What: "the announced message bit codec: step over one framed unknown body field's payload by its kind (§3.3)"},
 		Name{Name: "TableMessageSkipRanged", What: "the announced message bit codec: step over one ranged value by its base and offset width (§3.3)"},
 		Name{Name: "TableMessageStructural", What: "the announced message bit codec: whether a kind nests a body, so its skip counts one more depth (§3.3)"},
 		// THE ANNOUNCEMENT SURFACE'S LIBRARY-SCOPE CLASSES. A class at

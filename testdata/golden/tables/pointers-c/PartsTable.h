@@ -5836,6 +5836,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_messa
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_stamp_t * value )
 {
     schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0; }
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -6956,6 +6957,8 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag__retain( graphdemo_tabl
     (void)retention;
 
     schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
+    if ( !graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0;
+    }
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }

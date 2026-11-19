@@ -1,11 +1,22 @@
 // CookTorture.schema — Pillar #3 Cook & Block structural, alignment, padding,
-// map binary-search, union-array, empty-slice, shared-blob, and endianness torture.
+// signed/unsigned boundary extremes, map binary-search, union-array, empty-slice,
+// shared-blob, endianness, and write-refusal torture.
 package cooktorture
 
 const MaxTortureRows = 16
 const MaxEmptyRows   = 8
 
 enum Channel { Alpha, Beta, Gamma }
+
+flags TortureFlags
+{
+    F00, F01, F02, F03, F04, F05, F06, F07, F08, F09, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25, F26, F27, F28, F29, F30, F31, F32, F33, F34, F35, F36, F37, F38, F39, F40, F41, F42, F43, F44, F45, F46, F47, F48, F49, F50, F51, F52, F53, F54, F55, F56, F57, F58, F59, F60, F61, F62, F63
+}
+
+type BitsCell
+{
+    v bits(37)
+}
 
 type Vec3
 {
@@ -30,6 +41,23 @@ union StepAction
     label  string(12)
 }
 
+union BoundUnion
+{
+    u_none
+    u_i8    int8
+    u_u8    uint8
+    u_i16   int16
+    u_u16   uint16
+    u_i32   int32
+    u_u32   uint32
+    u_i64   int64
+    u_u64   uint64
+    u_bits  bits(37)
+    u_flags TortureFlags
+    u_f32   float32
+    u_str   string(16)
+}
+
 table Child
 {
     odd_b  bool
@@ -38,14 +66,6 @@ table Child
     next   *Child
 }
 
-// Variable-class root for `cook-write` (LE & BE), `wire`, `json-read`, `json-write`:
-// - Odd-width scalars (`bool`, `uint8`, `[3]uint8`) immediately before 8-byte
-//   (`int64`, `float64`, `*Child`) aligned fields
-// - Cooked `map[string(16)]Entry` & `map[int32]Vec3` binary-search lookups
-// - Bounded & unbounded arrays of tagged unions (`[..4]StepAction`, `[]StepAction`)
-// - Optional companions (`?int64`, `?Entry`)
-// - 0-element empty cooked slices (`empty_ints`, `empty_entries`) alongside populated slices
-// - `*string` (8 & 16 bytes) and `*bytes` blobs alongside shared `*Child` graph pointers
 table TortureCook
 {
     lead_bool     bool
@@ -70,25 +90,84 @@ table TortureCook
     payload       *bytes
     payload_empty *bytes
     alias_ptr     *Child
+
+    // Signed/unsigned boundary extremes across root, arrays, [Enum]T, maps, optionals, and union arms:
+    b_i8         int8
+    b_u8         uint8
+    b_i16        int16
+    b_u16        uint16
+    b_i32        int32
+    b_u32        uint32
+    b_i64        int64
+    b_u64        uint64
+    b_bits13     bits(13)
+    b_bits37     bits(37)
+    b_flags      TortureFlags
+    arr_i8       [2]int8
+    arr_u8       [2]uint8
+    arr_i16      [2]int16
+    arr_u16      [2]uint16
+    arr_i32      [..4]int32
+    arr_u32      [..4]uint32
+    arr_i64      []int64
+    arr_u64      []uint64
+    arr_bits     []BitsCell
+    arr_flags    []TortureFlags
+    chan_i8      [Channel]int8
+    chan_u8      [Channel]uint8
+    chan_i16     [Channel]int16
+    chan_u16     [Channel]uint16
+    chan_i32     [Channel]int32
+    chan_u32     [Channel]uint32
+    chan_i64     [Channel]int64
+    chan_u64     [Channel]uint64
+    chan_flags   [Channel]TortureFlags
+    map_i8_u8    map[int8]uint8
+    map_u16_i16  map[uint16]int16
+    map_i32_u32  map[int32]uint32
+    map_i64_u64  map[int64]uint64
+    opt_i8       ?int8
+    opt_u8       ?uint8
+    opt_i16      ?int16
+    opt_u16      ?uint16
+    opt_i32      ?int32
+    opt_u32      ?uint32
+    opt_u64      ?uint64
+    opt_bits     ?bits(37)
+    opt_flags    ?TortureFlags
+    bound_unions []BoundUnion
+    slice_f32    []float32
+    str_arr      [..2]string(16)
+    map_f64      map[string(16)]float64
 }
 
-// Fixed-class row & projection for `block`, `block-foreign`, `block-dump`, and `forgery`:
-// Union-free and pointer-free per §19.3, exercising maximum alignment holes:
-// `bool` -> `int64`, `uint8` -> `float64`, `[3]uint8` -> `uint64`, optional companions,
-// enum-keyed `[Channel]uint16`, and a 0-element out-of-line array
-// (`[..MaxEmptyRows]TortureEmptyRow`) beside populated `TortureRow`s.
 fixed table TortureRow
 {
-    r_bool    bool
-    r_i64     int64
-    r_u8      uint8
-    r_f64     float64
-    r_tri     [3]uint8
-    r_u64     uint64
-    r_opt     ?int64
-    r_opt_vec ?Vec3
-    r_chan    [Channel]uint16
-    r_name    string(13)
+    r_bool     bool
+    r_i64      int64
+    r_u8       uint8
+    r_f64      float64
+    r_tri      [3]uint8
+    r_u64      uint64
+    r_opt      ?int64
+    r_opt_vec  ?Vec3
+    r_chan     [Channel]uint16
+    r_name     string(13)
+    r_i8       int8
+    r_i16      int16
+    r_u16      uint16
+    r_i32      int32
+    r_u32      uint32
+    r_bits13   bits(13)
+    r_bits37   bits(37)
+    r_flags    TortureFlags
+    r_arr_i8   [2]int8
+    r_arr_u8   [2]uint8
+    r_chan_i32 [Channel]int32
+    r_chan_u64 [Channel]uint64
+    r_opt_u64  ?uint64
+    r_opt_i8   ?int8
+    r_raw      bytes(8)
 }
 
 fixed table TortureEmptyRow
@@ -107,4 +186,25 @@ fixed table TortureFrame
     empty_rows [..MaxEmptyRows]TortureEmptyRow
     p_tail     uint8
     p_opt      ?int64
+    p_i8       int8
+    p_i16      int16
+    p_u16      uint16
+    p_i32      int32
+    p_u32      uint32
+    p_i64      int64
+    p_bits37   bits(37)
+    p_flags    TortureFlags
+}
+
+fixed table TortureFixedWref
+{
+    fixed_f32   [2]float32
+    counted_f64 [..4]float64
+    chan_f32    [Channel]float32
+    opt_f32     ?float32
+    str_val     string(16)
+    raw_bytes   bytes(16)
+    chan_enum   Channel
+    bits_val    bits(6)
+    u_val       BoundUnion
 }

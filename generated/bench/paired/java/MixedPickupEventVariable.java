@@ -567,7 +567,7 @@ public final class MixedPickupEventVariable {
         }
         w.put8(0);
         w.trailer();
-        if (w.ids.nonFinite || w.ids.offRange) {
+        if (w.ids.nonFinite || w.ids.offRange || w.ids.overflow || w.overflow) {
             return null;
         }
         return java.util.Arrays.copyOf(w.buf, w.off);
@@ -812,6 +812,9 @@ public final class MixedPickupEventVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "item_id");
         b.append(": ");
+        if (Long.compareUnsigned((long) v.itemId, 1L << 10) >= 0) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toUnsignedString(v.itemId));
         if (!first) {
             b.append(',');
@@ -820,6 +823,9 @@ public final class MixedPickupEventVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "amount");
         b.append(": ");
+        if ((long) v.amount < 0 || (long) v.amount > 255) {
+            throw new TableJson.Refused("out_of_range");
+        }
         b.append(Integer.toString(v.amount));
         return first;
     }

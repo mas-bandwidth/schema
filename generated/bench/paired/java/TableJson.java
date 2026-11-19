@@ -1154,6 +1154,16 @@ public final class TableJson {
         return true;
     }
 
+    static String wideText(
+            java.math.BigInteger raw,
+            java.math.BigInteger lo,
+            java.math.BigInteger hi,
+            int fraction,
+            boolean fixed) {
+        if (raw.compareTo(lo) < 0 || raw.compareTo(hi) > 0) throw new Refused("out_of_range");
+        return wideText(raw, fraction, fixed);
+    }
+
     static String wideText(java.math.BigInteger raw, int fraction, boolean fixed) {
         if (!fixed) return raw.toString();
         String text =

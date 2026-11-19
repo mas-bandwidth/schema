@@ -161,11 +161,7 @@ module RubyConformance
     %w[bytes bytes_blob].include?(inner.codec)
   end
 
-  def self.assign_mutation(value, path, rule, token)
-    parts = path.tr('[', '.').delete(']').split('.').reject(&:empty?)
-    owner = parts.length > 1 ? target_node(value, parts[0...-1].join('.')) : value
-    name = parts[-1]
-    current = owner.public_send(name.to_sym)
+  def self.convert_leaf(owner, name, current, rule, token)
     case rule
     when 'count'
       count = Integer(token, 10)
@@ -174,30 +170,61 @@ module RubyConformance
       end
       resized = current[0, count] || []
       resized << deep_copy(current[0]) while resized.length < count
-      owner.public_send(:"#{name}=", resized)
+      resized
     when 'length'
       length = Integer(token, 10)
       raise ArgumentError, 'length cannot be negative' if length.negative?
 
       is_bytes = current.nil? ? field_is_bytes?(owner, name) : (current.encoding == ::Encoding::BINARY)
-      owner.public_send(:"#{name}=", is_bytes ? ('a'.b * length) : ('a' * length))
+      is_bytes ? ('a'.b * length) : ('a' * length)
     when 'ordinal', 'int'
-      owner.public_send(:"#{name}=", Integer(token, 10))
+      Integer(token, 10)
     when 'tag'
       union_val = current.class.new
       union_val.type = Integer(token, 10)
-      owner.public_send(:"#{name}=", union_val)
+      union_val
     when 'bool'
-      owner.public_send(:"#{name}=", %w[true 1].include?(token.downcase))
+      %w[true 1].include?(token.downcase)
     when 'float'
-      owner.public_send(:"#{name}=", parse_float_token(token))
+      parse_float_token(token)
     when 'bytes'
       raw = [token].pack('H*')
       is_bytes = current.nil? ? field_is_bytes?(owner, name) : (current.encoding == ::Encoding::BINARY)
-      val = is_bytes ? raw : raw.dup.force_encoding(::Encoding::UTF_8)
-      owner.public_send(:"#{name}=", val)
+      is_bytes ? raw : raw.dup.force_encoding(::Encoding::UTF_8)
     else
       raise ArgumentError, "unknown write-refusal mutation: #{rule}"
+    end
+  end
+
+  def self.assign_mutation(value, path, rule, token)
+    parts = path.tr('[', '.').delete(']').split('.').reject(&:empty?)
+    if parts.length >= 3 && parts[-2].match?(/\A\d+\z/)
+      parent = parts.length > 3 ? target_node(value, parts[0...-3].join('.')) : value
+      container = parent.public_send(parts[-3].to_sym)
+      if container.is_a?(::Hash)
+        idx = parts[-2].to_i
+        old_k = container.keys.sort[idx]
+        old_v = container[old_k]
+        if parts[-1] == 'key'
+          new_k = convert_leaf(nil, 'key', old_k, rule, token)
+          container.delete(old_k)
+          container[new_k] = old_v
+        else
+          container[old_k] = convert_leaf(nil, 'value', old_v, rule, token)
+        end
+        return
+      end
+    end
+    owner = parts.length > 1 ? target_node(value, parts[0...-1].join('.')) : value
+    name = parts[-1]
+    if name.match?(/\A\d+\z/)
+      idx = name.to_i
+      idx += 1 if owner.class.name.end_with?('KeyedArray')
+      current = owner[idx]
+      owner[idx] = convert_leaf(owner, name, current, rule, token)
+    else
+      current = owner.public_send(name.to_sym)
+      owner.public_send(:"#{name}=", convert_leaf(owner, name, current, rule, token))
     end
   end
 end

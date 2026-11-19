@@ -135,6 +135,13 @@ v1_cfg_as_v2       refused
 v1_seams_as_v2     refused
 v2_cfg_as_v1       refused
 v2_seams_as_v1     refused
+varevo_2hop_step2_v2_report read
+varevo_2hop_step3_v3_report read
+varevo_cycle_known_via_unknown_report refused
+varevo_cycle_root_via_unknown_report refused
+varevo_cycle_two_unknowns_report refused
+varevo_cycle_unknown_self_report refused
+varevo_default_containers_as_v3 read
 varevo_kind31_report read
 varevo_rollback_as_v3 read
 varevo_v1_as_v2    read

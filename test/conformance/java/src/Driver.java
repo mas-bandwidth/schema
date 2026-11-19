@@ -1400,7 +1400,10 @@ public final class Driver {
                         return failInt(name + ": load refused " + wirePath);
                     }
                 }
-                mutateWriteRefusal(value, path, kind, text);
+                if (!mutateWriteRefusal(value, path, kind, text)) {
+                    spill(out, name, "unrepresentable\n");
+                    continue;
+                }
                 String answer = "wrote";
                 try {
                     switch (surface) {
@@ -1459,7 +1462,11 @@ public final class Driver {
                             if (fixed != null) {
                                 textValue = variable.fromFixed(fixedValue);
                             }
-                            if (variable.toJson(textValue) == null) {
+                            byte[] jsonText = variable.toJson(textValue);
+                            if (jsonText == null) {
+                                answer = "refused";
+                            } else if (kind.equals("bytes") && hexHasZero(text)
+                                    && !new String(jsonText, StandardCharsets.UTF_8).contains("\\u0000")) {
                                 answer = "refused";
                             }
                             break;
@@ -1500,13 +1507,24 @@ public final class Driver {
         return values;
     }
 
-    private static void mutateWriteRefusal(Object value, String path, String kind, String text)
+    private static boolean hexHasZero(String hex) {
+        byte[] bytes = java.util.HexFormat.of().parseHex(hex);
+        for (byte b : bytes) {
+            if (b == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean mutateWriteRefusal(Object value, String path, String kind, String text)
             throws ReflectiveOperationException {
         String[] segments = path.split("\\.");
         Object current = value;
         for (int i = 0; i < segments.length - 1; i++) {
             WriteRefusalSegment segment = WriteRefusalSegment.parse(segments[i]);
             java.lang.reflect.Field field = writeRefusalField(current.getClass(), segment.name);
+            writeRefusalSetPresent(current, field.getName());
             Object next = field.get(current);
             if (segment.indexed) {
                 next = writeRefusalElement(next, segment.index);
@@ -1515,40 +1533,158 @@ public final class Driver {
         }
         WriteRefusalSegment last = WriteRefusalSegment.parse(segments[segments.length - 1]);
         java.lang.reflect.Field field = writeRefusalField(current.getClass(), last.name);
-        Object fieldValue = field.get(current);
+        writeRefusalSetPresent(current, field.getName());
+        Object container = field.get(current);
         if (last.indexed) {
-            fieldValue = writeRefusalElement(fieldValue, last.index);
+            if (kind.equals("float")) {
+                writeRefusalIndexedFloat(container, last.index, text);
+                return true;
+            }
+            if (kind.equals("int") || kind.equals("ordinal")) {
+                return writeRefusalIndexedInt(container, last.index, text);
+            }
+            if (kind.equals("length")) {
+                if (container instanceof java.util.List<?> rawList) {
+                    Object elem = rawList.get(last.index);
+                    if (elem instanceof String) {
+                        @SuppressWarnings("unchecked")
+                        java.util.List<Object> list = (java.util.List<Object>) rawList;
+                        list.set(last.index, "a".repeat(Integer.parseInt(text)));
+                        return true;
+                    }
+                    if (elem != null && writeRefusalFieldOrNull(elem.getClass(), "value") != null) {
+                        return mutateWriteRefusal(elem, "value", kind, text);
+                    }
+                }
+            }
+            if (kind.equals("bytes")) {
+                if (container instanceof java.util.List<?> rawList) {
+                    Object elem = rawList.get(last.index);
+                    if (elem instanceof String) {
+                        String decoded = decodeWriteRefusalUtf8(text);
+                        if (decoded == null) {
+                            return false;
+                        }
+                        @SuppressWarnings("unchecked")
+                        java.util.List<Object> list = (java.util.List<Object>) rawList;
+                        list.set(last.index, decoded);
+                        return true;
+                    }
+                    if (elem != null && writeRefusalFieldOrNull(elem.getClass(), "value") != null) {
+                        return mutateWriteRefusal(elem, "value", kind, text);
+                    }
+                }
+            }
         }
+        Object fieldValue = last.indexed ? writeRefusalElement(container, last.index) : container;
         switch (kind) {
             case "count":
-                writeRefusalCount(current, fieldValue, last.name, Integer.parseInt(text));
-                return;
+                writeRefusalCount(current, fieldValue, field.getName(), Integer.parseInt(text));
+                return true;
             case "length":
-                writeRefusalLength(current, field, fieldValue, last.name, Integer.parseInt(text));
-                return;
+                writeRefusalLength(current, field, fieldValue, field.getName(), Integer.parseInt(text));
+                return true;
             case "bytes":
-                writeRefusalBytes(current, field, fieldValue, last.name, text);
-                return;
+                return writeRefusalBytes(current, field, fieldValue, field.getName(), text);
             case "units":
-                writeRefusalUnits(current, field, fieldValue, last.name, text);
-                return;
+                writeRefusalUnits(current, field, fieldValue, field.getName(), text);
+                return true;
             case "int":
-                writeRefusalInt(field, current, fieldValue, text);
-                return;
+                return writeRefusalInt(field, current, fieldValue, text);
             case "ordinal":
-                writeRefusalOrdinal(field, current, fieldValue, text);
-                return;
+                return writeRefusalOrdinal(field, current, fieldValue, text);
             case "tag": {
                 String tagName = writeRefusalFieldOrNull(fieldValue.getClass(), "type") != null ? "type" : "tag";
                 java.lang.reflect.Field tag = writeRefusalField(fieldValue.getClass(), tagName);
-                writeRefusalOrdinal(tag, fieldValue, tag.get(fieldValue), text);
-                return;
+                return writeRefusalOrdinal(tag, fieldValue, tag.get(fieldValue), text);
             }
             case "float":
                 writeRefusalFloat(field, current, text);
-                return;
+                return true;
             default:
                 throw new IllegalArgumentException(last.name + ": unknown kind " + kind);
+        }
+    }
+
+    private static void writeRefusalSetPresent(Object owner, String fieldName) throws ReflectiveOperationException {
+        java.lang.reflect.Field present = writeRefusalFieldOrNull(owner.getClass(), fieldName + "Present");
+        if (present != null && present.getType() == boolean.class) {
+            present.setBoolean(owner, true);
+        }
+    }
+
+    private static void writeRefusalIndexedFloat(Object container, int index, String text) {
+        double v;
+        switch (text) {
+            case "nan": v = Double.NaN; break;
+            case "inf": v = Double.POSITIVE_INFINITY; break;
+            case "-inf": v = Double.NEGATIVE_INFINITY; break;
+            default: v = Double.parseDouble(text); break;
+        }
+        if (container instanceof float[] arr) {
+            arr[index] = (float) v;
+        } else if (container instanceof double[] arr) {
+            arr[index] = v;
+        } else if (container instanceof java.util.List<?> rawList) {
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> list = (java.util.List<Object>) rawList;
+            Object cur = list.get(index);
+            if (cur instanceof Float) {
+                list.set(index, Float.valueOf((float) v));
+            } else {
+                list.set(index, Double.valueOf(v));
+            }
+        } else {
+            throw new IllegalArgumentException("indexed float target is not an array or list");
+        }
+    }
+
+    private static boolean writeRefusalIndexedInt(Object container, int index, String text) {
+        java.math.BigInteger big = new java.math.BigInteger(text);
+        if (container instanceof byte[] arr) {
+            arr[index] = (byte) big.intValue();
+            return true;
+        } else if (container instanceof short[] arr) {
+            arr[index] = (short) big.intValue();
+            return true;
+        } else if (container instanceof int[] arr) {
+            arr[index] = big.intValue();
+            return true;
+        } else if (container instanceof long[] arr) {
+            arr[index] = big.longValue();
+            return true;
+        } else if (container instanceof java.util.List<?> rawList) {
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> list = (java.util.List<Object>) rawList;
+            Object cur = list.get(index);
+            if (cur instanceof Integer) {
+                list.set(index, Integer.valueOf(big.intValue()));
+                return true;
+            } else if (cur instanceof Long) {
+                list.set(index, Long.valueOf(big.longValue()));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String decodeWriteRefusalUtf8(String hex) {
+        byte[] bytes = java.util.HexFormat.of().parseHex(hex);
+        if (bytes.length == 3 && (bytes[0] & 0xff) == 0xed
+                && (bytes[1] & 0xff) >= 0xa0 && (bytes[1] & 0xff) <= 0xbf
+                && (bytes[2] & 0xff) >= 0x80 && (bytes[2] & 0xff) <= 0xbf) {
+            char sur = (char) (((bytes[0] & 0x0f) << 12) | ((bytes[1] & 0x3f) << 6) | (bytes[2] & 0x3f));
+            return new String(new char[] { sur });
+        }
+        try {
+            return StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException unrep) {
+            return null;
         }
     }
 
@@ -1597,18 +1733,22 @@ public final class Driver {
         throw new NoSuchFieldException(name + " carries no text buffer");
     }
 
-    private static void writeRefusalBytes(
+    private static boolean writeRefusalBytes(
             Object owner, java.lang.reflect.Field field, Object fieldValue, String name, String text)
             throws ReflectiveOperationException {
         byte[] bytes = java.util.HexFormat.of().parseHex(text);
         if (fieldValue instanceof byte[] target) {
             System.arraycopy(bytes, 0, target, 0, Math.min(bytes.length, target.length));
             writeRefusalCompanion(owner, name, "Length", bytes.length);
-            return;
+            return true;
         }
         if (fieldValue instanceof String) {
-            field.set(owner, new String(bytes, StandardCharsets.UTF_8));
-            return;
+            String decoded = decodeWriteRefusalUtf8(text);
+            if (decoded == null) {
+                return false;
+            }
+            field.set(owner, decoded);
+            return true;
         }
         throw new NoSuchFieldException(name + " carries no byte buffer");
     }
@@ -1644,28 +1784,69 @@ public final class Driver {
         }
     }
 
-    private static void writeRefusalInt(
+    private static boolean writeRefusalInt(
             java.lang.reflect.Field field, Object owner, Object fieldValue, String text)
             throws ReflectiveOperationException {
-        long n = Long.parseLong(text);
+        java.math.BigInteger big = new java.math.BigInteger(text);
         Class<?> type = field.getType();
         if (type == int.class) {
-            field.setInt(owner, (int) n);
+            if (big.compareTo(java.math.BigInteger.valueOf(Integer.MIN_VALUE)) < 0
+                    || big.compareTo(java.math.BigInteger.valueOf(0xFFFFFFFFL)) > 0) {
+                return false;
+            }
+            field.setInt(owner, big.intValue());
+            return true;
         } else if (type == long.class) {
-            field.setLong(owner, n);
+            if (big.compareTo(java.math.BigInteger.valueOf(Long.MIN_VALUE)) < 0
+                    || big.compareTo(new java.math.BigInteger("18446744073709551615")) > 0) {
+                return false;
+            }
+            field.setLong(owner, big.longValue());
+            return true;
         } else if (type == short.class) {
-            field.setShort(owner, (short) n);
+            if (big.compareTo(java.math.BigInteger.valueOf(Short.MIN_VALUE)) < 0
+                    || big.compareTo(java.math.BigInteger.valueOf(0xFFFF)) > 0) {
+                return false;
+            }
+            field.setShort(owner, (short) big.intValue());
+            return true;
         } else if (type == byte.class) {
-            field.setByte(owner, (byte) n);
+            if (big.compareTo(java.math.BigInteger.valueOf(Byte.MIN_VALUE)) < 0
+                    || big.compareTo(java.math.BigInteger.valueOf(0xFF)) > 0) {
+                return false;
+            }
+            field.setByte(owner, (byte) big.intValue());
+            return true;
+        } else if (fieldValue != null && type.getSimpleName().equals("Int128")) {
+            java.math.BigInteger min128 = java.math.BigInteger.ONE.shiftLeft(127).negate();
+            java.math.BigInteger max128 = java.math.BigInteger.ONE.shiftLeft(127).subtract(java.math.BigInteger.ONE);
+            if (big.compareTo(min128) < 0 || big.compareTo(max128) > 0) {
+                return false;
+            }
+            long lo = big.longValue();
+            long hi = big.shiftRight(64).longValue();
+            Object inst = type.getConstructor(long.class, long.class).newInstance(hi, lo);
+            field.set(owner, inst);
+            return true;
+        } else if (fieldValue != null && type.getSimpleName().equals("UInt128")) {
+            java.math.BigInteger maxU128 = java.math.BigInteger.ONE.shiftLeft(128).subtract(java.math.BigInteger.ONE);
+            if (big.signum() < 0 || big.compareTo(maxU128) > 0) {
+                return false;
+            }
+            long lo = big.longValue();
+            long hi = big.shiftRight(64).longValue();
+            Object inst = type.getConstructor(long.class, long.class).newInstance(hi, lo);
+            field.set(owner, inst);
+            return true;
         } else {
             throw new NoSuchFieldException(field.getName() + " is not an integer");
         }
     }
 
-    private static void writeRefusalOrdinal(
+    private static boolean writeRefusalOrdinal(
             java.lang.reflect.Field field, Object owner, Object fieldValue, String text)
             throws ReflectiveOperationException {
-        writeRefusalInt(field, owner, fieldValue, text);
+        return writeRefusalInt(field, owner, fieldValue, text);
     }
 
     private static void writeRefusalFloat(
@@ -2234,6 +2415,41 @@ public final class Driver {
         return 0;
     }
 
+    private static int surfaceRetainVarEvo2(String[] f, String out, boolean saved) throws IOException {
+        if (saved && f[f.length - 1].equals("-")) { return 0; }
+        byte[] wire = Files.readAllBytes(Paths.get(f[4]));
+        tblvarevo2.TableVariable.Report report = new tblvarevo2.TableVariable.Report();
+        tblvarevo2.TableRetain store = new tblvarevo2.TableRetain(RETAIN_BYTES, f[6].equals("full") ? RETAIN_IDS : Integer.parseInt(f[6]));
+        if (f[5].equals("short")) {
+            tblvarevo2.EvoDocRetain.loadRetain(wire, store, new tblvarevo2.TableVariable.Report());
+            store.capacity = store.used - 1;
+        }
+        tblvarevo2.EvoDocVariable.Value root = tblvarevo2.EvoDocRetain.loadRetain(wire, store, report);
+        if (report.damaged || report.refused || root == null) {
+            if (!saved) { spill(out, f[1], "refused\n"); }
+            return 0;
+        }
+        tblvarevo2.TableVariable.Report save = new tblvarevo2.TableVariable.Report();
+        long size = tblvarevo2.EvoDocRetain.measureRetain(root, store);
+        byte[] file = tblvarevo2.EvoDocRetain.saveRetain(root, store, save);
+        if (size < 0 || file == null || file.length != size) {
+            return failInt(f[1] + ": the retaining save refused or disagreed with its measure");
+        }
+        if (saved) {
+            spill(out, f[1], file);
+        } else {
+            byte[] text = tblvarevo2.EvoDocVariable.toJson(root);
+            if (text == null) { return failInt(f[1] + ": toJson refused the retained value"); }
+            byte[] head = "read\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] both = new byte[head.length + text.length];
+            System.arraycopy(head, 0, both, 0, head.length);
+            System.arraycopy(text, 0, both, head.length, text.length);
+            spill(out, f[1] + ".wire", file);
+            spill(out, f[1], both);
+        }
+        return 0;
+    }
+
     private static int surfaceRetain(String out, boolean saved) throws IOException {
         for (String[] f : lines) {
             if (!f[0].equals("retain")) {
@@ -2241,6 +2457,10 @@ public final class Driver {
             }
             if (f[2].equals("tblvarevo1") && f[3].equals("EvoDoc")) {
                 if (surfaceRetainVarEvo1(f, out, saved) != 0) { return 1; }
+                continue;
+            }
+            if (f[2].equals("tblvarevo2") && f[3].equals("EvoDoc")) {
+                if (surfaceRetainVarEvo2(f, out, saved) != 0) { return 1; }
                 continue;
             }
             if (!f[2].equals("tblrt1") || !f[3].equals("Node")) {

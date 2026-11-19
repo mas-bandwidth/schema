@@ -118,29 +118,82 @@ export function setFixed(value, path, kind, text) {
 // setVariable sets the one field a row names in the variable value, where the
 // text writer reads it: a text is a string, so `bytes` must be UTF-8 this leg's
 // string can hold, and bytes it cannot are `unrepresentable`.
-export function setVariable(value, path, kind, text) {
-  const { owner, last } = walk(value, path, (name) => name);
-  const p = own(owner, last.name, path);
-  const set = (v) => { if (last.index < 0) { owner[p] = v; } else { owner[p][last.index] = v; } };
+function decodeVariableLeaf(cur, kind, text) {
   switch (kind) {
     case "bytes": {
-      let s;
-      try { s = utf8.decode(hexBytes(text)); } catch { return false; }
-      set(s);
+      const raw = hexBytes(text);
+      if (cur instanceof Uint8Array) { return { ok: true, v: raw }; }
+      try { return { ok: true, v: utf8.decode(raw) }; } catch { return { ok: false, v: null }; }
+    }
+    case "length": {
+      const n = Number(text);
+      if (cur instanceof Uint8Array) { return { ok: true, v: new Uint8Array(n).fill(0x61) }; }
+      return { ok: true, v: "a".repeat(n) };
+    }
+    case "int":
+      return { ok: true, v: typeof cur === "bigint" ? BigInt(text) : Number(text) };
+    case "float":
+      return { ok: true, v: floatOf(text) };
+    case "ordinal": {
+      const n = Number(text);
+      return { ok: true, v: n === 0 ? null : "__invalid_ordinal_" + text };
+    }
+    case "tag": {
+      const n = Number(text);
+      return { ok: true, v: n === 0 ? null : { arm: "__invalid_tag_" + text, value: null } };
+    }
+    case "count": {
+      const n = Number(text);
+      const arr = Array.isArray(cur) ? cur.slice(0, n) : [];
+      while (arr.length < n) { arr.push(structuredClone(cur[0])); }
+      return { ok: true, v: arr };
+    }
+    default:
+      throw new Error("kind " + kind + " has no spelling in this leg's variable value");
+  }
+}
+
+export function setVariable(value, path, kind, text) {
+  const segments = path.split(".");
+  let cur = value;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const { name, index } = segmentOf(segments[i]);
+    if (cur === null || typeof cur !== "object" || !(name in cur)) { throw new Error(path + ": no field " + name); }
+    const next = cur[name];
+    if (next instanceof Map && index >= 0 && i === segments.length - 2) {
+      const entries = Array.from(next.entries()).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+      const which = segments[segments.length - 1];
+      const leaf = decodeVariableLeaf(which === "key" ? entries[index][0] : entries[index][1], kind, text);
+      if (!leaf.ok) { return false; }
+      if (which === "key") { entries[index][0] = leaf.v; } else { entries[index][1] = leaf.v; }
+      next.clear();
+      for (const [k, v] of entries) { next.set(k, v); }
       return true;
     }
-    case "length":
-      set("a".repeat(Number(text)));
-      return true;
-    case "int":
-      set(typeof (last.index < 0 ? owner[p] : owner[p][last.index]) === "bigint" ? BigInt(text) : Number(text));
-      return true;
-    case "float":
-      set(floatOf(text));
-      return true;
-    default:
-      throw new Error(path + ": kind " + kind + " has no spelling in this leg's variable value");
+    cur = index < 0 ? next : next[index];
   }
+  if (cur === null || typeof cur !== "object") { throw new Error(path + ": no owner"); }
+  const last = segmentOf(segments[segments.length - 1]);
+  if ("arm" in cur && "value" in cur && !(last.name in cur)) {
+    const leaf = decodeVariableLeaf(cur.value, kind, text);
+    if (!leaf.ok) { return false; }
+    cur.arm = last.name;
+    cur.value = leaf.v;
+    return true;
+  }
+  const p = own(cur, last.name, path);
+  const slot = last.index < 0 ? cur[p] : cur[p][last.index];
+  const isTextListBox = last.index >= 0 && slot !== null && typeof slot === "object" && !(slot instanceof Uint8Array) && "value" in slot && Object.keys(slot).length === 1;
+  const leaf = decodeVariableLeaf(isTextListBox ? slot.value : slot, kind, text);
+  if (!leaf.ok) { return false; }
+  if (isTextListBox) {
+    slot.value = leaf.v;
+  } else if (last.index < 0) {
+    cur[p] = leaf.v;
+  } else {
+    cur[p][last.index] = leaf.v;
+  }
+  return true;
 }
 
 function connectionUnit(lines, connection) {
@@ -176,7 +229,18 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
       }
     } else {
       if (codec.fixedValue === undefined) {
-        absent(outDir, name, unit + "." + root + " is not a fixed root: this leg's binary write-refusal rows set the fixed class");
+        if (surface !== "write-refusal") {
+          absent(outDir, name, unit + "." + root + " is not a fixed root");
+          continue;
+        }
+        const v = codec.load(wire, codec.report());
+        if (v === null || v === undefined) { throw new Error(name + ": load refused " + wirePath); }
+        if (!setVariable(v, path, kind, text)) {
+          answer = "unrepresentable";
+        } else {
+          answer = codec.save(v) === null ? "refused" : "wrote";
+        }
+        writeFileSync(join(outDir, name), answer + "\n");
         continue;
       }
       const x = codec.fixedValue.load(wire);

@@ -554,6 +554,9 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 	if why ~= nil then return why end
 	local alignment = integer.tonumber(buffer.readinteger(b, start + 40))
 	local data = start + align_up(HEADER_BYTES, alignment)
+	for z = start + HEADER_BYTES, data - 1 do
+		if buffer.readu8(b, z) ~= 0 then return "bad_layout" end
+	end
 	local length = integer.tonumber(buffer.readinteger(b, start + 24))
 	local attrib = data + length
 	local attribLength = start + n - attrib
@@ -580,6 +583,17 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 		if at < previousEnd or at % align ~= 0 or size > length - at then return "bad_layout" end
 		previousEnd = at + size
 	end
+	local function zeroRange(from: number, stop: number): boolean
+		for z = from, stop - 1 do
+			if buffer.readu8(b, data + z) ~= 0 then return false end
+		end
+		return true
+	end
+	local curEntry = 0
+	local edges: { { number } } = {}
+	for i = 1, entries do
+		edges[i] = {}
+	end
 	local function ref(at: number, fd: any): boolean
 		local delta = buffer.readinteger(b, data + at)
 		if delta == 0i then return true end
@@ -596,22 +610,28 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 			elseif target > offset then lo = mid + 1
 			else
 				local want = if fd.s == "bblob" then bytesId elseif fd.s == "sblob" then stringId else S.lookup(fd.t).id
-				return id == want
+				if id ~= want then return false end
+				if fd.s == "ptr" then
+					local list = edges[curEntry + 1]
+					list[#list + 1] = mid + 1
+				end
+				return true
 			end
 		end
 		return false
 	end
-	local nodeBase, nodeEnd = 0, 0
+	local nodeBase, recordEnd, nodeEnd = 0, 0, 0
 	local arrays: { { first: number, last: number } } = {}
 	local nonFinite = false
 	local function placed(at: number, size: number, align: number): (number?, number)
+		if not zeroRange(at + 12, at + 16) then return nil, 0 end
 		local delta = buffer.readinteger(b, data + at)
 		local count = buffer.readi32(b, data + at + 8)
 		if count < 0 then return nil, 0 end
 		if delta == 0i then return if count == 0 then 0 else nil, count end
-		if count == 0 or integer.lt(delta, integer.create(nodeBase - at)) or integer.lt(integer.create(nodeEnd - at), delta) then return nil, 0 end
+		if count == 0 or integer.lt(delta, integer.create(recordEnd - at)) or integer.lt(integer.create(nodeEnd - at), delta) then return nil, 0 end
 		local first = at + integer.tonumber(delta)
-		if first % align ~= 0 or count > (nodeEnd - first) // size then return nil, 0 end
+		if first < recordEnd or first % align ~= 0 or count > (nodeEnd - first) // size then return nil, 0 end
 		local last = first + count * size
 		for _, other in arrays do
 			if first < other.last and other.first < last then return nil, 0 end
@@ -630,9 +650,9 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 	local function textBlob(at: number): (number?, number)
 		local delta = buffer.readinteger(b, data + at)
 		if delta == 0i then return 0, 0 end
-		if integer.lt(delta, integer.create(nodeBase - at)) or integer.lt(integer.create(nodeEnd - 8 - at), delta) then return nil, 0 end
+		if integer.lt(delta, integer.create(recordEnd - at)) or integer.lt(integer.create(nodeEnd - 8 - at), delta) then return nil, 0 end
 		local first = at + integer.tonumber(delta)
-		if first % 8 ~= 0 then return nil, 0 end
+		if first < recordEnd or first % 8 ~= 0 then return nil, 0 end
 		local n = buffer.readu32(b, data + first)
 		if n <= 0 or n + 9 > nodeEnd - first then return nil, 0 end
 		return first, n
@@ -641,6 +661,7 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 		local first, n = textBlob(at)
 		if first == nil then return false end
 		if n == 0 then return true end
+		if not zeroRange(first + 4, first + 8) then return false end
 		if buffer.readu8(b, data + first + 8 + n) ~= 0 then return false end
 		local last = first + 8 + n + 1
 		for _, other in arrays do
@@ -683,11 +704,17 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 	local function scanValue(at: number, fd: any, recordName: string?): boolean
 		if recordName ~= nil then
 			local d = S.lookup(recordName)
-			local offsets = recordOffsets(d.fields)
-			for i, nested in d.fields do
-				if not scanValue(at + offsets[i], nested, nil) then return false end
+			local rl = recordLayout(recordName)
+			local cursor = at
+			local offset = 0
+			for _, nested in d.fields do
+				local fl = layoutField(nested, offset)
+				if not zeroRange(cursor, at + fl.start) then return false end
+				if not scanValue(at + fl.start, nested, nil) then return false end
+				cursor = at + fl.finish
+				offset = fl.finish
 			end
-			return true
+			return zeroRange(cursor, at + rl.size)
 		end
 		local shape = fd.s
 		if fd.present ~= nil then
@@ -695,20 +722,26 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 			local p = buffer.readu8(b, data + fl.finish - 1)
 			if p > 1 then return false end
 			if p == 0 then
-				if shape == "map" then
-					return buffer.readinteger(b, data + at) == 0i and buffer.readi32(b, data + at + 8) == 0
-				end
-				if isText(fd) then
-					return buffer.readinteger(b, data + at) == 0i
-				end
+				return zeroRange(at, fl.finish - 1)
 			end
 		end
 		if isText(fd) then return textSlot(at) end
 		if shape == "ptr" or shape == "sblob" or shape == "bblob" then return ref(at, fd) end
+		if shape == "bool" then return buffer.readu8(b, data + at) <= 1 end
 		if shape == "str" then
-			return companion(align_up(at + (fd.bound + 1), 4), fd.bound)
+			local bufEnd = at + fd.bound + 1
+			local compAt = align_up(bufEnd, 4)
+			if not zeroRange(bufEnd, compAt) or not companion(compAt, fd.bound) then return false end
+			local used = buffer.readi32(b, data + compAt)
+			return zeroRange(at + used, bufEnd)
 		end
-		if shape == "bytes" then return companion(align_up(at + fd.bound, 4), fd.bound) end
+		if shape == "bytes" then
+			local bufEnd = at + fd.bound
+			local compAt = align_up(bufEnd, 4)
+			if not zeroRange(bufEnd, compAt) or not companion(compAt, fd.bound) then return false end
+			local used = buffer.readi32(b, data + compAt)
+			return zeroRange(at + used, bufEnd)
+		end
 		if shape == "float" then
 			if not f_finite(b, data + at, fd.f32 == true) then nonFinite = true; return false end
 			return true
@@ -718,10 +751,15 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 			local d = S.lookup(fd.t)
 			local layout = unionLayout(fd.t)
 			local tag = as_number(u_at(b, data + at, layout.tag))
-			if tag == 0 then return true end
+			if tag == 0 then return zeroRange(at + layout.tag, at + layout.size) end
 			if tag < 0 or tag > #d.arms then return false end
 			local arm = d.arms[tag]
-			return arm.s == "void" or scanValue(at + layout.armOffset, arm, nil)
+			if arm.s == "void" then return zeroRange(at + layout.tag, at + layout.size) end
+			if not zeroRange(at + layout.tag, at + layout.armOffset) then return false end
+			local armAt = at + layout.armOffset
+			local armFl = layoutField(arm, armAt)
+			if not scanValue(armAt, arm, nil) then return false end
+			return zeroRange(armFl.finish, at + layout.size)
 		end
 		if shape == "arr" then
 			local layout = elemLayout(fd.e)
@@ -730,14 +768,19 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 				local found, nfound = placed(at, layout.size, layout.align)
 				if found == nil then return false end
 				first, count = found, nfound
-			elseif fd.array == "counted" then
-				local compAt = align_up(at + count * layout.size, 4)
-				if not companion(compAt, count) then return false end
-				local used = buffer.readi32(b, data + compAt)
-				for z = at + used * layout.size, at + count * layout.size - 1 do
-					if buffer.readu8(b, data + z) ~= 0 then return false end
+				for i = 0, count - 1 do
+					if not scanValue(first + i * layout.size, fd.e, nil) then return false end
 				end
-				count = used
+				return true
+			elseif fd.array == "counted" then
+				local arrEnd = at + count * layout.size
+				local compAt = align_up(arrEnd, 4)
+				if not zeroRange(arrEnd, compAt) or not companion(compAt, count) then return false end
+				local used = buffer.readi32(b, data + compAt)
+				for i = 0, used - 1 do
+					if not scanValue(first + i * layout.size, fd.e, nil) then return false end
+				end
+				return zeroRange(at + used * layout.size, arrEnd)
 			end
 			for i = 0, count - 1 do
 				if not scanValue(first + i * layout.size, fd.e, nil) then return false end
@@ -767,6 +810,7 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 	end
 	local function scan(): string?
 		for i = 0, entries - 1 do
+			curEntry = i
 			local word, id = entry(i)
 			nodeBase = integer.tonumber(word)
 			nodeEnd = length
@@ -774,11 +818,39 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 			arrays = {}
 			local d = S.lookupTypeId(id)
 			if d == nil then
-				local size = 8 + buffer.readu32(b, data + nodeBase) + (if id == stringId then 1 else 0)
+				if not zeroRange(nodeBase + 4, nodeBase + 8) then return "bad_layout" end
+				local len = buffer.readu32(b, data + nodeBase)
+				local size = 8 + len + (if id == stringId then 1 else 0)
 				if size > nodeEnd - nodeBase then return "bad_layout" end
-			elseif not scanValue(nodeBase, nil, d.name) then
-				return if nonFinite then "non_finite_float" else "bad_layout"
+				if id == stringId and buffer.readu8(b, data + nodeBase + 8 + len) ~= 0 then return "bad_layout" end
+				if not zeroRange(nodeBase + size, nodeEnd) then return "bad_layout" end
+			else
+				recordEnd = nodeBase + recordLayout(d.name).size
+				if not scanValue(nodeBase, nil, d.name) then
+					return if nonFinite then "non_finite_float" else "bad_layout"
+				end
+				table.sort(arrays, function(a: { first: number, last: number }, c: { first: number, last: number }) return a.first < c.first end)
+				local cursor = recordEnd
+				for _, r in arrays do
+					if not zeroRange(cursor, math.min(r.first, nodeEnd)) then return "bad_layout" end
+					if r.last > cursor then cursor = r.last end
+				end
+				if cursor < nodeEnd and not zeroRange(cursor, nodeEnd) then return "bad_layout" end
 			end
+		end
+		local color: { [number]: number } = {}
+		local function hasCycle(u: number): boolean
+			color[u] = 1
+			for _, v in edges[u] do
+				local c = color[v]
+				if c == 1 then return true end
+				if c == nil and hasCycle(v) then return true end
+			end
+			color[u] = 2
+			return false
+		end
+		for i = 1, entries do
+			if color[i] == nil and hasCycle(i) then return "bad_layout" end
 		end
 		return nil
 	end

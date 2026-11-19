@@ -26,16 +26,24 @@ func messageModule(m *Module) {
 	}
 	m.Printf("];\n")
 	slots := tablewire.MessageVocabularySlots(m.Unit)
-	tnames := make([]string, 0, len(m.Unit.Tables))
+	tnames := make([]string, 0, len(m.Unit.Tables)+len(m.Unit.Structs))
+	byName := map[string]*ir.Struct{}
 	for name, st := range m.Unit.Tables {
-		if st != nil && st.IsTable && !st.IsMapEntry() {
+		if st != nil && st.IsTable && st.FixedDeclared && !st.IsMapEntry() {
 			tnames = append(tnames, name)
+			byName[name] = st
+		}
+	}
+	for name, st := range m.Unit.Structs {
+		if st != nil && !st.IsMapEntry() {
+			tnames = append(tnames, name)
+			byName[name] = st
 		}
 	}
 	sort.Strings(tnames)
 	m.Printf("_M.TableMessageFieldSlots <- {")
 	for _, name := range tnames {
-		st := m.Unit.Tables[name]
+		st := byName[name]
 		m.Printf(" [%s] = [", squirrel.StringLit([]byte(st.Name)))
 		for _, fld := range st.Fields {
 			m.Printf("%d,", slots[ir.TableFieldEntry(fld).Key()])

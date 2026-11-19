@@ -666,7 +666,7 @@ func (b *unionVarBuilder) armValue(un *ir.Union, v ir.UnionVariant, cls string, 
 func (b *unionVarBuilder) armPayload(un *ir.Union, v ir.UnionVariant, cls string, depth int) string {
 	switch {
 	case v.Body():
-		if !b.fixed[un.Name] && cls != "" {
+		if !b.fixed[un.Name] && cls != "" && b.g.unit.Tables[v.Ref.Name] != nil {
 			return fmt.Sprintf("new %s().%s", cls, js.MemberName(v.Name))
 		}
 		return "new __V." + v.Ref.Name + "()"
