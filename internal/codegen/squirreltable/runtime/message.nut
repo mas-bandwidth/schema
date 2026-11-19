@@ -796,7 +796,9 @@ writePayload = function(T, w, fd, value, depth) {
     foreach (a in ud.arms) if (a.tag == value.Type) arm = a;
     if (arm == null && value.Type != 0) { refuseValue(w); return; }
     if (arm == null) { put(w, 0, T.TableMessageRefBitsHere); return; }
-    local ref = findSlot(T, arm.id); put(w, ref, T.TableMessageRefBitsHere);
+    local aslots = ("TableMessageArmSlots" in T && fd.table in T.TableMessageArmSlots) ? T.TableMessageArmSlots[fd.table] : null;
+    local ref = (aslots != null && arm.tag >= 1 && arm.tag <= aslots.len()) ? aslots[arm.tag - 1] : findSlot(T, arm.id);
+    put(w, ref, T.TableMessageRefBitsHere);
     if (arm.payload != null) writePayload(T, w, arm.payload, value[arm.member], depth + 1);
     return;
   }
@@ -945,7 +947,9 @@ writeBody = function(T, w, d, value, depth) {
     // terminator alone it is rolled back to the mark, as the Go engine's
     // encoder does, so each level is written once whatever the depth
     local elides=fd.shape=="tab"&&!fd.optional&&!("required" in fd && fd.required);
-    local ref=findSlot(T,fd.id);if(ref==0&&!elides){w.bad=true;return;}
+    local fslots=("TableMessageFieldSlots" in T && d.name in T.TableMessageFieldSlots)?T.TableMessageFieldSlots[d.name]:null;
+    local ref=(fslots!=null && fd.ordinal<fslots.len())?fslots[fd.ordinal]:findSlot(T,fd.id);
+    if(ref==0&&!elides){w.bad=true;return;}
     local mark=w.bits;
     put(w,ref,T.TableMessageRefBitsHere);
     w.owner = d.name;

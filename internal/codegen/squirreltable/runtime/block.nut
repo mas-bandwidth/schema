@@ -28,7 +28,7 @@ local eqB = function(b, at, want) {
 
 // refuse names a refusal (§11) and returns null.
 local refuse = function(report, reason) {
-  if (report != null) { report.refused = true; report.reason <- reason; }
+  if (report != null) { report.refused <- true; report.reason <- reason; }
   return null;
 };
 

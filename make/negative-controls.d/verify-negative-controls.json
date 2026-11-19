@@ -8,6 +8,7 @@
     "verify-sabotage-retain-negative-control",
     "verify-json-fuzz-negative-control",
     "verify-bitphase-negative-control",
-    "verify-canonical-negative-control"
+    "verify-canonical-negative-control",
+    "verify-reuse-negative-control"
   ]
 }

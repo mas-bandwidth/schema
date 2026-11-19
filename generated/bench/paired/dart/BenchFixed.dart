@@ -3477,6 +3477,7 @@ bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
   }
   if (value.damage != 0) {
     w.put(42, tableMessageRefBits);
+    w.put(value.damage - 0, 8);
   }
   if (value.moving != false) {
     w.put(43, tableMessageRefBits);
@@ -3738,6 +3739,13 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
+        }
+        {
+          final bits = TableMessageShape.valueBits(entry.kind, shape);
+          final v = r.bits.get(bits);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          value.damage = v;
+          if (shape.packing == 1) { value.damage += shape.base; }
         }
         if (sameBuild && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
