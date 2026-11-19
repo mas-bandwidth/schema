@@ -125,6 +125,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema \
 	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
 	tblscalars2:test/tables/Scalars2.schema \
+	tblfixedevo:test/tables/fixedevo \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema

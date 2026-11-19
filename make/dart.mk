@@ -128,7 +128,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
+build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/RT1.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
@@ -174,6 +174,7 @@ build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witn
 	./bin/schema generate --lang dart --out build/tables-generated-dart/k2 test/tables/K2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/a2 test/tables/A2.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars2 test/tables/Scalars2.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/fixedevo test/tables/fixedevo
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's

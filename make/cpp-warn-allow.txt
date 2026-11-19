@@ -139,6 +139,13 @@ build/tables-generated/fh2/FH2Table.cpp float-equal,nrvo,old-style-cast,padded,s
 build/tables-generated/fh2/FH2Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
 build/tables-generated/fh2/FH2Wire.h covered-switch-default,switch-default
 build/tables-generated/fh2/Tblfh2View.h padded
+build/tables-generated/fixedevo/FixedEvo.h covered-switch-default,padded
+build/tables-generated/fixedevo/FixedEvoBlock.cpp old-style-cast
+build/tables-generated/fixedevo/FixedEvoBlock.h allocator-wrappers,cast-align,old-style-cast,padded
+build/tables-generated/fixedevo/FixedEvoTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/fixedevo/FixedEvoTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
+build/tables-generated/fixedevo/FixedEvoWire.h covered-switch-default,switch-default
+build/tables-generated/fixedevo/TblfixedevoView.h padded
 build/tables-generated/fm1/FM1.h covered-switch-default,padded
 build/tables-generated/fm1/FM1Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/fm1/FM1Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum

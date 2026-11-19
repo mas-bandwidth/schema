@@ -49,8 +49,10 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 		count, ok := load(values, v, wire, &r)
 		rep := snap(&r)
 		if fuzz {
-			count = 1
 			rep.refused = rep.refused || !ok
+			if !ok {
+				return nil, rep, false
+			}
 		} else if !ok {
 			return nil, rep, false
 		}

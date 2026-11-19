@@ -82,6 +82,8 @@ unit tblr2     test/tables/R2.schema
 instance root_full            tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin
 instance root_default         tabledemo RootConfig    testdata/conformance/tables/wire/root_default.bin
 instance profile_elide        tabledemo ProfileConfig testdata/conformance/tables/wire/profile_elide.bin
+instance profile_boundaries   tabledemo ProfileConfig testdata/conformance/tables/wire/profile_boundaries.bin
+report   profile_utf8_mid_trunc tabledemo ProfileConfig testdata/conformance/tables/wire/profile_utf8_mid_trunc.bin
 instance text_escapes          tabledemo ProfileConfig testdata/conformance/tables/wire/text_escapes.bin
 instance text_escapes_raw      tabledemo ProfileConfig testdata/conformance/tables/wire/text_escapes_raw.bin
 instance text_float_exp        tabledemo ProfileConfig testdata/conformance/tables/wire/text_float_exp.bin
@@ -211,6 +213,8 @@ instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_
 # is a string with no first key to carry `&node`, so a shared blob has no
 # spelling (§16.7).
 instance blob_equal_bytes      blobdemo    Catalog     testdata/wire/tables/blob_equal_bytes.bin  no-text
+instance blob_zero_and_equal_strings blobdemo Catalog  testdata/wire/tables/blob_zero_and_equal_strings.bin
+report   blob_utf8_mid_trunc         blobdemo Catalog  testdata/wire/tables/blob_utf8_mid_trunc.bin
 instance blob_shared_string mapdemo Docs testdata/wire/tables/blob_shared_string.bin no-text wire-refused
 
 
@@ -413,6 +417,7 @@ cook SceneValued graphdemo Scene    testdata/conformance/tables/cook/SceneValued
 cook-write root_full              testdata/conformance/tables/cook-write/root_full.cook testdata/conformance/tables/cook-write/root_full-be.cook
 cook-write root_default           testdata/conformance/tables/cook-write/root_default.cook testdata/conformance/tables/cook-write/root_default-be.cook
 cook-write profile_elide          testdata/conformance/tables/cook-write/profile_elide.cook testdata/conformance/tables/cook-write/profile_elide-be.cook
+cook-write profile_boundaries     testdata/conformance/tables/cook-write/profile_boundaries.cook testdata/conformance/tables/cook-write/profile_boundaries-be.cook
 cook-write loadout_full           testdata/conformance/tables/cook-write/loadout_full.cook testdata/conformance/tables/cook-write/loadout_full-be.cook
 cook-write archive                testdata/conformance/tables/cook-write/archive.cook testdata/conformance/tables/cook-write/archive-be.cook
 cook-write keyed_config           testdata/conformance/tables/cook-write/keyed_config.cook testdata/conformance/tables/cook-write/keyed_config-be.cook
@@ -460,6 +465,7 @@ cook-write blob_large             testdata/conformance/tables/cook-write/blob_la
 cook-write blob_shared            testdata/conformance/tables/cook-write/blob_shared.cook testdata/conformance/tables/cook-write/blob_shared-be.cook input=testdata/conformance/tables/cook-input/blob_shared.json share=thumb:alias
 cook-write blob_str8              testdata/conformance/tables/cook-write/blob_str8.cook testdata/conformance/tables/cook-write/blob_str8-be.cook
 cook-write blob_str16             testdata/conformance/tables/cook-write/blob_str16.cook testdata/conformance/tables/cook-write/blob_str16-be.cook
+cook-write blob_zero_and_equal_strings testdata/conformance/tables/cook-write/blob_zero_and_equal_strings.cook testdata/conformance/tables/cook-write/blob_zero_and_equal_strings-be.cook
 
 # THE BLOCK FORGERY BATTERY as data (docs/SPEC-TABLES.md §19.2), pinned from
 # test/tables/block_main.cpp's eleven by test/conformance/cpp: each row is one
@@ -852,6 +858,7 @@ unit tblscalars2 test/tables/Scalars2.schema
 instance scalars_full    scalars SimState testdata/conformance/tables/wire/scalars_full.bin
 instance scalars_default scalars SimState testdata/conformance/tables/wire/scalars_default.bin
 instance scalars_edges   scalars SimState testdata/conformance/tables/wire/scalars_edges.bin
+instance scalars_uint128_max scalars SimState testdata/conformance/tables/wire/scalars_uint128_max.bin
 report scalars_full_as_2  tblscalars2 SimState testdata/wire/tables/scalars_full.bin
 report scalars_edges_as_2 tblscalars2 SimState testdata/wire/tables/scalars_edges.bin
 # a PLAIN TOP-LEVEL SCALAR field, written narrower than the declaration: the
@@ -861,6 +868,7 @@ report field_scalar_widen tblscalars2 SimState testdata/wire/tables/field_scalar
 cook-write scalars_full    testdata/conformance/tables/cook-write/scalars_full.cook    testdata/conformance/tables/cook-write/scalars_full-be.cook
 cook-write scalars_default testdata/conformance/tables/cook-write/scalars_default.cook testdata/conformance/tables/cook-write/scalars_default-be.cook
 cook-write scalars_edges   testdata/conformance/tables/cook-write/scalars_edges.cook   testdata/conformance/tables/cook-write/scalars_edges-be.cook
+cook-write scalars_uint128_max testdata/conformance/tables/cook-write/scalars_uint128_max.cook testdata/conformance/tables/cook-write/scalars_uint128_max-be.cook
 
 # the text form's rules at the wide kinds (§16.2): a fixed takes any number
 # token whose value is EXACTLY representable in its Q I.F and refuses a finer
@@ -1255,6 +1263,27 @@ framing node_cycle_mid                          graphdemo ListNode testdata/wire
 framing node_diamond_chain                      graphdemo Scene testdata/wire/tables/framing/node_diamond_chain.bin               read    testdata/conformance/tables/framing/scene_diamond_chain.json
 framing node_chain_two                          graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin                   read    testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
 
+# MULTI-VERSION FIXED-TABLE LINEAGE EVOLUTION (docs/SPEC-TABLES.md §2.10, §3.4,
+# §21; docs/FIXED-FORM-ALGORITHM.md §4–§5): v0 retired -> v1 -> v2 -> v3 locked
+# in test/tables/fixedevo/schema.lock, exercising non-identity compiled Form-3
+# plans across integer/float/fixed/ufixed/bits/flags/string/array widenings,
+# `was` renames, deprecated writer fields, appended non-zero defaults, nested
+# union guard chains, optional nested fixed tables, retired floor refusal,
+# corrupt deprecated writer slots, non-zero dead counted tails, mid-codepoint
+# UTF-8 truncation, and multi-record batch refusal.
+unit tblfixedevo test/tables/fixedevo
+instance fixedevo_v3_full       tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_full.bin
+instance fixedevo_v3_min        tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_min.bin
+cook-write fixedevo_v3_full     testdata/conformance/tables/cook-write/fixedevo_v3_full.cook testdata/conformance/tables/cook-write/fixedevo_v3_full-be.cook
+cook-write fixedevo_v3_min      testdata/conformance/tables/cook-write/fixedevo_v3_min.cook  testdata/conformance/tables/cook-write/fixedevo_v3_min-be.cook
+report fixedevo_v0_retired      tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v0_retired.bin
+report fixedevo_v1_as_v3        tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v1.bin
+report fixedevo_v2_as_v3        tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v2.bin
+report fixedevo_v1_dep_corrupt  tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v1_dep_corrupt.bin
+report fixedevo_v1_dead_tail    tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v1_dead_tail.bin
+report fixedevo_v3_utf8_trunc   tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_utf8_trunc.bin
+report fixedevo_v3_batch2       tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_batch2.bin
+
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
 # other unit's build version or vocabulary moves. The root's storage is eight
@@ -1370,6 +1399,8 @@ report previous_form_text_float32_double_round tabledemo ProfileConfig testdata/
 # Every report row and framing row that reads has a row here, and the harness
 # test TestEveryReadingRowIsARewriteRow holds that.
 rewrite p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
+rewrite fixedevo_v1_as_v3 tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v1.bin
+rewrite fixedevo_v2_as_v3 tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v2.bin
 rewrite w1_fleet_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet.bin
 rewrite w2_fleet_as_w1 tblw1 Fleet testdata/wire/tables/w2_fleet.bin
 rewrite w1_fleet_default_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet_default.bin

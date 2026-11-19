@@ -49,6 +49,7 @@
 #include "ScalarsTable.h"
 #include "WidesTable.h"
 #include "Scalars2Table.h"
+#include "FixedEvoTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -366,6 +367,7 @@ static const Codec codecs[] = {
     CODEC( "tblr2", tblr2, Cfg ),
     CODEC( "scalars", scalardemo, SimState ),
     CODEC( "tblscalars2", scalardemo2, SimState ),
+    CODEC( "tblfixedevo", tblfixedevo, EvoRoot ),
     // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): their FILE-form
     // vectors are ordinary instances and ride every surface an instance rides
     CODEC( "backenddemo", backenddemo, LoginRequest ),

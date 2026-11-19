@@ -191,6 +191,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/r2 test/tables/R2.schema' \
 		'build/tables-generated-go/scalars tables/scalars' \
 		'build/tables-generated-go/scalars2 test/tables/Scalars2.schema' \
+		'build/tables-generated-go/fixedevo test/tables/fixedevo' \
 		'build/tables-generated-go/messages tables/messages' \
 		'build/tables-generated-go/stream tables/stream' \
 		'build/tables-generated-go/blobs tables/blobs' \
@@ -228,6 +229,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,p3,tblp3)
 	$(call go_table_module,scalars,scalardemo)
 	$(call go_table_module,scalars2,tblscalars2)
+	$(call go_table_module,fixedevo,tblfixedevo)
 	$(call go_table_module,m1,tblm1)
 	$(call go_table_module,m2,tblm2)
 	$(call go_table_module,a1,tbla1)

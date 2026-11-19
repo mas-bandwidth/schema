@@ -5765,7 +5765,13 @@ func BenchMixedReset(value *BenchMixed) {
 		MixedStatReset(&value.Stats[i])
 	}
 	value.StatsCount = 0
-	value.GameEvent.Type = MixedEventTypeNone
+	{
+		value := &(value.GameEvent)
+		MixedHitEventReset(&value.Hit)
+		MixedChatEventReset(&value.Chat)
+		MixedPickupEventReset(&value.Pickup)
+		value.Type = MixedEventTypeNone
+	}
 	clear(value.Loadout[:])
 	clear(value.PlayerName[:])
 	value.PlayerNameLength = 0

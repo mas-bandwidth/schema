@@ -18,6 +18,7 @@ import (
 	"messagedemo"
 	"scalardemo"
 	"streamdemo"
+	"tblfixedevo"
 	tblscalars2 "tblscalars2"
 	"vocab9demo"
 	"vocabdemo"
@@ -748,6 +749,9 @@ var codecTable = []codec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	row("tblscalars2", "SimState", tblscalars2.SimStateReset, tblscalars2.SimStateLoad, tblscalars2.SimStateMeasure, tblscalars2.SimStateSave, tblscalars2.SimStateFromJSON, tblscalars2.SimStateToJSONMeasure, tblscalars2.SimStateToJSON, tblscalars2.SimStateCookMeasure, tblscalars2.SimStateCookFrom, func(r *tblscalars2.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("tblfixedevo", "EvoRoot", tblfixedevo.EvoRootReset, tblfixedevo.EvoRootLoad, tblfixedevo.EvoRootMeasure, tblfixedevo.EvoRootSave, tblfixedevo.EvoRootFromJSON, tblfixedevo.EvoRootToJSONMeasure, tblfixedevo.EvoRootToJSON, tblfixedevo.EvoRootCookMeasure, tblfixedevo.EvoRootCookFrom, func(r *tblfixedevo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

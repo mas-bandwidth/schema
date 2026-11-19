@@ -50,6 +50,7 @@ export const fixedRoots = [
   ["listdemo", "Bounded", "lists/MigrateTable.js"],
   ["scalars", "SimState", "scalars/ScalarsTable.js"],
   ["tblscalars2", "SimState", "scalars2/Scalars2Table.js"],
+  ["tblfixedevo", "EvoRoot", "fixedevo/FixedEvoTable.js"],
   ["messagedemo", "ToolMessage", "messages/MessagesTable.js"],
   ["backenddemo", "LoginRequest", "backend/BackendTable.js"],
   ["backenddemo", "MatchResult", "backend/BackendTable.js"],

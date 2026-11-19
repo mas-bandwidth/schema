@@ -538,12 +538,19 @@ namespace SchemaUnityConformance
                     }
                     return null;
                 }
-                return values[0];
+                if (count == 1)
+                {
+                    return values[0];
+                }
+                T[] batch = new T[count];
+                Array.Copy(values, 0, batch, 0, count);
+                return batch;
             }
 
             public long MessageMeasure(object value)
             {
                 if (measureMessages == null) { return -1; }
+                if (value is T[] batch) { return measureMessages(batch); }
                 T v = (T)value;
                 return measureMessages(MemoryMarshal.CreateReadOnlySpan(ref v, 1));
             }
@@ -551,6 +558,7 @@ namespace SchemaUnityConformance
             public long MessageSave(object value, byte[] buffer)
             {
                 if (saveMessages == null) { return -1; }
+                if (value is T[] batch) { return saveMessages(batch, buffer); }
                 T v = (T)value;
                 return saveMessages(MemoryMarshal.CreateReadOnlySpan(ref v, 1), buffer);
             }

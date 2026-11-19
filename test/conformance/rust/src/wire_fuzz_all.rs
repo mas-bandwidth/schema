@@ -44,6 +44,7 @@ mod tblp3;
 mod tblr1;
 mod tblr2;
 mod tblscalars2;
+mod tblfixedevo;
 mod tblv1;
 mod tblv2;
 mod tblw1;
@@ -122,30 +123,40 @@ macro_rules! arm {
     }};
 }
 
-// One fixed root's form-2 message batch (§3.3). The oracle decodes the batch
-// but saves body one as a single-message batch, so the leg does the same.
+// One fixed root's form-2 message batch (§3.3). Every accepted body is saved
+// in order (test/conformance/README.md).
 macro_rules! message_arm {
     ($unit:ident, $default:ident, $load:ident, $measure:ident, $save:ident, $wire:expr) => {{
         use $unit::*;
         let mut report = TableReport::default();
-        let mut reply = Reply { loaded: true, ..Default::default() };
+        let mut reply = Reply::default();
         let mut entries = vec![TableMessageEntry::default(); 4096];
         let mut vocabulary = TableVocabulary::new(&mut entries);
         if announce_read(&mut vocabulary, &TABLE_ANNOUNCEMENT, &mut TableReport::default()) {
             let mut values = vec![$default(); TABLE_MESSAGE_BATCH_MAX];
-            let _ = $load(&mut values, &vocabulary, $wire, &mut report);
-            let mut saved_report = TableReport::default();
-            let n = $measure(&values[..1], &mut saved_report);
-            if n < 0 {
-                reply.save_fail = true;
-            } else {
-                reply.saved = vec![0; n as usize];
-                if $save(&values[..1], &mut reply.saved, &mut saved_report) != n {
+            let (count, ok) = $load(&mut values, &vocabulary, $wire, &mut report);
+            let clean = ok && count >= 1 && !report.damaged && !report.refused && report.err().is_none();
+            reply.loaded = clean;
+            if clean {
+                let mut saved_report = TableReport::default();
+                let n = $measure(&values[..count], &mut saved_report);
+                if n < 0 {
                     reply.save_fail = true;
-                    reply.saved.clear();
+                } else {
+                    reply.saved = vec![0; n as usize];
+                    if $save(&values[..count], &mut reply.saved, &mut saved_report) != n {
+                        reply.save_fail = true;
+                        reply.saved.clear();
+                    }
                 }
+            } else {
+                if !report.damaged && !report.refused && report.err().is_none() {
+                    report.refused = true;
+                }
+                reply.save_fail = true;
             }
         } else {
+            report.refused = true;
             reply.save_fail = true;
         }
         // STRICT-ONLY (docs/plans/strict-only.md): the report carries no
@@ -230,6 +241,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("tblr1", "Cfg"),
     ("tblr2", "Cfg"),
     ("tblscalars2", "SimState"),
+    ("tblfixedevo", "EvoRoot"),
     ("tblv1", "Cfg"),
     ("tblv2", "Cfg"),
     ("tblw1", "Fleet"),
@@ -267,6 +279,7 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("tblr1", "Cfg"),
     ("tblr2", "Cfg"),
     ("tblscalars2", "SimState"),
+    ("tblfixedevo", "EvoRoot"),
     ("tblv1", "Cfg"),
     ("tblv2", "Cfg"),
     ("vocab9demo", "Wide00"),
@@ -359,6 +372,7 @@ fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("messagedemo", "ToolMessage") => fixed_arm!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, wire),
         ("scalars", "SimState") => fixed_arm!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
         ("tblscalars2", "SimState") => fixed_arm!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
+        ("tblfixedevo", "EvoRoot") => fixed_arm!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, wire),
         ("tabledemo", "ArchiveConfig") => fixed_arm!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, wire),
         ("tabledemo", "KeyedConfig") => fixed_arm!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, wire),
         ("tabledemo", "LoadoutConfig") => fixed_arm!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, wire),
@@ -437,6 +451,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("tblr1", "Cfg") => arm!(tblr1, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblr2", "Cfg") => arm!(tblr2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblscalars2", "SimState") => arm!(tblscalars2, sim_state_load, sim_state_load_retain, sim_state_save, sim_state_save_checked, sim_state_save_retain, sim_state_load_measure, wire, retain),
+        ("tblfixedevo", "EvoRoot") => arm!(tblfixedevo, evo_root_load, evo_root_load_retain, evo_root_save, evo_root_save_checked, evo_root_save_retain, evo_root_load_measure, wire, retain),
         ("tblv1", "Cfg") => arm!(tblv1, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblv2", "Cfg") => arm!(tblv2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblw1", "Fleet") => arm!(tblw1, fleet_load, fleet_load_retain, fleet_save, fleet_save_checked, fleet_save_retain, fleet_load_measure, wire, retain),

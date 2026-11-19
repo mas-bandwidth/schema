@@ -1,0 +1,50 @@
+{
+  "i_widen": "-100",
+  "i32_widen": "-128",
+  "u_widen": "255",
+  "f_widen": -0,
+  "fx_widen": "-7.5",
+  "ufx_widen": "14.75",
+  "bits_widen": "31",
+  "mask_widen": [
+    "F0",
+    "F1"
+  ],
+  "live_mode": "Beta",
+  "label": "🚀🚀",
+  "fixed_arr": [
+    "-32768",
+    "32767",
+    "0",
+    "0"
+  ],
+  "bounded_arr": [
+    "-12345"
+  ],
+  "obsolete_mode": "OldA",
+  "v1_marker": 99,
+  "nested_chain": {
+    "wrap": {
+      "inner": {
+        "leaf": {
+          "code": "-321",
+          "bonus": 9,
+          "tag": "leaf"
+        }
+      }
+    }
+  },
+  "sub_opt": {
+    "x": "-123",
+    "note": "sub"
+  },
+  "def_scalar": -777,
+  "def_str": "prefill-ok",
+  "i128_keep": "-999",
+  "u128_keep": "0",
+  "def_bytes": "YmluIQ==",
+  "def_flags": [
+    "F0",
+    "F8"
+  ]
+}

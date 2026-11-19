@@ -485,7 +485,9 @@ type wireSeed struct {
 	// a PINNED VECTOR rides exactly as it is and is not mutated. It is a red
 	// the fuzzer already found, kept so the next run seeks it rather than
 	// searching for it (testdata/wire/tables/fuzz-vectors/INDEX.txt).
-	vector bool
+	vector      bool
+	reportSeed  bool
+	wireRefused bool
 	// the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): this seed's mutants are
 	// form-2 wires read against the connection's vocabulary, which is what the
 	// replay command has to say to reproduce one. A message seed has no byte

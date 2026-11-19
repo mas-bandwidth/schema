@@ -1566,7 +1566,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_fixed_apply( con
         {
             uint64_t raw = 0;
             raw = bench_table_fixed_get_le( src + p->src, p->size );
-            if ( p->sign != 0 )
+            if ( p->sign != 0 && p->size < 8u )
             {
                 /* TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
                    reason a widen is an op and not a short copy. */
@@ -1574,7 +1574,16 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_fixed_apply( con
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            bench_table_fixed_store_native( dst + p->dst, raw, p->dstsize );
+            if ( p->dstsize == 16u )
+            {
+                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~(uint64_t) 0 : 0ull;
+                bench_table_fixed_store_native( dst + p->dst, raw, 8u );
+                bench_table_fixed_store_native( dst + p->dst + 8u, hi, 8u );
+            }
+            else
+            {
+                bench_table_fixed_store_native( dst + p->dst, raw, p->dstsize );
+            }
             (*widened)++;
             break;
         }
@@ -2271,7 +2280,10 @@ static SCHEMA_UNUSED void bench_table_fixed_push( bench_table_fixed_compiler_t *
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_BENCH_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == BENCH_K_TABLE_FIXED_TEXT || e.op == BENCH_K_TABLE_FIXED_COUNT ) ? 4ull : 0ull );
+        uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == BENCH_K_TABLE_FIXED_TEXT || e.op == BENCH_K_TABLE_FIXED_COUNT ) ? 4ull : 0ull );
+        if ( e.op == BENCH_K_TABLE_FIXED_PRESENT ) { reach = 0ull; }
+        else if ( e.op == BENCH_K_TABLE_FIXED_PRESENT_DEFAULTS ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.dead; }
+        else if ( e.op == BENCH_K_TABLE_FIXED_WIDEN_F ) { reach = (uint64_t) e.src + 4ull; }
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
@@ -3914,6 +3926,10 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
     { int32_t i; for ( i = 1; i < (int32_t) ( 80 ); i++ ) { value->stats[i] = value->stats[0]; } }
     value->stats_count = 0;
     memset( &value->game_event, 0, sizeof( value->game_event ) );
+    bench_mixed_hit_event_reset( &value->game_event.as.hit );
+    bench_mixed_chat_event_reset( &value->game_event.as.chat );
+    bench_mixed_pickup_event_reset( &value->game_event.as.pickup );
+    value->game_event.type = 0;
     memset( value->loadout, 0, sizeof( value->loadout ) );
     memset( value->player_name, 0, sizeof( value->player_name ) );
     value->player_name_length = 0;

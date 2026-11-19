@@ -119,6 +119,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/a2 test/tables/A2.schema
 	$(1) generate --lang cs --out $(2)/scalars tables/scalars
 	$(1) generate --lang cs --out $(2)/scalars2 test/tables/Scalars2.schema
+	$(1) generate --lang cs --out $(2)/fixedevo test/tables/fixedevo
 	$(1) generate --lang cs --out $(2)/blobs tables/blobs
 	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
@@ -144,7 +145,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 endef
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
 	@touch $@

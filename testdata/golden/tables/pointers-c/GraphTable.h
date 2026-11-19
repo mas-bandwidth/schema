@@ -1595,7 +1595,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
         {
             uint64_t raw = 0;
             raw = graphdemo_table_fixed_get_le( src + p->src, p->size );
-            if ( p->sign != 0 )
+            if ( p->sign != 0 && p->size < 8u )
             {
                 /* TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
                    reason a widen is an op and not a short copy. */
@@ -1603,7 +1603,16 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            graphdemo_table_fixed_store_native( dst + p->dst, raw, p->dstsize );
+            if ( p->dstsize == 16u )
+            {
+                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~(uint64_t) 0 : 0ull;
+                graphdemo_table_fixed_store_native( dst + p->dst, raw, 8u );
+                graphdemo_table_fixed_store_native( dst + p->dst + 8u, hi, 8u );
+            }
+            else
+            {
+                graphdemo_table_fixed_store_native( dst + p->dst, raw, p->dstsize );
+            }
             (*widened)++;
             break;
         }
@@ -2300,7 +2309,10 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_push( graphdemo_table_fixed_comp
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_GRAPHDEMO_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == GRAPHDEMO_K_TABLE_FIXED_TEXT || e.op == GRAPHDEMO_K_TABLE_FIXED_COUNT ) ? 4ull : 0ull );
+        uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == GRAPHDEMO_K_TABLE_FIXED_TEXT || e.op == GRAPHDEMO_K_TABLE_FIXED_COUNT ) ? 4ull : 0ull );
+        if ( e.op == GRAPHDEMO_K_TABLE_FIXED_PRESENT ) { reach = 0ull; }
+        else if ( e.op == GRAPHDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.dead; }
+        else if ( e.op == GRAPHDEMO_K_TABLE_FIXED_WIDEN_F ) { reach = (uint64_t) e.src + 4ull; }
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;

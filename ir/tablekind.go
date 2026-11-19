@@ -569,6 +569,21 @@ func TableKindWidens(kind, declared int) bool {
 	return false
 }
 
+// TableFixedWidens reports whether a FIXED-FORM layout leaf under `from`
+// widens onto `to` (docs/FIXED-FORM-ALGORITHM.md §1: "2..5, 6..9, 20..24,
+// 25..29, and 10 -> 11", matching C++ TableFixedWidens in fixedruntime.go).
+// Unlike the variable wire's TableKindWidens, the fixed form's lock guarantees
+// F(a) == F(b) so fixed(I,F) (20..24) and ufixed(I,F) (25..29) widen along
+// their storage ladders, while 128-bit integers (18, 19) sit on no fixed rung.
+func TableFixedWidens(from, to int) bool {
+	inRun := func(lo, hi int) bool { return from >= lo && from < to && to <= hi }
+	return inRun(TableKindI8, TableKindI64) ||
+		inRun(TableKindU8, TableKindU64) ||
+		inRun(TableKindFixed8, TableKindFixed128) ||
+		inRun(TableKindUFixed8, TableKindUFixed128) ||
+		(from == TableKindF32 && to == TableKindF64)
+}
+
 // TableFixedWriterRange is one ranged integer leaf of a fixed table's root, as a
 // lineage entry carries it for the WRITER that entry names
 // (docs/FIXED-FORM-ALGORITHM.md §4.5): the field's name, its scalar kind, and

@@ -1,0 +1,75 @@
+// FixedEvo.schema — multi-version Form-3 lineage evolution unit (v0 retired ->
+// v1 -> v2 -> v3), exercising non-identity compiled Form-3 plans across numeric,
+// float, fixed/ufixed (8 -> 32 -> 128-bit!), bits(N), flags, string(N),
+// fixed/bounded array widenings, was renames, deprecated writer fields,
+// appended non-zero defaults (including int128), nested union guard chains,
+// optional nested fixed tables, and retired floor refusal.
+package tblfixedevo
+
+enum EvoMode { Alpha, Beta, Gamma, Delta }
+
+enum ObsoleteKind { OldA, OldB }
+
+flags EvoFlags
+{
+    F0, F1, F2, F3, F4, F5, F6, F7,
+    F8, F9, F10, F11, F12, F13, F14, F15,
+    F16
+}
+
+fixed table EvoLeaf
+{
+    code  int64 = 3
+    bonus int32 = 9
+    tag   string(8) = "leaf"
+}
+
+union EvoInnerUnion
+{
+    leaf EvoLeaf
+    ping
+}
+
+fixed table EvoInnerWrap
+{
+    inner EvoInnerUnion
+}
+
+union EvoOuterUnion
+{
+    wrap   EvoInnerWrap
+    amount int32
+}
+
+fixed table EvoSub
+{
+    x    int64 = -5
+    note string(8) = "sub"
+}
+
+fixed table EvoRoot
+{
+    i_widen       int64                     | min = -9000000000, max = 9000000000
+    i32_widen     int64
+    u_widen       uint64
+    f_widen       float64
+    fx_widen      fixed(124, 4)             | min = -134217728, max = 134217727
+    ufx_widen     ufixed(124, 4)            | min = 0, max = 268435455
+    bits_widen    bits(37)
+    mask_widen    EvoFlags
+    live_mode     EvoMode
+    label         string(32)                | was = "old_label"
+    fixed_arr     [4]int64
+    bounded_arr   [..6]int64
+    obsolete_mode ObsoleteKind = OldB       | deprecated
+    v1_marker     int32 = 11
+    nested_chain  EvoOuterUnion
+    sub_opt       ?EvoSub
+    def_scalar    int32 = -777
+    def_str       string(16) = "prefill-ok"
+    i128_keep     int128 = -999             | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
+    u128_keep     uint128
+    def_bytes     bytes(6) = "bin!"
+    def_flags     EvoFlags = { F0, F8 }
+    extra_opt     ?EvoSub
+}

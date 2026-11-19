@@ -28,6 +28,7 @@ import (
 	"tabledemo"
 	"tbla1"
 	"tbla2"
+	"tblfixedevo"
 	"tblk1"
 	"tblk2"
 	"tblm1"
@@ -215,6 +216,9 @@ func init() {
 	})
 	bind("tblscalars2", "SimState", func(c codec) codec {
 		return fixedForm(c, tblscalars2.SimStateFixedLoad, tblscalars2.SimStateFixedMeasure, tblscalars2.SimStateFixedSave)
+	})
+	bind("tblfixedevo", "EvoRoot", func(c codec) codec {
+		return fixedForm(c, tblfixedevo.EvoRootFixedLoad, tblfixedevo.EvoRootFixedMeasure, tblfixedevo.EvoRootFixedSave)
 	})
 	bind("messagedemo", "ToolMessage", func(c codec) codec {
 		return fixedForm(c, messagedemo.ToolMessageFixedLoad, messagedemo.ToolMessageFixedMeasure, messagedemo.ToolMessageFixedSave)
