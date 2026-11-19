@@ -754,30 +754,8 @@ def _widens(source: int, target: int) -> bool:
 
 
 def resolve_vocabulary(vocab: MessageVocabulary, local: MessageVocabulary, records: dict[str, type[Any]]) -> None:
-    """Refuse known incompatible kinds before the first body is decoded."""
-    by_id: dict[int, set[tuple[int, int]]] = {}
-    for entry in local.entries:
-        by_id.setdefault(entry.field_id, set()).add((entry.kind, entry.shape.element))
-    for entry in vocab.entries:
-        known = by_id.get(entry.field_id)
-        if known is None:
-            continue
-        def compatible(candidate: tuple[int, int]) -> bool:
-            kind, element = candidate
-            if entry.kind != kind:
-                return _widens(entry.kind, kind)
-            if entry.kind in (14, 16) and entry.shape.element != element:
-                return entry.kind == 14 and _widens(entry.shape.element, element)
-            return True
-        if not any(compatible(candidate) for candidate in known):
-            vocab.entries = []
-            vocab.slots.clear()
-            vocab.names.clear()
-            vocab.resolved.clear()
-            vocab.variants.clear()
-            vocab.announced = False
-            vocab.refused = True
-            raise Refused("kind_mismatch", "announcement field has an incompatible kind")
+    """Index local descriptors and variant wire IDs onto an announced vocabulary."""
+    _ = local
     from .descriptor import _union_by_name
 
     resolved: dict[tuple[str, int], Any] = {}

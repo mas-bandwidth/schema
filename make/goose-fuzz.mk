@@ -54,12 +54,16 @@ tables-goose-wire-fuzz tables-goose-retain-fuzz: $(GOOSE_FUZZ_SCHEMA) build/conf
 # unit's leg. A leg that does not build fails the target; a unit the goose
 # target refuses has no leg, and its seeds are absent in the harness's count.
 GOOSE_LEGS_DIR := build/goose-wirefuzz-legs
+GOOSE_MFUZZ_LEGS_DIR := build/goose-messagefuzz-legs
 GOOSE_DISPATCH := build/goose-wirefuzz-dispatch
 
+$(GOOSE_DISPATCH): test/conformance/goose/wirefuzzdispatch/main.go $(GO_SOURCES)
+	@mkdir -p build
+	go build -o $@ ./test/conformance/goose/wirefuzzdispatch
+
 .PHONY: build/conformance-goose-wirefuzz
-build/conformance-goose-wirefuzz: $(GOOSE_FUZZ_SCHEMA)
+build/conformance-goose-wirefuzz: $(GOOSE_FUZZ_SCHEMA) $(GOOSE_DISPATCH)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go build -o $(GOOSE_DISPATCH) ./test/conformance/goose/wirefuzzdispatch
 	$(call goose_fuzz_units,$(GOOSE_LEGS_DIR)/units)
 	@rm -rf $(GOOSE_LEGS_DIR)/legs && mkdir -p $(GOOSE_LEGS_DIR)/legs
 	@for d in $(GOOSE_LEGS_DIR)/units/*/; do \
@@ -71,6 +75,21 @@ build/conformance-goose-wirefuzz: $(GOOSE_FUZZ_SCHEMA)
 		echo "goose wire-fuzz legs do not build: $$(tr '\n' ' ' <$(GOOSE_LEGS_DIR)/build-failed.txt)"; \
 		rm -f $(GOOSE_LEGS_DIR)/build-failed.txt; exit 1; fi
 	@echo "goose wire-fuzz driver: $(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs ($$(ls $(GOOSE_LEGS_DIR)/legs | wc -l) unit legs)"
+
+.PHONY: build/conformance-goose-messagefuzz
+build/conformance-goose-messagefuzz: $(GOOSE_FUZZ_SCHEMA) $(GOOSE_DISPATCH)
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	$(call goose_fuzz_units,$(GOOSE_MFUZZ_LEGS_DIR)/units)
+	@rm -rf $(GOOSE_MFUZZ_LEGS_DIR)/legs $(GOOSE_MFUZZ_LEGS_DIR)/build-failed.txt && mkdir -p $(GOOSE_MFUZZ_LEGS_DIR)/legs
+	@for d in $(GOOSE_MFUZZ_LEGS_DIR)/units/*/; do \
+		grep -q '^fn [A-Za-z0-9_]*LoadMessages(' "$$d"*Table.goose 2>/dev/null && basename "$$d"; \
+	done | xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -I{} sh -c \
+		'sh make/goose-messagefuzz-build.sh "$$1" "$$2/units/{}" "$$2/legs/{}" || echo "{}" >>"$$2/build-failed.txt"' \
+		_ "$(GOOSE)" $(GOOSE_MFUZZ_LEGS_DIR)
+	@if [ -s $(GOOSE_MFUZZ_LEGS_DIR)/build-failed.txt ]; then \
+		echo "goose message-fuzz legs do not build: $$(tr '\n' ' ' <$(GOOSE_MFUZZ_LEGS_DIR)/build-failed.txt)"; \
+		rm -f $(GOOSE_MFUZZ_LEGS_DIR)/build-failed.txt; exit 1; fi
+	@echo "goose message-fuzz driver: $(GOOSE_DISPATCH) $(GOOSE_MFUZZ_LEGS_DIR)/legs ($$(ls $(GOOSE_MFUZZ_LEGS_DIR)/legs | wc -l) unit legs)"
 
 # THE WIRE-FUZZ CONTROLS: a check removed from the Goose load, the differential
 # red on exactly that. The table wire's load is a runtime module the compiler

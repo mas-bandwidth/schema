@@ -4957,6 +4957,49 @@ const RangedSignedFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var RangedSignedFixedLineagePlans = tableFixedLineagePlans(RangedSignedFixedKnown, RangedSignedFixedLayout, RangedSignedFixedDst, RangedSignedFixedHash)
 
+func RangedSignedFixedBoundsKnown0(value *RangedSigned) bool {
+	var count int32
+	over := &count
+	_ = value
+	if value.I8Low > 126 {
+		(*over)++
+	}
+	if value.I8High < -127 {
+		(*over)++
+	}
+	if value.I8Inside < -127 || value.I8Inside > 126 {
+		(*over)++
+	}
+	if value.I16Low > 32766 {
+		(*over)++
+	}
+	if value.I16High < -32767 {
+		(*over)++
+	}
+	if value.I16Inside < -32767 || value.I16Inside > 32766 {
+		(*over)++
+	}
+	if value.I32Low > 2147483646 {
+		(*over)++
+	}
+	if value.I32High < -2147483647 {
+		(*over)++
+	}
+	if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
+		(*over)++
+	}
+	if value.I64Low > 9223372036854775806 {
+		(*over)++
+	}
+	if value.I64High < -9223372036854775807 {
+		(*over)++
+	}
+	if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
+		(*over)++
+	}
+	return count == 0
+}
+
 var RangedSignedFixedResetImage = func() []byte {
 	var def RangedSigned
 	RangedSignedReset(&def)
@@ -5147,6 +5190,15 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
+		switch pick {
+		case 0:
+			if !RangedSignedFixedBoundsKnown0(&values[k : k+1][0]) {
+				for j := range values[:k+1] {
+					RangedSignedReset(&values[j])
+				}
+				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+			}
+		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !RangedSignedFixedBounds(&values[k : k+1][0]) {
@@ -5295,6 +5347,40 @@ const RangedUnsignedFixedFloor = 0
 // One plan per lineage entry, laid down from THE LOCK's bytes: nothing
 // compiles on the load path (§5.8 row 3).
 var RangedUnsignedFixedLineagePlans = tableFixedLineagePlans(RangedUnsignedFixedKnown, RangedUnsignedFixedLayout, RangedUnsignedFixedDst, RangedUnsignedFixedHash)
+
+func RangedUnsignedFixedBoundsKnown0(value *RangedUnsigned) bool {
+	var count int32
+	over := &count
+	_ = value
+	if value.U8Low > 254 {
+		(*over)++
+	}
+	if value.U8High < 1 {
+		(*over)++
+	}
+	if value.U8Inside < 1 || value.U8Inside > 254 {
+		(*over)++
+	}
+	if value.U16Low > 65534 {
+		(*over)++
+	}
+	if value.U16High < 1 {
+		(*over)++
+	}
+	if value.U16Inside < 1 || value.U16Inside > 65534 {
+		(*over)++
+	}
+	if value.U32Low > 4294967294 {
+		(*over)++
+	}
+	if value.U32High < 1 {
+		(*over)++
+	}
+	if value.U32Inside < 1 || value.U32Inside > 4294967294 {
+		(*over)++
+	}
+	return count == 0
+}
 
 var RangedUnsignedFixedResetImage = func() []byte {
 	var def RangedUnsigned
@@ -5486,6 +5572,15 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
+		switch pick {
+		case 0:
+			if !RangedUnsignedFixedBoundsKnown0(&values[k : k+1][0]) {
+				for j := range values[:k+1] {
+					RangedUnsignedReset(&values[j])
+				}
+				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+			}
+		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !RangedUnsignedFixedBounds(&values[k : k+1][0]) {
@@ -5583,6 +5678,25 @@ const RangedWidthsFixedFloor = 0
 // One plan per lineage entry, laid down from THE LOCK's bytes: nothing
 // compiles on the load path (§5.8 row 3).
 var RangedWidthsFixedLineagePlans = tableFixedLineagePlans(RangedWidthsFixedKnown, RangedWidthsFixedLayout, RangedWidthsFixedDst, RangedWidthsFixedHash)
+
+func RangedWidthsFixedBoundsKnown0(value *RangedWidths) bool {
+	var count int32
+	over := &count
+	_ = value
+	if value.B8 > 255 {
+		(*over)++
+	}
+	if value.B16 > 65535 {
+		(*over)++
+	}
+	if value.B12 > 4095 {
+		(*over)++
+	}
+	if value.B48 > 281474976710655 {
+		(*over)++
+	}
+	return count == 0
+}
 
 var RangedWidthsFixedResetImage = func() []byte {
 	var def RangedWidths
@@ -5773,6 +5887,15 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		switch pick {
+		case 0:
+			if !RangedWidthsFixedBoundsKnown0(&values[k : k+1][0]) {
+				for j := range values[:k+1] {
+					RangedWidthsReset(&values[j])
+				}
+				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).

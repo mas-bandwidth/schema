@@ -125,12 +125,37 @@ parseShape = function(b, state, kind) {
   local s={Kind=kind,Bits=-1,Packing=0,Base=0,Min=0,Max=0,ElemKind=0,Element=null,QMin=0.0,QDelta=0.0,QCount=0};
   if(kind==1){s.Bits=1;return s;}
   if(kind>=2&&kind<=11){s.Bits=kind==10?32:(kind==11?64:(kind<=5?(8<<(kind-2)):(8<<(kind-6))));}
+  if(kind==36){s.Bits=64;return s;}
   if(kind>=18&&kind<=29){s.Bits=(kind==18||kind==19||kind==24||kind==29)?128:((kind==20||kind==25)?8:((kind==21||kind==26)?16:((kind==22||kind==27)?32:64)));}
   if((kind>=2&&kind<=10)||(kind>=18&&kind<=29)){
+    s.Max=s.Bits;
     if(state.at>=state.end){state.bad=true;return s;}
     s.Packing=b[state.at]&0xff;state.at++;
-    if(s.Packing==0)return s;
-    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits<0||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}if(kind==18||kind==19||kind==24||kind==29)s.Base=[readU64(b,state.at),readU64(b,state.at+8)];else s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>>1)^(-(raw&1))):raw;}return s;}
+    if(s.Packing==0){s.Max=0;return s;}
+    if(s.Packing==1&&kind!=10){
+      s.Min=readLeb(b,state);if(state.bad||s.Min<0||s.Min>s.Max){state.bad=true;return s;}s.Bits=s.Min;s.Min=0;
+      if(kind>=18){
+        if(state.at+16>state.end){state.bad=true;return s;}
+        s.Base=[readU64(b,state.at),readU64(b,state.at+8)];state.at+=16;
+        if(kind>=20&&kind<=23){
+          if(s.Base[1]!=(s.Base[0]<0?-1:0)||(s.Max<64&&(s.Base[0] < -(1<<(s.Max-1))||s.Base[0]>(1<<(s.Max-1))-1))){state.bad=true;return s;}
+          s.Base=s.Base[0];
+        } else if(kind!=18&&kind!=19&&kind!=24&&kind!=29){
+          if(s.Base[1]!=0||(s.Max<64&&ucmp64(s.Base[0],(1<<s.Max)-1)>0)){state.bad=true;return s;}
+          s.Base=s.Base[0];
+        }
+      } else {
+        s.Base=readLeb(b,state);if(state.bad)return s;
+        if(kind>=2&&kind<=5){
+          s.Base=(s.Base>>>1)^(-(s.Base&1));
+          if(s.Max<64&&(s.Base < -(1<<(s.Max-1))||s.Base>(1<<(s.Max-1))-1)){state.bad=true;return s;}
+        } else {
+          if(s.Max<64&&ucmp64(s.Base,(1<<s.Max)-1)>0){state.bad=true;return s;}
+        }
+      }
+      s.Max=0;return s;
+    }
+    s.Max=0;
     if(s.Packing==2&&kind==10){
       if(state.at+12>state.end){state.bad=true;return s;}
       local lo=messageWidenF32(readU32(b,state.at)),hi=messageWidenF32(readU32(b,state.at+4)),res=messageWidenF32(readU32(b,state.at+8));state.at+=12;
@@ -148,7 +173,7 @@ parseShape = function(b, state, kind) {
   }
   if(kind==11)return s;
   if(kind==12){s.Max=readLeb(b,state);if(state.bad||s.Max<0||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
-  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Min<0||s.Max<0||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>32||s.ElemKind==12){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
+  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Min<0||s.Max<0||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if((s.ElemKind>32&&s.ElemKind!=36)||s.ElemKind==14||s.ElemKind==16){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
   if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==31||kind==32){return s;}
   state.bad=true;return s;
 };
@@ -158,7 +183,7 @@ local parseVocabulary = function(words) {
     if(state.at+9>state.end){state.bad=true;break;}
     local start=state.at,id=readU64(words,state.at);state.at+=8;
     local kind=words[state.at]&0xff;state.at++;
-    if(kind>32||id==0xfffffffffffffffd||id==0xfffffffffffffffe){state.bad=true;break;}
+    if((kind>32&&kind!=36)||id==0xfffffffffffffffd||id==0xfffffffffffffffe){state.bad=true;break;}
     if(id==0xffffffffffffffff){if(kind!=0||nodeSeen){state.bad=true;break;}nodeSeen=true;}
     local shape=parseShape(words,state,kind);if(state.bad)break;
     local entry={Id=id,Kind=kind,Shape=shape};
@@ -262,8 +287,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   local maxEntries = (("MaxEntries" in v) && v.MaxEntries > 0) ? v.MaxEntries : 4096;
   local maxBytes = (("MaxBytes" in v) && v.MaxBytes > 0) ? v.MaxBytes : 65536;
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
-  if(entries>maxEntries)return refuseAnnouncement(v,report,"vocabulary_too_large");
-  if(entries>(trailer-1)/8){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
+  if(entries<0||entries>4096||entries>(trailer-1)/8){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   local bodyEnd=trailer-entries*8, ids=[], seenIds={};
   for(local i=0;i<entries;i++){
     local id=readU64(bytes,bodyEnd+i*8);
@@ -279,7 +303,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
     if(id in seenBody){state.bad=true;break;}
     seenBody[id]<-true;
     if(id==0xffffffffffffffff){state.bad=true;break;}
-    if(id==0xfffffffffffffffe){if(wordsCount>0||kind!=9||state.at+8>state.end){state.bad=true;break;}build=readU64(bytes,state.at);state.at+=8;versionCount++;}
+    if(id==0xfffffffffffffffe){if(kind!=9||state.at+8>state.end){state.bad=true;break;}build=readU64(bytes,state.at);state.at+=8;versionCount++;}
     else if(id==0xfffffffffffffffd){
       if(kind!=14){state.bad=true;break;}
       local n=readLeb(bytes,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;break;}
@@ -297,6 +321,7 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   if(state.bad||state.at!=bodyEnd||state.nextRef!=ids.len()+1||versionCount!=1||wordsCount!=1){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
   local parsed=parseVocabulary(words);
   if(!parsed[2]){if(report!=null)report.bodyDamaged=true;setSlot(v,"Refused",true);return false;}
+  if(parsed[0].len()>maxEntries){v.BuildVersion<-build;return refuseAnnouncement(v,report,"vocabulary_too_large");}
   setSlot(v,"Ids",parsed[0]);setSlot(v,"Entries",parsed[1]);v.Count<-v.Ids.len();local refs=0, cap=v.Count;while(cap>0){refs++;cap=cap>>1;}v.RefBits<-refs;if(v.RefBits==0)v.RefBits=1;
   v.BuildVersion<-build;setSlot(v,"Announced",true);return true;
 };
@@ -467,7 +492,7 @@ local intAdmits = function(fd, x) {
   }
   if (typeof x != "integer") return false;
   if (fd.lo != null && fd.hi != null) {
-    if (fd.kind == 9) {
+    if (!fd.signed) {
       local MIN = 0x8000000000000000;
       if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) return false;
     } else if (x < fd.lo || x > fd.hi) return false;
@@ -539,16 +564,29 @@ skipRemoteBody = function(T,v,r,depth) {
   local seen=[];
   for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local entry=v.Entries[ref-1];if(reservedId(entry.Id)||seen.find(entry.Id)!=null){r.bad=true;return;}seen.append(entry.Id);skipRemoteEntry(T,v,r,entry,depth);if(r.bad)return;}
 };
+local ownVocab;
 local findSlot = function(T, id) {
   for (local i = 0; i < T.TableMessageIds.len(); i++) if (T.TableMessageIds[i] == id) return i + 1;
   return 0;
+};
+local findNameSlot = function(T, id) {
+  local own = ownVocab(T);
+  for (local i = 0; i < own.Entries.len(); i++) {
+    if (own.Entries[i].Id == id && own.Entries[i].Shape.Kind == 0) return i + 1;
+  }
+  return findSlot(T, id);
 };
 local numberBits = function(fd) {
   if (fd.shape == "bool") return 1;
   if (fd.shape == "flags") return fd.flagbits;
   if (fd.lo != null && fd.hi != null) {
     if (typeof fd.lo == "array") return bitLen128(u128sub(fd.hi, fd.lo));
-    return bitCount(fd.hi - fd.lo);
+    if (fd.signed) {
+      if (fd.hi <= fd.lo) return 0;
+    } else {
+      if (ucmp64(fd.hi, fd.lo) <= 0) return 0;
+    }
+    return bitLen64(sub64(fd.hi, fd.lo));
   }
   if (fd.bits > 0) return fd.bits;
   return fd.width * 8;
@@ -568,6 +606,7 @@ defaultValue = function(fd, value, owner) {
     if (typeof value != "array") return false;
     if ((("list" in fd) && fd.list) || (("counted" in fd) && fd.counted)) return value.len() == 0;
     if (("keyvariants" in fd) && fd.keyvariants != null) {
+      if (fd.elem.shape == "tab") return false;
       for (local i = 0; i < value.len(); i++) {
         if (!defaultValue(fd.elem, value[i], value)) return false;
       }
@@ -644,7 +683,7 @@ local writeScalar = function(T, w, fd, value) {
           w.reason = "invalid_value: " + where + " names the deprecated variant " + value;
           w.bad = true; return;
         }
-        ref = findSlot(T, p[1]); named = true;
+        ref = findNameSlot(T, p[1]); named = true;
         break;
       }
     }
@@ -750,7 +789,7 @@ local readScalar = function(r, T, v, fd, shape) {
     if (typeof fd.lo == "array") {
       local cmp = fd.signed ? i128cmp : u128cmp;
       if (cmp(x, fd.lo) < 0 || cmp(x, fd.hi) > 0) { refuseRead(r, "out_of_range"); return [0, 0]; }
-    } else if (fd.kind == 9) {
+    } else if (!fd.signed) {
       local MIN = 0x8000000000000000;
       if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, "out_of_range"); return 0; }
     } else if (x < fd.lo || x > fd.hi) { refuseRead(r, "out_of_range"); return 0; }
@@ -807,17 +846,31 @@ writePayload = function(T, w, fd, value, depth) {
     if (typeof value != "array") { refuseValue(w); return; }
     local n = value.len();
     if (n < fd.min || n > fd.bound) { w.bad = true; return; }
-    local keyed = (fd.keyvariants != null), present = 0;
-    if (keyed) { for(local i=0;i<n;i++) if(!defaultValue(fd.elem,value[i],value)) present++; put(w,present,bitCount(fd.bound-fd.min)); }
-    else if (fd.list || fd.counted || fd.elem.shape == "bytes") put(w, n - fd.min, bitCount(fd.bound - fd.min));
     local e = fd.elem;
+    local keyed = (fd.keyvariants != null), present = 0, slotRides = null;
+    if (keyed) {
+      slotRides = array(n, false);
+      for (local i = 0; i < n; i++) {
+        if (e.shape == "tab") {
+          local pw = newWriter(null, true);
+          pw.owner = w.owner; pw.field = w.field;
+          writeBody(T, pw, T.Descriptors[e.table], value[i], depth + 1);
+          if (pw.bad) { w.bad = true; w.reason = pw.reason; return; }
+          if (pw.bits > T.TableMessageRefBitsHere) { slotRides[i] = true; present++; }
+        } else if (!defaultValue(e, value[i], value)) {
+          slotRides[i] = true; present++;
+        }
+      }
+      put(w, present, bitCount(fd.bound - fd.min));
+    }
+    else if (fd.list || fd.counted || e.shape == "bytes") put(w, n - fd.min, bitCount(fd.bound - fd.min));
     if (!keyed && e.shape == "bytes") {
       alignWrite(w);
       for(local i=0;i<n;i++) put(w,value[i]&0xff,8);
       return;
     }
     for (local i = 0; i < n; i++) {
-      if(keyed){if(defaultValue(e,value[i],value))continue;local key=findSlot(T,fd.keyvariants[i][1]);if(key==0){w.bad=true;return;}put(w,key,T.TableMessageRefBitsHere);}
+      if(keyed){if(!slotRides[i])continue;local key=findNameSlot(T,fd.keyvariants[i][1]);if(key==0){w.bad=true;return;}put(w,key,T.TableMessageRefBitsHere);}
       writePayload(T, w, e, value[i], depth + 1);
     }
     return;
@@ -844,7 +897,7 @@ local compatKinds = function(kind, elem, mine, mineElem) {
 local entryElem = function(entry) {
   return (entry.Kind == 14 || entry.Kind == 16) ? entry.Element.Kind : 0;
 };
-local ownVocab = function(T) {
+ownVocab = function(T) {
   if (!("_ownMessageVocab" in T)) {
     local own = {};
     _M.AnnounceRead(T, own, T.TableMessageAnnouncement, null);
@@ -919,15 +972,27 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false
     // and dropped, counted unknown
     // A KEYED FIELD WITH NO SLOT IS ITS DEFAULT, which the writer elides
     // (§3.3 (a)); judged only under this reader's own build version
-    if(atField&&n==0&&sameBuild(T,v)){r.bad=true;return;}
-    local a=owner[member],keys=[];
+    local exactKeyed=sameBuild(T,v)&&entry.Kind==16&&entry.Shape.Max==fd.bound&&entryElem(entry)==declaredElem(fd);
+    if(atField&&n==0&&exactKeyed){r.bad=true;return;}
+    local a=owner[member],keys=[],lastSlot=-1;
     for(local i=0;i<n;i++){
       local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}
       local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||reservedId(ke.Id)||keys.find(ke.Id)!=null){r.bad=true;return;}
       keys.append(ke.Id);
       local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}
+      local depSlot=r.depCount,unkSlot=r.unknown,bitsSlot=r.bits;
+      r.enumAtDefault=false;
       readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;
-      if(index<0)r.unknown++;else a[index]=holder.value;
+      if(index<0)r.unknown++;
+      else{
+        if(exactKeyed&&index<=lastSlot){r.bad=true;return;}
+        lastSlot=index;
+        if(exactKeyed&&r.depCount==depSlot&&r.unknown==unkSlot&&!(fd.elem.shape=="float"&&element.Shape.Packing==2)){
+          local slotDef=(fd.elem.shape=="tab")?(r.bits-bitsSlot==v.RefBits):((fd.elem.shape=="enum")?r.enumAtDefault:defaultValue(fd.elem,holder.value,holder));
+          if(slotDef){r.bad=true;return;}
+        }
+        a[index]=holder.value;
+      }
     }
     owner[member]=a;return;
   }
@@ -946,9 +1011,10 @@ writeBody = function(T, w, d, value, depth) {
     // table is written once, and when it came to its reference and the
     // terminator alone it is rolled back to the mark, as the Go engine's
     // encoder does, so each level is written once whatever the depth
-    local elides=fd.shape=="tab"&&!fd.optional&&!("required" in fd && fd.required);
-    local fslots=("TableMessageFieldSlots" in T && d.name in T.TableMessageFieldSlots)?T.TableMessageFieldSlots[d.name]:null;
-    local ref=(fslots!=null && fd.ordinal<fslots.len())?fslots[fd.ordinal]:findSlot(T,fd.id);
+    local keyedTab=fd.shape=="arr"&&("keyvariants" in fd)&&fd.keyvariants!=null&&fd.elem.shape=="tab";
+    local elides=(fd.shape=="tab"||keyedTab)&&!fd.optional&&!("required" in fd && fd.required);
+    local emptySpan=keyedTab?(T.TableMessageRefBitsHere+bitCount(fd.bound-fd.min)):(2*T.TableMessageRefBitsHere);
+    local ref=("TableMessageFieldSlots" in T && d.name in T.TableMessageFieldSlots && fd.ordinal<T.TableMessageFieldSlots[d.name].len())?T.TableMessageFieldSlots[d.name][fd.ordinal]:findSlot(T,fd.id);
     if(ref==0&&!elides){w.bad=true;return;}
     local mark=w.bits;
     put(w,ref,T.TableMessageRefBitsHere);
@@ -956,9 +1022,9 @@ writeBody = function(T, w, d, value, depth) {
     w.field = fd.name;
     writePayload(T,w,fd,val,depth+1);
     if(w.bad)return;
-    if(elides&&w.bits-mark==2*T.TableMessageRefBitsHere){
+    if(elides&&w.bits-mark==emptySpan){
       // the rolled-back bits are cleared, so the buffer holds only the batch
-      w.bits=mark;put(w,0,2*T.TableMessageRefBitsHere);w.bits=mark;
+      w.bits=mark;put(w,0,emptySpan);w.bits=mark;
     }else if(ref==0){w.bad=true;return;}
   }
   put(w,0,T.TableMessageRefBitsHere);

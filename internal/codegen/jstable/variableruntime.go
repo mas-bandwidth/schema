@@ -2169,6 +2169,7 @@ function TableVariableJsonPointer(c, node, depth, g, out) {
 }
 
 function TableVariableJsonField(fd, val, depth, g, out) {
+  if (fd.opt && val === null) { out.push("null"); return true; }
   switch (fd.s) {
     case "sblob": case "bblob":
       if (val === null) { out.push("null"); return true; }

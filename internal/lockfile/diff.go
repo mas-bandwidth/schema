@@ -222,6 +222,7 @@ func gone(lk, lv *Table) error {
 // element, the enum a keyed array is keyed by, the range and the default —
 // the facts that move no byte and change what the bytes say.
 func diffTable(lk, lv *Table, policy Policy) error {
+	priorMoved := false
 	for i, want := range lk.Entries {
 		where := fmt.Sprintf("%s %s: entry %d, field %s (id=0x%016x)", lk.Decl, lk.Name, i+1, want.Name, want.Id)
 		if i >= len(lv.Entries) {
@@ -235,12 +236,15 @@ func diffTable(lk, lv *Table, policy Policy) error {
 		}
 		// THE MONOTONE LAW over every other fact: a narrowing is a break and a
 		// widening is a change the record must carry (monotone.go).
-		widened, what, err := monotone(where, want, got)
+		widened, what, err := monotoneAt(where, want, got, priorMoved)
 		if err != nil {
 			return err
 		}
 		if widened && policy == Current {
 			return stale(lv.Decl, lv.Name, entryName(lv, i), what)
+		}
+		if widened || want.Width != got.Width || want.HeldHash != got.HeldHash {
+			priorMoved = true
 		}
 	}
 	if policy == Current && len(lv.Entries) > len(lk.Entries) {

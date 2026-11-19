@@ -917,11 +917,11 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 	}
 	{
 		pairs := uint64(0)
-		for i := range value.Turrets {
+		for i1 := range value.Turrets {
 			probe := *w
 			probe.Measuring = true
 			probe.Bits = 0
-			if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i]) {
+			if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i1]) {
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -931,11 +931,11 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 		if pairs > 0 {
 			w.Put(16, TableMessageRefBitsHere)
 			pairs := uint64(0)
-			for i := range value.Turrets {
+			for i1 := range value.Turrets {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i]) {
+				if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i1]) {
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -943,17 +943,17 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := range int(3) {
+			for i1 := range int(3) {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i]) {
+				if !TurretConfigSaveMessageBody(&probe, &value.Turrets[i1]) {
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := Weapon(i + 1).TableEnumID()
+				id, named := Weapon(i1 + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -962,7 +962,7 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
-				if !TurretConfigSaveMessageBody(w, &value.Turrets[i]) {
+				if !TurretConfigSaveMessageBody(w, &value.Turrets[i1]) {
 					return false
 				}
 			}
@@ -1301,11 +1301,11 @@ func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, da
 func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool {
 	{
 		pairs := uint64(0)
-		for i := range value.Teams {
+		for i1 := range value.Teams {
 			probe := *w
 			probe.Measuring = true
 			probe.Bits = 0
-			if !TeamConfigSaveMessageBody(&probe, &value.Teams[i]) {
+			if !TeamConfigSaveMessageBody(&probe, &value.Teams[i1]) {
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -1315,11 +1315,11 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 		if pairs > 0 {
 			w.Put(17, TableMessageRefBitsHere)
 			pairs := uint64(0)
-			for i := range value.Teams {
+			for i1 := range value.Teams {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !TeamConfigSaveMessageBody(&probe, &value.Teams[i]) {
+				if !TeamConfigSaveMessageBody(&probe, &value.Teams[i1]) {
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -1327,17 +1327,17 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := range int(3) {
+			for i1 := range int(3) {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !TeamConfigSaveMessageBody(&probe, &value.Teams[i]) {
+				if !TeamConfigSaveMessageBody(&probe, &value.Teams[i1]) {
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := Team(i + 1).TableEnumID()
+				id, named := Team(i1 + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1346,7 +1346,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
-				if !TeamConfigSaveMessageBody(w, &value.Teams[i]) {
+				if !TeamConfigSaveMessageBody(w, &value.Teams[i1]) {
 					return false
 				}
 			}
@@ -1354,11 +1354,11 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 	}
 	{
 		pairs := uint64(0)
-		for i := range value.Hulls {
+		for i1 := range value.Hulls {
 			probe := *w
 			probe.Measuring = true
 			probe.Bits = 0
-			if !HullConfigSaveMessageBody(&probe, &value.Hulls[i]) {
+			if !HullConfigSaveMessageBody(&probe, &value.Hulls[i1]) {
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -1368,11 +1368,11 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 		if pairs > 0 {
 			w.Put(18, TableMessageRefBitsHere)
 			pairs := uint64(0)
-			for i := range value.Hulls {
+			for i1 := range value.Hulls {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !HullConfigSaveMessageBody(&probe, &value.Hulls[i]) {
+				if !HullConfigSaveMessageBody(&probe, &value.Hulls[i1]) {
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -1380,17 +1380,17 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := range int(3) {
+			for i1 := range int(3) {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !HullConfigSaveMessageBody(&probe, &value.Hulls[i]) {
+				if !HullConfigSaveMessageBody(&probe, &value.Hulls[i1]) {
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := Hull(i + 1).TableEnumID()
+				id, named := Hull(i1 + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1399,7 +1399,7 @@ func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool 
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
-				if !HullConfigSaveMessageBody(w, &value.Hulls[i]) {
+				if !HullConfigSaveMessageBody(w, &value.Hulls[i1]) {
 					return false
 				}
 			}
@@ -1760,25 +1760,25 @@ func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, 
 func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool {
 	{
 		pairs := uint64(0)
-		for i := range value.PerTeam {
-			if value.PerTeam[i] != 0 {
+		for i1 := range value.PerTeam {
+			if value.PerTeam[i1] != 0 {
 				pairs++
 			}
 		}
 		if pairs > 0 {
 			w.Put(88, TableMessageRefBitsHere)
 			pairs := uint64(0)
-			for i := range value.PerTeam {
-				if value.PerTeam[i] != 0 {
+			for i1 := range value.PerTeam {
+				if value.PerTeam[i1] != 0 {
 					pairs++
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := range int(3) {
-				if !(value.PerTeam[i] != 0) {
+			for i1 := range int(3) {
+				if !(value.PerTeam[i1] != 0) {
 					continue
 				}
-				id, named := Team(i + 1).TableEnumID()
+				id, named := Team(i1 + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1787,10 +1787,10 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
-				if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
+				if value.PerTeam[i1] < 0 || value.PerTeam[i1] > 100000 {
 					w.Over++
 				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 17, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PerTeam[i]), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 17, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PerTeam[i1]), uint64(0))
 			}
 		}
 	}

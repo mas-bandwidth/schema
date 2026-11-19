@@ -967,7 +967,7 @@ local function emit_tail(ids, w, path, retain, report)
         w_raw(w, table.concat(probe.parts))
       else
         id_rollback(ids, mark)
-        if report ~= nil then report.retainLost = report.retainLost + 1 end
+        if report ~= nil then report.retainLost = (report.retainLost or 0) + 1 end
       end
     end
   end
@@ -977,7 +977,7 @@ end
 local function count_lost(retain, report)
   if retain == nil or report == nil then return end
   for _, rec in ipairs(retain.list or {}) do
-    if not rec.placed then report.retainLost = report.retainLost + 1 end
+    if not rec.placed then report.retainLost = (report.retainLost or 0) + 1 end
   end
 end
 
@@ -1208,7 +1208,7 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain, un
     for _, var in ipairs(f.variants or {}) do
       if var[2] == id then return end
     end
-    report.retainLost = report.retainLost + 1
+    if report ~= nil then report.retainLost = (report.retainLost or 0) + 1 end
   elseif s == "table" then
     local d = T.Tables[f.target]
     if d ~= nil then capture_body(T, atable, b, at, lim, d, path, report, retain) end
@@ -1230,7 +1230,7 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain, un
     end
     if arm == nil or arm.field == nil then
       -- AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS (§6.6), one level in
-      report.retainLost = report.retainLost + 1
+      if report ~= nil then report.retainLost = (report.retainLost or 0) + 1 end
       return
     end
     if kind ~= arm.field.kind then return end
@@ -1278,7 +1278,7 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain, un
         else
           -- AN UNKNOWN KEYED-ARRAY SLOT IS AN EXCLUDED CLASS (§6.6): a slot is
           -- not a field and the reader rewrites the array body whole.
-          report.retainLost = report.retainLost + 1
+          if report ~= nil then report.retainLost = (report.retainLost or 0) + 1 end
         end
         body.at = body.at + elen
       end
@@ -1335,7 +1335,7 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
           local payload = table.concat(w.parts)
           local cost = #payload + 16
           if retain ~= nil and retain.capacity ~= nil and (retain.used or 0) + cost > retain.capacity then
-            report.retainLost = report.retainLost + 1
+            if report ~= nil then report.retainLost = (report.retainLost or 0) + 1 end
           else
             if retain ~= nil then
               retain.list = retain.list or {}
@@ -1343,10 +1343,10 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
               retain.list[#retain.list + 1] =
                 { key = path_key(path), id = id, kind = kind, payload = payload, placed = false }
             end
-            report.retained = report.retained + 1
+            if report ~= nil then report.retained = (report.retained or 0) + 1 end
           end
         else
-          report.retainLost = report.retainLost + 1
+          if report ~= nil then report.retainLost = (report.retainLost or 0) + 1 end
         end
         r.at = finish
       elseif kind ~= fd.kind then
@@ -1391,7 +1391,7 @@ local function capture(T, name, bytes, retain, report)
       -- the unit's own blob nodes (a *string or *bytes field's payload) are
       -- this reader's to read, not an unknown record: only a node of a type
       -- this build cannot name is retain_lost
-      report.retainLost = report.retainLost + 1
+      if report ~= nil then report.retainLost = (report.retainLost or 0) + 1 end
     end
   end
 end

@@ -17,7 +17,8 @@ VERIFY_JFLAG          = $(if $(findstring j,$(MAKEFLAGS)),,-j$(VERIFY_JOBS))
 VERIFY_FUZZ_SEED     ?= 1
 VERIFY_FUZZ_RANDOM_N ?= 2500
 VERIFY_FUZZ_MAX      ?= 5000
-VERIFY_JSON_FUZZ_N   ?= 300
+VERIFY_JSON_FUZZ_N    ?= 300
+VERIFY_MESSAGE_FUZZ_N ?= 1500
 VERIFY_RESULTS_DIR   ?= build/verify/legs
 
 # Uniform cards-<lang>-conformance alias for Go (make/go.mk names it cards-conformance-go).
@@ -55,6 +56,10 @@ _verify-$(1)-fuzz: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	./build/conformance-harness json-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-$(1)
+	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
+		./build/conformance-harness message-fuzz --only $(1) \
+		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
+		--failed build/verify/message-fuzz-$(1)
 
 verify-$(1)-fuzz:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-fuzz

@@ -773,27 +773,35 @@ local function interpret_integer(token, integral)
   return out
 end
 
-local function int_less(n, bound)
+local function int_less(n, bound, signed)
+  if not signed then
+    if n.neg then return true end
+    return math.ult(n.mag, bound)
+  end
   if n.neg then
     if bound >= 0 then return true end
     local bm = 0 - bound
-    return math.ult(n.mag, bm)
+    return math.ult(bm, n.mag)
   end
   if bound < 0 then return false end
   return math.ult(n.mag, bound)
 end
 
-local function int_greater(n, bound)
+local function int_greater(n, bound, signed)
+  if not signed then
+    if n.neg then return false end
+    return math.ult(bound, n.mag)
+  end
   if bound < 0 then
     if not n.neg then return true end
-    return math.ult(0 - bound, n.mag)
+    return math.ult(n.mag, 0 - bound)
   end
   if n.neg then return false end
   return math.ult(bound, n.mag)
 end
 
-local function set_from_bound(n, bound)
-  if bound < 0 then
+local function set_from_bound(n, bound, signed)
+  if signed and bound < 0 then
     n.neg, n.mag = true, 0 - bound
   else
     n.neg, n.mag = false, bound
@@ -807,18 +815,18 @@ local function place_integer(fd, n, report)
   end
   if n.sat then report.outOfRange = report.outOfRange + 1 end
   if fd.lo ~= nil and fd.hi ~= nil then
-    if int_less(n, fd.lo) then
-      set_from_bound(n, fd.lo)
+    if int_less(n, fd.lo, fd.signed) then
+      set_from_bound(n, fd.lo, fd.signed)
       report.outOfRange = report.outOfRange + 1
-    elseif int_greater(n, fd.hi) then
-      set_from_bound(n, fd.hi)
+    elseif int_greater(n, fd.hi, fd.signed) then
+      set_from_bound(n, fd.hi, fd.signed)
       report.outOfRange = report.outOfRange + 1
     end
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local bmax = (1 << fd.bits) - 1
-    if int_greater(n, bmax) then
-      set_from_bound(n, bmax)
+    if int_greater(n, bmax, false) then
+      set_from_bound(n, bmax, false)
       report.outOfRange = report.outOfRange + 1
     end
   end

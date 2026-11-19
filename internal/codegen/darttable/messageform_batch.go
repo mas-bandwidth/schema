@@ -210,19 +210,30 @@ func (g *fixedModule) emitSaveMessageBody(st *ir.Struct) {
 		entry := ir.TableFieldEntry(f)
 		slot := g.messageSlot(entry)
 		expr := "value." + dartName(f.Name)
-		g.emitMessageFieldPreAssert(f, expr, "  ")
-		rides := g.messageRides(f, expr, "  ")
-		if rides == "" {
-			// A field that always rides (a struct array, position is
-			// identity there) is written WITHOUT an `if (true)`: the guard
-			// is not a suppression of a lint, it is no guard at all.
-			g.pf("  w.put(%d, tableMessageRefBits);\n", slot)
-			g.emitMessageWriteValue(f, entry, expr, "  ")
+		g.pf("  {\n")
+		g.emitMessageFieldPreAssert(f, expr, "    ")
+		if f.Type.Optional {
+			g.pf("    if (%sPresent) {\n", expr)
+			g.pf("      w.put(%d, tableMessageRefBits);\n", slot)
+			g.emitMessageWriteValue(f, entry, expr, "      ")
+			g.pf("    }\n")
+			g.pf("  }\n")
 			continue
 		}
-		g.pf("  if (%s) {\n", rides)
-		g.pf("    w.put(%d, tableMessageRefBits);\n", slot)
-		g.emitMessageWriteValue(f, entry, expr, "    ")
+		rides := ""
+		if !f.Required {
+			rides = g.messageRides(f, expr, "    ")
+		}
+		if rides == "" {
+			g.pf("    w.put(%d, tableMessageRefBits);\n", slot)
+			g.emitMessageWriteValue(f, entry, expr, "    ")
+			g.pf("  }\n")
+			continue
+		}
+		g.pf("    if (%s) {\n", rides)
+		g.pf("      w.put(%d, tableMessageRefBits);\n", slot)
+		g.emitMessageWriteValue(f, entry, expr, "      ")
+		g.pf("    }\n")
 		g.pf("  }\n")
 	}
 	g.pf("  w.put(0, tableMessageRefBits);\n  return !w.overflow;\n}\n\n")
@@ -274,13 +285,15 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 		entry := ir.TableFieldEntry(f)
 		expr := "value." + dartName(f.Name)
 		g.pf("      case %s: {\n", dartU64Literal(entry.Id))
-		g.pf("        if (sameBuild && nextField > %d) { r.report.Damage(); return false; } // out of the writer's order (§3.3)\n", i)
-		g.pf("        nextField = %d;\n", i+1)
+		g.pf("        final exact = sameBuild && entry.kind == %d && shape.elem == %d && shape.packing == %d && shape.bits == %d && shape.min == %d && shape.max == %d;\n",
+			entry.Kind, entry.Shape.Elem, entry.Shape.Packing, entry.Shape.Bits, entry.Shape.Min, entry.Shape.Max)
+		g.pf("        if (exact && nextField > %d) { r.report.Damage(); return false; } // out of the writer's order (§3.3)\n", i)
+		g.pf("        if (exact) { nextField = %d; }\n", i+1)
 		g.emitMessageCompatibility(f, entry, "entry", "shape", "        ")
 		held := g.messageHoldsElision(f, entry)
 		if held && messageNamesUnknown(f) {
-			g.pf("        final unknownAt = r.report.unknown;\n")
-			if _, nested := f.Type.Ref.(*ir.Struct); nested {
+			g.pf("        final subAt = r.report.unknown + r.substituted;\n")
+			if _, nested := f.Type.Ref.(*ir.Struct); nested && f.Array == ir.ArrayNone {
 				g.pf("        final bitsAt = r.bits.offset;\n")
 			}
 		}
@@ -315,7 +328,10 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 // optional one, whose presence is its payload, and a compressed float, whose
 // writer rides on the value before its step rounds.
 func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyEntry) bool {
-	if f.Type.Optional || f.Required || f.Array == ir.ArrayFixed || f.KeyEnum != "" {
+	if f.Type.Optional || f.Required || f.KeyEnum != "" {
+		return false
+	}
+	if f.Array == ir.ArrayFixed && ir.TableWireScalarKind(f) == ir.TableKindTable {
 		return false
 	}
 	return f.Type.Kind != ir.TFloat32 || entry.Shape.Packing != ir.TableMessageQuantized
@@ -334,8 +350,8 @@ func (g *fixedModule) messageHoldsElision(f *ir.Field, entry ir.TableVocabularyE
 // reference 0 is its own spelling, refused at every build (§3.3 (c)); a None
 // element of an array of unions is positional and never reaches here.
 func (g *fixedModule) emitMessageElidedCheck(f *ir.Field, expr, ind string) {
-	gate := "sameBuild && "
-	if _, union := f.Type.Ref.(*ir.Union); union && messageNamesUnknown(f) {
+	gate := "exact && "
+	if _, union := f.Type.Ref.(*ir.Union); union && f.Array == ir.ArrayNone && messageNamesUnknown(f) {
 		gate = ""
 	}
 	if !messageNamesUnknown(f) {
@@ -344,19 +360,19 @@ func (g *fixedModule) emitMessageElidedCheck(f *ir.Field, expr, ind string) {
 		return
 	}
 	rides := ""
-	if _, nested := f.Type.Ref.(*ir.Struct); nested {
+	if _, nested := f.Type.Ref.(*ir.Struct); nested && f.Array == ir.ArrayNone {
 		rides = "r.bits.offset - bitsAt > r.vocabulary.refBits"
 	} else {
 		rides = g.messageRides(f, expr, ind)
 	}
-	g.pf("%sif (%sr.report.unknown == unknownAt && !(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, gate, rides)
+	g.pf("%sif (%sr.report.unknown + r.substituted == subAt && !(%s)) { r.report.Damage(); return false; } // a field stored at its default (§4)\n", ind, gate, rides)
 }
 
-// messageNamesUnknown reports whether a single field's read can meet a name
-// this reader cannot place, and so read its default lawfully: an enum's
-// variant, a union's arm, a nested body's field.
+// messageNamesUnknown reports whether a field's read can meet a name or
+// retired variant this reader substitutes with its default: an enum's
+// variant, a union's arm, a nested body's field, or an array of any of them.
 func messageNamesUnknown(f *ir.Field) bool {
-	if f.Type.Kind != ir.TNamed || f.Array != ir.ArrayNone || f.IsList() || f.IsMap() {
+	if f.Type.Kind != ir.TNamed || f.IsList() || f.IsMap() {
 		return false
 	}
 	switch f.Type.Ref.(type) {
@@ -422,15 +438,40 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 		}
 		return strings.Join(parts, " || ")
 	}
+	if f.KeyEnum != "" {
+		elem := messageElementField(f)
+		g.pf("%svar keyedPresent = 0;\n", ind)
+		g.pf("%sfor (var ki = 0; ki < %d; ki++) {\n", ind, f.ArrayBound)
+		elRides := g.messageRides(elem, expr+"[ki]", ind+"  ")
+		g.pf("%s  if (%s) { keyedPresent++; }\n", ind, elRides)
+		g.pf("%s}\n", ind)
+		return "keyedPresent > 0"
+	}
 	if f.Array == ir.ArrayCounted {
+		if f.BornCount() > 0 && !f.Required {
+			elem := messageElementField(f)
+			g.pf("%svar arrayRides = %sCount != %d;\n", ind, expr, f.BornCount())
+			g.pf("%sif (!arrayRides) {\n", ind)
+			g.pf("%s  for (var ai = 0; ai < %d; ai++) {\n", ind, f.BornCount())
+			elRides := g.messageRides(elem, expr+"[ai]", ind+"    ")
+			g.pf("%s    if (%s) { arrayRides = true; break; }\n", ind, elRides)
+			g.pf("%s  }\n", ind)
+			g.pf("%s}\n", ind)
+			return "arrayRides"
+		}
 		return expr + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {
-		// A fixed array always rides here, position being its identity (§3.3,
-		// "fixed arrays of tables keep their elements"). It has no guard, so
-		// the writer emits the reference and payload unconditionally rather
-		// than an `if (true)` the lint set would (rightly) call constant.
-		return ""
+		if ir.TableWireScalarKind(f) == ir.TableKindTable {
+			return ""
+		}
+		elem := messageElementField(f)
+		g.pf("%svar fixedRides = false;\n", ind)
+		g.pf("%sfor (var fi = 0; fi < %d; fi++) {\n", ind, f.ArrayBound)
+		elRides := g.messageRides(elem, expr+"[fi]", ind+"  ")
+		g.pf("%s  if (%s) { fixedRides = true; break; }\n", ind, elRides)
+		g.pf("%s}\n", ind)
+		return "fixedRides"
 	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
@@ -502,6 +543,32 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 		g.pf("%sw.put(%sLength, %d);\n", ind, expr, ir.TableMessageCountBits(shape))
 		g.pf("%sw.align();\n", ind)
 		g.pf("%sw.raw(Uint8List.sublistView(%s, 0, %sLength));\n", ind, expr, expr)
+	case f.KeyEnum != "":
+		elem := messageElementField(f)
+		elemEntry := ir.TableVocabularyEntry{Kind: shape.Elem}
+		if shape.Inner != nil {
+			elemEntry.Shape = *shape.Inner
+		}
+		g.pf("%s{\n", ind)
+		g.pf("%s  var pairs = 0;\n", ind)
+		g.pf("%s  for (var ki = 0; ki < %d; ki++) {\n", ind, f.ArrayBound)
+		elRides := g.messageRides(elem, expr+"[ki]", ind+"    ")
+		g.pf("%s    if (%s) { pairs++; }\n", ind, elRides)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  w.put(pairs, %d);\n", ind, ir.TableMessageBitsRequired(0, shape.Max))
+		g.pf("%s  for (var ki = 0; ki < %d; ki++) {\n", ind, f.ArrayBound)
+		elRides2 := g.messageRides(elem, expr+"[ki]", ind+"    ")
+		g.pf("%s    if (!(%s)) continue;\n", ind, elRides2)
+		g.pf("%s    switch (ki + 1) {\n", ind)
+		for vi := range f.KeyEnumRef.Variants {
+			kslot := g.messageNameSlot(ir.TableWireId(f.KeyEnumRef.VariantWireName(vi)))
+			g.pf("%s      case %d: w.put(%d, tableMessageRefBits); break;\n", ind, vi+1, kslot)
+		}
+		g.pf("%s      default: return false;\n", ind)
+		g.pf("%s    }\n", ind)
+		g.emitMessageWriteElement(elem, elemEntry, expr+"[ki]", ind+"    ")
+		g.pf("%s  }\n", ind)
+		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
@@ -519,8 +586,10 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 		if shape.Inner != nil {
 			elemEntry.Shape = *shape.Inner
 		}
-		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-		g.emitMessageWriteElement(elem, elemEntry, expr+"[i]", ind+"  ")
+		g.loopSeq++
+		iv := fmt.Sprintf("i%d", g.loopSeq)
+		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+		g.emitMessageWriteElement(elem, elemEntry, expr+"["+iv+"]", ind+"  ")
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TNamed:
 		switch r := f.Type.Ref.(type) {
@@ -674,6 +743,10 @@ func (g *fixedModule) emitMessageWriteEnum(e *ir.Enum, expr, ind string) {
 	g.pf("%s  w.put(0, tableMessageRefBits);\n%s} else {\n", ind, ind)
 	g.pf("%s  switch (%s) {\n", ind, expr)
 	for i := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			g.pf("%s    case %d: w.overflow = true; break;\n", ind, i+1)
+			continue
+		}
 		slot := g.messageNameSlot(ir.TableWireId(e.VariantWireName(i)))
 		g.pf("%s    case %d: w.put(%d, tableMessageRefBits); break;\n", ind, i+1, slot)
 	}
@@ -730,11 +803,18 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  if (r.bits.failed) { %s; }\n", aind, bad)
 		g.pf("%s  n = raw + %s.min;\n", aind, shapeExpr)
 		g.pf("%s}\n", aind)
+		g.pf("%sif (n > %s.max) { %s; }\n", aind, shapeExpr, bad)
 		g.pf("%sif (%s == %d && %s.elem == 6 && !r.bits.align()) { %s; }\n", aind, kindExpr, ir.TableKindArray, shapeExpr, bad)
-		g.pf("%sif (n > %d) { r.report.Refuse('count_over_bound'); return false; }\n", aind, f.ArrayBound)
-		g.pf("%sfor (var i = 0; i < n; i++) {\n", aind)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			g.pf("%sif (n < %d || n > %d) { r.report.Refuse('count_over_bound'); return false; }\n", aind, f.ArrayMin, f.ArrayBound)
+		} else {
+			g.pf("%sif (n > %d) { r.report.Refuse('count_over_bound'); return false; }\n", aind, f.ArrayBound)
+		}
+		g.loopSeq++
+		iv := fmt.Sprintf("i%d", g.loopSeq)
+		g.pf("%sfor (var %s = 0; %s < n; %s++) {\n", aind, iv, iv, iv)
 		elem := messageElementField(f)
-		g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ", shapeExpr+".inner!", shapeExpr+".elem")
+		g.emitMessageReadElement(elem, entry, expr+"["+iv+"]", aind+"  ", shapeExpr+".inner!", shapeExpr+".elem")
 		g.pf("%s}\n", aind)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s%sCount = n;\n", aind, expr)
@@ -747,7 +827,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		case *ir.Union:
 			g.emitMessageReadUnion(r, expr, ind)
 		case *ir.Enum:
-			g.emitMessageReadEnum(r, expr, ind)
+			g.emitMessageReadEnum(f, r, expr, ind)
 		case *ir.Flags:
 			g.emitMessageReadScalar(f, entry, expr, ind, shapeExpr, kindExpr)
 		}
@@ -773,14 +853,21 @@ func (g *fixedModule) emitMessageReadKeyed(f *ir.Field, entry ir.TableVocabulary
 	g.pf("%s    if (r.bits.failed) { %s; }\n", ind, bad)
 	g.pf("%s    slots = raw + %s.min;\n", ind, shapeExpr)
 	g.pf("%s  }\n", ind)
+	g.pf("%s  if (slots > %s.max) { %s; }\n", ind, shapeExpr, bad)
+	if !f.Type.Optional && !f.Required {
+		g.pf("%s  if (sameBuild && slots == 0) { %s; }\n", ind, bad)
+	}
+	g.pf("%s  var lastAt = 0;\n", ind)
 	g.pf("%s  r.seenDepth++;\n", ind)
 	g.pf("%s  r.seenReset();\n", ind)
-	g.pf("%s  for (var i = 0; i < slots; i++) {\n", ind)
+	g.loopSeq++
+	iv := fmt.Sprintf("i%d", g.loopSeq)
+	g.pf("%s  for (var %s = 0; %s < slots; %s++) {\n", ind, iv, iv, iv)
 	g.pf("%s    final keyRef = r.bits.get(r.vocabulary.refBits);\n", ind)
 	g.pf("%s    if (r.bits.failed || keyRef == 0 || keyRef > r.vocabulary.count) { %s; }\n", ind, bad)
 	g.pf("%s    final key = r.vocabulary.entries[keyRef - 1];\n", ind)
 	g.pf("%s    if (tableMessageReservedId(key.id) || key.kind != 0) { %s; }\n", ind, bad)
-	g.pf("%s    if (r.seenHas(keyRef)) { %s; }\n", ind, bad)
+	g.pf("%s    if (r.seenHasId(key.id)) { %s; }\n", ind, bad)
 	g.pf("%s    r.seenAdd(keyRef);\n", ind)
 	g.pf("%s    var at = 0;\n", ind)
 	for i := range f.KeyEnumRef.Variants {
@@ -794,7 +881,21 @@ func (g *fixedModule) emitMessageReadKeyed(f *ir.Field, entry ir.TableVocabulary
 	g.pf("%s      r.report.unknown++;\n", ind)
 	g.emitMessageDropElement(elem, entry, ind+"      ", shapeExpr+".inner!", shapeExpr+".elem")
 	g.pf("%s    } else {\n", ind)
+	g.pf("%s      final exactKeyed = sameBuild && %s.max == %d;\n", ind, shapeExpr, len(f.KeyEnumRef.Variants))
+	g.pf("%s      if (exactKeyed && at <= lastAt) { %s; }\n", ind, bad)
+	g.pf("%s      lastAt = at;\n", ind)
+	g.pf("%s      final subBeforeSlot = r.report.unknown + r.substituted;\n", ind)
+	_, elemIsStruct := elem.Type.Ref.(*ir.Struct)
+	if elemIsStruct {
+		g.pf("%s      final bitsBeforeSlot = r.bits.offset;\n", ind)
+	}
 	g.emitMessageReadElement(elem, entry, expr+"[at - 1]", ind+"      ", shapeExpr+".inner!", shapeExpr+".elem")
+	if elemIsStruct {
+		g.pf("%s      if (exactKeyed && r.report.unknown + r.substituted == subBeforeSlot && r.bits.offset - bitsBeforeSlot <= r.vocabulary.refBits) { %s; }\n", ind, bad)
+	} else {
+		slotRides := g.messageRides(elem, expr+"[at - 1]", ind+"      ")
+		g.pf("%s      if (exactKeyed && %s.inner!.packing != 2 && r.report.unknown + r.substituted == subBeforeSlot && !(%s)) { %s; }\n", ind, shapeExpr, slotRides, bad)
+	}
 	g.pf("%s    }\n", ind)
 	g.pf("%s  }\n", ind)
 	g.pf("%s  r.seenDepth--;\n", ind)
@@ -829,7 +930,7 @@ func (g *fixedModule) emitMessageReadElement(f *ir.Field, entry ir.TableVocabula
 }
 
 func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind, shapeExpr, kindExpr string) {
-	kind, shape := entry.Kind, entry.Shape
+	kind := entry.Kind
 	if kind == ir.TableKindBool {
 		// READ INTO A LOCAL, CHECK, THEN STORE: a body that runs out of bits
 		// keeps the value it had landed (internal/tablewire/messagedecode.go,
@@ -848,57 +949,32 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// as non_finite_float, naming the field, and lands nothing.
 	refuse := fmt.Sprintf("r.report.RefuseNonFiniteFloat('%s')", g.gen.floatOwner(f))
 	if kind == ir.TableKindF32 {
-		// A COMPRESSED FLOAT RIDES AS ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
-		// packing 2, ir.TableMessageQuantized): the width is the announced
-		// shape's, an index above `count` is DAMAGE and is never reconstructed,
-		// and the float is `min + (index / count) * delta` with TWO float32
-		// roundings on each side, in the oracle's order
-		// (internal/tablewire/messagedecode.go, `float32` and
-		// ir.TableMessageDequantize). A raw f32 keeps the IEEE-754 path below.
-		if shape.Packing == ir.TableMessageQuantized {
-			count, delta, ok := ir.TableMessageQuantization(shape)
-			if ok {
-				countLit := fmt.Sprintf("%d", count)
-				g.pf("%s{\n", ind)
-				g.pf("%s  final index = r.bits.get(%d);\n", ind, shape.Bits)
-				g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
-				g.pf("%s  if (index > %s) { r.report.Damage(); return false; }\n", ind, countLit)
-				// float32(index) / float32(count), the oracle's operands.
-				g.pf("%s  TableBitWriter._float32Cell[0] = index.toDouble();\n", ind)
-				g.pf("%s  final fi = TableBitWriter._float32Cell[0];\n", ind)
-				g.pf("%s  TableBitWriter._float32Cell[0] = %s.0;\n", ind, countLit)
-				g.pf("%s  final fc = TableBitWriter._float32Cell[0];\n", ind)
-				g.pf("%s  TableBitWriter._float32Cell[0] = fi / fc;\n", ind)
-				g.pf("%s  final normalized = TableBitWriter._float32Cell[0];\n", ind)
-				g.pf("%s  TableBitWriter._float32Cell[0] = normalized * %s;\n", ind, fixedFloatLit(float64(delta)))
-				g.pf("%s  final scaled = TableBitWriter._float32Cell[0];\n", ind)
-				g.pf("%s  TableBitWriter._float32Cell[0] = scaled + %s;\n", ind, fixedFloatLit(float64(shape.QMin)))
-				g.pf("%s  %s = TableBitWriter._float32Cell[0];\n", ind, expr)
-				g.pf("%s}\n", ind)
-				if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
-					// THE READER'S OWN RANGED FLOAT CLAMPS AND COUNTS, exactly
-					// as the oracle's float32 read does
-					// (internal/tablewire/messagedecode.go, `float32` and
-					// `clampFloat`; docs/SPEC-TABLES.md §3.3, §4) and as the
-					// file form's emitClamp does (fixeddart.go). The index check
-					// above is the damage rule and runs first.
-					lo, hi, _ := fixedFloatClampEnds(f)
-					g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
-						ind, expr, lo, expr, hi)
-				}
-				return
-			}
-		}
-		// The widening is AT THE ASSIGNMENT (issue 404, PORTING M3), and the
-		// bits are a NaN or an infinity exactly when the exponent is all ones.
-		g.pf("%s{\n", ind)
+		g.pf("%sif (%s.packing == 2) {\n", ind, shapeExpr)
+		g.pf("%s  final index = r.bits.get(%s.bits);\n", ind, shapeExpr)
+		g.pf("%s  if (r.bits.failed || index > %s.qCount) { r.report.Damage(); return false; }\n", ind, shapeExpr)
+		g.pf("%s  TableBitWriter._float32Cell[0] = index.toDouble();\n", ind)
+		g.pf("%s  final fi = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s  TableBitWriter._float32Cell[0] = %s.qCount.toDouble();\n", ind, shapeExpr)
+		g.pf("%s  final fc = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s  TableBitWriter._float32Cell[0] = fi / fc;\n", ind)
+		g.pf("%s  final normalized = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s  TableBitWriter._float32Cell[0] = %s.qDelta;\n", ind, shapeExpr)
+		g.pf("%s  final qd = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s  TableBitWriter._float32Cell[0] = normalized * qd;\n", ind)
+		g.pf("%s  final scaled = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s  TableBitWriter._float32Cell[0] = %s.qMin;\n", ind, shapeExpr)
+		g.pf("%s  final qm = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s  TableBitWriter._float32Cell[0] = scaled + qm;\n", ind)
+		g.pf("%s  final xv = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s  if (!xv.isFinite) return %s;\n", ind, refuse)
+		g.pf("%s  %s = xv == 0 ? 0.0 : xv;\n", ind, expr)
+		g.pf("%s} else {\n", ind)
 		g.pf("%s  final b = r.bits.get(32);\n", ind)
 		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		g.pf("%s  if ((b & 0x7f800000) == 0x7f800000) return %s;\n", ind, refuse)
 		g.pf("%s  TableBitWriter._float32Words[0] = b;\n", ind)
 		g.pf("%s  %s = TableBitWriter._float32Cell[0];\n", ind, expr)
 		g.pf("%s}\n", ind)
-		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
 			// THE READER'S OWN RANGED FLOAT CLAMPS AND COUNTS, exactly as the
 			// oracle's float32 read does (internal/tablewire/messagedecode.go,
@@ -917,11 +993,32 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		// THE FLOAT RUNG (docs/SPEC-TABLES.md §4): an announced f32 widens
 		// exactly into this f64, and the bits say which width rides.
 		g.pf("%sif (%s == %d) {\n", ind, kindExpr, ir.TableKindF32)
-		g.pf("%s  final b = r.bits.get(32);\n", ind)
-		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
-		g.pf("%s  if ((b & 0x7f800000) == 0x7f800000) return %s;\n", ind, refuse)
-		g.pf("%s  TableBitWriter._float32Words[0] = b;\n", ind)
-		g.pf("%s  %s = TableBitWriter._float32Cell[0];\n", ind, expr)
+		g.pf("%s  if (%s.packing == 2) {\n", ind, shapeExpr)
+		g.pf("%s    final index = r.bits.get(%s.bits);\n", ind, shapeExpr)
+		g.pf("%s    if (r.bits.failed || index > %s.qCount) { r.report.Damage(); return false; }\n", ind, shapeExpr)
+		g.pf("%s    TableBitWriter._float32Cell[0] = index.toDouble();\n", ind)
+		g.pf("%s    final fi = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s    TableBitWriter._float32Cell[0] = %s.qCount.toDouble();\n", ind, shapeExpr)
+		g.pf("%s    final fc = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s    TableBitWriter._float32Cell[0] = fi / fc;\n", ind)
+		g.pf("%s    final normalized = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s    TableBitWriter._float32Cell[0] = %s.qDelta;\n", ind, shapeExpr)
+		g.pf("%s    final qd = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s    TableBitWriter._float32Cell[0] = normalized * qd;\n", ind)
+		g.pf("%s    final scaled = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s    TableBitWriter._float32Cell[0] = %s.qMin;\n", ind, shapeExpr)
+		g.pf("%s    final qm = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s    TableBitWriter._float32Cell[0] = scaled + qm;\n", ind)
+		g.pf("%s    final xv = TableBitWriter._float32Cell[0];\n", ind)
+		g.pf("%s    if (!xv.isFinite) return %s;\n", ind, refuse)
+		g.pf("%s    %s = xv;\n", ind, expr)
+		g.pf("%s  } else {\n", ind)
+		g.pf("%s    final b = r.bits.get(32);\n", ind)
+		g.pf("%s    if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+		g.pf("%s    if ((b & 0x7f800000) == 0x7f800000) return %s;\n", ind, refuse)
+		g.pf("%s    TableBitWriter._float32Words[0] = b;\n", ind)
+		g.pf("%s    %s = TableBitWriter._float32Cell[0];\n", ind, expr)
+		g.pf("%s  }\n", ind)
 		g.pf("%s} else {\n", ind)
 		// READ INTO A LOCAL, CHECK, THEN STORE (internal/tablewire/messagedecode.go,
 		// `scalar`, the f64 arm; docs/SPEC-TABLES.md §3.3).
@@ -957,10 +1054,25 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// width's two's complement, so -7 crosses as 0xfffffff9 and comes back as
 	// -7, never as 4294967289 in a 64-bit Dart int.
 	switch kind {
-	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
+	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64,
+		ir.TableKindFixed8, ir.TableKindFixed16, ir.TableKindFixed32, ir.TableKindFixed64:
 		g.pf("%s  if (%s.packing == 0) { %s = %s.toSigned(TableMessageShape.valueBits(%s, %s)); }\n", ind, shapeExpr, expr, expr, kindExpr, shapeExpr)
 	}
 	g.pf("%s}\n", ind)
+	switch kind {
+	case ir.TableKindI8, ir.TableKindFixed8:
+		g.pf("%sif (%s < -128 || %s > 127) { r.report.Refuse('out_of_range'); return false; }\n", ind, expr, expr)
+	case ir.TableKindI16, ir.TableKindFixed16:
+		g.pf("%sif (%s < -32768 || %s > 32767) { r.report.Refuse('out_of_range'); return false; }\n", ind, expr, expr)
+	case ir.TableKindI32, ir.TableKindFixed32:
+		g.pf("%sif (%s < -2147483648 || %s > 2147483647) { r.report.Refuse('out_of_range'); return false; }\n", ind, expr, expr)
+	case ir.TableKindU8, ir.TableKindUFixed8:
+		g.pf("%sif ((%s ^ 0x8000000000000000) > (255 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }\n", ind, expr)
+	case ir.TableKindU16, ir.TableKindUFixed16:
+		g.pf("%sif ((%s ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }\n", ind, expr)
+	case ir.TableKindU32, ir.TableKindUFixed32:
+		g.pf("%sif ((%s ^ 0x8000000000000000) > (4294967295 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }\n", ind, expr)
+	}
 	// THE VALUE IS THEN CLAMPED TO THIS READER'S OWN DECLARATION and counted,
 	// in the oracle's order (internal/tablewire/messagedecode.go, `scalar`;
 	// docs/SPEC-TABLES.md §3.3, §4): the integer range first — signed against
@@ -972,11 +1084,13 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	// range is ordered whole (a decoded value past 2^63 reads back negative in
 	// the Dart int and must not be mistaken for below-min), and an int64 bound
 	// at -2^63 is written as the exhaustive literal Dart accepts (fixedIntLit).
-	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		loLHS, loCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
-		hiLHS, hiCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
-		g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
-			ind, loLHS, loCmp, hiLHS, hiCmp)
+	if f.HasIntRange {
+		if rawLo, rawHi, ok := ir.TableRawRange(f); ok {
+			loLHS, loCmp, _ := g.gen.fixedClampTerms(f.Type, expr, rawLo)
+			hiLHS, hiCmp, _ := g.gen.fixedClampTerms(f.Type, expr, rawHi)
+			g.pf("%sif (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
+				ind, loLHS, loCmp, hiLHS, hiCmp)
+		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		maxBits := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
@@ -1016,41 +1130,34 @@ func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabu
 	g.pf("%s    lo = sumLo;\n", ind)
 	g.pf("%s  }\n", ind)
 	g.pf("%s  %s = %s(hi, lo);\n", ind, expr, cls)
-	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
-		// A 128-BIT SCALAR CLAMPS AGAINST THIS READER'S OWN DECLARATION and
-		// counts, exactly as the oracle's wide read does
-		// (internal/tablewire/messagedecode.go, `scalar`, the 128-bit
-		// payload via tabletext.WideClamp; docs/SPEC-TABLES.md §3.3, §4).
-		// The comparison literals come from the fixed form's own
-		// fixedClampTerms (fixeddart.go), which spell an Int128/UInt128
-		// bound as its high and low hex halves.
-		loLHS, loCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMin)
-		hiLHS, hiCmp, _ := g.gen.fixedClampTerms(f.Type, expr, f.IntMax)
-		g.pf("%s  if (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
-			ind, loLHS, loCmp, hiLHS, hiCmp)
+	if f.HasIntRange {
+		if rawLo, rawHi, ok := ir.TableRawRange(f); ok {
+			loLHS, loCmp, _ := g.gen.fixedClampTerms(f.Type, expr, rawLo)
+			hiLHS, hiCmp, _ := g.gen.fixedClampTerms(f.Type, expr, rawHi)
+			g.pf("%s  if (%s < %s || %s > %s) { r.report.Refuse('out_of_range'); return false; }\n",
+				ind, loLHS, loCmp, hiLHS, hiCmp)
+		}
 	}
 	g.pf("%s}\n", ind)
 }
 
-func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
+func (g *fixedModule) emitMessageReadEnum(f *ir.Field, e *ir.Enum, expr, ind string) {
 	g.pf("%s{\n", ind)
 	g.pf("%s  final ref = r.bits.get(r.vocabulary.refBits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	g.gen.need(e.Name)
+	depDef := g.gen.fixedZeroFor(f)
 	g.pf("%s  if (ref == 0) { %s = %s.none; } else {\n", ind, expr, e.Name)
-	// A reference that names no kind-0 entry — one above the announcement's
-	// count, one naming a reserved id (the node table's entry is the one an
-	// announcement may carry), or an entry that carries a payload — is
-	// damage, exactly as the reference's bitDecoder.name resolves it
-	// (internal/tablewire/messagedecode.go, `name` and `reserved`;
-	// docs/SPEC-TABLES.md §3.1, §3.3). Only a kind-0 entry that is not one
-	// of this enum's variants counts an `unknown`.
 	g.pf("%s    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n", ind)
 	g.pf("%s    final named = r.vocabulary.entries[ref - 1];\n", ind)
 	g.pf("%s    if (tableMessageReservedId(named.id) || named.kind != 0) { r.report.Damage(); return false; }\n", ind)
 	g.pf("%s    switch (named.id) {\n", ind)
 	for i, v := range e.Variants {
 		id := ir.TableWireId(e.VariantWireName(i))
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			g.pf("%s      case %s: %s = %s; r.substituted++; break;\n", ind, dartU64Literal(id), expr, depDef)
+			continue
+		}
 		g.pf("%s      case %s: %s = %s.%s; break;\n", ind, dartU64Literal(id), expr, e.Name, dartName(v))
 	}
 	g.pf("%s      default: %s = %s.none; r.report.unknown++; break;\n", ind, expr, e.Name)
@@ -1228,6 +1335,7 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+  int substituted = 0;
 
   /// THE SEEN SLOTS FOR THE BODY AT 'seenDepth': a bit per announced entry
   /// (docs/SPEC-TABLES.md §3.3, §4). The buffer is allocated once from the

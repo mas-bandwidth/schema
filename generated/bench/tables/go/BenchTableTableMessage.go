@@ -350,6 +350,10 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	}
 	versionCount, wordsCount := 0, 0
 	var words []byte
+	var seen [4097]bool
+	var fuRep TableReport
+	tableFirstUseCount(&fuRep, 2)
+	r.Report = &fuRep
 	for {
 		ref, ok := r.Leb()
 		if !ok {
@@ -359,8 +363,13 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if ref == 0 {
 			break
 		}
+		if ref > 4096 || seen[ref] {
+			report.Refuse(TableRefuseWireDamaged, "")
+			return false
+		}
+		seen[ref] = true
 		id, ok := r.Resolve(ref)
-		if !ok || !r.Has(1) {
+		if !ok || !r.Has(1) || id == 0xffffffffffffffff {
 			report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -399,13 +408,17 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 			wordsCount++
 		default:
 			report.Unknown++
-			if !r.Skip(kind) {
-				report.Refuse(TableRefuseWireDamaged, "")
+			var wc tableWireCheck
+			wc.ids = uint64(len(r.Ids)) / 8
+			at, wok := wc.value(r, kind)
+			if !wok {
+				report.Refuse(wc.failed(), "")
 				return false
 			}
+			r.Offset = at
 		}
 	}
-	if versionCount != 1 || wordsCount != 1 {
+	if r.Offset != int64(len(r.Buffer)) || !tableFirstUseWhole(&fuRep, uint64(len(r.Ids))/8) || versionCount != 1 || wordsCount != 1 {
 		report.Refuse(TableRefuseWireDamaged, "")
 		return false
 	}
@@ -511,6 +524,49 @@ func tableMessageKindBits(k uint8) int64 {
 	}
 	return -1
 }
+func tableMessageBaseInsideKind(k uint8, b [2]uint64) bool {
+	switch k {
+	case 18, 19, 24, 29:
+		return true
+	case 2, 3, 4:
+		w := uint(tableMessageKindBits(k))
+		lo := -(int64(1) << (w - 1))
+		hi := (int64(1) << (w - 1)) - 1
+		v := int64(b[0])
+		return v >= lo && v <= hi
+	case 6, 7, 8:
+		w := uint(tableMessageKindBits(k))
+		return b[0] <= (uint64(1)<<w)-1
+	case 5, 9:
+		return true
+	case 20, 21, 22, 23:
+		v := int64(b[0])
+		wantHi := uint64(0)
+		if v < 0 {
+			wantHi = ^uint64(0)
+		}
+		if b[1] != wantHi {
+			return false
+		}
+		if k == 23 {
+			return true
+		}
+		w := uint(tableMessageKindBits(k))
+		lo := -(int64(1) << (w - 1))
+		hi := (int64(1) << (w - 1)) - 1
+		return v >= lo && v <= hi
+	case 25, 26, 27, 28:
+		if b[1] != 0 {
+			return false
+		}
+		if k == 28 {
+			return true
+		}
+		w := uint(tableMessageKindBits(k))
+		return b[0] <= (uint64(1)<<w)-1
+	}
+	return true
+}
 func tableMessageShapeRead(r *TableReader, k uint8) (s TableMessageShape, ok bool) {
 	s.Kind = k
 	s.Bits = tableMessageKindBits(k)
@@ -543,6 +599,9 @@ func tableMessageShapeRead(r *TableReader, k uint8) (s TableMessageShape, ok boo
 					base = uint64(int64(base>>1) ^ -int64(base&1))
 				}
 				s.Base[0] = base
+			}
+			if !tableMessageBaseInsideKind(k, s.Base) {
+				return s, false
 			}
 			return s, true
 		}
@@ -613,21 +672,12 @@ func tableMessageEntryRead(r *TableReader) (e TableMessageEntry, ok bool) {
 			return e, false
 		}
 		elem := r.Get8()
-		if !tableMessageKnownKind(elem) {
+		if !tableMessageKnownKind(elem) || elem == 14 || elem == 16 {
 			return e, false
 		}
 		e.Element, ok = tableMessageShapeRead(r, elem)
 		if !ok {
 			return e, false
-		}
-		if elem == 14 || elem == 16 {
-			if !r.Has(1) {
-				return e, false
-			}
-			inner := r.Get8()
-			if !tableMessageKnownKind(inner) {
-				return e, false
-			}
 		}
 	}
 	return e, true
@@ -2364,8 +2414,8 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 				return false
 			}
 			w.Put(uint64(value.EntitiesCount)-1, 3)
-			for i := range int(value.EntitiesCount) {
-				if !TableEntitySaveMessageBody(w, &value.Entities[i]) {
+			for i1 := range int(value.EntitiesCount) {
+				if !TableEntitySaveMessageBody(w, &value.Entities[i1]) {
 					return false
 				}
 			}
@@ -2381,8 +2431,8 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 				return false
 			}
 			w.Put(uint64(value.StatsCount)-0, 7)
-			for i := range int(value.StatsCount) {
-				if !TableStatSaveMessageBody(w, &value.Stats[i]) {
+			for i1 := range int(value.StatsCount) {
+				if !TableStatSaveMessageBody(w, &value.Stats[i1]) {
 					return false
 				}
 			}
@@ -2432,8 +2482,8 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 			w.Put(34, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
 			w.Align()
-			for i := range int(4) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Loadout[i]), uint64(0))
+			for i1 := range int(4) {
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Loadout[i1]), uint64(0))
 			}
 		}
 	}
@@ -2488,8 +2538,8 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 			}
 			w.Put(uint64(value.PayloadLength)-0, 5)
 			w.Align()
-			for i := range int(value.PayloadLength) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i]), uint64(0))
+			for i1 := range int(value.PayloadLength) {
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i1]), uint64(0))
 			}
 		}
 	}

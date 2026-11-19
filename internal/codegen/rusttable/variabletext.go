@@ -1378,12 +1378,12 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, x)
 		case ir.TFloat32:
 			if f.HasFloatRange {
-				fmt.Fprintf(b, "%sif !((%s as f64) >= %v && (%s as f64) <= %v) { w.refused = true; }\n", ind, x, f.FMin, x, f.FMax)
+				fmt.Fprintf(b, "%sif !((%s as f64) >= %s && (%s as f64) <= %s) { w.refused = true; }\n", ind, x, fixedFloatLit(f.FMin), x, fixedFloatLit(f.FMax))
 			}
 			fmt.Fprintf(b, "%sjson_float(%s as f64, true, w);\n", ind, x)
 		case ir.TFloat64:
 			if f.HasFloatRange {
-				fmt.Fprintf(b, "%sif !(%s >= %v && %s <= %v) { w.refused = true; }\n", ind, x, f.FMin, x, f.FMax)
+				fmt.Fprintf(b, "%sif !(%s >= %s && %s <= %s) { w.refused = true; }\n", ind, x, fixedFloatLit(f.FMin), x, fixedFloatLit(f.FMax))
 			}
 			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, x)
 		case ir.TFixed:

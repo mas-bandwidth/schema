@@ -352,36 +352,7 @@ module SchemaRuntimeUnit
       vocab.refused = false
     end
 
-    def self.resolve_vocabulary(vocab, local, records)
-      by_id_map = SchemaTable.map_h
-      local.entries.each do |entry|
-        (by_id_map[entry.field_id] ||= SchemaTable.map_h)[[entry.kind, entry.shape.element]] = true
-      end
-      vocab.entries.each do |entry|
-        known = by_id_map[entry.field_id]
-        next if known.nil?
-
-        ok = known.keys.any? do |cand_kind, cand_elem|
-          if entry.kind != cand_kind
-            widens?(entry.kind, cand_kind)
-          elsif [14, 16].include?(entry.kind)
-            entry.shape.element == cand_elem || (entry.kind == 14 && widens?(entry.shape.element, cand_elem))
-          else
-            true
-          end
-        end
-        next if ok
-
-        vocab.entries = SchemaTable.arr
-        vocab.slots.clear
-        vocab.names.clear
-        vocab.resolved.clear
-        vocab.variants.clear
-        vocab.announced = false
-        vocab.refused = true
-        raise Refused.new('kind_mismatch', 'announcement field has an incompatible kind')
-      end
-
+    def self.resolve_vocabulary(vocab, _local, records)
       resolved = SchemaTable.map_h
       variants = SchemaTable.map_h
       visited = SchemaTable.map_h

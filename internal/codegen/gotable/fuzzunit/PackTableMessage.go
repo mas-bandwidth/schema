@@ -460,11 +460,11 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 				return false
 			}
 			w.Put(uint64(value.HardpointsCount)-0, 3)
-			for i := range int(value.HardpointsCount) {
-				if value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8 {
+			for i1 := range int(value.HardpointsCount) {
+				if value.Hardpoints[i1] < 0 || value.Hardpoints[i1] > 8 {
 					w.Over++
 				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Hardpoints[i]), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Hardpoints[i1]), uint64(0))
 			}
 		}
 	}
@@ -967,14 +967,14 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 		if !allDefault {
 			w.Put(10, TableMessageRefBitsHere)
 			w.Put(uint64(3)-3, 0)
-			for i := range int(3) {
-				if value.SpawnDelays[i]-value.SpawnDelays[i] != 0 {
+			for i1 := range int(3) {
+				if value.SpawnDelays[i1]-value.SpawnDelays[i1] != 0 {
 					w.Over++
 				}
-				if value.SpawnDelays[i]-value.SpawnDelays[i] != 0 {
+				if value.SpawnDelays[i1]-value.SpawnDelays[i1] != 0 {
 					return false
 				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.SpawnDelays[i])), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.SpawnDelays[i1])), uint64(0))
 			}
 		}
 	}
@@ -1374,11 +1374,11 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 	}
 	{
 		pairs := uint64(0)
-		for i := range value.Ships {
+		for i1 := range value.Ships {
 			probe := *w
 			probe.Measuring = true
 			probe.Bits = 0
-			if !ShipEntrySaveMessageBody(&probe, &value.Ships[i]) {
+			if !ShipEntrySaveMessageBody(&probe, &value.Ships[i1]) {
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -1388,11 +1388,11 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 		if pairs > 0 {
 			w.Put(29, TableMessageRefBitsHere)
 			pairs := uint64(0)
-			for i := range value.Ships {
+			for i1 := range value.Ships {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !ShipEntrySaveMessageBody(&probe, &value.Ships[i]) {
+				if !ShipEntrySaveMessageBody(&probe, &value.Ships[i1]) {
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -1400,17 +1400,17 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := range int(3) {
+			for i1 := range int(3) {
 				probe := *w
 				probe.Measuring = true
 				probe.Bits = 0
-				if !ShipEntrySaveMessageBody(&probe, &value.Ships[i]) {
+				if !ShipEntrySaveMessageBody(&probe, &value.Ships[i1]) {
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := ShipType(i + 1).TableEnumID()
+				id, named := ShipType(i1 + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1419,7 +1419,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
-				if !ShipEntrySaveMessageBody(w, &value.Ships[i]) {
+				if !ShipEntrySaveMessageBody(w, &value.Ships[i1]) {
 					return false
 				}
 			}
@@ -1427,25 +1427,25 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 	}
 	{
 		pairs := uint64(0)
-		for i := range value.Thresholds {
-			if value.Thresholds[i] != 0 {
+		for i1 := range value.Thresholds {
+			if value.Thresholds[i1] != 0 {
 				pairs++
 			}
 		}
 		if pairs > 0 {
 			w.Put(30, TableMessageRefBitsHere)
 			pairs := uint64(0)
-			for i := range value.Thresholds {
-				if value.Thresholds[i] != 0 {
+			for i1 := range value.Thresholds {
+				if value.Thresholds[i1] != 0 {
 					pairs++
 				}
 			}
 			w.Put(uint64(pairs)-0, 2)
-			for i := range int(3) {
-				if !(value.Thresholds[i] != 0) {
+			for i1 := range int(3) {
+				if !(value.Thresholds[i1] != 0) {
 					continue
 				}
-				id, named := Difficulty(i + 1).TableEnumID()
+				id, named := Difficulty(i1 + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -1454,10 +1454,10 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
-				if value.Thresholds[i] < 0 || value.Thresholds[i] > 1000 {
+				if value.Thresholds[i1] < 0 || value.Thresholds[i1] > 1000 {
 					w.Over++
 				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Thresholds[i]), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Thresholds[i1]), uint64(0))
 			}
 		}
 	}
@@ -1471,8 +1471,8 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				return false
 			}
 			w.Put(uint64(value.ReservesCount)-0, 2)
-			for i := range int(value.ReservesCount) {
-				if !ShipEntrySaveMessageBody(w, &value.Reserves[i]) {
+			for i1 := range int(value.ReservesCount) {
+				if !ShipEntrySaveMessageBody(w, &value.Reserves[i1]) {
 					return false
 				}
 			}

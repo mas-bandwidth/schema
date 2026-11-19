@@ -271,6 +271,10 @@ func main() {
 		if err := jsonFuzz(os.Stdout, m, jsonFuzzOptions{driversPath: *drivers, driverCmd: *driver, only: *only, skip: *skip, work: *work, failed: *failed, seed: *seed, n: *n, jsonDir: *jsonDir}); err != nil {
 			fatalf("%v", err)
 		}
+	case "message-fuzz":
+		if err := messageFuzz(os.Stdout, m, messageFuzzOptions{driver: *driver, only: *only, work: *work, failed: *failed, replay: *replay, unit: *unit, root: *root, jsonDir: *jsonDir, seed: *seed, n: *n, maxMutants: *maxMutants}); err != nil {
+			fatalf("%v", err)
+		}
 	case "wire-fuzz":
 		if *shards < 1 || *shard < 0 || *shard >= *shards {
 			fatalf("wire-fuzz: shard must be in [0, shards), and shards must be positive")

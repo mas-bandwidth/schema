@@ -2125,7 +2125,7 @@ end
 -- announcement's body is the transport of its own two reserved ids and keeps
 -- its own rules (§3.3).
 local function wcUse(ref: number)
-	if wc.announcement or wc.used[ref] then
+	if wc.used[ref] then
 		return
 	end
 	if ref ~= wc.nextRef then
@@ -2565,7 +2565,7 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }, annou
 	wcGraph(children, blobs)
 	-- AN ENTRY NO REFERENCE NAMES (§3): a writer never interns an id it
 	-- does not write
-	if not wc.announcement and (wc.outOfOrder or wc.nextRef ~= #ids + 1) then
+	if wc.outOfOrder or wc.nextRef ~= #ids + 1 then
 		wcFail("wire_damaged")
 	end
 	return finish()

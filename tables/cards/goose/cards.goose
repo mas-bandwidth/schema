@@ -294,7 +294,8 @@ fn save(r: Record&, why: u8[>..]&) -> bool {
 fn Load(r: Record&, wire: const u8[:], why: u8[>..]&) -> bool {
     r.wire.append(wire);
     r.data.append(wire);
-    r.root = schema_rt::load_table(cards::TableUnit, Root, r.data, r.vals, r.nodes, r.report);
+    var wcopy: u8[>..] = []; wcopy.append(wire); let root = schema_rt::load_table(cards::TableUnit, Root, wcopy, r.vals, r.nodes, r.report);
+    r.root = root;
     if r.root < 0 { return malformed(why); }
     return check_card(r, why);
 }
@@ -304,7 +305,8 @@ fn Load(r: Record&, wire: const u8[:], why: u8[>..]&) -> bool {
 // bytes are published only on complete success.
 fn FromJSON(r: Record&, json: const u8[:], why: u8[>..]&) -> bool {
     var jr = schema_rt::json_report();
-    r.root = schema_rt::json_load_table(cards::TableUnit, cards::TextUnit, Root, json, r.data, r.vals, r.nodes, jr);
+    let root = schema_rt::json_load_table(cards::TableUnit, cards::TextUnit, Root, json, r.data, r.vals, r.nodes, jr);
+    r.root = root;
     if r.root < 0 || jr.damaged { return malformed(why); }
     if jr.unknown > 0 { return malformed(why); }
     if !check_card(r, why) { return false; }
@@ -633,7 +635,8 @@ fn Upgrade(r: Record&, wire: const u8[:], out: u8[>..]&, why: u8[>..]&) -> bool 
     var recs: schema_rt::RetainRec[>..<] = [];
     var ids: u64[>..<] = [];
     var store = schema_rt::RetainStore { capacity: MaxRetainBytes, id_capacity: MaxRetainIDs, used: 0, bytes: bytes, recs: recs, ids: ids };
-    r.root = schema_rt::load_table_retain(cards::TableUnit, Root, r.data, r.vals, r.nodes, r.report, store);
+    var wcopy: u8[>..] = []; wcopy.append(wire); let root = schema_rt::load_table_retain(cards::TableUnit, Root, wcopy, r.vals, r.nodes, r.report, store);
+    r.root = root;
     if r.root < 0 { return malformed(why); }
     if !check_card(r, why) { return false; }
     var saved: u8[>..<] = [];
@@ -782,7 +785,8 @@ fn editable(src: const Record&, r: Record&, why: u8[>..]&) -> bool {
     if src.root < 0 { return malformed(why); }
     if lossy(src.report, why) { return false; }
     r.data.append(src.wire[..]);
-    r.root = schema_rt::load_table(cards::TableUnit, Root, r.data, r.vals, r.nodes, r.report);
+    var swire: u8[>..] = []; swire.append(src.wire[..]); let root = schema_rt::load_table(cards::TableUnit, Root, swire, r.vals, r.nodes, r.report);
+    r.root = root;
     if r.root < 0 { return malformed(why); }
     return !lossy(r.report, why);
 }

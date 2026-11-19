@@ -1462,6 +1462,7 @@ struct TableStrict
     // whether this reader carries pointer-bearing types and can therefore
     // reach a node: a fixed reader cannot, so a non-null pointer is damage
     bool pointers;
+    bool announcement;
     TableRefuseReason refusal;
     uint64_t next_ref;
 };
@@ -1580,8 +1581,11 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
             continue;
         }
         // a reserved announcement id out of place (R6): they ride the message
-        // form's announcement, never a file's body
-        if ( id == 0xFFFFFFFFFFFFFFFEull || id == 0xFFFFFFFFFFFFFFFDull ) { return false; }
+        // form's announcement root body, never any other body
+        if ( id == 0xFFFFFFFFFFFFFFFEull || id == 0xFFFFFFFFFFFFFFFDull )
+        {
+            if ( !root || !s.announcement ) { return false; }
+        }
         if ( !TableStrictPayload( s, r, kind, depth ) ) { return false; }
     }
 }
@@ -1758,6 +1762,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     s.node_table_bytes = 0;
     s.node_table_present = false;
     s.pointers = false;
+    s.announcement = false;
     s.refusal = wire_damaged;
     s.next_ref = 1;
     if ( !TableStrictBody( s, body, body_bytes, true, 0 ) ) { return TableStrictFailed( s, report ); }
@@ -2300,6 +2305,27 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
                 f.base_lo = (int64_t) lo;
                 f.base_hi = (int64_t) hi;
                 at += 16;
+                if ( kind >= 20 && kind <= 23 )
+                {
+                    const uint64_t whi = f.base_lo < 0 ? UINT64_MAX : 0;
+                    if ( hi != whi ) { return false; }
+                    if ( kind < 23 )
+                    {
+                        const int64_t w = TableMessageKindBits( kind );
+                        const int64_t mn = -( int64_t( 1 ) << ( w - 1 ) );
+                        const int64_t mx = ( int64_t( 1 ) << ( w - 1 ) ) - 1;
+                        if ( f.base_lo < mn || f.base_lo > mx ) { return false; }
+                    }
+                }
+                else if ( kind >= 25 && kind <= 28 )
+                {
+                    if ( hi != 0 ) { return false; }
+                    if ( kind < 28 )
+                    {
+                        const int64_t w = TableMessageKindBits( kind );
+                        if ( lo > ( uint64_t( 1 ) << w ) - 1 ) { return false; }
+                    }
+                }
                 return true;
             }
             if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
@@ -2308,6 +2334,18 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
             {
                 f.base_lo = (int64_t) v;
             }                                                       // the unsigned domain, whole
+            if ( kind >= 2 && kind <= 4 )
+            {
+                const int64_t w = TableMessageKindBits( kind );
+                const int64_t mn = -( int64_t( 1 ) << ( w - 1 ) );
+                const int64_t mx = ( int64_t( 1 ) << ( w - 1 ) ) - 1;
+                if ( f.base_lo < mn || f.base_lo > mx ) { return false; }
+            }
+            else if ( kind >= 6 && kind <= 8 )
+            {
+                const int64_t w = TableMessageKindBits( kind );
+                if ( (uint64_t) f.base_lo > ( uint64_t( 1 ) << w ) - 1 ) { return false; }
+            }
             return true;
         }
         if ( f.packing == 2 && kind == 10 )
@@ -2356,7 +2394,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         // rather than at the skip that would meet it (§3.3): no declaration
         // this language accepts is an array of string(N), so a shape
         // announcing one is one rule's business and not two.
-        if ( f.elem_kind == 12 ) { return false; }
+        if ( f.elem_kind == 14 || f.elem_kind == 16 ) { return false; }
         return true;
     }
     return true;
@@ -3178,6 +3216,26 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         to->damaged = true;
         return false;
     }
+    {
+        TableStrict strict_ann;
+        strict_ann.ids = &table;
+        strict_ann.node_table = NULL;
+        strict_ann.node_table_bytes = 0;
+        strict_ann.node_table_present = false;
+        strict_ann.pointers = true;
+        strict_ann.announcement = true;
+        strict_ann.refusal = wire_damaged;
+        strict_ann.next_ref = 1;
+        if ( !TableStrictBody( strict_ann, buffer + 1, body_bytes, true, 0 ) )
+        {
+            return TableStrictFailed( strict_ann, to );
+        }
+        if ( !strict_ann.node_table_present && strict_ann.next_ref - 1 != (uint64_t) table.count )
+        {
+            to->damaged = true;
+            return false;
+        }
+    }
     TableReader r( buffer + 1, body_bytes, to, &table );
     uint64_t version = 0;
     const uint8_t * words = NULL;
@@ -3342,6 +3400,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
+    if ( vocabulary.ref_bits == 0 ) { vocabulary.ref_bits = 1; }
     vocabulary.build_version = version;
     vocabulary.announced = true;
     return true;

@@ -175,6 +175,74 @@ macro_rules! message_arm {
     }};
 }
 
+macro_rules! message_framed_arm {
+    ($unit:ident, $default:ident, $load:ident, $measure:ident, $save:ident, $frame:expr) => {{
+        use $unit::*;
+        let frame: &[u8] = $frame;
+        let mut reply = Reply::default();
+        reply.measure = -1;
+        if frame.len() < 4 {
+            reply.damaged = true;
+            reply.refused = true;
+            reply.save_fail = true;
+            Some(reply)
+        } else {
+            let alen = u32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]) as usize;
+            if 4 + alen > frame.len() {
+                reply.damaged = true;
+                reply.refused = true;
+                reply.save_fail = true;
+                Some(reply)
+            } else {
+                let mut entries = vec![TableMessageEntry::default(); 4096];
+                let mut vocabulary = TableVocabulary::new(&mut entries);
+                let mut areport = TableReport::default();
+                let ann_bytes: &[u8] = if alen == 0 { &TABLE_ANNOUNCEMENT } else { &frame[4..4 + alen] };
+                let aok = announce_read(&mut vocabulary, ann_bytes, &mut areport);
+                if !aok || areport.damaged || areport.refused || areport.err().is_some() {
+                    reply.unknown = areport.unknown;
+                    reply.widened = areport.widened;
+                    reply.damaged = areport.damaged;
+                    reply.refused = true;
+                    reply.save_fail = true;
+                    Some(reply)
+                } else {
+                    let batch = &frame[4 + alen..];
+                    let mut report = TableReport::default();
+                    let mut values = vec![$default(); TABLE_MESSAGE_BATCH_MAX];
+                    let (count, ok) = $load(&mut values, &vocabulary, batch, &mut report);
+                    let clean = ok && count >= 1 && !report.damaged && !report.refused && report.err().is_none();
+                    reply.loaded = clean;
+                    if clean {
+                        let mut saved_report = TableReport::default();
+                        let n = $measure(&values[..count], &mut saved_report);
+                        if n < 0 {
+                            reply.loaded = false;
+                            reply.refused = true;
+                            reply.save_fail = true;
+                        } else {
+                            reply.saved = vec![0; n as usize];
+                            if $save(&values[..count], &mut reply.saved, &mut saved_report) != n {
+                                reply.loaded = false;
+                                reply.refused = true;
+                                reply.save_fail = true;
+                                reply.saved.clear();
+                            }
+                        }
+                    } else {
+                        reply.save_fail = true;
+                    }
+                    reply.unknown = report.unknown;
+                    reply.widened = report.widened;
+                    reply.damaged = report.damaged;
+                    reply.refused = !reply.loaded;
+                    Some(reply)
+                }
+            }
+        }
+    }};
+}
+
 const MESSAGE_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "LoginRequest"), ("backenddemo", "MatchResult"),
     ("backenddemo", "StorePurchase"), ("backenddemo", "Envelope"),
@@ -182,6 +250,52 @@ const MESSAGE_ROOTS: &[(&str, &str)] = &[
     ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
     ("tblvarevo1", "EvoMsg"), ("tblvarevo3", "EvoMsg"),
 ];
+
+const MESSAGE_FUZZ_ROOTS: &[(&str, &str)] = &[
+    ("backenddemo", "LoginRequest"), ("backenddemo", "MatchResult"),
+    ("backenddemo", "StorePurchase"),
+    ("vocabdemo", "Wide00"), ("vocabdemo", "Wide09"),
+    ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
+    ("messagedemo", "ToolMessage"),
+    ("tblvarevo1", "EvoMsg"), ("tblvarevo2", "EvoMsg"), ("tblvarevo3", "EvoMsg"),
+    ("tblfixedevo", "EvoRoot"),
+    ("tabledemo", "RootConfig"), ("tabledemo", "ProfileConfig"), ("tabledemo", "KeyedConfig"),
+    ("tblv1", "Cfg"), ("tblv2", "Cfg"),
+    ("tblm1", "Msg"), ("tblm2", "Msg"),
+    ("tbla2", "Root"),
+    ("tblk1", "Root"), ("tblk2", "Root"),
+    ("scalars", "SimState"), ("tblscalars2", "SimState"),
+];
+
+fn drive_message_framed(unit: &str, root: &str, frame: &[u8]) -> Option<Reply> {
+    match (unit, root) {
+        ("backenddemo", "LoginRequest") => message_framed_arm!(backenddemo, login_request_message_default, login_request_load_messages, login_request_measure_messages, login_request_save_messages, frame),
+        ("backenddemo", "MatchResult") => message_framed_arm!(backenddemo, match_result_message_default, match_result_load_messages, match_result_measure_messages, match_result_save_messages, frame),
+        ("backenddemo", "StorePurchase") => message_framed_arm!(backenddemo, store_purchase_message_default, store_purchase_load_messages, store_purchase_measure_messages, store_purchase_save_messages, frame),
+        ("vocabdemo", "Wide00") => message_framed_arm!(vocabdemo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, frame),
+        ("vocabdemo", "Wide09") => message_framed_arm!(vocabdemo, wide09_message_default, wide09_load_messages, wide09_measure_messages, wide09_save_messages, frame),
+        ("vocab9demo", "Wide00") => message_framed_arm!(vocab9demo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, frame),
+        ("vocab9demo", "Wide19") => message_framed_arm!(vocab9demo, wide19_message_default, wide19_load_messages, wide19_measure_messages, wide19_save_messages, frame),
+        ("messagedemo", "ToolMessage") => message_framed_arm!(messagedemo, tool_message_message_default, tool_message_load_messages, tool_message_measure_messages, tool_message_save_messages, frame),
+        ("tblvarevo1", "EvoMsg") => message_framed_arm!(tblvarevo1, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, frame),
+        ("tblvarevo2", "EvoMsg") => message_framed_arm!(tblvarevo2, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, frame),
+        ("tblvarevo3", "EvoMsg") => message_framed_arm!(tblvarevo3, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, frame),
+        ("tblfixedevo", "EvoRoot") => message_framed_arm!(tblfixedevo, evo_root_message_default, evo_root_load_messages, evo_root_measure_messages, evo_root_save_messages, frame),
+        ("tabledemo", "RootConfig") => message_framed_arm!(tabledemo, root_config_message_default, root_config_load_messages, root_config_measure_messages, root_config_save_messages, frame),
+        ("tabledemo", "ProfileConfig") => message_framed_arm!(tabledemo, profile_config_message_default, profile_config_load_messages, profile_config_measure_messages, profile_config_save_messages, frame),
+        ("tabledemo", "KeyedConfig") => message_framed_arm!(tabledemo, keyed_config_message_default, keyed_config_load_messages, keyed_config_measure_messages, keyed_config_save_messages, frame),
+        ("tblv1", "Cfg") => message_framed_arm!(tblv1, cfg_message_default, cfg_load_messages, cfg_measure_messages, cfg_save_messages, frame),
+        ("tblv2", "Cfg") => message_framed_arm!(tblv2, cfg_message_default, cfg_load_messages, cfg_measure_messages, cfg_save_messages, frame),
+        ("tblm1", "Msg") => message_framed_arm!(tblm1, msg_message_default, msg_load_messages, msg_measure_messages, msg_save_messages, frame),
+        ("tblm2", "Msg") => message_framed_arm!(tblm2, msg_message_default, msg_load_messages, msg_measure_messages, msg_save_messages, frame),
+        ("tbla2", "Root") => message_framed_arm!(tbla2, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
+        ("tblk1", "Root") => message_framed_arm!(tblk1, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
+        ("tblk2", "Root") => message_framed_arm!(tblk2, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
+        ("scalars", "SimState") => message_framed_arm!(scalars, sim_state_message_default, sim_state_load_messages, sim_state_measure_messages, sim_state_save_messages, frame),
+        ("tblscalars2", "SimState") => message_framed_arm!(tblscalars2, sim_state_message_default, sim_state_load_messages, sim_state_measure_messages, sim_state_save_messages, frame),
+        _ => None,
+    }
+}
 
 fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
     match (unit, root) {
@@ -527,8 +641,8 @@ fn main() {
         Ok(c) => c as usize,
         Err(_) => return,
     };
-    // (unit, root, available, retain, fixed class, message form)
-    let mut roster: Vec<(String, String, bool, bool, bool, bool)> = Vec::with_capacity(count);
+    // (unit, root, available, retain, fixed class, form)
+    let mut roster: Vec<(String, String, bool, bool, bool, u8)> = Vec::with_capacity(count);
     for _ in 0..count {
         let unit = read_name().unwrap_or_default();
         let root = read_name().unwrap_or_default();
@@ -537,12 +651,12 @@ fn main() {
         if io::stdin().read_exact(&mut form).is_err() || io::stdin().read_exact(&mut retain).is_err() {
             return;
         }
-        let message = form[0] == 2;
         let available = (form[0] == 1 && ROOTS.iter().any(|(u, r)| *u == unit && *r == root))
-            || (message && MESSAGE_ROOTS.iter().any(|(u, r)| *u == unit && *r == root));
-        let fixed = FIXED_ROOTS.iter().any(|(u, r)| *u == unit && *r == root);
+            || (form[0] == 2 && retain[0] == 0 && MESSAGE_ROOTS.iter().any(|(u, r)| *u == unit && *r == root))
+            || (form[0] == 5 && retain[0] == 0 && MESSAGE_FUZZ_ROOTS.iter().any(|(u, r)| *u == unit && *r == root));
+        let fixed = form[0] == 1 && FIXED_ROOTS.iter().any(|(u, r)| *u == unit && *r == root);
         let _ = out.write_all(&[available as u8]);
-        roster.push((unit, root, available, retain[0] == 1, fixed, message));
+        roster.push((unit, root, available, retain[0] == 1, fixed, form[0]));
     }
     let _ = out.flush();
     loop {
@@ -561,8 +675,12 @@ fn main() {
         if io::stdin().read_exact(&mut wire).is_err() {
             return;
         }
-        let (unit, root, _, retain, fixed, message) = &roster[index];
-        let Some(mut reply) = (if *message { drive_message(unit, root, &wire) } else { drive(unit, root, &wire, *retain) }) else { return };
+        let (unit, root, _, retain, fixed, form) = &roster[index];
+        let Some(mut reply) = (match *form {
+            2 => drive_message(unit, root, &wire),
+            5 => drive_message_framed(unit, root, &wire),
+            _ => drive(unit, root, &wire, *retain),
+        }) else { return };
         if *fixed && !reply.loaded {
             // The fixed-class form-1 adapter keeps its region on a failed
             // tolerant read; the loader's Option only says it decoded no

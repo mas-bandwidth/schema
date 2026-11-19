@@ -92,5 +92,6 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `verify-bitphase/` | 18-language packet 0..63 bit-phase sweep | `make verify-bitphase-js` | `./build/verify-bitphase-bin --lang all` |
 | `verify-canonical/` | 18-language canonical-write permutation gate | `make verify-canonical-js` | `./build/verify-canonical-bin --lang all` |
 | `verify-reuse/` | 18-language dirty-instance and sub-slice reuse gate | `make verify-reuse-js` | `./build/verify-reuse-bin --lang all` |
+| `verify-tablegen/` | 18-language random 2-generation schema & lineage fuzzer | `make verify-tablegen-js` | `./build/verify-tablegen-bin --lang all` |
 | `verify-vm/` | VM optimization fast-verify deep runner | `make verify-js-bench` | `go build -o build/vmverify ./test/verify-vm` |
 | `vocabgen/` | wide-vocabulary generator | `make check` | `go run ./test/vocabgen` |

@@ -62,9 +62,9 @@ def main():
         cls = getattr(module, root, None) if module else None
         if cls is not None and getattr(cls, "descriptor", None) is None:
             cls = None
-        if form == 2 and (module is None or not hasattr(module, "load_messages") or not hasattr(cls, "fixed_load")):
+        if form in (2, 5) and (retain or module is None or not hasattr(module, "load_messages") or not hasattr(cls, "fixed_load")):
             cls = None
-        if form not in (1, 2):
+        if form not in (1, 2, 5):
             cls = None
         if retain and (form != 1 or cls is None or not cls.descriptor.variable or not hasattr(module, "TableRetain") or not hasattr(cls, "load_retain")):
             cls = None
@@ -91,9 +91,29 @@ def main():
                 retained = module.TableRetain(bytearray(64 * len(data) + 4096), bytearray(24 * 4096))
                 value = cls.load_retain(data, retained, report)
             elif form == 2:
-                vocab = module.MessageVocabulary()
-                module.announce_read(vocab, module.ANNOUNCEMENT)
+                vocab = getattr(module, "_cached_own_vocab", None)
+                if vocab is None:
+                    vocab = module.MessageVocabulary()
+                    module.announce_read(vocab, module.ANNOUNCEMENT)
+                    module._cached_own_vocab = vocab
                 value = module.load_messages(cls, vocab, data, report=report)
+            elif form == 5:
+                if len(data) < 4:
+                    raise module.Refused("wire_damaged")
+                alen, = struct.unpack_from("<I", data, 0)
+                if 4 + alen > len(data):
+                    raise module.Refused("wire_damaged")
+                mv = memoryview(data)
+                if alen == 0:
+                    vocab = getattr(module, "_cached_own_vocab", None)
+                    if vocab is None:
+                        vocab = module.MessageVocabulary()
+                        module.announce_read(vocab, module.ANNOUNCEMENT)
+                        module._cached_own_vocab = vocab
+                else:
+                    vocab = module.MessageVocabulary()
+                    module.announce_read(vocab, mv[4:4 + alen], max_entries=4096)
+                value = module.load_messages(cls, vocab, mv[4 + alen:], report=report)
             elif hasattr(cls, "fixed_load"):
                 value = cls.fixed_load(data, capacity=1, report=report)
             else:
@@ -105,7 +125,7 @@ def main():
             try:
                 if retain:
                     saved = value.save_retain(retained, report)
-                elif form == 2:
+                elif form in (2, 5):
                     saved = module.save_messages(cls, value)
                 elif hasattr(cls, "fixed_load"):
                     saved = cls.fixed_save(value)

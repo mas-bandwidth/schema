@@ -21,7 +21,7 @@
 // The crate root is a generated glob index, so every module imports it the
 // same way; a unit whose cooked records name nothing outside this file needs
 // none of it, and reading the same header everywhere is worth the allow.
-#![allow(unused_imports)]
+#![allow(unused_imports, non_snake_case)]
 #![allow(clippy::manual_range_contains)]
 
 use crate::*;

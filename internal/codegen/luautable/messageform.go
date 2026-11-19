@@ -59,10 +59,89 @@ func emitMessageForm(g *luau.Gen) error {
 		return nil
 	}
 	slices.Sort(names)
+	vocab := tablewire.MessageVocabulary(g.Unit)
+	slotOf := func(want ir.TableVocabularyEntry) int {
+		key := want.Key()
+		for idx, e := range vocab {
+			if e.Id == want.Id && e.Kind == want.Kind && e.Key() == key {
+				return idx + 1
+			}
+		}
+		return 0
+	}
+	closure := tablewire.MessageClosure(g.Unit)
+	cNames := make([]string, 0, len(closure))
+	for name := range closure {
+		cNames = append(cNames, name)
+	}
+	slices.Sort(cNames)
+	var allNames []string
+	unions := map[string]*ir.Union{}
+	var collectUnions func(t ir.FieldType)
+	collectUnions = func(t ir.FieldType) {
+		if t.Kind == ir.TNamed {
+			if un, ok := t.Ref.(*ir.Union); ok && unions[un.Name] == nil {
+				unions[un.Name] = un
+				for _, v := range un.Variants {
+					if v.F != nil {
+						collectUnions(v.F.Type)
+					}
+				}
+			}
+		}
+	}
+	for _, name := range cNames {
+		stDef := g.Unit.Tables[name]
+		if stDef == nil {
+			stDef = g.Unit.Structs[name]
+		}
+		if stDef == nil {
+			continue
+		}
+		allNames = append(allNames, name)
+		for _, f := range stDef.Fields {
+			collectUnions(f.Type)
+		}
+	}
+	uNames := make([]string, 0, len(unions))
+	for unName := range unions {
+		uNames = append(uNames, unName)
+	}
+	slices.Sort(uNames)
 	st := g.Require(RuntimeModule)
 	g.Pf("%s.messageAnnouncement(%s.TableMessageBuildVersion, %s.TableMessageAnnouncement)\n", st, g.Self, g.Self)
+	g.Pf("%s.messageSlots(%s.TableMessageBuildVersion, {", st, g.Self)
+	for _, name := range cNames {
+		stDef := g.Unit.Tables[name]
+		if stDef == nil {
+			stDef = g.Unit.Structs[name]
+		}
+		if stDef == nil {
+			continue
+		}
+		g.Pf(" [%q] = {", name)
+		for i, f := range stDef.Fields {
+			if i > 0 {
+				g.Pf(",")
+			}
+			g.Pf(" %d", slotOf(ir.TableFieldEntry(f)))
+		}
+		g.Pf(" },")
+	}
+	for _, unName := range uNames {
+		un := unions[unName]
+		g.Pf(" [%q] = {", unName)
+		for i, v := range un.Variants {
+			if i > 0 {
+				g.Pf(",")
+			}
+			g.Pf(" %d", slotOf(ir.TableArmEntry(v)))
+		}
+		g.Pf(" },")
+	}
+	g.Pf(" })\n")
 	g.Pf("%s.buildVersion(%s.TableMessageBuildVersion, {", st, g.Self)
-	for i, name := range names {
+	for i, name := range allNames {
 		if i > 0 {
 			g.Pf(",")
 		}

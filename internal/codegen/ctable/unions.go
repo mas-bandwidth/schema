@@ -79,7 +79,7 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	for i, v := range un.Variants {
 		g.pf("#define %s %d\n", enumConst(tag, v.Name), i+1)
 	}
-	g.pf("#define %s %d\n#define %s %d\n", enumConst(tag, "Count"), len(un.Variants), enumConst(tag, "Max"), len(un.Variants))
+	g.pf("#define %s %d\n", enumConst(tag, "Max"), len(un.Variants))
 	g.pf("typedef struct %s {\n    %s type;\n", un.Name, tag)
 	payloads := 0
 	for _, v := range un.Variants {

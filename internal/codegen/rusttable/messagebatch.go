@@ -1189,8 +1189,8 @@ pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s
         return false;
     }
     let width = width as u32;
-    let Some(mut lo) = r.get(core::cmp::min(width, 64)) else { return false };
-    let mut hi = if width > 64 {
+    let Some(lo) = r.get(core::cmp::min(width, 64)) else { return false };
+    let hi = if width > 64 {
         match r.get(width - 64) {
             Some(v) => v,
             None => return false,
@@ -1360,7 +1360,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             // ranged or quantized element carries a value condition, and a
             // keyed entry carries a key reference, so those are walked.
             if e.kind == 14
-                && !matches!(element.kind, 10 | 11 | 13 | 15 | 17 | 30)
+                && !matches!(element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30 | 31)
                 && element.shape.packing == 0
             {
                 match table_message_value_bits(element.kind, &element.shape) {

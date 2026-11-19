@@ -242,8 +242,10 @@ public final class TablesWireFuzz {
         final Method measureMessages;
         final Method saveMessages;
         final Object vocabulary;
+        final boolean framed;
 
-        MessageCodec(String pkg, String root) throws ReflectiveOperationException {
+        MessageCodec(String pkg, String root, boolean framed) throws ReflectiveOperationException {
+            this.framed = framed;
             vocabType = Class.forName(pkg + ".TableVocabulary");
             reportType = Class.forName(pkg + ".TableVocabulary$Report");
             valueType = Class.forName(pkg + "." + root + "Fixed$Value");
@@ -272,13 +274,48 @@ public final class TablesWireFuzz {
         @Override
         Reply run(byte[] wire) throws ReflectiveOperationException {
             Reply r = new Reply();
+            Object useVocab = vocabulary;
+            byte[] batch = wire;
+            if (framed) {
+                if (wire == null || wire.length < 4) {
+                    r.refused = true;
+                    return r;
+                }
+                long alen = ((long) (wire[0] & 0xff))
+                        | (((long) (wire[1] & 0xff)) << 8)
+                        | (((long) (wire[2] & 0xff)) << 16)
+                        | (((long) (wire[3] & 0xff)) << 24);
+                if (4L + alen > wire.length) {
+                    r.refused = true;
+                    return r;
+                }
+                int ia = (int) alen;
+                batch = java.util.Arrays.copyOfRange(wire, 4 + ia, wire.length);
+                if (ia > 0) {
+                    byte[] ann = java.util.Arrays.copyOfRange(wire, 4, 4 + ia);
+                    useVocab = vocabType.getConstructor().newInstance();
+                    vocabType.getMethod("reset", int.class).invoke(useVocab, 4096);
+                    Object arep = reportType.getConstructor().newInstance();
+                    boolean aok = (boolean) vocabType.getMethod("announceRead", vocabType, byte[].class, reportType)
+                            .invoke(null, useVocab, ann, arep);
+                    fill(r, arep, reportType);
+                    if (!aok || r.damaged || r.refused) {
+                        r.loaded = false;
+                        if (!r.damaged && !r.refused) {
+                            r.refused = true;
+                        }
+                        return r;
+                    }
+                    r = new Reply();
+                }
+            }
             Object report = reportType.getConstructor().newInstance();
             Object values = Array.newInstance(valueType, BATCH_CAP);
-            int initCount = Math.min(BATCH_CAP, wire != null && wire.length >= 2 ? (wire[1] & 0xff) + 1 : 1);
+            int initCount = Math.min(BATCH_CAP, batch != null && batch.length >= 2 ? (batch[1] & 0xff) + 1 : 1);
             for (int i = 0; i < initCount; i++) {
                 Array.set(values, i, valueType.getConstructor().newInstance());
             }
-            int read = (int) loadMessages.invoke(null, values, BATCH_CAP, vocabulary, wire, report);
+            int read = (int) loadMessages.invoke(null, values, BATCH_CAP, useVocab, batch, report);
             fill(r, report, reportType);
             boolean ok = read >= 1 && !r.damaged && !r.refused;
             r.loaded = ok;
@@ -311,8 +348,8 @@ public final class TablesWireFuzz {
     private static Codec bind(String unit, String root, int form, boolean retain) {
         String pkg = unitPackage(unit);
         try {
-            if (form == 2) {
-                return retain ? null : new MessageCodec(pkg, root);
+            if (form == 2 || form == 5) {
+                return retain ? null : new MessageCodec(pkg, root, form == 5);
             }
             if (form != 1) {
                 return null;

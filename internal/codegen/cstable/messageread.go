@@ -197,7 +197,7 @@ const tableMessageReadSource = `
             { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
             int unknownBefore = d.Report.Unknown;
             long startBit = r.At;
-            if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
+            if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth, same && !widened)) { return false; }
             if (widened && !field.MapKey) { d.Report.Widened++; }
             if (field.Optional && value != null) { field.SetPresent(value, true); }
             if (same && !widened && d.Report.Unknown == unknownBefore && value != null && MessageAtDefault(value, field, r.At - startBit, d.Vocabulary.RefBits, entry.Shape)) { return false; }
@@ -224,7 +224,7 @@ const tableMessageReadSource = `
         for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }
         return true;
     }
-    static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
+    static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0, bool exactShape = false)
     {
         if (f.IsArray && f.GetBuffer != null)
         {
@@ -252,12 +252,25 @@ const tableMessageReadSource = `
             {
                 Span<ulong> few = stackalloc ulong[16];
                 int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                int lastSlot = 0;
                 for (ulong i = 0; i < n; i++)
                 {
                     if (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id)) { return false; }
                     int slot = FindVariant(f, key.Id, true);
                     if (slot == 0) { d.Report.Unknown++; }
+                    else
+                    {
+                        if (exactShape && slot <= lastSlot) { return false; }
+                        lastSlot = slot;
+                    }
+                    int unkSlotBefore = d.Report.Unknown;
+                    long slotBitStart = r.At;
                     if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, slot != 0, depth)) { return false; }
+                    if (exactShape && slot != 0 && !d.Report.Refused && d.Report.Unknown == unkSlotBefore && value != null && shape.Inner.Packing != 2)
+                    {
+                        bool slotDefault = shape.Elem == 13 ? (r.At - slotBitStart == d.Vocabulary.RefBits) : DefaultElement(value, f, slot - 1);
+                        if (slotDefault) { return false; }
+                    }
                 }
                 return true;
             }

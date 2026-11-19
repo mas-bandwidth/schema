@@ -1383,6 +1383,27 @@ public final class TableVocabulary {
                     }
                     s.baseLo = r.u64();
                     s.baseHi = r.u64();
+                    if (kind >= 20 && kind <= 23) {
+                        long whi = s.baseLo < 0L ? -1L : 0L;
+                        if (s.baseHi != whi) {
+                            return null;
+                        }
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64) {
+                            long mn = -(1L << (dom - 1)), mx = (1L << (dom - 1)) - 1L;
+                            if (s.baseLo < mn || s.baseLo > mx) {
+                                return null;
+                            }
+                        }
+                    } else if (kind >= 25 && kind <= 28) {
+                        if (s.baseHi != 0L) {
+                            return null;
+                        }
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64 && Long.compareUnsigned(s.baseLo, (1L << dom) - 1L) > 0) {
+                            return null;
+                        }
+                    }
                 } else {
                     long base = r.leb();
                     if (r.err) {
@@ -1390,7 +1411,19 @@ public final class TableVocabulary {
                     }
                     if (kind >= 2 && kind <= 5) {
                         base = (base >>> 1) ^ -(base & 1);
-                    } // zigzag, the signed kind's base
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64) {
+                            long mn = -(1L << (dom - 1)), mx = (1L << (dom - 1)) - 1L;
+                            if (base < mn || base > mx) {
+                                return null;
+                            }
+                        }
+                    } else {
+                        int dom = kindWidth(kind) * 8;
+                        if (dom < 64 && Long.compareUnsigned(base, (1L << dom) - 1L) > 0) {
+                            return null;
+                        }
+                    }
                     s.baseLo = base;
                 }
                 return s;

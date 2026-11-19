@@ -2286,6 +2286,19 @@ final class TableMessageShape {
               (sig[at + 13] << 40) | (sig[at + 14] << 48) |
               (sig[at + 15] << 56);
           s.base = s.baseLo;
+          if (kind >= 20 && kind <= 23) {
+            final whi = s.baseLo < 0 ? -1 : 0;
+            if (s.baseHi != whi) return null;
+            final dom = tableMessageKindWidth(kind) * 8;
+            if (dom < 64) {
+              final mn = -(1 << (dom - 1)), mx = (1 << (dom - 1)) - 1;
+              if (s.baseLo < mn || s.baseLo > mx) return null;
+            }
+          } else if (kind >= 25 && kind <= 28) {
+            if (s.baseHi != 0) return null;
+            final dom = tableMessageKindWidth(kind) * 8;
+            if (dom < 64 && (s.baseLo ^ 0x8000000000000000) > (((1 << dom) - 1) ^ 0x8000000000000000)) return null;
+          }
           return (s, at + 16);
         }
         final b = tableMessageLeb(sig, at, end);
@@ -2293,10 +2306,18 @@ final class TableMessageShape {
         var base = b.$1;
         if (kind >= 2 && kind <= 5) {
           base = (base >>> 1) ^ -(base & 1);
+          final dom = tableMessageKindWidth(kind) * 8;
+          if (dom < 64) {
+            final mn = -(1 << (dom - 1)), mx = (1 << (dom - 1)) - 1;
+            if (base < mn || base > mx) return null;
+          }
+        } else {
+          final dom = tableMessageKindWidth(kind) * 8;
+          if (dom < 64 && (base ^ 0x8000000000000000) > (((1 << dom) - 1) ^ 0x8000000000000000)) return null;
         }
         s.base = base;
         s.baseLo = base;
-        s.baseHi = base < 0 ? -1 : 0;
+        s.baseHi = (kind >= 2 && kind <= 5 && base < 0) ? -1 : 0;
         return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
@@ -2529,6 +2550,9 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   var vocabularyStart = 0;
   var vocabularyLength = 0;
   var terminated = false;
+  final nextRef = <int>[1];
+  final seenBody = <int>{};
+  var nonFinite = false;
   while (at < bodyEnd) {
     final reference = tableMessageLeb(bytes, at, bodyEnd);
     if (!reference.$3 || reference.$1 < 0) {
@@ -2543,13 +2567,19 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       terminated = true;
       break;
     }
-    if (ref > ids.length) {
+    if (ref > ids.length || ref > nextRef[0] || !seenBody.add(ref)) {
       break;
+    }
+    if (ref == nextRef[0]) {
+      nextRef[0]++;
     }
     if (at >= bodyEnd) {
       break;
     }
     final id = ids[ref - 1];
+    if (id == TableVocabulary.nodeWireId) {
+      break;
+    }
     final kind = bytes[at];
     at += 1;
     if (id == TableVocabulary.buildVersionWireId) {
@@ -2595,20 +2625,19 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       at += length.$1;
       vocabularies++;
     } else {
-      // §3.3: "Every other field of its body is ordinary and tolerant, so an
-      // unknown one is skipped and counted and the announcement can GAIN a
-      // field in a later minor without a lockstep redeploy." Only a failed
-      // strict check is malformed, so the payload is stepped over by its kind
-      // and the walk continues; a payload that will not step is the one break.
-      final skipped = tableMessageSkipField(bytes, at, bodyEnd, kind);
+      final skipped = tableMessageSkipChecked(bytes, view, at, bodyEnd, kind, ids, nextRef, 0);
       if (skipped < 0) {
+        if (skipped == -2) nonFinite = true;
         break;
       }
       at = skipped;
       report.unknown++;
     }
   }
-  if (!terminated || versions != 1 || vocabularies != 1) {
+  if (nonFinite) {
+    return report.Refuse('non_finite_float');
+  }
+  if (!terminated || versions != 1 || vocabularies != 1 || nextRef[0] - 1 != ids.length) {
     report.Damage();
     return false;
   }
@@ -2738,16 +2767,119 @@ int tableMessageKindWidth(int kind) {
 /// length-prefixed slice — 12, 13, 14, 16, 31, 32 — is a LEB length then
 /// that many bytes. Answers the offset past the payload, or -1
 /// where the bytes run out or a kind this reader cannot step is named.
-int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
+bool tableMessageAnnounceUtf8(Uint8List b, int start, int end) {
+  var i = start;
+  while (i < end) {
+    final c = b[i];
+    if (c == 0) return false;
+    if (c < 0x80) { i++; continue; }
+    int more, cp;
+    if (c >= 0xc2 && c <= 0xdf) { more = 1; cp = c & 0x1f; }
+    else if (c >= 0xe0 && c <= 0xef) { more = 2; cp = c & 0x0f; }
+    else if (c >= 0xf0 && c <= 0xf4) { more = 3; cp = c & 0x07; }
+    else return false;
+    if (i + 1 + more > end) return false;
+    for (var j = 1; j <= more; j++) {
+      final cc = b[i + j];
+      if ((cc & 0xc0) != 0x80) return false;
+      cp = (cp << 6) | (cc & 0x3f);
+    }
+    if ((more == 2 && cp < 0x800) || (more == 3 && cp < 0x10000) || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+    i += 1 + more;
+  }
+  return true;
+}
+
+int tableMessageSkipFramed(Uint8List bytes, ByteData view, int start, int end, int kind, List<int> ids, List<int> nextRef, int depth) {
+  if (kind == 12) return tableMessageAnnounceUtf8(bytes, start, end) ? end : -1;
+  if (kind == 31) return end;
+  if (kind == 32) return start == end ? end : -1;
+  if (kind == 13) {
+    if (depth >= 128) return -1;
+    var at = start;
+    final seen = <int>{};
+    while (true) {
+      final r = tableMessageLeb(bytes, at, end);
+      if (!r.$3 || r.$1 < 0) return -1;
+      at = r.$2;
+      if (r.$1 == 0) return at == end ? end : -1;
+      if (r.$1 > ids.length || r.$1 > nextRef[0] || at >= end || !seen.add(r.$1)) return -1;
+      if (r.$1 == nextRef[0]) nextRef[0]++;
+      final id = ids[r.$1 - 1];
+      if (id == TableVocabulary.buildVersionWireId || id == TableVocabulary.vocabularyWireId || id == TableVocabulary.nodeWireId) return -1;
+      final k = bytes[at];
+      at += 1;
+      final nx = tableMessageSkipChecked(bytes, view, at, end, k, ids, nextRef, depth + 1);
+      if (nx < 0) return nx;
+      at = nx;
+    }
+  }
+  if (kind == 14 || kind == 16) {
+    if (depth >= 128 || end - start < 2) return -1;
+    final ek = bytes[start];
+    final allowed = kind == 16
+        ? ((ek >= 1 && ek <= 11) || ek == 13 || (ek >= 18 && ek <= 30))
+        : ((ek >= 1 && ek <= 13) || ek == 15 || ek == 17 || (ek >= 18 && ek <= 30));
+    if (!allowed) return -1;
+    final cnt = tableMessageLeb(bytes, start + 1, end);
+    if (!cnt.$3 || cnt.$1 < 0 || cnt.$1 > 0x7fffffff) return -1;
+    var at = cnt.$2;
+    if (cnt.$1 > end - at) return -1;
+    if (kind == 14) {
+      for (var i = 0; i < cnt.$1; i++) {
+        final nx = tableMessageSkipChecked(bytes, view, at, end, ek, ids, nextRef, depth + 1);
+        if (nx < 0) return nx;
+        at = nx;
+      }
+      return at == end ? end : -1;
+    }
+    final seenKeys = <int>{};
+    for (var i = 0; i < cnt.$1; i++) {
+      final kr = tableMessageLeb(bytes, at, end);
+      if (!kr.$3 || kr.$1 <= 0 || kr.$1 > ids.length || kr.$1 > nextRef[0] || !seenKeys.add(kr.$1)) return -1;
+      if (kr.$1 == nextRef[0]) nextRef[0]++;
+      final sp = tableMessageLeb(bytes, kr.$2, end);
+      if (!sp.$3 || sp.$1 < 0 || sp.$2 + sp.$1 > end) return -1;
+      final nx = tableMessageSkipFramed(bytes, view, sp.$2, sp.$2 + sp.$1, ek, ids, nextRef, depth + 1);
+      if (nx < 0) return nx;
+      at = sp.$2 + sp.$1;
+    }
+    return at == end ? end : -1;
+  }
+  final nx = tableMessageSkipChecked(bytes, view, start, end, kind, ids, nextRef, depth);
+  if (nx < 0) return nx;
+  return nx == end ? end : -1;
+}
+
+int tableMessageSkipChecked(Uint8List bytes, ByteData view, int at, int end, int kind, List<int> ids, List<int> nextRef, int depth) {
+  if (depth > 128) return -1;
+  if (kind == 1) return (at < end && bytes[at] <= 1) ? at + 1 : -1;
+  if (kind == 10) {
+    if (at + 4 > end) return -1;
+    final raw = view.getUint32(at, Endian.little);
+    return (raw & 0x7f800000) == 0x7f800000 ? -2 : at + 4;
+  }
+  if (kind == 11) {
+    if (at + 8 > end) return -1;
+    final raw = view.getUint64(at, Endian.little);
+    return (raw & 0x7ff0000000000000) == 0x7ff0000000000000 ? -2 : at + 8;
+  }
   final width = tableMessageKindWidth(kind);
   if (width != 0) {
     return at + width <= end ? at + width : -1;
   }
   switch (kind) {
     case 17:
+      final v = tableMessageLeb(bytes, at, end);
+      return (!v.$3 || v.$1 != 0) ? -1 : v.$2;
     case 30:
       final v = tableMessageLeb(bytes, at, end);
-      return (!v.$3 || v.$1 < 0) ? -1 : v.$2;
+      if (!v.$3 || v.$1 < 0 || v.$1 > ids.length) return -1;
+      if (v.$1 > 0) {
+        if (v.$1 > nextRef[0]) return -1;
+        if (v.$1 == nextRef[0]) nextRef[0]++;
+      }
+      return v.$2;
     case 12:
     case 13:
     case 14:
@@ -2755,26 +2887,22 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 31:
     case 32:
       final n = tableMessageLeb(bytes, at, end);
-      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
-        return -1;
-      }
-      return n.$2 + n.$1;
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) return -1;
+      final nx = tableMessageSkipFramed(bytes, view, n.$2, n.$2 + n.$1, kind, ids, nextRef, depth);
+      return nx < 0 ? nx : n.$2 + n.$1;
     case 15:
       final arm = tableMessageLeb(bytes, at, end);
-      if (!arm.$3 || arm.$1 < 0) {
-        return -1;
-      }
-      if (arm.$1 == 0) {
-        return arm.$2;
-      }
-      if (arm.$2 >= end) {
-        return -1;
-      }
+      if (!arm.$3 || arm.$1 < 0 || arm.$1 > ids.length) return -1;
+      if (arm.$1 == 0) return arm.$2;
+      if (arm.$1 > nextRef[0] || arm.$2 >= end) return -1;
+      if (arm.$1 == nextRef[0]) nextRef[0]++;
+      final armKind = bytes[arm.$2];
       final n = tableMessageLeb(bytes, arm.$2 + 1, end);
-      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
-        return -1;
-      }
-      return n.$2 + n.$1;
+      if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) return -1;
+      final structural = armKind == 13 || armKind == 14 || armKind == 15 || armKind == 16;
+      if (structural && depth >= 128) return -1;
+      final nx = tableMessageSkipFramed(bytes, view, n.$2, n.$2 + n.$1, armKind, ids, nextRef, structural ? depth + 1 : depth);
+      return nx < 0 ? nx : n.$2 + n.$1;
     default:
       return -1;
   }
@@ -2993,6 +3121,7 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+  int substituted = 0;
 
   /// THE SEEN SLOTS FOR THE BODY AT 'seenDepth': a bit per announced entry
   /// (docs/SPEC-TABLES.md §3.3, §4). The buffer is allocated once from the
@@ -3386,93 +3515,121 @@ bool tableMessageReservedId(int id) =>
     id == -2 || id == -3 || id == -1;
 
 bool tableEntitySaveMessageBody(TableBitWriter w, TableEntity value) {
-  if (value.entityId != 0) {
-    w.put(3, tableMessageRefBits);
-    assert(value.entityId >= 0 && value.entityId <= 4095);
-    w.put(value.entityId - 0, 12);
+  {
+    if (value.entityId != 0) {
+      w.put(3, tableMessageRefBits);
+      assert(value.entityId >= 0 && value.entityId <= 4095);
+      w.put(value.entityId - 0, 12);
+    }
   }
-  if (value.posX != 0) {
-    w.put(4, tableMessageRefBits);
-    assert(value.posX >= -16383 && value.posX <= 16383);
-    w.put(value.posX - -16383, 15);
+  {
+    if (value.posX != 0) {
+      w.put(4, tableMessageRefBits);
+      assert(value.posX >= -16383 && value.posX <= 16383);
+      w.put(value.posX - -16383, 15);
+    }
   }
-  if (value.posY != 0) {
-    w.put(5, tableMessageRefBits);
-    assert(value.posY >= -16383 && value.posY <= 16383);
-    w.put(value.posY - -16383, 15);
+  {
+    if (value.posY != 0) {
+      w.put(5, tableMessageRefBits);
+      assert(value.posY >= -16383 && value.posY <= 16383);
+      w.put(value.posY - -16383, 15);
+    }
   }
-  if (value.posZ != 0) {
-    w.put(6, tableMessageRefBits);
-    assert(value.posZ >= -16383 && value.posZ <= 16383);
-    w.put(value.posZ - -16383, 15);
+  {
+    if (value.posZ != 0) {
+      w.put(6, tableMessageRefBits);
+      assert(value.posZ >= -16383 && value.posZ <= 16383);
+      w.put(value.posZ - -16383, 15);
+    }
   }
-  if (value.yaw != 0) {
-    w.put(7, tableMessageRefBits);
-    assert(value.yaw >= 0 && value.yaw <= 511);
-    w.put(value.yaw - 0, 9);
+  {
+    if (value.yaw != 0) {
+      w.put(7, tableMessageRefBits);
+      assert(value.yaw >= 0 && value.yaw <= 511);
+      w.put(value.yaw - 0, 9);
+    }
   }
-  if (value.pitch != 0) {
-    w.put(8, tableMessageRefBits);
-    assert(value.pitch >= 0 && value.pitch <= 511);
-    w.put(value.pitch - 0, 9);
+  {
+    if (value.pitch != 0) {
+      w.put(8, tableMessageRefBits);
+      assert(value.pitch >= 0 && value.pitch <= 511);
+      w.put(value.pitch - 0, 9);
+    }
   }
-  if (value.velX != 0) {
-    w.put(9, tableMessageRefBits);
-    assert(value.velX >= -2048 && value.velX <= 2047);
-    w.put(value.velX - -2048, 12);
+  {
+    if (value.velX != 0) {
+      w.put(9, tableMessageRefBits);
+      assert(value.velX >= -2048 && value.velX <= 2047);
+      w.put(value.velX - -2048, 12);
+    }
   }
-  if (value.velY != 0) {
-    w.put(10, tableMessageRefBits);
-    assert(value.velY >= -2048 && value.velY <= 2047);
-    w.put(value.velY - -2048, 12);
+  {
+    if (value.velY != 0) {
+      w.put(10, tableMessageRefBits);
+      assert(value.velY >= -2048 && value.velY <= 2047);
+      w.put(value.velY - -2048, 12);
+    }
   }
-  if (value.velZ != 0) {
-    w.put(11, tableMessageRefBits);
-    assert(value.velZ >= -2048 && value.velZ <= 2047);
-    w.put(value.velZ - -2048, 12);
+  {
+    if (value.velZ != 0) {
+      w.put(11, tableMessageRefBits);
+      assert(value.velZ >= -2048 && value.velZ <= 2047);
+      w.put(value.velZ - -2048, 12);
+    }
   }
-  if (value.health != 0) {
-    w.put(12, tableMessageRefBits);
-    assert(value.health >= 0 && value.health <= 1000);
-    w.put(value.health - 0, 10);
+  {
+    if (value.health != 0) {
+      w.put(12, tableMessageRefBits);
+      assert(value.health >= 0 && value.health <= 1000);
+      w.put(value.health - 0, 10);
+    }
   }
-  if (value.weapon != TableWeapon.none) {
-    w.put(13, tableMessageRefBits);
-    assert(value.weapon >= 0 && value.weapon <= 15);
-    if (value.weapon == 0) {
-      w.put(0, tableMessageRefBits);
-    } else {
-      switch (value.weapon) {
-        case 1: w.put(53, tableMessageRefBits); break;
-        case 2: w.put(54, tableMessageRefBits); break;
-        case 3: w.put(55, tableMessageRefBits); break;
-        case 4: w.put(56, tableMessageRefBits); break;
-        case 5: w.put(57, tableMessageRefBits); break;
-        case 6: w.put(58, tableMessageRefBits); break;
-        case 7: w.put(59, tableMessageRefBits); break;
-        case 8: w.put(60, tableMessageRefBits); break;
-        case 9: w.put(61, tableMessageRefBits); break;
-        case 10: w.put(62, tableMessageRefBits); break;
-        case 11: w.put(63, tableMessageRefBits); break;
-        case 12: w.put(64, tableMessageRefBits); break;
-        case 13: w.put(65, tableMessageRefBits); break;
-        case 14: w.put(66, tableMessageRefBits); break;
-        case 15: w.put(67, tableMessageRefBits); break;
-        default: w.put(0, tableMessageRefBits);
+  {
+    if (value.weapon != TableWeapon.none) {
+      w.put(13, tableMessageRefBits);
+      assert(value.weapon >= 0 && value.weapon <= 15);
+      if (value.weapon == 0) {
+        w.put(0, tableMessageRefBits);
+      } else {
+        switch (value.weapon) {
+          case 1: w.put(53, tableMessageRefBits); break;
+          case 2: w.put(54, tableMessageRefBits); break;
+          case 3: w.put(55, tableMessageRefBits); break;
+          case 4: w.put(56, tableMessageRefBits); break;
+          case 5: w.put(57, tableMessageRefBits); break;
+          case 6: w.put(58, tableMessageRefBits); break;
+          case 7: w.put(59, tableMessageRefBits); break;
+          case 8: w.put(60, tableMessageRefBits); break;
+          case 9: w.put(61, tableMessageRefBits); break;
+          case 10: w.put(62, tableMessageRefBits); break;
+          case 11: w.put(63, tableMessageRefBits); break;
+          case 12: w.put(64, tableMessageRefBits); break;
+          case 13: w.put(65, tableMessageRefBits); break;
+          case 14: w.put(66, tableMessageRefBits); break;
+          case 15: w.put(67, tableMessageRefBits); break;
+          default: w.put(0, tableMessageRefBits);
+        }
       }
     }
   }
-  if (value.damage != 0) {
-    w.put(14, tableMessageRefBits);
-    w.put(value.damage - 0, 8);
+  {
+    if (value.damage != 0) {
+      w.put(14, tableMessageRefBits);
+      w.put(value.damage - 0, 8);
+    }
   }
-  if (value.moving != false) {
-    w.put(15, tableMessageRefBits);
-    w.put(value.moving ? 1 : 0, 1);
+  {
+    if (value.moving != false) {
+      w.put(15, tableMessageRefBits);
+      w.put(value.moving ? 1 : 0, 1);
+    }
   }
-  if (value.firing != false) {
-    w.put(16, tableMessageRefBits);
-    w.put(value.firing ? 1 : 0, 1);
+  {
+    if (value.firing != false) {
+      w.put(16, tableMessageRefBits);
+      w.put(value.firing ? 1 : 0, 1);
+    }
   }
   w.put(0, tableMessageRefBits);
   return !w.overflow;
@@ -3496,8 +3653,9 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case 2593226102015223570: {
-        if (sameBuild && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 1;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 1 && shape.bits == 12 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 1; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3509,13 +3667,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           value.entityId = v;
           if (shape.packing == 1) { value.entityId += shape.base; }
         }
+        if ((value.entityId ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.entityId > 4095) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.entityId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.entityId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3797881157997612786: {
-        if (sameBuild && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 2;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 15 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 2; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3528,13 +3688,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (shape.packing == 1) { value.posX += shape.base; }
           if (shape.packing == 0) { value.posX = value.posX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.posX < -2147483648 || value.posX > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.posX < -16383 || value.posX > 16383) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.posX != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.posX != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3797880058485984575: {
-        if (sameBuild && nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 3;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 15 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 3; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3547,13 +3709,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (shape.packing == 1) { value.posY += shape.base; }
           if (shape.packing == 0) { value.posY = value.posY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.posY < -2147483648 || value.posY > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.posY < -16383 || value.posY > 16383) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.posY != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.posY != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3797883357020869208: {
-        if (sameBuild && nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 4;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 15 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 4; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3566,13 +3730,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (shape.packing == 1) { value.posZ += shape.base; }
           if (shape.packing == 0) { value.posZ = value.posZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.posZ < -2147483648 || value.posZ > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.posZ < -16383 || value.posZ > 16383) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.posZ != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.posZ != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -5382489739573192984: {
-        if (sameBuild && nextField > 4) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 5;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 1 && shape.bits == 9 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 4) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 5; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3584,13 +3750,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           value.yaw = v;
           if (shape.packing == 1) { value.yaw += shape.base; }
         }
+        if ((value.yaw ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.yaw > 511) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.yaw != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.yaw != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6028620492700434865: {
-        if (sameBuild && nextField > 5) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 6;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 1 && shape.bits == 9 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 5) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 6; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3602,13 +3770,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           value.pitch = v;
           if (shape.packing == 1) { value.pitch += shape.base; }
         }
+        if ((value.pitch ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.pitch > 511) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.pitch != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.pitch != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7849183398884077159: {
-        if (sameBuild && nextField > 6) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 7;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 12 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 6) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 7; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3621,13 +3791,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (shape.packing == 1) { value.velX += shape.base; }
           if (shape.packing == 0) { value.velX = value.velX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.velX < -2147483648 || value.velX > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.velX < -2048 || value.velX > 2047) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.velX != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.velX != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7849182299372448948: {
-        if (sameBuild && nextField > 7) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 8;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 12 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 7) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 8; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3640,13 +3812,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (shape.packing == 1) { value.velY += shape.base; }
           if (shape.packing == 0) { value.velY = value.velY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.velY < -2147483648 || value.velY > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.velY < -2048 || value.velY > 2047) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.velY != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.velY != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7849185597907333581: {
-        if (sameBuild && nextField > 8) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 9;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 12 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 8) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 9; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3659,13 +3833,15 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (shape.packing == 1) { value.velZ += shape.base; }
           if (shape.packing == 0) { value.velZ = value.velZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.velZ < -2147483648 || value.velZ > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.velZ < -2048 || value.velZ > 2047) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.velZ != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.velZ != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 9181103189905877455: {
-        if (sameBuild && nextField > 9) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 10;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 10 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 9) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 10; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3678,18 +3854,20 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (shape.packing == 1) { value.health += shape.base; }
           if (shape.packing == 0) { value.health = value.health.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.health < -2147483648 || value.health > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.health < 0 || value.health > 1000) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.health != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.health != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -6866282850657997311: {
-        if (sameBuild && nextField > 10) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 11;
+        final exact = sameBuild && entry.kind == 30 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 10) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 11; }
         if (entry.kind != 30 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        final unknownAt = r.report.unknown;
+        final subAt = r.report.unknown + r.substituted;
         {
           final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -3717,12 +3895,13 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
             }
           }
         }
-        if (sameBuild && r.report.unknown == unknownAt && !(value.weapon != TableWeapon.none)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && r.report.unknown + r.substituted == subAt && !(value.weapon != TableWeapon.none)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 9179190079975030720: {
-        if (sameBuild && nextField > 11) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 12;
+        final exact = sameBuild && entry.kind == 9 && shape.elem == 0 && shape.packing == 1 && shape.bits == 8 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 11) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 12; }
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3734,12 +3913,13 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           value.damage = v;
           if (shape.packing == 1) { value.damage += shape.base; }
         }
-        if (sameBuild && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 1271228688681418151: {
-        if (sameBuild && nextField > 12) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 13;
+        final exact = sameBuild && entry.kind == 1 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 12) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 13; }
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3749,12 +3929,13 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.moving = v;
         }
-        if (sameBuild && !(value.moving != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.moving != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8535675692938965450: {
-        if (sameBuild && nextField > 13) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 14;
+        final exact = sameBuild && entry.kind == 1 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 13) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 14; }
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3764,7 +3945,7 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.firing = v;
         }
-        if (sameBuild && !(value.firing != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.firing != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -3780,15 +3961,19 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
 }
 
 bool tableStatSaveMessageBody(TableBitWriter w, TableStat value) {
-  if (value.statId != 0) {
-    w.put(51, tableMessageRefBits);
-    assert(value.statId >= 0 && value.statId <= 255);
-    w.put(value.statId - 0, 8);
+  {
+    if (value.statId != 0) {
+      w.put(51, tableMessageRefBits);
+      assert(value.statId >= 0 && value.statId <= 255);
+      w.put(value.statId - 0, 8);
+    }
   }
-  if (value.delta != 0) {
-    w.put(52, tableMessageRefBits);
-    assert(value.delta >= -512 && value.delta <= 511);
-    w.put(value.delta - -512, 10);
+  {
+    if (value.delta != 0) {
+      w.put(52, tableMessageRefBits);
+      assert(value.delta >= -512 && value.delta <= 511);
+      w.put(value.delta - -512, 10);
+    }
   }
   w.put(0, tableMessageRefBits);
   return !w.overflow;
@@ -3812,8 +3997,9 @@ bool tableStatLoadMessageBody(TableMessageReader r, TableStat value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -9175110139929313435: {
-        if (sameBuild && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 1;
+        final exact = sameBuild && entry.kind == 6 && shape.elem == 0 && shape.packing == 1 && shape.bits == 8 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 1; }
         if (entry.kind != 6 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3825,13 +4011,15 @@ bool tableStatLoadMessageBody(TableMessageReader r, TableStat value) {
           value.statId = v;
           if (shape.packing == 1) { value.statId += shape.base; }
         }
+        if ((value.statId ^ 0x8000000000000000) > (255 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.statId > 255) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.statId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.statId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 5910805692604981441: {
-        if (sameBuild && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 2;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 10 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 2; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3844,8 +4032,9 @@ bool tableStatLoadMessageBody(TableMessageReader r, TableStat value) {
           if (shape.packing == 1) { value.delta += shape.base; }
           if (shape.packing == 0) { value.delta = value.delta.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.delta < -2147483648 || value.delta > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.delta < -512 || value.delta > 511) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.delta != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.delta != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -3861,24 +4050,32 @@ bool tableStatLoadMessageBody(TableMessageReader r, TableStat value) {
 }
 
 bool tableHitEventSaveMessageBody(TableBitWriter w, TableHitEvent value) {
-  if (value.targetId != 0) {
-    w.put(17, tableMessageRefBits);
-    assert(value.targetId >= 0 && value.targetId <= 4095);
-    w.put(value.targetId - 0, 12);
+  {
+    if (value.targetId != 0) {
+      w.put(17, tableMessageRefBits);
+      assert(value.targetId >= 0 && value.targetId <= 4095);
+      w.put(value.targetId - 0, 12);
+    }
   }
-  if (value.damage != 0) {
-    w.put(18, tableMessageRefBits);
-    assert(value.damage >= 0 && value.damage <= 4095);
-    w.put(value.damage - 0, 12);
+  {
+    if (value.damage != 0) {
+      w.put(18, tableMessageRefBits);
+      assert(value.damage >= 0 && value.damage <= 4095);
+      w.put(value.damage - 0, 12);
+    }
   }
-  if (value.hitKind != 0) {
-    w.put(19, tableMessageRefBits);
-    assert(value.hitKind >= 0 && value.hitKind <= 7);
-    w.put(value.hitKind - 0, 3);
+  {
+    if (value.hitKind != 0) {
+      w.put(19, tableMessageRefBits);
+      assert(value.hitKind >= 0 && value.hitKind <= 7);
+      w.put(value.hitKind - 0, 3);
+    }
   }
-  if (value.crit != false) {
-    w.put(20, tableMessageRefBits);
-    w.put(value.crit ? 1 : 0, 1);
+  {
+    if (value.crit != false) {
+      w.put(20, tableMessageRefBits);
+      w.put(value.crit ? 1 : 0, 1);
+    }
   }
   w.put(0, tableMessageRefBits);
   return !w.overflow;
@@ -3902,8 +4099,9 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -5207116919359778736: {
-        if (sameBuild && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 1;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 1 && shape.bits == 12 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 1; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3915,13 +4113,15 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
           value.targetId = v;
           if (shape.packing == 1) { value.targetId += shape.base; }
         }
+        if ((value.targetId ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.targetId > 4095) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.targetId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.targetId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 9179190079975030720: {
-        if (sameBuild && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 2;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 12 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 2; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3934,13 +4134,15 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
           if (shape.packing == 1) { value.damage += shape.base; }
           if (shape.packing == 0) { value.damage = value.damage.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.damage < -2147483648 || value.damage > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.damage < 0 || value.damage > 4095) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 142922654710085925: {
-        if (sameBuild && nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 3;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 3 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 3; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -3953,13 +4155,15 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
           if (shape.packing == 1) { value.hitKind += shape.base; }
           if (shape.packing == 0) { value.hitKind = value.hitKind.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.hitKind < -2147483648 || value.hitKind > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.hitKind < 0 || value.hitKind > 7) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.hitKind != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.hitKind != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 1324453635955533101: {
-        if (sameBuild && nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 4;
+        final exact = sameBuild && entry.kind == 1 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 4; }
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -3969,7 +4173,7 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.crit = v;
         }
-        if (sameBuild && !(value.crit != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.crit != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -3985,15 +4189,19 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
 }
 
 bool tableChatEventSaveMessageBody(TableBitWriter w, TableChatEvent value) {
-  if (value.channel != 0) {
-    w.put(1, tableMessageRefBits);
-    assert(value.channel >= 0 && value.channel <= 3);
-    w.put(value.channel - 0, 2);
+  {
+    if (value.channel != 0) {
+      w.put(1, tableMessageRefBits);
+      assert(value.channel >= 0 && value.channel <= 3);
+      w.put(value.channel - 0, 2);
+    }
   }
-  if (value.speaker != 0) {
-    w.put(2, tableMessageRefBits);
-    assert(value.speaker >= 0 && value.speaker <= 4095);
-    w.put(value.speaker - 0, 12);
+  {
+    if (value.speaker != 0) {
+      w.put(2, tableMessageRefBits);
+      assert(value.speaker >= 0 && value.speaker <= 4095);
+      w.put(value.speaker - 0, 12);
+    }
   }
   w.put(0, tableMessageRefBits);
   return !w.overflow;
@@ -4017,8 +4225,9 @@ bool tableChatEventLoadMessageBody(TableMessageReader r, TableChatEvent value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -6556890747741999708: {
-        if (sameBuild && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 1;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 2 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 1; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4031,13 +4240,15 @@ bool tableChatEventLoadMessageBody(TableMessageReader r, TableChatEvent value) {
           if (shape.packing == 1) { value.channel += shape.base; }
           if (shape.packing == 0) { value.channel = value.channel.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.channel < -2147483648 || value.channel > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.channel < 0 || value.channel > 3) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.channel != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.channel != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -292263051557875678: {
-        if (sameBuild && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 2;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 1 && shape.bits == 12 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 2; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4049,8 +4260,9 @@ bool tableChatEventLoadMessageBody(TableMessageReader r, TableChatEvent value) {
           value.speaker = v;
           if (shape.packing == 1) { value.speaker += shape.base; }
         }
+        if ((value.speaker ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.speaker > 4095) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.speaker != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.speaker != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -4066,15 +4278,19 @@ bool tableChatEventLoadMessageBody(TableMessageReader r, TableChatEvent value) {
 }
 
 bool tablePickupEventSaveMessageBody(TableBitWriter w, TablePickupEvent value) {
-  if (value.itemId != 0) {
-    w.put(49, tableMessageRefBits);
-    assert(value.itemId >= 0 && value.itemId <= 1023);
-    w.put(value.itemId - 0, 10);
+  {
+    if (value.itemId != 0) {
+      w.put(49, tableMessageRefBits);
+      assert(value.itemId >= 0 && value.itemId <= 1023);
+      w.put(value.itemId - 0, 10);
+    }
   }
-  if (value.amount != 0) {
-    w.put(50, tableMessageRefBits);
-    assert(value.amount >= 0 && value.amount <= 255);
-    w.put(value.amount - 0, 8);
+  {
+    if (value.amount != 0) {
+      w.put(50, tableMessageRefBits);
+      assert(value.amount >= 0 && value.amount <= 255);
+      w.put(value.amount - 0, 8);
+    }
   }
   w.put(0, tableMessageRefBits);
   return !w.overflow;
@@ -4101,8 +4317,9 @@ bool tablePickupEventLoadMessageBody(
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case -7025667724851298986: {
-        if (sameBuild && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 1;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 1 && shape.bits == 10 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 1; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4114,13 +4331,15 @@ bool tablePickupEventLoadMessageBody(
           value.itemId = v;
           if (shape.packing == 1) { value.itemId += shape.base; }
         }
+        if ((value.itemId ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.itemId > 1023) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.itemId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.itemId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -9145686598410475159: {
-        if (sameBuild && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 2;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 8 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 2; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4133,8 +4352,9 @@ bool tablePickupEventLoadMessageBody(
           if (shape.packing == 1) { value.amount += shape.base; }
           if (shape.packing == 0) { value.amount = value.amount.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.amount < -2147483648 || value.amount > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.amount < 0 || value.amount > 255) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.amount != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.amount != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:
@@ -4150,276 +4370,346 @@ bool tablePickupEventLoadMessageBody(
 }
 
 bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
-  if (value.protocolMagic != 0) {
-    w.put(21, tableMessageRefBits);
-    w.put(value.protocolMagic, 16);
-  }
-  if (value.sequence != 0) {
-    w.put(22, tableMessageRefBits);
-    assert(value.sequence >= 0 && value.sequence <= 65535);
-    w.put(value.sequence - 0, 16);
-  }
-  if (value.ackSequence != 0) {
-    w.put(23, tableMessageRefBits);
-    assert(value.ackSequence >= 0 && value.ackSequence <= 65535);
-    w.put(value.ackSequence - 0, 16);
-  }
-  if (value.ackBits != 0) {
-    w.put(24, tableMessageRefBits);
-    assert(value.ackBits >= 0 && value.ackBits <= 4294967295);
-    w.put(value.ackBits - 0, 32);
-  }
-  if (value.sessionId != 0) {
-    w.put(25, tableMessageRefBits);
-    w.put(value.sessionId, 64);
-  }
-  if (value.clientId != 0) {
-    w.put(26, tableMessageRefBits);
-    w.put(value.clientId, 32);
-  }
-  if (value.nonce != 1) {
-    w.put(27, tableMessageRefBits);
-    assert(!((value.nonce ^ 0x8000000000000000) < 0x8000000000000001));
-    assert(!((value.nonce ^ 0x8000000000000000) > 0xffffffffffffffff));
-    w.put(value.nonce - 1, 63);
-  }
-  if (value.worldTime != 0) {
-    w.put(28, tableMessageRefBits);
-    assert(value.worldTime >= -1000000000000 && value.worldTime <= 1000000000000);
-    w.put(value.worldTime - -1000000000000, 41);
-  }
-  if (value.frameTick != 0) {
-    w.put(29, tableMessageRefBits);
-    assert(value.frameTick >= 0 && value.frameTick <= 281474976710655);
-    w.put(value.frameTick - 0, 48);
-  }
-  TableBitWriter._float32Cell[0] = value.serverTime;
-  if (TableBitWriter._float32Words[0] != 0) {
-    w.put(30, tableMessageRefBits);
-    assert(!value.serverTime.isFinite || (value.serverTime >= 0.0 && value.serverTime <= 65535.0));
-    {
-      final f = value.serverTime;
-      if (!f.isFinite) return false;
-      TableBitWriter._float32Cell[0] = f;
-      final f32 = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = f32 - 0.0;
-      final shifted = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = shifted / 65535.0;
-      var ratio = TableBitWriter._float32Cell[0];
-      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
-      TableBitWriter._float32Cell[0] = 6553500.0;
-      final fc = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = ratio * fc;
-      final scaled = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = scaled + 0.5;
-      var index = TableBitWriter._float32Cell[0].floor();
-      if (index > 6553500) { index = 6553500; }
-      w.put(index, 23);
+  {
+    if (value.protocolMagic != 0) {
+      w.put(21, tableMessageRefBits);
+      w.put(value.protocolMagic, 16);
     }
   }
-  assert(value.entitiesCount >= 1 && value.entitiesCount <= 8);
-  if (value.entitiesCount > 0) {
-    w.put(31, tableMessageRefBits);
+  {
+    if (value.sequence != 0) {
+      w.put(22, tableMessageRefBits);
+      assert(value.sequence >= 0 && value.sequence <= 65535);
+      w.put(value.sequence - 0, 16);
+    }
+  }
+  {
+    if (value.ackSequence != 0) {
+      w.put(23, tableMessageRefBits);
+      assert(value.ackSequence >= 0 && value.ackSequence <= 65535);
+      w.put(value.ackSequence - 0, 16);
+    }
+  }
+  {
+    if (value.ackBits != 0) {
+      w.put(24, tableMessageRefBits);
+      assert(value.ackBits >= 0 && value.ackBits <= 4294967295);
+      w.put(value.ackBits - 0, 32);
+    }
+  }
+  {
+    if (value.sessionId != 0) {
+      w.put(25, tableMessageRefBits);
+      w.put(value.sessionId, 64);
+    }
+  }
+  {
+    if (value.clientId != 0) {
+      w.put(26, tableMessageRefBits);
+      w.put(value.clientId, 32);
+    }
+  }
+  {
+    if (value.nonce != 1) {
+      w.put(27, tableMessageRefBits);
+      assert(!((value.nonce ^ 0x8000000000000000) < 0x8000000000000001));
+      assert(!((value.nonce ^ 0x8000000000000000) > 0xffffffffffffffff));
+      w.put(value.nonce - 1, 63);
+    }
+  }
+  {
+    if (value.worldTime != 0) {
+      w.put(28, tableMessageRefBits);
+      assert(value.worldTime >= -1000000000000 && value.worldTime <= 1000000000000);
+      w.put(value.worldTime - -1000000000000, 41);
+    }
+  }
+  {
+    if (value.frameTick != 0) {
+      w.put(29, tableMessageRefBits);
+      assert(value.frameTick >= 0 && value.frameTick <= 281474976710655);
+      w.put(value.frameTick - 0, 48);
+    }
+  }
+  {
+    TableBitWriter._float32Cell[0] = value.serverTime;
+    if (TableBitWriter._float32Words[0] != 0) {
+      w.put(30, tableMessageRefBits);
+      assert(!value.serverTime.isFinite || (value.serverTime >= 0.0 && value.serverTime <= 65535.0));
+      {
+        final f = value.serverTime;
+        if (!f.isFinite) return false;
+        TableBitWriter._float32Cell[0] = f;
+        final f32 = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = f32 - 0.0;
+        final shifted = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = shifted / 65535.0;
+        var ratio = TableBitWriter._float32Cell[0];
+        if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+        TableBitWriter._float32Cell[0] = 6553500.0;
+        final fc = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = ratio * fc;
+        final scaled = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = scaled + 0.5;
+        var index = TableBitWriter._float32Cell[0].floor();
+        if (index > 6553500) { index = 6553500; }
+        w.put(index, 23);
+      }
+    }
+  }
+  {
     assert(value.entitiesCount >= 1 && value.entitiesCount <= 8);
-    w.put(value.entitiesCount - 1, 3);
-    for (var i = 0; i < value.entitiesCount; i++) {
-      if (!tableEntitySaveMessageBody(w, value.entities[i])) return false;
+    var arrayRides = value.entitiesCount != 1;
+    if (!arrayRides) {
+      for (var ai = 0; ai < 1; ai++) {
+        final probeEntities = TableBitWriter(Uint8List(0))..measuring = true;
+        if (!tableEntitySaveMessageBody(probeEntities, value.entities[ai])) return false;
+        if (probeEntities.bits > tableMessageRefBits) { arrayRides = true; break; }
+      }
+    }
+    if (arrayRides) {
+      w.put(31, tableMessageRefBits);
+      assert(value.entitiesCount >= 1 && value.entitiesCount <= 8);
+      w.put(value.entitiesCount - 1, 3);
+      for (var i1 = 0; i1 < value.entitiesCount; i1++) {
+        if (!tableEntitySaveMessageBody(w, value.entities[i1])) return false;
+      }
     }
   }
-  assert(value.statsCount >= 0 && value.statsCount <= 80);
-  if (value.statsCount > 0) {
-    w.put(32, tableMessageRefBits);
+  {
     assert(value.statsCount >= 0 && value.statsCount <= 80);
-    w.put(value.statsCount - 0, 7);
-    for (var i = 0; i < value.statsCount; i++) {
-      if (!tableStatSaveMessageBody(w, value.stats[i])) return false;
+    if (value.statsCount > 0) {
+      w.put(32, tableMessageRefBits);
+      assert(value.statsCount >= 0 && value.statsCount <= 80);
+      w.put(value.statsCount - 0, 7);
+      for (var i2 = 0; i2 < value.statsCount; i2++) {
+        if (!tableStatSaveMessageBody(w, value.stats[i2])) return false;
+      }
     }
   }
-  if (value.gameEvent.type != 0) {
-    w.put(33, tableMessageRefBits);
-    assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
-    switch (value.gameEvent.type) {
-      case 0: w.put(0, tableMessageRefBits); break;
-      case 1:
-        w.put(68, tableMessageRefBits);
-        if (!tableHitEventSaveMessageBody(w, value.gameEvent.hit)) return false;
-        break;
-      case 2:
-        w.put(69, tableMessageRefBits);
-        if (!tableChatEventSaveMessageBody(w, value.gameEvent.chat)) return false;
-        break;
-      case 3:
-        w.put(70, tableMessageRefBits);
-        if (!tablePickupEventSaveMessageBody(w, value.gameEvent.pickup)) return false;
-        break;
-      default: w.overflow = true;
+  {
+    if (value.gameEvent.type != 0) {
+      w.put(33, tableMessageRefBits);
+      assert(value.gameEvent.type >= 0 && value.gameEvent.type <= 3);
+      switch (value.gameEvent.type) {
+        case 0: w.put(0, tableMessageRefBits); break;
+        case 1:
+          w.put(68, tableMessageRefBits);
+          if (!tableHitEventSaveMessageBody(w, value.gameEvent.hit)) return false;
+          break;
+        case 2:
+          w.put(69, tableMessageRefBits);
+          if (!tableChatEventSaveMessageBody(w, value.gameEvent.chat)) return false;
+          break;
+        case 3:
+          w.put(70, tableMessageRefBits);
+          if (!tablePickupEventSaveMessageBody(w, value.gameEvent.pickup)) return false;
+          break;
+        default: w.overflow = true;
+      }
     }
   }
-  w.put(34, tableMessageRefBits);
-  w.align();
-  for (var i = 0; i < 4; i++) {
-    w.put(value.loadout[i], 8);
+  {
+    var fixedRides = false;
+    for (var fi = 0; fi < 4; fi++) {
+      if (value.loadout[fi] != 0) { fixedRides = true; break; }
+    }
+    if (fixedRides) {
+      w.put(34, tableMessageRefBits);
+      w.align();
+      for (var i3 = 0; i3 < 4; i3++) {
+        w.put(value.loadout[i3], 8);
+      }
+    }
   }
-  assert(value.playerNameLength >= 0 && value.playerNameLength <= 15);
-  assert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, value.playerNameLength, value.playerName, 0));
-  if (value.playerNameLength > 0) {
-    w.put(35, tableMessageRefBits);
+  {
     assert(value.playerNameLength >= 0 && value.playerNameLength <= 15);
     assert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, value.playerNameLength, value.playerName, 0));
-    w.put(value.playerNameLength, 4);
-    w.align();
-    w.raw(Uint8List.sublistView(value.playerName, 0, value.playerNameLength));
+    if (value.playerNameLength > 0) {
+      w.put(35, tableMessageRefBits);
+      assert(value.playerNameLength >= 0 && value.playerNameLength <= 15);
+      assert(!tableFixedTextIllFormed(TableFixedOp.textUtf8, value.playerNameLength, value.playerName, 0));
+      w.put(value.playerNameLength, 4);
+      w.align();
+      w.raw(Uint8List.sublistView(value.playerName, 0, value.playerNameLength));
+    }
   }
-  assert(value.payloadLength >= 0 && value.payloadLength <= 16);
-  if (value.payloadLength > 0) {
-    w.put(36, tableMessageRefBits);
+  {
     assert(value.payloadLength >= 0 && value.payloadLength <= 16);
-    w.put(value.payloadLength, 5);
-    w.align();
-    w.raw(Uint8List.sublistView(value.payload, 0, value.payloadLength));
-  }
-  TableBitWriter._float32Cell[0] = value.aimX;
-  if (TableBitWriter._float32Words[0] != 0) {
-    w.put(37, tableMessageRefBits);
-    assert(!value.aimX.isFinite || (value.aimX >= -1.0 && value.aimX <= 1.0));
-    {
-      final f = value.aimX;
-      if (!f.isFinite) return false;
-      TableBitWriter._float32Cell[0] = f;
-      final f32 = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = f32 - -1.0;
-      final shifted = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = shifted / 2.0;
-      var ratio = TableBitWriter._float32Cell[0];
-      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
-      TableBitWriter._float32Cell[0] = 200.0;
-      final fc = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = ratio * fc;
-      final scaled = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = scaled + 0.5;
-      var index = TableBitWriter._float32Cell[0].floor();
-      if (index > 200) { index = 200; }
-      w.put(index, 8);
+    if (value.payloadLength > 0) {
+      w.put(36, tableMessageRefBits);
+      assert(value.payloadLength >= 0 && value.payloadLength <= 16);
+      w.put(value.payloadLength, 5);
+      w.align();
+      w.raw(Uint8List.sublistView(value.payload, 0, value.payloadLength));
     }
   }
-  TableBitWriter._float32Cell[0] = value.aimY;
-  if (TableBitWriter._float32Words[0] != 0) {
-    w.put(38, tableMessageRefBits);
-    assert(!value.aimY.isFinite || (value.aimY >= -1.0 && value.aimY <= 1.0));
-    {
-      final f = value.aimY;
-      if (!f.isFinite) return false;
-      TableBitWriter._float32Cell[0] = f;
-      final f32 = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = f32 - -1.0;
-      final shifted = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = shifted / 2.0;
-      var ratio = TableBitWriter._float32Cell[0];
-      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
-      TableBitWriter._float32Cell[0] = 200.0;
-      final fc = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = ratio * fc;
-      final scaled = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = scaled + 0.5;
-      var index = TableBitWriter._float32Cell[0].floor();
-      if (index > 200) { index = 200; }
-      w.put(index, 8);
+  {
+    TableBitWriter._float32Cell[0] = value.aimX;
+    if (TableBitWriter._float32Words[0] != 0) {
+      w.put(37, tableMessageRefBits);
+      assert(!value.aimX.isFinite || (value.aimX >= -1.0 && value.aimX <= 1.0));
+      {
+        final f = value.aimX;
+        if (!f.isFinite) return false;
+        TableBitWriter._float32Cell[0] = f;
+        final f32 = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = f32 - -1.0;
+        final shifted = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = shifted / 2.0;
+        var ratio = TableBitWriter._float32Cell[0];
+        if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+        TableBitWriter._float32Cell[0] = 200.0;
+        final fc = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = ratio * fc;
+        final scaled = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = scaled + 0.5;
+        var index = TableBitWriter._float32Cell[0].floor();
+        if (index > 200) { index = 200; }
+        w.put(index, 8);
+      }
     }
   }
-  TableBitWriter._float32Cell[0] = value.aimZ;
-  if (TableBitWriter._float32Words[0] != 0) {
-    w.put(39, tableMessageRefBits);
-    assert(!value.aimZ.isFinite || (value.aimZ >= -1.0 && value.aimZ <= 1.0));
-    {
-      final f = value.aimZ;
-      if (!f.isFinite) return false;
-      TableBitWriter._float32Cell[0] = f;
-      final f32 = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = f32 - -1.0;
-      final shifted = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = shifted / 2.0;
-      var ratio = TableBitWriter._float32Cell[0];
-      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
-      TableBitWriter._float32Cell[0] = 200.0;
-      final fc = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = ratio * fc;
-      final scaled = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = scaled + 0.5;
-      var index = TableBitWriter._float32Cell[0].floor();
-      if (index > 200) { index = 200; }
-      w.put(index, 8);
+  {
+    TableBitWriter._float32Cell[0] = value.aimY;
+    if (TableBitWriter._float32Words[0] != 0) {
+      w.put(38, tableMessageRefBits);
+      assert(!value.aimY.isFinite || (value.aimY >= -1.0 && value.aimY <= 1.0));
+      {
+        final f = value.aimY;
+        if (!f.isFinite) return false;
+        TableBitWriter._float32Cell[0] = f;
+        final f32 = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = f32 - -1.0;
+        final shifted = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = shifted / 2.0;
+        var ratio = TableBitWriter._float32Cell[0];
+        if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+        TableBitWriter._float32Cell[0] = 200.0;
+        final fc = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = ratio * fc;
+        final scaled = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = scaled + 0.5;
+        var index = TableBitWriter._float32Cell[0].floor();
+        if (index > 200) { index = 200; }
+        w.put(index, 8);
+      }
     }
   }
-  TableBitWriter._float32Cell[0] = value.recoil;
-  if (TableBitWriter._float32Words[0] != 0) {
-    w.put(40, tableMessageRefBits);
-    {
-      final f = value.recoil;
-      if (!f.isFinite) return false;
-      TableBitWriter._float32Cell[0] = f;
-      w.put(TableBitWriter._float32Words[0], 32);
+  {
+    TableBitWriter._float32Cell[0] = value.aimZ;
+    if (TableBitWriter._float32Words[0] != 0) {
+      w.put(39, tableMessageRefBits);
+      assert(!value.aimZ.isFinite || (value.aimZ >= -1.0 && value.aimZ <= 1.0));
+      {
+        final f = value.aimZ;
+        if (!f.isFinite) return false;
+        TableBitWriter._float32Cell[0] = f;
+        final f32 = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = f32 - -1.0;
+        final shifted = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = shifted / 2.0;
+        var ratio = TableBitWriter._float32Cell[0];
+        if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+        TableBitWriter._float32Cell[0] = 200.0;
+        final fc = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = ratio * fc;
+        final scaled = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = scaled + 0.5;
+        var index = TableBitWriter._float32Cell[0].floor();
+        if (index > 200) { index = 200; }
+        w.put(index, 8);
+      }
     }
   }
-  if (value.drift != 0 || value.drift.isNegative) {
-    w.put(41, tableMessageRefBits);
-    {
-      final f = value.drift;
-      if (!f.isFinite) return false;
-      TableBitWriter._float64Cell[0] = f;
-      w.put(TableBitWriter._float64Words[0], 64);
+  {
+    TableBitWriter._float32Cell[0] = value.recoil;
+    if (TableBitWriter._float32Words[0] != 0) {
+      w.put(40, tableMessageRefBits);
+      {
+        final f = value.recoil;
+        if (!f.isFinite) return false;
+        TableBitWriter._float32Cell[0] = f;
+        w.put(TableBitWriter._float32Words[0], 32);
+      }
     }
   }
-  if (value.wideKey != 0) {
-    w.put(42, tableMessageRefBits);
-    w.put(value.wideKey, 64);
-  }
-  if (value.flux != 0) {
-    w.put(43, tableMessageRefBits);
-    assert(value.flux >= -1000000000000000000 && value.flux <= 1000000000000000000);
-    w.put(value.flux - -1000000000000000000, 61);
-  }
-  TableBitWriter._float32Cell[0] = value.ping;
-  if (TableBitWriter._float32Words[0] != 0) {
-    w.put(44, tableMessageRefBits);
-    assert(!value.ping.isFinite || (value.ping >= 0.0 && value.ping <= 250.0));
-    {
-      final f = value.ping;
-      if (!f.isFinite) return false;
-      TableBitWriter._float32Cell[0] = f;
-      final f32 = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = f32 - 0.0;
-      final shifted = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = shifted / 250.0;
-      var ratio = TableBitWriter._float32Cell[0];
-      if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
-      TableBitWriter._float32Cell[0] = 25000.0;
-      final fc = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = ratio * fc;
-      final scaled = TableBitWriter._float32Cell[0];
-      TableBitWriter._float32Cell[0] = scaled + 0.5;
-      var index = TableBitWriter._float32Cell[0].floor();
-      if (index > 25000) { index = 25000; }
-      w.put(index, 15);
+  {
+    if (value.drift != 0 || value.drift.isNegative) {
+      w.put(41, tableMessageRefBits);
+      {
+        final f = value.drift;
+        if (!f.isFinite) return false;
+        TableBitWriter._float64Cell[0] = f;
+        w.put(TableBitWriter._float64Words[0], 64);
+      }
     }
   }
-  if (value.crcHint != 0) {
-    w.put(45, tableMessageRefBits);
-    assert(value.crcHint >= 0 && value.crcHint <= 16777215);
-    w.put(value.crcHint - 0, 24);
+  {
+    if (value.wideKey != 0) {
+      w.put(42, tableMessageRefBits);
+      w.put(value.wideKey, 64);
+    }
   }
-  if (value.hasExtra != false) {
-    w.put(46, tableMessageRefBits);
-    w.put(value.hasExtra ? 1 : 0, 1);
+  {
+    if (value.flux != 0) {
+      w.put(43, tableMessageRefBits);
+      assert(value.flux >= -1000000000000000000 && value.flux <= 1000000000000000000);
+      w.put(value.flux - -1000000000000000000, 61);
+    }
   }
-  if (value.extra != 0) {
-    w.put(47, tableMessageRefBits);
-    assert(value.extra >= 0 && value.extra <= 255);
-    w.put(value.extra - 0, 8);
+  {
+    TableBitWriter._float32Cell[0] = value.ping;
+    if (TableBitWriter._float32Words[0] != 0) {
+      w.put(44, tableMessageRefBits);
+      assert(!value.ping.isFinite || (value.ping >= 0.0 && value.ping <= 250.0));
+      {
+        final f = value.ping;
+        if (!f.isFinite) return false;
+        TableBitWriter._float32Cell[0] = f;
+        final f32 = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = f32 - 0.0;
+        final shifted = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = shifted / 250.0;
+        var ratio = TableBitWriter._float32Cell[0];
+        if (!(ratio >= 0)) { ratio = 0.0; } else if (!(ratio <= 1)) { ratio = 1.0; }
+        TableBitWriter._float32Cell[0] = 25000.0;
+        final fc = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = ratio * fc;
+        final scaled = TableBitWriter._float32Cell[0];
+        TableBitWriter._float32Cell[0] = scaled + 0.5;
+        var index = TableBitWriter._float32Cell[0].floor();
+        if (index > 25000) { index = 25000; }
+        w.put(index, 15);
+      }
+    }
   }
-  if (value.idleTicks != 0) {
-    w.put(48, tableMessageRefBits);
-    assert(value.idleTicks >= 0 && value.idleTicks <= 15);
-    w.put(value.idleTicks - 0, 4);
+  {
+    if (value.crcHint != 0) {
+      w.put(45, tableMessageRefBits);
+      assert(value.crcHint >= 0 && value.crcHint <= 16777215);
+      w.put(value.crcHint - 0, 24);
+    }
+  }
+  {
+    if (value.hasExtra != false) {
+      w.put(46, tableMessageRefBits);
+      w.put(value.hasExtra ? 1 : 0, 1);
+    }
+  }
+  {
+    if (value.extra != 0) {
+      w.put(47, tableMessageRefBits);
+      assert(value.extra >= 0 && value.extra <= 255);
+      w.put(value.extra - 0, 8);
+    }
+  }
+  {
+    if (value.idleTicks != 0) {
+      w.put(48, tableMessageRefBits);
+      assert(value.idleTicks >= 0 && value.idleTicks <= 15);
+      w.put(value.idleTicks - 0, 4);
+    }
   }
   w.put(0, tableMessageRefBits);
   return !w.overflow;
@@ -4443,8 +4733,9 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
     if (shape == null) { r.report.Damage(); return false; }
     switch (entry.id) {
       case 7663561793681298941: {
-        if (sameBuild && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 1;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 0) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 1; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4456,12 +4747,14 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.protocolMagic = v;
           if (shape.packing == 1) { value.protocolMagic += shape.base; }
         }
-        if (sameBuild && !(value.protocolMagic != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if ((value.protocolMagic ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
+        if (exact && !(value.protocolMagic != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -6181000666011064152: {
-        if (sameBuild && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 2;
+        final exact = sameBuild && entry.kind == 7 && shape.elem == 0 && shape.packing == 1 && shape.bits == 16 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 1) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 2; }
         if (entry.kind != 7 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 7))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4473,13 +4766,15 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.sequence = v;
           if (shape.packing == 1) { value.sequence += shape.base; }
         }
+        if ((value.sequence ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.sequence > 65535) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.sequence != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.sequence != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 990229364654832702: {
-        if (sameBuild && nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 3;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 16 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 2) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 3; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4492,13 +4787,15 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (shape.packing == 1) { value.ackSequence += shape.base; }
           if (shape.packing == 0) { value.ackSequence = value.ackSequence.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.ackSequence < -2147483648 || value.ackSequence > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.ackSequence < 0 || value.ackSequence > 65535) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.ackSequence != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.ackSequence != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -7228825333587644925: {
-        if (sameBuild && nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 4;
+        final exact = sameBuild && entry.kind == 8 && shape.elem == 0 && shape.packing == 1 && shape.bits == 32 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 3) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 4; }
         if (entry.kind != 8 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4510,13 +4807,15 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.ackBits = v;
           if (shape.packing == 1) { value.ackBits += shape.base; }
         }
+        if ((value.ackBits ^ 0x8000000000000000) > (4294967295 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.ackBits > 4294967295) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.ackBits != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.ackBits != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -5199487799206016251: {
-        if (sameBuild && nextField > 4) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 5;
+        final exact = sameBuild && entry.kind == 9 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 4) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 5; }
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4528,12 +4827,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.sessionId = v;
           if (shape.packing == 1) { value.sessionId += shape.base; }
         }
-        if (sameBuild && !(value.sessionId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.sessionId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 7889067272199050878: {
-        if (sameBuild && nextField > 5) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 6;
+        final exact = sameBuild && entry.kind == 8 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 5) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 6; }
         if (entry.kind != 8 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4545,12 +4845,14 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.clientId = v;
           if (shape.packing == 1) { value.clientId += shape.base; }
         }
-        if (sameBuild && !(value.clientId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if ((value.clientId ^ 0x8000000000000000) > (4294967295 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
+        if (exact && !(value.clientId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8334276637232054488: {
-        if (sameBuild && nextField > 6) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 7;
+        final exact = sameBuild && entry.kind == 9 && shape.elem == 0 && shape.packing == 1 && shape.bits == 63 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 6) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 7; }
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4563,12 +4865,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (shape.packing == 1) { value.nonce += shape.base; }
         }
         if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000001 || (value.nonce ^ 0x8000000000000000) > 0xffffffffffffffff) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.nonce != 1)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.nonce != 1)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 4534679873638431877: {
-        if (sameBuild && nextField > 7) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 8;
+        final exact = sameBuild && entry.kind == 5 && shape.elem == 0 && shape.packing == 1 && shape.bits == 41 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 7) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 8; }
         if (entry.kind != 5 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 5))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4582,12 +4885,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (shape.packing == 0) { value.worldTime = value.worldTime.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.worldTime < -1000000000000 || value.worldTime > 1000000000000) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.worldTime != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.worldTime != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8916005070914257170: {
-        if (sameBuild && nextField > 8) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 9;
+        final exact = sameBuild && entry.kind == 9 && shape.elem == 0 && shape.packing == 1 && shape.bits == 48 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 8) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 9; }
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4600,41 +4904,55 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (shape.packing == 1) { value.frameTick += shape.base; }
         }
         if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.frameTick != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.frameTick != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 4343163795393112518: {
-        if (sameBuild && nextField > 9) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 10;
+        final exact = sameBuild && entry.kind == 10 && shape.elem == 0 && shape.packing == 2 && shape.bits == 23 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 9) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 10; }
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        {
-          final index = r.bits.get(23);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          if (index > 6553500) { r.report.Damage(); return false; }
+        if (shape.packing == 2) {
+          final index = r.bits.get(shape.bits);
+          if (r.bits.failed || index > shape.qCount) { r.report.Damage(); return false; }
           TableBitWriter._float32Cell[0] = index.toDouble();
           final fi = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = 6553500.0;
+          TableBitWriter._float32Cell[0] = shape.qCount.toDouble();
           final fc = TableBitWriter._float32Cell[0];
           TableBitWriter._float32Cell[0] = fi / fc;
           final normalized = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = normalized * 65535.0;
+          TableBitWriter._float32Cell[0] = shape.qDelta;
+          final qd = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * qd;
           final scaled = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = scaled + 0.0;
+          TableBitWriter._float32Cell[0] = shape.qMin;
+          final qm = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + qm;
+          final xv = TableBitWriter._float32Cell[0];
+          if (!xv.isFinite) return r.report.RefuseNonFiniteFloat('TableMixed.server_time');
+          value.serverTime = xv == 0 ? 0.0 : xv;
+        } else {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.server_time');
+          TableBitWriter._float32Words[0] = b;
           value.serverTime = TableBitWriter._float32Cell[0];
         }
-        if (value.serverTime < 0.0 || value.serverTime > 65535.0) { r.report.Refuse('out_of_range'); return false; }
+        if (value.serverTime < 0.0 || value.serverTime > 65535.0) { r.report.Refuse('out_of_range'); return false; } else if (value.serverTime == 0) { value.serverTime = 0.0; }
         break;
       }
       case -7828083326636031446: {
-        if (sameBuild && nextField > 10) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 11;
+        final exact = sameBuild && entry.kind == 14 && shape.elem == 13 && shape.packing == 0 && shape.bits == 0 && shape.min == 1 && shape.max == 8;
+        if (exact && nextField > 10) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 11; }
         if (entry.kind != 14 || shape.elem != 13) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
+        final subAt = r.report.unknown + r.substituted;
         {
           var n = shape.min;
           final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
@@ -4643,28 +4961,39 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
+          if (n > shape.max) { r.report.Damage(); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
-          if (n > 8) { r.report.Refuse('count_over_bound'); return false; }
-          for (var i = 0; i < n; i++) {
+          if (n < 1 || n > 8) { r.report.Refuse('count_over_bound'); return false; }
+          for (var i4 = 0; i4 < n; i4++) {
             {
               r.seenDepth++;
-              final ok = tableEntityLoadMessageBody(r, value.entities[i]);
+              final ok = tableEntityLoadMessageBody(r, value.entities[i4]);
               r.seenDepth--;
               if (!ok) return false;
             }
           }
           value.entitiesCount = n;
         }
-        if (sameBuild && !(value.entitiesCount > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        var arrayRides = value.entitiesCount != 1;
+        if (!arrayRides) {
+          for (var ai = 0; ai < 1; ai++) {
+            final probeEntities = TableBitWriter(Uint8List(0))..measuring = true;
+            if (!tableEntitySaveMessageBody(probeEntities, value.entities[ai])) return false;
+            if (probeEntities.bits > tableMessageRefBits) { arrayRides = true; break; }
+          }
+        }
+        if (exact && r.report.unknown + r.substituted == subAt && !(arrayRides)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -1268998401975805620: {
-        if (sameBuild && nextField > 11) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 12;
+        final exact = sameBuild && entry.kind == 14 && shape.elem == 13 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 80;
+        if (exact && nextField > 11) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 12; }
         if (entry.kind != 14 || shape.elem != 13) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
+        final subAt = r.report.unknown + r.substituted;
         {
           var n = shape.min;
           final countBits = TableMessageShape.bitsRequired(shape.min, shape.max);
@@ -4673,29 +5002,31 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
+          if (n > shape.max) { r.report.Damage(); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n > 80) { r.report.Refuse('count_over_bound'); return false; }
-          for (var i = 0; i < n; i++) {
+          for (var i5 = 0; i5 < n; i5++) {
             {
               r.seenDepth++;
-              final ok = tableStatLoadMessageBody(r, value.stats[i]);
+              final ok = tableStatLoadMessageBody(r, value.stats[i5]);
               r.seenDepth--;
               if (!ok) return false;
             }
           }
           value.statsCount = n;
         }
-        if (sameBuild && !(value.statsCount > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && r.report.unknown + r.substituted == subAt && !(value.statsCount > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 3329809749115557776: {
-        if (sameBuild && nextField > 12) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 13;
+        final exact = sameBuild && entry.kind == 15 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 12) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 13; }
         if (entry.kind != 15 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        final unknownAt = r.report.unknown;
+        final subAt = r.report.unknown + r.substituted;
         {
           final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4758,12 +5089,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
             }
           }
         }
-        if (r.report.unknown == unknownAt && !(value.gameEvent.type != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (r.report.unknown + r.substituted == subAt && !(value.gameEvent.type != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6294288958393922979: {
-        if (sameBuild && nextField > 13) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 14;
+        final exact = sameBuild && entry.kind == 14 && shape.elem == 6 && shape.packing == 0 && shape.bits == 0 && shape.min == 4 && shape.max == 4;
+        if (exact && nextField > 13) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 14; }
         if (entry.kind != 14 || shape.elem != 6) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4776,23 +5108,31 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
+          if (n > shape.max) { r.report.Damage(); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n > 4) { r.report.Refuse('count_over_bound'); return false; }
-          for (var i = 0; i < n; i++) {
+          for (var i6 = 0; i6 < n; i6++) {
             {
               final bits = TableMessageShape.valueBits(shape.elem, shape.inner!);
               final v = r.bits.get(bits);
               if (r.bits.failed) { r.report.Damage(); return false; }
-              value.loadout[i] = v;
-              if (shape.inner!.packing == 1) { value.loadout[i] += shape.inner!.base; }
+              value.loadout[i6] = v;
+              if (shape.inner!.packing == 1) { value.loadout[i6] += shape.inner!.base; }
             }
+            if ((value.loadout[i6] ^ 0x8000000000000000) > (255 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
           }
         }
+        var fixedRides = false;
+        for (var fi = 0; fi < 4; fi++) {
+          if (value.loadout[fi] != 0) { fixedRides = true; break; }
+        }
+        if (exact && !(fixedRides)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 1415871171432867950: {
-        if (sameBuild && nextField > 14) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 15;
+        final exact = sameBuild && entry.kind == 12 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 15;
+        if (exact && nextField > 14) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 15; }
         if (entry.kind != 12 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4808,12 +5148,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.playerNameLength = kept;
           value.playerName.setRange(0, kept, r.bits.buffer, start);
         }
-        if (sameBuild && !(value.playerNameLength > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.playerNameLength > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3478843999652550171: {
-        if (sameBuild && nextField > 15) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 16;
+        final exact = sameBuild && entry.kind == 14 && shape.elem == 6 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 16;
+        if (exact && nextField > 15) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 16; }
         if (entry.kind != 14 || shape.elem != 6) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -4828,116 +5169,193 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.payloadLength = kept;
           value.payload.setRange(0, kept, r.bits.buffer, start);
         }
-        if (sameBuild && !(value.payloadLength > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.payloadLength > 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -2616736631205226807: {
-        if (sameBuild && nextField > 16) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 17;
+        final exact = sameBuild && entry.kind == 10 && shape.elem == 0 && shape.packing == 2 && shape.bits == 8 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 16) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 17; }
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        {
-          final index = r.bits.get(8);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          if (index > 200) { r.report.Damage(); return false; }
+        if (shape.packing == 2) {
+          final index = r.bits.get(shape.bits);
+          if (r.bits.failed || index > shape.qCount) { r.report.Damage(); return false; }
           TableBitWriter._float32Cell[0] = index.toDouble();
           final fi = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = 200.0;
+          TableBitWriter._float32Cell[0] = shape.qCount.toDouble();
           final fc = TableBitWriter._float32Cell[0];
           TableBitWriter._float32Cell[0] = fi / fc;
           final normalized = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = normalized * 2.0;
+          TableBitWriter._float32Cell[0] = shape.qDelta;
+          final qd = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * qd;
           final scaled = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = scaled + -1.0;
+          TableBitWriter._float32Cell[0] = shape.qMin;
+          final qm = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + qm;
+          final xv = TableBitWriter._float32Cell[0];
+          if (!xv.isFinite) return r.report.RefuseNonFiniteFloat('TableMixed.aim_x');
+          value.aimX = xv == 0 ? 0.0 : xv;
+        } else {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.aim_x');
+          TableBitWriter._float32Words[0] = b;
           value.aimX = TableBitWriter._float32Cell[0];
         }
-        if (value.aimX < -1.0 || value.aimX > 1.0) { r.report.Refuse('out_of_range'); return false; }
+        if (value.aimX < -1.0 || value.aimX > 1.0) { r.report.Refuse('out_of_range'); return false; } else if (value.aimX == 0) { value.aimX = 0.0; }
         break;
       }
       case -2616737730716855018: {
-        if (sameBuild && nextField > 17) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 18;
+        final exact = sameBuild && entry.kind == 10 && shape.elem == 0 && shape.packing == 2 && shape.bits == 8 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 17) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 18; }
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        {
-          final index = r.bits.get(8);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          if (index > 200) { r.report.Damage(); return false; }
+        if (shape.packing == 2) {
+          final index = r.bits.get(shape.bits);
+          if (r.bits.failed || index > shape.qCount) { r.report.Damage(); return false; }
           TableBitWriter._float32Cell[0] = index.toDouble();
           final fi = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = 200.0;
+          TableBitWriter._float32Cell[0] = shape.qCount.toDouble();
           final fc = TableBitWriter._float32Cell[0];
           TableBitWriter._float32Cell[0] = fi / fc;
           final normalized = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = normalized * 2.0;
+          TableBitWriter._float32Cell[0] = shape.qDelta;
+          final qd = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * qd;
           final scaled = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = scaled + -1.0;
+          TableBitWriter._float32Cell[0] = shape.qMin;
+          final qm = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + qm;
+          final xv = TableBitWriter._float32Cell[0];
+          if (!xv.isFinite) return r.report.RefuseNonFiniteFloat('TableMixed.aim_y');
+          value.aimY = xv == 0 ? 0.0 : xv;
+        } else {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.aim_y');
+          TableBitWriter._float32Words[0] = b;
           value.aimY = TableBitWriter._float32Cell[0];
         }
-        if (value.aimY < -1.0 || value.aimY > 1.0) { r.report.Refuse('out_of_range'); return false; }
+        if (value.aimY < -1.0 || value.aimY > 1.0) { r.report.Refuse('out_of_range'); return false; } else if (value.aimY == 0) { value.aimY = 0.0; }
         break;
       }
       case -2616738830228483229: {
-        if (sameBuild && nextField > 18) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 19;
+        final exact = sameBuild && entry.kind == 10 && shape.elem == 0 && shape.packing == 2 && shape.bits == 8 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 18) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 19; }
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        {
-          final index = r.bits.get(8);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          if (index > 200) { r.report.Damage(); return false; }
+        if (shape.packing == 2) {
+          final index = r.bits.get(shape.bits);
+          if (r.bits.failed || index > shape.qCount) { r.report.Damage(); return false; }
           TableBitWriter._float32Cell[0] = index.toDouble();
           final fi = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = 200.0;
+          TableBitWriter._float32Cell[0] = shape.qCount.toDouble();
           final fc = TableBitWriter._float32Cell[0];
           TableBitWriter._float32Cell[0] = fi / fc;
           final normalized = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = normalized * 2.0;
+          TableBitWriter._float32Cell[0] = shape.qDelta;
+          final qd = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * qd;
           final scaled = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = scaled + -1.0;
+          TableBitWriter._float32Cell[0] = shape.qMin;
+          final qm = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + qm;
+          final xv = TableBitWriter._float32Cell[0];
+          if (!xv.isFinite) return r.report.RefuseNonFiniteFloat('TableMixed.aim_z');
+          value.aimZ = xv == 0 ? 0.0 : xv;
+        } else {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.aim_z');
+          TableBitWriter._float32Words[0] = b;
           value.aimZ = TableBitWriter._float32Cell[0];
         }
-        if (value.aimZ < -1.0 || value.aimZ > 1.0) { r.report.Refuse('out_of_range'); return false; }
+        if (value.aimZ < -1.0 || value.aimZ > 1.0) { r.report.Refuse('out_of_range'); return false; } else if (value.aimZ == 0) { value.aimZ = 0.0; }
         break;
       }
       case -7138431908913683369: {
-        if (sameBuild && nextField > 19) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 20;
+        final exact = sameBuild && entry.kind == 10 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 19) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 20; }
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        {
+        if (shape.packing == 2) {
+          final index = r.bits.get(shape.bits);
+          if (r.bits.failed || index > shape.qCount) { r.report.Damage(); return false; }
+          TableBitWriter._float32Cell[0] = index.toDouble();
+          final fi = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = shape.qCount.toDouble();
+          final fc = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = fi / fc;
+          final normalized = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = shape.qDelta;
+          final qd = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * qd;
+          final scaled = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = shape.qMin;
+          final qm = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + qm;
+          final xv = TableBitWriter._float32Cell[0];
+          if (!xv.isFinite) return r.report.RefuseNonFiniteFloat('TableMixed.recoil');
+          value.recoil = xv == 0 ? 0.0 : xv;
+        } else {
           final b = r.bits.get(32);
           if (r.bits.failed) { r.report.Damage(); return false; }
           if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.recoil');
           TableBitWriter._float32Words[0] = b;
           value.recoil = TableBitWriter._float32Cell[0];
         }
-        if (r.bits.failed) { r.report.Damage(); return false; }
         TableBitWriter._float32Cell[0] = value.recoil;
-        if (sameBuild && !(TableBitWriter._float32Words[0] != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(TableBitWriter._float32Words[0] != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 6535842126802938884: {
-        if (sameBuild && nextField > 20) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 21;
+        final exact = sameBuild && entry.kind == 11 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 20) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 21; }
         if (entry.kind != 11 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 11))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
         }
         if (entry.kind == 10) {
-          final b = r.bits.get(32);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
-          TableBitWriter._float32Words[0] = b;
-          value.drift = TableBitWriter._float32Cell[0];
+          if (shape.packing == 2) {
+            final index = r.bits.get(shape.bits);
+            if (r.bits.failed || index > shape.qCount) { r.report.Damage(); return false; }
+            TableBitWriter._float32Cell[0] = index.toDouble();
+            final fi = TableBitWriter._float32Cell[0];
+            TableBitWriter._float32Cell[0] = shape.qCount.toDouble();
+            final fc = TableBitWriter._float32Cell[0];
+            TableBitWriter._float32Cell[0] = fi / fc;
+            final normalized = TableBitWriter._float32Cell[0];
+            TableBitWriter._float32Cell[0] = shape.qDelta;
+            final qd = TableBitWriter._float32Cell[0];
+            TableBitWriter._float32Cell[0] = normalized * qd;
+            final scaled = TableBitWriter._float32Cell[0];
+            TableBitWriter._float32Cell[0] = shape.qMin;
+            final qm = TableBitWriter._float32Cell[0];
+            TableBitWriter._float32Cell[0] = scaled + qm;
+            final xv = TableBitWriter._float32Cell[0];
+            if (!xv.isFinite) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
+            value.drift = xv;
+          } else {
+            final b = r.bits.get(32);
+            if (r.bits.failed) { r.report.Damage(); return false; }
+            if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
+            TableBitWriter._float32Words[0] = b;
+            value.drift = TableBitWriter._float32Cell[0];
+          }
         } else {
           final b = r.bits.get(64);
           if (r.bits.failed) { r.report.Damage(); return false; }
@@ -4945,12 +5363,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           TableBitWriter._float64Words[0] = b;
           value.drift = TableBitWriter._float64Cell[0];
         }
-        if (sameBuild && !(value.drift != 0 || value.drift.isNegative)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.drift != 0 || value.drift.isNegative)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -6686572760759554282: {
-        if (sameBuild && nextField > 21) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 22;
+        final exact = sameBuild && entry.kind == 9 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 21) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 22; }
         if (entry.kind != 9 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 9))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4962,12 +5381,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.wideKey = v;
           if (shape.packing == 1) { value.wideKey += shape.base; }
         }
-        if (sameBuild && !(value.wideKey != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.wideKey != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -3018575613315307966: {
-        if (sameBuild && nextField > 22) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 23;
+        final exact = sameBuild && entry.kind == 5 && shape.elem == 0 && shape.packing == 1 && shape.bits == 61 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 22) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 23; }
         if (entry.kind != 5 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 5))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -4981,37 +5401,50 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (shape.packing == 0) { value.flux = value.flux.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.flux < -1000000000000000000 || value.flux > 1000000000000000000) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.flux != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.flux != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -4669986463835551831: {
-        if (sameBuild && nextField > 23) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 24;
+        final exact = sameBuild && entry.kind == 10 && shape.elem == 0 && shape.packing == 2 && shape.bits == 15 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 23) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 24; }
         if (entry.kind != 10 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
         }
-        {
-          final index = r.bits.get(15);
-          if (r.bits.failed) { r.report.Damage(); return false; }
-          if (index > 25000) { r.report.Damage(); return false; }
+        if (shape.packing == 2) {
+          final index = r.bits.get(shape.bits);
+          if (r.bits.failed || index > shape.qCount) { r.report.Damage(); return false; }
           TableBitWriter._float32Cell[0] = index.toDouble();
           final fi = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = 25000.0;
+          TableBitWriter._float32Cell[0] = shape.qCount.toDouble();
           final fc = TableBitWriter._float32Cell[0];
           TableBitWriter._float32Cell[0] = fi / fc;
           final normalized = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = normalized * 250.0;
+          TableBitWriter._float32Cell[0] = shape.qDelta;
+          final qd = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = normalized * qd;
           final scaled = TableBitWriter._float32Cell[0];
-          TableBitWriter._float32Cell[0] = scaled + 0.0;
+          TableBitWriter._float32Cell[0] = shape.qMin;
+          final qm = TableBitWriter._float32Cell[0];
+          TableBitWriter._float32Cell[0] = scaled + qm;
+          final xv = TableBitWriter._float32Cell[0];
+          if (!xv.isFinite) return r.report.RefuseNonFiniteFloat('TableMixed.ping');
+          value.ping = xv == 0 ? 0.0 : xv;
+        } else {
+          final b = r.bits.get(32);
+          if (r.bits.failed) { r.report.Damage(); return false; }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.ping');
+          TableBitWriter._float32Words[0] = b;
           value.ping = TableBitWriter._float32Cell[0];
         }
-        if (value.ping < 0.0 || value.ping > 250.0) { r.report.Refuse('out_of_range'); return false; }
+        if (value.ping < 0.0 || value.ping > 250.0) { r.report.Refuse('out_of_range'); return false; } else if (value.ping == 0) { value.ping = 0.0; }
         break;
       }
       case 6200723483573899615: {
-        if (sameBuild && nextField > 24) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 25;
+        final exact = sameBuild && entry.kind == 8 && shape.elem == 0 && shape.packing == 1 && shape.bits == 24 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 24) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 25; }
         if (entry.kind != 8 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 8))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -5023,13 +5456,15 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           value.crcHint = v;
           if (shape.packing == 1) { value.crcHint += shape.base; }
         }
+        if ((value.crcHint ^ 0x8000000000000000) > (4294967295 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.crcHint > 16777215) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.crcHint != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.crcHint != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -4574933642144545166: {
-        if (sameBuild && nextField > 25) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 26;
+        final exact = sameBuild && entry.kind == 1 && shape.elem == 0 && shape.packing == 0 && shape.bits == 0 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 25) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 26; }
         if (entry.kind != 1 || shape.elem != 0) {
           r.report.Refuse('kind_mismatch');
           return false;
@@ -5039,12 +5474,13 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.hasExtra = v;
         }
-        if (sameBuild && !(value.hasExtra != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.hasExtra != false)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case -204370544148493463: {
-        if (sameBuild && nextField > 26) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 27;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 8 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 26) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 27; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -5057,13 +5493,15 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (shape.packing == 1) { value.extra += shape.base; }
           if (shape.packing == 0) { value.extra = value.extra.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.extra < -2147483648 || value.extra > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.extra < 0 || value.extra > 255) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.extra != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.extra != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       case 8651444298976115966: {
-        if (sameBuild && nextField > 27) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
-        nextField = 28;
+        final exact = sameBuild && entry.kind == 4 && shape.elem == 0 && shape.packing == 1 && shape.bits == 4 && shape.min == 0 && shape.max == 0;
+        if (exact && nextField > 27) { r.report.Damage(); return false; } // out of the writer's order (§3.3)
+        if (exact) { nextField = 28; }
         if (entry.kind != 4 || shape.elem != 0) {
           if (!(shape.elem == 0 && tableMessageKindWidens(entry.kind, 4))) { r.report.Refuse('kind_mismatch'); return false; }
           r.report.widened++;
@@ -5076,8 +5514,9 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
           if (shape.packing == 1) { value.idleTicks += shape.base; }
           if (shape.packing == 0) { value.idleTicks = value.idleTicks.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
+        if (value.idleTicks < -2147483648 || value.idleTicks > 2147483647) { r.report.Refuse('out_of_range'); return false; }
         if (value.idleTicks < 0 || value.idleTicks > 15) { r.report.Refuse('out_of_range'); return false; }
-        if (sameBuild && !(value.idleTicks != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
+        if (exact && !(value.idleTicks != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
       default:

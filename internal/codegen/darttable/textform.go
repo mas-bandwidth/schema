@@ -20,7 +20,6 @@ package darttable
 import (
 	"fmt"
 	"sort"
-	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -878,7 +877,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	g.pf("\tswitch (v) {\n")
 	g.pf("\t\tcase 0: return \"None\";\n")
 	for i, name := range e.Variants {
-		g.pf("\t\tcase %d: return %s;\n", i+1, strconv.Quote(name))
+		g.pf("\t\tcase %d: return %s;\n", i+1, viewDartString(name))
 	}
 	g.pf("\t}\n\treturn '';\n}\n\n")
 	none := g.enumConst(e, 0)
@@ -888,7 +887,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	g.pf("\tswitch (val) {\n")
 	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
-		g.pf("\t\tcase %s: return %s;\n", strconv.Quote(name), g.enumConst(e, i+1))
+		g.pf("\t\tcase %s: return %s;\n", viewDartString(name), g.enumConst(e, i+1))
 	}
 	g.pf("\t}\n\tr.unknown++;\n\treturn %s;\n}\n\n", none)
 }
@@ -948,7 +947,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\tout.line(depth + 1);\n")
-	g.pf("\tout.raw(_jsonString(%s));\n", strconv.Quote(key))
+	g.pf("\tout.raw(_jsonString(%s));\n", viewDartString(key))
 	g.pf("\tout.raw(': ');\n")
 	switch {
 	case needsGenericText(f):
@@ -1080,7 +1079,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("void %s(%s v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {\n", fn, st.Name)
 	if st.JsonArray {
 		g.pf("\tif (obj is! List) return;\n")
-		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", strconv.Quote(ir.TableFieldJsonKey(st.Fields[0])))
+		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", viewDartString(ir.TableFieldJsonKey(st.Fields[0])))
 	} else {
 		g.pf("\tfinal entries = _jsonEntries(obj);\n")
 		g.pf("\tif (entries == null) return;\n")
@@ -1112,7 +1111,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
-	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
+	g.pf("\t\t\tcase %s:\n", viewDartString(key))
 	g.pf("\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n")
 	switch {
 	case needsGenericText(f):

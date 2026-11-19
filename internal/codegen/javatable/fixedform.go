@@ -801,7 +801,7 @@ func (g *fixedGen) emitKeyedAccessors(f *ir.Field, name, typ string) {
 	g.pf("         *  %s.Max are refused by name in every build. */\n", f.KeyEnum)
 	g.pf("        public %s %s(int key) {\n", typ, name)
 	g.pf("%s", javaKeyRefusal("            ", "key", f))
-	g.pf("            return %s[key - 1];\n", name)
+	g.pf("            return this.%s[key - 1];\n", name)
 	g.pf("        }\n")
 	if fixedIsObject(f.Type) && typ != "Int128" && typ != "UInt128" {
 		return
@@ -809,7 +809,7 @@ func (g *fixedGen) emitKeyedAccessors(f *ir.Field, name, typ string) {
 	g.pf("        /** %s %s: store key's slot, k at k-1, refusing as the read does. */\n", spell, keyedFormMarker)
 	g.pf("        public void %s(int key, %s value) {\n", name, typ)
 	g.pf("%s", javaKeyRefusal("            ", "key", f))
-	g.pf("            %s[key - 1] = value;\n", name)
+	g.pf("            this.%s[key - 1] = value;\n", name)
 	g.pf("        }\n")
 }
 

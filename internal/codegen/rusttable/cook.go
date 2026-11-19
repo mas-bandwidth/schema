@@ -102,7 +102,7 @@ const recordsModuleBanner = `//
 // IS the blittable row, so a build with only the block form and a build with
 // only the cooked form want the same structs.
 
-#![allow(unused_imports)]
+#![allow(unused_imports, non_snake_case)]
 
 `
 
@@ -158,7 +158,7 @@ const cookModuleBanner = `//
 // The crate root is a generated glob index, so every module imports it the
 // same way; a unit whose cooked records name nothing outside this file needs
 // none of it, and reading the same header everywhere is worth the allow.
-#![allow(unused_imports)]
+#![allow(unused_imports, non_snake_case)]
 #![allow(clippy::manual_range_contains)]
 
 `

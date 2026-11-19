@@ -309,6 +309,9 @@ fn announce_read_once(
     let mut vocabularies = 0u32;
     let mut terminated = false;
     let mut vocabulary_bytes: &[u8] = &[];
+    let mut seen_refs = [0u64; ID_TABLE_PROBE_BOUND / 64];
+    let mut next_ref = 1u64;
+    let mut non_finite = false;
     while at < body.len() {
         let (reference, ok) = read_leb(body, &mut at);
         if !ok {
@@ -327,11 +330,21 @@ fn announce_read_once(
             }
             break;
         }
-        if reference > trailer_count || at >= body.len() {
+        if reference > trailer_count || reference > next_ref || at >= body.len() {
             report.damaged = true;
             return false;
         }
-        let id = read_u64(data, end + ((reference - 1) * 8) as usize);
+        if reference == next_ref {
+            next_ref += 1;
+        }
+        let ridx = (reference - 1) as usize;
+        let rbit = 1u64 << (ridx & 63);
+        if (seen_refs[ridx >> 6] & rbit) != 0 {
+            report.damaged = true;
+            return false;
+        }
+        seen_refs[ridx >> 6] |= rbit;
+        let id = read_u64(data, end + ridx * 8);
         let kind = body[at];
         at += 1;
         if id == TABLE_BUILD_VERSION_FIELD_ID {
@@ -382,18 +395,25 @@ fn announce_read_once(
             vocabulary_bytes = &body[vat..vat + length as usize];
             vocabularies += 1;
         } else {
+            if id == TABLE_NODE_TABLE_ID {
+                report.damaged = true;
+                return false;
+            }
             // "Every other field of its body is ordinary and strict, so an
             // unknown one is skipped and counted" (§3.3).
             report.unknown += 1;
-            if !skip_field(body, &mut at, kind) {
+            if !skip_field(body, &mut at, kind, trailer_count, &mut next_ref, &mut non_finite, 0) {
                 report.damaged = true;
                 return false;
             }
         }
     }
-    if !terminated || versions != 1 || vocabularies != 1 {
+    if !terminated || next_ref - 1 != trailer_count || versions != 1 || vocabularies != 1 {
         report.damaged = true;
         return false;
+    }
+    if non_finite {
+        return report.refuse(TableReason::NonFiniteFloat);
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3).
     if vocabulary.strict && vocabulary.build_version != BUILD_VERSION {
@@ -638,6 +658,31 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
                 s.base_lo = read_u64(bytes, *at);
                 s.base_hi = read_u64(bytes, *at + 8);
                 *at += 16;
+                if (20..=23).contains(&kind) {
+                    let sblo = s.base_lo as i64;
+                    let whi = if sblo < 0 { u64::MAX } else { 0 };
+                    if s.base_hi != whi {
+                        return (s, false);
+                    }
+                    if kind < 23 {
+                        let dom = kind_bits(kind);
+                        let mn = -(1i64 << (dom - 1));
+                        let mx = (1i64 << (dom - 1)) - 1;
+                        if sblo < mn || sblo > mx {
+                            return (s, false);
+                        }
+                    }
+                } else if (25..=28).contains(&kind) {
+                    if s.base_hi != 0 {
+                        return (s, false);
+                    }
+                    if kind < 28 {
+                        let dom = kind_bits(kind);
+                        if s.base_lo > (1u64 << dom) - 1 {
+                            return (s, false);
+                        }
+                    }
+                }
                 return (s, true);
             }
             let (v, ok) = read_leb(bytes, at);
@@ -646,8 +691,23 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
             }
             if (2..=5).contains(&kind) {
                 s.base_lo = (v >> 1) ^ (0u64.wrapping_sub(v & 1));
+                if kind < 5 {
+                    let dom = kind_bits(kind);
+                    let mn = -(1i64 << (dom - 1));
+                    let mx = (1i64 << (dom - 1)) - 1;
+                    let sblo = s.base_lo as i64;
+                    if sblo < mn || sblo > mx {
+                        return (s, false);
+                    }
+                }
             } else {
                 s.base_lo = v;
+                if kind < 9 {
+                    let dom = kind_bits(kind);
+                    if s.base_lo > (1u64 << dom) - 1 {
+                        return (s, false);
+                    }
+                }
             }
             return (s, true);
         }
@@ -701,11 +761,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
         // array of strings rides element kind 12 and is walked, while no
         // declaration produces an array or a keyed body as an element, so
         // those are damage here at the announcement.
-        let listed = if kind == 14 {
-            (1..=13).contains(&s.elem) || s.elem == 15 || s.elem == 17 || (18..=29).contains(&s.elem) || s.elem == 30
-        } else {
-            (1..=11).contains(&s.elem) || s.elem == 13 || (18..=29).contains(&s.elem) || s.elem == 30
-        };
+        let listed = known_kind(s.elem) && s.elem != 14 && s.elem != 16;
         if !listed {
             return (s, false);
         }
@@ -723,25 +779,82 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
 /// that many bytes, and a union by its arm reference, its arm's kind byte, one
 /// length and that many bytes. A kind outside the set is not skippable, which
 /// is why the set is closed and why kind 31 exists (§3).
-fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
+fn skip_field(
+    bytes: &[u8],
+    at: &mut usize,
+    kind: u8,
+    id_count: u64,
+    next_ref: &mut u64,
+    non_finite: &mut bool,
+    depth: u32,
+) -> bool {
+    if depth > 128 {
+        return false;
+    }
     match kind {
-        // the fixed-width kinds, each by its storage width (§3)
-        1 | 2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
-        3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
-        4 | 8 | 10 | 22 | 27 => skip_width(bytes, at, 4),
-        5 | 9 | 11 | 23 | 28 | 36 => skip_width(bytes, at, 8),
-        18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
-        // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and
-        // stop
-        17 | 30 => {
-            let (_, ok) = read_leb(bytes, at);
-            ok
+        1 => {
+            if *at >= bytes.len() || bytes[*at] > 1 {
+                return false;
+            }
+            *at += 1;
+            true
         }
-        // THE FRAMED KINDS: one LEB128 length and that many bytes. A string,
-        // a nested body, an array, a keyed array, an escape, a payload-free
-        // field and a wide string all frame the same way on the file, and a
-        // wide string's length is its BYTE count (§3).
-        12 | 13 | 14 | 16 | 31 | 32 => {
+        2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
+        3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
+        4 | 8 | 22 | 27 => skip_width(bytes, at, 4),
+        10 => {
+            if *at + 4 > bytes.len() {
+                return false;
+            }
+            let raw = u32::from_le_bytes([bytes[*at], bytes[*at + 1], bytes[*at + 2], bytes[*at + 3]]);
+            *at += 4;
+            if (raw & 0x7f80_0000) == 0x7f80_0000 {
+                *non_finite = true;
+            }
+            true
+        }
+        5 | 9 | 23 | 28 | 36 => skip_width(bytes, at, 8),
+        11 => {
+            if *at + 8 > bytes.len() {
+                return false;
+            }
+            let raw = read_u64(bytes, *at);
+            *at += 8;
+            if (raw & 0x7ff0_0000_0000_0000) == 0x7ff0_0000_0000_0000 {
+                *non_finite = true;
+            }
+            true
+        }
+        18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
+        17 => {
+            let (idx, ok) = read_leb(bytes, at);
+            ok && idx == 0
+        }
+        30 => {
+            let (r, ok) = read_leb(bytes, at);
+            if !ok || r > id_count {
+                return false;
+            }
+            if r != 0 {
+                if r > *next_ref {
+                    return false;
+                }
+                if r == *next_ref {
+                    *next_ref += 1;
+                }
+            }
+            true
+        }
+        12 => {
+            let (n, ok) = read_leb(bytes, at);
+            if !ok || n > (bytes.len() - *at) as u64 {
+                return false;
+            }
+            let s = &bytes[*at..*at + n as usize];
+            *at += n as usize;
+            !s.contains(&0) && core::str::from_utf8(s).is_ok()
+        }
+        31 => {
             let (n, ok) = read_leb(bytes, at);
             if !ok || n > (bytes.len() - *at) as u64 {
                 return false;
@@ -749,8 +862,61 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
             *at += n as usize;
             true
         }
-        // a UNION: its arm reference, then the arm's kind byte, one length and
-        // that many bytes. Reference 0 is the empty union and stops there.
+        32 => {
+            let (n, ok) = read_leb(bytes, at);
+            ok && n == 0
+        }
+        13 => {
+            if depth >= 128 {
+                return false;
+            }
+            let (n, ok) = read_leb(bytes, at);
+            if !ok || n > (bytes.len() - *at) as u64 {
+                return false;
+            }
+            let sub = &bytes[*at..*at + n as usize];
+            *at += n as usize;
+            let mut sat = 0usize;
+            let mut seen = [0u64; ID_TABLE_PROBE_BOUND / 64];
+            loop {
+                let (r, rok) = read_leb(sub, &mut sat);
+                if !rok {
+                    return false;
+                }
+                if r == 0 {
+                    return sat == sub.len();
+                }
+                if r > id_count || r > *next_ref || sat >= sub.len() {
+                    return false;
+                }
+                if r == *next_ref {
+                    *next_ref += 1;
+                }
+                let ridx = (r - 1) as usize;
+                let rbit = 1u64 << (ridx & 63);
+                if (seen[ridx >> 6] & rbit) != 0 {
+                    return false;
+                }
+                seen[ridx >> 6] |= rbit;
+                let k = sub[sat];
+                sat += 1;
+                if !skip_field(sub, &mut sat, k, id_count, next_ref, non_finite, depth + 1) {
+                    return false;
+                }
+            }
+        }
+        14 | 16 => {
+            if depth >= 128 {
+                return false;
+            }
+            let (n, ok) = read_leb(bytes, at);
+            if !ok || n > (bytes.len() - *at) as u64 {
+                return false;
+            }
+            let sub = &bytes[*at..*at + n as usize];
+            *at += n as usize;
+            skip_collection_body(sub, kind, id_count, next_ref, non_finite, depth + 1)
+        }
         15 => {
             let (arm, ok) = read_leb(bytes, at);
             if !ok {
@@ -759,20 +925,160 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
             if arm == 0 {
                 return true;
             }
-            if *at >= bytes.len() {
+            if arm > id_count || arm > *next_ref || *at >= bytes.len() {
                 return false;
             }
+            if arm == *next_ref {
+                *next_ref += 1;
+            }
+            let ak = bytes[*at];
             *at += 1;
             let (n, ok) = read_leb(bytes, at);
             if !ok || n > (bytes.len() - *at) as u64 {
                 return false;
             }
+            let sub = &bytes[*at..*at + n as usize];
             *at += n as usize;
-            true
+            if ak == 12 {
+                !sub.contains(&0) && core::str::from_utf8(sub).is_ok()
+            } else if ak == 31 {
+                true
+            } else if ak == 32 {
+                n == 0
+            } else if ak == 13 {
+                if depth >= 128 {
+                    return false;
+                }
+                let mut sat = 0usize;
+                let mut seen = [0u64; ID_TABLE_PROBE_BOUND / 64];
+                loop {
+                    let (r, rok) = read_leb(sub, &mut sat);
+                    if !rok {
+                        return false;
+                    }
+                    if r == 0 {
+                        return sat == sub.len();
+                    }
+                    if r > id_count || r > *next_ref || sat >= sub.len() {
+                        return false;
+                    }
+                    if r == *next_ref {
+                        *next_ref += 1;
+                    }
+                    let ridx = (r - 1) as usize;
+                    let rbit = 1u64 << (ridx & 63);
+                    if (seen[ridx >> 6] & rbit) != 0 {
+                        return false;
+                    }
+                    seen[ridx >> 6] |= rbit;
+                    let k = sub[sat];
+                    sat += 1;
+                    if !skip_field(sub, &mut sat, k, id_count, next_ref, non_finite, depth + 1) {
+                        return false;
+                    }
+                }
+            } else if ak == 14 || ak == 16 {
+                skip_collection_body(sub, ak, id_count, next_ref, non_finite, depth + 1)
+            } else {
+                let mut sat = 0usize;
+                skip_field(sub, &mut sat, ak, id_count, next_ref, non_finite, depth) && sat == sub.len()
+            }
         }
         // a kind outside the closed set is not skippable (§3)
         _ => false,
     }
+}
+
+fn skip_collection_body(
+    sub: &[u8],
+    kind: u8,
+    id_count: u64,
+    next_ref: &mut u64,
+    non_finite: &mut bool,
+    depth: u32,
+) -> bool {
+    if depth > 128 || sub.len() < 2 {
+        return false;
+    }
+    let ek = sub[0];
+    let mut sat = 1usize;
+    let (cnt, cok) = read_leb(sub, &mut sat);
+    if !cok || cnt > 0x7fff_ffff {
+        return false;
+    }
+    let valid_ek = if kind == 14 {
+        (1..=13).contains(&ek) || ek == 15 || ek == 17 || (18..=29).contains(&ek) || ek == 30 || ek == 36
+    } else {
+        (1..=11).contains(&ek) || ek == 13 || (18..=29).contains(&ek) || ek == 30 || ek == 36
+    };
+    if !valid_ek {
+        return false;
+    }
+    let mut seen_keys = [0u64; ID_TABLE_PROBE_BOUND / 64];
+    for _ in 0..cnt {
+        if kind == 16 {
+            let (kr, kok) = read_leb(sub, &mut sat);
+            if !kok || kr == 0 || kr > id_count || kr > *next_ref {
+                return false;
+            }
+            if kr == *next_ref {
+                *next_ref += 1;
+            }
+            let kidx = (kr - 1) as usize;
+            let kbit = 1u64 << (kidx & 63);
+            if (seen_keys[kidx >> 6] & kbit) != 0 {
+                return false;
+            }
+            seen_keys[kidx >> 6] |= kbit;
+            let (el, lok) = read_leb(sub, &mut sat);
+            if !lok || el > (sub.len() - sat) as u64 {
+                return false;
+            }
+            let esub = &sub[sat..sat + el as usize];
+            sat += el as usize;
+            let mut eat = 0usize;
+            if ek == 13 {
+                if depth >= 128 {
+                    return false;
+                }
+                let mut bseen = [0u64; ID_TABLE_PROBE_BOUND / 64];
+                loop {
+                    let (r, rok) = read_leb(esub, &mut eat);
+                    if !rok {
+                        return false;
+                    }
+                    if r == 0 {
+                        if eat != esub.len() {
+                            return false;
+                        }
+                        break;
+                    }
+                    if r > id_count || r > *next_ref || eat >= esub.len() {
+                        return false;
+                    }
+                    if r == *next_ref {
+                        *next_ref += 1;
+                    }
+                    let ridx = (r - 1) as usize;
+                    let rbit = 1u64 << (ridx & 63);
+                    if (bseen[ridx >> 6] & rbit) != 0 {
+                        return false;
+                    }
+                    bseen[ridx >> 6] |= rbit;
+                    let k = esub[eat];
+                    eat += 1;
+                    if !skip_field(esub, &mut eat, k, id_count, next_ref, non_finite, depth + 1) {
+                        return false;
+                    }
+                }
+            } else if !skip_field(esub, &mut eat, ek, id_count, next_ref, non_finite, depth) || eat != esub.len() {
+                return false;
+            }
+        } else if !skip_field(sub, &mut sat, ek, id_count, next_ref, non_finite, depth) {
+            return false;
+        }
+    }
+    sat == sub.len()
 }
 
 /// Skip a fixed-width payload of WIDTH bytes, or refuse past the buffer.

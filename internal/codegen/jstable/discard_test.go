@@ -219,9 +219,10 @@ if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0 
 			t.Fatal(err)
 		}
 		units := map[string]string{
-			"tblr1":     "test/tables/R1.schema",
-			"graphdemo": "tables/pointers",
-			"listdemo":  "tables/lists",
+			"tblr1":      "test/tables/R1.schema",
+			"graphdemo":  "tables/pointers",
+			"listdemo":   "tables/lists",
+			"tblvarevo1": "test/tables/varevo/VarEvo1.schema",
 		}
 		type row struct {
 			Case string `json:"case"`

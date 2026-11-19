@@ -186,9 +186,9 @@ defmodule Benchtable.TableMessage do
   }
   @message_unions %{
     "TableEvent" => %{
-      0x33732819300680AA => "TableHitEvent",
-      0xF2A38D910B5B348B => "TableChatEvent",
-      0x9FA3A41C86ECB765 => "TablePickupEvent"
+      0x33732819300680AA => {0x01AA800630192873330D, "TableHitEvent"},
+      0xF2A38D910B5B348B => {0x018B345B0B918DA3F20D, "TableChatEvent"},
+      0x9FA3A41C86ECB765 => {0x0165B7EC861CA4A39F0D, "TablePickupEvent"}
     }
   }
 
@@ -256,7 +256,7 @@ defmodule Benchtable.TableMessage do
   end
 
   defp walk_body(body, ids, vocab) do
-    case walk(body, ids, 0, 0, 0, nil, vocab.max_bytes) do
+    case walk(body, ids, 0, 0, 0, nil, vocab.max_bytes, MapSet.new()) do
       {:ok, build_version, words} ->
         parse_words(words, %{vocab | build_version: build_version})
 
@@ -532,7 +532,7 @@ defmodule Benchtable.TableMessage do
   # the build version present exactly once at kind 9 eight bytes wide, and the
   # vocabulary present exactly once at kind 14 element kind 6. A failed strict
   # check is malformed; an unknown field is skipped and counted, never fatal.
-  defp walk(bin, ids, versions, words_count, build_version, words, max_bytes) do
+  defp walk(bin, ids, versions, words_count, build_version, words, max_bytes, seen) do
     case leb(bin) do
       :error ->
         {:malformed, build_version}
@@ -551,54 +551,60 @@ defmodule Benchtable.TableMessage do
             {:malformed, build_version}
 
           {:ok, id} ->
-            case rest do
-              <<kind, rest2::binary>> ->
-                cond do
-                  id == 0xFFFFFFFFFFFFFFFE ->
-                    case rest2 do
-                      <<bv::little-unsigned-64, rest3::binary>> when kind == 9 ->
-                        walk(rest3, ids, versions + 1, words_count, bv, words, max_bytes)
+            if MapSet.member?(seen, id) do
+              {:malformed, build_version}
+            else
+              seen = MapSet.put(seen, id)
+              case rest do
+                <<kind, rest2::binary>> ->
+                  cond do
+                    id == 0xFFFFFFFFFFFFFFFE ->
+                      case rest2 do
+                        <<bv::little-unsigned-64, rest3::binary>> when kind == 9 ->
+                          walk(rest3, ids, versions + 1, words_count, bv, words, max_bytes, seen)
 
-                      _ ->
+                        _ ->
+                          {:malformed, build_version}
+                      end
+
+                    id == 0xFFFFFFFFFFFFFFFD ->
+                      if kind != 14 do
                         {:malformed, build_version}
-                    end
+                      else
+                        case read_vocab(rest2, max_bytes) do
+                          {:ok, words, rest3} ->
+                            walk(
+                              rest3,
+                              ids,
+                              versions,
+                              words_count + 1,
+                              build_version,
+                              words,
+                              max_bytes,
+                              seen
+                            )
 
-                  id == 0xFFFFFFFFFFFFFFFD ->
-                    if kind != 14 do
-                      {:malformed, build_version}
-                    else
-                      case read_vocab(rest2, max_bytes) do
-                        {:ok, words, rest3} ->
-                          walk(
-                            rest3,
-                            ids,
-                            versions,
-                            words_count + 1,
-                            build_version,
-                            words,
-                            max_bytes
-                          )
+                          {:refuse, reason} ->
+                            {:refuse, reason}
 
-                        {:refuse, reason} ->
-                          {:refuse, reason}
+                          :error ->
+                            {:malformed, build_version}
+                        end
+                      end
+
+                    true ->
+                      case skip(kind, rest2) do
+                        {:ok, rest3} ->
+                          walk(rest3, ids, versions, words_count, build_version, words, max_bytes, seen)
 
                         :error ->
                           {:malformed, build_version}
                       end
-                    end
+                  end
 
-                  true ->
-                    case skip(kind, rest2) do
-                      {:ok, rest3} ->
-                        walk(rest3, ids, versions, words_count, build_version, words, max_bytes)
-
-                      :error ->
-                        {:malformed, build_version}
-                    end
-                end
-
-              _ ->
-                {:malformed, build_version}
+                _ ->
+                  {:malformed, build_version}
+              end
             end
         end
     end
@@ -798,37 +804,12 @@ defmodule Benchtable.TableMessage do
   defp entry_shape(_), do: :error
 
   defp read_element(kind, id, s, <<elem, rest::binary>>) do
-    if not known_kind?(elem) or elem == 12 do
+    if not known_kind?(elem) or elem in [14, 16] do
       :error
     else
       case shape(elem, rest) do
         {:ok, es, rest2} ->
-          if elem in [14, 16] do
-            # A nested array carries one more kind byte. That kind is kept so a
-            # zero-width nested run is the same bounded read as a flat one.
-            # The shape bytes after that kind byte are still not decoded.
-            case rest2 do
-              <<inner, rest3::binary>> ->
-                if known_kind?(inner) and inner != 12 do
-                  inner_elem = %{kind: inner, shape: %{kind: inner}}
-
-                  {:ok,
-                   %{
-                     id: id,
-                     kind: kind,
-                     shape: s,
-                     element: %{kind: elem, shape: es, element: inner_elem}
-                   }, rest3}
-                else
-                  :error
-                end
-
-              _ ->
-                :error
-            end
-          else
-            {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest2}
-          end
+          {:ok, %{id: id, kind: kind, shape: s, element: %{kind: elem, shape: es}}, rest2}
 
         :error ->
           :error
@@ -839,6 +820,17 @@ defmodule Benchtable.TableMessage do
   defp read_element(_kind, _id, _s, _), do: :error
 
   defp known_kind?(kind), do: (kind >= 0 and kind <= 32) or kind == 36
+
+  defp base_inside_kind?(kind, base) do
+    dom = kind_bits(kind)
+    if kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24] do
+      mn = -(1 <<< (dom - 1))
+      mx = (1 <<< (dom - 1)) - 1
+      base >= mn and base <= mx
+    else
+      base >= 0 and base <= (1 <<< dom) - 1
+    end
+  end
 
   defp kind_bits(kind) do
     case kind do
@@ -896,7 +888,11 @@ defmodule Benchtable.TableMessage do
                             do: sign_extend(base, 128),
                             else: base
 
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
+                        if base_inside_kind?(kind, base) do
+                          {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
+                        else
+                          :error
+                        end
 
                       _ ->
                         :error
@@ -905,7 +901,11 @@ defmodule Benchtable.TableMessage do
                     case leb(rest2) do
                       {:ok, raw, rest3} ->
                         base = if kind >= 2 and kind <= 5, do: zigzag(raw), else: raw
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
+                        if base_inside_kind?(kind, base) do
+                          {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
+                        else
+                          :error
+                        end
 
                       :error ->
                         :error
@@ -1164,60 +1164,171 @@ defmodule Benchtable.TableMessage do
   @doc false
   def rebind_messages(from_vocab, %__MODULE__{announced: true, root: root} = to_vocab, bodies)
       when is_binary(root) and is_list(bodies) do
-    to_by_id =
-      to_vocab.entries
-      |> Enum.with_index(1)
+    indexed = Enum.with_index(to_vocab.entries, 1)
+    to_by_raw = Map.new(indexed, fn {e, idx} -> {e.raw, {idx, e}} end)
+
+    to_name_by_id =
+      indexed
+      |> Enum.filter(fn {e, _idx} -> e.kind == 0 end)
       |> Map.new(fn {e, idx} -> {e.id, {idx, e}} end)
 
+    to_lookup = %{by_raw: to_by_raw, name_by_id: to_name_by_id}
     rules = write_rules()
     rec = own_record(to_vocab)
-    {:ok, Enum.map(bodies, &rebind_body(from_vocab, to_vocab, to_by_id, rules, &1, rec))}
+    {:ok, Enum.map(bodies, &rebind_body(from_vocab, to_vocab, to_lookup, rules, &1, rec))}
   end
 
-  defp rebind_body(_from_vocab, _to_vocab, _to_by_id, _rules, fields, nil), do: fields
+  defp rebind_body(_from_vocab, _to_vocab, _to_lookup, _rules, fields, nil), do: fields
 
-  defp rebind_body(from_vocab, to_vocab, to_by_id, rules, fields, rec) do
-    fields
-    |> Enum.flat_map(fn {peer_ref, val} ->
-      with {:ok, pe} <- entry_at(from_vocab, peer_ref),
-           {decl_idx, _raw, rule, sub} <- Map.get(rec, pe.id),
-           {to_ref, te} <- Map.get(to_by_id, pe.id) do
-        val2 =
-          rebind_val(
-            from_vocab,
-            to_vocab,
-            to_by_id,
-            rules,
-            te.id,
-            te.kind,
-            Map.get(te, :element),
-            val,
-            rule,
-            sub
-          )
-
-        if (te.kind == 15 and val2 == :none) or
-             written_at_default?(to_vocab, {decl_idx, true, rule, sub}, te, val2) do
-          []
-        else
-          [{decl_idx, {to_ref, val2}}]
+  defp rebind_body(from_vocab, to_vocab, to_lookup, rules, fields, rec) do
+    present =
+      Enum.reduce(fields, %{}, fn {src_ref, val}, acc ->
+        case entry_at(from_vocab, src_ref) do
+          {:ok, pe} -> Map.put(acc, pe.id, val)
+          _ -> acc
         end
-      else
-        _ -> []
+      end)
+
+    rec
+    |> Enum.flat_map(fn {fid, {decl_idx, raw, rule, sub}} ->
+      case Map.get(to_lookup.by_raw, raw) do
+        {to_ref, te} ->
+          case Map.fetch(present, fid) do
+            {:ok, val} ->
+              val2 =
+                rebind_val(
+                  from_vocab,
+                  to_vocab,
+                  to_lookup,
+                  rules,
+                  te.id,
+                  te.kind,
+                  Map.get(te, :element),
+                  val,
+                  rule,
+                  sub
+                )
+                |> pad_rebound_array(from_vocab, to_vocab, to_lookup, rules, te, rule, sub)
+
+              if (te.kind == 15 and val2 == :none) or
+                   written_at_default?(to_vocab, {decl_idx, true, rule, sub}, te, val2) do
+                []
+              else
+                [{decl_idx, {to_ref, val2}}]
+              end
+
+            :error ->
+              case default_omitted_field(from_vocab, to_vocab, to_lookup, rules, te, rule, sub) do
+                :elide -> []
+                {:ride, val2} -> [{decl_idx, {to_ref, val2}}]
+              end
+          end
+
+        _ ->
+          []
       end
     end)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map(&elem(&1, 1))
   end
 
-  defp rebind_val(from_vocab, to_vocab, to_by_id, rules, _fid, 13, _elem, val, _rule, sub),
-    do: rebind_body(from_vocab, to_vocab, to_by_id, rules, val, record(sub))
+  defp pad_rebound_array(items, from_vocab, to_vocab, to_lookup, rules, %{kind: 14, shape: shape, element: elem}, rule, sub)
+       when is_list(items) do
+    if length(items) < shape.min do
+      elem_rule =
+        case rule do
+          {:counted, _born, er} -> er
+          {:fixed, er} -> er
+          :fixed_table -> :empty
+          _ -> :never
+        end
 
-  defp rebind_val(from_vocab, to_vocab, to_by_id, rules, fid, 14, elem, val, rule, sub) do
+      d = default_elem_val(from_vocab, to_vocab, to_lookup, rules, elem, elem_rule, sub)
+      items ++ List.duplicate(d, shape.min - length(items))
+    else
+      items
+    end
+  end
+
+  defp pad_rebound_array(val, _from_vocab, _to_vocab, _to_lookup, _rules, _te, _rule, _sub), do: val
+
+  defp default_elem_val(from_vocab, to_vocab, to_lookup, rules, %{kind: 13}, _er, sub),
+    do: rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub))
+
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, %{kind: 15}, _er, _sub),
+    do: :none
+
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, :zero_ref, _sub), do: 0
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {:enum, :none}, _sub), do: 0
+
+  defp default_elem_val(_from_vocab, _to_vocab, to_lookup, _rules, _elem, {:enum, def_id}, _sub) do
+    case Map.get(to_lookup.name_by_id, def_id) do
+      {def_ref, _} -> def_ref
+      _ -> 0
+    end
+  end
+
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {:same, d}, _sub), do: d
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {ftag, bits}, _sub)
+       when ftag in [:f32, :f32eq],
+       do: f32(bits)
+
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {ftag, bits}, _sub)
+       when ftag in [:f64, :f64eq],
+       do: f64_of(bits)
+
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, _er, _sub), do: 0
+
+  defp default_omitted_field(from_vocab, to_vocab, to_lookup, rules, %{kind: 13}, :empty, sub) do
+    case rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub)) do
+      [] -> :elide
+      body -> {:ride, body}
+    end
+  end
+
+  defp default_omitted_field(from_vocab, to_vocab, to_lookup, rules, %{kind: 14, shape: shape}, :fixed_table, sub) do
+    elem_body = rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub))
+    {:ride, List.duplicate(elem_body, shape.max)}
+  end
+
+  defp default_omitted_field(from_vocab, to_vocab, to_lookup, rules, %{kind: 14}, {:counted, born, :empty}, sub)
+       when born > 0 do
+    case rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub)) do
+      [] -> :elide
+      elem_body -> {:ride, List.duplicate(elem_body, born)}
+    end
+  end
+
+  defp default_omitted_field(from_vocab, to_vocab, to_lookup, rules, %{kind: 16}, {:keyed, keys, :empty}, sub) do
+    case rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub)) do
+      [] ->
+        :elide
+
+      elem_body ->
+        pairs =
+          Enum.flat_map(keys, fn kid ->
+            case Map.get(to_lookup.name_by_id, kid) do
+              {kref, _} -> [{kref, elem_body}]
+              _ -> []
+            end
+          end)
+
+        if pairs == [], do: :elide, else: {:ride, pairs}
+    end
+  end
+
+  defp default_omitted_field(_from_vocab, _to_vocab, _to_lookup, _rules, _te, _rule, _sub),
+    do: :elide
+
+  defp rebind_val(from_vocab, to_vocab, to_lookup, rules, _fid, 13, _elem, val, _rule, sub),
+    do: rebind_body(from_vocab, to_vocab, to_lookup, rules, val, record(sub))
+
+  defp rebind_val(from_vocab, to_vocab, to_lookup, rules, fid, 14, elem, val, rule, sub) do
     elem_rule =
       case rule do
         {:counted, _born, er} -> er
         {:fixed, er} -> er
+        :fixed_table -> :empty
         _ -> :never
       end
 
@@ -1225,7 +1336,7 @@ defmodule Benchtable.TableMessage do
       rebind_val(
         from_vocab,
         to_vocab,
-        to_by_id,
+        to_lookup,
         rules,
         fid,
         elem.kind,
@@ -1237,31 +1348,32 @@ defmodule Benchtable.TableMessage do
     end)
   end
 
-  defp rebind_val(_from_vocab, _to_vocab, _to_by_id, _rules, _fid, 15, _elem, :none, _rule, _sub),
+  defp rebind_val(_from_vocab, _to_vocab, _to_lookup, _rules, _fid, 15, _elem, x, _rule, _sub) when x in [:none, :unknown_arm],
     do: :none
 
   defp rebind_val(
          from_vocab,
          to_vocab,
-         to_by_id,
+         to_lookup,
          rules,
          _fid,
          15,
          _elem,
-         {arm_peer_ref, arm_val},
+         {arm_src_ref, arm_val},
          _rule,
          sub
        ) do
-    with {:ok, ape} <- entry_at(from_vocab, arm_peer_ref),
+    with {:ok, ape} <- entry_at(from_vocab, arm_src_ref),
          true <- arm_known?(sub, ape.id),
-         {to_arm_ref, ate} <- Map.get(to_by_id, ape.id) do
+         arm_raw when arm_raw != nil <- arm_raw(sub, ape.id),
+         {to_arm_ref, ate} <- Map.get(to_lookup.by_raw, arm_raw) do
       asub = arm_sub(sub, ape.id)
 
       {to_arm_ref,
        rebind_val(
          from_vocab,
          to_vocab,
-         to_by_id,
+         to_lookup,
          rules,
          ate.id,
          ate.kind,
@@ -1275,56 +1387,102 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp rebind_val(from_vocab, to_vocab, to_by_id, rules, fid, 16, elem, val, _rule, sub) do
+  defp rebind_val(from_vocab, to_vocab, to_lookup, rules, fid, 16, elem, val, rule, sub) do
+    {key_list, elem_rule} =
+      case rule do
+        {:keyed, ks, er} -> {ks, er}
+        _ -> {nil, :never}
+      end
+
     allowed_keys = rules |> Map.get({fid, 16}, %{}) |> Map.get(:member)
 
-    Enum.flat_map(val, fn {key_peer_ref, kv} ->
-      with {:ok, kpe} <- entry_at(from_vocab, key_peer_ref),
-           true <- allowed_keys == nil or MapSet.member?(allowed_keys, kpe.id),
-           {to_key_ref, _} <- Map.get(to_by_id, kpe.id) do
-        [
-          {to_key_ref,
-           rebind_val(
-             from_vocab,
-             to_vocab,
-             to_by_id,
-             rules,
-             fid,
-             elem.kind,
-             Map.get(elem, :element),
-             kv,
-             :never,
-             sub
-           )}
-        ]
+    val
+    |> Enum.flat_map(fn {key_src_ref, kv} ->
+      with {:ok, kpe} <- entry_at(from_vocab, key_src_ref),
+           true <-
+             (if key_list != nil,
+                do: kpe.id in key_list,
+                else: allowed_keys == nil or MapSet.member?(allowed_keys, kpe.id)),
+           {to_key_ref, _} <- Map.get(to_lookup.name_by_id, kpe.id) do
+        v2 =
+          rebind_val(
+            from_vocab,
+            to_vocab,
+            to_lookup,
+            rules,
+            fid,
+            elem.kind,
+            Map.get(elem, :element),
+            kv,
+            elem_rule,
+            sub
+          )
+
+        if at_default?(to_vocab, elem_rule, v2) or
+             at_default?(to_vocab, elem_rule, as_read(elem, v2)) do
+          []
+        else
+          ord =
+            if key_list != nil do
+              Enum.find_index(key_list, &(&1 == kpe.id)) || 0
+            else
+              to_key_ref
+            end
+
+          [{ord, {to_key_ref, v2}}]
+        end
       else
         _ -> []
       end
     end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(&elem(&1, 1))
   end
 
-  defp rebind_val(_from_vocab, _to_vocab, _to_by_id, _rules, _fid, 30, _elem, 0, _rule, _sub),
+  defp rebind_val(_from_vocab, _to_vocab, _to_lookup, _rules, _fid, 30, _elem, 0, _rule, _sub),
     do: 0
 
-  defp rebind_val(from_vocab, _to_vocab, to_by_id, rules, fid, 30, _elem, peer_vref, rule, _sub) do
-    allowed = rules |> Map.get({fid, 30}, %{}) |> Map.get(:member)
+  defp rebind_val(from_vocab, _to_vocab, to_lookup, rules, fid, 30, _elem, src_vref, rule, _sub) do
+    {allowed, retired} =
+      case Map.get(rules, {fid, 30}) do
+        %{member: m} = rmap -> {m, Map.get(rmap, :retired)}
+        _ ->
+          case Map.get(rules, {fid, 14}) do
+            %{each_member: m} = rmap -> {m, Map.get(rmap, :each_retired)}
+            _ ->
+              case Map.get(rules, {fid, 16}) do
+                %{keyed_member: m} = rmap -> {m, Map.get(rmap, :keyed_retired)}
+                _ -> {nil, nil}
+              end
+          end
+      end
 
-    with {:ok, vpe} <- entry_at(from_vocab, peer_vref),
-         true <- allowed == nil or MapSet.member?(allowed, vpe.id),
-         {to_vref, _} <- Map.get(to_by_id, vpe.id) do
-      to_vref
-    else
-      _ ->
-        case rule do
-          {:enum, def_id} when is_integer(def_id) ->
-            case Map.get(to_by_id, def_id) do
-              {def_ref, _} -> def_ref
-              _ -> 0
+    case entry_at(from_vocab, src_vref) do
+      {:ok, vpe} ->
+        cond do
+          (allowed == nil or MapSet.member?(allowed, vpe.id)) and
+              Map.has_key?(to_lookup.name_by_id, vpe.id) ->
+            {to_vref, _} = Map.get(to_lookup.name_by_id, vpe.id)
+            to_vref
+
+          retired != nil and MapSet.member?(retired, vpe.id) ->
+            case rule do
+              {tag, def_id} when tag in [:enum, :never_enum] and is_integer(def_id) ->
+                case Map.get(to_lookup.name_by_id, def_id) do
+                  {def_ref, _} -> def_ref
+                  _ -> 0
+                end
+
+              _ ->
+                0
             end
 
-          _ ->
+          true ->
             0
         end
+
+      _ ->
+        0
     end
   end
 
@@ -1683,6 +1841,15 @@ defmodule Benchtable.TableMessage do
       %{member: members} ->
         check(named?(vocab, members, value))
 
+      %{each_member: members} ->
+        check(is_list(value) and Enum.all?(value, &named?(vocab, members, &1)))
+
+      %{keyed_member: members} ->
+        check(
+          is_list(value) and
+            Enum.all?(value, &(is_tuple(&1) and named?(vocab, members, elem(&1, 1))))
+        )
+
       %{arm: arms} ->
         check(value == :none or (is_tuple(value) and named?(vocab, arms, elem(value, 0))))
 
@@ -1725,8 +1892,9 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp add_rule(rule, what, v) when what in [:member, :arm],
-    do: Map.update(rule, what, MapSet.new([v]), &MapSet.put(&1, v))
+  defp add_rule(rule, what, v)
+       when what in [:member, :retired, :each_member, :each_retired, :keyed_member, :keyed_retired, :arm],
+       do: Map.update(rule, what, MapSet.new([v]), &MapSet.put(&1, v))
 
   defp add_rule(rule, what, v), do: Map.put(rule, what, v)
 
@@ -1878,10 +2046,38 @@ defmodule Benchtable.TableMessage do
   defp sub_of({_index, _exact, _rule, sub}), do: sub
   defp sub_of(nil), do: nil
 
+  defp stored_at_default?(_vocab, {_index, true, {:keyed, _keys, _elem_rule}, _sub}, []),
+    do: true
+
+  defp stored_at_default?(vocab, {_index, true, {:keyed, keys, elem_rule}, _sub}, value),
+    do: keyed_non_canonical?(vocab, keys, elem_rule, value, -1)
+
   defp stored_at_default?(vocab, {_index, true, rule, _sub}, value),
     do: at_default?(vocab, rule, value)
 
   defp stored_at_default?(_vocab, _decl, _value), do: false
+
+  defp keyed_non_canonical?(_vocab, _keys, _elem_rule, [], _last), do: false
+
+  defp keyed_non_canonical?(vocab, keys, elem_rule, [{kref, v} | rest], last) do
+    case entry_at(vocab, kref) do
+      {:ok, ke} ->
+        case Enum.find_index(keys, &(&1 == ke.id)) do
+          nil ->
+            keyed_non_canonical?(vocab, keys, elem_rule, rest, last)
+
+          idx when is_integer(idx) and idx > last ->
+            at_default?(vocab, elem_rule, v) or
+              keyed_non_canonical?(vocab, keys, elem_rule, rest, idx)
+
+          _ ->
+            true
+        end
+
+      :error ->
+        true
+    end
+  end
 
   # The writer checks the value it was handed and the value its reader will
   # see: a quantized float reads back as its step's value.
@@ -1908,6 +2104,7 @@ defmodule Benchtable.TableMessage do
   # compiler beside the record (internal/tablewire messageElides): the value a
   # field holds when a conforming writer leaves it out.
   defp at_default?(_vocab, :empty, value), do: value == []
+  defp at_default?(_vocab, {:keyed, _keys, _elem}, value), do: value == []
   defp at_default?(_vocab, :zero_ref, value), do: value == 0 or value == :none
   defp at_default?(_vocab, {:same, d}, value), do: value === d
 
@@ -1969,8 +2166,21 @@ defmodule Benchtable.TableMessage do
   defp record(name) when is_binary(name), do: Map.get(@message_records, name)
   defp record(_sub), do: nil
 
-  defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)
+  defp arm_sub({:union, name}, id) do
+    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do
+      {_raw, sub} -> sub
+      _ -> nil
+    end
+  end
   defp arm_sub(_sub, _id), do: nil
+
+  defp arm_raw({:union, name}, id) do
+    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do
+      {raw, _sub} -> raw
+      _ -> nil
+    end
+  end
+  defp arm_raw(_sub, id), do: if(id < 0, do: 0, else: nil)
 
   defp arm_known?({:union, name}, id),
     do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)
@@ -2253,9 +2463,9 @@ defmodule Benchtable.TableMessage do
 
             case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1, arm) do
               {:ok, value, rest2} ->
-                if not own_build?(vocab) and not known,
+                if not known,
                   do: {:ok, :unknown_arm, rest2},
-                  else: {:ok, {ref, value}, rest2}
+                  else: {:ok, {ref, if(entry.kind == 15 and value == :unknown_arm, do: :none, else: value)}, rest2}
 
               :malformed ->
                 :malformed

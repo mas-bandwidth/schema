@@ -29,6 +29,7 @@ func wireFuzz(builder bool) error {
 	}
 	roster := make([]*codec, count)
 	messages := make([]*messageCodec, count)
+	framedMessages := make([]bool, count)
 	builders := make([]*builderCodec, count)
 	retainers := make([]*retentionCodec, count)
 	for i := range roster {
@@ -55,8 +56,9 @@ func wireFuzz(builder bool) error {
 				roster[i] = findCodec(unit, root)
 			}
 		}
-		if form == 2 && retain == 0 && !builder {
+		if (form == 2 || form == 5) && retain == 0 && !builder {
 			messages[i] = findMessageCodec(unit, root)
+			framedMessages[i] = form == 5
 		}
 		if form == 1 && retain == 1 && !builder {
 			retainers[i] = findRetentionCodec(unit, root)
@@ -107,14 +109,40 @@ func wireFuzz(builder bool) error {
 				saved = int64(len(buffer))
 			}
 		} else if m := messages[index]; m != nil {
-			var available bool
-			buffer, rep, available = m.run(nil, wire, true)
-			if m.loadMeasure != nil {
-				regionBytes = m.loadMeasure(wire)
-				loaded = available
-			}
-			if buffer != nil {
-				saved = int64(len(buffer))
+			if framedMessages[index] {
+				if len(wire) < 4 {
+					loaded = false
+					rep.refused = true
+				} else {
+					alen := int(binary.LittleEndian.Uint32(wire[0:4]))
+					if alen < 0 || 4+alen > len(wire) {
+						loaded = false
+						rep.refused = true
+					} else {
+						var ann []byte
+						if alen > 0 {
+							ann = wire[4 : 4+alen]
+						}
+						var ok bool
+						buffer, rep, ok = m.run(ann, wire[4+alen:], true)
+						loaded = ok && buffer != nil && !rep.refused
+						if !loaded {
+							rep.refused = true
+						} else {
+							saved = int64(len(buffer))
+						}
+					}
+				}
+			} else {
+				var available bool
+				buffer, rep, available = m.run(nil, wire, true)
+				if m.loadMeasure != nil {
+					regionBytes = m.loadMeasure(wire)
+					loaded = available
+				}
+				if buffer != nil {
+					saved = int64(len(buffer))
+				}
 			}
 		} else {
 			c := roster[index]

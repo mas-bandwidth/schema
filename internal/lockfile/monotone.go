@@ -373,7 +373,37 @@ func valueRule(lk, lv *ValueList, want, got string) string {
 // element, the key, the bound, the capacity, the bits, the scale and the
 // range, the default, the deprecation — then the WIDTH, which is every one of
 // those added up and is the refusal for a move none of them explains.
-func monotone(where string, want, got Entry) (widened bool, what string, err error) {
+func interiorPaddingShift(want, got Entry) bool {
+	var first int64
+	switch {
+	case got.Kind == 12 && want.Cap > 0 && got.Cap == want.Cap:
+		first = got.Cap + 1 // char[N+1] + int32 length
+	case got.Kind == 14 && got.Shape == "" && want.Cap > 0 && got.Cap == want.Cap:
+		first = got.Cap // uint8[N] + int32 length
+	case got.Kind == 14 && got.Shape == "counted" && want.Bound > 0 && got.Bound == want.Bound && want.ElemWidth > 0 && got.ElemWidth == want.ElemWidth:
+		first = got.ElemWidth * got.Bound // T[N] + int32 count
+	default:
+		return false
+	}
+	opt := int64(0)
+	if got.Optional {
+		opt = 1
+	}
+	wantOK, gotOK := false, false
+	for r := range int64(4) {
+		end := ((r + first + 3) &^ 3) + 4 + opt
+		sz := end - r
+		if sz == want.Width {
+			wantOK = true
+		}
+		if sz == got.Width {
+			gotOK = true
+		}
+	}
+	return wantOK && gotOK
+}
+
+func monotoneAt(where string, want, got Entry, priorMoved bool) (widened bool, what string, err error) {
 	what = "widened in the declaration and not in the lock"
 
 	if want.Optional != got.Optional {
@@ -484,7 +514,7 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 	// for a move none of them explains — and it is SILENT when a widening
 	// above explains it, or when the field holds a named type whose own block
 	// in this file is where its change is reported.
-	if want.Width != got.Width && !widened && want.HeldName == "" {
+	if want.Width != got.Width && !widened && want.HeldName == "" && (!priorMoved || !interiorPaddingShift(want, got)) {
 		return false, "", fmt.Errorf("%s, is %d bytes wide in the lock and %d in the declaration: width changed (%d -> %d) — a field already in the lock keeps its width: a fixed record is walked by offset, so widening one field moves every field after it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 			where, want.Width, got.Width, want.Width, got.Width)
 	}

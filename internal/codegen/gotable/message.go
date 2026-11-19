@@ -215,11 +215,11 @@ func AnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
 }
 func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  r,verdict:=tableOpenFramed(data,report);if verdict!=TableOpenOk {if verdict==TableOpenRefused {reason:="newer_form";if len(data)>0&&data[0]==2 {reason="message_form_as_file"};return tableMessageRefuse(report,reason)};report.Refuse(TableRefuseWireDamaged,"");return false}
- versionCount,wordsCount:=0,0;var words []byte
- for {ref,ok:=r.Leb();if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};if ref==0 {break};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){report.Refuse(TableRefuseWireDamaged,"");return false};kind:=r.Get8();switch id {case 0xfffffffffffffffe:if kind!=9||!r.Has(8){report.Refuse(TableRefuseWireDamaged,"");return false};v.BuildVersion=r.Get64();versionCount++
+ versionCount,wordsCount:=0,0;var words []byte;var seen [4097]bool;var fuRep TableReport;tableFirstUseCount(&fuRep,2);r.Report=&fuRep
+ for {ref,ok:=r.Leb();if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};if ref==0 {break};if ref>4096||seen[ref]{report.Refuse(TableRefuseWireDamaged,"");return false};seen[ref]=true;id,ok:=r.Resolve(ref);if !ok||!r.Has(1)||id==0xffffffffffffffff{report.Refuse(TableRefuseWireDamaged,"");return false};kind:=r.Get8();switch id {case 0xfffffffffffffffe:if kind!=9||!r.Has(8){report.Refuse(TableRefuseWireDamaged,"");return false};v.BuildVersion=r.Get64();versionCount++
  case 0xfffffffffffffffd:if kind!=14{report.Refuse(TableRefuseWireDamaged,"");return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Refuse(TableRefuseWireDamaged,"");return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Refuse(TableRefuseWireDamaged,"");return false};limit:=v.MaxBytes;if limit==0{limit=64*1024};if int64(n)>limit{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
- default:report.Unknown++;if !r.Skip(kind){report.Refuse(TableRefuseWireDamaged,"");return false}}
- };if versionCount!=1||wordsCount!=1{report.Refuse(TableRefuseWireDamaged,"");return false}
+ default:report.Unknown++;var wc tableWireCheck;wc.ids=uint64(len(r.Ids))/8;at,wok:=wc.value(r,kind);if !wok{report.Refuse(wc.failed(),"");return false};r.Offset=at}
+ };if r.Offset!=int64(len(r.Buffer))||!tableFirstUseWhole(&fuRep,uint64(len(r.Ids))/8)||versionCount!=1||wordsCount!=1{report.Refuse(TableRefuseWireDamaged,"");return false}
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionRemote=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
  for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Refuse(TableRefuseWireDamaged,"");return false};if e.ID==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Refuse(TableRefuseWireDamaged,"");return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
@@ -245,16 +245,32 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
 // stay malformed.
 func tableMessageKnownKind(k uint8)bool {return k<=32||k==36}
 func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28,36:return 64;case 18,19,24,29:return 128};return -1}
+func tableMessageBaseInsideKind(k uint8, b [2]uint64) bool {
+ switch k {
+ case 18,19,24,29: return true
+ case 2,3,4:
+  w:=uint(tableMessageKindBits(k));lo:=-(int64(1)<<(w-1));hi:=(int64(1)<<(w-1))-1;v:=int64(b[0]);return v>=lo&&v<=hi
+ case 6,7,8:
+  w:=uint(tableMessageKindBits(k));return b[0]<=(uint64(1)<<w)-1
+ case 5,9: return true
+ case 20,21,22,23:
+  v:=int64(b[0]);wantHi:=uint64(0);if v<0{wantHi=^uint64(0)};if b[1]!=wantHi{return false}
+  if k==23{return true};w:=uint(tableMessageKindBits(k));lo:=-(int64(1)<<(w-1));hi:=(int64(1)<<(w-1))-1;return v>=lo&&v<=hi
+ case 25,26,27,28:
+  if b[1]!=0{return false};if k==28{return true};w:=uint(tableMessageKindBits(k));return b[0]<=(uint64(1)<<w)-1
+ }
+ return true
+}
 func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) {
  s.Kind=k;s.Bits=tableMessageKindBits(k)
  switch {case k>=2&&k<=10||k>=18&&k<=29:
- if !r.Has(1){return s,false};s.Packing=r.Get8();if s.Packing==0{return s,true};if s.Packing==1&&k!=10 {n,ok:=r.Leb();if !ok||n>uint64(s.Bits){return s,false};s.Bits=int64(n);if k>=18 {if !r.Has(16){return s,false};s.Base=[2]uint64{r.Get64(),r.Get64()}}else{base,ok:=r.Leb();if !ok{return s,false};if k>=2&&k<=5 {base=uint64(int64(base>>1)^ -int64(base&1))};s.Base[0]=base};return s,true}
+ if !r.Has(1){return s,false};s.Packing=r.Get8();if s.Packing==0{return s,true};if s.Packing==1&&k!=10 {n,ok:=r.Leb();if !ok||n>uint64(s.Bits){return s,false};s.Bits=int64(n);if k>=18 {if !r.Has(16){return s,false};s.Base=[2]uint64{r.Get64(),r.Get64()}}else{base,ok:=r.Leb();if !ok{return s,false};if k>=2&&k<=5 {base=uint64(int64(base>>1)^ -int64(base&1))};s.Base[0]=base};if !tableMessageBaseInsideKind(k,s.Base){return s,false};return s,true}
  if s.Packing==2&&k==10 {if !r.Has(12){return s,false};lo:=math.Float32frombits(r.Get32());hi:=math.Float32frombits(r.Get32());res:=math.Float32frombits(r.Get32());if !(lo<hi)||!(res>0){return s,false};delta:=float32(hi-lo);values:=float32(delta/res);if delta-delta!=0||values-values!=0{return s,false};if !(values>=1){values=1}else if values>4294967040.0{values=4294967040.0};s.QMin=lo;s.QDelta=delta;s.QCount=uint32(math.Ceil(float64(values)));s.Bits=tableMessageBits(uint64(s.QCount));return s,true};return s,false
  case k==12:n,ok:=r.Leb();if !ok||n>math.MaxInt32{return s,false};s.Max=int64(n)
  case k==14||k==16:if k==14 {n,ok:=r.Leb();if !ok||n>math.MaxUint32{return s,false};s.Min=int64(n)};n,ok:=r.Leb();if !ok||n>math.MaxUint32||int64(n)<s.Min{return s,false};s.Max=int64(n)
  };return s,true
 }
-func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.ID=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem){return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false};if elem==14||elem==16 {if !r.Has(1){return e,false};inner:=r.Get8();if !tableMessageKnownKind(inner){return e,false}}};return e,true}
+func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.ID=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem)||elem==14||elem==16{return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false}};return e,true}
 func tableMessageCount(r *TableBitReader,s TableMessageShape)(uint64,bool){raw,ok:=r.Get(tableMessageBits(uint64(s.Max-s.Min)));return raw+uint64(s.Min),ok}
 func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e TableMessageEntry,depth int)bool {
  if depth>128{return false};s:=e.Shape;switch s.Kind {

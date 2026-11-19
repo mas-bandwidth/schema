@@ -60,8 +60,9 @@ int main( int argc, char ** argv )
         if ( !read_name( unit, sizeof( unit ) ) || !read_name( root, sizeof( root ) ) ||
              !read_number( &form, 1 ) || !read_number( &retain, 1 ) ) { return 1; }
         forms[i]=(uint8_t)(retain?3:form);
-        if ( (form == 1 || (form==2&&!cook))  ) { roster[i] = find_codec( unit, root ); }
+        if ( (form == 1 || ((form==2||form==5)&&!cook))  ) { roster[i] = find_codec( unit, root ); }
         if(form==2 && roster[i] && !roster[i]->message_fuzz)roster[i]=NULL;
+        if(form==5 && roster[i] && (!roster[i]->message_fuzz || !roster[i]->message))roster[i]=NULL;
         if(retain && roster[i] && !roster[i]->retain_fuzz)roster[i]=NULL;
         putchar( roster[i] != NULL );
     }
@@ -77,6 +78,14 @@ int main( int argc, char ** argv )
         memset( &report, 0, sizeof( report ) );
         if(forms[index]==3){length=codec->retain_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}
         if(forms[index]==2){length=codec->message_fuzz(wire,(int64_t)size,&saved,&report,&loaded,&region_bytes);free(wire);goto reply;}
+        if(forms[index]==5){
+            uint32_t alen=size>=4?((uint32_t)wire[0]|((uint32_t)wire[1]<<8)|((uint32_t)wire[2]<<16)|((uint32_t)wire[3]<<24)):0xffffffffu;
+            region_bytes=-1;
+            if(size<4||4+(uint64_t)alen>size){loaded=0;report.refused=1;length=-1;}
+            else if(alen==0){length=codec->message_fuzz(wire+4,(int64_t)(size-4),&saved,&report,&loaded,&region_bytes);}
+            else{length=-1;loaded=codec->message(wire+4,(int64_t)alen,wire+4+alen,(int64_t)(size-4-alen),&saved,&length,&report)&&!report.refused;if(!loaded){free(saved);saved=NULL;length=-1;report.refused=1;}}
+            free(wire);goto reply;
+        }
         value = codec->storage();
         region_bytes=codec->load_measure ? codec->load_measure(wire,(int64_t)size) : -1;
         loaded = codec->load( value, wire, (int64_t) size, &report ) && !report.refused; free( wire );

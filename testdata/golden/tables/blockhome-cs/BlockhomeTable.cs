@@ -4529,6 +4529,17 @@ namespace Blockhome
                             if (!r.Var(out ulong raw)) { return false; }
                             shape.Base = Signed(kind) ? unchecked((UInt128)(Int128)((long)(raw >> 1) ^ -(long)(raw & 1))) : raw;
                         }
+                        int dom = Width(kind) * 8;
+                        if (dom < 128)
+                        {
+                            if (Signed(kind))
+                            {
+                                Int128 sb = unchecked((Int128)shape.Base);
+                                Int128 mn = -(Int128.One << (dom - 1)), mx = (Int128.One << (dom - 1)) - 1;
+                                if (sb < mn || sb > mx) { return false; }
+                            }
+                            else if (shape.Base > (UInt128.One << dom) - 1) { return false; }
+                        }
                     }
                     else if (shape.Packing == 2 && kind == 10)
                     {
@@ -4550,10 +4561,8 @@ namespace Blockhome
                     if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
                     if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
                     shape.Elem = r.Byte();
-                    if (!MessageKind(shape.Elem)) { return false; }
-                    // An entry carries its own shape and one element shape. The C++
-                    // announcement reader does not recursively parse nested arrays.
-                    if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
+                    if (!MessageKind(shape.Elem) || shape.Elem == 14 || shape.Elem == 16) { return false; }
+                    if (!Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
                 }
                 return true;
             }
@@ -4579,7 +4588,10 @@ namespace Blockhome
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
                 if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), ids);
-                if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+                int whole = WireCheck(r.Buffer, ids, true, out bool wireNonFinite);
+                if (whole == WireDamaged) { Damage(report); return Finish(report, Verdict.Damaged); }
+                if (whole != WireWhole) { Fail(report, whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"); return Finish(report, Verdict.Refused); }
+                if (wireNonFinite) { report.NonFiniteFloat = "a float the wire carries"; report.NonFiniteReason = "non_finite_float: a float the wire carries"; report.Refused = true; report.Reason = report.NonFiniteReason; return Finish(report, Verdict.Refused); }
                 Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
                 while (r.Ref(out ulong reference, out ulong id))
                 {
@@ -4933,7 +4945,7 @@ namespace Blockhome
                     { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
                     int unknownBefore = d.Report.Unknown;
                     long startBit = r.At;
-                    if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth)) { return false; }
+                    if (!MessageReadField(ref r, d, value, field, entry.Kind, entry.Shape, depth, same && !widened)) { return false; }
                     if (widened && !field.MapKey) { d.Report.Widened++; }
                     if (field.Optional && value != null) { field.SetPresent(value, true); }
                     if (same && !widened && d.Report.Unknown == unknownBefore && value != null && MessageAtDefault(value, field, r.At - startBit, d.Vocabulary.RefBits, entry.Shape)) { return false; }
@@ -4960,7 +4972,7 @@ namespace Blockhome
                 for (int i = 0; i < f.ArrayBound; i++) { if (!DefaultElement(value, f, i)) { return false; } }
                 return true;
             }
-            static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
+            static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0, bool exactShape = false)
             {
                 if (f.IsArray && f.GetBuffer != null)
                 {
@@ -4988,12 +5000,25 @@ namespace Blockhome
                     {
                         Span<ulong> few = stackalloc ulong[16];
                         int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                        int lastSlot = 0;
                         for (ulong i = 0; i < n; i++)
                         {
                             if (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id)) { return false; }
                             int slot = FindVariant(f, key.Id, true);
                             if (slot == 0) { d.Report.Unknown++; }
+                            else
+                            {
+                                if (exactShape && slot <= lastSlot) { return false; }
+                                lastSlot = slot;
+                            }
+                            int unkSlotBefore = d.Report.Unknown;
+                            long slotBitStart = r.At;
                             if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, slot != 0, depth)) { return false; }
+                            if (exactShape && slot != 0 && !d.Report.Refused && d.Report.Unknown == unkSlotBefore && value != null && shape.Inner.Packing != 2)
+                            {
+                                bool slotDefault = shape.Elem == 13 ? (r.At - slotBitStart == d.Vocabulary.RefBits) : DefaultElement(value, f, slot - 1);
+                                if (slotDefault) { return false; }
+                            }
                         }
                         return true;
                     }

@@ -3198,10 +3198,8 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     const er = new TableVariableReader(r.b, sub.at, sub.at + elen);
     switch (fd.e.s) {
       case "enum": {
-        const unknownBefore = report.unknown;
         const x = TableVariableEnumRead(fd.e, er, table, report, retain, st);
         if (x !== undefined) {
-          if (TableVariableElemIsDefault(fd.e, x) && !(x === null && report.unknown !== unknownBefore)) { report.damaged = true; break; }
           arr[slot] = x;
         }
         break;
@@ -3213,16 +3211,12 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (path !== null) { path.pop(); }
         if (TableVariableCountRefused(report)) { return false; }
         if (er.at !== er.end) { report.damaged = true; inst = fd.e.c.make(); }
-        // A slot whose table body is its terminator alone is the default the
-        // writer elides (§3.2).
-        if (elen <= 1) { report.damaged = true; break; }
         arr[slot] = inst;
         break;
       }
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
         if (x !== undefined) {
-          if (TableVariableElemIsDefault(fd.e, x)) { report.damaged = true; break; }
           arr[slot] = x;
         }
       }
@@ -3641,6 +3635,7 @@ function TableVariableJsonPointer(c, node, depth, g, out) {
 }
 
 function TableVariableJsonField(fd, val, depth, g, out) {
+  if (fd.opt && val === null) { out.push("null"); return true; }
   switch (fd.s) {
     case "sblob": case "bblob":
       if (val === null) { out.push("null"); return true; }

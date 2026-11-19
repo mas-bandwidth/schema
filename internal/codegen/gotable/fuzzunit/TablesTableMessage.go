@@ -73,8 +73,8 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 				return false
 			}
 			w.Put(uint64(value.WeaponsCount)-0, 4)
-			for i := range int(value.WeaponsCount) {
-				if !WeaponConfigSaveMessageBody(w, &value.Weapons[i]) {
+			for i1 := range int(value.WeaponsCount) {
+				if !WeaponConfigSaveMessageBody(w, &value.Weapons[i1]) {
 					return false
 				}
 			}
@@ -90,8 +90,8 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 				return false
 			}
 			w.Put(uint64(value.ProfilesCount)-0, 3)
-			for i := range int(value.ProfilesCount) {
-				if !ProfileConfigSaveMessageBody(w, &value.Profiles[i]) {
+			for i1 := range int(value.ProfilesCount) {
+				if !ProfileConfigSaveMessageBody(w, &value.Profiles[i1]) {
 					return false
 				}
 			}
@@ -1009,11 +1009,11 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				return false
 			}
 			w.Put(uint64(value.GradesCount)-0, 3)
-			for i := range int(value.GradesCount) {
-				if value.Grades[i] == GradeNone {
+			for i1 := range int(value.GradesCount) {
+				if value.Grades[i1] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
-					id, named := value.Grades[i].TableEnumID()
+					id, named := value.Grades[i1].TableEnumID()
 					if !named {
 						return false
 					}
@@ -1037,11 +1037,11 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 		if !allDefault {
 			w.Put(22, TableMessageRefBitsHere)
 			w.Put(uint64(3)-3, 0)
-			for i := range int(3) {
-				if value.Podium[i] == GradeNone {
+			for i1 := range int(3) {
+				if value.Podium[i1] == GradeNone {
 					w.Put(0, TableMessageRefBitsHere)
 				} else {
-					id, named := value.Podium[i].TableEnumID()
+					id, named := value.Podium[i1].TableEnumID()
 					if !named {
 						return false
 					}
@@ -1078,8 +1078,8 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 		if true {
 			w.Put(25, TableMessageRefBitsHere)
 			w.Put(uint64(2)-2, 0)
-			for i := range int(2) {
-				if !WeaponConfigSaveMessageBody(w, &value.Backups[i]) {
+			for i1 := range int(2) {
+				if !WeaponConfigSaveMessageBody(w, &value.Backups[i1]) {
 					return false
 				}
 			}
@@ -1095,8 +1095,8 @@ func LoadoutConfigSaveMessageBody(w *TableMessageWriter, value *LoadoutConfig) b
 				return false
 			}
 			w.Put(uint64(value.AttachmentsCount)-0, 4)
-			for i := range int(value.AttachmentsCount) {
-				if !AttachmentSaveMessageBody(w, &value.Attachments[i]) {
+			for i1 := range int(value.AttachmentsCount) {
+				if !AttachmentSaveMessageBody(w, &value.Attachments[i1]) {
 					return false
 				}
 			}
@@ -1659,8 +1659,8 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			}
 			w.Put(uint64(value.IconLength)-0, 5)
 			w.Align()
-			for i := range int(value.IconLength) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Icon[i]), uint64(0))
+			for i1 := range int(value.IconLength) {
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Icon[i1]), uint64(0))
 			}
 		}
 	}
@@ -1729,14 +1729,14 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 		if !allDefault {
 			w.Put(42, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
-			for i := range int(4) {
-				if value.Ratings[i]-value.Ratings[i] != 0 {
+			for i1 := range int(4) {
+				if value.Ratings[i1]-value.Ratings[i1] != 0 {
 					w.Over++
 				}
-				if value.Ratings[i]-value.Ratings[i] != 0 {
+				if value.Ratings[i1]-value.Ratings[i1] != 0 {
 					return false
 				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Ratings[i])), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Ratings[i1])), uint64(0))
 			}
 		}
 	}

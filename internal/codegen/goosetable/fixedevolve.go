@@ -645,8 +645,8 @@ func evolveWidens(from, to int) bool {
 // field is left at its default.
 type evolveCompiler struct {
 	oldAll, curAll []rawEntry
-	counted        map[uint64]bool
-	armDefaults    map[uint64]string
+	counted        map[int]bool
+	structAt       map[int]string
 	plan           *evolvePlan
 	record         int64
 	baseOff        int64
@@ -707,7 +707,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 			c.checkSrc(oldOff, te.size)
 			var body []evolveNode
 			body = append(body, evolveNode{op: nodeSet, curOff: curOff, arg: 1, size: 1})
-			if t := c.armDefaults[me.id]; t != "" {
+			if t := c.structAt[ci+1]; t != "" {
 				body = append(body, evolveNode{op: nodeDefault, curOff: curOff + 1, defaultType: t})
 			}
 			body = append(body, c.match(oi+1, ci+1, oldOff+1, curOff+1, census, depth+1)...)
@@ -717,7 +717,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 			}
 		}
 		out := []evolveNode{{op: nodeSet, curOff: curOff, arg: 1, size: 1}}
-		if t := c.armDefaults[me.id]; t != "" {
+		if t := c.structAt[ci+1]; t != "" {
 			out = append(out, evolveNode{op: nodeDefault, curOff: curOff + 1, defaultType: t})
 		}
 		return append(out, c.match(oi, ci+1, oldOff, curOff+1, census, depth+1)...)
@@ -852,7 +852,7 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 		return nil
 	}
 	head := int64(0)
-	if c.counted[te.id] || c.counted[me.id] {
+	if c.counted[ci] {
 		head = 4
 	}
 	if head == 4 && (te.size < 4 || !c.checkSrc(oldOff, 4)) {
@@ -867,6 +867,9 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 		c.checkSrc(oldOff, te.size)
 		out = append(out, evolveNode{op: nodeCountGuard, oldOff: oldOff, count: n, oldSize: oldN, oldStride: oe.size})
 		out = append(out, evolveNode{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 4})
+		if me.size > 4 {
+			out = append(out, evolveNode{op: nodeZeroFill, curOff: curOff + 4, size: me.size - 4})
+		}
 	}
 	savedBase := c.baseOff
 	if n > 0 {
@@ -876,6 +879,11 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 		c.baseOff = savedBase + oldOff
 	}
 	body := c.match(oi+1, ci+1, head, head, census, depth+1)
+	if head == 4 {
+		if t := c.structAt[ci+1]; t != "" {
+			body = append([]evolveNode{{op: nodeDefault, curOff: head, defaultType: t}}, body...)
+		}
+	}
 	c.baseOff = savedBase
 	if len(body) > 0 && n > 0 {
 		loop := evolveNode{op: nodeLoop, oldOff: oldOff, curOff: curOff, head: head,
@@ -933,7 +941,7 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 			if te.size > oldTag+oe.size {
 				body = append(body, evolveNode{op: nodeZeroCheck, oldOff: oldOff + oldTag + oe.size, size: te.size - oldTag - oe.size})
 			}
-			if t := c.armDefaults[oe.id]; t != "" {
+			if t := c.structAt[found]; t != "" {
 				body = append(body, evolveNode{op: nodeDefault, curOff: curOff + curTag, defaultType: t})
 			}
 			body = append(body, c.match(oa, found, oldOff+oldTag, curOff+curTag, census, depth+1)...)
@@ -961,16 +969,17 @@ func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 	if refuse != 0 {
 		return evolvePlan{refuse: refuse}
 	}
-	counted := map[uint64]bool{}
-	for _, en := range ir.TableFixedWalkRoot(st) {
+	walk := ir.TableFixedWalkRoot(st)
+	counted := map[int]bool{}
+	for i, en := range walk {
 		if en.Kind == ir.TableKindArray && en.Dst.Counted != 0 {
-			counted[en.ID] = true
+			counted[i] = true
 		}
 	}
-	arms := map[uint64]string{}
-	collectArmDefaults(st, map[string]bool{}, arms)
+	structAt := map[int]string{}
+	walkFixedStructs(st, structAt)
 	plan := evolvePlan{supported: true}
-	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, armDefaults: arms, plan: &plan, record: oldAll[0].size}
+	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, structAt: structAt, plan: &plan, record: oldAll[0].size}
 	plan.nodes = c.match(0, 0, 0, 0, true, 0)
 	if c.tooLarge {
 		return evolvePlan{refuse: evolveRefuseLayoutRecordTooLarge}
@@ -1004,35 +1013,81 @@ func hasEnumOverflow(st *ir.Struct, seen map[string]bool) bool {
 	return false
 }
 
-// collectArmDefaults maps a union arm's wire id to the named struct its
-// payload holds, so a selected arm's declared defaults can be laid before the
-// old bytes the writer carried.
-func collectArmDefaults(st *ir.Struct, seen map[string]bool, out map[uint64]string) {
-	if st == nil || seen[st.Name] {
+// walkFixedStructs maps each pre-order layout index in ir.TableFixedWalkRoot(st)
+// whose entry is a struct (TableKindTable) to that struct's declared name,
+// avoiding bare wire-id collisions when fields or union arms share a name.
+func walkFixedStructs(st *ir.Struct, out map[int]string) {
+	if st == nil {
 		return
 	}
-	seen[st.Name] = true
+	idx := 0
+	var walkElem func(f *ir.Field)
+	var walkPayload func(f *ir.Field)
+	var walkField func(f *ir.Field)
+	walkElem = func(f *ir.Field) {
+		if f.Type.Kind == ir.TNamed {
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				out[idx] = r.Name
+				idx++
+				for _, sub := range r.Fields {
+					walkField(sub)
+				}
+				return
+			case *ir.Union:
+				idx++
+				for _, v := range r.Variants {
+					if v.F == nil {
+						idx++
+						continue
+					}
+					uf := v.F
+					switch {
+					case uf.Array != ir.ArrayNone:
+						idx++
+						walkElem(uf)
+					case uf.Type.Kind == ir.TBytes:
+						idx += 2
+					case uf.Type.Kind == ir.TString:
+						idx++
+					default:
+						walkElem(uf)
+					}
+				}
+				return
+			case *ir.Enum:
+				idx += 1 + len(r.Variants)
+				return
+			}
+		}
+		idx++
+	}
+	walkPayload = func(f *ir.Field) {
+		switch {
+		case f.KeyEnum != "":
+			idx += 1 + 1 + len(f.KeyEnumRef.Variants)
+			walkElem(f)
+		case f.Array != ir.ArrayNone:
+			idx++
+			walkElem(f)
+		case f.Type.Kind == ir.TBytes:
+			idx += 2
+		case f.Type.Kind == ir.TString:
+			idx++
+		default:
+			walkElem(f)
+		}
+	}
+	walkField = func(f *ir.Field) {
+		if f.Type.Optional {
+			idx++
+		}
+		walkPayload(f)
+	}
+	out[idx] = st.Name
+	idx++
 	for _, f := range st.Fields {
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			if f.Type.Optional {
-				out[ir.TableFieldWireId(f)] = r.Name
-			}
-			collectArmDefaults(r, seen, out)
-		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil || v.F.Type.Kind != ir.TNamed {
-					continue
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok {
-					out[ir.TableWireId(v.WireName())] = s.Name
-					collectArmDefaults(s, seen, out)
-				}
-			}
-		}
+		walkField(f)
 	}
 }
 

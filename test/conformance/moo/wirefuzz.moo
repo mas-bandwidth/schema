@@ -418,6 +418,7 @@ type Unit = {
 	fixedModule: { [string]: any },
 	align: number,
 	announcement: buffer?,
+	ownVocab: any,
 }
 
 -- regionMeasure answers the canonical region bytes for a whole form-1 wire,
@@ -516,7 +517,7 @@ local RETAIN_ID_CAPACITY = RETAIN_CAPACITY // 8
 -- the most bodies a message batch carries (an 8-bit count, docs/SPEC-TABLES.md §3.3)
 local BATCH = 256
 
-type Entry = { u: Unit, root: string, retain: boolean, message: boolean }
+type Entry = { u: Unit, root: string, retain: boolean, message: boolean, framed: boolean }
 
 local function count(x: any): number
 	if type(x) == "number" then
@@ -533,16 +534,50 @@ local function answer(e: Entry, wire: buffer): buffer
 	local v: any = nil
 	local saved: buffer? = nil
 	if e.message then
-		-- A FIXED-CLASS root's batch (§3.3), read whole or refused whole; an
-		-- accepted batch writes back every body, as the harness's oracle does
-		local vocabulary = u.M.NewVocabulary()
-		if not u.M.AnnounceRead(vocabulary, u.announcement, {}) then
-			error("wirefuzz: the unit's own announcement was refused", 0)
+		local vocabulary: any = u.ownVocab
+		local batchBuf = wire
+		local annOk = true
+		if e.framed then
+			local wlen = buffer.len(wire)
+			if wlen < 4 then
+				annOk = false
+			else
+				local alen = buffer.readu32(wire, 0)
+				if 4 + alen > wlen then
+					annOk = false
+				else
+					local blen = wlen - 4 - alen
+					batchBuf = buffer.create(blen)
+					if blen > 0 then
+						buffer.copy(batchBuf, 0, wire, 4 + alen, blen)
+					end
+					if alen > 0 then
+						local annBuf = buffer.create(alen)
+						buffer.copy(annBuf, 0, wire, 4, alen)
+						vocabulary = u.M.NewVocabulary()
+						if not u.M.AnnounceRead(vocabulary, annBuf, report) or report.damaged or report.refused or report.reason ~= nil then
+							annOk = false
+						end
+					end
+				end
+			end
 		end
-		local n, values = u.M.LoadMessages(vocabulary, root, wire, BATCH, report)
-		if n >= 1 and #values == n and not report.damaged and not report.refused and report.reason == nil then
-			v = values[1]
-			saved = u.M.SaveMessages(root, values, {})
+		if annOk and vocabulary == nil then
+			vocabulary = u.M.NewVocabulary()
+			if not u.M.AnnounceRead(vocabulary, u.announcement, {}) then
+				error("wirefuzz: the unit's own announcement was refused", 0)
+			end
+			u.ownVocab = vocabulary
+		end
+		if annOk then
+			local n, values = u.M.LoadMessages(vocabulary, root, batchBuf, BATCH, report)
+			if n >= 1 and #values == n and not report.damaged and not report.refused and report.reason == nil then
+				v = values[1]
+				saved = u.M.SaveMessages(root, values, {})
+				if saved == nil then
+					v = nil
+				end
+			end
 		end
 	elseif not desc.variable then
 		-- A FIXED root reads its file form 3 and nothing else (§3.4, §6.5)
@@ -662,6 +697,7 @@ local function unit(key: string): Unit?
 				fixedModule = fixedModule,
 				align = align,
 				announcement = announcement,
+				ownVocab = nil,
 			}
 		end)
 		local next: Unit | false = false
@@ -729,13 +765,19 @@ for i = 1, total do
 			why = "variable-message"
 		elseif form == 2 and (u.M == nil or u.announcement == nil) then
 			why = "no-message-codec"
+		elseif form == 5 then
+			if retain == 0 and not d.variable and u.M ~= nil and u.announcement ~= nil then
+				entry = { u = u, root = root, retain = false, message = true, framed = true }
+			else
+				why = "no-message-codec"
+			end
 		elseif form ~= 1 and form ~= 2 then
 			why = "form"
 		else
-			entry = { u = u, root = root, retain = retain ~= 0, message = form == 2 }
+			entry = { u = u, root = root, retain = retain ~= 0, message = form == 2, framed = false }
 		end
 	end
-	if not entry then
+	if not entry and form ~= 5 then
 		host.note(key .. "." .. root .. " form=" .. tostring(form) .. " " .. why)
 	end
 	roster[i] = entry

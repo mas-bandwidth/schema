@@ -349,7 +349,7 @@ public final class TableMessage {
     // bits can spell a value past the sender's maximum whenever the range is
     // not one less than a power of two, and no conforming writer emits one.
     public static boolean skipRanged(Reader r, TableVocabulary.Shape s) {
-        int width = TableVocabulary.kindWidth(s.kind) * 8;
+        int width = (int) s.bits;
         long lo, hi;
         if (width > 64) {
             lo = r.get(64);

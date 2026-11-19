@@ -70,8 +70,8 @@ module RubyWireFuzz
       mod = load_unit(key)
       cls = mod && mod.const_defined?(root, false) ? mod.const_get(root, false) : nil
       cls = nil if cls && (!cls.respond_to?(:descriptor) || cls.descriptor.nil?)
-      if form == 2
-        if mod.nil? || cls.nil? || !mod.respond_to?(:load_messages) || !mod::SchemaTable::MSG_ROOTS[root] || !cls.respond_to?(:fixed_load)
+      if form == 2 || form == 5
+        if retain || mod.nil? || cls.nil? || !mod.respond_to?(:load_messages) || !mod::SchemaTable::MSG_ROOTS[root] || !cls.respond_to?(:fixed_load)
           cls = nil
         end
       elsif form == 1
@@ -81,14 +81,19 @@ module RubyWireFuzz
       else
         cls = nil
       end
+      own_vocab = nil
+      if (form == 2 || form == 5) && !cls.nil?
+        own_vocab = mod::MessageVocabulary.new
+        mod.announce_read(own_vocab, mod::ANNOUNCEMENT)
+      end
       if retain && (form != 1 || cls.nil? || !cls.descriptor.variable ||
                     !mod.const_defined?(:TableRetain, false) || !cls.respond_to?(:load_retain))
         cls = nil
       end
-      [mod, cls, form, retain]
+      [mod, cls, form, retain, own_vocab]
     end
 
-    $stdout.write(roster.map { |_, cls, _, _| cls.nil? ? 0 : 1 }.pack('C*'))
+    $stdout.write(roster.map { |_, cls, _, _, _| cls.nil? ? 0 : 1 }.pack('C*'))
     $stdout.flush
 
     loop do
@@ -98,7 +103,7 @@ module RubyWireFuzz
 
       index, size = mhdr.unpack('VV')
       data = exact($stdin, size)
-      mod, cls, form, retain = roster[index]
+      mod, cls, form, retain, own_vocab = roster[index]
       raise 'mutant for absent roster entry' if cls.nil?
 
       report = mod::LoadReport.new
@@ -113,9 +118,22 @@ module RubyWireFuzz
           retained = mod::TableRetain.new("\x00".b * ((64 * data.bytesize) + 4096), "\x00".b * (24 * 4096))
           value = cls.load_retain(data, retained, report)
         elsif form == 2
-          vocab = mod::MessageVocabulary.new
-          mod.announce_read(vocab, mod::ANNOUNCEMENT)
-          value = mod.load_messages(cls, vocab, data, [data.bytesize, 256].max, report)
+          value = mod.load_messages(cls, own_vocab, data, [data.bytesize, 256].max, report)
+        elsif form == 5
+          raise mod::Refused.new(:wire_damaged, 'short frame') if data.bytesize < 4
+
+          alen = data.byteslice(0, 4).unpack1('V')
+          raise mod::Refused.new(:wire_damaged, 'short frame') if 4 + alen > data.bytesize
+
+          vocab = if alen.zero?
+                    own_vocab
+                  else
+                    v = mod::MessageVocabulary.new
+                    mod.announce_read(v, data.byteslice(4, alen), max_entries: 4096)
+                    v
+                  end
+          batch = data.byteslice(4 + alen, data.bytesize - 4 - alen)
+          value = mod.load_messages(cls, vocab, batch, 256, report)
         elsif cls.respond_to?(:fixed_load)
           value = cls.fixed_load(data, capacity: 1, report: report)
         else
@@ -130,7 +148,7 @@ module RubyWireFuzz
         begin
           saved = if retain
                     value.save_retain(retained, report)
-                  elsif form == 2
+                  elsif form == 2 || form == 5
                     mod.save_messages(cls, value)
                   elsif cls.respond_to?(:fixed_load)
                     cls.fixed_save(value)

@@ -32,6 +32,23 @@ build/verify-canonical/corpus/.stamp: build/verify-canonical-bin
 		--corpus build/verify-canonical/corpus
 	@touch $@
 
+VERIFY_TABLEGEN_SEED    ?= 1
+VERIFY_TABLEGEN_SCHEMAS ?= 6
+
+build/verify-tablegen-bin: $(wildcard test/verify-tablegen/*.go) $(GO_SOURCES)
+	@mkdir -p build
+	go build -o $@ ./test/verify-tablegen
+
+build/verify-tablegen/corpus/.stamp: build/verify-tablegen-bin bin/schema
+	@rm -rf build/verify-tablegen/corpus && mkdir -p build/verify-tablegen/corpus
+	./build/verify-tablegen-bin --generate-only \
+		--seed $(VERIFY_TABLEGEN_SEED) \
+		--schemas $(VERIFY_TABLEGEN_SCHEMAS) \
+		--schema ./bin/schema \
+		--work build/verify-tablegen \
+		--corpus build/verify-tablegen/corpus
+	@touch $@
+
 VERIFY_WIDEN_DEPS_cpp      := bin/schema
 VERIFY_WIDEN_DEPS_c        := bin/schema
 VERIFY_WIDEN_DEPS_cs       := toolchain-cs bin/schema
@@ -58,7 +75,7 @@ VERIFY_WIDEN_ENV = \
 	LUAU="$(LUAU)" SQ="$(SQ)" MOO="$(MOO)" GOOSE="$(GOOSE)" LOBSTER="$(LOBSTER)"
 
 define verify_widen_18_rules
-.PHONY: verify-bitphase-$(1) verify-canonical-$(1)
+.PHONY: verify-bitphase-$(1) verify-canonical-$(1) verify-tablegen-$(1)
 
 verify-bitphase-$(1): build/verify-bitphase-bin build/verify-bitphase/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
 	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-bitphase/cargo-$(1)" \
@@ -72,14 +89,22 @@ verify-canonical-$(1): build/verify-canonical-bin build/verify-canonical/corpus/
 		--schema ./bin/schema --schema-moo ./build/schema-moo \
 		--work build/verify-canonical --corpus build/verify-canonical/corpus
 
-_verify-$(1)-bench: verify-bitphase-$(1) verify-canonical-$(1)
+verify-tablegen-$(1): build/verify-tablegen-bin build/verify-tablegen/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
+	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-tablegen/cargo-$(1)" \
+		./build/verify-tablegen-bin --lang $(1) \
+		--seed $$(VERIFY_TABLEGEN_SEED) --schemas $$(VERIFY_TABLEGEN_SCHEMAS) \
+		--schema ./bin/schema --schema-moo ./build/schema-moo \
+		--work build/verify-tablegen --corpus build/verify-tablegen/corpus
+
+_verify-$(1)-bench: verify-bitphase-$(1) verify-canonical-$(1) verify-tablegen-$(1)
 endef
 
 $(foreach L,$(VERIFY_ALL_18_LEGS),$(eval $(call verify_widen_18_rules,$(L))))
 
 # ---- Sabotage Negative Controls for Bit-Phase & Canonical-Write Gates ----
 
-.PHONY: verify-bitphase-negative-control verify-canonical-negative-control
+.PHONY: verify-bitphase-negative-control verify-canonical-negative-control \
+	verify-message-fuzz-negative-control verify-tablegen-negative-control
 
 # Sabotages the unaligned 32-bit static-cursor shift (`32-sh` -> `31-sh`) in
 # internal/codegen/js/flat.go (leaving byte-aligned sh==0 untouched) and proves
@@ -107,3 +132,31 @@ verify-canonical-negative-control: verify-toolchain-js build/verify-canonical-bi
 	@grep -q 'FAILED:' build/verify-canonical-nc/run.log || \
 		{ echo "NEGATIVE CONTROL FAILED: unexpected canonical failure log:" >&2; cat build/verify-canonical-nc/run.log >&2; exit 1; }
 	@echo "verify-canonical-negative-control: unsorted map permutation sabotage caught immediately by verify-canonical"
+
+# Sabotages Form-2 trailing-pad-bit rejection in internal/codegen/jstable/messagebatch.go
+# and proves message-fuzz fails immediately on hostile duplicate-ID message frames.
+verify-message-fuzz-negative-control: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp
+	@rm -rf build/verify-message-fuzz-nc && mkdir -p build/verify-message-fuzz-nc
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/messagebatch.go").read_text(); target = "if (!r.Bits.Align() || r.Bits.Offset !== r.Bits.Buffer.length * 8)"; assert target in src, "missing JS message batch close anchor"; pathlib.Path("build/verify-message-fuzz-nc/messagebatch.gotext").write_text(src.replace(target, "if (false /* sabotaged batch close */)", 1))'
+	@printf '{"Replace":{"%s/internal/codegen/jstable/messagebatch.go":"%s/build/verify-message-fuzz-nc/messagebatch.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-message-fuzz-nc/overlay.json
+	go build -overlay=build/verify-message-fuzz-nc/overlay.json -o build/verify-message-fuzz-nc/schema ./cmd/schema
+	@cp -a build/tables-generated-js build/verify-message-fuzz-nc/conformance-js
+	./build/verify-message-fuzz-nc/schema generate --lang js --out build/verify-message-fuzz-nc/conformance-js/messages tables/messages
+	@if SCHEMA_JS_GENERATED=build/verify-message-fuzz-nc/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm message-fuzz --only js --seed 1 --n 200 --failed build/verify-message-fuzz-nc/failed > build/verify-message-fuzz-nc/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: sabotaged JS Form-2 duplicate-ID check passed message-fuzz" >&2; exit 1; fi
+	@grep -Eq 'message-fuzz DIVERGENCE' build/verify-message-fuzz-nc/run.log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected message-fuzz failure log:" >&2; cat build/verify-message-fuzz-nc/run.log >&2; exit 1; }
+	@echo "verify-message-fuzz-negative-control: Form-2 trailing-pad-bit sabotage caught immediately by message-fuzz"
+
+# Sabotages Form-2 cross-version scalar widening in internal/codegen/jstable/messagebatch.go
+# and proves verify-tablegen fails immediately on V1->V2 message evolution.
+verify-tablegen-negative-control: verify-toolchain-js build/verify-tablegen-bin build/verify-tablegen/corpus/.stamp
+	@rm -rf build/verify-tablegen-nc && mkdir -p build/verify-tablegen-nc
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/messagebatch.go").read_text(); target = "tableMessageKindWidens(from, to) {"; assert target in src, "missing JS tableMessageKindWidens anchor"; pathlib.Path("build/verify-tablegen-nc/messagebatch.gotext").write_text(src.replace(target, "tableMessageKindWidens(from, to) { return false;", 1))'
+	@printf '{"Replace":{"%s/internal/codegen/jstable/messagebatch.go":"%s/build/verify-tablegen-nc/messagebatch.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-tablegen-nc/overlay.json
+	go build -overlay=build/verify-tablegen-nc/overlay.json -o build/verify-tablegen-nc/schema ./cmd/schema
+	@if NODE="$(NODE)" ./build/verify-tablegen-bin --lang js --seed $(VERIFY_TABLEGEN_SEED) --schemas $(VERIFY_TABLEGEN_SCHEMAS) --schema ./build/verify-tablegen-nc/schema --work build/verify-tablegen-nc/work --corpus build/verify-tablegen/corpus > build/verify-tablegen-nc/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: sabotaged JS cross-version scalar widening passed verify-tablegen" >&2; exit 1; fi
+	@grep -q 'FAILED:' build/verify-tablegen-nc/run.log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected tablegen failure log:" >&2; cat build/verify-tablegen-nc/run.log >&2; exit 1; }
+	@echo "verify-tablegen-negative-control: Form-2 V1->V2 widening sabotage caught immediately by verify-tablegen"

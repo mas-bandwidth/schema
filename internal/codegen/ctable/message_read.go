@@ -342,7 +342,8 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 		}
 		g.pf("%s if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;%s=(int32_t)kept; }\n", ind, count)
 	case f.KeyEnum != "":
-		g.pf("%s{uint64_t n,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n%s if(!table_message_count(r,%s,&n))goto damaged;for(i=0;i<n;i++){const TableMessageEntry * key;int32_t slot=-1;\n%s if(!table_message_ref(r,&key,1)||key==NULL)goto damaged;switch(key->id){\n", ind, e, ind, e, ind)
+		kSlot := g.messageSlot(ir.TableFieldEntry(f))
+		g.pf("%s{uint64_t n,i;uint8_t seen_keys[512];int32_t last_slot=-1;int k_same=(r->vocabulary->build_version==%s && %s->own_slot==%d);TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;memset(seen_keys,0,sizeof(seen_keys));\n%s if(!table_message_count(r,%s,&n))goto damaged;for(i=0;i<n;i++){const TableMessageEntry * key;int32_t slot=-1;int64_t kref;\n%s if(!table_message_ref(r,&key,1)||key==NULL)goto damaged;kref=key-r->vocabulary->entries+1;if(kref<1||kref>4096||(seen_keys[(kref-1)>>3]&(uint8_t)(1u<<((kref-1)&7))))goto damaged;seen_keys[(kref-1)>>3]|=(uint8_t)(1u<<((kref-1)&7));switch(key->id){\n", ind, buildVersionName(g.unit.Package), e, kSlot, e, ind, e, ind)
 		for i, v := range f.KeyEnumRef.Variants {
 			g.pf("%s case UINT64_C(0x%016x):slot=%d;break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 			_ = v
@@ -350,7 +351,19 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 		g.pf("%s default:break;} if(slot<0){r->report->unknown++;\n%s { %s scratch;memset(&scratch,0,sizeof(scratch));\n", ind, ind, g.sequenceType(f))
 		g.messageReadElement(f, "scratch", "element_entry", ind+" ")
 		g.pf("%s }continue;}\n", ind)
-		g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ")
+		g.pf("%s if(k_same && slot<=last_slot)goto damaged;last_slot=slot;\n", ind)
+		if ir.TableWireScalarKind(f) == tkTable {
+			g.pf("%s {TableBitReader sorig=r->bits;uint64_t sfirst=0;if(k_same && !table_bit_get(&sorig,&sfirst,r->vocabulary->ref_bits))goto damaged;\n", ind)
+			g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ")
+			g.pf("%s if(k_same && sfirst==0)goto damaged;}\n", ind)
+		} else {
+			g.pf("%s {int32_t sunk=r->report->unknown,sref=r->report->refused;(void)sunk;(void)sref;\n", ind)
+			g.messageReadElement(f, dst+"[slot]", "element_entry", ind+" ")
+			if mine := ir.TableFieldEntry(f); mine.Shape.Inner == nil || mine.Shape.Inner.Packing != ir.TableMessageQuantized {
+				g.pf("%s if(k_same && !r->report->refused && !sref && r->report->unknown==sunk && (%s))goto damaged;\n", ind, g.wireDefaultEquals(f, dst+"[slot]"))
+			}
+			g.pf("%s }\n", ind)
+		}
 		g.pf("%s} }\n", ind)
 	case f.Array != ir.ArrayNone:
 		g.pf("%s{uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
@@ -469,7 +482,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf(" break;}\n")
 	}
-	g.pf("%s", " default:if(same_build && entry->own_slot!=0)goto damaged;r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n } }\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
+	g.pf("%s", " default:if(same_build)goto damaged;r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n } }\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
 	g.emitFixedMessageRead(st)
 }
 

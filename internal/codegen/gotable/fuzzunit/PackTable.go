@@ -5422,6 +5422,16 @@ const GlobalSettingsFixedFloor = 0
 // compiles on the load path (§5.8 row 3).
 var GlobalSettingsFixedLineagePlans = tableFixedLineagePlans(GlobalSettingsFixedKnown, GlobalSettingsFixedLayout, GlobalSettingsFixedDst, GlobalSettingsFixedHash)
 
+func GlobalSettingsFixedBoundsKnown0(value *GlobalSettings) bool {
+	var count int32
+	over := &count
+	_ = value
+	if value.TickRate < 1 || value.TickRate > 240 {
+		(*over)++
+	}
+	return count == 0
+}
+
 var GlobalSettingsFixedResetImage = func() []byte {
 	var def GlobalSettings
 	GlobalSettingsReset(&def)
@@ -5619,6 +5629,15 @@ func GlobalSettingsFixedLoad(values []GlobalSettings, data []byte, plan []TableF
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
+		}
+		switch pick {
+		case 0:
+			if !GlobalSettingsFixedBoundsKnown0(&values[k : k+1][0]) {
+				for j := range values[:k+1] {
+					GlobalSettingsReset(&values[j])
+				}
+				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
+			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).

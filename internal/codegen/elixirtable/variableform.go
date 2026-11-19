@@ -183,7 +183,12 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString(exAttribute("declared_types", declared.String()))
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
-	b.WriteString("  def descriptors, do: @tables\n\n")
+	b.WriteString("  def descriptors, do: @tables\n")
+	if len(unionNames) > 0 {
+		b.WriteString("  def union_descriptors, do: @unions\n\n")
+	} else {
+		b.WriteString("  def union_descriptors, do: %{}\n\n")
+	}
 	uncarried := uncarriedRootNames(u)
 	b.WriteString(uncarriedAttribute(uncarried))
 	if anyTableForm(u, "cook") {

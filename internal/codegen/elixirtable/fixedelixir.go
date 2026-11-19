@@ -379,6 +379,9 @@ func (g *fixedGen) fieldRef(val, field string) string {
 	if val == "value" {
 		return "v_" + field
 	}
+	if len(field) > 0 && field[0] >= 'A' && field[0] <= 'Z' {
+		return fmt.Sprintf("Map.fetch!(%s, :%s)", val, field)
+	}
 	return val + "." + field
 }
 

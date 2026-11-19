@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x678b00cf6a914d9d)
-const _ = uint64(0x678b00cf6a914d9d - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x6a30f7b72ed039a3)
+const _ = uint64(0x6a30f7b72ed039a3 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -304,6 +304,10 @@ func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.Tabl
 func tableMessageKnownKind(a0 uint8) bool { return goruntime.TableMessageKnownKind(a0) }
 
 func tableMessageKindBits(a0 uint8) int64 { return goruntime.TableMessageKindBits(a0) }
+
+func tableMessageBaseInsideKind(a0 uint8, a1 [2]uint64) bool {
+	return goruntime.TableMessageBaseInsideKind(a0, a1)
+}
 
 func tableMessageCount(a0 *TableBitReader, a1 TableMessageShape) (uint64, bool) {
 	return goruntime.TableMessageCount(a0, a1)
