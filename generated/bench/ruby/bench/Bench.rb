@@ -57,8 +57,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = BenchPacket.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = BenchPacket.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -275,8 +278,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = BenchInts.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = BenchInts.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -447,8 +453,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = BenchBits.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = BenchBits.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -647,8 +656,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = MixedEntity.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = MixedEntity.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -845,8 +857,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = MixedStat.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = MixedStat.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -937,8 +952,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = MixedHitEvent.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = MixedHitEvent.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1045,8 +1063,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = MixedChatEvent.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = MixedChatEvent.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1133,8 +1154,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = MixedPickupEvent.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = MixedPickupEvent.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1240,8 +1264,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = MixedEvent.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = MixedEvent.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1403,8 +1430,11 @@ module Bench
     end
 
     def self.read(data)
-      pair = BenchMixed.read_bits(data)
-      pair[0]
+      stream, = ::Bench._s_open_read_stream(data, 0)
+      value = BenchMixed.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write

@@ -39,8 +39,11 @@ module Example
     end
 
     def self.read(data)
-      pair = Vec3.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = Vec3.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -140,8 +143,11 @@ module Example
     end
 
     def self.read(data)
-      pair = Quat.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = Quat.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -249,8 +255,11 @@ module Example
     end
 
     def self.read(data)
-      pair = Handle.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = Handle.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -339,8 +348,11 @@ module Example
     end
 
     def self.read(data)
-      pair = QuantizedPosition.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = QuantizedPosition.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -438,8 +450,11 @@ module Example
     end
 
     def self.read(data)
-      pair = QuantizedVelocity.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = QuantizedVelocity.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -539,8 +554,11 @@ module Example
     end
 
     def self.read(data)
-      pair = QuantizedRotation.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = QuantizedRotation.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -652,8 +670,11 @@ module Example
     end
 
     def self.read(data)
-      pair = RigidBody.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = RigidBody.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -786,8 +807,11 @@ module Example
     end
 
     def self.read(data)
-      pair = Input.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = Input.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -979,8 +1003,11 @@ module Example
     end
 
     def self.read(data)
-      pair = InputPacket.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = InputPacket.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1116,8 +1143,11 @@ module Example
     end
 
     def self.read(data)
-      pair = ShipCreate.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = ShipCreate.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1274,8 +1304,11 @@ module Example
     end
 
     def self.read(data)
-      pair = ExpressionProbe.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = ExpressionProbe.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1372,8 +1405,11 @@ module Example
     end
 
     def self.read(data)
-      pair = ExtremeProbe.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = ExtremeProbe.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -1493,8 +1529,11 @@ module Example
     end
 
     def self.read(data)
-      pair = ExtremeRow.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = ExtremeRow.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write

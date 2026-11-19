@@ -1,0 +1,111 @@
+package verifypkt
+
+const ExpectedMagic = 0x2A
+
+enum Phase
+{
+    Boot
+    Run
+    Halt
+}
+
+type TinyArm
+{
+    v bits(5)
+}
+
+type HeavyArm
+{
+    w uint64
+}
+
+union Choice
+{
+    void_arm
+    tiny     TinyArm
+    heavy    HeavyArm
+}
+
+// 6 + 2 + 5 + 3 = 16 bits (2 bytes):
+//   bits 0..5   = const(0x2A, 6)
+//   bits 6..7   = tag bits(2)
+//   bits 8..12  = reserved(5)
+//   bits 13..15 = tail bits(3)
+type ConstReservedProbe
+{
+    const(ExpectedMagic, 6)
+    tag  bits(2)
+    reserved(5)
+    tail bits(3)
+}
+
+// 3 + 5(align) + 8 = 16 bits (2 bytes):
+//   bits 0..2  = lead bits(3)
+//   bits 3..7  = align padding (must be 0 on wire)
+//   bits 8..15 = body uint8
+type AlignProbe
+{
+    lead bits(3)
+    align
+    body uint8
+}
+
+// 5 bits total -> 1 byte on wire; bits 5..7 are trailing stream padding
+type TrailProbe
+{
+    val bits(5)
+}
+
+// Enum (None=0, Boot=1, Run=2, Halt=3 -> wait: let us use 2 variants so 0,1,2 fit in 2 bits and 3 is invalid!),
+// ranged int32 [10, 20] (delta 0..10 in 4 bits -> 11..15 invalid),
+// ranged int128 [-100, 100] (delta 0..200 in 8 bits -> 201..255 invalid).
+enum TwoMode
+{
+    Alpha
+    Beta
+}
+
+type RangeProbe
+{
+    mode  TwoMode
+    small int32 = 10 | min = 10, max = 20
+    wide  int128 | min = -100, max = 100
+}
+
+// UTF-8 string(16): 5-bit length (0..16) + 3-bit align + N bytes
+type TextProbe
+{
+    label string(16)
+}
+
+// Bare float32, bare float64, and compressed float32
+type FloatProbe
+{
+    f32 float32
+    f64 float64
+    cf  float32 | min = -10.0, max = 10.0, resolution = 0.01
+}
+
+// Stateful reuse across nested if/else + union with void/small/wide arms
+type ReuseEnvelope
+{
+    active bool
+    if active
+    {
+        inner bool
+        if inner
+        {
+            a uint32
+        }
+        else
+        {
+            b uint16
+        }
+    }
+    else
+    {
+        c uint32
+    }
+    choice Choice
+    marker uint8
+}

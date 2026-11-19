@@ -183,6 +183,10 @@ var jsGenerateLine = regexp.MustCompile(`generate --lang js --out \S+ (.+)$`)
 var jsUnionDerived = map[string]string{
 	// make/js.mk tables-js-runtime-home: tables/examples plus a one-field AaaRow table
 	"build/runtime-home-js/src": "tables/examples",
+	// make/verify-vm.mk sabotage negative controls: derived bench & fixed-lineage units
+	"build/verify-sabotage-nc/BenchTable.schema":          "bench/corpus/BenchTable.schema",
+	"build/verify-sabotage-nc/variable/BenchTable.schema": "bench/corpus/BenchTable.schema",
+	"build/verify-sabotage-nc/fixed/unit":                 "test/tables/V2.schema",
 }
 
 // jsUnionCorpus reads every `generate --lang js` line of the make wiring

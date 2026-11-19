@@ -166,13 +166,22 @@ export function WriteBenchPacket(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
+  if (typeof value.x !== "number" || !Number.isFinite(Math.fround(value.x))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.y !== "number" || !Number.isFinite(Math.fround(value.y))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.z !== "number" || !Number.isFinite(Math.fround(value.z))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
@@ -1467,9 +1476,15 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
+  if (typeof value.recoil !== "number" || !Number.isFinite(Math.fround(value.recoil))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.recoil;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.drift !== "number" || !Number.isFinite(value.drift)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.drift;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -1480,6 +1495,9 @@ export function WriteBenchMixed(stream, value) {
   }
   BIGINT_SCRATCH.value = value.wideKey;
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
+    return false;
+  }
+  if (typeof value.flux !== "bigint" || value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) {
     return false;
   }
   BIGINT_SCRATCH.value = value.flux;

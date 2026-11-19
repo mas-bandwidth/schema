@@ -289,12 +289,21 @@ export function WriteWideProbe(stream, value) {
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
+  if (typeof value.energy !== "bigint" || value.energy < -5000000000n || value.energy > 5000000000n) {
+    return false;
+  }
   BIGINT_SCRATCH.value = value.energy;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -5000000000n, 5000000000n)) {
     return false;
   }
+  if (typeof value.flux !== "bigint" || value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) {
+    return false;
+  }
   BIGINT_SCRATCH.value = value.flux;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
+    return false;
+  }
+  if (typeof value.bias !== "bigint" || value.bias < -1000n || value.bias > 1000n) {
     return false;
   }
   BIGINT_SCRATCH.value = value.bias;
