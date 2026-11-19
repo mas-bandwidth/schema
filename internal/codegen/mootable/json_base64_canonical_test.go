@@ -24,7 +24,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -33,12 +34,14 @@ import (
 func mooBase64UnitFromSource(t *testing.T, src string) *ir.Unit {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "Probe.schema")
-	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
+	bytes := []byte(src)
+	tree, perrs := parser.Parse("Probe.schema", bytes)
+	if len(perrs) != 0 {
+		t.Fatalf("parse Probe.schema: %v", perrs)
 	}
-	u, err := compiler.New().Load([]string{p})
-	if err != nil {
-		t.Fatalf("the unit does not load: %v", err)
+	u, cerrs := check.Unit([]check.SourceFile{{Path: p, Name: "Probe.schema", Base: "Probe", Bytes: bytes, AST: tree}})
+	if len(cerrs) != 0 {
+		t.Fatalf("the unit does not load: %v", cerrs)
 	}
 	return u
 }

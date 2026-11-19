@@ -23,7 +23,7 @@ let FixedRefuseLayoutNewer: i64 = 30;
 // The versioning counters a NEW-READS-OLD read reports when it returns
 // (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #6): every read starts at
 // zero, a widen counts once per entry per record, and a refusal lands nothing.
-// `unknown` is once per FIELD per peer, never per record.
+// `unknown` is once per FIELD per writer, never per record.
 struct FixedEvolveReport {
     oor: i64,
     widened: i64,
