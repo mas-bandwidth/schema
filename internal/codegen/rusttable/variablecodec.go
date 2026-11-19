@@ -2166,7 +2166,7 @@ func (g *gen) emitVariableGraphPass(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
 	fmt.Fprintf(b, "        nodes.wire_edge_owner = k + 1;\n")
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { variable_node_decode(wire, ids, &mut nodes, k, report); }\n")
-	fmt.Fprintf(b, "        else if matches!(nodes.slots[k], TableNodeSlot::Null) { let (tid, start, stop) = nodes.recs[k]; if tid != BYTES_TYPE_ID && tid != STRING_TYPE_ID { nodes.note_unknown_content(ids, 13, &wire[start..stop], 0, report); } }\n")
+	fmt.Fprintf(b, "        else if matches!(nodes.slots[k], TableNodeSlot::Null | TableNodeSlot::Unplaced(_)) { let (tid, start, stop) = nodes.recs[k]; if tid != BYTES_TYPE_ID && tid != STRING_TYPE_ID { nodes.note_unknown_content(ids, 13, &wire[start..stop], 0, report); } }\n")
 	fmt.Fprintf(b, "        if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)

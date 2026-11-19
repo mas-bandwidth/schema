@@ -90,8 +90,9 @@ func TestMooAnnounceShapeNestingBound(t *testing.T) {
 		levels int
 		want   string
 	}{
-		{2, "announce"},
-		{announceShapeNestingBound, "announce"},
+		{1, "announce"},
+		{2, "refuse"},
+		{announceShapeNestingBound, "refuse"},
 		{announceShapeNestingBound + 1, "refuse"},
 		{21000, "refuse"},
 	} {
@@ -117,7 +118,11 @@ func TestMooAnnounceShapeNestingBoundNegativeControl(t *testing.T) {
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the shape nesting bound's anchor is not in table_message.moo exactly once")
 	}
-	patched := strings.Replace(src, anchor, "\tif false then\n", 1)
+	const nestedElem = "if not knownKind(s.elem) or s.elem == 14 or s.elem == 16 then"
+	if strings.Count(src, nestedElem) != 1 {
+		t.Fatal("the nested-array element guard is not in table_message.moo exactly once")
+	}
+	patched := strings.Replace(strings.Replace(src, nestedElem, "if not knownKind(s.elem) then", 1), anchor, "\tif false then\n", 1)
 	if err := os.WriteFile(filepath.Join(g.dir, "table_message.moo"), []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}

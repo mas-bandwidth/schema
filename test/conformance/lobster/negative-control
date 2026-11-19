@@ -114,7 +114,7 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing retain retain-save " ; green="wire json-read cook-write" ;;
+report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report retain" ;;
 cycle)  want="framing " ; green="wire report retain" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;

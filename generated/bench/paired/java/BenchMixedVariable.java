@@ -1602,7 +1602,8 @@ public final class BenchMixedVariable {
                 assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
             }
             if (o instanceof MixedPickupEventVariable.Value) {
-                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+                assert MixedPickupEventVariable.checkWrite(
+                        (MixedPickupEventVariable.Value) o, walk);
             }
             if (o instanceof MixedStatVariable.Value) {
                 assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
@@ -1618,9 +1619,15 @@ public final class BenchMixedVariable {
         assert (v.sequence & 0xffffffffL) <= 0xffffL : "BenchMixed.sequence";
         assert v.ackSequence >= 0 && v.ackSequence <= 65535 : "BenchMixed.ack_sequence";
         assert Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) <= 0 : "BenchMixed.nonce";
-        assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L : "BenchMixed.world_time";
+        assert v.worldTime >= -1000000000000L && v.worldTime <= 1000000000000L
+                : "BenchMixed.world_time";
         assert Long.compareUnsigned(v.frameTick, 0xffffffffffffL) <= 0 : "BenchMixed.frame_tick";
-        assert java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("16776960")) <= 0 : "BenchMixed.server_time";
+        assert java.math.BigInteger.valueOf(v.serverTime).compareTo(new java.math.BigInteger("0"))
+                                >= 0
+                        && java.math.BigInteger.valueOf(v.serverTime)
+                                        .compareTo(new java.math.BigInteger("16776960"))
+                                <= 0
+                : "BenchMixed.server_time";
         assert v.entities.size() >= 1 && v.entities.size() <= 8 : "BenchMixed.entities";
         for (int i = 0, n = v.entities.size(); i < n; i++) {
             MixedEntityVariable.Value e = v.entities.get(i);
@@ -1638,8 +1645,24 @@ public final class BenchMixedVariable {
         }
         assert TableVariable.textWritable(v.playerName, 15) : "BenchMixed.player_name";
         assert v.payload == null || v.payload.length <= 16 : "BenchMixed.payload";
-        assert TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("-1267650600228229401496703205376")) >= 0 && TableVariable.wide(v.flux.hi, v.flux.lo, true).compareTo(new java.math.BigInteger("1267650600228229401496703205376")) <= 0 : "BenchMixed.flux";
-        assert java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("0")) >= 0 && java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping)).compareTo(new java.math.BigInteger("64000")) <= 0 : "BenchMixed.ping";
+        assert TableVariable.wide(v.flux.hi, v.flux.lo, true)
+                                        .compareTo(
+                                                new java.math.BigInteger(
+                                                        "-1267650600228229401496703205376"))
+                                >= 0
+                        && TableVariable.wide(v.flux.hi, v.flux.lo, true)
+                                        .compareTo(
+                                                new java.math.BigInteger(
+                                                        "1267650600228229401496703205376"))
+                                <= 0
+                : "BenchMixed.flux";
+        assert java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping))
+                                        .compareTo(new java.math.BigInteger("0"))
+                                >= 0
+                        && java.math.BigInteger.valueOf(Integer.toUnsignedLong(v.ping))
+                                        .compareTo(new java.math.BigInteger("64000"))
+                                <= 0
+                : "BenchMixed.ping";
         assert (v.crcHint & 0xffffffffL) <= 0xffffffL : "BenchMixed.crc_hint";
         assert v.extra >= 0 && v.extra <= 255 : "BenchMixed.extra";
         assert v.idleTicks >= 0 && v.idleTicks <= 15 : "BenchMixed.idle_ticks";
@@ -2383,7 +2406,14 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "wide_key");
         b.append(": ");
         b.append(
-                "\"" + TableJson.wideText(TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false), new java.math.BigInteger("0"), new java.math.BigInteger("340282366920938463463374607431768211455"), 0, false) + "\"");
+                "\""
+                        + TableJson.wideText(
+                                TableVariable.wide(v.wideKey.hi, v.wideKey.lo, false),
+                                new java.math.BigInteger("0"),
+                                new java.math.BigInteger("340282366920938463463374607431768211455"),
+                                0,
+                                false)
+                        + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2392,7 +2422,14 @@ public final class BenchMixedVariable {
         TableJson.esc(b, "flux");
         b.append(": ");
         b.append(
-                "\"" + TableJson.wideText(TableVariable.wide(v.flux.hi, v.flux.lo, true), new java.math.BigInteger("-1267650600228229401496703205376"), new java.math.BigInteger("1267650600228229401496703205376"), 0, false) + "\"");
+                "\""
+                        + TableJson.wideText(
+                                TableVariable.wide(v.flux.hi, v.flux.lo, true),
+                                new java.math.BigInteger("-1267650600228229401496703205376"),
+                                new java.math.BigInteger("1267650600228229401496703205376"),
+                                0,
+                                false)
+                        + "\"");
         if (!first) {
             b.append(',');
         }
@@ -2674,7 +2711,10 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[3] = true;
-                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n'
+                        && !((in.peek() == '"'
+                                || in.peek() == '-'
+                                || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -2717,7 +2757,10 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[5] = true;
-                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n'
+                        && !((in.peek() == '"'
+                                || in.peek() == '-'
+                                || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -2739,7 +2782,10 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[6] = true;
-                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n'
+                        && !((in.peek() == '"'
+                                || in.peek() == '-'
+                                || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -2761,7 +2807,10 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[7] = true;
-                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n'
+                        && !((in.peek() == '"'
+                                || in.peek() == '-'
+                                || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -3023,7 +3072,9 @@ public final class BenchMixedVariable {
                         if (text != null) {
                             try {
                                 byte[] bytes = java.util.Base64.getDecoder().decode(text);
-                                if (!java.util.Base64.getEncoder().encodeToString(bytes).equals(text)) {
+                                if (!java.util.Base64.getEncoder()
+                                        .encodeToString(bytes)
+                                        .equals(text)) {
                                     in.rep.refuse("base64_not_canonical");
                                 } else {
                                     int keep = Math.min(bytes.length, 16);
@@ -3150,7 +3201,10 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[20] = true;
-                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n'
+                        && !((in.peek() == '"'
+                                || in.peek() == '-'
+                                || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
@@ -3176,7 +3230,10 @@ public final class BenchMixedVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[21] = true;
-                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n'
+                        && !((in.peek() == '"'
+                                || in.peek() == '-'
+                                || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {

@@ -361,7 +361,7 @@ func writerIndexedBounds(g *Gen, writer *ir.Struct, layout []byte) []string {
 				out = append(out, fmt.Sprintf("[%d] = { raw = true, lo = %s, hi = %s }", cur, rawLit(g, w, signed, lo), rawLit(g, w, signed, hi)))
 			}
 		case ir.TFloat32, ir.TFloat64:
-			if f.HasFloatRange {
+			if f.HasFloatRange && f.Resolution == 0 && f.Round == "" {
 				fmin, fmax := f.FMin, f.FMax
 				if f.Type.Kind == ir.TFloat32 {
 					fmin, fmax = float64(float32(fmin)), float64(float32(fmax))

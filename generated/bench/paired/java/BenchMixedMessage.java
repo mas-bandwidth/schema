@@ -341,7 +341,9 @@ public final class BenchMixedMessage {
                 break;
         }
         for (int i8 = 0; i8 < v.loadout.length; i8++) {}
-        assert v.playerNameLength < 0 || v.playerNameLength > 15 || TableMessage.utf8Valid(v.playerName, 0, v.playerNameLength);
+        assert v.playerNameLength < 0
+                || v.playerNameLength > 15
+                || TableMessage.utf8Valid(v.playerName, 0, v.playerNameLength);
         assert TableMessage.compareSigned128(v.flux.lo, v.flux.hi, 0L, 0xfffffff000000000L) >= 0;
         assert TableMessage.compareSigned128(v.flux.lo, v.flux.hi, 0L, 0x1000000000L) <= 0;
         assert Long.compareUnsigned((v.ping) & 0xffffL, 0L) >= 0;
@@ -993,10 +995,8 @@ public final class BenchMixedMessage {
                             }
                             if (arm33.kind == 13 && armElemKind41 == 0 || armWidened40) {
                                 v.gameEvent.type = 3;
-                                boolean ok76 =
-                                        MixedPickupEventMessage.loadMessageBody(
-                                                r, v.gameEvent.pickup);
-                                if (!ok76) {
+                                if (!MixedPickupEventMessage.loadMessageBody(
+                                        r, v.gameEvent.pickup)) {
                                     return false;
                                 }
                                 if (armWidened40) {
@@ -1424,7 +1424,12 @@ public final class BenchMixedMessage {
                     }
                     v.drift = v62;
                 }
-                if (!r.report.refused && !r.report.damaged && r.vocab.ownBuild() && r.report.unknown == canonUnk && !(Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0))) {
+                if (!r.report.refused
+                        && !r.report.damaged
+                        && r.vocab.ownBuild()
+                        && r.report.unknown == canonUnk
+                        && !(Double.doubleToRawLongBits(v.drift)
+                                != Double.doubleToRawLongBits(0.0))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }

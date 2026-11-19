@@ -62,10 +62,7 @@ func FixedEvolutionOf(u *ir.Unit, name string) (FixedEvolutionEntry, bool) {
 // generator's Part takes no lineage argument (docs/PORT-GOOSE.md, THE
 // RUNTIME LAYOUT), so the one call that carries one sets it for the duration
 // of Generate and holds the lock; a plain Generate sees nil.
-var (
-	evolveMu      sync.Mutex
-	evolveLineage map[string][]FixedEvolutionEntry
-)
+var evolveLineages sync.Map
 
 // GenerateLineage generates the table surface with a fixed-table lineage: per
 // table, the locked layouts OLDEST FIRST; the table's own entry is appended
@@ -73,11 +70,13 @@ var (
 // highest retired index (§5.2). A hash the lineage does not hold is refused
 // layout_unknown, and a retired entry below the floor layout_unsupported.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedEvolutionEntry) (map[string][]byte, error) {
-	evolveMu.Lock()
-	defer evolveMu.Unlock()
-	evolveLineage = lineage
-	defer func() { evolveLineage = nil }()
-	return Generate(u)
+	if u == nil || len(lineage) == 0 {
+		return Generate(u)
+	}
+	uCopy := *u
+	evolveLineages.Store(&uCopy, lineage)
+	defer evolveLineages.Delete(&uCopy)
+	return Generate(&uCopy)
 }
 
 // fixedEvolvePart is the [Register]ed part.
@@ -199,7 +198,11 @@ func parseLayout(data []byte) ([]rawEntry, int64) {
 // evolveEntries is the lineage the emitter lays down for one table: oldest
 // first, the table's own entry last when absent, with the retirement floor.
 func (e *fixedEvolveEmit) evolveEntries(st *ir.Struct, own FixedEvolutionEntry) ([]FixedEvolutionEntry, int) {
-	entries := append([]FixedEvolutionEntry(nil), evolveLineage[st.Name]...)
+	var lineage map[string][]FixedEvolutionEntry
+	if v, ok := evolveLineages.Load(e.g.Unit); ok {
+		lineage, _ = v.(map[string][]FixedEvolutionEntry)
+	}
+	entries := append([]FixedEvolutionEntry(nil), lineage[st.Name]...)
 	if len(entries) == 0 || entries[len(entries)-1].Wire != own.Wire {
 		entries = append(entries, own)
 	}

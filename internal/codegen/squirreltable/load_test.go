@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -234,7 +235,31 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: the type surface refused: %v", key, err)
 		}
-		tables, err := squirreltable.Generate(u)
+		var sqLineage map[string][]squirreltable.FixedLineageEntry
+		var uPaths []string
+		for _, uf := range u.Files {
+			if uf != nil && uf.Path != "" {
+				uPaths = append(uPaths, uf.Path)
+			}
+		}
+		if len(uPaths) > 0 {
+			if lock, lok, lerr := lockfile.Open(uPaths); lerr == nil && lok && lock != nil {
+				sqLineage = map[string][]squirreltable.FixedLineageEntry{}
+				for _, st := range ir.TableFixedRoots(u) {
+					for _, le := range lockfile.Lineage(lock, st.WireName()) {
+						sqLineage[st.Name] = append(sqLineage[st.Name], squirreltable.FixedLineageEntry{
+							Wire:    le.Wire,
+							Layout:  le.Layout,
+							Record:  le.Record + 8,
+							Retired: le.Retired,
+							Reason:  le.Reason,
+							Ranges:  ir.TableFixedWriterRanges(le.Writer),
+						})
+					}
+				}
+			}
+		}
+		tables, err := squirreltable.GenerateLineage(u, sqLineage)
 		if err != nil {
 			refused = append(refused, fmt.Sprintf("%s (%d rows): %v", key, len(byUnit[key]), err))
 			refusedSet[key] = true

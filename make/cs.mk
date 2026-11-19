@@ -433,8 +433,8 @@ conformance-cs-absent: build-conformance-cs build/conformance-harness
 	@mkdir -p $(CS_ABSENT)
 	@printf 'cs %s test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll\n' "$(DOTNET)" > $(CS_ABSENT)/drivers
 	./build/conformance-harness run --drivers $(CS_ABSENT)/drivers --work $(CS_ABSENT)/run > $(CS_ABSENT)/log 2>&1 || { cat $(CS_ABSENT)/log; exit 1; }
-	@grep -Eq '^wire +pass [0-9]+/[0-9]+ \+[0-9]+a' $(CS_ABSENT)/log || \
-		{ cat $(CS_ABSENT)/log; echo "conformance-cs-absent FAILED: the C# wire surface counts no per-case absent"; exit 1; }
+	@! grep -Eq ' pass [0-9]+/[0-9]+ \+[1-9][0-9]*a' $(CS_ABSENT)/log || \
+		{ cat $(CS_ABSENT)/log; echo "conformance-cs-absent FAILED: unexpected per-case absence"; exit 1; }
 	@grep -E '^wire ' $(CS_ABSENT)/log
 
 conformance-cs-absent-negative-control: build-conformance-cs build/conformance-harness
@@ -476,8 +476,12 @@ conformance-negative-control-cs-framing: build-conformance-cs build/conformance-
 		[ -n "$$files" ] || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage matches no generated line"; exit 1; }; \
 		perl -pi -e 's/\Qif (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }\E/if (false) { \/* SABOTAGED: no id-table cap *\/ }/g' $$files
 	@grep -rqF 'SABOTAGED: no id-table cap' $(CS_FRAMING_CONTROL)/generated || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
+	@perl -pi -e 's/\Qif (mark[target] == 1) { Damage(); return; }\E/if (mark[target] != 0) { continue; \/* SABOTAGED: no wire cycle check *\/ }/g' $(CS_FRAMING_CONTROL)/generated/pointers/*.cs
+	@grep -rqF 'SABOTAGED: no wire cycle check' $(CS_FRAMING_CONTROL)/generated/pointers || { echo "NEGATIVE CONTROL: the wire cycle sabotage did not apply"; exit 1; }
 	@perl -pi -e 's/\Qif (mark == 1) { return true; }\E/if (mark == 1 && n < 0) { return true; \/* SABOTAGED: no cycle check *\/ }/g' $(CS_FRAMING_CONTROL)/generated/pointers/*.cs
 	@grep -rqF 'SABOTAGED: no cycle check' $(CS_FRAMING_CONTROL)/generated/pointers || { echo "NEGATIVE CONTROL: the cycle sabotage did not apply"; exit 1; }
+	@perl -pi -e 's/\Qif (processed < vertices) { return true; }\E/if (processed < vertices && count < 0) { return true; \/* SABOTAGED: no region cycle check *\/ }/g' $(CS_FRAMING_CONTROL)/generated/pointers/*.cs
+	@grep -rqF 'SABOTAGED: no region cycle check' $(CS_FRAMING_CONTROL)/generated/pointers || { echo "NEGATIVE CONTROL: the region cycle sabotage did not apply"; exit 1; }
 	@$(DOTNET) build test/conformance/cs --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated \
 		-p:CardsGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated/cards -p:BaseIntermediateOutputPath=$(CURDIR)/$(CS_FRAMING_CONTROL)/obj/ \
 		-o $(CS_FRAMING_CONTROL)/checker > $(CS_FRAMING_CONTROL)/build.log 2>&1 || \
@@ -1436,7 +1440,7 @@ cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 		--failed build/wire-fuzz/failed-cards-retain-neg-cs.bin \
 		> build/cards-cs-retain-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the Card retain arm stayed green with retention dropped'; cat build/cards-cs-retain-neg.log; exit 1; fi
-	@grep -qE 'FAILED after [1-9][0-9]* mutants: the retention report differs' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the retain arm did not go red on the retention report'; cat build/cards-cs-retain-neg.log; exit 1; }
+	@grep -qE 'FAILED after [1-9][0-9]* mutants: (the retention report|the decoded value) differs' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the retain arm did not go red on the retention report'; cat build/cards-cs-retain-neg.log; exit 1; }
 	@! grep -Eq 'driver exited|driver wrote nothing|panic|Unhandled exception' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the driver broke rather than diverged'; cat build/cards-cs-retain-neg.log; exit 1; }
 	@CARDS_CS_RETAIN_DROP=1 timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \

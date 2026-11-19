@@ -152,14 +152,12 @@ bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 .PHONY: bin-schema-embeds
 bin-schema-embeds: bin/schema
 	@n=0; for f in $$(go list -deps -f '{{$$d := .Dir}}{{range .EmbedFiles}}{{$$d}}/{{.}}{{"\n"}}{{break}}{{end}}' ./cmd/schema); do \
-		n=$$((n+1)); touch "$$f"; \
-		if $(MAKE) --no-print-directory -q bin/schema; then \
+		n=$$((n+1)); \
+		if $(MAKE) --no-print-directory -W "$${f#$(CURDIR)/}" -q bin/schema; then \
 			echo "bin-schema-embeds FAILED: touching $$f left bin/schema up to date"; exit 1; fi; \
-		touch -r "$$f" bin/schema; \
 	done; \
 	test $$n -gt 0 || { echo "bin-schema-embeds FAILED: go list named no embedded file"; exit 1; }; \
 	echo "bin-schema-embeds: $$n embedding package(s), a newer file in each rebuilds bin/schema"
-	@$(MAKE) --no-print-directory bin/schema
 
 test: bin-schema-embeds
 
@@ -414,7 +412,7 @@ build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SC
 # Its two map-and-list values, count_over_length and count_over_extent_cap, are
 # out of the list for the same reason the enum is sanctioned: they are the
 # enum's members and every unit spells them.
-TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRefuseReason|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent
+TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRefuseReason|TableRefuseMissingRequired|TableRegion|kTableSegment|kTableSlab|TablePack|[A-Za-z_]*TableNode[A-Za-z_]*|is_pointer|Builder|PackMeasure|LoadMeasure|TableBlob|TableBytesView|TableStringView|AllocBytes|AllocString|BytesEmplace|StringEmplace|TableMap|TableMapHead|TableMapSegment|TableMapOrder|TableMapCursor|TableEntryKey|TableKeyOrder|TableResetMapValue|TableEntrySetKey|kTableMapSegment|TableList|TableListHead|TableListSegment|TableListCursor|TableListElements|TableListPlace|kTableListSegment|TableExtentCarve|TableExtentUnreachedEmpty|TableWireExtent
 
 # THE ONE NODE SPELLING A POINTER-FREE UNIT CARRIES, and it is the FORM's and
 # not the pointer machinery's (docs/SPEC-TABLES.md §3, §3.1): the reserved
@@ -430,7 +428,7 @@ TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRefus
 # THE SECOND SANCTIONED SPELLING is the refusal enum, for the reason above it:
 # a pointer-free unit's Open answers a TableRefuseReason beside its null, which
 # costs the unit one enum and one out-parameter and no machinery at all.
-TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
+TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason|TableRefuseMissingRequired
 
 # THE SCANNED UNITS, AND WHY `examples` IS NOT ONE OF THEM ANY MORE (#823).
 # The property this gate holds is stated of a UNIT — "in a unit whose tables are
@@ -452,7 +450,7 @@ TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
 TABLES_ZERO_COST_HEADERS := build/tables-generated/v1/*Table.h \
 	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
 	build/tables-generated/p3/*Table.h \
-	build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
+	build/tables-generated/fixedevo/*Table.h build/tables-generated/m1/*Table.h \
 	build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h
 
 .PHONY: tables-zero-cost
@@ -2192,7 +2190,7 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 	@rm -rf build/json-dup-sabotage && mkdir -p build/json-dup-sabotage
 	./bin/schema generate --lang cpp --out build/json-dup-sabotage tables/examples
 	@sed -i.bak \
-		-e '/if ( repeated )/,/^ *}/ { s/in.report->refused = true;/\/\* sabotaged: no refusal *\//; s/in.report->refuse_reason = malformed;//; }' \
+		-e '/if ( in\.key_length\[i\] == length/,/^ *}/ { s/in.report->refused = true;/\/\* sabotaged: no refusal *\//; s/in.report->refuse_reason = malformed;//; }' \
 		-e '/if ( ( seen\[slot >> 6\] \& bit ) != 0 )/,/^ *}/ { s/in.report->refused = true;/\/\* sabotaged: no refusal *\//; s/in.report->refuse_reason = malformed;//; }' \
 		build/json-dup-sabotage/KeyedTable.cpp
 	@[ "$$(grep -c 'sabotaged: no refusal' build/json-dup-sabotage/KeyedTable.cpp)" -ge 2 ] || { echo "NEGATIVE CONTROL: the sabotage did not apply to both the key-spelling and the slot check"; exit 1; }
@@ -2263,7 +2261,7 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 .PHONY: conformance-negative-control-absent
 conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp build/conformance-go
 	@mkdir -p build
-	@sed -e 's|if ( variable != NULL )$$|if ( variable != NULL \&\& !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|' \
+	@perl -0pe 's|(static int surface_wire\(.*?        )if \( variable != NULL \)|$${1}if ( variable != NULL && !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|s' \
 		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp
 	@cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
@@ -3930,7 +3928,17 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # first and a count past it never reaches the L check.
 .PHONY: tables-maps-fit-negative-control
 tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) )@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false )@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+	@mkdir -p build && sed -e 's@for ( uint64_t i = 0; i < count; i++ )@for ( uint64_t i = 0; false \&\& i < count; i++ )@' -e 's@return r.offset == r.size;@return true; // SABOTAGED@' internal/codegen/cpptable/strictwalk.go > build/map-fit-strictwalk.gotext
+	@sed 's@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) )@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false ) // SABOTAGED@' internal/codegen/cpptable/maps.go > build/map-fit.gotext
+	@cmp -s build/map-fit.gotext internal/codegen/cpptable/maps.go && { echo "NEGATIVE CONTROL FAILED: the fit sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-fit.gotext","%s/internal/codegen/cpptable/strictwalk.go":"%s/build/map-fit-strictwalk.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-fit-overlay.json
+	@go build -overlay=build/map-fit-overlay.json -o build/schema-map-fit ./cmd/schema
+	@rm -rf build/tables-map-fit && mkdir -p build/tables-map-fit
+	@./build/schema-map-fit generate --lang cpp --out build/tables-map-fit/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-fit/maps -Itest/tables test/tables/maps_main.cpp build/tables-map-fit/maps/*Table.cpp -o build/schema_test_maps_fit
+	@if ./build/schema_test_maps_fit > build/map-fit.log 2>&1; then echo "NEGATIVE CONTROL FAILED: an N the map L cannot carry left the map gate GREEN"; exit 1; fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-fit.log || { echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-fit.log; exit 1; }
+	@echo "negative control: fit turns the MAP GATE red on $$(grep -c '^FAIL' build/map-fit.log) failures"
 
 # N = 0x80000000, PAST THE INT32 CAP. The measure-refusals row meets it: the
 # cap is tested before the L, so the reason is count_over_extent_cap, and a
@@ -3993,7 +4001,7 @@ tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stam
 .PHONY: tables-maps-entry-node-negative-control
 tables-maps-entry-node-negative-control: bin/schema build/tables-generated/.stamp
 	@mkdir -p build
-	@sed -e 's@if ( !%\[2\]sNumber( ctx@if ( false \&\& !%[2]sNumber( ctx@' \
+	@sed -e 's@if ( !%\[2\]sNumberEdges( ctx@if ( false \&\& !%[2]sNumberEdges( ctx@' \
 		internal/codegen/cpptable/maps.go > build/map-entrynode.gotext
 	@cmp -s build/map-entrynode.gotext internal/codegen/cpptable/maps.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the entrynode sabotage patched nothing"; exit 1; } || true
@@ -5751,7 +5759,7 @@ TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR := build/tables-cpp-builder-disc
 .PHONY: tables-cpp-builder-discard-negative-control
 tables-cpp-builder-discard-negative-control:
 	@rm -rf $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)
-	@sed -e 's#if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out ) ) { return false; }#if ( false ) { return false; }#' \
+	@sed -e 's#if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out, builder.arena.allocator ) ) { return false; }#if ( false ) { return false; }#' \
 		-e 's#if ( out->damaged || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
 		-e 's#if ( refused_root != NULL ) { %sReset( \*refused_root ); }#if ( false ) { %sReset( *refused_root ); } // NEGATIVE CONTROL: the reset is gone#' \
 		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt

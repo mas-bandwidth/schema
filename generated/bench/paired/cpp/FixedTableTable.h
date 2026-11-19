@@ -4748,10 +4748,10 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             TableFixedStoreNative( dst + p.dst, lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
-            if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
+            if ( p.aux == 0 && p.dstsize != 0 )
             {
                 uint64_t raw = 0;
-                raw = TableFixedGetLe( src + p.src, p.size );
+                raw = TableFixedGetLe( src + p.src, p.sign != 0 ? (uint32_t) p.sign : p.size );
                 if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
             }
             break;
@@ -4956,6 +4956,7 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
     const uint64_t tag = TableFixedTagAt( src, tag_at, tag_w );
     int64_t widest = arm;
     int64_t taken = arm;
+    bool matched = false;
     for ( int32_t i = 0; i < count; ++i )
     {
         const TableFixedEntry & e = plan[i];
@@ -4963,8 +4964,13 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
         if ( !TableFixedEntryTagArg( e, tag_at, guard_pool, arg ) ) { continue; }
         const int64_t end = TableFixedEntryEnd( e );
         if ( end > widest ) { widest = end; }
-        if ( arg >= 0 && (uint64_t) arg == tag && end > taken ) { taken = end; }
+        if ( arg >= 0 && (uint64_t) arg == tag )
+        {
+            matched = true;
+            if ( end > taken ) { taken = end; }
+        }
     }
+    if ( tag != 0 && !matched ) { return true; }
     const int64_t dead = ( tag == 0 ) ? arm : taken;
     return TableFixedDeadZero( src, dead < arm ? arm : dead, widest );
 }
@@ -5716,6 +5722,7 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
         if ( e.op == kTableFixedPresent ) { reach = 0ull; }
         else if ( e.op == kTableFixedPresentDefaults ) { reach = (uint64_t) e.src + 1ull + (uint64_t) TableFixedOptionalWireBytes( e ); }
         else if ( e.op == kTableFixedWidenF ) { reach = (uint64_t) e.src + 4ull; }
+        else if ( e.op == kTableFixedConst ) { reach = ( e.aux == 0 && e.dstsize != 0 ) ? (uint64_t) e.src + (uint64_t) ( e.sign != 0 ? e.sign : e.size ) : 0ull; }
         if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
@@ -6025,6 +6032,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 none.arg = arg;
                 // Writer arm count, for a tag past the old set (bill §12.5).
                 if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
+                none.sign = (uint8_t) their_tag;
                 TableFixedPush( c, none );
                 c.argw = inner_argw;
             }

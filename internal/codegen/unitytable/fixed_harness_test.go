@@ -257,12 +257,17 @@ func initUnityToolchain() (unityToolchainState, error) {
 		}
 	}
 	if _, err := os.Stat(nsRef); err != nil {
-		// Fallback to SDK's bundled netstandard.dll if custom NuGet layout is used.
-		sdkRefs, _ := filepath.Glob(filepath.Join(dotnetRoot, "sdk", "*", "ref", "netstandard.dll"))
-		if len(sdkRefs) == 0 {
-			return st, fmt.Errorf("netstandard2.1 ref assembly not found at %s", nsRef)
+		packRef := filepath.Join(dotnetRoot, "packs", "NETStandard.Library.Ref", "2.1.0", "ref", "netstandard2.1", "netstandard.dll")
+		if _, perr := os.Stat(packRef); perr == nil {
+			nsRef = packRef
+		} else {
+			// Fallback to SDK's bundled netstandard.dll if custom NuGet layout is used.
+			sdkRefs, _ := filepath.Glob(filepath.Join(dotnetRoot, "sdk", "*", "ref", "netstandard.dll"))
+			if len(sdkRefs) == 0 {
+				return st, fmt.Errorf("netstandard2.1 ref assembly not found at %s", nsRef)
+			}
+			nsRef = sdkRefs[len(sdkRefs)-1]
 		}
-		nsRef = sdkRefs[len(sdkRefs)-1]
 	}
 	st.netstandardRef = nsRef
 

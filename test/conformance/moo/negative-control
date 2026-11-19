@@ -89,7 +89,7 @@ if [ ! -f "$out/stage/list/manifest.moo" ]; then
 fi
 red=$(grep -oE '^ *moo / [a-z-]+' "$out/log" | sed 's/^ *moo \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing retain retain-save " ; green="wire json-read cook-write" ;;
+report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 esac

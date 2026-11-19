@@ -1611,10 +1611,10 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_fixed_apply( con
                the compiled plan counts it exactly as the identity plan's bounds
                pass does and the SAME forged bytes land the SAME out_of_range == 1 on
                either plan (schema#1254, §5.4, §5.8 row 12). */
-            if ( p->aux == 0 && p->dstsize != 0 && p->guard == SCHEMA_BENCH_TABLE_FIXED_NO_GUARD )
+            if ( p->aux == 0 && p->dstsize != 0 )
             {
                 uint64_t raw = 0;
-                raw = bench_table_fixed_get_le( src + p->src, p->size );
+                raw = bench_table_fixed_get_le( src + p->src, p->sign != 0 ? (uint32_t) p->sign : p->size );
                 if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }
             }
             break;
@@ -2284,6 +2284,7 @@ static SCHEMA_UNUSED void bench_table_fixed_push( bench_table_fixed_compiler_t *
         if ( e.op == BENCH_K_TABLE_FIXED_PRESENT ) { reach = 0ull; }
         else if ( e.op == BENCH_K_TABLE_FIXED_PRESENT_DEFAULTS ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.dead; }
         else if ( e.op == BENCH_K_TABLE_FIXED_WIDEN_F ) { reach = (uint64_t) e.src + 4ull; }
+        else if ( e.op == BENCH_K_TABLE_FIXED_CONST ) { reach = ( e.aux == 0 && e.dstsize != 0 ) ? (uint64_t) e.src + (uint64_t) ( e.sign != 0 ? e.sign : e.size ) : 0ull; }
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
@@ -2559,6 +2560,7 @@ static SCHEMA_UNUSED void bench_table_fixed_compile_entry( bench_table_fixed_com
                     none.arm_count = te.children;
                     /* Writer arm count, for a tag past the old set (bill §12.5). */
                     if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
+                    none.sign = (uint8_t) their_tag;
                     bench_table_fixed_push( c, none );
                     c->argw = inner_argw;
                 }

@@ -791,9 +791,9 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseOutOfRange.Error()
 			}
 		case tableFixedConst:
-			// an unguarded None const reads the writer's tag: one past the
+			// a union's None const reads the writer's tag: one past the
 			// writer's arm count (DstSize) is forged (§4.6)
-			if p.Aux == 0 && p.DstSize != 0 && p.Guard == tableFixedNoGuard {
+			if p.Aux == 0 && p.DstSize != 0 {
 				var raw uint64
 				for k := range p.Size {
 					raw |= uint64(src[p.Src+k]) << (8 * k)

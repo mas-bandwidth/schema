@@ -36,13 +36,13 @@ write-refusal)
     file=examples/TabledemoTable.js
     anchor='  if (value.penetration < 0 || value.penetration > 10) { return false; }'
     patch='  // SABOTAGED: no ranged penetration check'
-    want=1 red=write-refusal green=wire
+    want=2 red=write-refusal green=wire
     ;;
 write-refusal-fixed)
     file=examples/TabledemoTable.js
     anchor='  if (value.channel < 0 || value.channel > 63) { return false; }'
     patch='  // SABOTAGED: no bits-width channel check'
-    want=1 red=write-refusal-fixed green=wire
+    want=2 red=write-refusal-fixed green=wire
     ;;
 write-refusal-message)
     file=backend/BackendTable.js
@@ -65,7 +65,18 @@ if [ "$n" != "$want" ]; then
     echo "negative control anchor matched $n times in $src/$file, want exactly $want" >&2
     exit 1
 fi
-awk -v a="$anchor" -v p="$patch" '$0 == a { print p; next } { print }' "$src/$file" > "$out/generated/$file"
+if [ "$mode" = write-refusal ] || [ "$mode" = write-refusal-fixed ]; then
+    awk -v a="$anchor" -v p="$patch" '!done && $0 == a { print p; done=1; next } { print }' "$src/$file" > "$out/generated/$file"
+else
+    awk -v a="$anchor" -v p="$patch" '$0 == a { print p; next } { print }' "$src/$file" > "$out/generated/$file"
+fi
+if [ "$mode" = write-refusal-message ]; then
+    awk '$0 == "  if (!StorePurchaseMessageBodyOk(value)) { return false; }" { print "  // SABOTAGED: no body message preflight"; next } { print }' "$src/backend/BackenddemoTable.js" > "$out/generated/backend/BackenddemoTable.js"
+    if cmp -s "$src/backend/BackenddemoTable.js" "$out/generated/backend/BackenddemoTable.js"; then
+        echo "negative control patched nothing in BackenddemoTable.js: $mode" >&2
+        exit 1
+    fi
+fi
 if cmp -s "$src/$file" "$out/generated/$file"; then
     echo "negative control patched nothing: $mode" >&2
     exit 1

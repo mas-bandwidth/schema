@@ -1684,12 +1684,15 @@ static void test_pointer_shared_node()
         int64_t wrote = graphdemo::SceneSave( builder.AsConst(), wire, sizeof( wire ) );
         CHECK( wrote > 0 );
         int64_t region_need = graphdemo::SceneLoadMeasure( wire, wrote );
-        uint8_t * region = (uint8_t *) malloc( (size_t) region_need );
+        uint8_t * region = region_need > 0 ? (uint8_t *) malloc( (size_t) region_need ) : NULL;
         graphdemo::TableReport report;
-        const graphdemo::Scene * loaded = graphdemo::SceneLoad( region, region_need, wire, wrote, &report );
+        const graphdemo::Scene * loaded = region != NULL ? graphdemo::SceneLoad( region, region_need, wire, wrote, &report ) : NULL;
         CHECK( loaded != NULL && !report.damaged );
-        CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
-        CHECK( graphdemo::ListNodeAt( loaded->head ) == graphdemo::ListNodeAt( loaded->alias ) );
+        if ( loaded != NULL )
+        {
+            CHECK( graphdemo::ListNodeAt( loaded->head )->value == 1234 );
+            CHECK( graphdemo::ListNodeAt( loaded->head ) == graphdemo::ListNodeAt( loaded->alias ) );
+        }
         free( region );
     }
 }
@@ -9331,29 +9334,35 @@ static void test_was_rows()
     // and W2's fleet under W1's Vessel, every node named, every value landed
     {
         const int64_t need = tblw2::FleetLoadMeasure( w1, n1 );
-        uint8_t * region = (uint8_t *) malloc( (size_t) need );
+        uint8_t * region = need > 0 ? (uint8_t *) malloc( (size_t) need ) : NULL;
         tblw2::TableReport report;
-        const tblw2::Fleet * root = tblw2::FleetLoad( region, need, w1, n1, &report );
+        const tblw2::Fleet * root = region != NULL ? tblw2::FleetLoad( region, need, w1, n1, &report ) : NULL;
         CHECK( root != NULL && !report.damaged && report.unknown == 0 );
-        const tblw2::Ship * flagship = tblw2::ShipAt( root->flagship );
-        CHECK( flagship != NULL && strcmp( flagship->name, "Aurora" ) == 0 && flagship->hull == 250 );
-        CHECK( flagship->caps == tblw2::Caps_Crouch && flagship->tag_length == 3 && flagship->tag[2] == 'q' );
-        CHECK( strcmp( flagship->badge.label, "vip" ) == 0 );
-        CHECK( root->escorts_count == 2 && tblw2::ShipAt( root->escorts[1] ) == flagship );
-        const tblw2::Ship * escort = tblw2::ShipAt( root->escorts[0] );
-        CHECK( escort != NULL && strcmp( escort->name, "untitled" ) == 0 && escort->caps == ( tblw2::Caps_Jump | tblw2::Caps_Fly ) );
-        static uint8_t again[4096];
-        const int64_t re = tblw2::FleetSave( root, again, sizeof( again ) );
-        CHECK( re == n1 && memcmp( again, w1, (size_t) n1 ) == 0 );
+        if ( root != NULL )
+        {
+            const tblw2::Ship * flagship = tblw2::ShipAt( root->flagship );
+            CHECK( flagship != NULL && strcmp( flagship->name, "Aurora" ) == 0 && flagship->hull == 250 );
+            CHECK( flagship->caps == tblw2::Caps_Crouch && flagship->tag_length == 3 && flagship->tag[2] == 'q' );
+            CHECK( strcmp( flagship->badge.label, "vip" ) == 0 );
+            CHECK( root->escorts_count == 2 && tblw2::ShipAt( root->escorts[1] ) == flagship );
+            const tblw2::Ship * escort = tblw2::ShipAt( root->escorts[0] );
+            CHECK( escort != NULL && strcmp( escort->name, "untitled" ) == 0 && escort->caps == ( tblw2::Caps_Jump | tblw2::Caps_Fly ) );
+            static uint8_t again[4096];
+            const int64_t re = tblw2::FleetSave( root, again, sizeof( again ) );
+            CHECK( re == n1 && memcmp( again, w1, (size_t) n1 ) == 0 );
+        }
         free( region );
     }
     {
         const int64_t need = tblw1::FleetLoadMeasure( w2, n2 );
-        uint8_t * region = (uint8_t *) malloc( (size_t) need );
+        uint8_t * region = need > 0 ? (uint8_t *) malloc( (size_t) need ) : NULL;
         tblw1::TableReport report;
-        const tblw1::Fleet * root = tblw1::FleetLoad( region, need, w2, n2, &report );
+        const tblw1::Fleet * root = region != NULL ? tblw1::FleetLoad( region, need, w2, n2, &report ) : NULL;
         CHECK( root != NULL && !report.damaged && report.unknown == 0 );
-        CHECK( tblw1::VesselAt( root->flagship ) != NULL && strcmp( tblw1::VesselAt( root->flagship )->name, "Aurora" ) == 0 );
+        if ( root != NULL )
+        {
+            CHECK( tblw1::VesselAt( root->flagship ) != NULL && strcmp( tblw1::VesselAt( root->flagship )->name, "Aurora" ) == 0 );
+        }
         free( region );
     }
 }

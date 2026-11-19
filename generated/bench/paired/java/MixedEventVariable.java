@@ -589,7 +589,7 @@ public final class MixedEventVariable {
      * value; docs/SPEC-TABLES.md §16, §3.4).
      */
     public static Value fromFixed(MixedEventFixed.Value fixed) {
-        assert(fixed.type & 0xFF) <= 3;
+        assert (fixed.type & 0xFF) <= 3;
         Value v = new Value();
         v.tag = fixed.type;
         if ((fixed.type & 0xFF) == 1) {

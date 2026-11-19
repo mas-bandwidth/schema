@@ -128,11 +128,11 @@ clean-vet|clean-format)
     # the gate's own recipe then runs over that copy
     if [ "$mode" = clean-vet ]; then
         # the block init's size refusal loses the argument its last verb reads
-        overlay_one internal/codegen/gotable/block.go '0,/, what, got, want))/s//, what, got)) \/\/ SABOTAGED/'
+        overlay_one internal/codegen/gotable/block.go '/func tableBlockLayoutSize/,/tableBlockLayoutOffset/ s/, what, got, want))/, what, got)) \/\/ SABOTAGED/'
         words='reads arg #3, but call has 2 args'
     else
         # the emitter hands back its text without go/format
-        overlay_one internal/codegen/gotable/gotable.go 's/src, err := format.Source(\[\]byte(repoPrefix(h.String())))/src, err := []byte(repoPrefix(h.String())), error(nil) \/\/ SABOTAGED: no go\/format/'
+        overlay_one internal/codegen/gotable/prune.go 's/files\[name\] = buf\.Bytes()/files[name] = append([]byte("  "), buf.Bytes()...) \/\/ SABOTAGED: no go\/format/'
         words='noncanonical generated Go'
     fi
     overlay_write

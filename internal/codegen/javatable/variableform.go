@@ -1568,8 +1568,7 @@ public final class TableVariable {
     // THE ID TABLE'S DISTINCTNESS PROBE reuses one per-thread 8192-slot table,
     // twice the 4096-entry bound so it is never more than half full (§3): the
     // walk allocates nothing per call and every slot compares the stored id.
-    private static final ThreadLocal<IdProbe> ID_PROBE =
-            ThreadLocal.withInitial(IdProbe::new);
+    private static final ThreadLocal<IdProbe> ID_PROBE = ThreadLocal.withInitial(IdProbe::new);
 
     static final class IdProbe {
         final long[] seen = new long[8192];
@@ -3103,21 +3102,24 @@ public final class TableJson {
     static Long parseRfc3339(String s) {
         int n = s.length();
         if (n < 20) return null;
-        int y0 = timestampDigit(s, 0), y1 = timestampDigit(s, 1), y2 = timestampDigit(s, 2), y3 = timestampDigit(s, 3);
+        int y0 = timestampDigit(s, 0),
+                y1 = timestampDigit(s, 1),
+                y2 = timestampDigit(s, 2),
+                y3 = timestampDigit(s, 3);
         int m0 = timestampDigit(s, 5), m1 = timestampDigit(s, 6);
         int d0 = timestampDigit(s, 8), d1 = timestampDigit(s, 9);
         int h0 = timestampDigit(s, 11), h1 = timestampDigit(s, 12);
         int min0 = timestampDigit(s, 14), min1 = timestampDigit(s, 15);
         int s0 = timestampDigit(s, 17), s1 = timestampDigit(s, 18);
-        if (y0 < 0 || y1 < 0 || y2 < 0 || y3 < 0
-                || m0 < 0 || m1 < 0 || d0 < 0 || d1 < 0
-                || h0 < 0 || h1 < 0 || min0 < 0 || min1 < 0
-                || s0 < 0 || s1 < 0) {
+        if (y0 < 0 || y1 < 0 || y2 < 0 || y3 < 0 || m0 < 0 || m1 < 0 || d0 < 0 || d1 < 0 || h0 < 0
+                || h1 < 0 || min0 < 0 || min1 < 0 || s0 < 0 || s1 < 0) {
             return null;
         }
-        if (s.charAt(4) != '-' || s.charAt(7) != '-'
+        if (s.charAt(4) != '-'
+                || s.charAt(7) != '-'
                 || (s.charAt(10) != 'T' && s.charAt(10) != 't')
-                || s.charAt(13) != ':' || s.charAt(16) != ':') {
+                || s.charAt(13) != ':'
+                || s.charAt(16) != ':') {
             return null;
         }
         int year = y0 * 1000 + y1 * 100 + y2 * 10 + y3;
@@ -3166,8 +3168,12 @@ public final class TableJson {
         } else {
             return null;
         }
-        long sec = timestampDays(year, month, day) * 86400L
-                + hour * 3600L + minute * 60L + second + offsetSec;
+        long sec =
+                timestampDays(year, month, day) * 86400L
+                        + hour * 3600L
+                        + minute * 60L
+                        + second
+                        + offsetSec;
         if (sec < -9223372037L || sec > 9223372036L) return null;
         if (sec == -9223372037L && sub < 145_224_192L) return null;
         if (sec == 9223372036L && sub > 854_775_807L) return null;
@@ -3273,9 +3279,10 @@ public final class TableJson {
                 b.append(text);
                 return;
             }
-            boolean same = single
-                    ? (double) Float.parseFloat(text) == value
-                    : Double.parseDouble(text) == value;
+            boolean same =
+                    single
+                            ? (double) Float.parseFloat(text) == value
+                            : Double.parseDouble(text) == value;
             if (same) {
                 b.append(text);
                 return;
@@ -5264,7 +5271,11 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		b.WriteString("        in.space();\n")
 		fmt.Fprintf(b, "        if (in.peek() != '[') { if (in.rep != null && in.rep.reason == null) { in.rep.reason = \"json_root_not_array: %s\"; } in.bad = true; return; }\n", st.DeclaredName())
 		fmt.Fprintf(b, "        v.%s.clear();\n", varMember(st.Fields[0]))
-		readJsonFieldValue(b, u, st, st.Fields[0], "depth")
+		var arrSub strings.Builder
+		readJsonFieldValue(&arrSub, u, st, st.Fields[0], "depth")
+		arrCode := strings.TrimPrefix(arrSub.String(), "        ")
+		arrCode = strings.ReplaceAll(arrCode, "\n                ", "\n        ")
+		b.WriteString(arrCode)
 		b.WriteString("    }\n\n")
 	} else {
 		b.WriteString("        in.space();\n")
@@ -5683,15 +5694,18 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		// §5.1 rows 3 and 4): the save's graph walk does not refuse them in a
 		// release build, but toJson still answers null for a value its reader
 		// would refuse.
-		b.WriteString("        {\n")
+		elementBound := int64(-1)
+		if !ir.TextListUnbounded(f) {
+			elementBound = ir.TextListValue(f).Type.Size
+		}
+		hasTextListCheck := f.Array == ir.ArrayCounted || f.ArrayBound > 0 || elementBound >= 0 || f.TextTotal > 0
+		if hasTextListCheck {
+			b.WriteString("        {\n")
+		}
 		if f.Array == ir.ArrayCounted {
 			fmt.Fprintf(b, "            if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(%q); }\n", m, f.ArrayMin, m, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
 		} else if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "            if (v.%s.size() > %d) { throw new TableJson.Refused(%q); }\n", m, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
-		}
-		elementBound := int64(-1)
-		if !ir.TextListUnbounded(f) {
-			elementBound = ir.TextListValue(f).Type.Size
 		}
 		if elementBound >= 0 || f.TextTotal > 0 {
 			b.WriteString("            long spent = 0L;\n")
@@ -5711,7 +5725,9 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			}
 			b.WriteString("            }\n")
 		}
-		b.WriteString("        }\n")
+		if hasTextListCheck {
+			b.WriteString("        }\n")
+		}
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
 		b.WriteString("            b.append('[');\n")
 		fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)

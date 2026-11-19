@@ -744,7 +744,8 @@ public final class BenchBitsVariable {
                 assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
             }
             if (o instanceof MixedPickupEventVariable.Value) {
-                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+                assert MixedPickupEventVariable.checkWrite(
+                        (MixedPickupEventVariable.Value) o, walk);
             }
             if (o instanceof MixedStatVariable.Value) {
                 assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);
@@ -1450,7 +1451,10 @@ public final class BenchBitsVariable {
                     in.rep.refuse("text_damaged");
                 }
                 seenField[7] = true;
-                if (in.peek() != 'n' && !((in.peek() == '"' || in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')))) {
+                if (in.peek() != 'n'
+                        && !((in.peek() == '"'
+                                || in.peek() == '-'
+                                || (in.peek() >= '0' && in.peek() <= '9')))) {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {

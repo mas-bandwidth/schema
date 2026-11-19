@@ -173,14 +173,7 @@ build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.
 		-o build/conformance-unity/driver --nologo -v quiet
 	$(DOTNET) restore test/conformance/unity/unit/schemaunit.csproj \
 		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_restore" --nologo -v quiet
-	@{ awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; sub(/^ +/, ""); print key "\t" $$0 }' testdata/conformance/tables/MANIFEST.txt; printf 'cards\ttables/cards\n'; } | \
-		xargs -P 8 -I {} sh -c 'key=$$(printf "%s" "{}" | cut -f1); paths=$$(printf "%s" "{}" | cut -f2-); \
-		mkdir -p "build/conformance-unity/_gen/$$key"; \
-		./bin/schema generate --lang unity --out "build/conformance-unity/_gen/$$key" $$paths && \
-		$(DOTNET) build test/conformance/unity/unit/schemaunit.csproj -c Debug \
-			-p:UnityUnitDir="$(CURDIR)/build/conformance-unity/_gen/$$key" \
-			-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art/$$key" \
-			-o "build/conformance-unity/$$key" --nologo -v quiet >/dev/null'
+	@python3 -c 'import concurrent.futures,os,subprocess,sys; dotnet,cur=sys.argv[1],sys.argv[2]; units=[(p[1],p[2:]) for l in open("testdata/conformance/tables/MANIFEST.txt") for p in [l.split()] if p and p[0]=="unit"]+[("cards",["tables/cards"])]; run=lambda u:(os.makedirs(f"build/conformance-unity/_gen/{u[0]}",exist_ok=True),subprocess.run(["./bin/schema","generate","--lang","unity","--out",f"build/conformance-unity/_gen/{u[0]}",*u[1]],check=True),subprocess.run([dotnet,"build","test/conformance/unity/unit/schemaunit.csproj","-c","Debug",f"-p:UnityUnitDir={cur}/build/conformance-unity/_gen/{u[0]}",f"-p:ArtifactsPath={cur}/build/conformance-unity/_art/{u[0]}","-o",f"build/conformance-unity/{u[0]}","--nologo","-v","quiet"],check=True,stdout=subprocess.DEVNULL)); list(concurrent.futures.ThreadPoolExecutor(max_workers=8).map(run,units))' "$(DOTNET)" "$(CURDIR)"
 	@touch $@
 
 CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)

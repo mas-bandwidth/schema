@@ -25,6 +25,7 @@ enum
     kNoSetterExit = 12
 };
 
+#ifndef CONFORMANCE_NO_WREF_CASE
 /* the units the rows name, each with its setter and its writer */
 static const struct
 {
@@ -39,6 +40,7 @@ static const struct
     { "cooktorture", conformance_write_refusal_set_cooktorture, conformance_write_refusal_write_cooktorture },
     { "tblvarevo3", conformance_write_refusal_set_tblvarevo3, conformance_write_refusal_write_tblvarevo3 },
 };
+#endif
 
 /* The hex of a `bytes` or `units` value: two digits a byte, or four a unit. */
 static int write_refusal_hex( const char * text, int digits, uint32_t * out, int32_t capacity, int32_t * count )
@@ -114,6 +116,7 @@ int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32
     return 1;
 }
 
+#ifndef CONFORMANCE_NO_WREF_CASE
 /* The writer a surface names, over the one value the row set: the child's
    exit code. */
 static int write_refusal_write( int surface, int which, const ConformanceCodec * codec, const char * root, const char * path,
@@ -177,3 +180,4 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
     if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kNoSetterExit ) { return CONFORMANCE_NO_SETTER; }
     return CONFORMANCE_BROKEN;
 }
+#endif

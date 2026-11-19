@@ -12,8 +12,9 @@ for mode in wire json; do
     esac
     go run ./tools/sabotage -name "$sabotage" -out "$dir/source.gotext" "$source"
     if [ "$mode" = wire ]; then
-        sed -i -e "s/if (ids\[i\] == ids\[i - 1\]) { return false; }/if (ids[i] == ids[i - 1] \&\& count < 0) { return false; }/" \
+        sed -i.bak -e "s/if (ids\[i\] == ids\[i - 1\]) { return false; }/if (ids[i] == ids[i - 1] \&\& count < 0) { return false; }/" \
                -e "s/if (id == Read64(vocabulary, j)) { return false; }/if (id == Read64(vocabulary, j) \&\& count < 0) { return false; }/" "$dir/source.gotext"
+        rm -f "$dir/source.gotext.bak"
     fi
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema

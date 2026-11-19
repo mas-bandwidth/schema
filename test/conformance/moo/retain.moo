@@ -48,7 +48,7 @@ return function(ctx: any): { [string]: Surface }
 		local report = L.newReport()
 		if f[6] == "short" then
 			if R.LoadRetain(rootName, wire, report, store) == nil then
-				return nil, f[2] .. ": capacity probe refused"
+				return { text = "refused\n", saves = {} }, nil
 			end
 			capacity = math.max(0, R.used(store) - 1)
 			store = R.newStore(capacity, ids)

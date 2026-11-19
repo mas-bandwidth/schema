@@ -26,7 +26,7 @@ fi
 schema=$1
 w=$2
 rm -rf "$w" && mkdir -p "$w/src" || exit 2
-cp tables/examples/*.schema "$w/src/" || exit 2
+cp tables/examples/*.schema tables/examples/schema.lock "$w/src/" || exit 2
 printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' >"$w/src/Aaa.schema"
 "$schema" generate --lang goose --out "$w/base" tables/examples >/dev/null 2>"$w/base.log" || { cat "$w/base.log"; exit 2; }
 "$schema" generate --lang goose --out "$w/added" "$w/src" >/dev/null 2>"$w/added.log" || { cat "$w/added.log"; exit 2; }

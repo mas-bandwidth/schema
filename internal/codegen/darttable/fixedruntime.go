@@ -1228,9 +1228,11 @@ int tableFixedRun(
         // THE TAG IS READ UNSIGNED: a Dart int is 64-bit signed, so an
         // eight-byte tag with the high bit set is negative here and a signed
         // '>' would pass it as if it named an arm.
-        final arms = plan[b + TableFixedLane.meta];
-        if (value == 0 && arms != 0 && guard == tableFixedNoGuard) {
-          final raw = tableFixedTagAt(source, s, size);
+        final meta = plan[b + TableFixedLane.meta];
+        final arms = meta & 0xff;
+        if (value == 0 && arms != 0) {
+          final tagW = (meta >>> 8) != 0 ? (meta >>> 8) : size;
+          final raw = tableFixedTagAt(source, s, tagW);
           if (raw < 0 || raw > arms) {
             return TableFixedRefusal.outOfRange;
           }
@@ -1382,14 +1384,15 @@ abstract final class TableFixedCompiler {
   /// is held to is the WRITER's declared root size (§5.2), and never this
   /// reader's: an entry that reached past it would read the NEXT record's
   /// bytes.
-  static int srcEnd(int op, int src, int size, int aux, int guard, int argw) {
+  static int srcEnd(int op, int src, int size, int aux, int guard, int argw, [int meta = 0]) {
     var end = 0;
     switch (op) {
       case TableFixedOp.constant:
         // a constant reads no source at all — EXCEPT the union's None const,
         // which reads the writer's raw tag to count a clamp past its arm set
         if (aux == 0 && size != 0) {
-          end = src + size;
+          final tagW = (meta >>> 8) != 0 ? (meta >>> 8) : size;
+          end = src + tagW;
         }
         break;
       case TableFixedOp.count:
@@ -1431,7 +1434,7 @@ abstract final class TableFixedCompiler {
     // bound is the writer's declared root size and not this reader's: an
     // entry that reached past it would read the NEXT record's bytes, so the
     // plan is refused under layout_record_too_large rather than landed short.
-    final end = srcEnd(op, src, size, aux, guard, plan.argw);
+    final end = srcEnd(op, src, size, aux, guard, plan.argw, meta);
     if (plan.record != 0 && end > plan.record) {
       plan.tooLarge = true;
       return;
@@ -1778,7 +1781,8 @@ abstract final class TableFixedCompiler {
           0,
           guard,
           arg,
-          (theirArms >= 1 && theirArms <= 255) ? theirArms : 0,
+          ((theirArms >= 1 && theirArms <= 255) ? theirArms : 0) |
+              (((theirTag >= 1 && theirTag <= 8) ? theirTag : 1) << 8),
         );
         plan.argw = innerArgw;
         // THE DEAD BYTES OF THIS UNION ARE CHECKED IN THE PLAN

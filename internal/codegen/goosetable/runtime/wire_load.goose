@@ -1659,13 +1659,21 @@ fn scan_nodes(c: LoadCtx&, payload: Rd) -> bool {
         // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3, §5): it is damage
         // anywhere but its own transport. The two blob ids are lawful types.
         if type_id == NodeWireId || type_id == BuildVersionWireId || type_id == VocabularyWireId { return false; }
-        c.nodes.push(LoadNode { tab: -1, blob: 0, off: r.off, len: len as! i64, val: -1, named: false });
-        // the type id rides in val's place until pass one names it
-        c.nodes[c.nodes.len - 1].val = type_id as! i64;
+        let node = LoadNode { tab: -1, blob: 0, off: r.off, len: len as! i64, val: type_id as! i64, named: false };
+        let fi = found as! i64;
+        if fi < c.nodes.len {
+            c.nodes[fi] = node;
+        } else {
+            c.nodes.push(node);
+        }
         r.off += len as! i64;
         found += 1;
     }
-    return r.off == r.end && declared == found;
+    if r.off == r.end && declared == found {
+        c.node_n = found as! i64;
+        return true;
+    }
+    return false;
 }
 
 fn place_named(c: LoadCtx&, root: i64, name: const u8[:]) -> bool {
@@ -1682,7 +1690,6 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     var scanned = true;
     if framed && present {
         scanned = scan_nodes(c, payload);
-        if scanned { c.node_n = c.nodes.len; }
     }
     if !framed && present { c.report.body_damaged = true; }
     else if !scanned { c.report.body_damaged = true; }
@@ -2233,8 +2240,7 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
-    vals.clear();
-    nodes.clear();
+    for k in nodes.len { nodes[k] = LoadNode { tab: -1, blob: 0, off: 0, len: 0, val: -1, named: false }; }
     var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: retaining };
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a
     // file's own, and any form but 1 is refused with no damage reported

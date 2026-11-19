@@ -77,8 +77,8 @@ func intDomainCases() []intDomainCase {
 			},
 		},
 		{
-			name:   "below_minimum",
-			refuse: true,
+			name: "below_minimum",
+			want: "ANNOUNCE",
 			ends: map[string]intDomainEnd{
 				"i": end(-129, 0),
 				"j": end(-2147483649, 0),
@@ -86,8 +86,8 @@ func intDomainCases() []intDomainCase {
 			},
 		},
 		{
-			name:   "far_outside",
-			refuse: true,
+			name: "far_outside",
+			want: "ANNOUNCE",
 			ends: map[string]intDomainEnd{
 				"i": wide(two53, 1), // 2^53 + 1
 				"j": wide(two53, 1),
@@ -298,7 +298,7 @@ func TestMooMessageIntegerHoldsTheReadersKind(t *testing.T) {
 // The product source does not carry that substitution.
 const (
 	intDomainAnchor = "\t\tif n == nil or n < klo or n > khi then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n\t\tend\n\t\traw = n\n"
-	intDomainPlant  = "\t\tlocal held = n or 0\n\t\tif held < klo or held > khi then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n\t\tend\n\t\traw = held\n"
+	intDomainPlant  = "\t\tif false then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n\t\tend\n\t\traw = n or 0\n"
 )
 
 // TestMooMessageIntegerHoldsTheReadersKindNegativeControl restores the
@@ -314,24 +314,24 @@ func TestMooMessageIntegerHoldsTheReadersKindNegativeControl(t *testing.T) {
 		t.Fatal("the kind-domain anchor is not in table_message.moo exactly once")
 	}
 	planted := []byte(strings.Replace(src, intDomainAnchor, intDomainPlant, 1))
-	if bytes.Contains(planted, []byte("raw = n or 0")) {
+	if bytes.Contains(planted, []byte("if n == nil or n < klo or n > khi then")) {
 		t.Fatal("the plant left the product substitution in place")
 	}
 	if err := os.WriteFile(filepath.Join(g.dir, "table_message.moo"), planted, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	var far intDomainCase
+	var past intDomainCase
 	for _, c := range intDomainCases() {
-		if c.name == "far_outside" {
-			far = c
+		if c.name == "one_past_maximum" {
+			past = c
 			break
 		}
 	}
-	if far.name == "" {
-		t.Fatal("the far-outside row is missing")
+	if past.name == "" {
+		t.Fatal("the one_past_maximum row is missing")
 	}
-	ann, msg := intDomainWire(t, u, fields, far.ends)
-	if got := intDomainRun(t, g, ann, msg); got != "accept 0 0 0" {
-		t.Fatalf("the far-outside row did not land 0 once the substitution was restored: %s", got)
+	ann, msg := intDomainWire(t, u, fields, past.ends)
+	if got := intDomainRun(t, g, ann, msg); got != "accept 128 2147483648 256" {
+		t.Fatalf("the one_past_maximum row did not land once the kind-domain check was removed: %s", got)
 	}
 }

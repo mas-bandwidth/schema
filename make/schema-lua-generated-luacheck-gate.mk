@@ -141,7 +141,7 @@ tables-lua-luacheck-negative-control: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/
 	if ! $(LUACHECK) --config $(LUA_LUACHECK_CONFIG) --no-color build/lua-luacheck-control/clean.lua > build/lua-luacheck-control/clean.log 2>&1; then \
 		echo "NEGATIVE CONTROL: the unplanted control file is already red"; cat build/lua-luacheck-control/clean.log; exit 1; \
 	fi; \
-	sed -i -e 's/^return M$$/local lua_luacheck_plant = 1/' -e 's/^return _M$$/local lua_luacheck_plant = 1/' build/lua-luacheck-control/clean.lua; \
+	sed -i.bak -e 's/^return M$$/local lua_luacheck_plant = 1/' -e 's/^return _M$$/local lua_luacheck_plant = 1/' build/lua-luacheck-control/clean.lua && rm -f build/lua-luacheck-control/clean.lua.bak; \
 	grep -q lua_luacheck_plant build/lua-luacheck-control/clean.lua || { echo "NEGATIVE CONTROL: the plant did not apply"; exit 1; }; \
 	if $(LUACHECK) --config $(LUA_LUACHECK_CONFIG) --no-color build/lua-luacheck-control/clean.lua > build/lua-luacheck-control/plant.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the planted dead local left luacheck green"; exit 1; \

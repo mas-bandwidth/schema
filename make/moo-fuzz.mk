@@ -67,8 +67,8 @@ $(MOOFUZZHOST): tools/moofuzzhost/main.cpp make/moo.mk
 	@cd $(MOOFUZZHOST_SRC) && git init -q && git fetch -q --depth 1 $(MOO_REPO) $(MOO_PIN) && git checkout -q FETCH_HEAD
 	@got=$$(git -C $(MOOFUZZHOST_SRC) rev-parse HEAD); if [ "$$got" != "$(MOO_PIN)" ]; then \
 		echo "moofuzzhost REFUSES: the checkout is $$got, not the pin $(MOO_PIN)"; exit 1; fi
-	@cmake -S $(MOOFUZZHOST_SRC) -B $(MOOFUZZHOST_CMAKE) -DCMAKE_BUILD_TYPE=Release >/dev/null
-	@cmake --build $(MOOFUZZHOST_CMAKE) --target Luau.Compiler Luau.VM Luau.Inliner Luau.Bytecode Luau.Ast Moo.Fixed -j $(MOO_BUILD_JOBS) >/dev/null
+	@env -u LDFLAGS cmake -S $(MOOFUZZHOST_SRC) -B $(MOOFUZZHOST_CMAKE) -DCMAKE_BUILD_TYPE=Release >/dev/null
+	@env -u LDFLAGS cmake --build $(MOOFUZZHOST_CMAKE) --target Luau.Compiler Luau.VM Luau.Inliner Luau.Bytecode Luau.Ast Moo.Fixed -j $(MOO_BUILD_JOBS) >/dev/null
 	@$(CXX) -std=c++17 -O2 -DNDEBUG -Wall -Wextra -Wshadow -Werror \
 		-isystem $(MOOFUZZHOST_SRC)/VM/include -isystem $(MOOFUZZHOST_SRC)/Compiler/include \
 		-isystem $(MOOFUZZHOST_SRC)/Common/include -isystem $(MOOFUZZHOST_SRC)/Ast/include \

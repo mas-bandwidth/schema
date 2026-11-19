@@ -345,7 +345,7 @@ func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the repeated-id anchor is not in table_message.moo exactly once")
 	}
-	const order = "if same and hit.k <= lastK then"
+	const order = "if hit.k <= lastK then"
 	if strings.Count(src, order) != 1 {
 		t.Fatal("the field-order anchor is not in table_message.moo exactly once")
 	}

@@ -273,7 +273,9 @@ public final class TableCookWrite {
         }
         if (f.isArray) {
             int used = count(value, f, source);
-            assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(source) >= used);
+            assert used >= 0
+                    && used <= f.arrayBound
+                    && (f.countOffset < 0 || length(source) >= used);
             // a FIXED array's value may hold fewer than N elements: the slots
             // past it are value-initialized (§7.2) and reach no node
             used = Math.min(used, length(source));

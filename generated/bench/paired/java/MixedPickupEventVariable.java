@@ -504,7 +504,8 @@ public final class MixedPickupEventVariable {
                 assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) o, walk);
             }
             if (o instanceof MixedPickupEventVariable.Value) {
-                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) o, walk);
+                assert MixedPickupEventVariable.checkWrite(
+                        (MixedPickupEventVariable.Value) o, walk);
             }
             if (o instanceof MixedStatVariable.Value) {
                 assert MixedStatVariable.checkWrite((MixedStatVariable.Value) o, walk);

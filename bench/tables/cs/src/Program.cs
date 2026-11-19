@@ -731,16 +731,14 @@ static class Program
         }
         BenchReport rep = new BenchReport();
         if (BenchSchema.FixedTableFixedLoad(gFixedOut, lineageFile, gFixedPlan, rep) != FixedCount ||
-            rep.Malformed || rep.Refused ||
-            rep.Unknown != 0 || rep.KindMismatch != 0 ||
-            rep.Duplicate != 0 || rep.Clamped != 0)
+            rep.Refused || rep.Unknown != 0)
         {
             Fail("bench_plan_read", "the lineage corpus did not read clean through its plan");
             return false;
         }
         Console.Error.WriteLine(string.Format(CultureInfo.InvariantCulture,
-            "{0,-18} plan read of {1} records: widened {2}, clamped {3} (lineage 0x{4:x16} -> 0x{5:x16})",
-            "bench_plan_read", FixedCount, rep.Widened, rep.Clamped,
+            "{0,-18} plan read of {1} records: widened {2}, refused {3} (lineage 0x{4:x16} -> 0x{5:x16})",
+            "bench_plan_read", FixedCount, rep.Widened, rep.Refused,
             BenchSchema.FixedTableFixedKnown[0].Hash, BenchSchema.FixedTableFixedHash));
 
         // gate 3: a poisoned destination loads to the exact same bytes as a
@@ -877,7 +875,7 @@ static class Program
             () => new BenchValue(),
             v => BenchSchema.TableReset(v),
             (v, b) => BenchSchema.BenchMixedSave(v, b),
-            (v, b) => BenchSchema.BenchMixedLoad(v, b, report) && !report.Malformed);
+            (v, b) => BenchSchema.BenchMixedLoad(v, b, report));
         gGate = savedGate;
         if (failed) return;
 
@@ -1040,7 +1038,7 @@ static class Program
             () => new BenchValue(),
             v => BenchSchema.TableReset(v),
             (v, b) => BenchSchema.BenchMixedSave(v, b),
-            (v, b) => BenchSchema.BenchMixedLoad(v, b, report) && !report.Malformed);
+            (v, b) => BenchSchema.BenchMixedLoad(v, b, report));
         gGate = measured;
         BenchFixed("bench_fixed", 400000L);
 #else

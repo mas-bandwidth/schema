@@ -79,18 +79,20 @@ func writeFixedUnionToVariable(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 // writeFixedField emits the conversion of one field: the optional present flag
 // beside its payload, then the payload by kind.
 func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname string) {
+	ind := "        "
 	if f.Type.Optional {
 		fmt.Fprintf(b, "        v.%sPresent = fixed.%sPresent;\n", vname, fname)
 		fmt.Fprintf(b, "        if (fixed.%sPresent) {\n", fname)
 		defer b.WriteString("        }\n")
+		ind = "            "
 	}
 	// text and bytes: a fixed buffer beside its live length
 	if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		if f.Type.Kind == ir.TString {
-			fmt.Fprintf(b, "        v.%s = TableVariable.utf8FromFixed(fixed.%s, fixed.%sLength);\n", vname, fname, fname)
+			fmt.Fprintf(b, "%sv.%s = TableVariable.utf8FromFixed(fixed.%s, fixed.%sLength);\n", ind, vname, fname, fname)
 		} else {
-			fmt.Fprintf(b, "        assert fixed.%sLength >= 0 && fixed.%sLength <= fixed.%s.length;\n", fname, fname, fname)
-			fmt.Fprintf(b, "        v.%s = java.util.Arrays.copyOf(fixed.%s, fixed.%sLength);\n", vname, fname, fname)
+			fmt.Fprintf(b, "%sassert fixed.%sLength >= 0 && fixed.%sLength <= fixed.%s.length;\n", ind, fname, fname, fname)
+			fmt.Fprintf(b, "%sv.%s = java.util.Arrays.copyOf(fixed.%s, fixed.%sLength);\n", ind, vname, fname, fname)
 		}
 		return
 	}
@@ -98,7 +100,7 @@ func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname s
 	if f.Array == ir.ArrayNone && f.KeyEnum == "" && f.Type.Kind == ir.TNamed {
 		switch f.Type.Ref.(type) {
 		case *ir.Struct, *ir.Union:
-			fmt.Fprintf(b, "        v.%s = %sVariable.fromFixed(fixed.%s);\n", vname, f.Type.Name, fname)
+			fmt.Fprintf(b, "%sv.%s = %sVariable.fromFixed(fixed.%s);\n", ind, vname, f.Type.Name, fname)
 			return
 		}
 	}
@@ -106,26 +108,26 @@ func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname s
 	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
 		var bound string
 		if f.Array == ir.ArrayCounted {
-			fmt.Fprintf(b, "        assert fixed.%sCount >= %d && fixed.%sCount <= %d;\n", fname, f.ArrayMin, fname, f.ArrayBound)
+			fmt.Fprintf(b, "%sassert fixed.%sCount >= %d && fixed.%sCount <= %d;\n", ind, fname, f.ArrayMin, fname, f.ArrayBound)
 			bound = "fixed." + fname + "Count"
 		} else {
 			bound = "fixed." + fname + ".length"
 		}
 		elem := fixedElementExpr(f, "fixed."+fname+"[i]")
-		fmt.Fprintf(b, "        for (int i = 0; i < %s; i++) {\n", bound)
+		fmt.Fprintf(b, "%sfor (int i = 0; i < %s; i++) {\n", ind, bound)
 		if f.KeyEnum != "" {
 			// a keyed array's list is born pre-filled with the bound's defaults
 			// (generateTableVariable's Value constructor), so its slots are
 			// set, not appended; a bounded or counted array is born empty.
-			fmt.Fprintf(b, "            v.%s.set(i, %s);\n", vname, elem)
+			fmt.Fprintf(b, "%s    v.%s.set(i, %s);\n", ind, vname, elem)
 		} else {
-			fmt.Fprintf(b, "            v.%s.add(%s);\n", vname, elem)
+			fmt.Fprintf(b, "%s    v.%s.add(%s);\n", ind, vname, elem)
 		}
-		b.WriteString("        }\n")
+		b.WriteString(ind + "}\n")
 		return
 	}
 	// a scalar leaf
-	fmt.Fprintf(b, "        v.%s = %s;\n", vname, fixedScalarExpr(f, "fixed."+fname))
+	fmt.Fprintf(b, "%sv.%s = %s;\n", ind, vname, fixedScalarExpr(f, "fixed."+fname))
 }
 
 // fixedElementExpr converts one fixed array element into the variable list's
