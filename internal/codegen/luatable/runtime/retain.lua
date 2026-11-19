@@ -648,16 +648,6 @@ local function kind_width(kind)
   return 0
 end
 
-local function file_minimum(kind)
-  local n = kind_width(kind)
-  if n ~= 0 then return n end
-  if kind == 13 then return 16 end
-  if kind == 14 or kind == 16 then return 10 end
-  if kind == 15 or kind == 30 then return 8 end
-  if kind == 12 or kind == 31 or kind == 32 then return 1 end
-  return 0
-end
-
 local function tr_reader(b, at, lim)
   return { b = b, at = at, lim = lim, bad = false }
 end
@@ -1436,9 +1426,7 @@ local function save_retain(T, name, v, retain, report)
       else
         local body = W()
         local orig = k + 1
-        if retain ~= nil and retain.origNode ~= nil then
-          orig = retain.origNode[n.v] or -1
-        end
+        if retain ~= nil and retain.origNode ~= nil then orig = retain.origNode[n.v] or -1 end
         if not write_body(T, ids, nodes, n.codec, n.v, body, { node = orig, steps = {} }, retain, report) then
           return nil
         end
@@ -1502,9 +1490,7 @@ function S.LoadRetain(T, name, bytes, retain, report, into)
     retain.origNode = {}
     if state.nodeslist ~= nil then
       for k, ne in ipairs(state.nodeslist) do
-        if ne ~= nil and ne.kind == "t" and ne.value ~= nil then
-          retain.origNode[ne.value] = k + 1
-        end
+        if ne ~= nil and ne.kind == "t" and ne.value ~= nil then retain.origNode[ne.value] = k + 1 end
       end
     end
   end

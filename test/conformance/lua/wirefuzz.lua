@@ -76,7 +76,9 @@ local function load_unit(key)
   if path == nil then return false end
   local dir, module = path:match("^(.*)/([^/]+)%.lua$")
   local before = {}
-  for name in pairs(package.loaded) do before[name] = true end
+  for name in pairs(package.loaded) do
+    before[name] = true
+  end
   local saved_path = package.path
   package.path = dir .. "/?.lua"
   local ok, T, L, S, F, R = pcall(function()
@@ -117,9 +119,7 @@ for i = 1, count do
     local u = load_unit(unit)
     if u and u.T.Tables and u.T.Tables[root] ~= nil then
       local desc = u.T.Tables[root]
-      if retain == 0 or desc.variable then
-        entry = { unit = u, root = root, desc = desc, retain = (retain == 1) }
-      end
+      if retain == 0 or desc.variable then entry = { unit = u, root = root, desc = desc, retain = (retain == 1) } end
     end
   end
   roster[i] = entry
@@ -141,8 +141,15 @@ stdout:flush()
 -- the tolerant load lands nothing and names the float in the report, and the
 -- reply says so with the refusal verdict, as every leg's does.
 local function answer(entry, wire)
-  local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
-                   outOfRange = 0, widened = 0, repeatedKey = 0 }
+  local report = {
+    damaged = false,
+    refused = 0,
+    unknown = 0,
+    kindChanged = 0,
+    outOfRange = 0,
+    widened = 0,
+    repeatedKey = 0,
+  }
   local loaded, measure, saved = false, -1, nil
   local T, L, S = entry.unit.T, entry.unit.load, entry.unit.save
   if not entry.desc.variable then
@@ -181,9 +188,7 @@ local function answer(entry, wire)
         local m = R.MeasureRetain(T, entry.root, v, store)
         if m ~= nil then
           local out = R.SaveRetain(T, entry.root, v, store, report)
-          if out ~= nil and #out == m then
-            saved = out
-          end
+          if out ~= nil and #out == m then saved = out end
         end
       end
     else
@@ -218,13 +223,33 @@ while true do
     end
     loaded, report, measure, saved = a, b, c, d
   end
-  report = report or { damaged = false, refused = 0, unknown = 0, kindChanged = 0,
-                       outOfRange = 0, widened = 0, repeatedKey = 0 } -- an unknown entry
-  stdout:write(string.pack("<Bi4i4i4i4i4BBi8i4i4i8",
-    loaded and 1 or 0,
-    report.unknown, 0, report.widened, 0, 0,
-    (not loaded or report.damaged) and 1 or 0, ((report.refused or 0) > 0 or report.nonFiniteFloat ~= nil) and 1 or 0,
-    measure, report.retained or 0, report.retainLost or 0, saved and #saved or -1))
+  report = report
+    or {
+      damaged = false,
+      refused = 0,
+      unknown = 0,
+      kindChanged = 0,
+      outOfRange = 0,
+      widened = 0,
+      repeatedKey = 0,
+    } -- an unknown entry
+  stdout:write(
+    string.pack(
+      "<Bi4i4i4i4i4BBi8i4i4i8",
+      loaded and 1 or 0,
+      report.unknown,
+      0,
+      report.widened,
+      0,
+      0,
+      (not loaded or report.damaged) and 1 or 0,
+      ((report.refused or 0) > 0 or report.nonFiniteFloat ~= nil) and 1 or 0,
+      measure,
+      report.retained or 0,
+      report.retainLost or 0,
+      saved and #saved or -1
+    )
+  )
   if saved ~= nil and #saved > 0 then stdout:write(saved) end
   stdout:flush()
 end
