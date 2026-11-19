@@ -1,0 +1,4 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# Paths are repository-relative.
+
+names bench/lua/main.lua 1 shape-blind leg: `BenchMixed` named once as root_name for generated packet New/Read/Write; no field, no pinned value, no wire size (callsite)

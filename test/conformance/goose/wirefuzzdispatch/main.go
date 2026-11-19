@@ -279,6 +279,11 @@ func relay(pending <-chan *child, w *bufio.Writer) error {
 				return fmt.Errorf("%s replied short: %w", c.name, err)
 			}
 		}
+		if len(pending) == 0 {
+			if err := w.Flush(); err != nil {
+				return err
+			}
+		}
 	}
 	return w.Flush()
 }

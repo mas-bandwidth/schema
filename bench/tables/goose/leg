@@ -1,16 +1,41 @@
 #!/bin/sh
-# THE GOOSE LEG of the tables bench (bench/tables/README.md; docs/PORT-GOOSE.md,
-# THE CARD MAP). There is no table codec to build or measure yet — the table
-# surface is descriptors and constructors — so both actions report ABSENT
-# without producing rows. The bench card (schema-goose-bench) replaces this
-# with a `goose build -O2` of the generated codec and a run that prints rows.
+# THE GOOSE LEG of the tables bench (bench/tables/README.md; docs/PORT-GOOSE.md).
+# Compiles the generated Form-1 codec with `goose build -O2` and verifies or
+# measures the 64-record committed corpus.
 set -e
+
+ROOT="$(pwd -P)"
+: "${GOOSE_BENCH_GEN:=build/tables-bench-goose}"
+GEN="$GOOSE_BENCH_GEN"
+: "${GOOSE:=$ROOT/dist/goose-v2026.2/goose}"
+
 case "$1" in
-build|run)
-	exit 2
-	;;
+build)
+    [ -x "$GOOSE" ] || command -v "$GOOSE" >/dev/null 2>&1 || { echo "no goose compiler at $GOOSE -- run make dist-goose" >&2; exit 2; }
+    SCHEMA_BIN="./bin/schema"
+    if [ ! -x "$SCHEMA_BIN" ]; then
+        if [ -x "./build/schema-goose" ]; then
+            SCHEMA_BIN="./build/schema-goose"
+        else
+            echo "missing bin/schema -- run make bin/schema" >&2
+            exit 2
+        fi
+    fi
+    rm -rf "$GEN" "$GEN.src"
+    mkdir -p "$GEN" "$GEN.src"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN.src/BenchTable.schema"
+    "$SCHEMA_BIN" generate --lang goose --out "$GEN" "$GEN.src/BenchTable.schema"
+    rm -rf "$GEN.src"
+    cp bench/tables/goose/table_main.goose "$GEN/table_main.goose"
+    "$GOOSE" build -O2 "$GEN/table_main.goose" -o "$GEN/bench"
+    ;;
+run)
+    shift
+    [ -x "$GEN/bench" ] || { echo "missing $GEN/bench -- run bench/tables/goose/leg build" >&2; exit 2; }
+    exec "$GEN/bench" "$@"
+    ;;
 *)
-	echo "usage: $0 build | run [args...]" >&2
-	exit 1
-	;;
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
 esac

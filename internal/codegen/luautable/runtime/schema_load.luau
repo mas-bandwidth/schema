@@ -2443,7 +2443,9 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 	for i, rec in recs do
 		curEdges = {}
 		children[i + 1] = curEdges
-		if rec.tid == StringBlobId or rec.tid == BytesBlobId then
+		if rec.tid == NodeTableId or rec.tid == BuildVersionId or rec.tid == MessageVocabularyId then
+			return true
+		elseif rec.tid == StringBlobId or rec.tid == BytesBlobId then
 			if rec.e - rec.s > 0xffffffff then
 				rep.reason = "blob_over_size_cap"
 				return true

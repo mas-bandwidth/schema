@@ -44,6 +44,7 @@ let mixedIters: i64 = 4000000;
 
 var csv = false;
 var quick = false;
+var gateOnly = false;
 var numRuns: i64 = 7;
 
 // the g_sink of the C bench: every write's byte count flows here, and the
@@ -289,6 +290,8 @@ fn main() {
             csv = true;
         } else if argv[i] == "--quick" {
             quick = true;
+        } else if argv[i] == "--gate" {
+            gateOnly = true;
         } else if argv[i] == "--round" {
             if i + 1 >= argv.len {
                 write_stderr("--round takes a round number\n");
@@ -297,7 +300,7 @@ fn main() {
             i += 1; // K only identifies the round to the driver
             numRuns = 1;
         } else {
-            write_stderr("usage: schema_bench_goose [--csv] [--round K] [--quick]\n");
+            write_stderr("usage: schema_bench_goose [--csv] [--round K] [--quick] [--gate]\n");
             exit(1);
         }
         i += 1;
@@ -313,7 +316,9 @@ fn main() {
     // every measured row's golden gate runs before any row is timed: a runner
     // that fails its goldens reports nothing at all (§1.5)
     let record = gate("bench_mixed");
-    measure("bench_mixed", mixedIters, record);
+    if !gateOnly {
+        measure("bench_mixed", mixedIters, record);
+    }
 
     flushCsv();
     write_stderr(str("OK (corpus_id ", corpusId(), ")\n"));

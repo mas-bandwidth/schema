@@ -1,0 +1,4 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# Paths are repository-relative.
+
+names bench/tables/goose/table_main.goose 1 shape-blind leg: `TableMixed` named once as rootName for load_table/save_table; no field, no pinned value, no wire size (callsite)

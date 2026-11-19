@@ -1,0 +1,19 @@
+#!/bin/sh
+# THE MOO LEG of the packet type bench gate (bench/README.md).
+set -eu
+
+ROOT=$(pwd -P)
+MOO=${MOO:-$ROOT/dist/moo/moo}
+GEN=${MOO_PACKET_BENCH_GEN:-build/packet-bench-moo}
+
+if [ ! -x "$MOO" ] && ! command -v "$MOO" >/dev/null 2>&1; then
+    echo "missing pinned moo at $MOO: run make dist-moo" >&2
+    exit 2
+fi
+if [ ! -f "$GEN/Bench.moo" ]; then
+    [ -x ./build/schema-moo ] || go build -tags schema_leg_moo -o build/schema-moo ./cmd/schema
+    rm -rf "$GEN"
+    mkdir -p "$GEN"
+    ./build/schema-moo generate --lang moo --out "$GEN" bench/corpus/Bench.schema
+fi
+exec bench/moo/route.sh packet bench/moo/main.moo "$GEN" bench_mixed -- "$@"

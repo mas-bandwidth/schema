@@ -1,0 +1,4 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# Paths are repository-relative.
+
+names bench/tables/squirrel/table_main.nut 1 shape-blind leg: `TableMixed` named once as rootName for schema_table_load/schema_table_save; no field, no pinned value, no wire size (callsite)

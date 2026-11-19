@@ -1,0 +1,4 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# Paths are repository-relative.
+
+names bench/squirrel/main.nut 1 shape-blind leg: `BenchMixed` named once as rootName for generated packet class/Read/Write; no field, no pinned value, no wire size (callsite)

@@ -26,6 +26,7 @@ local Save = require("./schema_save")
 local R = {}
 
 local NodeTableId: integer = -1i
+local NoRefId: integer = NodeTableId
 local BuildVersionId: integer = -2i
 local MessageVocabularyId: integer = -3i
 local StringBlobId: integer = 0x704be0d8faaffc58i
@@ -148,7 +149,7 @@ end
 local function resolve_ref(r: any, ids: { any }, zero: boolean): (integer, boolean)
 	local ref = r_leb(r)
 	if r.bad then return 0i, false end
-	if ref == 0 then return 0i, zero end
+	if ref == 0 then return NoRefId, zero end
 	if ref > #ids then return 0i, false end
 	local id = ids[ref]
 	if id == NodeTableId or id == BuildVersionId or id == MessageVocabularyId then return 0i, false end
@@ -168,8 +169,8 @@ resolve_body = function(r: any, ids: { any }, out: any, depth: number, e: number
 		if r.at > e then return false end
 		local id, ok = resolve_ref(r, ids, true)
 		if not ok then return false end
-		if id == 0i then
-			o_u64(out, 0i)
+		if id == NoRefId then
+			o_u64(out, NoRefId)
 			return r.at == e
 		end
 		if r.at >= e then return false end
@@ -226,19 +227,19 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local e = r.at + n
 		if r.at + 1 > e then return false end
-		local ek = r_u8(r); o_byte(out, ek)
-		local count = r_leb(r); if r.bad then return false end
+		local sub = new_reader(r.b, r.at, e)
+		local ek = r_u8(sub); if ek == 17 then return false end
+		o_byte(out, ek)
+		local count = r_leb(sub); if sub.bad then return false end
 		o_leb(out, count)
 		for _ = 1, count do
-			local elen = r_leb(r); if r.bad or r.at + elen > e then return false end
-			local ee = r.at + elen
 			local mark, startLen = #out.parts + 1, out.len
 			o_u32(out, 0)
-			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
+			if not resolve_payload(sub, ids, ek, out, depth + 1) then return false end
 			if not patch_len(out, mark, startLen) then return false end
-			r.at = ee
 		end
-		return r.at == e
+		r.at = e
+		return sub.at == e
 	elseif kind == 16 then
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local e = r.at + n
@@ -261,7 +262,7 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 	elseif kind == 15 then
 		local id, ok = resolve_ref(r, ids, true); if not ok then return false end
 		o_u64(out, id)
-		if id == 0i then return true end
+		if id == NoRefId then return true end
 		local armKind = r_u8(r); o_byte(out, armKind)
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local sub = new_reader(r.b, r.at, r.at + n)
@@ -302,17 +303,16 @@ resolve_arm = function(r: any, ids: { any }, kind: number, out: any, depth: numb
 		if not resolve_body(r, ids, out, depth + 1, r.e) then return false end
 		return patch_len(out, mark, startLen)
 	elseif kind == 14 then
-		local ek = r_u8(r); o_byte(out, ek)
+		if r.at + 1 > r.e then return false end
+		local ek = r_u8(r); if ek == 17 then return false end
+		o_byte(out, ek)
 		local count = r_leb(r); if r.bad then return false end
 		o_leb(out, count)
 		for _ = 1, count do
-			local elen = r_leb(r); if r.bad or r.at + elen > r.e then return false end
-			local ee = r.at + elen
 			local mark, startLen = #out.parts + 1, out.len
 			o_u32(out, 0)
-			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
+			if not resolve_payload(r, ids, ek, out, depth + 1) then return false end
 			if not patch_len(out, mark, startLen) then return false end
-			r.at = ee
 		end
 		return r.at == r.e
 	elseif kind == 17 then
@@ -954,7 +954,7 @@ save_parse_arm = function(r: any, kind: number, ids: { any }): any
 		return { kind = "keyed", node = save_parse_keyed(r, ids) }
 	elseif kind == 15 then
 		return { kind = "union", node = save_parse_union(r, ids) }
-	elseif kind == 12 or kind == 31 then
+	elseif kind == 12 or kind == 31 or kind == 17 then
 		local n = r.at <= #r.s and (#r.s - r.at + 1) or 0
 		return { kind = "raw", b = save_take(r, n) }
 	elseif kind == 30 then
@@ -1017,7 +1017,6 @@ local function res_take(c: any, n: number): string
 end
 
 local function save_ref(cx: any, id: integer): number
-	if id == 0i then return 0 end
 	local r = cx.refmap[id]
 	if r ~= nil then return r end
 	-- A RETAINED ID PAST THE CAPACITY (§6.6): inside a retained record, an id
@@ -1048,7 +1047,7 @@ save_res_body = function(cx: any, c: any): string
 	while true do
 		local id = res_u64(c)
 		if c.bad then return "" end
-		if id == 0i then
+		if id == NoRefId then
 			parts[#parts + 1] = "\0"
 			return save_concat(parts)
 		end
@@ -1065,7 +1064,7 @@ save_res_payload = function(cx: any, c: any, kind: number): string
 	if kind == 30 then
 		local id = res_u64(c)
 		if c.bad then return "" end
-		if id == 0i then return save_leb(0) end
+		if id == NoRefId then return save_leb(0) end
 		return save_leb(save_ref(cx, id))
 	elseif kind == 15 then
 		return save_res_union(cx, c)
@@ -1101,13 +1100,7 @@ save_res_array = function(cx: any, c: any): string
 	for _ = 1, count do
 		local n = res_u32(c)
 		local sub = res_sub(c, n)
-		local elem: string
-		if ek == 13 then
-			local body = save_res_body(cx, sub)
-			elem = save_leb(#body) .. body
-		else
-			elem = save_res_payload(cx, sub, ek)
-		end
+		local elem = save_res_payload(cx, sub, ek)
 		if sub.bad then c.bad = true end
 		if c.bad then return "" end
 		parts[#parts + 1] = elem
@@ -1146,7 +1139,7 @@ end
 save_res_union = function(cx: any, c: any): string
 	local id = res_u64(c)
 	if c.bad then return "" end
-	if id == 0i then return save_leb(0) end
+	if id == NoRefId then return save_leb(0) end
 	if c.at >= c.e then c.bad = true; return "" end
 	local ref = save_ref(cx, id)
 	local ak = r_u8(c)
@@ -1179,7 +1172,7 @@ save_res_arm = function(cx: any, c: any, kind: number): string
 	elseif kind == 30 then
 		local id = res_u64(c)
 		if c.bad then return "" end
-		if id == 0i then return save_leb(0) end
+		if id == NoRefId then return save_leb(0) end
 		return save_leb(save_ref(cx, id))
 	end
 	local w = width_of(kind)
@@ -1229,9 +1222,27 @@ save_emit_body = function(cx: any, body: any): string
 			parts[#parts + 1] = string.char(f.rec.kind)
 			parts[#parts + 1] = payload
 		else
-			parts[#parts + 1] = save_leb(save_ref(cx, cx.ids[f.ref]))
-			parts[#parts + 1] = string.char(f.kind)
-			parts[#parts + 1] = save_emit_payload(cx, f.node, f.kind)
+			if f.materialized and f.node.t == "tab" then
+				local subMark, subUnk = #cx.out_ids, cx.unknownUsed
+				local fref = save_ref(cx, cx.ids[f.ref])
+				local subBody = save_emit_body(cx, f.node.body)
+				if cx.bad then return "" end
+				if #subBody <= 1 then
+					for k = #cx.out_ids, subMark + 1, -1 do
+						cx.refmap[cx.out_ids[k]] = nil
+						cx.out_ids[k] = nil
+					end
+					cx.unknownUsed = subUnk
+					continue
+				end
+				parts[#parts + 1] = save_leb(fref)
+				parts[#parts + 1] = string.char(13)
+				parts[#parts + 1] = save_leb(#subBody) .. subBody
+			else
+				parts[#parts + 1] = save_leb(save_ref(cx, cx.ids[f.ref]))
+				parts[#parts + 1] = string.char(f.kind)
+				parts[#parts + 1] = save_emit_payload(cx, f.node, f.kind)
+			end
 		end
 		if cx.bad then return "" end
 	end
@@ -1360,6 +1371,29 @@ save_locate_body = function(body: any, desc: any, steps: { any }, pos: number): 
 	end
 	if fd == nil then return nil end
 	local f = save_field_of(body, _ids, desc, st.o)
+	if f == nil and fd.s == "tab" and fd.present == nil then
+		_ids[#_ids + 1] = fd.id
+		f = { ref = #_ids, kind = 13, materialized = not fd.required, node = { t = "tab", body = { fields = {} } } }
+		local ins = #body.fields + 1
+		local fmap = fields_by_id(desc)
+		for idx, existing in body.fields do
+			if existing.rec ~= nil then
+				ins = idx
+				break
+			end
+			local eid = _ids[existing.ref]
+			if eid == NodeTableId then
+				ins = idx
+				break
+			end
+			local efd = fmap[eid]
+			if efd ~= nil and (efd.o or 0) > st.o then
+				ins = idx
+				break
+			end
+		end
+		table.insert(body.fields, ins, f)
+	end
 	if f == nil then return nil end
 	local s = fd.s
 	if s == "tab" then
@@ -1510,11 +1544,6 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		end
 	end
 
-	local rootAt = #rootBody.fields + 1
-	for i, f in rootBody.fields do
-		if f.rec == nil and ids[f.ref] == NodeTableId then rootAt = i; break end
-	end
-
 	local lost = 0
 	local at = 0
 	local store = retained
@@ -1538,7 +1567,7 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		local tdesc: any = nil
 		if node == 1 then
 			target, tdesc = rootBody, desc
-		elseif node <= #rootBody.fields + 1 then
+		elseif node > 1 then
 			for _, f in rootBody.fields do
 				if f.node ~= nil and f.node.t == "nodes" and node - 1 <= #f.node.nodes then
 					local nr = f.node.nodes[node - 1]
@@ -1562,8 +1591,11 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		end
 		if ok then
 			if dest == rootBody then
-				table.insert(rootBody.fields, rootAt, { rec = rec })
-				rootAt = rootAt + 1
+				local curRootAt = #rootBody.fields + 1
+				for idx, rf in rootBody.fields do
+					if rf.rec == nil and _ids[rf.ref] == NodeTableId then curRootAt = idx; break end
+				end
+				table.insert(rootBody.fields, curRootAt, { rec = rec })
 			else
 				dest.fields[#dest.fields + 1] = { rec = rec }
 			end

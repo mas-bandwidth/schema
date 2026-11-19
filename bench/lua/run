@@ -1,0 +1,19 @@
+#!/bin/sh
+# THE LUA LEG of the packet type bench (bench/README.md).
+set -eu
+
+ROOT=$(pwd -P)
+LUA=${LUA:-$ROOT/dist/lua-5.4.8/src/lua}
+GEN=${LUA_PACKET_BENCH_GEN:-build/packet-bench-lua}
+
+if [ ! -x "$LUA" ] && ! command -v "$LUA" >/dev/null 2>&1; then
+    echo "missing pinned Lua at $LUA: run make dist-lua" >&2
+    exit 2
+fi
+if [ ! -f "$GEN/Bench.lua" ]; then
+    [ -x ./bin/schema ] || { echo "missing bin/schema: run make bin/schema" >&2; exit 2; }
+    rm -rf "$GEN"
+    mkdir -p "$GEN"
+    ./bin/schema generate --lang lua --out "$GEN" bench/corpus/Bench.schema
+fi
+exec "$LUA" bench/lua/main.lua "$GEN" "$@"

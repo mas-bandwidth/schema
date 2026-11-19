@@ -2525,7 +2525,10 @@ local function wireCheck(b: buffer, s: number, e: number, ids: { string }, annou
 		for _, rec in records do
 			wc.edges = {}
 			wcUse(rec.ref)
-			if rec.tid == BytesBlobId or rec.tid == StringBlobId then
+			if rec.tid == NodeTableId or rec.tid == BuildVersionId or rec.tid == MessageVocabularyId then
+				wcFail("wire_damaged")
+				return finish()
+			elseif rec.tid == BytesBlobId or rec.tid == StringBlobId then
 				-- A BLOB RECORD IS ITS BYTES (§2.5, §3.1)
 				if rec.e - rec.s > BLOB_SIZE_CAP then
 					wcFail("blob_over_size_cap")
