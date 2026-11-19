@@ -846,17 +846,23 @@ end
 
 local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 	if f.s == "bool" then
+		if typeof(v) ~= "boolean" then error(outOfRange(f), 0) end
 		buffer.writeu8(buf, off, v and 1 or 0)
 	elseif f.s == "float" then
+		if typeof(v) ~= "number" then error(nonFinite(f), 0) end
 		if n.kind == 10 then
 			local bits = doubleToF32(v)
 			if bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end
+			bounds(f, v, { widened = 0 }, nil)
 			buffer.writeu32(buf, off, bits)
 		else
 			if v ~= v or v == math.huge or v == -math.huge then error(nonFinite(f), 0) end
+			bounds(f, v, { widened = 0 }, nil)
 			buffer.writef64(buf, off, v)
 		end
 	elseif f.s == "enum" then
+		if typeof(v) ~= "number" or v ~= math.floor(v) or v < 0 or v > #(f.vs or {}) then error(outOfRange(f), 0) end
+		if v > 0 and f.vs[v] ~= nil and f.vs[v][3] == true then error({ name = "invalid_value", field = _owner .. "." .. (f.name or _field) }, 0) end
 		local raw = v
 		for b = 0, n.size - 1 do
 			buffer.writeu8(buf, off + b, raw % 256)
@@ -864,6 +870,19 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 		end
 	elseif f.s == "int" then
 		local w = n.size
+		if w <= 4 then
+			local kw = f.kw or w
+			local bits = kw * 8
+			local lo = if f.signed then -(2 ^ (bits - 1)) else 0
+			local hi = if f.signed then 2 ^ (bits - 1) - 1 else 2 ^ bits - 1
+			if typeof(v) ~= "number" or v ~= math.floor(v) or v < lo or v > hi then error(outOfRange(f), 0) end
+		end
+		if f.flags ~= nil then
+			local iv = asInt(v)
+			local fmax = if #f.flags >= 64 then -1i else integer.sub(integer.lshift(1i, integer.create(#f.flags)), 1i)
+			if #f.flags < 64 and integer.ult(fmax, iv) then error(outOfRange(f), 0) end
+		end
+		bounds(f, v, { widened = 0 }, nil)
 		if w == 1 then
 			buffer.writeu8(buf, off, v % 256)
 		elseif w == 2 then
@@ -871,11 +890,7 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 		elseif w == 4 then
 			buffer.writeu32(buf, off, v % 4294967296)
 		elseif w == 8 then
-			if f.dom == "integer" then
-				buffer.writeinteger(buf, off, asInt(v))
-			else
-				buffer.writeinteger(buf, off, asInt(v))
-			end
+			buffer.writeinteger(buf, off, asInt(v))
 		elseif w == 16 then
 			buffer.writeinteger(buf, off, asInt(v.lo))
 			buffer.writeinteger(buf, off + 8, asInt(v.hi))
@@ -889,14 +904,23 @@ local function writeOne(f: any, n: Node, value: any, buf: buffer)
 	local own = value
 	if slot ~= nil then own = value[slot] end
 	if f.s == "str" then
-		local length = value[slot .. "Length"] or 0
-		buffer.writeu32(buf, n.off, length)
+		local length = if slot ~= nil then (value[slot .. "Length"] or 0) else (if typeof(own) == "buffer" then buffer.len(own) else 0)
+		local cap = f.bound or (n.size - COUNT)
+		if typeof(length) ~= "number" or length ~= math.floor(length) or length < 0 or length > cap then error(refuse("length_over_bound"), 0) end
 		local b = own
+		if length > 0 then
+			if typeof(b) ~= "buffer" or buffer.len(b) < length then error(refuse("length_over_bound"), 0) end
+			if utf8IllFormed(b, 0, length) then error(refuse("text_ill_formed"), 0) end
+		end
+		buffer.writeu32(buf, n.off, length)
 		if b ~= nil and length > 0 then
 			buffer.copy(buf, n.off + COUNT, b, 0, length)
 		end
 	elseif f.s == "bytes" then
-		local length = value[slot .. "Length"] or 0
+		local length = if slot ~= nil then (value[slot .. "Length"] or 0) else (if typeof(own) == "buffer" then buffer.len(own) else 0)
+		local cap = f.bound or (n.size - COUNT)
+		if typeof(length) ~= "number" or length ~= math.floor(length) or length < 0 or length > cap then error(refuse("length_over_bound"), 0) end
+		if length > 0 and (typeof(own) ~= "buffer" or buffer.len(own) < length) then error(refuse("length_over_bound"), 0) end
 		buffer.writeu32(buf, n.off, length)
 		if length > 0 then buffer.copy(buf, n.off + COUNT, own, 0, length) end
 	elseif f.s == "tab" then
@@ -904,7 +928,8 @@ local function writeOne(f: any, n: Node, value: any, buf: buffer)
 		writeStruct(d, n, own, buf)
 	elseif f.s == "union" then
 		local d = S.lookup(f.t)
-		local tag = own.Type or 0
+		local tag = if typeof(own) == "table" then (own.Type or 0) else -1
+		if typeof(tag) ~= "number" or tag ~= math.floor(tag) or tag < 0 or tag > #d.arms then error(outOfRange(f), 0) end
 		local widest = 0
 		for _, c in n.children do if c.size > widest then widest = c.size end end
 		local tagw = n.size - widest
@@ -924,6 +949,7 @@ local function writeOne(f: any, n: Node, value: any, buf: buffer)
 		local e = f.e
 		if f.array == "counted" then
 			local count = value[slot .. "Count"] or 0
+			if typeof(count) ~= "number" or count ~= math.floor(count) or count < (f.min or 0) or count > (f.bound or 0) then error(refuse("count_over_bound"), 0) end
 			buffer.writeu32(buf, n.off, count)
 			local c = childAt(n, 1) :: Node
 			shift(c, COUNT)

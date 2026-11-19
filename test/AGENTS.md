@@ -89,5 +89,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
 | `unity/` | Unity C# packet wire tests | `make test-unity` | `make unity-wire` |
 | `unity-hostile/` | Unity C# hostile-corpus runner | `make schema-unity-runs-hostile-corpus` | `make schema-unity-runs-hostile-corpus` |
+| `verify-bitphase/` | 18-language packet 0..63 bit-phase sweep | `make verify-bitphase-js` | `./build/verify-bitphase-bin --lang all` |
+| `verify-canonical/` | 18-language canonical-write permutation gate | `make verify-canonical-js` | `./build/verify-canonical-bin --lang all` |
 | `verify-vm/` | VM optimization fast-verify deep runner | `make verify-js-bench` | `go build -o build/vmverify ./test/verify-vm` |
 | `vocabgen/` | wide-vocabulary generator | `make check` | `go run ./test/vocabgen` |

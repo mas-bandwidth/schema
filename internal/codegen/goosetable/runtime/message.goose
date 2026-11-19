@@ -5,8 +5,8 @@
 // first, the packet wire's order), the aligns and their verified-zero pad, the
 // float rules (finite only; the compressed float's quantization in float32 and
 // by nothing else), the refusal names and the report; AnnounceRead and the
-// peer's VOCABULARY (announce_read: a form-1 file into one direction's id
-// table, each entry's id, kind and shape); and the reader BY PEER ENTRY: the
+// sender's VOCABULARY (announce_read: a form-1 file into one direction's id
+// table, each entry's id, kind and shape); and the reader BY SENDER ENTRY: the
 // reference resolve, §4's widening rule, the skip of an entry by its announced
 // shape, and the payloads decoded at the sender's shape. The per-table bodies
 // — every field a reference then a payload, ending at the zero reference — are
@@ -608,7 +608,7 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
 }
 
 // announce_read is AnnounceRead (docs/SPEC-TABLES.md §3.3): it reads the
-// peer's announcement into ONE direction's vocabulary. The first announcement
+// sender's announcement into ONE direction's vocabulary. The first announcement
 // sets it and is the only one that can: a second, or any after a refused
 // first, is refused `second_announcement` and changes nothing. A refused or
 // malformed announcement sets no vocabulary, for the connection's life.

@@ -35,6 +35,7 @@ local SURFACES = {
 	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
 	"cook-forgery", "cook-reason", "block-reason",
+	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
 }
 local listed: { [string]: boolean } = {}
 for _, s in SURFACES do
@@ -1110,6 +1111,201 @@ local function surfaceForgery(lines: { { string } }, kindName: string, reasons: 
 	end
 end
 
+
+-- ---- THE WRITE CONTRACT (docs/SPEC.md §5.1): the four write-refusal surfaces
+
+local function wrefDeepCopy(x: any): any
+	if type(x) == "buffer" then
+		local nb = buffer.create(buffer.len(x))
+		buffer.copy(nb, 0, x, 0, buffer.len(x))
+		return nb
+	elseif type(x) ~= "table" then
+		return x
+	end
+	local out = {}
+	for k, e in x do
+		out[k] = wrefDeepCopy(e)
+	end
+	return out
+end
+
+local function wrefHexBytes(text: string): string
+	if #text % 2 ~= 0 then
+		error("hex " .. text .. " is not whole bytes")
+	end
+	local out = table.create(#text // 2)
+	for i = 1, #text, 2 do
+		out[#out + 1] = string.char(tonumber(string.sub(text, i, i + 1), 16) :: number)
+	end
+	return table.concat(out)
+end
+
+local function wrefFloat(text: string): number
+	if text == "nan" then return 0 / 0 end
+	if text == "inf" then return math.huge end
+	if text == "-inf" then return -math.huge end
+	return (tonumber(text) :: number) + 0.0
+end
+
+local function wrefWalk(u: any, root: string, v: any, path: string): (any, any, number?)
+	local segments = {}
+	for seg in string.gmatch(path, "[^.]+") do
+		segments[#segments + 1] = seg
+	end
+	local tname: string = root
+	local owner: any = v
+	for i, seg in segments do
+		local name, idxStr = string.match(seg, "^([%a_][%w_]*)%[(%d+)%]$")
+		if name == nil then
+			name = string.match(seg, "^([%a_][%w_]*)$")
+			if name == nil then
+				error(path .. ": " .. seg .. " is not a path segment")
+			end
+		end
+		local td = u.S.lookup(tname)
+		if td == nil then error("no table " .. tname) end
+		local fd = nil
+		for _, f in td.fields do
+			if f.name == name then fd = f; break end
+		end
+		if fd == nil then error("no field " .. (name :: string) .. " in " .. tname) end
+		local idx: number? = if idxStr ~= nil then (tonumber(idxStr) :: number) + 1 else nil
+		if i == #segments then
+			return owner, fd, idx
+		end
+		local child = owner[fd.slot]
+		if idx ~= nil then
+			child = child[idx]
+		end
+		local nextType = if idx ~= nil then fd.e.t else fd.t
+		owner, tname = child, nextType
+	end
+	error("empty path")
+end
+
+local function wrefSet(u: any, root: string, v: any, path: string, what: string, text: string)
+	local owner, fd, idx = wrefWalk(u, root, v, path)
+	local holder: any = owner
+	local key: any = fd.slot
+	if idx ~= nil then
+		holder = owner[fd.slot]
+		key = idx
+	end
+	local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
+	if what == "int" or what == "ordinal" then
+		holder[key] = tonumber(text) :: number
+	elseif what == "float" then
+		holder[key] = wrefFloat(text)
+	elseif what == "count" then
+		local n = tonumber(text) :: number
+		local arr = holder[key]
+		if owner[fd.slot .. "Count"] ~= nil then
+			owner[fd.slot .. "Count"] = n
+			for i = #arr + 1, n do
+				arr[i] = wrefDeepCopy(arr[1])
+			end
+		else
+			for i = #arr + 1, n do
+				arr[i] = wrefDeepCopy(arr[1])
+			end
+			for i = #arr, n + 1, -1 do
+				arr[i] = nil
+			end
+		end
+	elseif what == "length" or what == "bytes" then
+		local raw = if what == "length" then string.rep("a", tonumber(text) :: number) else wrefHexBytes(text)
+		if idx == nil and owner[fd.slot .. "Length"] ~= nil then
+			local cap = math.max(d.bound or 0, #raw)
+			local buf = buffer.create(cap)
+			if #raw > 0 then
+				buffer.writestring(buf, 0, raw)
+			end
+			owner[fd.slot] = buf
+			owner[fd.slot .. "Length"] = #raw
+		elseif type(holder[key]) == "buffer" then
+			holder[key] = buffer.fromstring(raw)
+		else
+			holder[key] = raw
+		end
+	elseif what == "tag" then
+		local n = tonumber(text) :: number
+		local ud = u.S.lookup(d.t)
+		local x = ud.new()
+		x.Type = n
+		holder[key] = x
+	else
+		error(path .. ": " .. what .. " is not a write-refusal kind")
+	end
+end
+
+local function surfaceWriteRefusal(lines: { { string } }, kindName: string)
+	local connections: { [string]: { string } } = {}
+	for _, c in kind(lines, "connection") do
+		connections[c[2]] = c
+	end
+	for _, f in kind(lines, kindName) do
+		local name, key, root, wire, path, what, text = f[2], f[3], f[4], f[5], f[6], f[7], f[8]
+		local conn = nil
+		if kindName == "write-refusal-message" then
+			conn = connections[key]
+			if conn == nil then error(name .. ": no connection " .. key) end
+			key = conn[3]
+		end
+		local u = unit(key)
+		local d = if u ~= nil then rootOf(u, root) else nil
+		if u == nil or d == nil then
+			say(name, nil)
+		else
+			local r = report()
+			local v = u.load.load(root, file(wire), r)
+			if v == nil then
+				error(name .. ": load refused " .. wire .. " (" .. tostring(r.reason) .. ")")
+			end
+			wrefSet(u, root, v, path, what, text)
+			local answer = "refused\n"
+			if kindName == "write-refusal" or kindName == "write-refusal-fixed" then
+				if kindName == "write-refusal-fixed" and not d.fixed then
+					error(name .. ": " .. root .. " has no fixed form")
+				end
+				local ok, saved = pcall(u.save.save, d, v)
+				if ok and saved ~= nil then
+					local okm, sz = pcall(u.save.measure, d, v)
+					if okm and sz == buffer.len(saved) then
+						answer = "wrote\n"
+					end
+				end
+			elseif kindName == "write-refusal-message" then
+				local M = optional(u, "schema_message")
+				if M == nil then
+					say(name, nil)
+					continue
+				end
+				local voc = M.NewVocabulary()
+				local vr = report()
+				if not M.AnnounceRead(voc, file((conn :: { string })[5]), vr) then
+					error(name .. ": announcement refused")
+				end
+				local mr = report()
+				local ok, out, sz = pcall(M.SaveMessages, voc, root, { v }, mr)
+				if ok and out ~= nil and sz >= 0 and buffer.len(out) == sz then
+					answer = "wrote\n"
+				end
+			else
+				local jr = report()
+				local ok, out = pcall(u.json.ToJson, root, v, jr)
+				if ok and out ~= nil then
+					answer = "wrote\n"
+					local sOut = buffer.tostring(out)
+					if what == "bytes" and string.find(wrefHexBytes(text), "\0", 1, true) ~= nil and string.find(sOut, "\\u0000", 1, true) == nil then
+						answer = "wrote without \\u0000\n"
+					end
+				end
+			end
+			sayText(name, answer)
+		end
+	end
+end
+
 if surface == nil then
 	error("usage: driver <manifest> surface")
 end
@@ -1157,4 +1353,6 @@ elseif surface == "cook-reason" then
 	surfaceForgery(lines, "cook", true)
 elseif surface == "block-reason" then
 	surfaceForgery(lines, "block", true)
+elseif string.sub(surface, 1, 13) == "write-refusal" then
+	surfaceWriteRefusal(lines, surface)
 end

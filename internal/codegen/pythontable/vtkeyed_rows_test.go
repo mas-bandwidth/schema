@@ -60,7 +60,7 @@ var pyKeyedRowCases = []string{
 	"previous_form_keyed_config", "previous_form_keyed_default", "previous_form_r1_cfg", "previous_form_r2_cfg",
 	"r1_ping", "r1_ping_as_r2", "previous_form_r1_ping",
 	// the scalar state's keyed fields, and its narrower writer
-	"scalars_full", "scalars_default", "scalars_edges",
+	"scalars_full", "scalars_default", "scalars_edges", "scalars_uint128_max",
 	"previous_form_scalars_full", "previous_form_scalars_default", "previous_form_scalars_edges",
 	"scalars_full_as_2", "scalars_edges_as_2", "field_scalar_widen",
 	// the versioned config pair

@@ -492,6 +492,39 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
+
+fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], surf: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 8 || f[0] != surf { continue; }
+        var ann: u8[>..] = [];
+        if surf == "write-refusal-message" {
+            var conn: i64 = -1;
+            for i in lines.len {
+                let c = words(lines[i]);
+                if c.len >= 5 && c[0] == "connection" && c[1] == f[2] && c[2] == unit { conn = i; }
+            }
+            if conn < 0 { continue; }
+            let c = words(lines[conn]);
+            load_file(c[4], ann);
+        } else {
+            if f[2] != unit { continue; }
+        }
+        var data: u8[>..] = [];
+        load_file(f[4], data);
+        let res = conformance_wref(surf, f[3], ann, data, f[5], f[6], f[7]);
+        if res == "!absent" {
+            absent(f[1], "");
+            continue;
+        }
+        if res.len > 0 && res[0] == '!' {
+            write_stderr(str("driver: ", f[1], " ", res, "\n"));
+            exit(1);
+        }
+        answer(f[1], res);
+    }
+}
+
 fn main() {
     let argv = args();
     if argv.len < 3 {
@@ -499,7 +532,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\n");
+        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
         return;
     }
     if argv.len != 4 {
@@ -523,6 +556,10 @@ fn main() {
         return;
     }
     if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
+    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" {
+        surface_wref_all(lines, unit, argv[1]);
+        return;
+    }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);
 }

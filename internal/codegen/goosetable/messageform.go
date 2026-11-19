@@ -19,7 +19,7 @@
 //
 // THE READ IS BY PEER ENTRY (§3.3, §4): a connection's reader first reads the
 // PEER's announcement with AnnounceRead (runtime/message.goose: a form-1 file
-// read into a vocabulary of the peer's build, each entry's id, kind
+// read into a vocabulary of the sender's build, each entry's id, kind
 // and shape), and every reference of a body resolves against that vocabulary.
 // The entry's id selects this reader's declaration through a match on the
 // 64-bit ids, and the payload decodes at the SENDER's announced shape: an id
@@ -244,10 +244,16 @@ func (e *msgEmit) putScalar(ind int, f *ir.Field, kind uint8, shape ir.TableMess
 		return
 	case ir.TableKindF64:
 		e.p(ind, "if !schema_rt::msg_finite64(schema_rt::fixed_f64_bits(%s)) { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseNonFiniteFloat); }", expr)
+		if lo, hi, ok := floatBounds(f); ok {
+			e.p(ind, "if !(%s >= %s && %s <= %s) { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", expr, lo, expr, hi)
+		}
 		e.put(ind, "schema_rt::fixed_f64_bits("+expr+")", 64)
 		return
 	case ir.TableKindF32:
 		e.p(ind, "if !schema_rt::msg_finite32(schema_rt::fixed_f32_bits(%s)) { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseNonFiniteFloat); }", expr)
+		if lo, hi, ok := floatBounds(f); ok {
+			e.p(ind, "if !(%s >= %s && %s <= %s) { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", expr, lo, expr, hi)
+		}
 		if shape.Packing == ir.TableMessageQuantized {
 			count, delta, ok := ir.TableMessageQuantization(shape)
 			if !ok {
@@ -259,6 +265,9 @@ func (e *msgEmit) putScalar(ind int, f *ir.Field, kind uint8, shape ir.TableMess
 		}
 		e.put(ind, "schema_rt::fixed_f32_bits("+expr+")", 32)
 		return
+	}
+	for _, b := range scalarBounds(f) {
+		e.p(ind, "if %s { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", b.over(expr))
 	}
 	bits := ir.TableMessageValueBits(kind, shape)
 	if e.fx.kindOf(f) == kInt128 {
@@ -348,8 +357,10 @@ func (e *msgEmit) putValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 		bits := ir.TableMessageBitsRequired(0, entry.Shape.Max)
 		if f.Type.Kind == ir.TBytes {
 			bits = ir.TableMessageCountBits(entry.Shape)
+			e.p(ind, "if %s < 0 || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.length, pl.length, f.Type.Size)
+		} else {
+			e.p(ind, "if !schema_rt::fixed_text_ok(%s, %s, %d) { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.val, pl.length, f.Type.Size)
 		}
-		e.p(ind, "if %s < 0 || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.length, pl.length, f.Type.Size)
 		e.put(ind, fmt.Sprintf("(%s as! u64)", pl.length), int64(bits))
 		e.p(ind, "schema_rt::msg_align(w, out);") // THE TEXT ALIGN (§3.3): a string(N) and a bytes(N) align before their bytes
 		e.p(ind, "schema_rt::msg_put_bytes(w, out, %s, %s);", pl.val, pl.length)
@@ -1236,7 +1247,7 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 
 // emitRoot writes a fixed root's batch API (§3.3): the announcement as a
 // constant, MeasureMessages and SaveMessages under the unit's own vocabulary,
-// and LoadMessages against the peer's (schema_rt::announce_read).
+// and LoadMessages against the sender's (schema_rt::announce_read).
 func (e *msgEmit) emitRoot(st *ir.Struct) {
 	n := st.Name
 	typ := e.fx.structType(st)
@@ -1300,7 +1311,7 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	}
 
 	e.loop = 0
-	e.p(0, "// %sLoadMessages reads ONE batch into values against the peer's vocabulary (AnnounceRead) and", n)
+	e.p(0, "// %sLoadMessages reads ONE batch into values against the sender's vocabulary (AnnounceRead) and", n)
 	e.p(0, "// returns the bodies delivered: a capacity short of the wire's count is batch_too_large")
 	e.p(0, "// with report.count set and nothing decoded; damage anywhere in the batch discards the")
 	e.p(0, "// whole batch, returning 0 with every body at its declared defaults and malformed set;")

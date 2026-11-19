@@ -537,7 +537,13 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 		for _, b := range scalarBounds(f) {
 			e.p(ind, "if %s { return false; }", b.over(pl.val))
 		}
-	case kF32, kF64:
+	case kF32:
+		e.p(ind, "if (schema_rt::fixed_f32_bits(%s) & 0x7f800000) == 0x7f800000 { return false; }", pl.val)
+		if lo, hi, ok := floatBounds(f); ok {
+			e.p(ind, "if !(%s >= %s && %s <= %s) { return false; }", pl.val, lo, pl.val, hi)
+		}
+	case kF64:
+		e.p(ind, "if (schema_rt::fixed_f64_bits(%s) & 0x7ff0000000000000) == 0x7ff0000000000000 { return false; }", pl.val)
 		if lo, hi, ok := floatBounds(f); ok {
 			e.p(ind, "if !(%s >= %s && %s <= %s) { return false; }", pl.val, lo, pl.val, hi)
 		}
@@ -920,7 +926,7 @@ func elemNeedsClamp(f *ir.Field) bool {
 func elemNeedsCheck(f *ir.Field) bool {
 	return needs(f, map[string]bool{}, func(f *ir.Field) bool {
 		switch f.Type.Kind {
-		case ir.TString, ir.TBytes:
+		case ir.TString, ir.TBytes, ir.TFloat32, ir.TFloat64:
 			return true
 		}
 		return f.HasFloatRange || len(scalarBounds(f)) > 0

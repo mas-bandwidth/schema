@@ -113,7 +113,15 @@ func main() {
 	}
 
 	if *emitGatedRun {
-		pattern, err := gatedRunPattern(*root)
+		var filterPkgs []string
+		if *shardHalf != "all" || *shardIndex >= 0 {
+			pkgs, err := shardPackages(*root, *shardHalf, *shardIndex, *shardCount)
+			if err != nil {
+				fail("emitting shard packages for gated -run pattern: %v", err)
+			}
+			filterPkgs = pkgs
+		}
+		pattern, err := gatedRunPatternFor(*root, filterPkgs)
 		if err != nil {
 			fail("emitting the gated -run pattern: %v", err)
 		}

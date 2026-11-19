@@ -22,13 +22,32 @@ import (
 // every other test in these packages already runs in ci-full.yml's
 // SCHEMA_SLOW=1 unit rows.
 func gatedRunPattern(root string) (string, error) {
+	return gatedRunPatternFor(root, nil)
+}
+
+func gatedRunPatternFor(root string, pkgs []string) (string, error) {
 	byDir, err := gatedTestPackages(root)
 	if err != nil {
 		return "", err
 	}
+	var allow map[string]bool
+	if len(pkgs) > 0 {
+		allow = make(map[string]bool, len(pkgs))
+		for _, p := range pkgs {
+			d := strings.TrimPrefix(p, modulePath+"/")
+			d = strings.TrimPrefix(d, "./")
+			if d == "" || d == modulePath {
+				d = "."
+			}
+			allow[d] = true
+		}
+	}
 	var names []string
 	seen := map[string]bool{}
-	for _, tests := range byDir {
+	for dir, tests := range byDir {
+		if allow != nil && !allow[dir] {
+			continue
+		}
 		for _, name := range tests {
 			if !seen[name] {
 				seen[name] = true

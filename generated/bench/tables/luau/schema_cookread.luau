@@ -690,6 +690,19 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 			return true
 		end
 		local shape = fd.s
+		if fd.present ~= nil then
+			local fl = layoutField(fd, at)
+			local p = buffer.readu8(b, data + fl.finish - 1)
+			if p > 1 then return false end
+			if p == 0 then
+				if shape == "map" then
+					return buffer.readinteger(b, data + at) == 0i and buffer.readi32(b, data + at + 8) == 0
+				end
+				if isText(fd) then
+					return buffer.readinteger(b, data + at) == 0i
+				end
+			end
+		end
 		if isText(fd) then return textSlot(at) end
 		if shape == "ptr" or shape == "sblob" or shape == "bblob" then return ref(at, fd) end
 		if shape == "str" then
@@ -717,7 +730,15 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 				local found, nfound = placed(at, layout.size, layout.align)
 				if found == nil then return false end
 				first, count = found, nfound
-			elseif fd.array == "counted" and not companion(align_up(at + count * layout.size, 4), count) then return false end
+			elseif fd.array == "counted" then
+				local compAt = align_up(at + count * layout.size, 4)
+				if not companion(compAt, count) then return false end
+				local used = buffer.readi32(b, data + compAt)
+				for z = at + used * layout.size, at + count * layout.size - 1 do
+					if buffer.readu8(b, data + z) ~= 0 then return false end
+				end
+				count = used
+			end
 			for i = 0, count - 1 do
 				if not scanValue(first + i * layout.size, fd.e, nil) then return false end
 			end
