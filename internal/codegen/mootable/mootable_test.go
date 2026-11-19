@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -127,7 +128,31 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	tables, err := mootable.Generate(u)
+	var paths []string
+	for _, f := range u.Files {
+		if f != nil && f.Path != "" {
+			paths = append(paths, f.Path)
+		}
+	}
+	var lineage map[string][]mootable.FixedLineageEntry
+	if len(paths) > 0 {
+		if lock, ok, lerr := lockfile.Open(paths); lerr == nil && ok && lock != nil {
+			lineage = map[string][]mootable.FixedLineageEntry{}
+			for _, st := range ir.TableFixedFormRoots(u) {
+				for _, e := range lockfile.Lineage(lock, st.WireName()) {
+					lineage[st.Name] = append(lineage[st.Name], mootable.FixedLineageEntry{
+						Wire:    e.Wire,
+						Layout:  e.Layout,
+						Record:  e.Record + 8,
+						Retired: e.Retired,
+						Reason:  e.Reason,
+						Writer:  e.Writer,
+					})
+				}
+			}
+		}
+	}
+	tables, err := mootable.GenerateLineage(u, lineage)
 	if err != nil {
 		return nil, err
 	}

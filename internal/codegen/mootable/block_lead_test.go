@@ -96,24 +96,27 @@ end
 		}
 		images++
 	}
-	if images != 2 {
-		t.Fatalf("block lead corpus: %d images, want both committed images", images)
+	wantImages := len(manifestLines(t, "block"))
+	if images < 2 || images != wantImages {
+		t.Fatalf("block lead corpus: %d images, want %d committed images", images, wantImages)
 	}
 	return matched, mismatched
 }
 func TestMooBlockLead(t *testing.T) {
-	slowtest.Gate(t, "pinned moo over both block images at every base lead 0..64")
+	slowtest.Gate(t, "pinned moo over committed block images at every base lead 0..64")
+	n := len(manifestLines(t, "block"))
 	matched, mismatched := mooBlockLeadVerdicts(t, false)
 	t.Logf("lead matrix: %d matched, %d mismatched", matched, mismatched)
-	if matched != 130 || mismatched != 0 {
-		t.Fatal("all 130 placements must match the alignment rule")
+	if matched != n*65 || mismatched != 0 {
+		t.Fatalf("all %d placements must match the alignment rule", n*65)
 	}
 }
 func TestMooBlockLeadNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "pinned moo with its actual block base-alignment check removed")
+	n := len(manifestLines(t, "block"))
 	matched, mismatched := mooBlockLeadVerdicts(t, true)
 	t.Logf("alignment sabotage: %d aligned cases unchanged, %d unaligned placements wrongly opened", matched, mismatched)
-	if matched != 4 || mismatched != 126 {
-		t.Fatal("exactly 126 unaligned placements must expose the removed check")
+	if matched != n*2 || mismatched != n*63 {
+		t.Fatalf("exactly %d unaligned placements must expose the removed check", n*63)
 	}
 }

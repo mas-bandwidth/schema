@@ -598,6 +598,9 @@ class MessageRead:
     // body_fields is the field count of the last body read, so a caller can
     // tell an all-default body from one that named a field.
     body_fields:int = 0
+    // substituted counts values replaced during lawful evolution (unknown or
+    // deprecated variants/arms), which are not judged as stored defaults (§3.3).
+    substituted:int = 0
 
 def message_count(r:MessageBits, s:MessageShape) -> int, bool:
     let raw, ok = mb_get(r, message_bits(s.max - s.min))
@@ -813,9 +816,11 @@ def message_enum(m:MessageRead, cell:Value, fd:FieldDescriptor, element:bool) ->
     if value < 0:
         cell.i = 0
         rep.unknown++
+        m.substituted++
         return true
     if is_deprecated_variant(fd.t, variant_name(fd, value)):
         cell.i = if element: 0 else: enum_default(fd)
+        m.substituted++
         return true
     cell.i = value
     return true
@@ -849,6 +854,7 @@ def message_union(m:MessageRead, cell:Value, fd:FieldDescriptor) -> bool:
     if tag == 0:
         cell.i = 0
         rep.unknown++
+        m.substituted++
         if not message_skip(m, e.shape, e.element, 0):
             rep.malformed = true
             return false
@@ -954,6 +960,7 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
             cell = sl.elems[value - 1]
         else:
             rep.unknown++
+            m.substituted++
         if not message_cell(m, cell, ed, f.ek, e.element, true):
             return false
         i++
@@ -998,7 +1005,11 @@ def message_compatible(f:FieldDescriptor, mine:MessageEntry, e:MessageEntry) -> 
 // and shape this reader's own declaration does, so this reader knows the
 // field's declared default exactly (§3.3 (a)).
 def message_same_encoding(e:MessageEntry, mine:MessageEntry) -> bool:
-    return e.shape.kind == mine.shape.kind and e.element.kind == mine.element.kind and e.shape.packing == mine.shape.packing and e.shape.bits == mine.shape.bits
+    let a = e.shape
+    let b = mine.shape
+    let ea = e.element
+    let eb = mine.element
+    return a.kind == b.kind and a.packing == b.packing and a.bits == b.bits and a.base_lo == b.base_lo and a.base_hi == b.base_hi and a.min == b.min and a.max == b.max and a.qmin == b.qmin and a.qdelta == b.qdelta and a.qcount == b.qcount and ea.kind == eb.kind and ea.packing == eb.packing and ea.bits == eb.bits and ea.base_lo == eb.base_lo and ea.base_hi == eb.base_hi and ea.min == eb.min and ea.max == eb.max and ea.qmin == eb.qmin and ea.qdelta == eb.qdelta and ea.qcount == eb.qcount
 
 // message_body decodes one table body: fields until the zero reference that
 // ends it (Go's <Name>LoadMessageBody). A reserved id in a body is malformed.
@@ -1075,13 +1086,15 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             m.bits.off = arm_at
             if arm_ok and arm == 0:
                 return message_refuse(rep, "wire_damaged")
+        let sub_before = m.substituted
         if not message_value(m, sl, e):
             return false
         // A BY-VALUE BODY THAT NAMED NO FIELD IS THE BODY A WRITER ELIDES
         // (§3.3 (a)): its field is at its declared default, judged under this
         // reader's own build version. A required field never elides and a
         // present optional always rides.
-        if same_build and f.s == "tab" and not f.required and f.present == "" and m.body_fields == 0:
+        let exact = same_build and message_same_encoding(e, mine)
+        if exact and f.s == "tab" and not f.required and f.present == "" and m.body_fields == 0:
             return message_refuse(rep, "wire_damaged")
         if strict_reason(rep) != "":
             return false
@@ -1089,9 +1102,10 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             sl.present = true
         // A FIELD WRITTEN AT THE DEFAULT THE WRITER ELIDES IS NON-CANONICAL
         // (§3.3 (a)): the reader knows the sender's default only under the
-        // same announced shape and the same build version; a field met under
-        // another build version reads as today.
-        if same_build and message_same_encoding(e, mine) and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
+        // same announced shape and the same build version; a quantized field
+        // or a field whose read substituted a value is not judged.
+        let quantized = e.shape.packing == 2 or (e.element.packing == 2 and (f.array == "fixed" or sl.count > 0))
+        if exact and not quantized and not f.required and f.present == "" and m.substituted == sub_before and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
             return message_refuse(rep, "wire_damaged")
         if widened:
             rep.widened++

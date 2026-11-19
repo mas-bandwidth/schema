@@ -777,6 +777,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
         case 15:
             let their_tag = fixed_tag_bytes(theirs, ti)
             let my_tag = fixed_tag_bytes(mine, mi)
+            let span = te.size - their_tag
             let none_dst_size = te.children
             fixed_push(c, TableFixedEntry {
                 src: their_at,
@@ -790,6 +791,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
             })
             let saved_w = c.arg_w
             c.arg_w = if their_tag >= 1 and their_tag <= 8: their_tag else: 1
+            let seen_their:[int] = []
             var my_arm = mi + 1
             for(me.children) k:
                 let ma = fixed_entry_at(mine, my_arm)
@@ -800,6 +802,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                         let ta = fixed_entry_at(theirs, their_arm)
                         if ta.id == ma.id:
                             matched = true
+                            push(seen_their, j)
                             let saved_at = c.chain_at
                             let saved_laid = c.chain_laid
                             push(c.chain, TableFixedGuardLink { grd: their_at, arg: j + 1, arg_w: c.arg_w })
@@ -814,12 +817,58 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                                 arg: j + 1
                             })
                             fixed_compile_entry(c, theirs, their_arm, their_at + their_tag, mine, my_arm, dst, at, their_at, j + 1, census)
+                            if ta.size < span:
+                                fixed_push(c, TableFixedEntry {
+                                    src: their_at + their_tag + ta.size,
+                                    size: span - ta.size,
+                                    grd: their_at,
+                                    op: 9,
+                                    arg: j + 1
+                                })
                             pop(c.chain)
                             c.chain_at = saved_at
                             c.chain_laid = saved_laid
                         else:
                             their_arm += fixed_subtree(theirs, their_arm)
                 my_arm += fixed_subtree(mine, my_arm)
+            var rem_arm = ti + 1
+            for(te.children) j:
+                let ta = fixed_entry_at(theirs, rem_arm)
+                var was_seen = false
+                for(seen_their) sj:
+                    if sj == j:
+                        was_seen = true
+                if not was_seen and ta.size < span:
+                    let saved_at = c.chain_at
+                    let saved_laid = c.chain_laid
+                    push(c.chain, TableFixedGuardLink { grd: their_at, arg: j + 1, arg_w: c.arg_w })
+                    c.chain_laid = false
+                    fixed_push(c, TableFixedEntry {
+                        src: their_at + their_tag + ta.size,
+                        size: span - ta.size,
+                        grd: their_at,
+                        op: 9,
+                        arg: j + 1
+                    })
+                    pop(c.chain)
+                    c.chain_at = saved_at
+                    c.chain_laid = saved_laid
+                rem_arm += fixed_subtree(theirs, rem_arm)
+            if span > 0:
+                let saved_at0 = c.chain_at
+                let saved_laid0 = c.chain_laid
+                push(c.chain, TableFixedGuardLink { grd: their_at, arg: 0, arg_w: c.arg_w })
+                c.chain_laid = false
+                fixed_push(c, TableFixedEntry {
+                    src: their_at + their_tag,
+                    size: span,
+                    grd: their_at,
+                    op: 9,
+                    arg: 0
+                })
+                pop(c.chain)
+                c.chain_at = saved_at0
+                c.chain_laid = saved_laid0
             c.arg_w = saved_w
         case 30:
             let n = te.children
@@ -1309,7 +1358,10 @@ def fixed_value_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:
                     return "wire_damaged"
                 if fixed_text_ill_formed(p.meta, v, src, src_base + p.src + 4):
                     return TableRefuseTextIllFormed
-    return fixed_union_dead_refusal(plan, count, src, src_base)
+            elif p.op == 9:
+                if not fixed_dead_zero(src, src_base, p.src, p.size):
+                    return "wire_damaged"
+    return ""
 
 def fixed_copy_run(dst:string, dst_off:int, src:string, src_off:int, n:int) -> string:
     var b = dst

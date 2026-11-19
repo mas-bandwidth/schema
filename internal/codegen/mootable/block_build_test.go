@@ -83,12 +83,17 @@ print(hex(block.buffer, bytes :: number))
 func TestMooBlockBuilderRebuildsTheGoldens(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_block.moo)")
 	t.Parallel()
-	g := blockUnit(t)
+	byUnit := map[string]*generatedUnit{}
 	rows := manifestLines(t, "block")
 	if len(rows) == 0 {
 		t.Fatal("the manifest names no block")
 	}
 	for _, row := range rows {
+		g, ok := byUnit[row[2]]
+		if !ok {
+			g = blockUnitNamed(t, row[2])
+			byUnit[row[2]] = g
+		}
 		data, err := os.ReadFile(filepath.Join(root, row[3]))
 		if err != nil {
 			t.Fatal(err)
@@ -98,8 +103,10 @@ func TestMooBlockBuilderRebuildsTheGoldens(t *testing.T) {
 			t.Errorf("%s: the rebuilt block differs from %s:\n%s", row[1], row[3], firstByteDiff(got, data))
 		}
 	}
-	if out := g.analyze(t); out != "" {
-		t.Fatalf("moo-analyze is not silent:\n%s", out)
+	for _, g := range byUnit {
+		if out := g.analyze(t); out != "" {
+			t.Fatalf("moo-analyze is not silent:\n%s", out)
+		}
 	}
 }
 
@@ -237,8 +244,13 @@ func TestMooBlockWriteRefusesWhatItCannotHold(t *testing.T) {
 func TestMooBlockOpenHoldsTheBaseAlignment(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
-	g := blockUnit(t)
+	byUnit := map[string]*generatedUnit{}
 	for _, row := range manifestLines(t, "block") {
+		g, ok := byUnit[row[2]]
+		if !ok {
+			g = blockUnitNamed(t, row[2])
+			byUnit[row[2]] = g
+		}
 		data, err := os.ReadFile(filepath.Join(root, row[3]))
 		if err != nil {
 			t.Fatal(err)
@@ -306,8 +318,20 @@ func TestMooBlockBuilderNegativeControls(t *testing.T) {
 			// padded image carries the one whose start the rounding moves
 			red := false
 			for _, r := range manifestLines(t, "block") {
+				rg := g
+				if r[2] != "blockdemo" {
+					rg = blockUnitNamed(t, r[2])
+					rpath := filepath.Join(rg.dir, "table_block.moo")
+					rsrc, rerr := os.ReadFile(rpath)
+					if rerr != nil {
+						t.Fatal(rerr)
+					}
+					if werr := os.WriteFile(rpath, []byte(strings.Replace(string(rsrc), c.anchor, c.repl, 1)), 0o644); werr != nil {
+						t.Fatal(werr)
+					}
+				}
 				d, _ := os.ReadFile(filepath.Join(root, r[3]))
-				if g.run(t, blockBuildMain(g, blockTableOf(r[1]), ""), map[string][]byte{"block": d}) != hex.EncodeToString(d) {
+				if rg.run(t, blockBuildMain(rg, blockTableOf(r[1]), ""), map[string][]byte{"block": d}) != hex.EncodeToString(d) {
 					red = true
 				}
 			}

@@ -16,6 +16,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -34,6 +35,7 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	Writer  *ir.Struct
 }
 
 var (
@@ -71,6 +73,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 				Wire:   ir.TableFixedLayoutHash(layout, st),
 				Layout: layout,
 				Record: 8 + ir.TableFixedTypeBytes(st),
+				Writer: st,
 			}, true
 		}
 	}
@@ -467,23 +470,37 @@ func emitFixedElementLeavesAt(g *lobster.Gen, f *ir.Field, es, ed string, ind st
 			salt := *sequence
 			*sequence++
 			tag := ir.TableFixedUnionTagBytes(r)
+			span := ir.TableFixedUnionBytes(r) - tag
 			g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s, dst: %s, size: %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedCopy })\n",
 				ind, es, ed, tag)
 			for i, v := range r.Variants {
-				if v.F == nil {
-					continue
-				}
 				gv := fmt.Sprintf("grd_at_%s_%d_%d", ir.GoExportName(v.Name), salt, i)
 				qv := fmt.Sprintf("q_%s_%d_%d", ir.GoExportName(v.Name), salt, i)
 				g.Pf("%slet %s = length(out)\n", ind, gv)
-				af := *v.F
-				af.Name = v.Name
-				emitFixedPayloadLeaves(g, &af, es, ed, tag, ind, sequence)
+				var armBytes int64
+				if v.F != nil {
+					af := *v.F
+					af.Name = v.Name
+					emitFixedPayloadLeaves(g, &af, es, ed, tag, ind, sequence)
+					armBytes = ir.TableFixedFieldBytes(v.F)
+				}
+				if armBytes < span {
+					g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s + %d, size: %d, grd: schema_rt.tableFixedNoGuard, op: 9 })\n",
+						ind, es, tag+armBytes, span-armBytes)
+				}
 				g.Pf("%svar %s = %s\n", ind, qv, gv)
 				g.Pf("%swhile %s < length(out):\n", ind, qv)
 				g.Pf("%s    push(out[%s].chain, schema_rt.TableFixedGuardLink { grd: %s, arg: %d, arg_w: %d })\n",
 					ind, qv, es, i+1, tag)
 				g.Pf("%s    %s += 1\n", ind, qv)
+			}
+			if span > 0 {
+				zv := fmt.Sprintf("z_slk_%d", salt)
+				g.Pf("%slet %s = length(out)\n", ind, zv)
+				g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s + %d, size: %d, grd: schema_rt.tableFixedNoGuard, op: 9 })\n",
+					ind, es, tag, span)
+				g.Pf("%spush(out[%s].chain, schema_rt.TableFixedGuardLink { grd: %s, arg: 0, arg_w: %d })\n",
+					ind, zv, es, tag)
 			}
 			return
 		}
@@ -1374,9 +1391,20 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 		known = append(known, own)
 	}
 	floor := 0
-	for i, e := range known {
-		if e.Retired {
+	for i := range known {
+		if known[i].Retired {
 			floor = i + 1
+		}
+		if known[i].Writer == nil && known[i].Wire != own.Wire {
+			known[i].Writer = resolveLobsterEntryWriter(g.Unit, st, known[i].Wire)
+		}
+	}
+
+	var writerChecks []int
+	for i, e := range known {
+		if e.Wire != own.Wire && e.Writer != nil && fixedWriterRawNeededStruct(e.Writer, map[string]bool{}) {
+			emitFixedWriterRawCheckFn(g, name, i, e.Writer)
+			writerChecks = append(writerChecks, i)
 		}
 	}
 
@@ -1553,6 +1581,12 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)\n")
 	g.Pf("        if why != \"\":\n")
 	g.Pf("            return schema_rt.fixed_refuse(report, why)\n")
+	for _, wcIdx := range writerChecks {
+		g.Pf("        if pick == %d:\n", wcIdx)
+		g.Pf("            let wwhy = %sWriterCheck%d(data, rec_at + 8)\n", name, wcIdx)
+		g.Pf("            if wwhy != \"\":\n")
+		g.Pf("                return schema_rt.fixed_refuse(report, wwhy)\n")
+	}
 	g.Pf("    for(n) k:\n")
 	g.Pf("        let rec_at = records_start + k * record_bytes\n")
 	g.Pf("        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(%d), %sResetImage, holes)\n", bodyBytes, name)
@@ -1702,6 +1736,222 @@ func emitFixedFiniteElement(g *lobster.Gen, f *ir.Field, owner, expr, ind string
 			arm.Name = v.Name
 			g.Pf("%sif int(%s.Type) == %d:\n", ind, expr, i+1)
 			emitFixedFiniteField(g, &arm, r.Name, expr, ind+"    ")
+		}
+	}
+}
+
+var lobsterUnitLocks sync.Map // *ir.Unit -> *lockfile.Unit
+
+func resolveLobsterEntryWriter(u *ir.Unit, root *ir.Struct, wire uint64) *ir.Struct {
+	if u == nil || root == nil {
+		return nil
+	}
+	var lock *lockfile.Unit
+	if v, ok := lobsterUnitLocks.Load(u); ok {
+		lock, _ = v.(*lockfile.Unit)
+	} else {
+		var paths []string
+		for _, f := range u.Files {
+			if f != nil && f.Path != "" {
+				paths = append(paths, f.Path)
+			}
+		}
+		if len(paths) > 0 {
+			if lk, ok, err := lockfile.Open(paths); err == nil && ok {
+				lock = lk
+			}
+		}
+		lobsterUnitLocks.Store(u, lock)
+	}
+	if lock == nil {
+		return nil
+	}
+	for _, le := range lockfile.Lineage(lock, root.WireName()) {
+		if le.Wire == wire {
+			return le.Writer
+		}
+	}
+	return nil
+}
+
+func fixedWriterRawNeededStruct(st *ir.Struct, seen map[string]bool) bool {
+	if st == nil || seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedWriterRawNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedWriterRawNeededField(f *ir.Field, seen map[string]bool) bool {
+	if f == nil {
+		return false
+	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		return true
+	}
+	if f.Array != ir.ArrayNone || f.KeyEnumRef != nil {
+		elem := *f
+		elem.Array, elem.ArrayMin, elem.KeyEnum, elem.KeyEnumRef = ir.ArrayNone, 0, "", nil
+		return fixedWriterRawNeededField(&elem, seen)
+	}
+	switch f.Type.Kind {
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedWriterRawNeededStruct(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedWriterRawNeededField(v.F, seen) {
+					return true
+				}
+			}
+		}
+		return false
+	case ir.TFloat32, ir.TFloat64:
+		return f.HasFloatRange
+	case ir.TInt, ir.TFixed, ir.TBits:
+		_, ok := lobsterScalarWidthBound(f, "x")
+		return ok || len(lobsterScalarRangeBounds(f, "x")) > 0
+	}
+	return false
+}
+
+func emitFixedWriterRawCheckFn(g *lobster.Gen, name string, idx int, st *ir.Struct) {
+	g.Pf("def %sWriterCheck%d(data:string, base:int) -> string:\n", name, idx)
+	seq := 0
+	emitFixedWriterRawStruct(g, st, "base", "    ", &seq)
+	g.Pf("    return \"\"\n\n")
+}
+
+func emitFixedWriterRawStruct(g *lobster.Gen, st *ir.Struct, base, ind string, seq *int) {
+	off := int64(0)
+	for _, f := range st.Fields {
+		if fixedWriterRawNeededField(f, map[string]bool{}) {
+			emitFixedWriterRawField(g, f, base, off, ind, seq)
+		}
+		off += ir.TableFixedFieldBytes(f)
+	}
+}
+
+func emitFixedWriterRawField(g *lobster.Gen, f *ir.Field, base string, off int64, ind string, seq *int) {
+	if f.Type.Optional {
+		g.Pf("%sif read_uint8_le(data, %s + %d) != 0:\n", ind, base, off)
+		emitFixedWriterRawPayload(g, f, base, off+ir.TableFixedPresentBytes, ind+"    ", seq)
+		return
+	}
+	emitFixedWriterRawPayload(g, f, base, off, ind, seq)
+}
+
+func emitFixedWriterRawPayload(g *lobster.Gen, f *ir.Field, base string, off int64, ind string, seq *int) {
+	elem := *f
+	elem.Array, elem.ArrayMin, elem.KeyEnum, elem.KeyEnumRef = ir.ArrayNone, 0, "", nil
+	elemNeeded := fixedWriterRawNeededField(&elem, map[string]bool{})
+	elemBytes := ir.TableFixedElementBytes(f)
+	switch {
+	case f.KeyEnumRef != nil:
+		if !elemNeeded {
+			return
+		}
+		salt := *seq
+		*seq++
+		iv := fmt.Sprintf("i_wc_%d", salt)
+		g.Pf("%sfor(%d) %s:\n", ind, f.KeyEnumRef.Max, iv)
+		emitFixedWriterRawElement(g, &elem, fmt.Sprintf("%s + %d + %s * %d", base, off, iv, elemBytes), ind+"    ", seq)
+	case f.Array == ir.ArrayFixed:
+		if !elemNeeded {
+			return
+		}
+		salt := *seq
+		*seq++
+		iv := fmt.Sprintf("i_wc_%d", salt)
+		g.Pf("%sfor(%d) %s:\n", ind, f.ArrayBound, iv)
+		emitFixedWriterRawElement(g, &elem, fmt.Sprintf("%s + %d + %s * %d", base, off, iv, elemBytes), ind+"    ", seq)
+	case f.Array == ir.ArrayCounted:
+		salt := *seq
+		*seq++
+		cv := fmt.Sprintf("c_wc_%d", salt)
+		g.Pf("%slet %s = read_int32_le(data, %s + %d)\n", ind, cv, base, off)
+		if f.ArrayMin > 0 {
+			g.Pf("%sif %s < %d:\n%s    return schema_rt.TableRefuseCountOverBound\n", ind, cv, f.ArrayMin, ind)
+		}
+		if elemNeeded {
+			iv := fmt.Sprintf("i_wc_%d", salt)
+			g.Pf("%sfor(%s) %s:\n", ind, cv, iv)
+			emitFixedWriterRawElement(g, &elem, fmt.Sprintf("%s + %d + %s * %d", base, off+ir.TableFixedCountBytes, iv, elemBytes), ind+"    ", seq)
+		}
+	default:
+		emitFixedWriterRawElement(g, f, fmt.Sprintf("%s + %d", base, off), ind, seq)
+	}
+}
+
+func emitFixedWriterRawElement(g *lobster.Gen, f *ir.Field, at, ind string, seq *int) {
+	t := f.Type
+	switch t.Kind {
+	case ir.TNamed:
+		switch r := t.Ref.(type) {
+		case *ir.Struct:
+			emitFixedWriterRawStruct(g, r, at, ind, seq)
+		case *ir.Union:
+			salt := *seq
+			*seq++
+			tag := ir.TableFixedUnionTagBytes(r)
+			tv := fmt.Sprintf("t_wc_%d", salt)
+			g.Pf("%slet %s = %s(data, %s)\n", ind, tv, readInt(int(tag), false), at)
+			for i, v := range r.Variants {
+				if v.F == nil || !fixedWriterRawNeededField(v.F, map[string]bool{}) {
+					continue
+				}
+				arm := *v.F
+				arm.Name = v.Name
+				g.Pf("%sif %s == %d:\n", ind, tv, i+1)
+				emitFixedWriterRawPayload(g, &arm, at, tag, ind+"    ", seq)
+			}
+		}
+	case ir.TFloat32:
+		if f.HasFloatRange {
+			salt := *seq
+			*seq++
+			xv := fmt.Sprintf("x_wc_%d", salt)
+			g.Pf("%slet %s = read_float32_le(data, %s)\n", ind, xv, at)
+			g.Pf("%sif schema_rt.finite_f32(%s) and (%s < %s or %s > %s):\n%s    return schema_rt.TableRefuseOutOfRange\n",
+				ind, xv, xv, lobster.FormatFloat32(f.FMin), xv, lobster.FormatFloat32(f.FMax), ind)
+		}
+	case ir.TFloat64:
+		if f.HasFloatRange {
+			salt := *seq
+			*seq++
+			xv := fmt.Sprintf("x_wc_%d", salt)
+			g.Pf("%slet %s = read_float64_le(data, %s)\n", ind, xv, at)
+			g.Pf("%sif schema_rt.finite_f64(%s) and (%s < %s or %s > %s):\n%s    return schema_rt.TableRefuseOutOfRange\n",
+				ind, xv, xv, lobster.FormatFloat(f.FMin), xv, lobster.FormatFloat(f.FMax), ind)
+		}
+	case ir.TInt, ir.TFixed, ir.TBits:
+		salt := *seq
+		*seq++
+		xv := fmt.Sprintf("x_wc_%d", salt)
+		w := int(ir.TableFixedStorageBytes(t))
+		switch {
+		case t.Kind == ir.TBits:
+			g.Pf("%slet %s = %s(data, %s)\n", ind, xv, readInt(w, false), at)
+		case w == 16:
+			g.Pf("%slet %s = schema_rt.Int128 { lo: read_uint64_le(data, %s), hi: read_uint64_le(data, (%s) + 8) }\n", ind, xv, at, at)
+		default:
+			g.Pf("%slet %s = %s(data, %s)\n", ind, xv, readInt(w, ir.TableKindSigned(ir.TableScalarKind(f))), at)
+		}
+		var conds []string
+		for _, c := range lobsterScalarRangeBounds(f, xv) {
+			conds = append(conds, "("+c.cond+")")
+		}
+		if b, ok := lobsterScalarWidthBound(f, xv); ok {
+			conds = append(conds, "("+b.cond+")")
+		}
+		if len(conds) > 0 {
+			g.Pf("%sif %s:\n%s    return schema_rt.TableRefuseOutOfRange\n", ind, strings.Join(conds, " or "), ind)
 		}
 	}
 }
