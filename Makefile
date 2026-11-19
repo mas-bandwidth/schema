@@ -5214,8 +5214,9 @@ build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.c
 # passes run whatever N is.
 build/wire-fuzz-cpp: build/tables-generated/.stamp test/tables/wire_fuzz_main.cpp
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -O1 $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
-		$(CONFORMANCE_SOURCES) -o $@
+	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
+		$(CONFORMANCE_OBJECTS) -o $@
 
 build/wire-fuzz-cpp-asan: build/tables-generated/.stamp test/tables/wire_fuzz_main.cpp
 	@mkdir -p build

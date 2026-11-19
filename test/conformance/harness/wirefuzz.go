@@ -40,14 +40,15 @@ import (
 
 // wireFuzzOptions is what the command line settles.
 type wireFuzzOptions struct {
-	driver string
-	seed   uint64
-	n      int
-	shard  int
-	shards int
-	replay string
-	unit   string
-	root   string
+	driver     string
+	seed       uint64
+	n          int
+	maxMutants int
+	shard      int
+	shards     int
+	replay     string
+	unit       string
+	root       string
 	// message replays the file as a MESSAGE (docs/SPEC-TABLES.md §3.3),
 	// against the unit's own announced table rather than a trailer of its
 	// own. A failure on a message seed prints it.
@@ -622,6 +623,129 @@ func enumeratedShard(live []*wireSeed, shard, shards int, draw func(*wireMutant)
 	}
 }
 
+// emitBoundedStream emits up to opts.maxMutants mutants deterministically for
+// fast per-language verification:
+//  1. Every pinned hostile vector (preserving --relax-vector invariants).
+//  2. Every manifest seed's canonical wire across all live roots.
+//  3. A stateful multi-call reuse sequence (empty -> bad-form -> truncated ->
+//     valid) on every live root in the same persistent driver process, proving
+//     refused/damaged reads leave no dirty scratch, unflushed words, or stale
+//     cursors for the subsequent valid read.
+//  4. Uniform rational-stride sampling across all remaining enumerated and
+//     random mutants so every root receives coverage within the budget.
+func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts wireFuzzOptions, draw func(*wireMutant)) string {
+	emitted := 0
+	emit := func(m *wireMutant) bool {
+		if emitted >= opts.maxMutants {
+			return false
+		}
+		draw(m)
+		emitted++
+		return true
+	}
+
+	for _, s := range live {
+		if s.vector {
+			if !emit(&wireMutant{seed: s, pass: "vector", data: s.wire}) {
+				return ""
+			}
+		}
+	}
+
+	var rootOrder []int
+	rootSeed := map[int]*wireSeed{}
+	for _, s := range live {
+		if s.vector {
+			continue
+		}
+		if !emit(&wireMutant{seed: s, pass: "seed", index: 0, data: s.wire}) {
+			return ""
+		}
+		ri := seedRoot[s]
+		if _, seen := rootSeed[ri]; !seen && len(s.wire) > 0 {
+			rootSeed[ri] = s
+			rootOrder = append(rootOrder, ri)
+		}
+	}
+
+	for _, ri := range rootOrder {
+		rs := rootSeed[ri]
+		half := append([]byte(nil), rs.wire[:len(rs.wire)/2]...)
+		seq := [][]byte{
+			{},
+			{0xff, 0x7f, 0x00},
+			half,
+			rs.wire,
+		}
+		for idx, payload := range seq {
+			if !emit(&wireMutant{seed: rs, pass: "stateful-reuse", index: idx, data: payload}) {
+				return ""
+			}
+		}
+	}
+
+	rem := opts.maxMutants - emitted
+	if rem <= 0 {
+		return ""
+	}
+
+	enumAvail := 0
+	for _, s := range live {
+		if s.vector {
+			continue
+		}
+		enumerated(s, func(name string, _ []byte) {
+			if name != "seed" {
+				enumAvail++
+			}
+		})
+	}
+	randAvail := 0
+	var randNotice string
+	if opts.n > 0 {
+		if len(pool) == 0 {
+			randNotice = fmt.Sprintf("wire-fuzz: random pass skipped: no manifest seed is live (%d pinned vectors only)", len(live)-len(pool))
+		} else {
+			randAvail = opts.n
+		}
+	}
+	avail := enumAvail + randAvail
+	if avail == 0 {
+		return randNotice
+	}
+	target := min(rem, avail)
+	k := 0
+	take := func() bool {
+		pick := (int64(k+1)*int64(target))/int64(avail) > (int64(k)*int64(target))/int64(avail)
+		k++
+		return pick
+	}
+	for _, s := range live {
+		if s.vector {
+			continue
+		}
+		pass := map[string]int{}
+		enumerated(s, func(name string, data []byte) {
+			idx := pass[name]
+			pass[name]++
+			if name == "seed" {
+				return
+			}
+			if take() {
+				_ = emit(&wireMutant{seed: s, pass: name, index: idx, data: data})
+			}
+		})
+	}
+	for i := range randAvail {
+		if take() {
+			if mut := randomMutant(pool, opts.seed, i); mut != nil {
+				_ = emit(mut)
+			}
+		}
+	}
+	return randNotice
+}
+
 // buildWireFuzzRoster builds the wire-fuzz roster: every seed and every root
 // the manifest names (docs/SPEC-TABLES.md §4.2, the wire fuzzer). It refuses
 // by name when the roster is empty — a manifest, or a --manifest/--unit
@@ -762,6 +886,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.shards > 1 && (opts.replay != "" || opts.relaxVectors != "") {
 		return fmt.Errorf("wire-fuzz sharding cannot be combined with replay or relaxed vectors")
 	}
+	if opts.maxMutants < 0 {
+		return fmt.Errorf("--max-mutants must not be negative")
+	}
+	if opts.maxMutants > 0 && (opts.replay != "" || opts.shards > 1) {
+		return fmt.Errorf("--max-mutants cannot be combined with --replay or sharding")
+	}
 	if opts.finiteOwed != "" {
 		return fmt.Errorf("--finite-owed is retired: every mutant must be compared")
 	}
@@ -810,9 +940,16 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	}
 	produced := make(chan item, 256)
 	go func() {
-		if opts.replay != "" {
+		switch {
+		case opts.replay != "":
 			produced <- item{m: &wireMutant{seed: live[0], pass: "replay", data: live[0].wire}}
-		} else {
+		case opts.maxMutants > 0:
+			if line := emitBoundedStream(live, pool, seedRoot, opts, func(mut *wireMutant) {
+				produced <- item{m: mut}
+			}); line != "" {
+				fmt.Fprintln(os.Stderr, line)
+			}
+		default:
 			enumeratedShard(live, opts.shard, opts.shards, func(mut *wireMutant) {
 				produced <- item{m: mut}
 			})
