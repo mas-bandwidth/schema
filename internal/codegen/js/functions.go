@@ -551,10 +551,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					g.pf("%sif (%s !== %s) {%s\n%s  return false;\n%s}\n", ind, name, bigLit(f.IntMin), "", ind, ind)
 					return
 				}
-				// int128 is ALWAYS ranged (SPEC §4.3): offset from min —
-				// identical bytes to serializeInt64 wherever the range fits.
-				// The bounds are plain BigInt literals: exact at any width,
-				// no lane composition (unlike the Go/C#/C++ pair renderers).
+				// int128 is ALWAYS ranged (SPEC §4.3): guard in every build
+				// before handing to serializeInt128 (ProductionWriteStream omits
+				// the range check under NODE_ENV=production, SPEC §5.1).
+				g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) {\n%s  return false;\n%s}\n",
+					ind, name, name, bigLit(f.IntMin), name, bigLit(f.IntMax), ind, ind)
 				g.pf("%s%s.value = %s;\n", ind, scratch, name)
 				g.call(ind, fmt.Sprintf("stream.serializeInt128(%s, %s, %s)", scratch, bigLit(f.IntMin), bigLit(f.IntMax)), "")
 			} else {
@@ -633,10 +634,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				scratch, formatFloat32(f.FMin), formatFloat32(f.FMax), formatFloat32(f.Resolution)), "")
 			return
 		}
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) {\n%s  return false; // a bare float must be finite (SPEC §4.3, §5.1)\n%s}\n", ind, name, name, ind, ind)
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeFloat(%s)", scratch), "")
 	case ir.TFloat64:
 		scratch := g.numScratch()
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(%s)) {\n%s  return false; // a bare float must be finite (SPEC §4.3, §5.1)\n%s}\n", ind, name, name, ind, ind)
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
 	case ir.TString, ir.TBytes:

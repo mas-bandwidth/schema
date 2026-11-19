@@ -860,6 +860,13 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(tblscalars2, SimState, SimStateRow, sim_state_cook_write, sim_state_fixed_save, sim_state_fixed_measure);
                 Some($body)
             }
+            ("tblfixedevo", "EvoRoot") => {
+                #[allow(unused_imports, unused_variables)]
+                use tblfixedevo::{evo_root_from_json_bytes as $from_json, evo_root_load as $load, evo_root_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblfixedevo, EvoRoot, EvoRootRow, evo_root_cook_write, evo_root_fixed_save, evo_root_fixed_measure);
+                Some($body)
+            }
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
                 use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
@@ -1225,8 +1232,8 @@ fn no_text(f: &[String]) -> bool {
 // are converted into the text and cook writers' value through the generated
 // live-extent conversions; their strict read and canonical save stay form 3.
 const TABLE_FIXED_FORM_BYTE: u8 = 3;
-// room the read is handed: records, and the plan's capacity declaration
-const FIXED_RECORDS: usize = 64;
+// room the read is handed: one record, matching every other conformance leg, and the plan's capacity declaration
+const FIXED_RECORDS: usize = 1;
 const FIXED_PLAN: usize = 1 << 14;
 
 fn is_fixed_form(data: &[u8]) -> bool {
@@ -1279,6 +1286,7 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("messagedemo", "ToolMessage") => fixed_read!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, data),
         ("scalars", "SimState") => fixed_read!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblscalars2", "SimState") => fixed_read!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
+        ("tblfixedevo", "EvoRoot") => fixed_read!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, data),
         ("tabledemo", "ArchiveConfig") => fixed_read!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, data),
         ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
         ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
@@ -1351,6 +1359,12 @@ macro_rules! with_fixed_value_root {
                 use tblscalars2 as $k;
                 #[allow(unused_imports)]
                 use $k::{SimStateRow as $row, SimState as $value, sim_state_fixed_load as $load, sim_state_fixed_save as $save, sim_state_fixed_measure as $measure, sim_state_to_json_checked as $to, sim_state_from_json_bytes as $from, sim_state_cook_write as $cook};
+                Some($body)
+            }
+            ("tblfixedevo", "EvoRoot") => {
+                use tblfixedevo as $k;
+                #[allow(unused_imports)]
+                use $k::{EvoRootRow as $row, EvoRoot as $value, evo_root_fixed_load as $load, evo_root_fixed_save as $save, evo_root_fixed_measure as $measure, evo_root_to_json_checked as $to, evo_root_from_json_bytes as $from, evo_root_cook_write as $cook};
                 Some($body)
             }
             ("tabledemo", "ArchiveConfig") => {

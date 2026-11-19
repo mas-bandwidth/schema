@@ -1,1 +1,11 @@
-{"group": "js-write-refusal", "targets": ["verify-sabotage-negative-control", "verify-json-fuzz-negative-control"]}
+{
+  "group": "js-write-refusal",
+  "targets": [
+    "verify-sabotage-negative-control",
+    "verify-sabotage-packet-negative-control",
+    "verify-sabotage-fixed-negative-control",
+    "verify-sabotage-variable-negative-control",
+    "verify-sabotage-retain-negative-control",
+    "verify-json-fuzz-negative-control"
+  ]
+}

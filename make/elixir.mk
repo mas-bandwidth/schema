@@ -125,11 +125,12 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema \
 	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
 	tblscalars2:test/tables/Scalars2.schema \
+	tblfixedevo:test/tables/fixedevo \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -2061,8 +2062,8 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 	@rm -rf build/elixir-view
 	@mkdir -p build/elixir-view
 	go build -o build/elixir-view/emit ./test/elixir-view/emit
-	@set -e; for entry in $(VIEW_CORPUS); do \
-		dir=$${entry%%:*}; pkg=$${entry##*:}; \
+	@set -e; pids=""; for entry in $(VIEW_CORPUS); do ( \
+		set -e; dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		source=tables/$$dir; \
 		gen=build/elixir-view/generated/$$dir; mkdir -p $$gen; \
 		case " $(VIEW_ELIXIR_REGISTRY_ONLY) " in \
@@ -2070,8 +2071,8 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 			*) ./bin/schema generate --lang elixir --out $$gen "$$source" ;; \
 		esac; \
 		$(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg > build/elixir-view/$$pkg.listing; \
-		if [ "$$pkg" = tabledemo ]; then $(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg --unflattened > build/elixir-view/unflattened.listing; fi; \
-	done
+		if [ "$$pkg" = tabledemo ]; then $(ELIXIR) -r $$gen/UnitView.ex test/elixir-view/view_main.exs $$pkg --unflattened > build/elixir-view/unflattened.listing; fi \
+	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
 	SCHEMA_VIEW_LISTING_DIR=$(CURDIR)/build/elixir-view go test ./internal/viewlisting -count=1 -timeout 600s -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/elixir-view/negative
 	@cp build/elixir-view/unflattened.listing build/elixir-view/negative/tabledemo.listing

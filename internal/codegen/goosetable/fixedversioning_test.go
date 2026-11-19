@@ -348,14 +348,8 @@ func TestGooseFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 		t.Run(plan.name, func(t *testing.T) {
 			t.Parallel()
 			got := gooseVersionProbe(t, gooseVersionCase{reader: plan.reader, older: plan.older, root: "Lineage", capacity: 1,
-				data: data, print: []string{"values[0].Tier as u64", "values[0].Seq"}})
-			got.reads(t, 1)
-			if got.clamped != 1 {
-				t.Fatalf("forged_ordinal on the %s plan: clamped %d, want exactly 1: %s", plan.name, got.clamped, got.raw)
-			}
-			if len(got.printed) != 2 || got.printed[0] != "0" || got.printed[1] != "9" {
-				t.Fatalf("forged_ordinal on the %s plan: tier/seq %v, want None (0) and 9", plan.name, got.printed)
-			}
+				fresh: true, data: data})
+			got.refuses(t, "out_of_range", false, 0)
 		})
 	}
 }
@@ -384,14 +378,8 @@ func TestGooseFixedVersioningUnionTagBothPlans(t *testing.T) {
 		t.Run(plan.name, func(t *testing.T) {
 			t.Parallel()
 			got := gooseVersionProbe(t, gooseVersionCase{reader: plan.reader, older: plan.older, root: "Lineage", capacity: 1,
-				data: data, print: []string{"values[0].Pick.Type as u64", "values[0].Seq"}})
-			got.reads(t, 1)
-			if got.clamped != 1 {
-				t.Fatalf("union_tag on the %s plan: clamped %d, want exactly 1: %s", plan.name, got.clamped, got.raw)
-			}
-			if len(got.printed) != 2 || got.printed[0] != "0" || got.printed[1] != "15" {
-				t.Fatalf("union_tag on the %s plan: tag/seq %v, want None (0) and 15", plan.name, got.printed)
-			}
+				fresh: true, data: data})
+			got.refuses(t, "out_of_range", false, 0)
 		})
 	}
 }
@@ -421,6 +409,8 @@ func TestGooseFixedVersioningWriterBoundCount(t *testing.T) {
 			data[count] = c.count
 			if c.count == 0xFF {
 				data[count+1], data[count+2], data[count+3] = 0xFF, 0xFF, 0xFF
+			} else if c.count == 0 {
+				clear(data[count+4 : count+20])
 			}
 			got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "ArrayBoundedGrow",
 				capacity: 1, poison: c.refuse, data: data, fresh: c.refuse, print: []string{"values[0].ValsCount"}})

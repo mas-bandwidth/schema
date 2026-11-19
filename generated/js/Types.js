@@ -42,13 +42,22 @@ export function ZeroVec3(value) {
 }
 
 export function WriteVec3(stream, value) {
+  if (typeof value.x !== "number" || !Number.isFinite(value.x)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.y !== "number" || !Number.isFinite(value.y)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.z !== "number" || !Number.isFinite(value.z)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -105,17 +114,29 @@ export function ZeroQuat(value) {
 }
 
 export function WriteQuat(stream, value) {
+  if (typeof value.x !== "number" || !Number.isFinite(value.x)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.y !== "number" || !Number.isFinite(value.y)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.z !== "number" || !Number.isFinite(value.z)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.w !== "number" || !Number.isFinite(value.w)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.w;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -563,21 +584,36 @@ export function ZeroInput(value) {
 }
 
 export function WriteInput(stream, value) {
+  if (typeof value.stickX !== "number" || !Number.isFinite(Math.fround(value.stickX))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.stickX;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.stickY !== "number" || !Number.isFinite(Math.fround(value.stickY))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.stickY;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.throttle !== "number" || !Number.isFinite(Math.fround(value.throttle))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.throttle;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  if (typeof value.yaw !== "number" || !Number.isFinite(Math.fround(value.yaw))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.yaw;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.pitch !== "number" || !Number.isFinite(Math.fround(value.pitch))) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.pitch;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {

@@ -78,6 +78,12 @@ build/tables-generated-c/examples/WideBlock.c
 build/tables-generated-c/examples/WideBlock.h
 build/tables-generated-c/examples/WideTable.c
 build/tables-generated-c/examples/WideTable.h
+build/tables-generated-c/fixedevo/FixedEvoBlock.c
+build/tables-generated-c/fixedevo/FixedEvoBlock.h
+build/tables-generated-c/fixedevo/FixedEvoTable.c
+build/tables-generated-c/fixedevo/FixedEvoTable.h
+build/tables-generated-c/fixedevo/TblfixedevoView.c
+build/tables-generated-c/fixedevo/TblfixedevoView.h
 build/tables-generated-c/g1/G1Block.c
 build/tables-generated-c/g1/G1Block.h
 build/tables-generated-c/g1/G1Table.c

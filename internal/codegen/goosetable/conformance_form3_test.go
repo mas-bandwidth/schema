@@ -37,6 +37,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -63,14 +64,15 @@ recursive fn fixed_union_arm_bytes(unit: schema_rt::LoadUnit, ui: i64) -> i64 {
 }
 recursive fn fixed_field_inner_size(unit: schema_rt::LoadUnit, f: schema_rt::FieldDesc) -> i64 {
     if f.shape == schema_rt::ShapeBool { return 1; }
-    if f.shape == schema_rt::ShapeInt || f.shape == schema_rt::ShapeFloat { return f.kw as i64; }
+    if f.shape == schema_rt::ShapeInt { return f.kw as i64; }
+    if f.shape == schema_rt::ShapeFloat { return if f.is_f32 { 4 } else { 8 }; }
     if f.shape == schema_rt::ShapeEnum {
         if f.variants.len >= 65536 { return 4; }
         if f.variants.len >= 256 { return 2; }
         return 1;
     }
     if f.shape == schema_rt::ShapeStr || f.shape == schema_rt::ShapeBytes {
-        let cw: i64 = if f.wide { 2 } else { 1 };
+        let cw: i64 = 1;
         return 4 + f.bound * cw;
     }
     if f.shape == schema_rt::ShapeTab { return fixed_tab_size(unit, schema_rt::value_table(unit, f.ref)); }
@@ -116,7 +118,7 @@ recursive fn fixed_field_to_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fiel
         return true;
     }
     if f.shape == schema_rt::ShapeInt || f.shape == schema_rt::ShapeFloat {
-        let kw = f.kw as i64;
+        let kw: i64 = if f.shape == schema_rt::ShapeFloat { if f.is_f32 { 4 } else { 8 } } else { f.kw as i64 };
         var lo: u64 = 0;
         var hi: u64 = 0;
         if kw == 16 {
@@ -146,7 +148,7 @@ recursive fn fixed_field_to_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fiel
         return true;
     }
     if f.shape == schema_rt::ShapeStr || f.shape == schema_rt::ShapeBytes {
-        let cw: i64 = if f.wide { 2 } else { 1 };
+        let cw: i64 = 1;
         let used = schema_rt::fixed_u32(b, pos) as i64;
         let nbytes = used * cw;
         let off = data.len;
@@ -240,7 +242,7 @@ recursive fn fixed_field_from_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fi
         return true;
     }
     if f.shape == schema_rt::ShapeFloat {
-        let kw = f.kw as i64;
+        let kw: i64 = if f.is_f32 { 4 } else { 8 };
         let fb = if rode { vals[s].bits.lo } else if f.has_def { if f.is_f32 { schema_rt::fixed_f32_bits(f.def_f as f32) } else { schema_rt::fixed_f64_bits(f.def_f) } } else { 0 };
         schema_rt::fixed_put(out, fb, kw);
         return true;
@@ -252,7 +254,7 @@ recursive fn fixed_field_from_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fi
         return true;
     }
     if f.shape == schema_rt::ShapeStr || f.shape == schema_rt::ShapeBytes {
-        let cw: i64 = if f.wide { 2 } else { 1 };
+        let cw: i64 = 1;
         if rode {
             let off = vals[s].off;
             let n = vals[s].len;
@@ -264,7 +266,7 @@ recursive fn fixed_field_from_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fi
             schema_rt::fixed_put_zeros(out, (f.bound - units) * cw);
             return true;
         }
-        let def_bytes = if f.has_def && !f.wide { f.def_s } else { "" };
+        let def_bytes = if f.has_def { f.def_s } else { "" };
         let units = def_bytes.len / cw;
         if units > f.bound || def_bytes.len != units * cw { return false; }
         schema_rt::fixed_put(out, units as! u64, 4);
@@ -428,7 +430,20 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 	if err != nil {
 		t.Fatalf("%s: goose: %v", key, err)
 	}
-	tables, err := goosetable.Generate(u)
+	var lineage map[string][]goosetable.FixedEvolutionEntry
+	if lock, ok, lerr := lockfile.Open(gathered); lerr != nil {
+		t.Fatal(lerr)
+	} else if ok && lock != nil {
+		lineage = map[string][]goosetable.FixedEvolutionEntry{}
+		for _, st := range ir.TableFixedRoots(u) {
+			for _, e := range lockfile.Lineage(lock, st.WireName()) {
+				lineage[st.Name] = append(lineage[st.Name], goosetable.FixedEvolutionEntry{
+					Wire: e.Wire, Layout: e.Layout, Record: e.Record + 8, Retired: e.Retired, Reason: e.Reason,
+				})
+			}
+		}
+	}
+	tables, err := goosetable.GenerateLineage(u, lineage)
 	if err != nil {
 		t.Fatalf("%s: goosetable: %v", key, err)
 	}
@@ -458,6 +473,19 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 	}
 	toLoaded := names(`fn ([A-Za-z0-9_]*)ToLoaded\(`)
 	fixedLoad := names(`fn ([A-Za-z0-9_]*)FixedLoad\(`)
+	fixedEvolveLoad := names(`fn ([A-Za-z0-9_]*)FixedEvolveLoad\(`)
+	loadFnOf := func(r string) string {
+		if slices.Contains(fixedEvolveLoad, r) {
+			return "FixedEvolveLoad"
+		}
+		return "FixedLoad"
+	}
+	repTypeOf := func(r string) string {
+		if slices.Contains(fixedEvolveLoad, r) {
+			return "FixedEvolveReport"
+		}
+		return "FixedReport"
+	}
 	fromLoaded := names(`fn ([A-Za-z0-9_]*)FromLoaded\(`)
 	fixedSave := names(`fn ([A-Za-z0-9_]*)FixedSave\(`)
 	needFixedHelpers := false
@@ -474,8 +502,8 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 		}
 		fmt.Fprintf(&glue, "    if root == %q {\n", st.Name)
 		fmt.Fprintf(&glue, "        var values: %s::%s[256] = [%s::%s { .. }; 256];\n", ns, st.Name, ns, st.Name)
-		glue.WriteString("        var rep = schema_rt::FixedReport { .. };\n")
-		fmt.Fprintf(&glue, "        let n = %s::%sFixedLoad(values[0..256], data, rep);\n", ns, st.Name)
+		fmt.Fprintf(&glue, "        var rep = schema_rt::%s { .. };\n", repTypeOf(st.Name))
+		fmt.Fprintf(&glue, "        let n = %s::%s%s(values[0..256], data, rep);\n", ns, st.Name, loadFnOf(st.Name))
 		glue.WriteString("        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }\n")
 		glue.WriteString("        var saved: u8[>..] = [];\n")
 		fmt.Fprintf(&glue, "        if %s::%sFixedSave(values[0..n], saved) < 0 { return -4; }\n", ns, st.Name)
@@ -493,8 +521,8 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 		for _, r := range fixedLoad {
 			fmt.Fprintf(&glue, "    if root == %q {\n", r)
 			fmt.Fprintf(&glue, "        var values: %s::%s[1] = [%s::%s { .. }];\n", ns, r, ns, r)
-			glue.WriteString("        var rep = schema_rt::FixedReport { .. };\n")
-			fmt.Fprintf(&glue, "        let n = %s::%sFixedLoad(values[0..1], data[0..data.len], rep);\n", ns, r)
+			fmt.Fprintf(&glue, "        var rep = schema_rt::%s { .. };\n", repTypeOf(r))
+			fmt.Fprintf(&glue, "        let n = %s::%s%s(values[0..1], data[0..data.len], rep);\n", ns, r, loadFnOf(r))
 			glue.WriteString("        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -1; }\n")
 			if slices.Contains(toLoaded, r) {
 				fmt.Fprintf(&glue, "        return %s::%sToLoaded(values[0], conformance_unit(), data, vals);\n", ns, r)

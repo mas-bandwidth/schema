@@ -147,7 +147,9 @@ func emitCookWrite(g *goose.Gen, u *ir.Unit, records []*ir.Struct) {
 			w.field(fl.Field, "v."+ir.GoExportName(fl.Field.Name), "v."+ir.GoExportName(fl.Field.Name), fl.Offset, i, "rec")
 		}
 		g.Declare(st.Name + "CookPut")
-		g.Pf("fn %sCookPut(v: const %s&, b: u8[:], at: i64, big: bool) -> bool {\n%s    return true;\n}\n", st.Name, typ, w.put.String())
+		g.Pf("fn %sCookPut(v: const %s&, b: u8[:], at: i64, big: bool) -> bool { return %sCookPutMode(v, b, at, big, false); }\n", st.Name, typ, st.Name)
+		g.Declare(st.Name + "CookPutMode")
+		g.Pf("fn %sCookPutMode(v: const %s&, b: u8[:], at: i64, big: bool, write_absent: bool) -> bool {\n%s    return true;\n}\n", st.Name, typ, w.put.String())
 		g.Declare(st.Name + "CookFromLoaded")
 		g.Pf("fn %sCookFromLoaded(v: %s&, data: const u8[:], vals: const %s::LoadVal[:], rec: i64) {\n", st.Name, typ, rt)
 		g.Pf("    v = %s { .. };\n%s}\n", typ, w.cp.String())
@@ -173,7 +175,7 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 		w.cl(1, "%sPresent = %s;", dst, ride)
 		// an absent optional's payload is storage the walk does not reach:
 		// the zero-filled extent already holds it (§7.6)
-		w.pl(1, "if %sPresent {", src)
+		w.pl(1, "if write_absent || %sPresent {", src)
 	}
 	switch {
 	case t.Kind == ir.TString || t.Kind == ir.TBytes:
@@ -284,9 +286,9 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 				lb := strings.LastIndexByte(src, '[')
 				arr, idx := src[:lb], strings.TrimSuffix(src[lb+1:], "]")
 				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
-				w.pl(ind, "if %s < %sCount as! i64 { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", idx, arr, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
+				w.pl(ind, "if %s < %sCount as! i64 { if !%sCookPutMode(%s, b, at + %s, big, write_absent) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPutMode(%s, b, at + %s, big, false) { return false; } }", idx, arr, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
 			default:
-				w.pl(ind, "if !%sCookPut(%s, b, at + %s, big) { return false; }", r.Name, src, at)
+				w.pl(ind, "if !%sCookPutMode(%s, b, at + %s, big, write_absent) { return false; }", r.Name, src, at)
 			}
 			w.cl(ind, "%sCookFromLoaded(%s, data, vals, %s);", r.Name, dst, s)
 		case *ir.Union:

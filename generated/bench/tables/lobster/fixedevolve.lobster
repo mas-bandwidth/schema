@@ -1387,6 +1387,8 @@ def fixed_run(plan:[TableFixedEntry], count:int, src:string, src_base:int, dst_i
                             raw = read_int16_le(src, src_base + p.src)
                         elif p.size == 4:
                             raw = read_int32_le(src, src_base + p.src)
+                        elif p.size == 8:
+                            raw = read_int64_le(src, src_base + p.src)
                     else:
                         if p.size == 1:
                             raw = read_uint8_le(src, src_base + p.src)
@@ -1394,12 +1396,17 @@ def fixed_run(plan:[TableFixedEntry], count:int, src:string, src_base:int, dst_i
                             raw = read_uint16_le(src, src_base + p.src)
                         elif p.size == 4:
                             raw = read_uint32_le(src, src_base + p.src)
+                        elif p.size == 8:
+                            raw = read_uint64_le(src, src_base + p.src)
                     if p.dst_size == 2:
                         dst = write_int16_le(dst, p.dst, raw)
                     elif p.dst_size == 4:
                         dst = write_int32_le(dst, p.dst, raw)
                     elif p.dst_size == 8:
                         dst = write_int64_le(dst, p.dst, raw)
+                    elif p.dst_size == 16:
+                        dst = write_int64_le(dst, p.dst, raw)
+                        dst = write_int64_le(dst, p.dst + 8, if p.sign != 0 and raw < 0: -1 else: 0)
                     else:
                         for(p.dst_size) k:
                             dst = write_int8_le(dst, p.dst + k, shr(raw, 8 * k) & 0xff)

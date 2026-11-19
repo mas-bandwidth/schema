@@ -90,6 +90,7 @@ func verdictGlue(ns string, mods []string) string {
 	}
 	fmt.Fprintf(&b, "fn conformance_unit() -> schema_rt::LoadUnit { return %s::%s; }\n", ns, goosetable.UnitName)
 	b.WriteString("fn conformance_wire(root: const u8[:], data: const u8[:], out: u8[>..<]&) -> i64 { return -1; }\n")
+	b.WriteString("fn conformance_load(root: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 { var r = schema_rt::LoadReport { .. }; return schema_rt::load_table(conformance_unit(), root, data[0..data.len], vals, nodes, r); }\n")
 	b.WriteString("fn conformance_message(root: const u8[:], announce: const u8[:], wire: const u8[:], out: u8[>..]&) -> i64 { return -1; }\n")
 	b.WriteString("fn conformance_json_read(root: const u8[:], text: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 {\n")
 	b.WriteString("    var report = schema_rt::json_report();\n")

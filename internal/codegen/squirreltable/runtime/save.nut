@@ -411,7 +411,7 @@ local number = function(T, c, root, cook = false) {
       // record token where the load noted one and by its value otherwise (a
       // Squirrel string has no storage identity), so both spot the second
       // naming of one blob. The cook keys a *string by its value.
-      local id = cook ? e.v : e.id;
+      local id = e.id;
       if (id in at[e.kind]) {
         // Cook attributes a shared blob once; wire ownership still refuses it.
         if (cook) continue;
@@ -899,14 +899,8 @@ local putFixedU = function(b, off, w, v) {
 local fixedWriteBody, fixedWriteField, fixedWritePayload, fixedWriteElement;
 
 fixedWriteBody = function(T, c, v, out, off) {
-  local fresh = null;
   foreach (fd in c.fields) {
-    local src = v;
-    if (fd.deprecated) {
-      if (fresh == null) fresh = c.make();
-      src = fresh;
-    }
-    if (!fixedWriteField(T, c.name, fd, src, out, off)) return false;
+    if (!fixedWriteField(T, c.name, fd, v, out, off)) return false;
     off += fd.fb;
   }
   return true;
@@ -1158,3 +1152,4 @@ _M.numberForCook <- function(T, root, value) {
 };
 _M.mapWriteOrder <- mapWriteOrder;
 _M.mapKeyCmp <- mapKeyCmp;
+_M.blobIdentity <- blobIdentity;

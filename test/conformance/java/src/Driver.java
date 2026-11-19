@@ -1030,7 +1030,15 @@ public final class Driver {
                         byte[] saved = fixed.save(values, read);
                         if (saved == null) return failInt(f[1] + ": save refused the value");
                         spill(out, f[1] + ".wire", saved);
-                        spillAbsentReason(out, f[1], FIXED_NO_TEXT);
+                        VariableCodec vcodec = variableCodec(f[2], f[3]);
+                        if (vcodec != null) {
+                            Object value = vcodec.fromFixed(java.lang.reflect.Array.get(values, 0));
+                            byte[] answer = withValue(vcodec, value, line);
+                            if (answer == null) return failInt(f[1] + ": toJson refused the value");
+                            spill(out, f[1], answer);
+                        } else {
+                            spillAbsentReason(out, f[1], FIXED_NO_TEXT);
+                        }
                     }
                     else { spill(out, f[1], line); }
                     continue;

@@ -110,6 +110,8 @@ func variableRuntimeModule(u *ir.Unit) string {
 	var b strings.Builder
 	b.WriteString(header(runtimeSourceName(u), u.Package, "the variable wire's framing (docs/SPEC-TABLES.md §3, §4, §5)"))
 	b.WriteString(`
+#![allow(clippy::int_plus_one, clippy::manual_range_patterns, clippy::question_mark, clippy::needless_late_init)]
+
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};

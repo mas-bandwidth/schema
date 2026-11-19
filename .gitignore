@@ -98,3 +98,20 @@ erl_crash.dump
 /generated/bench/paired/rust/Cargo.lock
 /test/cs-hostile/bin/
 /test/cs-hostile/obj/
+
+# Unity test/cards dotnet build directories
+/test/unity/**/bin/
+/test/unity/**/obj/
+/test/packet-defaults/unity/**/bin/
+/test/packet-defaults/unity/**/obj/
+/test/packet-text/unity/**/bin/
+/test/packet-text/unity/**/obj/
+/test/unity-hostile/**/bin/
+/test/unity-hostile/**/obj/
+/tables/cards/unity/**/bin/
+/tables/cards/unity/**/obj/
+
+/test/packet-write-text/cs/bin/
+/test/packet-write-text/cs/obj/
+/test/packet-write-text/unity/**/bin/
+/test/packet-write-text/unity/**/obj/

@@ -45,8 +45,11 @@ module Example
     end
 
     def self.read(data)
-      pair = RenderSprite.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = RenderSprite.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -162,8 +165,11 @@ module Example
     end
 
     def self.read(data)
-      pair = RenderBlock.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = RenderBlock.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write

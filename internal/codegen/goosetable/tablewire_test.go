@@ -38,6 +38,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -157,7 +158,20 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 	if err != nil {
 		t.Fatalf("%s: goose: %v", key, err)
 	}
-	tables, err := goosetable.Generate(u)
+	var lineage map[string][]goosetable.FixedEvolutionEntry
+	if lock, ok, lerr := lockfile.Open(gathered); lerr != nil {
+		t.Fatal(lerr)
+	} else if ok && lock != nil {
+		lineage = map[string][]goosetable.FixedEvolutionEntry{}
+		for _, st := range ir.TableFixedRoots(u) {
+			for _, e := range lockfile.Lineage(lock, st.WireName()) {
+				lineage[st.Name] = append(lineage[st.Name], goosetable.FixedEvolutionEntry{
+					Wire: e.Wire, Layout: e.Layout, Record: e.Record + 8, Retired: e.Retired, Reason: e.Reason,
+				})
+			}
+		}
+	}
+	tables, err := goosetable.GenerateLineage(u, lineage)
 	if err != nil {
 		t.Fatalf("%s: goosetable: %v", key, err)
 	}
@@ -175,21 +189,36 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 	ns := goose.Namespace(u)
 	fmt.Fprintf(&glue, "fn conformance_unit() -> schema_rt::LoadUnit { return %s::%s; }\n", ns, goosetable.UnitName)
 	glue.WriteString("fn conformance_wire(root: const u8[:], data: const u8[:], out: u8[>..<]&) -> i64 {\n")
+	var fixedRoots []string
+	var fixedLoadFn = map[string]string{}
 	for _, st := range ir.TableFixedFormRoots(u) {
 		hasFixedLoad := false
+		hasEvolve := false
 		for _, code := range tables {
 			if strings.Contains(string(code), "fn "+st.Name+"FixedLoad(") {
 				hasFixedLoad = true
-				break
+			}
+			if strings.Contains(string(code), "fn "+st.Name+"FixedEvolveLoad(") {
+				hasEvolve = true
 			}
 		}
 		if !hasFixedLoad {
 			continue
 		}
+		fixedRoots = append(fixedRoots, st.Name)
+		lfn := "FixedLoad"
+		if hasEvolve {
+			lfn = "FixedEvolveLoad"
+		}
+		fixedLoadFn[st.Name] = lfn
 		fmt.Fprintf(&glue, "    if root == %q {\n", st.Name)
 		fmt.Fprintf(&glue, "        var values: %s::%s[256] = [%s::%s { .. }; 256];\n", ns, st.Name, ns, st.Name)
-		glue.WriteString("        var rep = schema_rt::FixedReport { .. };\n")
-		fmt.Fprintf(&glue, "        let n = %s::%sFixedLoad(values[0..256], data, rep);\n", ns, st.Name)
+		rtp := "FixedReport"
+		if hasEvolve {
+			rtp = "FixedEvolveReport"
+		}
+		fmt.Fprintf(&glue, "        var rep = schema_rt::%s { .. };\n", rtp)
+		fmt.Fprintf(&glue, "        let n = %s::%s%s(values[0..256], data, rep);\n", ns, st.Name, lfn)
 		glue.WriteString("        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -3; }\n")
 		glue.WriteString("        var saved: u8[>..] = [];\n")
 		fmt.Fprintf(&glue, "        if %s::%sFixedSave(values[0..n], saved) < 0 { return -4; }\n", ns, st.Name)
@@ -197,6 +226,29 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 		glue.WriteString("        return 0;\n    }\n")
 	}
 	glue.WriteString("    return -1;\n}\n")
+	glue.WriteString("fn conformance_fixed_root(root: const u8[:]) -> bool {\n")
+	for _, r := range fixedRoots {
+		fmt.Fprintf(&glue, "    if root == %q { return true; }\n", r)
+	}
+	glue.WriteString("    return false;\n}\n")
+	glue.WriteString("fn conformance_fixed_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::FixedEvolveReport&) -> i64 { return -1; }\n")
+	glue.WriteString("fn conformance_load(root: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 {\n")
+	for _, r := range fixedRoots {
+		fmt.Fprintf(&glue, "    if root == %q {\n", r)
+		fmt.Fprintf(&glue, "        var values: %s::%s[1] = [%s::%s { .. }];\n", ns, r, ns, r)
+		rtp := "FixedReport"
+		if fixedLoadFn[r] == "FixedEvolveLoad" {
+			rtp = "FixedEvolveReport"
+		}
+		fmt.Fprintf(&glue, "        var rep = schema_rt::%s { .. };\n", rtp)
+		fmt.Fprintf(&glue, "        let n = %s::%s%s(values[0..1], data[0..data.len], rep);\n", ns, r, fixedLoadFn[r])
+		glue.WriteString("        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -1; }\n")
+		glue.WriteString("        return 0;\n    }\n")
+	}
+	glue.WriteString("    var report = schema_rt::LoadReport { .. };\n")
+	glue.WriteString("    let at = schema_rt::load_table(conformance_unit(), root, data[0..data.len], vals, nodes, report);\n")
+	glue.WriteString("    if at < 0 || report.body_damaged || report.refused { return -1; }\n")
+	glue.WriteString("    return at;\n}\n")
 	// the message surface's arm (the shell driver writes one per root); these
 	// gates drive no message row, so the glue carries none
 	glue.WriteString("fn conformance_message(root: const u8[:], announce: const u8[:], wire: const u8[:], out: u8[>..]&) -> i64 { return -1; }\n")

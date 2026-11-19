@@ -37,8 +37,11 @@ module Example
     end
 
     def self.read(data)
-      pair = DefaultArm.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = DefaultArm.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -153,8 +156,11 @@ module Example
     end
 
     def self.read(data)
-      pair = DefaultChoice.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = DefaultChoice.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -253,8 +259,11 @@ module Example
     end
 
     def self.read(data)
-      pair = DefaultChoicePacket.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = DefaultChoicePacket.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -327,8 +336,11 @@ module Example
     end
 
     def self.read(data)
-      pair = DefaultBulkArm.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = DefaultBulkArm.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -431,8 +443,11 @@ module Example
     end
 
     def self.read(data)
-      pair = DefaultBulkChoice.read_bits(data)
-      pair[0]
+      stream, = ::Example._s_open_read_stream(data, 0)
+      value = DefaultBulkChoice.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write

@@ -721,7 +721,7 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
         {
             uint64_t raw = 0;
             raw = table_fixed_get_le( src + p->src, p->size );
-            if ( p->sign != 0 )
+            if ( p->sign != 0 && p->size < 8u )
             {
                 /* TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
                    reason a widen is an op and not a short copy. */
@@ -729,7 +729,16 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            table_fixed_store_native( dst + p->dst, raw, p->dstsize );
+            if ( p->dstsize == 16u )
+            {
+                const uint64_t hi = ( p->sign != 0 && (int64_t) raw < 0 ) ? ~0ull : 0ull;
+                table_fixed_store_native( dst + p->dst, raw, 8u );
+                table_fixed_store_native( dst + p->dst + 8u, hi, 8u );
+            }
+            else
+            {
+                table_fixed_store_native( dst + p->dst, raw, p->dstsize );
+            }
             (*widened)++;
             break;
         }
@@ -1426,7 +1435,10 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
             ( e.guard2 != SCHEMA_TABLE_FIXED_NO_GUARD &&
             ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
+        uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
+        if ( e.op == kTableFixedPresent ) { reach = 0ull; }
+        else if ( e.op == kTableFixedPresentDefaults ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.dead; }
+        else if ( e.op == kTableFixedWidenF ) { reach = (uint64_t) e.src + 4ull; }
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;

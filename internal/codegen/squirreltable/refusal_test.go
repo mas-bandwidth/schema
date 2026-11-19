@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -142,7 +143,30 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: the type surface refused: %v", u.key, err)
 		}
-		tables, err := squirreltable.Generate(unit)
+		var lineage map[string][]squirreltable.FixedLineageEntry
+		lockArgs := make([]string, len(u.paths))
+		for i, relPath := range u.paths {
+			lockArgs[i] = filepath.Join(root, filepath.FromSlash(relPath))
+		}
+		if gathered, gerr := compiler.GatherPaths(lockArgs); gerr == nil {
+			if lock, ok, lerr := lockfile.Open(gathered); lerr != nil {
+				t.Fatal(lerr)
+			} else if ok && lock != nil {
+				lineage = map[string][]squirreltable.FixedLineageEntry{}
+				for _, st := range ir.TableFixedRoots(unit) {
+					for _, e := range lockfile.Lineage(lock, st.WireName()) {
+						lineage[st.Name] = append(lineage[st.Name], squirreltable.FixedLineageEntry{
+							Wire:    e.Wire,
+							Layout:  e.Layout,
+							Record:  e.Record + 8,
+							Retired: e.Retired,
+							Reason:  e.Reason,
+						})
+					}
+				}
+			}
+		}
+		tables, err := squirreltable.GenerateLineage(unit, lineage)
 		if err != nil {
 			refused[u.key] = true
 			continue
@@ -204,8 +228,6 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			want = "wire_damaged"
 		} else if f := formName(data[0], isFixed(r.unit, r.root)); f != "" {
 			want, field = f, "-"
-		} else if data[0] == 3 {
-			t.Fatalf("%s: a form-3 report row; the fixed reader's name is not derived here", r.name)
 		} else {
 			moved[want]++
 		}

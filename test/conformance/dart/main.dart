@@ -70,6 +70,9 @@ import '../../../build/tables-generated-dart-scalars/scalars/ScalarsFixed.dart' 
 import '../../../build/tables-generated-dart-scalars/scalars/Int128.dart' as scalars_i128;
 import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Fixed.dart' as scalardemo2_fixed;
 import '../../../build/tables-generated-dart-scalars/scalars2/Scalars2Fixed.dart' as scalars2_fixed;
+import '../../../build/tables-generated-dart-scalars/fixedevo/TblfixedevoFixed.dart' as tblfixedevo_fixed;
+import '../../../build/tables-generated-dart-scalars/fixedevo/FixedEvoFixed.dart' as fixedevo_fixed;
+import '../../../build/tables-generated-dart-scalars/fixedevo/Int128.dart' as fixedevo_i128;
 import '../../../build/tables-generated-dart/r1/Tblr1Fixed.dart' as tblr1_fixed;
 import '../../../build/tables-generated-dart/r1/R1Fixed.dart' as r1_fixed;
 import '../../../build/tables-generated-dart/r2/Tblr2Fixed.dart' as tblr2_fixed;
@@ -92,6 +95,8 @@ import '../../../build/tables-generated-dart/k1/Tblk1Wire.dart' as tblk1;
 import '../../../build/tables-generated-dart/k2/Tblk2Wire.dart' as tblk2;
 import '../../../build/tables-generated-dart/a2/Tbla2Wire.dart' as tbla2;
 import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Wire.dart' as scalardemo2;
+import '../../../build/tables-generated-dart-scalars/fixedevo/TblfixedevoWire.dart' as tblfixedevo;
+import '../../../build/tables-generated-dart-scalars/fixedevo/FixedEvoCook.dart' as fixedevocook;
 import '../../../build/tables-generated-dart/examples/TablesCook.dart' as tablescook;
 import '../../../build/tables-generated-dart/examples/NestedCook.dart' as nestedcook;
 import '../../../build/tables-generated-dart/examples/KeyedCook.dart' as keyedcook;
@@ -886,6 +891,109 @@ scalars_i128.UInt128 _w2fUInt128(BigInt b) {
 
 BigInt _f2wUInt128(scalars_i128.UInt128 x) =>
     (BigInt.from(x.hi).toUnsigned(64) << 64) | BigInt.from(x.lo).toUnsigned(64);
+
+fixedevo_i128.Int128 _w2fFixedEvoInt128(BigInt b) {
+  final u = b.toUnsigned(128);
+  return fixedevo_i128.Int128((u >> 64).toSigned(64).toInt(), u.toSigned(64).toInt());
+}
+
+BigInt _f2wFixedEvoInt128(fixedevo_i128.Int128 x) =>
+    ((BigInt.from(x.hi).toUnsigned(64) << 64) | BigInt.from(x.lo).toUnsigned(64)).toSigned(128);
+
+fixedevo_i128.UInt128 _w2fFixedEvoUInt128(BigInt b) {
+  final u = b.toUnsigned(128);
+  return fixedevo_i128.UInt128((u >> 64).toSigned(64).toInt(), u.toSigned(64).toInt());
+}
+
+BigInt _f2wFixedEvoUInt128(fixedevo_i128.UInt128 x) =>
+    (BigInt.from(x.hi).toUnsigned(64) << 64) | BigInt.from(x.lo).toUnsigned(64);
+
+void _w2f_fixedevo_EvoSub(tblfixedevo.EvoSub w, tblfixedevo_fixed.EvoSub f) {
+  f.x = w.x;
+  _w2fUtf8(w.note, f.note, (n) => f.noteLength = n);
+}
+
+void _f2w_fixedevo_EvoSub(tblfixedevo_fixed.EvoSub f, tblfixedevo.EvoSub w) {
+  w.x = f.x;
+  w.note = _f2wUtf8(f.note, f.noteLength);
+}
+
+void _w2f_fixedevo_EvoRoot(tblfixedevo.EvoRoot w, tblfixedevo_fixed.EvoRoot f) {
+  f.iWiden = w.iWiden;
+  f.i32Widen = w.i32Widen;
+  f.uWiden = w.uWiden;
+  f.fWiden = w.fWiden;
+  f.fxWiden = _w2fFixedEvoInt128(w.fxWiden);
+  f.ufxWiden = _w2fFixedEvoUInt128(w.ufxWiden);
+  f.bitsWiden = w.bitsWiden;
+  f.maskWiden = w.maskWiden;
+  f.liveMode = w.liveMode;
+  _w2fUtf8(w.label, f.label, (n) => f.labelLength = n);
+  for (var i = 0; i < 4; i++) f.fixedArr[i] = w.fixedArr[i];
+  f.boundedArrCount = w.boundedArr.length;
+  for (var i = 0; i < w.boundedArr.length; i++) f.boundedArr[i] = w.boundedArr[i];
+  f.obsoleteMode = w.obsoleteMode;
+  f.v1Marker = w.v1Marker;
+  f.nestedChain.type = w.nestedChain.armTag;
+  if (w.nestedChain.armTag == 1) {
+    f.nestedChain.wrap.inner.type = w.nestedChain.wrap.inner.armTag;
+    if (w.nestedChain.wrap.inner.armTag == 1) {
+      f.nestedChain.wrap.inner.leaf.code = w.nestedChain.wrap.inner.leaf.code;
+      f.nestedChain.wrap.inner.leaf.bonus = w.nestedChain.wrap.inner.leaf.bonus;
+      _w2fUtf8(w.nestedChain.wrap.inner.leaf.tag, f.nestedChain.wrap.inner.leaf.tag, (n) => f.nestedChain.wrap.inner.leaf.tagLength = n);
+    }
+  } else if (w.nestedChain.armTag == 2) {
+    f.nestedChain.amount = w.nestedChain.amount;
+  }
+  f.subOptPresent = w.hasSubOpt;
+  if (w.hasSubOpt) _w2f_fixedevo_EvoSub(w.subOpt, f.subOpt);
+  f.defScalar = w.defScalar;
+  _w2fUtf8(w.defStr, f.defStr, (n) => f.defStrLength = n);
+  f.i128Keep = _w2fFixedEvoInt128(w.i128Keep);
+  f.u128Keep = _w2fFixedEvoUInt128(w.u128Keep);
+  _w2fBytes(w.defBytes, f.defBytes, (n) => f.defBytesLength = n);
+  f.defFlags = w.defFlags;
+  f.extraOptPresent = w.hasExtraOpt;
+  if (w.hasExtraOpt) _w2f_fixedevo_EvoSub(w.extraOpt, f.extraOpt);
+}
+
+void _f2w_fixedevo_EvoRoot(tblfixedevo_fixed.EvoRoot f, tblfixedevo.EvoRoot w) {
+  w.iWiden = f.iWiden;
+  w.i32Widen = f.i32Widen;
+  w.uWiden = f.uWiden;
+  w.fWiden = f.fWiden;
+  w.fxWiden = _f2wFixedEvoInt128(f.fxWiden);
+  w.ufxWiden = _f2wFixedEvoUInt128(f.ufxWiden);
+  w.bitsWiden = f.bitsWiden;
+  w.maskWiden = f.maskWiden;
+  w.liveMode = f.liveMode;
+  w.label = _f2wUtf8(f.label, f.labelLength);
+  for (var i = 0; i < 4; i++) w.fixedArr[i] = f.fixedArr[i];
+  w.boundedArr = List<int>.generate(f.boundedArrCount, (i) => f.boundedArr[i]);
+  w.obsoleteMode = f.obsoleteMode;
+  w.v1Marker = f.v1Marker;
+  w.nestedChain.armTag = f.nestedChain.type;
+  if (f.nestedChain.type == 1) {
+    w.nestedChain.wrap.inner.armTag = f.nestedChain.wrap.inner.type;
+    if (f.nestedChain.wrap.inner.type == 1) {
+      w.nestedChain.wrap.inner.leaf.code = f.nestedChain.wrap.inner.leaf.code;
+      w.nestedChain.wrap.inner.leaf.bonus = f.nestedChain.wrap.inner.leaf.bonus;
+      w.nestedChain.wrap.inner.leaf.tag = _f2wUtf8(f.nestedChain.wrap.inner.leaf.tag, f.nestedChain.wrap.inner.leaf.tagLength);
+    }
+  } else if (f.nestedChain.type == 2) {
+    w.nestedChain.amount = f.nestedChain.amount;
+  }
+  w.hasSubOpt = f.subOptPresent;
+  if (f.subOptPresent) _f2w_fixedevo_EvoSub(f.subOpt, w.subOpt);
+  w.defScalar = f.defScalar;
+  w.defStr = _f2wUtf8(f.defStr, f.defStrLength);
+  w.i128Keep = _f2wFixedEvoInt128(f.i128Keep);
+  w.u128Keep = _f2wFixedEvoUInt128(f.u128Keep);
+  w.defBytes = _f2wBytes(f.defBytes, f.defBytesLength);
+  w.defFlags = f.defFlags;
+  w.hasExtraOpt = f.extraOptPresent;
+  if (f.extraOptPresent) _f2w_fixedevo_EvoSub(f.extraOpt, w.extraOpt);
+}
 
 void _w2f_scalars_Pose(scalardemo.Pose w, dynamic f) {
   f.x = w.x.toSigned(64).toInt();
@@ -2104,6 +2212,16 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, scalars_fixed.simStateFixedMeasure, scalars_fixed.simStateFixedSave);
       }
       return _fixedResave(wire, scalardemo_fixed.SimState.new, scalars_fixed.simStateFixedNewPlan, scalardemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars_fixed.simStateFixedLoad, scalars_fixed.simStateFixedMeasure, scalars_fixed.simStateFixedSave);
+    case 'tblfixedevo EvoRoot':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblfixedevo.TableWireReport();
+        final w = tblfixedevo.evoRootWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblfixedevo_fixed.EvoRoot();
+        _w2f_fixedevo_EvoRoot(w, f);
+        return _fixedSaveOne(f, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave);
+      }
+      return _fixedResave(wire, tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, fixedevo_fixed.evoRootFixedLoad, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave);
     case 'tabledemo ArchiveConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -2495,6 +2613,13 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = scalardemo_fixed.SimState();
       _w2f_scalars_SimState(w, f);
       return _fixedSaveOne(f, scalars_fixed.simStateFixedMeasure, scalars_fixed.simStateFixedSave);
+    case 'tblfixedevo EvoRoot':
+      final rep = tblfixedevo.TableTextReport();
+      final w = tblfixedevo.evoRootFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblfixedevo_fixed.EvoRoot();
+      _w2f_fixedevo_EvoRoot(w, f);
+      return _fixedSaveOne(f, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave);
     case 'tabledemo ArchiveConfig':
       final rep = tabledemo.TableTextReport();
       final w = tabledemo.archiveConfigFromJson(text, rep);
@@ -2857,6 +2982,18 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = scalardemo.SimState();
       _f2w_scalars_SimState(f, w);
       return scalardemo.simStateToJson(w);
+    case 'tblfixedevo EvoRoot':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblfixedevo.TableWireReport();
+        final w = tblfixedevo.evoRootWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblfixedevo.evoRootToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, fixedevo_fixed.evoRootFixedLoad);
+      if (f == null) return null;
+      final w = tblfixedevo.EvoRoot();
+      _f2w_fixedevo_EvoRoot(f, w);
+      return tblfixedevo.evoRootToJson(w);
     case 'tabledemo ArchiveConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -3277,6 +3414,8 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, tblk2_fixed.Root.new, k2_fixed.rootFixedNewPlan, tblk2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), k2_fixed.rootFixedLoad);
     case 'tblscalars2 SimState':
       return _fixedReportLine(wire, scalardemo2_fixed.SimState.new, scalars2_fixed.simStateFixedNewPlan, scalardemo2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), scalars2_fixed.simStateFixedLoad);
+    case 'tblfixedevo EvoRoot':
+      return _fixedReportLine(wire, tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), fixedevo_fixed.evoRootFixedLoad);
   }
   return null;
 }
@@ -3461,6 +3600,26 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
       return (
         scalarscook.SimStateCookWire.cookMeasure(value),
         (out, order) => scalarscook.SimStateCookWire.cook(value, out, order),
+      );
+    case 'tblfixedevo EvoRoot':
+      final r = tblfixedevo.TableWireReport();
+      final tr = tblfixedevo.TableTextReport();
+      tblfixedevo.EvoRoot? value;
+      if (jsonText != null) {
+        value = tblfixedevo.evoRootFromJson(jsonText, tr);
+        if (tr.refused) return (-1, (_, _) => false);
+      } else if (wire.isNotEmpty && wire[0] == 1) {
+        value = tblfixedevo.evoRootWireLoad(wire, r);
+        if (r.refused) return (-1, (_, _) => false);
+      } else {
+        final f = _fixedLoadOne(wire, tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, fixedevo_fixed.evoRootFixedLoad);
+        if (f == null) return (-1, (_, _) => false);
+        value = tblfixedevo.EvoRoot();
+        _f2w_fixedevo_EvoRoot(f, value);
+      }
+      return (
+        fixedevocook.EvoRootCookWire.cookMeasure(value),
+        (out, order) => fixedevocook.EvoRootCookWire.cook(value!, out, order),
       );
     case 'streamdemo Feed':
       final r = streamdemo.TableWireReport();
@@ -3859,6 +4018,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = scalardemo.TableTextReport();
         final v = scalardemo.simStateFromJson(text, r);
         encode = () => scalardemo.simStateToJson(v);
+        break;
+      case 'tblfixedevo EvoRoot':
+        r = tblfixedevo.TableTextReport();
+        final v = tblfixedevo.evoRootFromJson(text, r);
+        encode = () => tblfixedevo.evoRootToJson(v);
         break;
       case 'streamdemo Feed':
         r = streamdemo.TableTextReport();
@@ -4750,6 +4914,9 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'tblscalars2 SimState':
       return _FuzzRoot(
           _fixedFuzzCodec(scalardemo2_fixed.SimState.new, scalars2_fixed.simStateFixedNewPlan, scalardemo2_fixed.TableFixedReport.new, scalars2_fixed.simStateFixedLoad, scalars2_fixed.simStateFixedMeasure, scalars2_fixed.simStateFixedSave));
+    case 'tblfixedevo EvoRoot':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblfixedevo_fixed.EvoRoot.new, fixedevo_fixed.evoRootFixedNewPlan, tblfixedevo_fixed.TableFixedReport.new, fixedevo_fixed.evoRootFixedLoad, fixedevo_fixed.evoRootFixedMeasure, fixedevo_fixed.evoRootFixedSave));
     case 'tblv1 Cfg':
       return _FuzzRoot(
           _fixedFuzzCodec(tblv1_fixed.Cfg.new, v1_fixed.cfgFixedNewPlan, tblv1_fixed.TableFixedReport.new, v1_fixed.cfgFixedLoad, v1_fixed.cfgFixedMeasure, v1_fixed.cfgFixedSave));

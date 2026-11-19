@@ -74,11 +74,15 @@ fn cap_leb(c: LoadCtx&, k: Cap&) -> u64 {
     return v;
 }
 
+// RetainedNoId marks reference-zero None/terminators inside the reader-private
+// resolved payload, distinct from an ordinary hash of 0 (tablewire.retainedNoID).
+let RetainedNoId: u64 = 0xFFFFFFFFFFFFFFFF;
+
 // cap_id resolves one reference against the FILE's id table: a reference
-// past the count, at an entry of zero, or at a reserved id drops the record.
+// past the count or at a reserved id drops the record; hash 0 is permitted.
 fn cap_id(c: LoadCtx&, k: Cap&, ref: u64) -> u64 {
     let id, named = idof(c, ref);
-    if !named || id == 0 || id == NodeWireId || id == BuildVersionWireId || id == VocabularyWireId {
+    if !named || id == NodeWireId || id == BuildVersionWireId || id == VocabularyWireId {
         k.bad = true;
         return 0;
     }
@@ -113,14 +117,14 @@ recursive fn cap_payload(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
     if kind == 30 {
         let ref = cap_leb(c, k);
         if k.bad { return; }
-        if ref == 0 { cap_u64(c, 0); return; } // None is a value, not a reference
+        if ref == 0 { cap_u64(c, RetainedNoId); return; } // None is a value, not a reference
         cap_u64(c, cap_id(c, k, ref));
         return;
     }
     if kind == 15 {
         let ref = cap_leb(c, k);
         if k.bad { return; }
-        if ref == 0 { cap_u64(c, 0); return; }
+        if ref == 0 { cap_u64(c, RetainedNoId); return; }
         cap_u64(c, cap_id(c, k, ref));
         if k.off >= k.end { k.bad = true; return; }
         let arm = c.data[k.off];
@@ -181,7 +185,7 @@ fn cap_content(c: LoadCtx&, k: Cap&, kind: u8, depth: i64) {
             if k.bad { return; }
             let ref = cap_leb(c, k);
             if k.bad { return; }
-            if ref == 0 { cap_u64(c, 0); break; }
+            if ref == 0 { cap_u64(c, RetainedNoId); break; }
             if k.off >= k.end { k.bad = true; return; }
             let fk = c.data[k.off];
             k.off += 1;
@@ -352,14 +356,14 @@ recursive fn em_payload(c: SaveCtx&, k: Cap&, kind: u8) {
     if kind == 30 {
         let id = em_u64(c, k);
         if k.bad { return; }
-        if id == 0 { put_leb(c, 0); return; }
+        if id == RetainedNoId { put_leb(c, 0); return; }
         if !em_ref(c, id) { k.bad = true; }
         return;
     }
     if kind == 15 {
         let arm = em_u64(c, k);
         if k.bad { return; }
-        if arm == 0 { put_leb(c, 0); return; }
+        if arm == RetainedNoId { put_leb(c, 0); return; }
         if !em_ref(c, arm) { k.bad = true; return; }
         let ak = em_byte(c, k);
         if k.bad { return; }
@@ -391,7 +395,7 @@ fn em_content(c: SaveCtx&, k: Cap&, kind: u8) {
             if k.bad { return; }
             let id = em_u64(c, k);
             if k.bad { return; }
-            if id == 0 { put(c, 0); return; }
+            if id == RetainedNoId { put(c, 0); return; }
             let fk = em_byte(c, k);
             if k.bad { return; }
             if !em_ref(c, id) { k.bad = true; return; }

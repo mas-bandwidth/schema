@@ -1,0 +1,19 @@
+{
+  "name": "🚀🚀🚀🚀🚀🚀🚀🚀",
+  "head": {
+    "name": "asset-0",
+    "kind": 7,
+    "data": "",
+    "caption": "🚀-equal-str",
+    "next": {
+      "name": "asset-1",
+      "kind": 8,
+      "data": null,
+      "caption": "",
+      "next": null
+    }
+  },
+  "thumb": "",
+  "note": "🚀-equal-str",
+  "alias": ""
+}

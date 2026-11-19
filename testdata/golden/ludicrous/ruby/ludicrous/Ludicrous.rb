@@ -54,8 +54,11 @@ module Ludicrous
     end
 
     def self.read(data)
-      pair = FixedProbe.read_bits(data)
-      pair[0]
+      stream, = ::Ludicrous._s_open_read_stream(data, 0)
+      value = FixedProbe.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -197,8 +200,11 @@ module Ludicrous
     end
 
     def self.read(data)
-      pair = UnsignedProbe.read_bits(data)
-      pair[0]
+      stream, = ::Ludicrous._s_open_read_stream(data, 0)
+      value = UnsignedProbe.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -354,8 +360,11 @@ module Ludicrous
     end
 
     def self.read(data)
-      pair = WideProbe.read_bits(data)
-      pair[0]
+      stream, = ::Ludicrous._s_open_read_stream(data, 0)
+      value = WideProbe.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -478,8 +487,11 @@ module Ludicrous
     end
 
     def self.read(data)
-      pair = LudicrousState.read_bits(data)
-      pair[0]
+      stream, = ::Ludicrous._s_open_read_stream(data, 0)
+      value = LudicrousState.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -632,8 +644,11 @@ module Ludicrous
     end
 
     def self.read(data)
-      pair = DegenerateProbe.read_bits(data)
-      pair[0]
+      stream, = ::Ludicrous._s_open_read_stream(data, 0)
+      value = DegenerateProbe.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -734,8 +749,11 @@ module Ludicrous
     end
 
     def self.read(data)
-      pair = FixedVec.read_bits(data)
-      pair[0]
+      stream, = ::Ludicrous._s_open_read_stream(data, 0)
+      value = FixedVec.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write
@@ -835,8 +853,11 @@ module Ludicrous
     end
 
     def self.read(data)
-      pair = FixedQuat.read_bits(data)
-      pair[0]
+      stream, = ::Ludicrous._s_open_read_stream(data, 0)
+      value = FixedQuat.new
+      raise Refused.new(stream.refusal || "rejected") unless value._s_read(stream)
+      raise Refused.new(stream.refusal || "rejected") unless stream.serialize_end
+      value
     end
 
     def write

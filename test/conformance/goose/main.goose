@@ -147,7 +147,8 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
         var report = schema_rt::LoadReport { .. };
         var at: i64 = -1;
         if fixed_root {
-            report.refused = true;
+            at = conformance_load(f[3], data, vals, nodes);
+            if at < 0 { report.refused = true; }
         } else {
             at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
         }

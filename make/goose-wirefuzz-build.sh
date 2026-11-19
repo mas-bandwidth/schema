@@ -64,13 +64,20 @@ fi
 	for r in $fixed_roots; do echo "    if root == \"$r\" { return true; }"; done
 	echo "    return false;"
 	echo "}"
-	echo "fn conformance_fixed_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::FixedReport&) -> i64 {"
+	echo "fn conformance_fixed_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::FixedEvolveReport&) -> i64 {"
 	for r in $fixed_roots; do
 		echo "    if root == \"$r\" {"
 		echo "        var values: $ns::$r[1] = [$ns::$r { .. }; 1];"
-		echo "        let n = $ns::${r}FixedLoad(values[0..1], data, rep);"
-		echo "        if n < 1 || rep.damaged || rep.reason != 0 { return -2; }"
-		echo "        if $ns::${r}FixedSave(values[0..n], out) < 0 { return -1; }"
+		if grep -q "^fn ${r}FixedEvolveLoad(" "$out"/*Table.goose; then
+			echo "        let n = $ns::${r}FixedEvolveLoad(values[0..1], data, rep);"
+			echo "        if n < 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -2; }"
+		else
+			echo "        var frep = schema_rt::FixedReport { .. };"
+			echo "        let n = $ns::${r}FixedLoad(values[0..1], data, frep);"
+			echo "        rep.oor = frep.oor; rep.damaged = frep.damaged; rep.reason = frep.reason; rep.hash = frep.hash;"
+			echo "        if n < 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -2; }"
+		fi
+		echo "        if $ns::${r}FixedSave(values[0..1], out) < 0 { return -1; }"
 		echo "        return out.len;"
 		echo "    }"
 	done

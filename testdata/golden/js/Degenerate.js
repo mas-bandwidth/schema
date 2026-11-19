@@ -37,9 +37,15 @@ export function ZeroVec2(value) {
 }
 
 export function WriteVec2(stream, value) {
+  if (typeof value.x !== "number" || !Number.isFinite(value.x)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
+  }
   NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
+  }
+  if (typeof value.y !== "number" || !Number.isFinite(value.y)) {
+    return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
   NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
@@ -84,6 +90,9 @@ export function ZeroSpanF64(value) {
 
 export function WriteSpanF64(stream, value) {
   for (let i = 0; i < 2; i++) {
+    if (typeof value.values[i] !== "number" || !Number.isFinite(value.values[i])) {
+      return false; // a bare float must be finite (SPEC §4.3, §5.1)
+    }
     NUMBER_SCRATCH.value = value.values[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
@@ -309,6 +318,9 @@ export function ZeroSpanTail(value) {
 
 export function WriteSpanTail(stream, value) {
   for (let i = 0; i < 2; i++) {
+    if (typeof value.values[i] !== "number" || !Number.isFinite(value.values[i])) {
+      return false; // a bare float must be finite (SPEC §4.3, §5.1)
+    }
     NUMBER_SCRATCH.value = value.values[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
@@ -365,12 +377,18 @@ export function ZeroSpanTwice(value) {
 
 export function WriteSpanTwice(stream, value) {
   for (let i = 0; i < 2; i++) {
+    if (typeof value.a[i] !== "number" || !Number.isFinite(value.a[i])) {
+      return false; // a bare float must be finite (SPEC §4.3, §5.1)
+    }
     NUMBER_SCRATCH.value = value.a[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
   }
   for (let i = 0; i < 2; i++) {
+    if (typeof value.b[i] !== "number" || !Number.isFinite(value.b[i])) {
+      return false; // a bare float must be finite (SPEC §4.3, §5.1)
+    }
     NUMBER_SCRATCH.value = value.b[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;

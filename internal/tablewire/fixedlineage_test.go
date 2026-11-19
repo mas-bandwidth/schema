@@ -162,3 +162,53 @@ func TestFixedLineageWithoutALockIsLayoutUnknown(t *testing.T) {
 		t.Fatalf("an older writer with no lock to read it through: %v, want layout_unknown", err)
 	}
 }
+
+func TestFixedLineageWidensFixedPointLaddersAndRefuses128IntRung(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Lin.schema")
+	oldSrc := `package lin
+
+fixed table Cfg
+{
+    fx  fixed(4, 4)  | min = -8, max = 7
+    ufx ufixed(4, 4) | min = 0, max = 15
+}
+`
+	newSrc := `package lin
+
+fixed table Cfg
+{
+    fx  fixed(124, 4)  | min = -134217728, max = 134217727
+    ufx ufixed(124, 4) | min = 0, max = 268435455
+}
+`
+	old := lineageUnit(t, dir, oldSrc)
+	if _, _, err := lockfile.Update(old.Unit, []string{path}); err != nil {
+		t.Fatal(err)
+	}
+	now := lineageUnit(t, dir, newSrc)
+	if _, _, err := lockfile.Update(now.Unit, []string{path}); err != nil {
+		t.Fatal(err)
+	}
+	writer := lineageUnit(t, t.TempDir(), oldSrc)
+	wire := lineageWrite(t, writer, `{"fx": -7.5, "ufx": 14.75}`)
+
+	inst := now.New(now.Lookup("Cfg"))
+	var report tabletext.Report
+	ok, err := tablewire.Decode(now, inst, wire, &report)
+	if !ok || err != nil || report.Refused || report.Widened != 2 {
+		t.Fatalf("fixed/ufixed 8->128 widening: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	text, err := now.Write(inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.Join(strings.Fields(string(text)), " ")
+	if want := `{ "fx": "-7.5", "ufx": "14.75" }`; flat != want {
+		t.Fatalf("decoded value = %s, want %s", flat, want)
+	}
+	if ir.TableFixedWidens(ir.TableKindI64, ir.TableKindI128) || ir.TableFixedWidens(ir.TableKindU64, ir.TableKindU128) {
+		t.Fatal("128-bit integer kinds must not sit on the fixed-form widening ladder")
+	}
+}

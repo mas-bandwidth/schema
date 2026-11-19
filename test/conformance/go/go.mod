@@ -81,6 +81,10 @@ require tblscalars2 v0.0.0
 
 replace tblscalars2 => ../../../build/tables-generated-go/scalars2
 
+require tblfixedevo v0.0.0
+
+replace tblfixedevo => ../../../build/tables-generated-go/fixedevo
+
 require messagedemo v0.0.0
 
 replace messagedemo => ../../../build/tables-generated-go/messages

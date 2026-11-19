@@ -1226,13 +1226,13 @@ func (g *variableGen) noFileForm(st *ir.Struct) bool {
 func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 	c := "TableVariableCodecs." + st.Name
 	g.pf("export function %sMeasure(v) {\n", st.Name)
-	g.pf("  return -1;\n")
+	g.pf("  void v;\n  return -1;\n")
 	g.pf("}\n\n")
 	g.pf("export function %sMeasureReason(v) {\n", st.Name)
-	g.pf("  return [-1, \"previous_form\"];\n")
+	g.pf("  void v;\n  return [-1, \"previous_form\"];\n")
 	g.pf("}\n\n")
 	g.pf("export function %sSave(v) {\n", st.Name)
-	g.pf("  return null;\n")
+	g.pf("  void v;\n  return null;\n")
 	g.pf("}\n\n")
 	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
 	g.pf("  if (report === undefined || report === null) { report = new TableVariableReport(); }\n")
@@ -1253,7 +1253,7 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 		g.pf("}\n\n")
 	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
-	g.pf("  return -1;\n")
+	g.pf("  void bytes;\n  return -1;\n")
 	g.pf("}\n\n")
 }
 

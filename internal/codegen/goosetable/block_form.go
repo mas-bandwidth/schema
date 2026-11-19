@@ -320,7 +320,7 @@ func emitBlockHandle(g *goose.Gen, u *ir.Unit, bl *ir.BlockLayout) {
 		// model — a block row IS the record a cook lays out (§19.2), so the
 		// the cook package module's <Row>CookPut is the writer, in this build's order
 		if ok, _ := cookWritable(u, a.Elem, map[string]bool{}); ok && ir.RecordLayout(u, a.Elem).Size == a.Stride {
-			g.Pf("fn %s(b: u8[:], i: i64, v: const %s&) -> bool { return %sCookPut(v, b, %s(b, i), false); }\n",
+			g.Pf("fn %s(b: u8[:], i: i64, v: const %s&) -> bool { return %sCookPutMode(v, b, %s(b, i), false, true); }\n",
 				decl(n+"Block"+field+"Put"), g.TypeRef(a.Elem.Name, a.Elem.IsTable), a.Elem.Name, n+"Block"+field+"At")
 		}
 	}

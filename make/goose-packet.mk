@@ -17,12 +17,12 @@
 #                          top-level object, a control that removes it
 #
 # The target lives behind the schema_leg_goose tag until the port joins the
-# builtins, so every generation here uses build/schema-goose.
+# builtins, so every generation here uses build/schema-goose-packet.
 
 .PHONY: goose-packet-ready
 goose-packet-ready:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go build -tags schema_leg_goose -o build/schema-goose ./cmd/schema
+	go build -tags schema_leg_goose -o build/schema-goose-packet ./cmd/schema
 
 # THE PACKET PROGRAMS as files (test/conformance/nightly-readiness goose):
 # examples/ and examples128/ generated beside test/goose/main.goose and
@@ -32,8 +32,8 @@ goose-packet-ready:
 GOOSE_PACKET_DIR := build/goose-packet
 build/goose-packet/.stamp: goose-packet-ready $(SCHEMAS) $(SCHEMAS128) test/goose/main.goose test/goose-ludicrous/main.goose
 	@rm -rf $(GOOSE_PACKET_DIR) && mkdir -p $(GOOSE_PACKET_DIR)/normal $(GOOSE_PACKET_DIR)/ludicrous
-	./build/schema-goose generate --lang goose --out $(GOOSE_PACKET_DIR)/normal examples
-	./build/schema-goose generate --lang goose --out $(GOOSE_PACKET_DIR)/ludicrous examples128
+	./build/schema-goose-packet generate --lang goose --out $(GOOSE_PACKET_DIR)/normal examples
+	./build/schema-goose-packet generate --lang goose --out $(GOOSE_PACKET_DIR)/ludicrous examples128
 	cp test/goose/main.goose testdata/wire/*.bin $(GOOSE_PACKET_DIR)/normal/
 	cp test/goose-ludicrous/main.goose testdata/wire/*.bin $(GOOSE_PACKET_DIR)/ludicrous/
 	@touch $@
@@ -52,7 +52,7 @@ endef
 .PHONY: packet-utf8-goose packet-utf8-goose-negative-control
 packet-utf8-goose: goose-packet-ready build/packet-text/cpp/driver build/packet-text/harness
 	@rm -rf build/packet-text/goose && mkdir -p build/packet-text/goose
-	./build/schema-goose generate --lang goose --out build/packet-text/goose test/packet-text/Narrow.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-text/goose test/packet-text/Narrow.schema
 	cp test/goose/driverlib.goose test/packet-text/goose/main.goose build/packet-text/goose/
 	./build/packet-text/harness env $(GOOSE) run build/packet-text/goose/main.goose
 
@@ -74,8 +74,8 @@ packet-utf8-goose-negative-control: packet-utf8-goose
 .PHONY: packet-defaults-goose packet-defaults-goose-negative-control
 packet-defaults-goose: goose-packet-ready packet-defaults-cpp
 	@rm -rf build/packet-defaults/goose && mkdir -p build/packet-defaults/goose
-	./build/schema-goose generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Defaults.schema
-	./build/schema-goose generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Plain.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Defaults.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Plain.schema
 	cp test/packet-defaults/goose/main.goose build/packet-defaults/goose/
 	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-defaults/goose/main.goose -- testdata/wire/packet-defaults
 
@@ -98,7 +98,7 @@ packet-defaults-goose-negative-control: packet-defaults-goose
 .PHONY: packet-finite-goose packet-finite-goose-negative-control
 packet-finite-goose: goose-packet-ready
 	@rm -rf build/packet-finite/goose && mkdir -p build/packet-finite/goose
-	./build/schema-goose generate --lang goose --out build/packet-finite/goose test/packet-finite/Finite.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-finite/goose test/packet-finite/Finite.schema
 	cp test/packet-finite/goose/main.goose build/packet-finite/goose/
 	$(GOOSE) run build/packet-finite/goose/main.goose
 
@@ -131,7 +131,7 @@ test-goose: packet-utf8-goose packet-utf8-goose-negative-control \
 .PHONY: packet-end-goose packet-end-goose-negative-control
 packet-end-goose: goose-packet-ready
 	@rm -rf build/packet-end/goose && mkdir -p build/packet-end/goose
-	./build/schema-goose generate --lang goose --out build/packet-end/goose test/packet-end/End.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-end/goose test/packet-end/End.schema
 	cp test/packet-end/goose/main.goose build/packet-end/goose/
 	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-end/goose/main.goose -- testdata/wire/packet-end
 
@@ -155,7 +155,7 @@ test-goose: packet-end-goose packet-end-goose-negative-control
 .PHONY: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
 packet-write-cfloat-goose: goose-packet-ready
 	@rm -rf build/packet-write-cfloat/goose && mkdir -p build/packet-write-cfloat/goose
-	./build/schema-goose generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/CFloat.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/CFloat.schema
 	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose/
 	go run ./test/packet-write-cfloat/goose/cases.go test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/goose/cases
 	$(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
@@ -180,7 +180,7 @@ test-goose: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
 .PHONY: packet-write-text-goose packet-write-text-goose-negative-control
 packet-write-text-goose: goose-packet-ready
 	@rm -rf build/packet-write-text/goose && mkdir -p build/packet-write-text/goose
-	./build/schema-goose generate --lang goose --out build/packet-write-text/goose test/packet-write-text/Text.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-write-text/goose test/packet-write-text/Text.schema
 	cp test/goose/driverlib.goose test/packet-write-text/goose/main.goose build/packet-write-text/goose/
 	go run ./test/packet-write-text/goose/cases.go test/packet-write-text/cases.txt > build/packet-write-text/goose/cases
 	$(GOOSE) run build/packet-write-text/goose/main.goose < build/packet-write-text/goose/cases

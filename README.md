@@ -7,7 +7,7 @@
 
 ![Schema — architectural pieces sharing one design](images/schema.png)
 
-Schema is a data language where you define your constants, enums, flags, types and tables for your game, then from this one definition, it generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua, Python, Ruby and Rust.
+Schema is a data language where you define your constants, enums, flags, types and tables for your game, then from this one definition, it generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust, Squirrel and Unity.
 
 Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
 
@@ -87,7 +87,7 @@ Cost to serialize a representative game packet, relative to generated C++ at 100
 ```
 make                # builds the compiler at bin/schema
 bin/schema check    <dir of .schema files>
-bin/schema generate --lang c|cpp|cs|dart|elixir|go|java|js|lua|python|ruby|rust --out <outdir> <dir>
+bin/schema generate --lang c|cpp|cs|dart|elixir|go|goose|java|js|lobster|lua|luau|moo|python|ruby|rust|squirrel|unity --out <outdir> <dir>
 bin/schema fmt      <dir of .schema files>
 ```
 

@@ -300,7 +300,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.p("            var forged: i64 = 0;\n")
 		e.p("            _%sFixedWrite(img, def);\n", n)
 		seq := 0
-		e.emitNodes(plan.nodes, "body", "", &seq)
+		e.emitNodes(plan.nodes, "body", "", typ, &seq)
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
@@ -397,7 +397,7 @@ func addExpr(base string, parts ...string) string {
 // a node's widening counts itself once per execution, so an element loop's
 // widen counts min(their_n, my_n) and a scalar counts once per record
 // (docs/FIXED-FORM-ALGORITHM.md §5.4).
-func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string, seq *int) {
+func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase, typ string, seq *int) {
 	for _, n := range nodes {
 		switch n.op {
 		case nodeCopy:
@@ -462,12 +462,45 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			// (docs/FIXED-FORM-ALGORITHM.md §5.8 row 4; docs/SPEC-TABLES.md
 			// §3.4): a word below zero or past the plan's bound — the
 			// writer's min(their_n, my_n) — refuses count_over_bound before the
-			// count word or any destination byte lands, as gotable's
-			// tableFixedTextRefusal does.
+			// count word or any destination byte lands, and dead writer slots
+			// past cg must be zero.
 			v := *seq
 			*seq++
 			e.p("            let cg%d: i64 = schema_rt::fixed_i32(data, %s);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
-			e.p("            if cg%d < 0 || cg%d > %d {\n                return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseCountOverBound, false);\n            }\n", v, v, n.count)
+			e.p("            if cg%d < 0 || cg%d > %d { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseCountOverBound, false); }\n", v, v, n.count, typ)
+			if n.oldSize > 0 && n.oldStride > 0 {
+				e.p("            if cg%d < %d && schema_rt::fixed_scan_zero(data, %s, (%d - cg%d) * %d) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+					v, n.oldSize, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+4), fmt.Sprintf("cg%d * %d", v, n.oldStride)), n.oldSize, v, n.oldStride, typ)
+			}
+		case nodeOptionalGuard:
+			v := *seq
+			*seq++
+			e.p("            let op%d: u8 = data[%s];\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
+			e.p("            if op%d > 1 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n", v, typ)
+			if n.oldSize > 0 {
+				e.p("            if op%d == 0 && schema_rt::fixed_scan_zero(data, %s, %d) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+					v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+1)), n.oldSize, typ)
+			}
+		case nodeStringGuard:
+			v := *seq
+			*seq++
+			e.p("            let sl%d: u64 = schema_rt::fixed_u32(data, %s);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
+			e.p("            if sl%d > %d { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLengthOverBound, false); }\n", v, n.oldSize, typ)
+			e.p("            if sl%d < %d && schema_rt::fixed_scan_zero(data, %s, %d - (sl%d as! i64)) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+				v, n.oldSize, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+4), fmt.Sprintf("(sl%d as! i64)", v)), n.oldSize, v, typ)
+		case nodeZeroCheck:
+			if n.size > 0 {
+				e.p("            if schema_rt::fixed_scan_zero(data, %s, %d) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+					addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.size, typ)
+			}
+		case nodeZeroFill:
+			if n.size > 0 {
+				v := *seq
+				*seq++
+				e.p("            var zf%d: i64 = 0;\n", v)
+				e.p("            while zf%d < %d { img[%s] = 0; zf%d += 1; }\n",
+					v, n.size, addExpr(curBase, fmt.Sprintf("%d", n.curOff), fmt.Sprintf("zf%d", v)), v)
+			}
 		case nodeOrdinal:
 			// A SAME-WIDTH ORDINAL IS REMAPPED THROUGH THE WRITER'S VARIANT SET
 			// (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT kind 30; §5.4, §5.8 row
@@ -512,7 +545,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			}
 			oldElem := addExpr(oldBase, fmt.Sprintf("%d", n.oldOff), fmt.Sprintf("%s * %d", i, n.oldStride))
 			curElem := addExpr(curBase, fmt.Sprintf("%d", n.curOff), fmt.Sprintf("%s * %d", i, n.newStride))
-			e.emitNodes(n.body, oldElem, curElem, seq)
+			e.emitNodes(n.body, oldElem, curElem, typ, seq)
 			e.p("                %s += 1;\n            }\n", i)
 		case nodeDefault:
 			v := *seq
@@ -526,7 +559,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 		case nodeIf:
 			e.p("            if schema_rt::fixed_evolve_read_u(data, %s, %d) == %d {\n",
 				addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.tagWidth, n.arg)
-			e.emitNodes(n.body, oldBase, curBase, seq)
+			e.emitNodes(n.body, oldBase, curBase, typ, seq)
 			e.p("            }\n")
 		}
 	}
@@ -563,6 +596,10 @@ const (
 	nodeCountGuard
 	nodeOrdinal
 	nodeForgedTag
+	nodeOptionalGuard
+	nodeStringGuard
+	nodeZeroCheck
+	nodeZeroFill
 )
 
 // evolvePlan is one older entry's compiled plan. The old bytes are laid over
@@ -667,11 +704,22 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 	// wrapper's child. A `?T` read into `?T` copies the present byte.
 	if me.kind == 35 {
 		if te.kind == 35 {
-			c.checkSrc(oldOff, 1)
-			out := []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 1}}
-			return append(out, c.match(oi+1, ci+1, oldOff+1, curOff+1, census, depth+1)...)
+			c.checkSrc(oldOff, te.size)
+			var body []evolveNode
+			body = append(body, evolveNode{op: nodeSet, curOff: curOff, arg: 1, size: 1})
+			if t := c.armDefaults[me.id]; t != "" {
+				body = append(body, evolveNode{op: nodeDefault, curOff: curOff + 1, defaultType: t})
+			}
+			body = append(body, c.match(oi+1, ci+1, oldOff+1, curOff+1, census, depth+1)...)
+			return []evolveNode{
+				{op: nodeOptionalGuard, oldOff: oldOff, oldSize: te.size - 1},
+				{op: nodeIf, oldOff: oldOff, tagWidth: 1, arg: 1, body: body},
+			}
 		}
 		out := []evolveNode{{op: nodeSet, curOff: curOff, arg: 1, size: 1}}
+		if t := c.armDefaults[me.id]; t != "" {
+			out = append(out, evolveNode{op: nodeDefault, curOff: curOff + 1, defaultType: t})
+		}
 		return append(out, c.match(oi, ci+1, oldOff, curOff+1, census, depth+1)...)
 	}
 	if te.kind != me.kind {
@@ -696,10 +744,21 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 		n := min(me.size, te.size)
 		c.checkSrc(oldOff, n)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
-	case 12: // string: length and bytes, slack left at default
+	case 12: // string: writer bound + dead-slack guard, then copy and zero grown tail
+		if te.size < 4 || me.size < 4 {
+			c.tooLarge = true
+			return nil
+		}
+		c.checkSrc(oldOff, te.size)
 		n := min(me.size, te.size)
-		c.checkSrc(oldOff, n)
-		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
+		out := []evolveNode{
+			{op: nodeStringGuard, oldOff: oldOff, oldSize: te.size - 4},
+			{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n},
+		}
+		if me.size > n {
+			out = append(out, evolveNode{op: nodeZeroFill, curOff: curOff + n, size: me.size - n})
+		}
+		return out
 	case 30: // an ordinal: a grown width is an unsigned widen, one count each
 		if te.size < me.size {
 			c.checkSrc(oldOff, te.size)
@@ -805,11 +864,8 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 	n := min(newN, oldN)
 	var out []evolveNode
 	if head == 4 {
-		// THE COUNT WORD IS HELD TO THE PLAN'S BOUND, NEVER COPIED FIRST
-		// (docs/FIXED-FORM-ALGORITHM.md §5.8 row 4; docs/SPEC-TABLES.md
-		// §3.4): a forged word refuses count_over_bound before any destination
-		// byte. Only a lawful count lands, and it lands verbatim.
-		out = append(out, evolveNode{op: nodeCountGuard, oldOff: oldOff, count: n})
+		c.checkSrc(oldOff, te.size)
+		out = append(out, evolveNode{op: nodeCountGuard, oldOff: oldOff, count: n, oldSize: oldN, oldStride: oe.size})
 		out = append(out, evolveNode{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: 4})
 	}
 	savedBase := c.baseOff
@@ -850,9 +906,12 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 	// forged flag for the bounds pass to refuse. The default image wrote the
 	// union at the reader's default, so the None tag is stamped over it before
 	// any arm can answer.
+	c.checkSrc(oldOff, te.size)
 	out := []evolveNode{{op: nodeSet, curOff: curOff, arg: 0, size: curTag}}
+	if te.size > oldTag {
+		out = append(out, evolveNode{op: nodeIf, oldOff: oldOff, tagWidth: oldTag, arg: 0, body: []evolveNode{{op: nodeZeroCheck, oldOff: oldOff + oldTag, size: te.size - oldTag}}})
+	}
 	if te.children > 0 {
-		c.checkSrc(oldOff, oldTag)
 		out = append(out, evolveNode{op: nodeForgedTag, oldOff: oldOff, tagWidth: oldTag, count: int64(te.children)})
 	}
 	oa := oi + 1
@@ -871,16 +930,17 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 		if found >= 0 {
 			c.checkSrc(oldOff, oldTag)
 			var body []evolveNode
+			if te.size > oldTag+oe.size {
+				body = append(body, evolveNode{op: nodeZeroCheck, oldOff: oldOff + oldTag + oe.size, size: te.size - oldTag - oe.size})
+			}
 			if t := c.armDefaults[oe.id]; t != "" {
-				// THE SELECTED ARM'S OWN DECLARED DEFAULTS go down before the
-				// old fields: the default image wrote the union at tag 0, so
-				// another arm's payload there is the writer's slack. This is
-				// what lands union_arm_payload_widen's appended y = 55.
 				body = append(body, evolveNode{op: nodeDefault, curOff: curOff + curTag, defaultType: t})
 			}
 			body = append(body, c.match(oa, found, oldOff+oldTag, curOff+curTag, census, depth+1)...)
 			body = append([]evolveNode{{op: nodeSet, curOff: curOff, arg: uint64(ordinal), size: curTag}}, body...)
 			out = append(out, evolveNode{op: nodeIf, oldOff: oldOff, tagWidth: oldTag, arg: uint64(j + 1), body: body})
+		} else if te.size > oldTag+oe.size {
+			out = append(out, evolveNode{op: nodeIf, oldOff: oldOff, tagWidth: oldTag, arg: uint64(j + 1), body: []evolveNode{{op: nodeZeroCheck, oldOff: oldOff + oldTag + oe.size, size: te.size - oldTag - oe.size}}})
 		}
 		oa += c.subtree(c.oldAll, oa)
 	}
@@ -958,6 +1018,9 @@ func collectArmDefaults(st *ir.Struct, seen map[string]bool, out map[uint64]stri
 		}
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
+			if f.Type.Optional {
+				out[ir.TableFieldWireId(f)] = r.Name
+			}
 			collectArmDefaults(r, seen, out)
 		case *ir.Union:
 			for _, v := range r.Variants {

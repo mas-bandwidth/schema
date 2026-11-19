@@ -105,6 +105,30 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 				t.Errorf("make/verify-compiled.mk missing rule %q", needle)
 			}
 		}
+		cardsTarget := fmt.Sprintf("cards-%s-conformance", lang)
+		if !strings.Contains(compiledText, cardsTarget) {
+			t.Errorf("make/verify-compiled.mk does not wire %q for compiled leg %s", cardsTarget, lang)
+		}
+	}
+	for _, required := range []string{
+		"ludicrous",
+		"packet-defaults-rust",
+		"packet-end-rust",
+		"packet-write-cfloat-rust",
+		"packet-write-text-rust",
+		"tables-rust-view",
+		"tables-view",
+		"tables-c-view",
+		"tables-cs-view",
+		"tables-go-view",
+		"tables-java-view",
+		"tables-dart-view",
+		"tables-elixir-view",
+		"TestUnityVTReflectionDocTagsAndUnitView",
+	} {
+		if !strings.Contains(compiledText, required) {
+			t.Errorf("make/verify-compiled.mk missing widened compiled check %q", required)
+		}
 	}
 	for _, lang := range vmOptVerifyLangs {
 		for _, sub := range []string{"conformance", "bench", "fuzz"} {
