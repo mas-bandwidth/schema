@@ -55,9 +55,9 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 // the reader's root that the older writer bounded at the same scalar kind
 // (ir.TableFixedWriterRanges, ir.TableFixedWriterField), the writer's raw
 // bounds keyed by the field's wire id.
-func fixedWriterRanges(st *ir.Struct, e FixedLineageEntry, own uint64) string {
+func fixedWriterRangesParts(st *ir.Struct, e FixedLineageEntry, own uint64) (string, []string) {
 	if e.Wire == own || len(e.Ranges) == 0 {
-		return ""
+		return "", nil
 	}
 	var parts []string
 	for _, r := range e.Ranges {
@@ -73,9 +73,9 @@ func fixedWriterRanges(st *ir.Struct, e FixedLineageEntry, own uint64) string {
 		}
 	}
 	if len(parts) == 0 {
-		return ""
+		return "", nil
 	}
-	return ", ranges = { " + strings.Join(parts, ", ") + " }"
+	return ", ranges = { " + strings.Join(parts, ", ") + " }", parts
 }
 
 // fixedLineageFor is the lineage the emitter lays down for one table: the
@@ -398,14 +398,27 @@ func emitFixedForm(m *Module) error {
 			if e.Retired {
 				m.Printf("  -- RETIRED: %s\n", e.Reason)
 			}
-			ranges := fixedWriterRanges(st, e, hash)
+			ranges, rangeParts := fixedWriterRangesParts(st, e, hash)
 			if len(e.Layout) > 1024 {
 				m.Printf("  {\n    hash = %s,\n    layout = table.concat({\n", idLit(e.Wire))
 				for i := 0; i < len(e.Layout); i += 20 {
 					end := min(i+20, len(e.Layout))
 					m.Printf("      %s,\n", lua.ByteString(e.Layout[i:end]))
 				}
-				m.Printf("    }),\n    record = %d%s,\n  },\n", e.Record, ranges)
+				m.Printf("    }),\n    record = %d,\n", e.Record)
+				if len(rangeParts) > 0 {
+					one := "ranges = { " + strings.Join(rangeParts, ", ") + " }"
+					if 4+len(one)+1 <= 120 {
+						m.Printf("    %s,\n", one)
+					} else {
+						m.Printf("    ranges = {\n")
+						for _, rp := range rangeParts {
+							m.Printf("      %s,\n", rp)
+						}
+						m.Printf("    },\n")
+					}
+				}
+				m.Printf("  },\n")
 			} else {
 				m.Printf("  { hash = %s, layout = %s, record = %d%s },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record, ranges)
 			}
